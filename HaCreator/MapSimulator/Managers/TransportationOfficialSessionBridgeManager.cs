@@ -440,6 +440,59 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public static bool TryParseOutboundRawPacketHex(string rawPacketHex, out byte[] rawPacket, out string status)
+        {
+            rawPacket = Array.Empty<byte>();
+            status = null;
+
+            if (string.IsNullOrWhiteSpace(rawPacketHex))
+            {
+                status = "Transport outbound raw packet hex cannot be empty.";
+                return false;
+            }
+
+            string normalizedHex = rawPacketHex
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .Trim();
+            if (normalizedHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedHex = normalizedHex[2..];
+            }
+
+            if (normalizedHex.Length < sizeof(short) * 2)
+            {
+                status = "Transport outbound packet must include at least a 2-byte opcode.";
+                return false;
+            }
+
+            if ((normalizedHex.Length & 1) != 0)
+            {
+                status = "Transport outbound packet hex must contain an even number of characters.";
+                return false;
+            }
+
+            try
+            {
+                rawPacket = Convert.FromHexString(normalizedHex);
+                if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
+                {
+                    status = "Transport outbound packet must include a 2-byte opcode.";
+                    rawPacket = Array.Empty<byte>();
+                    return false;
+                }
+
+                status = $"Parsed outbound {DescribeOutboundPacket(opcode, rawPacket)} from raw hex ({payload.Length} payload bytes).";
+                return true;
+            }
+            catch (FormatException ex)
+            {
+                status = $"Transport outbound packet hex is invalid: {ex.Message}";
+                rawPacket = Array.Empty<byte>();
+                return false;
+            }
+        }
+
         public void RecordDispatchResult(string source, TransportationPacketInboxMessage message, bool success, string result)
         {
             string summary = string.IsNullOrWhiteSpace(result)
@@ -718,6 +771,35 @@ namespace HaCreator.MapSimulator.Managers
                 rawPacket = Array.Empty<byte>();
                 return false;
             }
+        }
+
+        internal void RecordOutboundPacketForTesting(byte[] rawPacket, string source = "transport-test")
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
+            {
+                throw new ArgumentException("Transport outbound packet must include a 2-byte opcode.", nameof(rawPacket));
+            }
+
+            RecordSentOutboundPacket(
+                opcode,
+                (byte[])rawPacket.Clone(),
+                payload,
+                source,
+                countAsTypedSend: false);
+        }
+
+        internal bool TryPeekQueuedOutboundPacketForTesting(out int opcode, out byte[] rawPacket)
+        {
+            opcode = -1;
+            rawPacket = Array.Empty<byte>();
+            if (!_pendingOutboundPackets.TryPeek(out PendingOutboundPacket pending))
+            {
+                return false;
+            }
+
+            opcode = pending.Opcode;
+            rawPacket = (byte[])pending.RawPacket.Clone();
+            return true;
         }
 
         private void ClearActivePair(BridgePair pair, string status)

@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator
 
         private readonly CashServicePacketInboxManager _cashServicePacketInbox = new();
         private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
+        private const int CashShopOneADayHistorySlotCount = 10;
 
         private sealed class CashInventoryPacketFocusSnapshot
         {
@@ -255,7 +256,7 @@ namespace HaCreator.MapSimulator
                         HasPlateBigCanvas = artSnapshot.HasPlateBigCanvas,
                         NumberCanvasCount = artSnapshot.NumberCanvasCount,
                         PlateCount = Math.Max(1, artSnapshot.PlateCount),
-                        PreviousOfferCount = historyEntries.Count > 0 ? historyEntries.Count : 10,
+                        PreviousOfferCount = ResolveCashShopOneADayHistorySlotCount(),
                         PlateCanvasBaseName = "NoItem",
                         ShortcutHelpCanvasName = artSnapshot.HasShortcutHelpCanvas ? "ShortcutHelp" : string.Empty,
                         CurrentCommoditySerialNumber = currentCommoditySerialNumber,
@@ -297,6 +298,11 @@ namespace HaCreator.MapSimulator
             }
 
             return entries;
+        }
+
+        internal static int ResolveCashShopOneADayHistorySlotCount()
+        {
+            return CashShopOneADayHistorySlotCount;
         }
 
         private static string BuildCashShopOneADayPacketStateSignature(
@@ -1059,6 +1065,12 @@ namespace HaCreator.MapSimulator
 
         private void HideCashShopOwnerFamilyWindows()
         {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
+            {
+                cashShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
+                    "CAdminShopDlg owner surface is hidden because the Cash Shop owner family is not visible.");
+            }
+
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShop);
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShopStage);

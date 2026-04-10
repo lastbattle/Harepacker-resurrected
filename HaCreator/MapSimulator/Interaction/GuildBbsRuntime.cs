@@ -507,6 +507,19 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Deleted Guild BBS thread #{selectedThread.ThreadId}.";
         }
 
+        public bool TryBuildDeleteSelectedThreadPrompt(out string promptBody)
+        {
+            GuildBbsThreadState selectedThread = GetSelectedThread();
+            if (selectedThread == null || !CanDeleteThread(selectedThread))
+            {
+                promptBody = null;
+                return false;
+            }
+
+            promptBody = $"Delete Guild BBS thread \"{selectedThread.Title}\"?";
+            return true;
+        }
+
         public string AddReply()
         {
             GuildBbsThreadState selectedThread = GetSelectedThread();
@@ -599,6 +612,43 @@ namespace HaCreator.MapSimulator.Interaction
             selectedThread.Comments.Remove(comment);
             EnsureCommentPageInRange(selectedThread.Comments.Count);
             return $"Removed Guild BBS reply #{comment.CommentId} from thread #{selectedThread.ThreadId}.";
+        }
+
+        public bool TryBuildDeleteReplyPrompt(int visibleIndex, out string promptBody)
+        {
+            promptBody = null;
+
+            GuildBbsThreadState selectedThread = GetSelectedThread();
+            if (selectedThread == null || visibleIndex < 0 || visibleIndex >= VisibleCommentCount)
+            {
+                return false;
+            }
+
+            IReadOnlyList<GuildBbsCommentState> orderedComments = selectedThread.Comments
+                .OrderBy(comment => comment.CreatedAt)
+                .ToArray();
+            int commentIndex = (_commentPageIndex * VisibleCommentCount) + visibleIndex;
+            if (commentIndex < 0 || commentIndex >= orderedComments.Count)
+            {
+                return false;
+            }
+
+            GuildBbsCommentState comment = orderedComments[commentIndex];
+            if (!CanDeleteComment(comment))
+            {
+                return false;
+            }
+
+            string bodyPreview = comment.Body?.Trim() ?? string.Empty;
+            if (bodyPreview.Length > 18)
+            {
+                bodyPreview = bodyPreview[..18] + "...";
+            }
+
+            promptBody = string.IsNullOrWhiteSpace(bodyPreview)
+                ? $"Delete {comment.Author}'s Guild BBS reply?"
+                : $"Delete {comment.Author}'s reply \"{bodyPreview}\"?";
+            return true;
         }
 
         public string SetComposeTitle(string title)

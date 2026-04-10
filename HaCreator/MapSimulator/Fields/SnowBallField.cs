@@ -446,6 +446,7 @@ namespace HaCreator.MapSimulator.Fields
         public int Team0Score => _team0Score;
         public int Team1Score => _team1Score;
         public bool IsActive => _state == GameState.Active;
+        public bool IsLocalBasicActionOwnerActive => ResolveLocalBasicActionOwnerActive(Environment.TickCount);
         public string CurrentMessage => _currentMessage;
         public TouchPacketRequest? PendingTouchPacketRequest => _pendingTouchPacketRequests.Count > 0 ? _pendingTouchPacketRequests.Peek() : null;
         internal int PendingTouchPacketRequestCount => _pendingTouchPacketRequests.Count;
@@ -1177,6 +1178,33 @@ namespace HaCreator.MapSimulator.Fields
             _pendingTouchPacketRequests.Enqueue(new TouchPacketRequest(touchedTeam, tickCount, _touchPacketSequence));
             _lastTouchRequestTime = tickCount;
             _lastTouchRequestTeam = touchedTeam;
+        }
+
+        private bool ResolveLocalBasicActionOwnerActive(int tickCount)
+        {
+            if (_state != GameState.Active)
+            {
+                return false;
+            }
+
+            if (_pendingTouchPacketRequests.Count > 0)
+            {
+                return true;
+            }
+
+            if (_lastTouchImpactTime > 0
+                && tickCount - _lastTouchImpactTime < TouchRequestIntervalMs)
+            {
+                return true;
+            }
+
+            if (!_localPlayerPosition.HasValue)
+            {
+                return false;
+            }
+
+            int touchedTeam = GetTouchedSnowBallTeam(_localPlayerPosition.Value);
+            return touchedTeam >= 0 && (int)_state != touchedTeam + 2;
         }
         private int GetTouchedSnowBallTeam(Vector2 worldPosition)
         {

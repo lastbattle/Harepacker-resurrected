@@ -86,6 +86,11 @@ namespace HaCreator.MapSimulator.Character
                 ["triplefire"] = new[] { "doublefire" },
                 ["airstrike"] = new[] { "doublefire" },
                 ["shot"] = new[] { "doublefire", "windshot" },
+                // The client raw morph action table still publishes `burster1` and
+                // `burster2`, while pirate Morph/*.img publishes that surface as
+                // the authored `eburster` branch instead of verbatim `burster*`.
+                ["burster1"] = new[] { "eburster" },
+                ["burster2"] = new[] { "eburster" },
                 ["fireburner"] = new[] { "doublefire" },
                 ["coolingeffect"] = new[] { "doublefire" },
                 ["homing"] = new[] { "doublefire" },

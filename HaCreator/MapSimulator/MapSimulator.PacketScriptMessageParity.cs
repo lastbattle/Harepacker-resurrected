@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework;
 using System.Collections.Generic;
 using System.Net;
@@ -84,7 +85,19 @@ namespace HaCreator.MapSimulator
                         pet.SlotIndex,
                         pet.ItemId,
                         string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.SlotIndex + 1}" : pet.Name,
-                        PacketScriptPetSelectionSource.ActivePetRuntime);
+                    PacketScriptPetSelectionSource.ActivePetRuntime);
+                }
+            }
+
+            if (uiWindowManager?.InventoryWindow is IInventoryRuntime inventoryRuntime)
+            {
+                PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate inventoryCandidate =
+                    PacketScriptPetSelectionSnapshotResolver.ResolveLiveInventoryCandidate(
+                        inventoryRuntime.GetSlots(MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.CASH),
+                        petSerialNumber);
+                if (inventoryCandidate != null)
+                {
+                    return inventoryCandidate;
                 }
             }
 

@@ -25,6 +25,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLogoutGiftDialogFrameStringPoolId = 0x16AA;
         private const string PacketOwnedLogoutGiftDialogFrameFallbackPath = "UI/UIWindow.img/LogoutGift/backgrnd";
         private const string PacketOwnedLogoutGiftUiPath = "LogoutGift/backgrnd";
+        private const string PacketOwnedLogoutGiftButtonFallbackPath = "UI/UIWindow.img/LogoutGift/BtSelect";
+        private const string PacketOwnedLogoutGiftButtonUiPath = "LogoutGift/BtSelect";
         private const int PacketOwnedLogoutGiftCompletionStringPoolId = 0x16AB;
         private const string PacketOwnedLogoutGiftCompletionFallbackText = "Congratulations! Please come back in 3 days. Thank you!";
         private const int PacketOwnedLogoutGiftSpecialItemFamily = 91;
@@ -48,6 +50,7 @@ namespace HaCreator.MapSimulator
         private PacketOwnedLogoutGiftContinuation _packetOwnedLogoutGiftPendingContinuation;
         private bool _packetOwnedLogoutGiftOwnerInstantiated;
         private Texture2D _packetOwnedLogoutGiftFrameTexture;
+        private LogoutGiftButtonSkin _packetOwnedLogoutGiftButtonSkin;
 
         private void RegisterPacketOwnedLogoutGiftWindow()
         {
@@ -65,7 +68,9 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.RegisterCustomWindow(window);
             }
 
-            window.ConfigureVisualAssets(LoadPacketOwnedLogoutGiftFrameTexture());
+            window.ConfigureVisualAssets(
+                LoadPacketOwnedLogoutGiftFrameTexture(),
+                LoadPacketOwnedLogoutGiftButtonSkin());
             window.Position = ResolvePacketOwnedLogoutGiftWindowPosition(window);
             window.SetSnapshotProvider(BuildPacketOwnedLogoutGiftSnapshot);
             window.SetItemIconProvider(LoadPacketOwnedLogoutGiftItemIcon);
@@ -477,6 +482,31 @@ namespace HaCreator.MapSimulator
             return _packetOwnedLogoutGiftFrameTexture;
         }
 
+        private LogoutGiftButtonSkin LoadPacketOwnedLogoutGiftButtonSkin()
+        {
+            if (_packetOwnedLogoutGiftButtonSkin != null || GraphicsDevice == null)
+            {
+                return _packetOwnedLogoutGiftButtonSkin;
+            }
+
+            _packetOwnedLogoutGiftButtonSkin = TryLoadPacketOwnedLogoutGiftButtonSkinFromResourcePath(PacketOwnedLogoutGiftButtonFallbackPath);
+            if (_packetOwnedLogoutGiftButtonSkin != null)
+            {
+                return _packetOwnedLogoutGiftButtonSkin;
+            }
+
+            foreach (string imageName in PacketOwnedLogoutGiftUiImageNames)
+            {
+                _packetOwnedLogoutGiftButtonSkin = TryLoadPacketOwnedLogoutGiftButtonSkin(imageName, PacketOwnedLogoutGiftButtonUiPath);
+                if (_packetOwnedLogoutGiftButtonSkin != null)
+                {
+                    break;
+                }
+            }
+
+            return _packetOwnedLogoutGiftButtonSkin;
+        }
+
         private Texture2D TryLoadPacketOwnedLogoutGiftFrameTexture(string imageName, string propertyPath)
         {
             if (GraphicsDevice == null || string.IsNullOrWhiteSpace(imageName) || string.IsNullOrWhiteSpace(propertyPath))
@@ -487,6 +517,103 @@ namespace HaCreator.MapSimulator
             WzImage uiWindowImage = global::HaCreator.Program.FindImage("UI", imageName.Trim());
             WzCanvasProperty backgroundCanvas = uiWindowImage?[propertyPath.Trim()] as WzCanvasProperty;
             return LoadUiCanvasTexture(backgroundCanvas);
+        }
+
+        private LogoutGiftButtonSkin TryLoadPacketOwnedLogoutGiftButtonSkinFromResourcePath(string resourcePath)
+        {
+            if (!TryDecodePacketOwnedLogoutGiftDialogFrameResourcePath(resourcePath, out string imageName, out string propertyPath))
+            {
+                return null;
+            }
+
+            return TryLoadPacketOwnedLogoutGiftButtonSkin(imageName, propertyPath);
+        }
+
+        private LogoutGiftButtonSkin TryLoadPacketOwnedLogoutGiftButtonSkin(string imageName, string propertyPath)
+        {
+            if (GraphicsDevice == null || string.IsNullOrWhiteSpace(imageName) || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return null;
+            }
+
+            WzImage uiWindowImage = global::HaCreator.Program.FindImage("UI", imageName.Trim());
+            WzSubProperty buttonProperty = uiWindowImage?[propertyPath.Trim()] as WzSubProperty;
+            if (buttonProperty == null)
+            {
+                return null;
+            }
+
+            Texture2D normal = LoadPacketOwnedLogoutGiftButtonStateTexture(buttonProperty, "normal", "1", "0");
+            Texture2D hovered = LoadPacketOwnedLogoutGiftButtonStateTexture(buttonProperty, "mouseOver", "3", "1");
+            Texture2D pressed = LoadPacketOwnedLogoutGiftButtonStateTexture(buttonProperty, "pressed", "2", "3");
+            Texture2D disabled = LoadPacketOwnedLogoutGiftButtonStateTexture(buttonProperty, "disabled", "0", "4");
+            Texture2D keyFocused = LoadPacketOwnedLogoutGiftButtonStateTexture(buttonProperty, "keyFocused", "1", "0");
+            if (normal == null && hovered == null && pressed == null && disabled == null && keyFocused == null)
+            {
+                return null;
+            }
+
+            return new LogoutGiftButtonSkin(
+                normal,
+                hovered,
+                pressed,
+                disabled,
+                keyFocused);
+        }
+
+        private Texture2D LoadPacketOwnedLogoutGiftButtonStateTexture(
+            WzSubProperty buttonProperty,
+            string namedState,
+            params string[] indexedFallbacks)
+        {
+            if (buttonProperty == null)
+            {
+                return null;
+            }
+
+            if (buttonProperty[namedState] is WzCanvasProperty directCanvas)
+            {
+                return LoadUiCanvasTexture(directCanvas);
+            }
+
+            if (buttonProperty[namedState] is WzSubProperty stateProperty)
+            {
+                Texture2D namedTexture = LoadPacketOwnedLogoutGiftIndexedButtonTexture(stateProperty, "0");
+                if (namedTexture != null)
+                {
+                    return namedTexture;
+                }
+
+                foreach (string candidate in indexedFallbacks)
+                {
+                    Texture2D indexedTexture = LoadPacketOwnedLogoutGiftIndexedButtonTexture(stateProperty, candidate);
+                    if (indexedTexture != null)
+                    {
+                        return indexedTexture;
+                    }
+                }
+            }
+
+            foreach (string candidate in indexedFallbacks)
+            {
+                Texture2D indexedTexture = LoadPacketOwnedLogoutGiftIndexedButtonTexture(buttonProperty, candidate);
+                if (indexedTexture != null)
+                {
+                    return indexedTexture;
+                }
+            }
+
+            return null;
+        }
+
+        private Texture2D LoadPacketOwnedLogoutGiftIndexedButtonTexture(WzSubProperty property, string childName)
+        {
+            if (property == null || string.IsNullOrWhiteSpace(childName))
+            {
+                return null;
+            }
+
+            return LoadUiCanvasTexture(property[childName.Trim()] as WzCanvasProperty);
         }
 
         private Texture2D LoadPacketOwnedLogoutGiftItemIcon(int itemId)

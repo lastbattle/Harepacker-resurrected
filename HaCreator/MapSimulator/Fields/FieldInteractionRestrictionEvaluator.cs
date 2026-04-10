@@ -122,6 +122,13 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetDropRequestRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Drop_Limit.Check(fieldLimit)
+                ? "Items cannot be dropped in this map."
+                : null;
+        }
+
         public static string GetDropSpawnRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Drop_Limit.Check(fieldLimit)
@@ -190,6 +197,11 @@ namespace HaCreator.MapSimulator.Fields
         public static bool CanPickupDrops(long fieldLimit)
         {
             return GetDropPickupRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static bool CanRequestDrop(long fieldLimit)
+        {
+            return GetDropRequestRestrictionMessage(fieldLimit) == null;
         }
 
         public static bool CanSpawnDrops(long fieldLimit)

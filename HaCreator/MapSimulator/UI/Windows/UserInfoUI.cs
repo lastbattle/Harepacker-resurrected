@@ -297,6 +297,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.CharacterInfo;
         public Action MiniRoomRequested { get; set; }
         public Func<UserInfoActionContext, string> PartyRequested { get; set; }
+        public Func<UserInfoActionContext, string> SearchRequested { get; set; }
         public Func<UserInfoActionContext, string> FollowRequested { get; set; }
         public Func<UserInfoActionContext, string> TradingRoomRequested { get; set; }
         public Func<UserInfoActionContext, string> FamilyRequested { get; set; }
@@ -394,7 +395,8 @@ namespace HaCreator.MapSimulator.UI
             UIObject itemButton,
             UIObject wishButton,
             UIObject familyButton,
-            UIObject followButton = null)
+            UIObject followButton = null,
+            UIObject searchButton = null)
         {
             _partyButton = partyButton;
             _followButton = followButton;
@@ -419,6 +421,7 @@ namespace HaCreator.MapSimulator.UI
             BindActionButton(itemButton, "Item list opened.", ToggleItemPopup, true);
             BindActionButton(wishButton, "Wish list opened.", ToggleWishPopup, true);
             BindActionButton(familyButton, "Family chart opened from the profile window.", RequestFamilyAction, true);
+            BindActionButton(searchButton, "Social search opened from the profile window.", RequestSearchAction, true);
         }
 
         public void InitializePopupScrollButtons(UIObject popupUpButton, UIObject popupDownButton)
@@ -2012,6 +2015,16 @@ namespace HaCreator.MapSimulator.UI
         {
             UserInfoActionContext context = BuildCurrentActionContext();
             string message = FollowRequested?.Invoke(context);
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+            }
+        }
+
+        private void RequestSearchAction()
+        {
+            UserInfoActionContext context = BuildCurrentActionContext();
+            string message = SearchRequested?.Invoke(context);
             if (!string.IsNullOrWhiteSpace(message))
             {
                 _statusMessage = message;

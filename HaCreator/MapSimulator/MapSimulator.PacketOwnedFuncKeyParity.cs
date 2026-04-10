@@ -115,6 +115,14 @@ namespace HaCreator.MapSimulator
             SocialSearch = 6,
             ItemMaker = 7,
             EventWindow = 8,
+            ChatAll = 9,
+            ChatWhisper = 10,
+            ChatParty = 11,
+            ChatFriend = 12,
+            ChatGuild = 13,
+            ChatAlliance = 14,
+            FamilyChart = 15,
+            ChatExpedition = 16,
         }
 
         [DllImport("user32.dll", EntryPoint = "MapVirtualKeyW", ExactSpelling = true)]
@@ -1157,7 +1165,7 @@ namespace HaCreator.MapSimulator
                     if (functionKey != Keys.None
                         && WasPacketOwnedFuncKeyPressed(keyboardState, previousKeyboardState, functionKey))
                     {
-                        TryDispatchPacketOwnedRawFunctionEntry(entry.Id);
+                        TryDispatchPacketOwnedRawFunctionEntry(entry.Id, currentTime);
                     }
 
                     continue;
@@ -1203,7 +1211,7 @@ namespace HaCreator.MapSimulator
             };
         }
 
-        private bool TryDispatchPacketOwnedRawFunctionEntry(int clientFunctionId)
+        private bool TryDispatchPacketOwnedRawFunctionEntry(int clientFunctionId, int currentTime)
         {
             switch (ResolvePacketOwnedRawFunctionOwner(clientFunctionId))
             {
@@ -1226,6 +1234,8 @@ namespace HaCreator.MapSimulator
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
                     return true;
                 case PacketOwnedRawFunctionOwner.SocialSearch:
+                    _socialListRuntime.OpenSearchWindow(SocialSearchTab.Party);
+                    WireSocialSearchWindowData();
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
                     return true;
                 case PacketOwnedRawFunctionOwner.ItemMaker:
@@ -1233,6 +1243,32 @@ namespace HaCreator.MapSimulator
                     return true;
                 case PacketOwnedRawFunctionOwner.EventWindow:
                     ShowUtilityWindow(MapSimulatorWindowNames.Event, "packet-owned-funckey:31");
+                    return true;
+                case PacketOwnedRawFunctionOwner.ChatAll:
+                    _chat.ActivateTarget(MapSimulatorChatTargetType.All, currentTime);
+                    return true;
+                case PacketOwnedRawFunctionOwner.ChatWhisper:
+                    _chat.OpenWhisperTargetPicker(
+                        currentTime,
+                        presentation: MapSimulatorChat.WhisperTargetPickerPresentation.Modal);
+                    return true;
+                case PacketOwnedRawFunctionOwner.ChatParty:
+                    _chat.ActivateTarget(MapSimulatorChatTargetType.Party, currentTime);
+                    return true;
+                case PacketOwnedRawFunctionOwner.ChatFriend:
+                    _chat.ActivateTarget(MapSimulatorChatTargetType.Friend, currentTime);
+                    return true;
+                case PacketOwnedRawFunctionOwner.ChatGuild:
+                    _chat.ActivateTarget(MapSimulatorChatTargetType.Guild, currentTime);
+                    return true;
+                case PacketOwnedRawFunctionOwner.ChatAlliance:
+                    _chat.ActivateTarget(MapSimulatorChatTargetType.Association, currentTime);
+                    return true;
+                case PacketOwnedRawFunctionOwner.FamilyChart:
+                    ShowPacketOwnedFamilyChartWindow();
+                    return true;
+                case PacketOwnedRawFunctionOwner.ChatExpedition:
+                    _chat.ActivateTarget(MapSimulatorChatTargetType.Expedition, currentTime);
                     return true;
                 default:
                     return false;
@@ -1261,6 +1297,12 @@ namespace HaCreator.MapSimulator
             }
 
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.ItemMaker);
+        }
+
+        private void ShowPacketOwnedFamilyChartWindow()
+        {
+            _familyChartRuntime.ClearRemotePreviewRequest();
+            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
         }
 
         private static bool WasPacketOwnedFuncKeyPressed(KeyboardState keyboardState, KeyboardState previousKeyboardState, Keys key)
@@ -1306,9 +1348,17 @@ namespace HaCreator.MapSimulator
                 4 => PacketOwnedRawFunctionOwner.SocialListFriend,
                 5 => PacketOwnedRawFunctionOwner.WorldMap,
                 6 => PacketOwnedRawFunctionOwner.Messenger,
+                10 => PacketOwnedRawFunctionOwner.ChatAll,
+                11 => PacketOwnedRawFunctionOwner.ChatWhisper,
+                12 => PacketOwnedRawFunctionOwner.ChatParty,
+                13 => PacketOwnedRawFunctionOwner.ChatFriend,
                 17 => PacketOwnedRawFunctionOwner.SocialListGuild,
+                18 => PacketOwnedRawFunctionOwner.ChatGuild,
                 19 => PacketOwnedRawFunctionOwner.SocialListParty,
+                23 => PacketOwnedRawFunctionOwner.ChatAlliance,
                 24 => PacketOwnedRawFunctionOwner.SocialSearch,
+                25 => PacketOwnedRawFunctionOwner.FamilyChart,
+                28 => PacketOwnedRawFunctionOwner.ChatExpedition,
                 29 => PacketOwnedRawFunctionOwner.ItemMaker,
                 31 => PacketOwnedRawFunctionOwner.EventWindow,
                 _ => PacketOwnedRawFunctionOwner.None,

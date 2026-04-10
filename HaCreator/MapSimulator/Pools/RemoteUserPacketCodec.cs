@@ -48,7 +48,9 @@ namespace HaCreator.MapSimulator.Pools
         UserPreparedSkillClearOfficial = 217,
         UserEmotionOfficial = 219,
         UserActiveEffectItemOfficial = 220,
-        UserPortableChairOfficial = 222
+        UserUpgradeTombOfficial = 221,
+        UserPortableChairOfficial = 222,
+        UserGuildNameChangedOfficial = 228
     }
 
     public readonly record struct RemoteUserEnterFieldPacket(
@@ -265,6 +267,8 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserMountPacket(int CharacterId, int? TamingMobItemId);
     public readonly record struct RemoteUserActiveEffectItemPacket(int CharacterId, int? ItemId);
     public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
+    public readonly record struct RemoteUserUpgradeTombPacket(int CharacterId, int ItemId, int PositionX, int PositionY);
+    public readonly record struct RemoteUserGuildNameChangedPacket(int CharacterId, string GuildName);
     public readonly record struct RemoteUserTemporaryStatSetPacket(int CharacterId, RemoteUserTemporaryStatSnapshot TemporaryStats, ushort Delay);
     public readonly record struct RemoteUserTemporaryStatResetPacket(int CharacterId, int[] MaskWords);
     public readonly record struct RemoteUserPreparedSkillPacket(
@@ -972,6 +976,78 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 packet = new RemoteUserEmotionPacket(characterId, emotionId, durationMs, byItemOption);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseUpgradeTombEffect(ReadOnlySpan<byte> payload, out RemoteUserUpgradeTombPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                int itemId = reader.ReadInt32();
+                int positionX = reader.ReadInt32();
+                int positionY = reader.ReadInt32();
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user upgrade-tomb packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                if (characterId <= 0)
+                {
+                    error = $"Remote user upgrade-tomb packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                if (itemId <= 0)
+                {
+                    error = $"Remote user upgrade-tomb packet item ID {itemId} is invalid.";
+                    return false;
+                }
+
+                packet = new RemoteUserUpgradeTombPacket(characterId, itemId, positionX, positionY);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseGuildNameChanged(ReadOnlySpan<byte> payload, out RemoteUserGuildNameChangedPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                string guildName = reader.ReadString16();
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user guild-name packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                if (characterId <= 0)
+                {
+                    error = $"Remote user guild-name packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                packet = new RemoteUserGuildNameChangedPacket(characterId, guildName);
                 return true;
             }
             catch (InvalidOperationException ex)

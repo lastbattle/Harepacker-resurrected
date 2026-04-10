@@ -10,7 +10,9 @@ namespace HaCreator.MapSimulator.Managers
         Acknowledged = 2,
         Consumed = 3,
         Failure = 4,
-        Throttled = 5
+        Throttled = 5,
+        Deferred = 6,
+        Dispatched = 7
     }
 
     /// <summary>

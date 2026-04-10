@@ -15,10 +15,13 @@ namespace HaCreator.MapSimulator.UI
     {
         // CUIMapleTV::Draw centers the broadcast art on a 240px-wide MapleTV surface and
         // draws the send-board item text at (39,70) with its one-pixel highlight at (40,71).
-        // The in-field layer is still top-edge owned, but the WZ chat and TV-on families
-        // overhang that 240px surface. Keep the entire WZ composite centered rather than
-        // pinning only the raw media frame to the screen center.
-        private const int WorldOverlayTopMargin = 20;
+        // The in-field layer is top-edge owned; the wider chat families overhang the
+        // authored 240px surface, but the client still centers that base surface rather
+        // than the full overhang bounds.
+        private const int WorldOverlayTopMargin = 0;
+        private const int MapleTvSurfaceWidth = 240;
+        private const int MapleTvIdleSurfaceHeight = 90;
+        private const int MapleTvMediaSurfaceHeight = 180;
         // CUIMapleTV::OnCreate wires dialog type 1 sender-only boards to a wider edit at
         // (18,113,180,75), while flexible/dedication boards keep (40,113,135,75).
         private static readonly Rectangle SenderOnlyDraftMessageTextBounds = new(18, 113, 180, 75);
@@ -207,10 +210,10 @@ namespace HaCreator.MapSimulator.UI
                     ? _visualAssets.OffFrames
                     : _visualAssets.BasicFrames;
                 MapleTvAnimationFrame idleFrame = SelectFrame(idleFrames, tickCount);
-                Point idleOverlayOrigin = ResolveTopAnchoredSurfaceOrigin(
+                Point idleOverlayOrigin = ResolveClientOwnedSurfaceOrigin(
                     renderWidth,
                     WorldOverlayTopMargin,
-                    ResolveCompositeBounds(240, 90, idleFrames));
+                    CreateBaseSurfaceBounds(MapleTvSurfaceWidth, MapleTvIdleSurfaceHeight));
                 DrawAnimationFrame(sprite, idleFrame, idleOverlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 return;
             }
@@ -225,15 +228,10 @@ namespace HaCreator.MapSimulator.UI
                 onFrames,
                 tickCount);
             MapleTvAnimationFrame chatFrame = SelectFrame(chatFrames, tickCount);
-            Point overlayOrigin = ResolveCompositeSurfaceOrigin(
+            Point overlayOrigin = ResolveClientOwnedSurfaceOrigin(
                 renderWidth,
                 WorldOverlayTopMargin,
-                ResolveCompositeBounds(
-                    240,
-                    180,
-                    mediaFrames,
-                    onFrames,
-                    chatFrames));
+                CreateBaseSurfaceBounds(MapleTvSurfaceWidth, MapleTvMediaSurfaceHeight));
             DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
@@ -530,26 +528,15 @@ namespace HaCreator.MapSimulator.UI
                 drawReflectionInfo);
         }
 
-        internal static Point ResolveTopAnchoredSurfaceOrigin(
+        internal static Point ResolveClientOwnedSurfaceOrigin(
             int renderWidth,
             int topMargin,
-            Rectangle surfaceBounds)
+            Rectangle anchorSurfaceBounds)
         {
-            Rectangle normalizedBounds = NormalizeBounds(surfaceBounds);
-            int desiredLeft = Math.Max(0, (renderWidth - normalizedBounds.Width) / 2);
+            Rectangle normalizedAnchorBounds = NormalizeBounds(anchorSurfaceBounds);
+            int desiredLeft = Math.Max(0, (renderWidth - normalizedAnchorBounds.Width) / 2);
             int desiredTop = Math.Max(0, topMargin);
-            return new Point(desiredLeft - normalizedBounds.Left, desiredTop - normalizedBounds.Top);
-        }
-
-        internal static Point ResolveCompositeSurfaceOrigin(
-            int renderWidth,
-            int topMargin,
-            Rectangle compositeBounds)
-        {
-            Rectangle normalizedBounds = NormalizeBounds(compositeBounds);
-            int desiredLeft = Math.Max(0, (renderWidth - normalizedBounds.Width) / 2);
-            int desiredTop = Math.Max(0, topMargin);
-            return new Point(desiredLeft - normalizedBounds.Left, desiredTop - normalizedBounds.Top);
+            return new Point(desiredLeft - normalizedAnchorBounds.Left, desiredTop - normalizedAnchorBounds.Top);
         }
 
         internal static Rectangle ResolveCompositeBounds(
@@ -597,6 +584,11 @@ namespace HaCreator.MapSimulator.UI
         {
             Rectangle normalizedBounds = NormalizeBounds(familyBounds);
             return new Point(origin.X + normalizedBounds.Left, origin.Y + normalizedBounds.Top);
+        }
+
+        internal static Rectangle CreateBaseSurfaceBounds(int width, int height)
+        {
+            return new Rectangle(0, -Math.Max(1, height), Math.Max(1, width), Math.Max(1, height));
         }
 
         private static Rectangle NormalizeBounds(Rectangle bounds)

@@ -272,6 +272,15 @@ namespace HaCreator.MapSimulator.UI
                 resolvedHeight);
         }
 
+        public static Point ResolveWhisperPickerRowOriginDelta(
+            Point baseOrigin,
+            Point stateOrigin)
+        {
+            return new Point(
+                stateOrigin.X - baseOrigin.X,
+                stateOrigin.Y - baseOrigin.Y);
+        }
+
         public static int ResolveWhisperPickerButtonSlotLeft(
             int clientNormalLeft,
             int normalWidth,

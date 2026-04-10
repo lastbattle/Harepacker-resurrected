@@ -393,7 +393,7 @@ namespace HaCreator.MapSimulator.UI
             if (_companionPaneMode != CompanionPaneMode.Hidden
                 || draggedSlotData == null
                 || draggedSlotData.IsDisabled
-                || sourceInventoryType != InventoryType.EQUIP)
+                || !EquipmentChangeClientParity.IsSupportedCharacterEquipmentSourceInventory(sourceInventoryType))
             {
                 return false;
             }
@@ -426,6 +426,15 @@ namespace HaCreator.MapSimulator.UI
             CharacterPart incomingPart = draggedSlotData.TooltipPart?.Clone();
             if (incomingPart != null)
             {
+                if (EquipmentChangeClientParity.TryGetCharacterEquipmentSourceRejectReason(
+                        sourceInventoryType,
+                        incomingPart,
+                        out string sourceInventoryRejectReason))
+                {
+                    NotifyEquipmentEquipBlocked(sourceInventoryRejectReason);
+                    return false;
+                }
+
                 if (!CanDisplayPartInSlot(incomingPart, targetUiSlot.Value))
                 {
                     NotifyEquipmentEquipBlocked(EquipUIBigBang.BuildSlotMismatchRejectReason(incomingPart));

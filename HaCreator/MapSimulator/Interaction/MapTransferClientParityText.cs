@@ -38,6 +38,13 @@ namespace HaCreator.MapSimulator.Interaction
                 CurrentMapAlreadyRegisteredFallback);
         }
 
+        public static string ResolveCannotSaveDestinationNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                CannotSaveDestinationStringPoolId,
+                CannotSaveDestinationFallback);
+        }
+
         public static string BuildRegisterConfirmationPrompt(string mapLabel)
         {
             return FormatSingleMapPrompt(
@@ -77,9 +84,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Managers.MapTransferRuntimePacketResultCode.AlreadyRegistered => MapleStoryStringPool.GetOrFallback(
                     AlreadyRegisteredStringPoolId,
                     AlreadyRegisteredFallback),
-                Managers.MapTransferRuntimePacketResultCode.CannotSaveDestination => MapleStoryStringPool.GetOrFallback(
-                    CannotSaveDestinationStringPoolId,
-                    CannotSaveDestinationFallback),
+                Managers.MapTransferRuntimePacketResultCode.CannotSaveDestination => ResolveCannotSaveDestinationNotice(),
                 Managers.MapTransferRuntimePacketResultCode.OfficialFailure11 => MapleStoryStringPool.GetOrFallback(
                     RequestRejectedStringPoolId,
                     RequestRejectedFallback),

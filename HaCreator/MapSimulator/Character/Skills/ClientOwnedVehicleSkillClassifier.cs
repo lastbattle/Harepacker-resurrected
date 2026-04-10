@@ -73,6 +73,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "walk2",
             "stand1",
             "stand2",
+            "sit",
             "jump",
             "prone",
             "fly",

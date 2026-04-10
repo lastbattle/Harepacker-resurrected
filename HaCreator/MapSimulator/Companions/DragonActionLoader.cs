@@ -379,6 +379,15 @@ namespace HaCreator.MapSimulator.Companions
             return ResolveActionNode(image, actionName)?.FrameSourceNode != null;
         }
 
+        private static readonly string[] PreferredSkillActionFrameSourceNodeNames =
+        {
+            "mob",
+            "effect",
+            "affected",
+            "ball",
+            "hit"
+        };
+
         internal static WzSubProperty FindSkillActionFrameSource(WzSubProperty skillNode)
         {
             if (skillNode == null)
@@ -386,24 +395,24 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            foreach (string preferredNodeName in new[] { "mob", "effect" })
+            foreach (string preferredNodeName in PreferredSkillActionFrameSourceNodeNames)
             {
                 if (skillNode[preferredNodeName] is WzSubProperty preferredNode
-                    && HasRenderableFrames(preferredNode))
+                    && TryFindRenderableFrameSource(preferredNode, out WzSubProperty preferredFrameSource))
                 {
-                    return preferredNode;
+                    return preferredFrameSource;
                 }
             }
 
             foreach (WzSubProperty childNode in skillNode.WzProperties.OfType<WzSubProperty>())
             {
-                if (HasRenderableFrames(childNode))
+                if (TryFindRenderableFrameSource(childNode, out WzSubProperty childFrameSource))
                 {
-                    return childNode;
+                    return childFrameSource;
                 }
             }
 
-            return HasRenderableFrames(skillNode) ? skillNode : null;
+            return TryFindRenderableFrameSource(skillNode, out WzSubProperty frameSource) ? frameSource : null;
         }
 
         private List<SkillFrame> LoadFrames(WzSubProperty actionNode)
@@ -430,6 +439,7 @@ namespace HaCreator.MapSimulator.Companions
                     Origin = new Point(origin?.X.Value ?? 0, origin?.Y.Value ?? 0),
                     Delay = Math.Max(1, GetIntValue(metadataCanvas["delay"]) ?? 100),
                     Bounds = ResolveFrameBounds(metadataCanvas, texture),
+                    Z = GetIntValue(metadataCanvas["z"]) ?? 0,
                     AlphaStart = Math.Clamp(GetIntValue(metadataCanvas["a0"]) ?? 255, 0, 255),
                     AlphaEnd = Math.Clamp(GetIntValue(metadataCanvas["a1"]) ?? 255, 0, 255)
                 });
@@ -589,6 +599,42 @@ namespace HaCreator.MapSimulator.Companions
         private static bool HasRenderableFrames(WzSubProperty property)
         {
             return property?.WzProperties.OfType<WzCanvasProperty>().Any() == true;
+        }
+
+        private static bool TryFindRenderableFrameSource(WzSubProperty property, out WzSubProperty frameSource)
+        {
+            frameSource = null;
+            if (property == null)
+            {
+                return false;
+            }
+
+            if (HasRenderableFrames(property))
+            {
+                frameSource = property;
+                return true;
+            }
+
+            WzSubProperty[] children = property.WzProperties.OfType<WzSubProperty>().ToArray();
+            foreach (WzSubProperty indexedChild in children
+                         .Where(static child => int.TryParse(child.Name, out _))
+                         .OrderBy(static child => ParseFrameIndex(child.Name)))
+            {
+                if (TryFindRenderableFrameSource(indexedChild, out frameSource))
+                {
+                    return true;
+                }
+            }
+
+            foreach (WzSubProperty child in children.Where(static child => !int.TryParse(child.Name, out _)))
+            {
+                if (TryFindRenderableFrameSource(child, out frameSource))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private IDXObject LoadTexture(WzCanvasProperty canvas)

@@ -260,7 +260,8 @@ namespace HaCreator.MapSimulator.UI
         {
             ISoftKeyboardHost dismissedHost = _host;
             base.Hide();
-            _host?.SetSoftKeyboardCompositionText(string.Empty);
+            dismissedHost?.SetSoftKeyboardCompositionText(string.Empty);
+            dismissedHost?.OnSoftKeyboardClosed();
             _host = null;
             _statusMessage = string.Empty;
             _isExpandedLayout = false;
@@ -410,7 +411,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (_pressedCloseButton && _hoveredCloseButton)
                 {
-                    _host.OnSoftKeyboardClosed();
                     Dismiss();
                     return true;
                 }

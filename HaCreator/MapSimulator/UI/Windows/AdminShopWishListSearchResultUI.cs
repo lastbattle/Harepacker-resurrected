@@ -319,6 +319,7 @@ namespace HaCreator.MapSimulator.UI
             string searchText = _owner?.GetWishlistSearchQuery() ?? string.Empty;
             string categoryText = _owner?.ResolveWishlistCategoryLabel(_owner?.GetSelectedWishlistCategoryKey()) ?? "All";
             string priceText = _owner?.GetSelectedWishlistPriceRangeLabel() ?? "All prices";
+            string serviceState = _owner?.GetWishlistSearchServiceStateSummary() ?? string.Empty;
             sprite.DrawString(_font, TrimToWidth($"SearchItemName: {searchText}", 232f), new Vector2(bounds.X + HeaderX, bounds.Y + HeaderY), Color.White);
             sprite.DrawString(_font, TrimToWidth($"{categoryText} / {priceText}", 204f), new Vector2(bounds.X + HeaderX, bounds.Y + HeaderY + 18), new Color(255, 233, 160));
 
@@ -372,6 +373,11 @@ namespace HaCreator.MapSimulator.UI
             string status = string.IsNullOrWhiteSpace(_statusMessage)
                 ? _owner?.GetStatusMessage() ?? string.Empty
                 : _statusMessage;
+            if (!string.IsNullOrWhiteSpace(serviceState))
+            {
+                sprite.DrawString(_font, TrimToWidth(serviceState, 404f), new Vector2(bounds.X + HeaderX, bounds.Y + FooterY - 18), new Color(214, 223, 236));
+            }
+
             sprite.DrawString(_font, TrimToWidth(status, 404f), new Vector2(bounds.X + HeaderX, bounds.Y + FooterY), new Color(255, 233, 160));
 
             if (_isRegisterConfirmationOpen)

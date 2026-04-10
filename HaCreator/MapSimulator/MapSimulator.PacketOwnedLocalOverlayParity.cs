@@ -38,7 +38,7 @@ namespace HaCreator.MapSimulator
             ExternalObserved = 1
         }
 
-        private enum FieldHazardPetConsumeDispatchState
+        internal enum FieldHazardPetConsumeDispatchState
         {
             SimulatorOwned = 0,
             Dispatched = 1,
@@ -95,6 +95,7 @@ namespace HaCreator.MapSimulator
             int ResultAt,
             int RemoteResultDeadlineAt,
             bool Acknowledged,
+            bool InboundAcknowledged,
             FieldHazardPetConsumeResolutionMode ResolutionMode,
             FieldHazardPetConsumeDispatchState DispatchState,
             FieldHazardPetConsumeTransportPath TransportPath,
@@ -2099,6 +2100,7 @@ namespace HaCreator.MapSimulator
                     + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
                 RemoteResultDeadlineAt: currentTickCount + ResolveFieldHazardRemoteObservationWindowMs(dispatchState, resolutionMode),
                 Acknowledged: false,
+                InboundAcknowledged: false,
                 ResolutionMode: resolutionMode,
                 DispatchState: dispatchState,
                 TransportPath: transportPath,
@@ -2117,7 +2119,11 @@ namespace HaCreator.MapSimulator
                 requestDetail = $"{requestDetail} {transportDisposition}";
             }
 
-            _localOverlayRuntime.SetFieldHazardFollowUp(requestDetail, FieldHazardFollowUpKind.Pending, currentTickCount);
+            FieldHazardFollowUpKind requestFollowUpKind =
+                resolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
+                    ? ResolveFieldHazardOutstandingExternalFollowUpKind(dispatchState)
+                    : FieldHazardFollowUpKind.Pending;
+            _localOverlayRuntime.SetFieldHazardFollowUp(requestDetail, requestFollowUpKind, currentTickCount);
             return requestDetail;
         }
 
@@ -2209,13 +2215,16 @@ namespace HaCreator.MapSimulator
                     && request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued)
                 {
                     ackDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still queued for deferred packet-owned delivery on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and remains under remote observation.";
-                    followUpKind = FieldHazardFollowUpKind.Pending;
+                    followUpKind = FieldHazardFollowUpKind.Deferred;
+                }
+                else if (request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved)
+                {
+                    ackDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} left the packet-owned send gate on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and is awaiting remote packet/result ownership.";
+                    followUpKind = FieldHazardFollowUpKind.Dispatched;
                 }
                 else
                 {
-                    ackDetail = request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
-                        ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and is awaiting remote packet/result ownership."
-                        : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                    ackDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
                     followUpKind = FieldHazardFollowUpKind.Acknowledged;
                 }
 
@@ -2232,12 +2241,24 @@ namespace HaCreator.MapSimulator
             {
                 if (unchecked(currentTickCount - request.RemoteResultDeadlineAt) < 0)
                 {
-                    string pendingRemoteDetail = request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
-                        ? $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still queued or in-flight for deferred packet-owned delivery for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}."
-                        : $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still awaiting remote packet/result ownership for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
-                    FieldHazardFollowUpKind pendingKind = request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued
-                        ? FieldHazardFollowUpKind.Pending
-                        : FieldHazardFollowUpKind.Acknowledged;
+                    string pendingRemoteDetail;
+                    FieldHazardFollowUpKind pendingKind;
+                    if (request.InboundAcknowledged)
+                    {
+                        pendingRemoteDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} was acknowledged by the packet-owned result path and is still awaiting remote terminal ownership for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                        pendingKind = FieldHazardFollowUpKind.Acknowledged;
+                    }
+                    else if (request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued)
+                    {
+                        pendingRemoteDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still queued or in-flight for deferred packet-owned delivery for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                        pendingKind = FieldHazardFollowUpKind.Deferred;
+                    }
+                    else
+                    {
+                        pendingRemoteDetail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still awaiting remote packet/result ownership for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                        pendingKind = FieldHazardFollowUpKind.Dispatched;
+                    }
+
                     _localOverlayRuntime.SetFieldHazardFollowUp(pendingRemoteDetail, pendingKind, currentTickCount);
                     return;
                 }
@@ -2251,7 +2272,8 @@ namespace HaCreator.MapSimulator
                 _localOverlayRuntime.SetFieldHazardFollowUp(
                     remoteUnresolvedDetail,
                     ResolveFieldHazardRemoteObservationExpiryFollowUpKind(
-                        request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued),
+                        request.DispatchState == FieldHazardPetConsumeDispatchState.DeferredQueued,
+                        request.InboundAcknowledged),
                     currentTickCount);
                 return;
             }
@@ -2661,7 +2683,7 @@ namespace HaCreator.MapSimulator
             string requestVariant = DescribeFieldHazardRequestVariant(request.ForceRequest, request.BuffSkillRequest);
             string followUpDetail =
                 $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} left the deferred queue on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and is now awaiting remote packet/result ownership. {transportDisposition}";
-            _localOverlayRuntime.SetFieldHazardFollowUp(followUpDetail, FieldHazardFollowUpKind.Pending, currentTickCount);
+            _localOverlayRuntime.SetFieldHazardFollowUp(followUpDetail, FieldHazardFollowUpKind.Dispatched, currentTickCount);
             return true;
         }
 
@@ -2707,13 +2729,14 @@ namespace HaCreator.MapSimulator
                             + ResolveFieldHazardSyntheticAckDelayMs(externalObserved: true, deferredQueued: true)
                             + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
                         RemoteResultDeadlineAt = currentTickCount + ResolveFieldHazardRemoteObservationWindowMs(externalObserved: true, deferredQueued: true),
+                        InboundAcknowledged = false,
                         TransportDisposition = string.IsNullOrWhiteSpace(result.Detail)
                             ? request.TransportDisposition
                             : result.Detail.Trim()
                     };
                     _pendingFieldHazardPetAutoConsumeRequest = deferredRequest;
                     string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} is still deferred under packet-owned remote observation for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.{resultDetailSuffix}";
-                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Pending, currentTickCount);
+                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Deferred, currentTickCount);
                     return detail;
                 }
 
@@ -2728,13 +2751,14 @@ namespace HaCreator.MapSimulator
                             + ResolveFieldHazardSyntheticAckDelayMs(externalObserved: true, deferredQueued: false)
                             + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
                         RemoteResultDeadlineAt = currentTickCount + ResolveFieldHazardRemoteObservationWindowMs(externalObserved: true, deferredQueued: false),
+                        InboundAcknowledged = false,
                         TransportDisposition = string.IsNullOrWhiteSpace(result.Detail)
                             ? request.TransportDisposition
                             : result.Detail.Trim()
                     };
                     _pendingFieldHazardPetAutoConsumeRequest = dispatchedRequest;
                     string detail = $"{petLabel} {requestMode} {requestVariant} #{request.RequestId} left the deferred packet-owned path and is now awaiting remote result ownership for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.{resultDetailSuffix}";
-                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Pending, currentTickCount);
+                    _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Dispatched, currentTickCount);
                     return detail;
                 }
 
@@ -2755,6 +2779,7 @@ namespace HaCreator.MapSimulator
                                 externalObserved: true,
                                 deferredQueued: false),
                             Acknowledged = true,
+                            InboundAcknowledged = true,
                             TransportDisposition = string.IsNullOrWhiteSpace(result.Detail)
                                 ? request.TransportDisposition
                                 : result.Detail.Trim()
@@ -3270,11 +3295,28 @@ namespace HaCreator.MapSimulator
                 && (!requestSlotMatches || requestSlotQuantityDropped);
         }
 
-        internal static FieldHazardFollowUpKind ResolveFieldHazardRemoteObservationExpiryFollowUpKind(bool deferredQueued)
+        internal static FieldHazardFollowUpKind ResolveFieldHazardRemoteObservationExpiryFollowUpKind(
+            bool deferredQueued,
+            bool inboundAcknowledged)
         {
+            if (inboundAcknowledged)
+            {
+                return FieldHazardFollowUpKind.Acknowledged;
+            }
+
             return deferredQueued
-                ? FieldHazardFollowUpKind.Pending
-                : FieldHazardFollowUpKind.Acknowledged;
+                ? FieldHazardFollowUpKind.Deferred
+                : FieldHazardFollowUpKind.Dispatched;
+        }
+
+        internal static FieldHazardFollowUpKind ResolveFieldHazardOutstandingExternalFollowUpKind(FieldHazardPetConsumeDispatchState state)
+        {
+            return state switch
+            {
+                FieldHazardPetConsumeDispatchState.DeferredQueued => FieldHazardFollowUpKind.Deferred,
+                FieldHazardPetConsumeDispatchState.Dispatched => FieldHazardFollowUpKind.Dispatched,
+                _ => FieldHazardFollowUpKind.Pending
+            };
         }
 
         private bool TryCreateFieldHazardHpPotionCandidate(

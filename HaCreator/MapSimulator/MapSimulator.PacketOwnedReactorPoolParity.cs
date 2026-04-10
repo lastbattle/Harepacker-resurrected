@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator
             if (entered && reactorIndex >= 0)
             {
                 RegisterDynamicReactorForRendering(reactorIndex);
+                DispatchReactorTouchStateChanges(_reactorPool.DrainPendingPacketTouchStateChanges());
             }
 
             return new PacketReactorPoolApplyResult(entered, detail);

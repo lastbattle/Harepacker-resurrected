@@ -231,6 +231,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int ActionRepeatIntervalMinutes { get; set; }
             public bool FieldEnterAction { get; set; }
             public string NpcActionName { get; set; } = string.Empty;
+            public IReadOnlyList<int> AllowedJobs { get; set; } = Array.Empty<int>();
             public List<int> FieldEnterMapIds { get; } = new();
             public List<int> BuffItemMapIds { get; } = new();
             public List<QuestStateMutation> QuestMutations { get; } = new();
@@ -776,9 +777,23 @@ namespace HaCreator.MapSimulator.Interaction
 
             string summaryText = state switch
             {
-                QuestStateType.Not_Started => JoinQuestSections(definition.QuestId, definition.Summary, definition.StartDescription, definition.DemandSummary),
-                QuestStateType.Started => JoinQuestSections(definition.QuestId, definition.Summary, definition.ProgressDescription, definition.CompletionDescription),
-                QuestStateType.Completed => JoinQuestSections(definition.QuestId, definition.Summary, definition.CompletionDescription),
+                QuestStateType.Not_Started => JoinQuestSections(
+                    definition.QuestId,
+                    preserveQuestDetailMarkers: true,
+                    definition.Summary,
+                    definition.StartDescription,
+                    definition.DemandSummary),
+                QuestStateType.Started => JoinQuestSections(
+                    definition.QuestId,
+                    preserveQuestDetailMarkers: true,
+                    definition.Summary,
+                    definition.ProgressDescription,
+                    definition.CompletionDescription),
+                QuestStateType.Completed => JoinQuestSections(
+                    definition.QuestId,
+                    preserveQuestDetailMarkers: true,
+                    definition.Summary,
+                    definition.CompletionDescription),
                 _ => definition.Summary
             };
 
@@ -1560,7 +1575,8 @@ namespace HaCreator.MapSimulator.Interaction
                 completionPhase: false,
                 actionLabel: "Accept",
                 npcId: null,
-                selectedChoiceRewards);
+                selectedChoiceRewards,
+                definition.StartActions.AllowedJobs);
             if (rewardResolution.PendingPrompt != null)
             {
                 return new QuestWindowActionResult
@@ -1711,7 +1727,8 @@ namespace HaCreator.MapSimulator.Interaction
                 completionPhase: true,
                 actionLabel: "Complete",
                 npcId: null,
-                selectedChoiceRewards);
+                selectedChoiceRewards,
+                definition.EndActions.AllowedJobs);
             if (rewardResolution.PendingPrompt != null)
             {
                 return new QuestWindowActionResult
@@ -2289,6 +2306,7 @@ namespace HaCreator.MapSimulator.Interaction
                     Text = NpcDialogueTextFormatter.Format(
                         JoinQuestSections(
                             definition.QuestId,
+                            preserveQuestDetailMarkers: true,
                             definition.Summary,
                             completionPhase ? definition.ProgressDescription : definition.StartDescription,
                             definition.DemandSummary),
@@ -2442,7 +2460,8 @@ namespace HaCreator.MapSimulator.Interaction
                     completionPhase: false,
                     actionLabel: "Accept",
                     npcId,
-                    selectedChoiceRewards);
+                    selectedChoiceRewards,
+                    definition.StartActions.AllowedJobs);
                 if (rewardResolution.PendingPrompt != null)
                 {
                     return new QuestActionResult
@@ -2531,7 +2550,8 @@ namespace HaCreator.MapSimulator.Interaction
                     completionPhase: true,
                     actionLabel: "Complete",
                     npcId,
-                    selectedChoiceRewards);
+                    selectedChoiceRewards,
+                    definition.EndActions.AllowedJobs);
                 if (rewardResolution.PendingPrompt != null)
                 {
                     return new QuestActionResult
@@ -2665,6 +2685,11 @@ namespace HaCreator.MapSimulator.Interaction
                 bool completionPhase = state == QuestStateType.Started;
                 QuestActionBundle actions = completionPhase ? definition.EndActions : definition.StartActions;
                 if (!MatchesFieldEnterMap(actions?.FieldEnterMapIds, currentMapId))
+                {
+                    continue;
+                }
+
+                if (!MatchesActionJobFilter(actions, build))
                 {
                     continue;
                 }
@@ -3666,6 +3691,17 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            if (actions.AllowedJobs.Count > 0)
+            {
+                bool matchesJob = build == null || MatchesAllowedJobs(build.Job, actions.AllowedJobs);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Job",
+                    Text = $"Action jobs: {BuildAllowedJobDisplayText(actions.AllowedJobs)}",
+                    IsComplete = matchesJob
+                });
+            }
+
             if (actions.ActionMinLevel.HasValue)
             {
                 int currentLevel = build?.Level ?? 0;
@@ -3836,13 +3872,14 @@ namespace HaCreator.MapSimulator.Interaction
         private List<QuestLogLineSnapshot> BuildRewardLines(QuestDefinition definition, CharacterBuild build = null)
         {
             var lines = new List<QuestLogLineSnapshot>();
+            bool actionApplies = MatchesActionJobFilter(definition.EndActions, build);
 
-            if (definition.EndActions.ExpReward > 0)
+            if (actionApplies && definition.EndActions.ExpReward > 0)
             {
                 lines.Add(new QuestLogLineSnapshot { Label = "EXP", Text = $"+{definition.EndActions.ExpReward}", IsComplete = true });
             }
 
-            if (definition.EndActions.MesoReward != 0)
+            if (actionApplies && definition.EndActions.MesoReward != 0)
             {
                 lines.Add(new QuestLogLineSnapshot
                 {
@@ -3852,7 +3889,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            if (definition.EndActions.FameReward != 0)
+            if (actionApplies && definition.EndActions.FameReward != 0)
             {
                 lines.Add(new QuestLogLineSnapshot
                 {
@@ -3862,7 +3899,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            if (definition.EndActions.BuffItemId > 0)
+            if (actionApplies && definition.EndActions.BuffItemId > 0)
             {
                 lines.Add(new QuestLogLineSnapshot
                 {
@@ -3873,7 +3910,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            if (definition.EndActions.PetTamenessReward != 0)
+            if (actionApplies && definition.EndActions.PetTamenessReward != 0)
             {
                 lines.Add(new QuestLogLineSnapshot
                 {
@@ -3883,7 +3920,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            if (definition.EndActions.PetSpeedReward != 0)
+            if (actionApplies && definition.EndActions.PetSpeedReward != 0)
             {
                 lines.Add(new QuestLogLineSnapshot
                 {
@@ -3893,7 +3930,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            if (definition.EndActions.BuffItemId <= 0 && definition.EndActions.BuffItemMapIds.Count > 0)
+            if (actionApplies && definition.EndActions.BuffItemId <= 0 && definition.EndActions.BuffItemMapIds.Count > 0)
             {
                 lines.Add(new QuestLogLineSnapshot
                 {
@@ -3903,7 +3940,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            if (!string.IsNullOrWhiteSpace(definition.EndActions.NpcActionName))
+            if (actionApplies && !string.IsNullOrWhiteSpace(definition.EndActions.NpcActionName))
             {
                 lines.Add(new QuestLogLineSnapshot
                 {
@@ -3913,9 +3950,9 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            AppendActionMetadataRewardLines(lines, definition.EndActions);
+            AppendActionMetadataRewardLines(lines, definition.EndActions, build);
 
-            for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
+            for (int i = 0; actionApplies && i < definition.EndActions.TraitRewards.Count; i++)
             {
                 QuestTraitReward reward = definition.EndActions.TraitRewards[i];
                 lines.Add(new QuestLogLineSnapshot
@@ -3927,7 +3964,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            for (int i = 0; i < definition.EndActions.QuestMutations.Count; i++)
+            for (int i = 0; actionApplies && i < definition.EndActions.QuestMutations.Count; i++)
             {
                 QuestStateMutation mutation = definition.EndActions.QuestMutations[i];
                 lines.Add(new QuestLogLineSnapshot
@@ -3938,9 +3975,12 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            AppendVisibleRewardItemLines(lines, definition.EndActions.RewardItems, build);
+            if (actionApplies)
+            {
+                AppendVisibleRewardItemLines(lines, definition.EndActions.RewardItems, build);
+            }
 
-            for (int i = 0; i < definition.EndActions.SkillRewards.Count; i++)
+            for (int i = 0; actionApplies && i < definition.EndActions.SkillRewards.Count; i++)
             {
                 if (!MatchesAllowedJobs(build?.Job ?? 0, definition.EndActions.SkillRewards[i].AllowedJobs))
                 {
@@ -3955,7 +3995,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            if (definition.EndActions.PetSkillRewardMask > 0)
+            if (actionApplies && definition.EndActions.PetSkillRewardMask > 0)
             {
                 lines.Add(new QuestLogLineSnapshot
                 {
@@ -3965,7 +4005,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            for (int i = 0; i < definition.EndActions.SpRewards.Count; i++)
+            for (int i = 0; actionApplies && i < definition.EndActions.SpRewards.Count; i++)
             {
                 if (!MatchesAllowedJobs(build?.Job ?? 0, definition.EndActions.SpRewards[i].AllowedJobs))
                 {
@@ -3980,7 +4020,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            if (definition.EndActions.NextQuestId.HasValue && definition.EndActions.NextQuestId.Value > 0)
+            if (actionApplies && definition.EndActions.NextQuestId.HasValue && definition.EndActions.NextQuestId.Value > 0)
             {
                 lines.Add(new QuestLogLineSnapshot
                 {
@@ -3990,7 +4030,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            for (int i = 0; i < definition.EndActions.Messages.Count; i++)
+            for (int i = 0; actionApplies && i < definition.EndActions.Messages.Count; i++)
             {
                 string message = definition.EndActions.Messages[i];
                 if (string.IsNullOrWhiteSpace(message))
@@ -4021,11 +4061,23 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static void AppendActionMetadataRewardLines(
             ICollection<QuestLogLineSnapshot> lines,
-            QuestActionBundle actions)
+            QuestActionBundle actions,
+            CharacterBuild build)
         {
             if (actions == null || lines == null)
             {
                 return;
+            }
+
+            if (actions.AllowedJobs.Count > 0)
+            {
+                bool matchesJob = build == null || MatchesAllowedJobs(build.Job, actions.AllowedJobs);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Job",
+                    Text = $"Action jobs: {BuildAllowedJobDisplayText(actions.AllowedJobs)}",
+                    IsComplete = matchesJob
+                });
             }
 
             if (actions.ActionNpcId.HasValue && actions.ActionNpcId.Value > 0)
@@ -4113,7 +4165,11 @@ namespace HaCreator.MapSimulator.Interaction
                 issues);
             AppendSkillIssues(definition.StartSkillRequirements, issues);
             AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
-            issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.StartActions.RewardItems, build, messages: null)));
+            issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(
+                definition.StartActions.RewardItems,
+                build,
+                messages: null,
+                definition.StartActions.AllowedJobs)));
             return issues;
         }
 
@@ -4160,7 +4216,11 @@ namespace HaCreator.MapSimulator.Interaction
                 "complete");
             AppendActionMetadataIssues(definition, definition.EndActions, build, issues, "complete", completionPhase: true);
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
-            issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null)));
+            issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(
+                definition.EndActions.RewardItems,
+                build,
+                messages: null,
+                definition.EndActions.AllowedJobs)));
 
             if (build != null && definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
             {
@@ -4281,9 +4341,10 @@ namespace HaCreator.MapSimulator.Interaction
             bool completionPhase,
             string actionLabel,
             int? npcId,
-            IReadOnlyDictionary<int, int> selectedChoiceRewards)
+            IReadOnlyDictionary<int, int> selectedChoiceRewards,
+            IReadOnlyList<int> actionAllowedJobs)
         {
-            if (rewards == null || rewards.Count == 0)
+            if (rewards == null || rewards.Count == 0 || !MatchesAllowedJobs(build?.Job ?? 0, actionAllowedJobs))
             {
                 return new QuestRewardResolution();
             }
@@ -5114,7 +5175,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            resolvedGrantedItems ??= ResolveGrantedRewardItems(actions.RewardItems, build, messages);
+            if (!MatchesActionJobFilter(actions, build))
+            {
+                return true;
+            }
+
+            resolvedGrantedItems ??= ResolveGrantedRewardItems(actions.RewardItems, build, messages, actions.AllowedJobs);
             var consumedItems = new List<QuestConsumedItemMutation>();
             var consumedItemMessages = new List<string>();
             if (!TryApplyConsumedActionItems(actions.RewardItems, consumedItems, consumedItemMessages, out failureMessage))
@@ -6676,6 +6742,9 @@ namespace HaCreator.MapSimulator.Interaction
                     case "lvmax":
                         actions.ActionMaxLevel = ParsePositiveInt(child);
                         break;
+                    case "job":
+                        actions.AllowedJobs = ParseJobIds(child);
+                        break;
                     case "start":
                         actions.ActionAvailableFrom = ParseQuestDateTime(child);
                         break;
@@ -7003,7 +7072,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return page != null ? new[] { page } : Array.Empty<NpcInteractionPage>();
             }
 
-            return ParseConversationPageSequence(numberedPages, property, property["stop"], fallbackRootStopProperty: null);
+            return ParseConversationPageSequence(
+                numberedPages,
+                rootChoiceProperty: property,
+                rootStopProperty: property["stop"],
+                fallbackRootChoiceProperty: null,
+                fallbackRootStopProperty: null);
         }
 
         internal static IReadOnlyList<NpcInteractionPage> ParseConversationVariantPages(
@@ -7030,6 +7104,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? ParseConversationPageSequence(
                     siblingPages,
                     rootChoiceProperty: selectedProperty,
+                    fallbackRootChoiceProperty: containerProperty,
                     rootStopProperty: selectedProperty?["stop"],
                     fallbackRootStopProperty: containerProperty?["stop"])
                 : ParseConversationPages(selectedProperty);
@@ -7123,6 +7198,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static IReadOnlyList<NpcInteractionPage> ParseConversationPageSequence(
             IReadOnlyList<WzImageProperty> numberedPages,
             WzImageProperty rootChoiceProperty,
+            WzImageProperty fallbackRootChoiceProperty,
             WzImageProperty rootStopProperty,
             WzImageProperty fallbackRootStopProperty)
         {
@@ -7155,7 +7231,14 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (i == numberedPages.Count - 1 && rootChoiceProperty != null)
                 {
-                    AppendConversationChoices(rootChoiceProperty, choices);
+                    AppendConversationChoices(rootChoiceProperty, choices, suppressDuplicateLabels: true);
+                }
+
+                if (i == numberedPages.Count - 1 &&
+                    fallbackRootChoiceProperty != null &&
+                    !ReferenceEquals(fallbackRootChoiceProperty, rootChoiceProperty))
+                {
+                    AppendConversationChoices(fallbackRootChoiceProperty, choices, suppressDuplicateLabels: true);
                 }
 
                 if (!string.IsNullOrWhiteSpace(text) || choices.Count > 0)
@@ -7314,6 +7397,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        private static bool MatchesActionJobFilter(QuestActionBundle actions, CharacterBuild build)
+        {
+            return actions == null || build == null || MatchesAllowedJobs(build.Job, actions.AllowedJobs);
         }
 
         internal static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationStopPages(WzImageProperty property)
@@ -7503,19 +7591,32 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static void AppendConversationChoices(WzImageProperty property, ICollection<NpcInteractionChoice> choices)
         {
+            AppendConversationChoices(property, choices, suppressDuplicateLabels: false);
+        }
+
+        private static void AppendConversationChoices(
+            WzImageProperty property,
+            ICollection<NpcInteractionChoice> choices,
+            bool suppressDuplicateLabels)
+        {
             if (property?.WzProperties == null)
             {
                 return;
             }
 
-            AppendConversationChoice(property["yes"], "Yes", choices);
-            AppendConversationChoice(property["no"], "No", choices);
-            AppendAdditionalConversationChoices(property, choices);
+            AppendConversationChoice(property["yes"], "Yes", choices, suppressDuplicateLabels);
+            AppendConversationChoice(property["no"], "No", choices, suppressDuplicateLabels);
+            AppendAdditionalConversationChoices(property, choices, suppressDuplicateLabels);
         }
 
-        private static void AppendConversationChoice(WzImageProperty property, string label, ICollection<NpcInteractionChoice> choices)
+        private static void AppendConversationChoice(
+            WzImageProperty property,
+            string label,
+            ICollection<NpcInteractionChoice> choices,
+            bool suppressDuplicateLabels)
         {
-            if (property == null)
+            if (property == null ||
+                (suppressDuplicateLabels && ContainsConversationChoiceLabel(choices, label)))
             {
                 return;
             }
@@ -7533,19 +7634,24 @@ namespace HaCreator.MapSimulator.Interaction
             });
         }
 
-        private static void AppendAdditionalConversationChoices(WzImageProperty property, ICollection<NpcInteractionChoice> choices)
+        private static void AppendAdditionalConversationChoices(
+            WzImageProperty property,
+            ICollection<NpcInteractionChoice> choices,
+            bool suppressDuplicateLabels)
         {
             if (property?.WzProperties == null)
             {
                 return;
             }
 
-            var existingLabels = new HashSet<string>(
-                choices?.Where(choice => choice != null)
-                    .Select(choice => choice.Label)
-                    .Where(label => !string.IsNullOrWhiteSpace(label)) ??
-                Array.Empty<string>(),
-                StringComparer.OrdinalIgnoreCase);
+            var existingLabels = suppressDuplicateLabels
+                ? new HashSet<string>(
+                    choices?.Where(choice => choice != null)
+                        .Select(choice => choice.Label)
+                        .Where(label => !string.IsNullOrWhiteSpace(label)) ??
+                    Array.Empty<string>(),
+                    StringComparer.OrdinalIgnoreCase)
+                : null;
 
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
@@ -7556,7 +7662,8 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 string label = FormatConversationBranchChoiceLabel(child.Name);
-                if (string.IsNullOrWhiteSpace(label) || !existingLabels.Add(label))
+                if (string.IsNullOrWhiteSpace(label) ||
+                    (existingLabels != null && !existingLabels.Add(label)))
                 {
                     continue;
                 }
@@ -8332,9 +8439,10 @@ namespace HaCreator.MapSimulator.Interaction
         private IReadOnlyList<QuestRewardItem> ResolveGrantedRewardItems(
             IReadOnlyList<QuestRewardItem> rewards,
             CharacterBuild build,
-            ICollection<string> messages)
+            ICollection<string> messages,
+            IReadOnlyList<int> actionAllowedJobs = null)
         {
-            if (rewards == null || rewards.Count == 0)
+            if (rewards == null || rewards.Count == 0 || !MatchesAllowedJobs(build?.Job ?? 0, actionAllowedJobs))
             {
                 return Array.Empty<QuestRewardItem>();
             }
@@ -8566,6 +8674,25 @@ namespace HaCreator.MapSimulator.Interaction
                     IsComplete = true
                 });
             }
+        }
+
+        private static bool ContainsConversationChoiceLabel(ICollection<NpcInteractionChoice> choices, string label)
+        {
+            if (choices == null || string.IsNullOrWhiteSpace(label))
+            {
+                return false;
+            }
+
+            foreach (NpcInteractionChoice existingChoice in choices)
+            {
+                if (existingChoice != null &&
+                    string.Equals(existingChoice.Label, label, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private List<string> BuildVisibleRewardItemActionLines(
@@ -8947,12 +9074,14 @@ namespace HaCreator.MapSimulator.Interaction
                    func.IndexOf("cube", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        private string JoinQuestSections(int questId, params string[] sections)
+        private string JoinQuestSections(int questId, bool preserveQuestDetailMarkers = false, params string[] sections)
         {
             var builder = new StringBuilder();
             for (int i = 0; i < sections.Length; i++)
             {
-                string formatted = NpcDialogueTextFormatter.Format(sections[i], CreateDialogueFormattingContext(questId: questId));
+                string formatted = preserveQuestDetailMarkers
+                    ? NpcDialogueTextFormatter.FormatPreservingQuestDetailMarkers(sections[i], CreateDialogueFormattingContext(questId: questId))
+                    : NpcDialogueTextFormatter.Format(sections[i], CreateDialogueFormattingContext(questId: questId));
                 if (string.IsNullOrWhiteSpace(formatted))
                 {
                     continue;
@@ -9263,23 +9392,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
-            var lines = new List<string>();
-            if (!string.IsNullOrWhiteSpace(summaryText))
+            if (string.IsNullOrWhiteSpace(summaryText))
             {
-                lines.Add(summaryText);
+                return string.Empty;
             }
 
-            lines.AddRange(BuildClientPacketQuestResultNonItemSupplementalLines(
-                actions,
-                build));
-
-            string noticeText = string.Join("\n", lines.Where(static line => !string.IsNullOrWhiteSpace(line)));
-            if (actions.MesoReward < 0)
-            {
-                noticeText = QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(noticeText);
-            }
-
-            return noticeText;
+            return actions.MesoReward < 0
+                ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
+                : summaryText;
         }
 
         private static string ResolvePacketQuestResultPrimaryText(
@@ -9440,58 +9560,62 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, 0);
+            bool actionApplies = MatchesActionJobFilter(actions, build);
 
-            if (actions.ExpReward > 0)
+            if (actionApplies && actions.ExpReward > 0)
             {
                 lines.Add($"EXP +{actions.ExpReward}");
             }
 
-            if (actions.MesoReward != 0)
+            if (actionApplies && actions.MesoReward != 0)
             {
                 lines.Add($"Meso {actions.MesoReward:+#;-#;0}");
             }
 
-            if (actions.FameReward != 0)
+            if (actionApplies && actions.FameReward != 0)
             {
                 lines.Add($"Fame {actions.FameReward:+#;-#;0}");
             }
 
-            if (actions.BuffItemId > 0)
+            if (actionApplies && actions.BuffItemId > 0)
             {
                 lines.Add($"Buff {GetBuffItemRewardText(actions)}");
             }
 
-            if (actions.PetTamenessReward != 0)
+            if (actionApplies && actions.PetTamenessReward != 0)
             {
                 lines.Add(GetPetTamenessRewardText(actions.PetTamenessReward));
             }
 
-            if (actions.PetSpeedReward != 0)
+            if (actionApplies && actions.PetSpeedReward != 0)
             {
                 lines.Add(GetPetSpeedRewardText(actions.PetSpeedReward));
             }
 
-            if (actions.BuffItemId <= 0 && actions.BuffItemMapIds.Count > 0)
+            if (actionApplies && actions.BuffItemId <= 0 && actions.BuffItemMapIds.Count > 0)
             {
                 lines.Add($"Maps: {FormatMapIdList(actions.BuffItemMapIds)}");
             }
 
             lines.AddRange(BuildVisibleQuestActionMetadataLines(actions));
 
-            if (!string.IsNullOrWhiteSpace(actions.NpcActionName))
+            if (actionApplies && !string.IsNullOrWhiteSpace(actions.NpcActionName))
             {
                 lines.Add(QuestNpcActionResolver.FormatActionDetail(actions.NpcActionName));
             }
 
-            for (int i = 0; i < actions.TraitRewards.Count; i++)
+            for (int i = 0; actionApplies && i < actions.TraitRewards.Count; i++)
             {
                 QuestTraitReward reward = actions.TraitRewards[i];
                 lines.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
             }
 
-            lines.AddRange(BuildVisibleRewardItemActionLines(actions.RewardItems, build, includeSelectionTag));
+            if (actionApplies)
+            {
+                lines.AddRange(BuildVisibleRewardItemActionLines(actions.RewardItems, build, includeSelectionTag));
+            }
 
-            for (int i = 0; i < actions.SkillRewards.Count; i++)
+            for (int i = 0; actionApplies && i < actions.SkillRewards.Count; i++)
             {
                 QuestSkillReward reward = actions.SkillRewards[i];
                 if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
@@ -9502,18 +9626,18 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(GetSkillRewardText(reward));
             }
 
-            if (actions.PetSkillRewardMask > 0)
+            if (actionApplies && actions.PetSkillRewardMask > 0)
             {
                 lines.Add(GetPetSkillRewardText(actions.PetSkillRewardMask));
             }
 
-            for (int i = 0; i < actions.QuestMutations.Count; i++)
+            for (int i = 0; actionApplies && i < actions.QuestMutations.Count; i++)
             {
                 QuestStateMutation mutation = actions.QuestMutations[i];
                 lines.Add($"Quest state: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}");
             }
 
-            for (int i = 0; i < actions.SpRewards.Count; i++)
+            for (int i = 0; actionApplies && i < actions.SpRewards.Count; i++)
             {
                 QuestSpReward reward = actions.SpRewards[i];
                 if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
@@ -9524,12 +9648,12 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add($"SP {GetSpRewardText(reward)}");
             }
 
-            if (actions.NextQuestId.HasValue && actions.NextQuestId.Value > 0)
+            if (actionApplies && actions.NextQuestId.HasValue && actions.NextQuestId.Value > 0)
             {
                 lines.Add($"Next quest: {GetQuestName(actions.NextQuestId.Value)}");
             }
 
-            for (int i = 0; i < actions.Messages.Count; i++)
+            for (int i = 0; actionApplies && i < actions.Messages.Count; i++)
             {
                 string message = NormalizeQuestActionMessage(actions.Messages[i], formattingContext);
                 if (!string.IsNullOrWhiteSpace(message))
@@ -9552,6 +9676,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (actions.ActionNpcId.HasValue && actions.ActionNpcId.Value > 0)
             {
                 lines.Add($"Action NPC: {ResolveNpcName(actions.ActionNpcId.Value)}");
+            }
+
+            if (actions.AllowedJobs.Count > 0)
+            {
+                lines.Add($"Action jobs: {BuildAllowedJobDisplayText(actions.AllowedJobs)}");
             }
 
             if (actions.ActionMinLevel.HasValue)
@@ -9599,7 +9728,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildClientPacketQuestResultItemCategorySummary(QuestActionBundle actions, CharacterBuild build)
         {
-            if (actions?.RewardItems == null || actions.RewardItems.Count == 0)
+            if (actions?.RewardItems == null || actions.RewardItems.Count == 0 || !MatchesActionJobFilter(actions, build))
             {
                 return string.Empty;
             }

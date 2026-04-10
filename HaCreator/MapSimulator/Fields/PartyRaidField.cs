@@ -537,7 +537,7 @@ namespace HaCreator.MapSimulator.Fields
         }
         public bool OnFieldSetVariable(string key, string value)
         {
-            if (MatchesAlias(key, "team", "color", "state"))
+            if (MatchesAlias(key, "team", "color", "state", "balloon_Team"))
             {
                 if (TryParseTeamColor(value, out PartyRaidTeamColor teamColor))
                 {
@@ -548,7 +548,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            if (MatchesAlias(key, PartyRaidTeamLiteral))
+            if (MatchesAlias(key, PartyRaidTeamLiteral, "balloon_Team"))
             {
                 if (TryParseTeamColor(value, out PartyRaidTeamColor teamColor))
                 {
@@ -2027,13 +2027,17 @@ namespace HaCreator.MapSimulator.Fields
         private static PartyRaidTeamColor? InferTeamColorFromScripts(string onUserEnter, string onFirstUserEnter)
         {
             if (StartsWithPartyRaidScript(onUserEnter, "PRaid_D_")
-                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_D_"))
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_D_")
+                || StartsWithPartyRaidScript(onUserEnter, "Balloon_D_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "Balloon_D_"))
             {
                 return PartyRaidTeamColor.Blue;
             }
 
             if (StartsWithPartyRaidScript(onUserEnter, "PRaid_W_")
-                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_W_"))
+                || StartsWithPartyRaidScript(onFirstUserEnter, "PRaid_W_")
+                || StartsWithPartyRaidScript(onUserEnter, "Balloon_W_")
+                || StartsWithPartyRaidScript(onFirstUserEnter, "Balloon_W_"))
             {
                 return PartyRaidTeamColor.Red;
             }
@@ -2201,10 +2205,12 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool TryParseTeamColor(string text, out PartyRaidTeamColor teamColor)
         {
-            if (StartsWithPartyRaidScript(text, "PRaid_D_")) { teamColor = PartyRaidTeamColor.Blue; return true; }
-            if (StartsWithPartyRaidScript(text, "PRaid_W_")) { teamColor = PartyRaidTeamColor.Red; return true; }
+            if (StartsWithPartyRaidScript(text, "PRaid_D_") || StartsWithPartyRaidScript(text, "Balloon_D_")) { teamColor = PartyRaidTeamColor.Blue; return true; }
+            if (StartsWithPartyRaidScript(text, "PRaid_W_") || StartsWithPartyRaidScript(text, "Balloon_W_")) { teamColor = PartyRaidTeamColor.Red; return true; }
             if (string.Equals(text, "blue", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
             if (string.Equals(text, "red", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
+            if (string.Equals(text, "blueTeam", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
+            if (string.Equals(text, "redTeam", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
             if (string.Equals(text, PartyRaidBlueTeamLiteral, StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
             if (string.Equals(text, PartyRaidRedTeamLiteral, StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
             if (string.Equals(text, "1", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }

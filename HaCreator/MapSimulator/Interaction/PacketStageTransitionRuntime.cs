@@ -1958,22 +1958,15 @@ namespace HaCreator.MapSimulator.Interaction
             return records;
         }
 
-        private static string TruncateClientString(string value, int maxBytes)
+        private static string TruncateClientString(string value, int maxCharacterCount)
         {
             value ??= string.Empty;
-            Encoding encoding = Encoding.Default;
-            if (encoding.GetByteCount(value) <= maxBytes)
+            if (value.Length <= maxCharacterCount)
             {
                 return value;
             }
 
-            int characterCount = value.Length;
-            while (characterCount > 0 && encoding.GetByteCount(value[..characterCount]) > maxBytes)
-            {
-                characterCount--;
-            }
-
-            return value[..characterCount];
+            return value[..maxCharacterCount];
         }
 
         private static void SkipCharacterDataWildHunterInfo(BinaryReader reader)
@@ -2243,7 +2236,7 @@ namespace HaCreator.MapSimulator.Interaction
             : ClientDeliveryStateGoing;
 
         internal string ClientSummaryLine =>
-            $"[{SerialNumber}:{DeliveryStateText}] {SenderName}:{SenderDiscardStateText} -> {ReceiverName}:{ReceiverDiscardStateText}  [{Content}]";
+            $"[{SerialNumber}:{DeliveryStateText}] {SenderName}:{SenderDiscardStateText} -> {ReceiverName}:{ReceiverDiscardStateText}  [{Content}]\n";
     }
 
     internal readonly record struct PacketCharacterDataWildHunterInfo(
@@ -2252,10 +2245,16 @@ namespace HaCreator.MapSimulator.Interaction
         byte ModeLowDigit,
         IReadOnlyList<int> CapturedMobIds)
     {
+        internal byte RidingType => ModeHighDigit;
+
+        internal byte SelectedCapturedMobIndex => ModeLowDigit;
+
         internal int ActiveCapturedMobIndex =>
-            ModeLowDigit < (CapturedMobIds?.Count ?? 0)
-                ? ModeLowDigit
+            SelectedCapturedMobIndex < (CapturedMobIds?.Count ?? 0)
+                ? SelectedCapturedMobIndex
                 : -1;
+
+        internal bool HasActiveCapturedMob => ActiveCapturedMobIndex >= 0;
 
         internal int ActiveCapturedMobId =>
             ActiveCapturedMobIndex >= 0

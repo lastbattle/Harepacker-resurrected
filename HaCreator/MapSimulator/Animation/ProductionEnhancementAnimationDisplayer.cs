@@ -134,6 +134,24 @@ namespace HaCreator.MapSimulator.Animation
                 currentTimeMs);
         }
 
+        public bool TryGetCubePresentationDurationMs(ItemUpgradeUI.VisualThemeKind themeKind, out int durationMs)
+        {
+            durationMs = 0;
+            if (!_cubeThemes.TryGetValue(themeKind, out CubeAnimationTheme theme))
+            {
+                return false;
+            }
+
+            int totalDurationMs = 0;
+            for (int i = 0; i < theme.Frames.Count; i++)
+            {
+                totalDurationMs += Math.Max(1, theme.Frames[i]?.Delay ?? 0);
+            }
+
+            durationMs = Math.Max(totalDurationMs, 1);
+            return true;
+        }
+
         public void PlayViciousHammerResult(int currentTimeMs)
         {
             _owner.RegisterRepeat(

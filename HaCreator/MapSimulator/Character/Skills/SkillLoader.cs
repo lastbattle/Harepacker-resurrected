@@ -2087,21 +2087,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<WzImageProperty>();
             }
 
-            List<WzImageProperty> orderedFrames = new();
-            foreach (WzImageProperty child in actionNode.WzProperties)
-            {
-                if (child == null)
-                {
-                    continue;
-                }
-
-                if (child is not WzCanvasProperty && child.GetLinkedWzImageProperty() is not WzCanvasProperty)
-                {
-                    continue;
-                }
-
-                orderedFrames.Add(child);
-            }
+            List<WzImageProperty> orderedFrames = actionNode.WzProperties
+                .Where(static child =>
+                    child != null
+                    && (child is WzCanvasProperty || child.GetLinkedWzImageProperty() is WzCanvasProperty))
+                .OrderBy(static child =>
+                    int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frameIndex)
+                        ? frameIndex
+                        : int.MaxValue)
+                .ThenBy(static child => child.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
             if (orderedFrames.Count == 0)
             {
@@ -2379,6 +2374,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 Animation = LoadZoneAnimation(tileNode),
                 AnimationPath = LoadZoneAnimationPath(tileNode),
+                TileUolPath = NormalizeSkillAssetPath(tileNode),
                 VariantAnimations = LoadSummonIndexedAnimations(tileNode, "tile"),
                 VariantAnimationPaths = LoadSummonIndexedAnimationPaths(tileNode),
                 EffectDistance = GetInt(tileNode, "effectDistance")
@@ -2766,6 +2762,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     zoneEffect.CharacterLevelVariantAnimations[requiredLevel] = variants;
                     zoneEffect.CharacterLevelVariantAnimationPaths[requiredLevel] = LoadSummonIndexedAnimationPaths(tileVariantNode);
+                    zoneEffect.CharacterLevelTileUolPaths[requiredLevel] = NormalizeSkillAssetPath(tileVariantNode);
                     zoneEffect.CharacterLevelEffectDistances[requiredLevel] = GetInt(tileVariantNode, "effectDistance");
                 }
             }
@@ -2798,6 +2795,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     zoneEffect.LevelVariantAnimations[skillLevel] = variants;
                     zoneEffect.LevelVariantAnimationPaths[skillLevel] = LoadSummonIndexedAnimationPaths(tileVariantNode);
+                    zoneEffect.LevelTileUolPaths[skillLevel] = NormalizeSkillAssetPath(tileVariantNode);
                     zoneEffect.LevelEffectDistances[skillLevel] = GetInt(tileVariantNode, "effectDistance");
                 }
             }
@@ -3214,9 +3212,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int mobCount = GetInt(infoNode, "mobCount");
-            if (mobCount > 0 && skill.SummonMobCountOverride <= 0)
+            if (mobCount > 0)
             {
-                skill.SummonMobCountOverride = mobCount;
+                if (!string.IsNullOrWhiteSpace(branchName))
+                {
+                    skill.SummonMobCountOverridesByBranch[branchName] = mobCount;
+                }
+
+                if (skill.SummonMobCountOverride <= 0)
+                {
+                    skill.SummonMobCountOverride = mobCount;
+                }
             }
 
             int bulletSpeed = GetInt(infoNode, "bulletSpeed");
@@ -4392,7 +4398,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             var projectile = new ProjectileData
             {
-                SkillId = skillId
+                SkillId = skillId,
+                BallUolPath = NormalizeSkillAssetPath(ballNode),
+                FlipBallUolPath = NormalizeSkillAssetPath(skillNode?["flipBall"])
             };
 
             // Load ball animation
@@ -4479,6 +4487,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     projectile.CharacterLevelVariantAnimations[requiredLevel] = variants;
                     projectile.CharacterLevelVariantAnimationPaths[requiredLevel] = LoadSummonIndexedAnimationPaths(ballVariantNode);
+                    projectile.CharacterLevelBallUolPaths[requiredLevel] = NormalizeSkillAssetPath(ballVariantNode);
+                    projectile.CharacterLevelFlipBallUolPaths[requiredLevel] = NormalizeSkillAssetPath(child["flipBall"]);
                 }
             }
         }
@@ -4510,6 +4520,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     projectile.LevelVariantAnimations[skillLevel] = variants;
                     projectile.LevelVariantAnimationPaths[skillLevel] = LoadSummonIndexedAnimationPaths(ballVariantNode);
+                    projectile.LevelBallUolPaths[skillLevel] = NormalizeSkillAssetPath(ballVariantNode);
+                    projectile.LevelFlipBallUolPaths[skillLevel] = NormalizeSkillAssetPath(child["flipBall"]);
                 }
             }
         }
@@ -5337,6 +5349,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 levelData.MAD,
                 yValue,
                 PlaceholderMatchesHintLabel(normalizedSurface, "#y", "magic att", "magic attack"));
+            levelData.MAD = ApplyDescriptionBackedAliasValue(
+                levelData.MAD,
+                xValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "magic att", "magic attack"));
             levelData.PDD = ApplyDescriptionBackedAliasValue(
                 levelData.PDD,
                 zValue,

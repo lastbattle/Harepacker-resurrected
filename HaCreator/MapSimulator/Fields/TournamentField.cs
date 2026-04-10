@@ -33,6 +33,16 @@ namespace HaCreator.MapSimulator.Fields
     }
 
     internal readonly record struct TournamentClientMessage(int StringPoolId, string FallbackText);
+    public enum TournamentSessionPhase
+    {
+        None = 0,
+        Lobby = 1,
+        Notice = 2,
+        MatchTable = 3,
+        Prize = 4,
+        Uew = 5,
+        NoOp = 6
+    }
 
     public sealed class TournamentField
     {
@@ -40,6 +50,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int PostFinalExitGraceMs = 5 * 60 * 1000;
         private const string MatchTableDialogOwner = "CMatchTableDlg";
         private const string TournamentContractSummary = "32-player bracket, resting period between rounds, prize podium after finals, five-minute exit grace.";
+        private const int PacketTrailCapacity = 6;
 
         private int _mapId;
         private bool _isActive;
@@ -55,6 +66,9 @@ namespace HaCreator.MapSimulator.Fields
         private TournamentLifecyclePhase _lifecyclePhase;
         private string _lifecycleSummary;
         private int? _podiumExitDeadlineTick;
+        private readonly Queue<string> _packetActionTrail = new();
+        private TournamentSessionPhase _sessionPhase;
+        private string _sessionPhaseSummary;
         private readonly TournamentMatchTableDialogState _matchTableDialog = new();
 
         public bool IsActive => _isActive;
@@ -67,7 +81,9 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<int> LastStringPoolIds => _lastStringPoolIds;
         public IReadOnlyList<int> LastPrizeItemIds => _lastPrizeItemIds;
         public TournamentLifecyclePhase LifecyclePhase => _lifecyclePhase;
+        public TournamentSessionPhase SessionPhase => _sessionPhase;
         public TournamentMatchTableDialogState MatchTableDialog => _matchTableDialog;
+        public IReadOnlyList<string> PacketActionTrail => _packetActionTrail.ToArray();
 
         public void Configure(MapInfo mapInfo)
         {
@@ -79,6 +95,9 @@ namespace HaCreator.MapSimulator.Fields
                 SetLifecyclePhase(
                     TournamentLifecyclePhase.Lobby,
                     "String/Map.img/victoria/109070000/help0 keeps the Tournament wrapper anchored to the bracket lobby, resting period, prize podium, and five-minute post-finals exit flow.");
+                SetSessionPhase(
+                    TournamentSessionPhase.Lobby,
+                    "Tournament wrapper entered its bracket-lobby contract from the map help text.");
                 _statusMessage = $"Tournament wrapper ready for map {_mapId} ({TournamentContractSummary})";
                 _statusMessageUntil = Environment.TickCount + StatusDurationMs;
             }
@@ -215,6 +234,9 @@ namespace HaCreator.MapSimulator.Fields
                             currentTimeMs,
                             Array.Empty<int>(),
                             "noop (378)");
+                        SetSessionPhase(
+                            TournamentSessionPhase.NoOp,
+                            "CField_Tournament::OnPacket consumed opcode 378 and intentionally performed no local action.");
                         EnsurePacketConsumed(stream, "noop");
                         return true;
 
@@ -257,7 +279,7 @@ namespace HaCreator.MapSimulator.Fields
             string summary = string.IsNullOrWhiteSpace(_lastPacketSummary) ? "No packet applied yet." : _lastPacketSummary;
             string matchTableText = _matchTableDialog.DescribeStatus();
             string phaseText = BuildLifecycleStatusText(Environment.TickCount);
-            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | contract={TournamentContractSummary} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText}{Environment.NewLine}{matchTableText}";
+            return $"Tournament: active | map={_mapId} | phase={GetLifecyclePhaseLabel()} | session={DescribeSessionPhase()} | contract={TournamentContractSummary} | last={packetText} | handler={handlerText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary} | lifecycle={phaseText} | trail={BuildPacketTrailSummary()}{Environment.NewLine}{matchTableText}";
         }
 
         public string DescribeMatchTableDialog()
@@ -302,6 +324,9 @@ namespace HaCreator.MapSimulator.Fields
             _lifecyclePhase = TournamentLifecyclePhase.Lobby;
             _lifecycleSummary = null;
             _podiumExitDeadlineTick = null;
+            _packetActionTrail.Clear();
+            _sessionPhase = TournamentSessionPhase.None;
+            _sessionPhaseSummary = null;
             _matchTableDialog.Reset();
         }
 
@@ -330,6 +355,9 @@ namespace HaCreator.MapSimulator.Fields
                     new[] { blockedEntryNotice.StringPoolId },
                     $"notice (374) blocked-entry code={noticeCode}",
                     "CUtilDlg::Notice");
+                SetSessionPhase(
+                    TournamentSessionPhase.Notice,
+                    $"CField_Tournament::OnTournament handled blocked-entry code {noticeCode}.");
                 return;
             }
 
@@ -363,6 +391,9 @@ namespace HaCreator.MapSimulator.Fields
                 new[] { message.StringPoolId },
                 $"notice (374) round-result code={noticeCode}",
                 "CUtilDlg::Notice");
+            SetSessionPhase(
+                TournamentSessionPhase.Notice,
+                $"CField_Tournament::OnTournament handled round-result code {noticeCode}.");
         }
 
         private void ApplyMatchTable(byte[] payload, int currentTimeMs)
@@ -381,6 +412,9 @@ namespace HaCreator.MapSimulator.Fields
                 Array.Empty<int>(),
                 $"match-table (375) bytes={payload.Length}",
                 $"{MatchTableDialogOwner}::DoModal");
+            SetSessionPhase(
+                TournamentSessionPhase.MatchTable,
+                $"CField_Tournament::OnTournamentMatchTable routed state-byte={_matchTableDialog.Stage} [{_matchTableDialog.StageLabel}] into {MatchTableDialogOwner}.");
         }
 
         private void ApplyPrize(BinaryReader reader, int currentTimeMs)
@@ -389,9 +423,17 @@ namespace HaCreator.MapSimulator.Fields
             bool hasItems = reader.ReadByte() != 0;
             _lastPrizeItemIds = Array.Empty<int>();
             _podiumExitDeadlineTick = unchecked(currentTimeMs + PostFinalExitGraceMs);
+            if (_matchTableDialog.IsVisible)
+            {
+                _matchTableDialog.Close("Tournament match-table dialog closed for the prize podium.");
+            }
+
             SetLifecyclePhase(
                 TournamentLifecyclePhase.PrizePodium,
                 "Tournament prize flow moved the finalists to the podium and armed the five-minute exit grace from String/Map.img/victoria/109070000/help0.");
+            SetSessionPhase(
+                TournamentSessionPhase.Prize,
+                "CField_Tournament::OnTournamentSetPrize advanced the wrapper from bracket transport into the prize podium flow.");
             if (hasItems)
             {
                 int firstItemId = reader.ReadInt32();
@@ -456,6 +498,9 @@ namespace HaCreator.MapSimulator.Fields
                 ? FormatStringPoolMessage(message.Value, uewCode)
                 : FormatStringPoolMessage(message.Value);
             SetStatus(fallback, currentTimeMs, new[] { message.Value.StringPoolId }, $"uew (377) code={uewCode}", "CUtilDlg::Notice");
+            SetSessionPhase(
+                TournamentSessionPhase.Uew,
+                $"CField_Tournament::OnTournamentUEW handled code {uewCode}.");
         }
 
         private void SetStatus(string text, int currentTimeMs, IReadOnlyList<int> stringPoolIds, string packetSummary, string dialogOwner = null)
@@ -468,6 +513,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastDialogOwner = dialogOwner;
             _lastStringPoolIds = stringPoolIds?.Where(id => id > 0).Distinct().ToArray() ?? Array.Empty<int>();
             _lastPacketOwner = ResolvePacketOwner(_lastPacketType);
+            RecordPacketTrail(_lastPacketSummary);
         }
 
         private void RecordIgnoredPacket(string packetSummary, int currentTimeMs)
@@ -479,6 +525,12 @@ namespace HaCreator.MapSimulator.Fields
         {
             _lifecyclePhase = phase;
             _lifecycleSummary = string.IsNullOrWhiteSpace(summary) ? null : summary.Trim();
+        }
+
+        private void SetSessionPhase(TournamentSessionPhase phase, string summary)
+        {
+            _sessionPhase = phase;
+            _sessionPhaseSummary = string.IsNullOrWhiteSpace(summary) ? null : summary.Trim();
         }
 
         private string BuildLifecycleStatusText(int currentTimeMs)
@@ -515,6 +567,48 @@ namespace HaCreator.MapSimulator.Fields
                 TournamentLifecyclePhase.SessionNotice => "session-notice",
                 _ => "lobby"
             };
+        }
+
+        private string DescribeSessionPhase()
+        {
+            string label = _sessionPhase switch
+            {
+                TournamentSessionPhase.Lobby => "lobby",
+                TournamentSessionPhase.Notice => "notice",
+                TournamentSessionPhase.MatchTable => "match-table",
+                TournamentSessionPhase.Prize => "prize",
+                TournamentSessionPhase.Uew => "uew",
+                TournamentSessionPhase.NoOp => "noop",
+                _ => "none"
+            };
+
+            return string.IsNullOrWhiteSpace(_sessionPhaseSummary)
+                ? label
+                : $"{label} ({_sessionPhaseSummary})";
+        }
+
+        private void RecordPacketTrail(string summary)
+        {
+            if (string.IsNullOrWhiteSpace(summary))
+            {
+                return;
+            }
+
+            _packetActionTrail.Enqueue(summary.Trim());
+            while (_packetActionTrail.Count > PacketTrailCapacity)
+            {
+                _packetActionTrail.Dequeue();
+            }
+        }
+
+        private string BuildPacketTrailSummary()
+        {
+            if (_packetActionTrail.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(" => ", _packetActionTrail.Select(entry => TrimForDisplay(entry, 44)));
         }
 
         private static string FormatSummaryItemList(IEnumerable<int> itemIds)
@@ -735,6 +829,7 @@ namespace HaCreator.MapSimulator.Fields
         public int DialogTitleStringPoolId => IsVisible ? MatchTableDialogTitleStringPoolId : 0;
         public IReadOnlyList<string> SlotNames => _slotNames;
         public bool HasExactCtorPayloadShape => PayloadLength == ExactPayloadLength && _rawTable.Length == RawTableByteCount;
+        public string StageLabel => ResolveStateLabel();
 
         public void Reset()
         {
@@ -780,7 +875,7 @@ namespace HaCreator.MapSimulator.Fields
                 firstNames = "no printable entrant names recovered";
             }
 
-            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), state-byte={Stage} [{ResolveStateLabel()}], title StringPool=0x{DialogTitleStringPoolId:X}, title=\"{DialogTitle}\", scroll={Scroll}, preview={firstNames}).";
+            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), state-byte={Stage} [{StageLabel}], title StringPool=0x{DialogTitleStringPoolId:X}, title=\"{DialogTitle}\", scroll={Scroll}, preview={firstNames}).";
             summary = Summary;
             return true;
         }
@@ -818,7 +913,7 @@ namespace HaCreator.MapSimulator.Fields
                 names = "none recovered";
             }
 
-            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | exactCtorShape={HasExactCtorPayloadShape} | state-byte={Stage} [{ResolveStateLabel()}] | title=0x{DialogTitleStringPoolId:X} \"{DialogTitle}\" | scroll={Scroll} | entrants={names}";
+            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | exactCtorShape={HasExactCtorPayloadShape} | state-byte={Stage} [{StageLabel}] | title=0x{DialogTitleStringPoolId:X} \"{DialogTitle}\" | scroll={Scroll} | entrants={names}";
         }
 
         public int GetMatchValue(int slotIndex, int valueIndex)

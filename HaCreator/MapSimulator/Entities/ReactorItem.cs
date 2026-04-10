@@ -100,6 +100,7 @@ namespace HaCreator.MapSimulator.Entities
         private int _transientHitLayerProperEventIndex = -1;
         private int _transientFrameIndex;
         private int _lastTransientTick;
+        private int _lastVisibilityCheckFrame = -1;
 
         private enum HitAnimationSourceKind
         {
@@ -852,6 +853,39 @@ namespace HaCreator.MapSimulator.Entities
                 Math.Max(1, frame.Height));
         }
 
+        public new void UpdateVisibility(
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int viewWidth,
+            int viewHeight,
+            int frameNumber)
+        {
+            if (_lastVisibilityCheckFrame == frameNumber)
+            {
+                return;
+            }
+
+            _lastVisibilityCheckFrame = frameNumber;
+
+            IDXObject frame = GetVisibilityFrame();
+            if (frame == null)
+            {
+                SetVisible(false);
+                return;
+            }
+
+            int shiftCenteredX = mapShiftX - centerX;
+            int shiftCenteredY = mapShiftY - centerY;
+            SetVisible(IsFrameWithinView(
+                frame,
+                shiftCenteredX - Position.X,
+                shiftCenteredY - Position.Y,
+                viewWidth,
+                viewHeight));
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -866,7 +900,12 @@ namespace HaCreator.MapSimulator.Entities
 
                 int shiftCenteredX = mapShiftX - centerX;
                 int shiftCenteredY = mapShiftY - centerY;
-                if (!IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, renderParameters.RenderWidth, renderParameters.RenderHeight))
+                if (!IsFrameWithinView(
+                    drawFrame,
+                    shiftCenteredX - Position.X,
+                    shiftCenteredY - Position.Y,
+                    renderParameters.RenderWidth,
+                    renderParameters.RenderHeight))
                     return;
 
                 drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
@@ -886,6 +925,23 @@ namespace HaCreator.MapSimulator.Entities
         private IDXObject GetStateFrame(int tickCount)
         {
             return GetStateFrame(tickCount, out _);
+        }
+
+        private IDXObject GetVisibilityFrame()
+        {
+            if (_transientFrames != null && _transientFrames.Length > 0)
+            {
+                int frameIndex = Math.Clamp(_transientFrameIndex, 0, _transientFrames.Length - 1);
+                return _transientFrames[frameIndex];
+            }
+
+            if (_stateFrames.TryGetValue(_activeState, out IDXObject[] frames) && frames.Length > 0)
+            {
+                int frameIndex = Math.Clamp(_activeFrameIndex, 0, frames.Length - 1);
+                return frames[frameIndex];
+            }
+
+            return LastFrameDrawn ?? Frame0;
         }
 
         private IDXObject GetStateFrame(int tickCount, out int frameIndex)

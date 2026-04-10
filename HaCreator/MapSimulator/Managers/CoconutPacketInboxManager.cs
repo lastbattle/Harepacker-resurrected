@@ -254,6 +254,17 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!TryParseRelayPayload(payloadToken, out payload, out message))
+                {
+                    packetType = 0;
+                    return false;
+                }
+
+                return true;
+            }
+
             if (packetType == OutboundNormalAttackOpcode)
             {
                 ignored = true;
@@ -331,11 +342,76 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!TryValidateRelayPayload(payload, out error))
+                {
+                    packetType = 0;
+                    payload = Array.Empty<byte>();
+                    return false;
+                }
+
+                return true;
+            }
+
             if (packetType != PacketTypeHit && packetType != PacketTypeScore)
             {
                 error = $"Unsupported Coconut raw packet opcode: {packetType}";
                 packetType = 0;
                 payload = Array.Empty<byte>();
+                return false;
+            }
+
+            payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+            packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            return true;
+        }
+
+        private static bool TryParseRelayPayload(string payloadToken, out byte[] relayPayload, out string error)
+        {
+            relayPayload = Array.Empty<byte>();
+            error = null;
+
+            string compactHex = RemoveWhitespace(payloadToken);
+            if (string.IsNullOrWhiteSpace(compactHex))
+            {
+                error =
+                    $"Coconut packet {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} requires a current-wrapper relay payload.";
+                return false;
+            }
+
+            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                compactHex = compactHex[2..];
+            }
+
+            try
+            {
+                relayPayload = Convert.FromHexString(compactHex);
+            }
+            catch (FormatException)
+            {
+                error = $"Invalid Coconut relay packet hex payload: {payloadToken}";
+                return false;
+            }
+
+            return TryValidateRelayPayload(relayPayload, out error);
+        }
+
+        private static bool TryValidateRelayPayload(byte[] relayPayload, out string error)
+        {
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    relayPayload,
+                    out int wrapperPacketType,
+                    out _,
+                    out error))
+            {
+                return false;
+            }
+
+            if (wrapperPacketType != PacketTypeHit && wrapperPacketType != PacketTypeScore)
+            {
+                error = $"Unsupported Coconut current-wrapper relay packet opcode: {wrapperPacketType}";
                 return false;
             }
 
@@ -558,6 +634,7 @@ namespace HaCreator.MapSimulator.Managers
             return packetType switch
             {
                 0 => "Coconut local-team update",
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode => $"CField::OnPacket relay ({SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode})",
                 PacketTypeHit => "Coconut hit packet (342)",
                 PacketTypeScore => "Coconut score packet (343)",
                 _ => $"Coconut packet {packetType}"

@@ -558,6 +558,24 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            IReadOnlyDictionary<EquipSlot, CharacterPart> baseEquipment =
+                _coconutAppearanceOverrideApplied
+                && ReferenceEquals(_coconutAppearanceOverrideBuild, build)
+                && _coconutEquipmentSnapshot != null
+                    ? _coconutEquipmentSnapshot
+                    : build.Equipment;
+            IReadOnlyDictionary<EquipSlot, CharacterPart> baseHiddenEquipment =
+                _coconutAppearanceOverrideApplied
+                && ReferenceEquals(_coconutAppearanceOverrideBuild, build)
+                && _coconutHiddenEquipmentSnapshot != null
+                    ? _coconutHiddenEquipmentSnapshot
+                    : build.HiddenEquipment;
+
+            coconut.TryInferLocalTeamFromAvatarAppearance(
+                build.Gender,
+                EnumerateCoconutAppearanceItemIds(baseEquipment, baseHiddenEquipment),
+                out _);
+
             CharacterLoader loader = _playerManager?.Loader;
             if (loader == null
                 || !coconut.TryGetLocalAvatarAppearanceContract(build.Gender, out CoconutField.AvatarAppearanceContract appearanceContract))
@@ -593,8 +611,8 @@ namespace HaCreator.MapSimulator
 
             ApplyCoconutAppearanceOverride(
                 build,
-                _coconutEquipmentSnapshot,
-                _coconutHiddenEquipmentSnapshot,
+                baseEquipment,
+                baseHiddenEquipment,
                 forcedParts);
         }
 
@@ -696,6 +714,33 @@ namespace HaCreator.MapSimulator
             }
 
             return affectedSlots;
+        }
+
+        internal static IEnumerable<int> EnumerateCoconutAppearanceItemIds(
+            IReadOnlyDictionary<EquipSlot, CharacterPart> equipment,
+            IReadOnlyDictionary<EquipSlot, CharacterPart> hiddenEquipment)
+        {
+            if (equipment != null)
+            {
+                foreach (CharacterPart part in equipment.Values)
+                {
+                    if (part?.ItemId > 0)
+                    {
+                        yield return part.ItemId;
+                    }
+                }
+            }
+
+            if (hiddenEquipment != null)
+            {
+                foreach (CharacterPart part in hiddenEquipment.Values)
+                {
+                    if (part?.ItemId > 0)
+                    {
+                        yield return part.ItemId;
+                    }
+                }
+            }
         }
 
         private void ApplyTransitAndVoyageFieldWrapper(MapInfo mapInfo)

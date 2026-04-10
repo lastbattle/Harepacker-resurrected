@@ -1962,7 +1962,10 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool ShouldClearPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
         {
-            return SummonRuntimeRules.ShouldClearSupportSuspend(state?.Summon, currentTime);
+            return SummonRuntimeRules.ShouldClearHealingRobotSupportSuspend(
+                state?.Summon,
+                currentTime,
+                HealingRobotSkillId);
         }
 
         private static void AdvanceSummonHitPeriod(ActiveSummon summon, int currentTime)
@@ -2044,6 +2047,12 @@ namespace HaCreator.MapSimulator.Pools
                 && namedAnimation?.Frames.Count > 0)
             {
                 return namedAnimation;
+            }
+
+            SkillAnimation retryAnimation = ResolveEmptyActionRetryAnimation(summon);
+            if (retryAnimation?.Frames.Count > 0)
+            {
+                return retryAnimation;
             }
 
             return skill.SummonAttackAnimation;
@@ -3147,11 +3156,7 @@ namespace HaCreator.MapSimulator.Pools
                 return new List<MobItem>();
             }
 
-            int maxTargets = Math.Max(
-                1,
-                summon.SkillData.SummonMobCountOverride > 0
-                    ? summon.SkillData.SummonMobCountOverride
-                    : summon.LevelData?.MobCount ?? 1);
+            int maxTargets = ResolvePacketOwnedExpiryMaxTargetCount(summon);
             Dictionary<int, MobItem> candidatesById = _mobPool.ActiveMobs
                 .Where(static mob => mob?.PoolId > 0)
                 .GroupBy(static mob => mob.PoolId)
@@ -3173,6 +3178,22 @@ namespace HaCreator.MapSimulator.Pools
                 .Where(candidatesById.ContainsKey)
                 .Select(targetId => candidatesById[targetId])
                 .ToList();
+        }
+
+        private static int ResolvePacketOwnedExpiryMaxTargetCount(ActiveSummon summon)
+        {
+            if (summon?.SkillData == null)
+            {
+                return 1;
+            }
+
+            int authoredMobCount = summon.SkillData.ResolveSummonMobCountOverride(summon.CurrentAnimationBranchName);
+            if (authoredMobCount > 0)
+            {
+                return Math.Max(1, authoredMobCount);
+            }
+
+            return Math.Max(1, summon.LevelData?.MobCount ?? 1);
         }
 
         internal static int[] ResolvePacketOwnedExpiryTargetOrder(
@@ -4845,6 +4866,12 @@ namespace HaCreator.MapSimulator.Pools
                 return branchAnimation;
             }
 
+            SkillAnimation retryAnimation = ResolveEmptyActionRetryAnimation(summon);
+            if (retryAnimation?.Frames.Count > 0)
+            {
+                return retryAnimation;
+            }
+
             return skill.SummonAttackAnimation;
         }
 
@@ -4969,13 +4996,10 @@ namespace HaCreator.MapSimulator.Pools
             int prepareDurationMs = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
                 summon.SkillData,
                 branchName);
-            SkillAnimation attackAnimation = summon.SkillData.SummonAttackAnimation;
-            if (!string.IsNullOrWhiteSpace(branchName)
-                && summon.SkillData.SummonNamedAnimations.TryGetValue(branchName, out SkillAnimation branchAnimation)
-                && branchAnimation?.Frames.Count > 0)
-            {
-                attackAnimation = branchAnimation;
-            }
+            string originalBranchName = summon.CurrentAnimationBranchName;
+            summon.CurrentAnimationBranchName = branchName;
+            SkillAnimation attackAnimation = ResolveAttackAnimation(summon);
+            summon.CurrentAnimationBranchName = originalBranchName;
 
             int attackDurationMs = GetSkillAnimationDuration(attackAnimation) ?? 0;
             return prepareDurationMs + attackDurationMs;

@@ -262,6 +262,17 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!TryParseRelayPayload(payloadToken, out payload, out message))
+                {
+                    packetType = 0;
+                    return false;
+                }
+
+                return true;
+            }
+
             if (packetType == PacketTypeTouch)
             {
                 payload = Array.Empty<byte>();
@@ -338,6 +349,18 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!TryValidateRelayPayload(payload, out error))
+                {
+                    packetType = 0;
+                    payload = Array.Empty<byte>();
+                    return false;
+                }
+
+                return true;
+            }
+
             if (packetType != PacketTypeState
                 && packetType != PacketTypeHit
                 && packetType != PacketTypeMessage
@@ -346,6 +369,62 @@ namespace HaCreator.MapSimulator.Managers
                 error = $"Unsupported SnowBall raw packet opcode: {packetType}";
                 packetType = 0;
                 payload = Array.Empty<byte>();
+                return false;
+            }
+
+            payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+            packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            return true;
+        }
+
+        private static bool TryParseRelayPayload(string payloadToken, out byte[] relayPayload, out string error)
+        {
+            relayPayload = Array.Empty<byte>();
+            error = null;
+
+            string compactHex = RemoveWhitespace(payloadToken);
+            if (string.IsNullOrWhiteSpace(compactHex))
+            {
+                error =
+                    $"SnowBall packet {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} requires a current-wrapper relay payload.";
+                return false;
+            }
+
+            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                compactHex = compactHex[2..];
+            }
+
+            try
+            {
+                relayPayload = Convert.FromHexString(compactHex);
+            }
+            catch (FormatException)
+            {
+                error = $"Invalid SnowBall relay packet hex payload: {payloadToken}";
+                return false;
+            }
+
+            return TryValidateRelayPayload(relayPayload, out error);
+        }
+
+        private static bool TryValidateRelayPayload(byte[] relayPayload, out string error)
+        {
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    relayPayload,
+                    out int wrapperPacketType,
+                    out _,
+                    out error))
+            {
+                return false;
+            }
+
+            if (wrapperPacketType != PacketTypeState
+                && wrapperPacketType != PacketTypeHit
+                && wrapperPacketType != PacketTypeMessage
+                && wrapperPacketType != PacketTypeTouch)
+            {
+                error = $"Unsupported SnowBall current-wrapper relay packet opcode: {wrapperPacketType}";
                 return false;
             }
 
@@ -501,6 +580,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType switch
             {
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode => $"CField::OnPacket relay ({SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode})",
                 PacketTypeState => "SnowBall state packet (338)",
                 PacketTypeHit => "SnowBall hit packet (339)",
                 PacketTypeMessage => "SnowBall message packet (340)",

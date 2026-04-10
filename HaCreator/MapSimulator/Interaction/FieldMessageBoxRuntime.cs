@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.Interaction
         private SpriteFont _snapshotFont;
         private int _nextLocalMessageBoxId = 1;
         private string _statusMessage = "Field message-box pool idle.";
+        internal Action<string, int> SocialChatObserved { get; set; }
 
         internal int ActiveCount => _entries.Count + _leavingEntries.Count;
 
@@ -131,6 +132,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _entries[resolvedId] = entry;
             _statusMessage = $"Registered {source.GetLabel()} field message-box {resolvedId} for {trimmedName} using item {resolvedItemId}.";
+            NotifySocialChatObserved(trimmedMessage, currentTick);
             return _statusMessage;
         }
 
@@ -319,6 +321,16 @@ namespace HaCreator.MapSimulator.Interaction
                 message = "Message-box leave-field packet could not be read.";
                 return false;
             }
+        }
+
+        private void NotifySocialChatObserved(string message, int tickCount)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message.Trim(), tickCount);
         }
 
         private void DrawEntry(

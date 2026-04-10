@@ -6,7 +6,11 @@ namespace HaCreator.MapSimulator
 {
     internal static class WindowsImePresentationBridge
     {
+        private const uint ImeDefaultStyle = 0x0000;
         private const uint ImeExcludeStyle = 0x0080;
+        private const int NotifyCloseCandidate = 0x0011;
+        private const int NotifyCompositionString = 0x0015;
+        private const uint CancelComposition = 0x0004;
         private const int CandidateListCount = 4;
 
         internal static bool TryUpdatePlacement(IntPtr windowHandle, UI.SkillMacroImeWindowPlacement placement)
@@ -45,6 +49,39 @@ namespace HaCreator.MapSimulator
                     updated = ImmSetCandidateWindow(inputContext, ref candidateForm) || updated;
                 }
 
+                return updated;
+            }
+            finally
+            {
+                ImmReleaseContext(windowHandle, inputContext);
+            }
+        }
+
+        internal static bool TryResetPlacement(IntPtr windowHandle)
+        {
+            if (windowHandle == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            IntPtr inputContext = ImmGetContext(windowHandle);
+            if (inputContext == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            try
+            {
+                COMPOSITIONFORM compositionForm = new()
+                {
+                    dwStyle = ImeDefaultStyle,
+                    ptCurrentPos = default,
+                    rcArea = default
+                };
+
+                bool updated = ImmSetCompositionWindow(inputContext, ref compositionForm);
+                updated = ImmNotifyIME(inputContext, NotifyCompositionString, CancelComposition, 0) || updated;
+                updated = ImmNotifyIME(inputContext, NotifyCloseCandidate, 0, 0) || updated;
                 return updated;
             }
             finally
@@ -107,5 +144,8 @@ namespace HaCreator.MapSimulator
 
         [DllImport("imm32.dll")]
         private static extern bool ImmSetCandidateWindow(IntPtr inputContext, ref CANDIDATEFORM candidateForm);
+
+        [DllImport("imm32.dll")]
+        private static extern bool ImmNotifyIME(IntPtr inputContext, int action, uint index, uint value);
     }
 }

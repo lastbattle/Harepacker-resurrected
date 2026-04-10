@@ -79,6 +79,13 @@ namespace HaCreator.MapSimulator.Fields
             Lose,
             Draw
         }
+        public enum LocalTeamSelectionSource
+        {
+            Default = 0,
+            ManualOverride = 1,
+            TransportControlLine = 2,
+            AvatarUniformInference = 3
+        }
         public readonly record struct AvatarAppearanceContract(int TeamId, CharacterGender Gender, int CapItemId, int ClothesItemId)
         {
             public bool HasAppearanceItems => CapItemId > 0 || ClothesItemId > 0;
@@ -175,6 +182,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _lastUpdateTime;
         private bool _gameActive;
         private int _localTeam;
+        private LocalTeamSelectionSource _localTeamSelectionSource;
         // Configuration
         private int _totalCoconuts;
         private int _groundY;
@@ -246,6 +254,8 @@ namespace HaCreator.MapSimulator.Fields
         internal string VictorySoundPath => _victorySoundPath;
         internal string LoseSoundPath => _loseSoundPath;
         public int LocalTeam => _localTeam;
+        public LocalTeamSelectionSource TeamSelectionSource => _localTeamSelectionSource;
+        public bool HasResolvedLocalTeamSelection => _localTeamSelectionSource != LocalTeamSelectionSource.Default;
         #endregion
         #region Initialization
         public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
@@ -331,6 +341,7 @@ namespace HaCreator.MapSimulator.Fields
             _gameActive = false;
             _lastUpdateTime = Environment.TickCount;
             _localTeam = 0;
+            _localTeamSelectionSource = LocalTeamSelectionSource.Default;
             _awaitingFinalScore = false;
             _lastPacketType = null;
             _lastScorePacketTick = null;
@@ -461,19 +472,118 @@ namespace HaCreator.MapSimulator.Fields
                     : "idle";
             int pendingRequests = _pendingAttackPacketRequests.Count;
             int unsentRequests = PendingUndispatchedAttackPacketRequestCount;
-            return $"Coconut runtime active, coconuts={_coconuts.Count}, authoredTotal={_authoredTotalCoconutCount}, localTeam={_localTeam}, objectName={_eventObjectName}, round={roundState}, score={_team0Score}-{_team1Score}, time={_timeRemaining}, result={_lastRoundResult}, pendingRequests={pendingRequests}, unsentRequests={unsentRequests}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, lastScoreTick={(_lastScorePacketTick?.ToString() ?? "None")}";
+            return $"Coconut runtime active, coconuts={_coconuts.Count}, authoredTotal={_authoredTotalCoconutCount}, localTeam={_localTeam}, teamSource={_localTeamSelectionSource}, objectName={_eventObjectName}, round={roundState}, score={_team0Score}-{_team1Score}, time={_timeRemaining}, result={_lastRoundResult}, pendingRequests={pendingRequests}, unsentRequests={unsentRequests}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, lastScoreTick={(_lastScorePacketTick?.ToString() ?? "None")}";
         }
         #endregion
         #region Simulation (for testing)
         public void SetLocalTeam(int localTeam)
         {
+            SetLocalTeam(localTeam, LocalTeamSelectionSource.ManualOverride);
+        }
+
+        internal void SetLocalTeam(int localTeam, LocalTeamSelectionSource selectionSource)
+        {
             _localTeam = localTeam == 1 ? 1 : 0;
+            _localTeamSelectionSource = selectionSource;
         }
 
         public bool TryGetLocalAvatarAppearanceContract(CharacterGender gender, out AvatarAppearanceContract contract)
         {
+            contract = default;
+            if (!HasResolvedLocalTeamSelection)
+            {
+                return false;
+            }
+
             return _avatarAppearanceContracts.TryGetValue((_localTeam, gender), out contract)
                 && contract.HasAppearanceItems;
+        }
+
+        internal bool TryInferLocalTeamFromAvatarAppearance(
+            CharacterGender gender,
+            IEnumerable<int> equippedItemIds,
+            out int inferredTeam)
+        {
+            inferredTeam = 0;
+            if (_localTeamSelectionSource is LocalTeamSelectionSource.ManualOverride or LocalTeamSelectionSource.TransportControlLine)
+            {
+                return false;
+            }
+
+            if (!TryResolveTeamFromAvatarAppearance(gender, equippedItemIds, out inferredTeam))
+            {
+                return false;
+            }
+
+            SetLocalTeam(inferredTeam, LocalTeamSelectionSource.AvatarUniformInference);
+            return true;
+        }
+
+        internal bool TryResolveTeamFromAvatarAppearance(
+            CharacterGender gender,
+            IEnumerable<int> equippedItemIds,
+            out int inferredTeam)
+        {
+            inferredTeam = 0;
+            if (equippedItemIds == null)
+            {
+                return false;
+            }
+
+            HashSet<int> itemIdSet = new(equippedItemIds.Where(static itemId => itemId > 0));
+            if (itemIdSet.Count == 0)
+            {
+                return false;
+            }
+
+            int bestTeam = -1;
+            int bestScore = 0;
+            bool ambiguous = false;
+            for (int teamId = 0; teamId <= 1; teamId++)
+            {
+                if (!_avatarAppearanceContracts.TryGetValue((teamId, gender), out AvatarAppearanceContract contract)
+                    || !contract.HasAppearanceItems)
+                {
+                    continue;
+                }
+
+                int score = 0;
+                if (contract.CapItemId > 0 && itemIdSet.Contains(contract.CapItemId))
+                {
+                    score++;
+                }
+
+                if (contract.ClothesItemId > 0 && itemIdSet.Contains(contract.ClothesItemId))
+                {
+                    score++;
+                }
+
+                if (score <= 0)
+                {
+                    continue;
+                }
+
+                if (score > bestScore)
+                {
+                    bestTeam = teamId;
+                    bestScore = score;
+                    ambiguous = false;
+                    continue;
+                }
+
+                if (score == bestScore)
+                {
+                    ambiguous = true;
+                }
+            }
+
+            if (bestTeam < 0 || bestScore <= 0 || ambiguous)
+            {
+                return false;
+            }
+
+            inferredTeam = bestTeam;
+            return true;
         }
 
         public bool TryStartGame(int currentTick, out string message)
@@ -1242,6 +1352,7 @@ namespace HaCreator.MapSimulator.Fields
             _finishTick = 0;
             _currentMessage = null;
             _localTeam = 0;
+            _localTeamSelectionSource = LocalTeamSelectionSource.Default;
             _lastPacketType = null;
             _lastScorePacketTick = null;
             ClearRoundResult();

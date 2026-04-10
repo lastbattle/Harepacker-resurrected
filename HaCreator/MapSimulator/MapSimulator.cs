@@ -1556,7 +1556,7 @@ namespace HaCreator.MapSimulator
                 BuildFieldEntryRestrictionContext());
             if (!string.IsNullOrWhiteSpace(registrationRestriction))
             {
-                _chat.AddMessage(registrationRestriction, new Color(255, 228, 151), Environment.TickCount);
+                _chat.AddMessage(MapTransferClientParityText.ResolveCannotSaveDestinationNotice(), new Color(255, 228, 151), Environment.TickCount);
                 RefreshMapTransferWindow();
                 return;
             }
@@ -2376,8 +2376,8 @@ namespace HaCreator.MapSimulator
                         _memoMailbox.SetActiveTab(tab);
                         ShowUtilityFeedbackMessage(
                             tab == ParcelDialogTab.QuickSend
-                                ? "Quick Send money button selected. Use /memo draft meso <amount> to stage the field."
-                                : "Send money button selected. Use /memo draft meso <amount> or /memo draft item ... to update the parcel.");
+                                ? "Quick Send meso field focused in the parcel owner."
+                                : "Send meso field focused in the parcel owner.");
                     },
                     HandleMemoDraftAttachmentOwnerRequest,
                     recipient => _memoMailbox.UpdateDraftRecipientFromUi(recipient),
@@ -3724,6 +3724,7 @@ namespace HaCreator.MapSimulator
 
 
             userInfoWindow.PartyRequested = HandleCharacterInfoPartyRequest;
+            userInfoWindow.SearchRequested = HandleCharacterInfoSearchRequest;
             userInfoWindow.FollowRequested = HandleCharacterInfoFollowRequest;
 
 
@@ -3826,6 +3827,14 @@ namespace HaCreator.MapSimulator
             return message;
         }
 
+        private string HandleCharacterInfoSearchRequest(UserInfoUI.UserInfoActionContext context)
+        {
+            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
+            return context.IsRemoteTarget
+                ? $"Social search opened while inspecting {context.CharacterName}."
+                : "Social search opened from the profile window.";
+        }
+
         private string HandleCharacterInfoFollowRequest(UserInfoUI.UserInfoActionContext context)
         {
             if (!context.IsRemoteTarget)
@@ -3846,6 +3855,14 @@ namespace HaCreator.MapSimulator
                 || !TryResolvePacketOwnedRemoteCharacterSnapshot(actor.CharacterId, out LocalFollowUserSnapshot driver))
             {
                 return $"{context.CharacterName} is not available in the shared field, so the follow request cannot be issued from the existing follow seam.";
+            }
+
+            FollowCharacterFailureInfo? senderGateFailure = ResolveCharacterInfoFollowRequestSenderGateFailure(
+                driver,
+                ResolvePacketOwnedRemoteCharacterName);
+            if (senderGateFailure.HasValue)
+            {
+                return ApplyPacketOwnedFollowCharacterFailed(senderGateFailure.Value);
             }
 
             FootholdLine localFoothold = _playerManager?.Player?.Physics?.CurrentFoothold;
@@ -3885,6 +3902,26 @@ namespace HaCreator.MapSimulator
             return string.IsNullOrWhiteSpace(bridgeStatus)
                 ? requestMessage
                 : $"{requestMessage} {bridgeStatus}".Trim();
+        }
+
+        private static FollowCharacterFailureInfo? ResolveCharacterInfoFollowRequestSenderGateFailure(
+            LocalFollowUserSnapshot driver,
+            Func<int, string> driverNameResolver)
+        {
+            // CWvsContext::SendFollowCharacterRequest rejects mounted, morphed, or ghosted targets
+            // through CUserLocal::FollowCharacterFailedMsg(reason=3) before it emits opcode 134.
+            if (driver.IsMounted || driver.HasMorphTemplate || driver.IsGhostAction)
+            {
+                return FollowCharacterFailureCodec.Resolve(3, 0, driverNameResolver);
+            }
+
+            return null;
+        }
+
+        internal static FollowCharacterFailureInfo? ResolveCharacterInfoFollowRequestSenderGateFailureForTest(
+            LocalFollowUserSnapshot driver)
+        {
+            return ResolveCharacterInfoFollowRequestSenderGateFailure(driver, _ => null);
         }
 
         private FootholdLine ResolveCharacterInfoFollowTargetFoothold(RemoteUserActor actor)
@@ -4825,6 +4862,7 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForConsumable;
                 inventoryWindow.ItemUseRequested = TryUseInventoryItem;
                 inventoryWindow.ItemUseRequestedAtSlot = TryUseInventoryItemAtSlot;
+                inventoryWindow.InventoryDropRequested = HandleLocalInventoryDropRequest;
                 inventoryWindow.CashShopRequested = ShowCashShopWindow;
                 inventoryWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
             }
@@ -15944,6 +15982,7 @@ namespace HaCreator.MapSimulator
             this._mapBoard = _mapBoard;
             this._spawnPortalName = spawnPortalName;
             _remoteUserPool.SkillUseRegistered += HandleRemoteAnimationDisplayerSkillUse;
+            _remoteUserPool.UpgradeTombEffectRegistered += HandleRemoteUpgradeTombEffect;
             _mapTransferDestinations = new MapTransferDestinationStore();
             _mapTransferRuntime = new MapTransferRuntimeManager(_mapTransferDestinations);
 
@@ -17451,13 +17490,56 @@ namespace HaCreator.MapSimulator
             }
 
 
-            // Query and mark visible reactors
-            _visibleReactorsCount = _reactorsGrid.QueryToArray(viewBounds, _visibleReactors);
-            for (int i = 0; i < _visibleReactorsCount; i++)
+            _visibleReactorsCount = CollectVisibleReactorsForView(
+                _reactorsArray,
+                _visibleReactors,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                viewWidth,
+                viewHeight,
+                _frameNumber);
+        }
+
+        internal static int CollectVisibleReactorsForView(
+            ReactorItem[] reactors,
+            ReactorItem[] visibleReactors,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int viewWidth,
+            int viewHeight,
+            int frameNumber)
+        {
+            if (reactors == null || visibleReactors == null)
             {
-                _visibleReactors[i].SetVisible(true);
-                _visibleReactors[i].UpdateVisibility(mapShiftX, mapShiftY, centerX, centerY, viewWidth, viewHeight, _frameNumber);
+                return 0;
             }
+
+            int count = 0;
+            for (int i = 0; i < reactors.Length; i++)
+            {
+                ReactorItem reactor = reactors[i];
+                if (reactor == null)
+                {
+                    continue;
+                }
+
+                reactor.UpdateVisibility(mapShiftX, mapShiftY, centerX, centerY, viewWidth, viewHeight, frameNumber);
+                if (!reactor.IsVisible)
+                {
+                    continue;
+                }
+
+                if (count < visibleReactors.Length)
+                {
+                    visibleReactors[count++] = reactor;
+                }
+            }
+
+            return count;
         }
 
 
@@ -25350,7 +25432,8 @@ namespace HaCreator.MapSimulator
                 new PassiveTransferFieldInterfaceState(
                     HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
                     AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
-                    HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer));
+                    HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
+                    HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership()));
         }
 
         private bool HasPassiveTransferFieldInterface()
@@ -25371,6 +25454,12 @@ namespace HaCreator.MapSimulator
             return FieldInteractionRestrictionEvaluator.CanTransferField(fieldLimit);
         }
 
+        private bool HasPendingPassiveTransferFieldPacketTransferOwnership()
+        {
+            return _packetOwnedTeleportRequestActive
+                   || _pendingCrossMapTeleportTarget != null;
+        }
+
         private bool CanProcessPassiveTransferFieldRequest(int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
@@ -25385,13 +25474,17 @@ namespace HaCreator.MapSimulator
         private bool CanReplayPassiveTransferFieldUpKeyPath(int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
-            if (player == null)
+            if (player?.Physics == null)
             {
                 return false;
             }
 
-            return !player.IsImmovableForPassiveTransferField(currentTime)
-                   && !player.IsAttractLockedForPassiveTransferField(currentTime);
+            return PassiveTransferFieldReadinessEvaluator.CanReplayHandleUpKeyDown(
+                new PassiveTransferFieldReplayState(
+                    HasOneTimeActionCompleted: !player.IsPlayingClientOwnedOneTimeAction,
+                    IsImmovable: player.IsImmovableForPassiveTransferField(currentTime),
+                    IsAttractLocked: player.IsAttractLockedForPassiveTransferField(currentTime),
+                    IsOnFoothold: player.Physics.IsOnFoothold()));
         }
 
         private bool ShouldQueuePassiveTransferFieldRequest()
@@ -25690,7 +25783,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (!string.IsNullOrWhiteSpace(portal.sessionValueKey)
-                && TryApplyPortalSessionValueImpact(portal))
+                && TryApplyPortalSessionValueImpact(portal, currentTime))
             {
                 _ = ClearPacketOwnedTeleportPassengerLink();
                 return true;
@@ -25728,7 +25821,7 @@ namespace HaCreator.MapSimulator
                 && visualState != 2;
         }
 
-        private bool TryApplyPortalSessionValueImpact(PortalInstance portal)
+        private bool TryApplyPortalSessionValueImpact(PortalInstance portal, int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
             if (player?.Physics == null)
@@ -25736,10 +25829,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (_specialFieldRuntime?.PartyRaid?.IsActive == true
-                && _specialFieldRuntime.PartyRaid.OnSessionValue(
-                    portal.sessionValueKey,
-                    string.IsNullOrWhiteSpace(portal.sessionValue) ? "0" : portal.sessionValue))
+            string sessionValue = string.IsNullOrWhiteSpace(portal.sessionValue) ? "0" : portal.sessionValue;
+            if (TryApplyStructuredFieldSpecificPair(
+                portal.sessionValueKey,
+                sessionValue,
+                PacketFieldSpecificDataOwnerHint.Session,
+                currentTime,
+                out _))
             {
                 player.Physics.SetImpactNext(
                     portal.horizontalImpact ?? 0,
@@ -26911,9 +27007,24 @@ namespace HaCreator.MapSimulator
 
 
             bool publishedAny = false;
-            foreach (string scriptName in scriptNames)
+            foreach (string rawScriptName in scriptNames)
             {
-                publishedAny |= PublishDynamicObjectTagStatesForScriptName(scriptName, currentTickCount);
+                if (string.IsNullOrWhiteSpace(rawScriptName))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<string> parsedScriptNames = QuestRuntimeManager.ParseScriptNames(rawScriptName);
+                if (parsedScriptNames.Count == 0)
+                {
+                    publishedAny |= PublishDynamicObjectTagStatesForScriptName(rawScriptName, currentTickCount);
+                    continue;
+                }
+
+                for (int i = 0; i < parsedScriptNames.Count; i++)
+                {
+                    publishedAny |= PublishDynamicObjectTagStatesForScriptName(parsedScriptNames[i], currentTickCount);
+                }
             }
 
 
@@ -27637,10 +27748,11 @@ namespace HaCreator.MapSimulator
 
         private FieldSkillRestrictionEvaluator.RuntimeState GetCurrentFieldSkillRestrictionRuntimeState()
         {
+            SnowBallField snowBall = _specialFieldRuntime?.Minigames?.SnowBall;
             return new FieldSkillRestrictionEvaluator.RuntimeState
             {
                 CoconutBasicActionOwned = _specialFieldRuntime?.Minigames?.Coconut?.IsRoundActive == true,
-                SnowBallBasicActionOwned = _specialFieldRuntime?.Minigames?.SnowBall?.IsActive == true,
+                SnowBallBasicActionOwned = snowBall?.IsLocalBasicActionOwnerActive == true,
                 GuildBossBasicActionOwned = IsGuildBossBasicActionOwnerActive()
             };
         }
@@ -27670,6 +27782,8 @@ namespace HaCreator.MapSimulator
 
             _playerManager.Skills.OnSkillCast = HandlePlayerSkillCast;
             _playerManager.Skills.OnBuffApplied = HandleAnimationDisplayerBuffApplied;
+            _playerManager.Skills.OnPreparedSkillStarted = HandleAnimationDisplayerPreparedSkillStarted;
+            _playerManager.Skills.OnPreparedSkillReleased = HandleAnimationDisplayerPreparedSkillReleased;
             _playerManager.Skills.OnClientSkillEffectRequested = HandleAnimationDisplayerClientSkillEffectRequested;
             _playerManager.Skills.OnFieldSkillCastRejected = HandleFieldSkillCastRejected;
             _playerManager.Skills.OnSkillCooldownStarted = HandleSkillCooldownStarted;
@@ -29466,6 +29580,45 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private bool HandleLocalInventoryDropRequest(
+            InventoryType sourceInventoryType,
+            int sourceSlotIndex,
+            InventorySlotData draggedSlotData)
+        {
+            if (sourceInventoryType == InventoryType.NONE
+                || sourceSlotIndex < 0
+                || draggedSlotData == null
+                || draggedSlotData.ItemId <= 0)
+            {
+                return false;
+            }
+
+            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetDropRequestRestrictionMessage(
+                _mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                ShowFieldRestrictionMessage(restrictionMessage);
+                return false;
+            }
+
+            if (_dropPool == null || _playerManager?.Player == null)
+            {
+                return false;
+            }
+
+            int quantity = Math.Max(1, draggedSlotData.Quantity);
+            int ownerId = _playerManager.Player.Build?.Id ?? 0;
+            _dropPool.SpawnItemDrop(
+                _playerManager.Player.X,
+                _playerManager.Player.Y,
+                draggedSlotData.ItemId.ToString(CultureInfo.InvariantCulture),
+                quantity,
+                currTickCount,
+                ownerId);
+            PlayDropItemSE();
+            return true;
+        }
+
         private static bool ShouldTrackFieldConsumeItemCooldown(
             InventoryType inventoryType,
             PetFoodItemEffect petFoodEffect,
@@ -29483,6 +29636,7 @@ namespace HaCreator.MapSimulator
 
             return petFoodEffect.IsPetFood
                    || consumableEffect.HasSupportedRecovery
+                   || consumableEffect.HasSupportedProgression
                    || consumableEffect.HasSupportedMovement
                    || consumableEffect.HasSupportedMorph
                    || consumableEffect.HasSupportedTemporaryBuff
@@ -32462,7 +32616,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            field.SetLocalTeam(message.LocalTeam.GetValueOrDefault());
+            field.SetLocalTeam(
+                message.LocalTeam.GetValueOrDefault(),
+                CoconutField.LocalTeamSelectionSource.TransportControlLine);
             statusMessage = $"localTeam={(field.LocalTeam == 1 ? "Story" : "Maple")}";
             return true;
         }

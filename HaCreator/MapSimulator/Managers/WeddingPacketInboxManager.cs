@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Buffers.Binary;
 using System.Threading;
 using System.Threading.Tasks;
+using HaCreator.MapSimulator.Fields;
 using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Managers
@@ -306,6 +307,17 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!TryParseRelayPayload(payloadToken, out payload, out error))
+                {
+                    packetType = 0;
+                    return false;
+                }
+
+                return true;
+            }
+
             if (packetType == PacketTypeWeddingCeremonyEnd && string.IsNullOrWhiteSpace(payloadToken))
             {
                 return true;
@@ -373,15 +385,81 @@ namespace HaCreator.MapSimulator.Managers
 
             ushort opcode = BinaryPrimitives.ReadUInt16LittleEndian(packetBytes.AsSpan(0, sizeof(ushort)));
             packetType = opcode;
+            payload = packetBytes.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : packetBytes.AsSpan(sizeof(ushort)).ToArray();
+
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!TryValidateRelayPayload(payload, out error))
+                {
+                    packetType = 0;
+                    payload = Array.Empty<byte>();
+                    return false;
+                }
+
+                return true;
+            }
+
             if (!IsSupportedPacketRawType(packetType))
             {
                 error = $"Wedding packetraw payload does not contain a supported opcode {opcode} packet.";
                 return false;
             }
 
-            payload = packetBytes.Length == sizeof(ushort)
-                ? Array.Empty<byte>()
-                : packetBytes.AsSpan(sizeof(ushort)).ToArray();
+            payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+            packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            return true;
+        }
+
+        private static bool TryParseRelayPayload(string payloadToken, out byte[] relayPayload, out string error)
+        {
+            relayPayload = Array.Empty<byte>();
+            error = null;
+
+            string compactHex = RemoveWhitespace(payloadToken);
+            if (string.IsNullOrWhiteSpace(compactHex))
+            {
+                error =
+                    $"Wedding packet {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} requires a current-wrapper relay payload.";
+                return false;
+            }
+
+            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                compactHex = compactHex[2..];
+            }
+
+            try
+            {
+                relayPayload = Convert.FromHexString(compactHex);
+            }
+            catch (FormatException)
+            {
+                error = $"Invalid wedding relay packet hex payload: {payloadToken}";
+                return false;
+            }
+
+            return TryValidateRelayPayload(relayPayload, out error);
+        }
+
+        private static bool TryValidateRelayPayload(byte[] relayPayload, out string error)
+        {
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    relayPayload,
+                    out int wrapperPacketType,
+                    out _,
+                    out error))
+            {
+                return false;
+            }
+
+            if (!IsSupportedPacketRawType(wrapperPacketType))
+            {
+                error = $"Unsupported wedding current-wrapper relay packet opcode: {wrapperPacketType}";
+                return false;
+            }
+
             return true;
         }
 

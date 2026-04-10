@@ -391,13 +391,19 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SkillId { get; set; }
         public SkillAnimation Animation { get; set; }
         public string AnimationPath { get; set; }
+        public string BallUolPath { get; set; }
+        public string FlipBallUolPath { get; set; }
         public SkillAnimation HitAnimation { get; set; }
         public List<SkillAnimation> VariantAnimations { get; set; } = new();
         public List<string> VariantAnimationPaths { get; set; } = new();
         public SortedDictionary<int, List<SkillAnimation>> CharacterLevelVariantAnimations { get; set; } = new();
         public SortedDictionary<int, List<string>> CharacterLevelVariantAnimationPaths { get; set; } = new();
+        public SortedDictionary<int, string> CharacterLevelBallUolPaths { get; set; } = new();
+        public SortedDictionary<int, string> CharacterLevelFlipBallUolPaths { get; set; } = new();
         public Dictionary<int, List<SkillAnimation>> LevelVariantAnimations { get; set; } = new();
         public Dictionary<int, List<string>> LevelVariantAnimationPaths { get; set; } = new();
+        public Dictionary<int, string> LevelBallUolPaths { get; set; } = new();
+        public Dictionary<int, string> LevelFlipBallUolPaths { get; set; } = new();
 
         public ProjectileBehavior Behavior { get; set; } = ProjectileBehavior.Straight;
         public float Speed { get; set; } = 400f;
@@ -512,6 +518,71 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ResolveAnimationVariantPath(VariantAnimations, VariantAnimationPaths, skillLevel, maxLevel, AnimationPath);
         }
 
+        public string ResolveGetBallLikeUolPath(int skillLevel, int characterLevel, bool flip, int maxLevel = 0)
+        {
+            if (CharacterLevelVariantAnimations != null && CharacterLevelVariantAnimations.Count > 0)
+            {
+                List<SkillAnimation> characterLevelVariants = null;
+                string characterLevelBallUolPath = null;
+                string characterLevelFlipBallUolPath = null;
+                foreach ((int requiredLevel, List<SkillAnimation> variants) in CharacterLevelVariantAnimations)
+                {
+                    if (requiredLevel > characterLevel)
+                    {
+                        break;
+                    }
+
+                    characterLevelVariants = variants;
+                    if (CharacterLevelBallUolPaths != null)
+                    {
+                        CharacterLevelBallUolPaths.TryGetValue(requiredLevel, out characterLevelBallUolPath);
+                    }
+
+                    if (CharacterLevelFlipBallUolPaths != null)
+                    {
+                        CharacterLevelFlipBallUolPaths.TryGetValue(requiredLevel, out characterLevelFlipBallUolPath);
+                    }
+                }
+
+                string characterLevelResolvedUolPath = ResolveVariantUolPath(
+                    characterLevelVariants,
+                    SelectPreferredUolPath(flip, characterLevelFlipBallUolPath, characterLevelBallUolPath));
+                if (!string.IsNullOrWhiteSpace(characterLevelResolvedUolPath))
+                {
+                    return characterLevelResolvedUolPath;
+                }
+            }
+
+            if (skillLevel > 0
+                && LevelVariantAnimations != null
+                && LevelVariantAnimations.TryGetValue(skillLevel, out List<SkillAnimation> levelVariants))
+            {
+                string levelBallUolPath = null;
+                string levelFlipBallUolPath = null;
+                if (LevelBallUolPaths != null)
+                {
+                    LevelBallUolPaths.TryGetValue(skillLevel, out levelBallUolPath);
+                }
+
+                if (LevelFlipBallUolPaths != null)
+                {
+                    LevelFlipBallUolPaths.TryGetValue(skillLevel, out levelFlipBallUolPath);
+                }
+
+                string levelResolvedUolPath = ResolveVariantUolPath(
+                    levelVariants,
+                    SelectPreferredUolPath(flip, levelFlipBallUolPath, levelBallUolPath));
+                if (!string.IsNullOrWhiteSpace(levelResolvedUolPath))
+                {
+                    return levelResolvedUolPath;
+                }
+            }
+
+            return SelectPreferredUolPath(flip, FlipBallUolPath, BallUolPath)
+                   ?? BallUolPath
+                   ?? AnimationPath;
+        }
+
         private static SkillAnimation ResolveAnimationVariant(
             IReadOnlyList<SkillAnimation> variants,
             int level,
@@ -567,6 +638,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             return string.IsNullOrWhiteSpace(resolvedPath) ? fallback : resolvedPath;
         }
 
+        private static string ResolveVariantUolPath(
+            IReadOnlyList<SkillAnimation> variants,
+            string uolPath)
+        {
+            return variants?.Any(static animation => animation?.Frames.Count > 0) == true
+                   && !string.IsNullOrWhiteSpace(uolPath)
+                ? uolPath
+                : null;
+        }
+
+        private static string SelectPreferredUolPath(bool flip, string flipUolPath, string uolPath)
+        {
+            return flip && !string.IsNullOrWhiteSpace(flipUolPath)
+                ? flipUolPath
+                : uolPath;
+        }
+
         private static int? ResolveRenderableVariantIndex(
             IReadOnlyList<SkillAnimation> variants,
             int level,
@@ -611,12 +699,15 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public SkillAnimation Animation { get; set; }
         public string AnimationPath { get; set; }
+        public string TileUolPath { get; set; }
         public List<SkillAnimation> VariantAnimations { get; set; } = new();
         public List<string> VariantAnimationPaths { get; set; } = new();
         public SortedDictionary<int, List<SkillAnimation>> CharacterLevelVariantAnimations { get; set; } = new();
         public SortedDictionary<int, List<string>> CharacterLevelVariantAnimationPaths { get; set; } = new();
+        public SortedDictionary<int, string> CharacterLevelTileUolPaths { get; set; } = new();
         public Dictionary<int, List<SkillAnimation>> LevelVariantAnimations { get; set; } = new();
         public Dictionary<int, List<string>> LevelVariantAnimationPaths { get; set; } = new();
+        public Dictionary<int, string> LevelTileUolPaths { get; set; } = new();
         public SortedDictionary<int, int> CharacterLevelEffectDistances { get; set; } = new();
         public Dictionary<int, int> LevelEffectDistances { get; set; } = new();
         public int EffectDistance { get; set; }
@@ -766,6 +857,55 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ResolveAnimationVariantPath(VariantAnimations, VariantAnimationPaths, skillLevel, maxLevel, AnimationPath);
         }
 
+        public string ResolveTileUolPath(int skillLevel, int characterLevel)
+        {
+            if (CharacterLevelVariantAnimations != null && CharacterLevelVariantAnimations.Count > 0)
+            {
+                List<SkillAnimation> characterLevelVariants = null;
+                string characterLevelTileUolPath = null;
+                foreach ((int requiredLevel, List<SkillAnimation> variants) in CharacterLevelVariantAnimations)
+                {
+                    if (requiredLevel > characterLevel)
+                    {
+                        break;
+                    }
+
+                    characterLevelVariants = variants;
+                    if (CharacterLevelTileUolPaths != null)
+                    {
+                        CharacterLevelTileUolPaths.TryGetValue(requiredLevel, out characterLevelTileUolPath);
+                    }
+                }
+
+                string characterLevelResolvedUolPath = ResolveVariantUolPath(
+                    characterLevelVariants,
+                    characterLevelTileUolPath);
+                if (!string.IsNullOrWhiteSpace(characterLevelResolvedUolPath))
+                {
+                    return characterLevelResolvedUolPath;
+                }
+            }
+
+            if (skillLevel > 0
+                && LevelVariantAnimations != null
+                && LevelVariantAnimations.TryGetValue(skillLevel, out List<SkillAnimation> levelVariants))
+            {
+                string levelTileUolPath = null;
+                if (LevelTileUolPaths != null)
+                {
+                    LevelTileUolPaths.TryGetValue(skillLevel, out levelTileUolPath);
+                }
+
+                string levelResolvedUolPath = ResolveVariantUolPath(levelVariants, levelTileUolPath);
+                if (!string.IsNullOrWhiteSpace(levelResolvedUolPath))
+                {
+                    return levelResolvedUolPath;
+                }
+            }
+
+            return TileUolPath ?? AnimationPath;
+        }
+
         private static SkillAnimation ResolveAnimationVariant(
             IReadOnlyList<SkillAnimation> variants,
             int level,
@@ -819,6 +959,16 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             string resolvedPath = paths[resolvedIndex.Value];
             return string.IsNullOrWhiteSpace(resolvedPath) ? fallback : resolvedPath;
+        }
+
+        private static string ResolveVariantUolPath(
+            IReadOnlyList<SkillAnimation> variants,
+            string uolPath)
+        {
+            return variants?.Any(static animation => animation?.Frames.Count > 0) == true
+                   && !string.IsNullOrWhiteSpace(uolPath)
+                ? uolPath
+                : null;
         }
 
         private static int? ResolveRenderableVariantIndex(
@@ -957,6 +1107,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Dictionary<string, List<SkillAnimation>> SummonProjectileAnimationsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, List<SummonImpactPresentation>> SummonTargetHitPresentationsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> SummonAttackAfterMsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, int> SummonMobCountOverridesByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> SummonAttackProjectileSpeedByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string SummonSpawnBranchName { get; set; }
         public string SummonIdleBranchName { get; set; }
@@ -1678,6 +1829,19 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return GetSummonTargetHitPresentation(targetOrder, branchName)?.Animation;
         }
+
+        public int ResolveSummonMobCountOverride(string branchName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonMobCountOverridesByBranch != null
+                && SummonMobCountOverridesByBranch.TryGetValue(branchName, out int branchMobCount)
+                && branchMobCount > 0)
+            {
+                return branchMobCount;
+            }
+
+            return SummonMobCountOverride;
+        }
     }
 
     #endregion
@@ -1990,6 +2154,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int[] PendingManualAttackConfirmedTargetMobIds { get; set; } = Array.Empty<int>();
         public int PendingManualAttackFollowUpAt { get; set; } = int.MinValue;
         public int LastManualAttackResolvedTime { get; set; } = int.MinValue;
+        public bool PendingTeslaAttackRequest { get; set; }
+        public int PendingTeslaAttackRequestedAt { get; set; } = int.MinValue;
+        public int[] PendingTeslaAttackTargetMobIds { get; set; } = Array.Empty<int>();
+        public int[] PendingTeslaAttackConfirmedTargetMobIds { get; set; } = Array.Empty<int>();
+        public int LastTeslaAttackResolvedTime { get; set; } = int.MinValue;
         public int NextSupportTime { get; set; }
         public int SupportSuspendUntilTime { get; set; } = int.MinValue;
         public int NextHealTime { get; set; } = int.MinValue;

@@ -2021,11 +2021,6 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             SkillLevelData levelData = skill.GetLevel(level);
 
-            if (TryHandleBattleMageAuraToggle(skill, currentTime))
-            {
-                return true;
-            }
-
             if (_preparedSkill != null && _preparedSkill.SkillId == skillId)
             {
                 if (!CanInputSourceControlPreparedSkill(_preparedSkill, ownerHotkeySlot, ownerInputToken))
@@ -2501,6 +2496,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             float progress = 1f - Math.Clamp(clampedRemainingMs / (float)resolvedDurationMs, 0f, 1f);
             return Math.Clamp((int)Math.Floor(progress * 16f), 0, 15);
+        }
+
+        internal static float ResolveCooldownMaskFallbackFillRatio(int frameIndex)
+        {
+            int clampedFrameIndex = Math.Clamp(frameIndex, 0, 15);
+            return Math.Clamp((16 - clampedFrameIndex) / 16f, 0f, 1f);
         }
 
         public void SetAuthoritativeVehicleDurabilityPresentation(int skillId, int currentValue, int maxValue)
@@ -5500,15 +5501,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (worldHitbox.Width <= 0 || worldHitbox.Height <= 0)
                 return true;
 
-            int localPlayerId = _player.Build?.Id ?? 0;
             List<DropItem> explosiveDrops = _dropPool.GetExplosiveDropInRect(
                 worldHitbox.Left + (worldHitbox.Width * 0.5f),
                 worldHitbox.Top + (worldHitbox.Height * 0.5f),
                 worldHitbox.Width,
                 worldHitbox.Height,
-                playerId: localPlayerId,
+                playerId: _player.Build?.Id ?? 0,
                 currentTime,
-                maxCount: Math.Max(1, levelData.AttackCount));
+                maxCount: Math.Max(1, levelData.AttackCount),
+                enforceOwnership: false);
 
             if (explosiveDrops.Count == 0)
                 return true;
@@ -7813,7 +7814,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             switch (skillId)
             {
                 case WildHunterJaguarJumpSkillId:
-                    scale = effectiveLevel / 2;
+                    // `CUserLocal::DoActiveSkill_BoundJump` uses the Wild Hunter Jaguar Jump
+                    // branch's `nSLV / 4` growth table, not the steeper flash-jump fallback.
+                    scale = effectiveLevel / 4;
                     horizontalVelocity = 250f + (20f * scale);
                     upwardSpeed = 350f + (40f * scale);
                     break;
@@ -8512,13 +8515,33 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
+            Vector2 preservedOwnerRelativeOffset = ResolveQueuedProjectileOwnerRelativeLaunchOffset(projectile);
+            float projectileBaseY = usesAuthoredShootPoint ? refreshedOrigin.Y : refreshedOrigin.Y - 20f;
+
             projectile.UsesAuthoredShootPoint = usesAuthoredShootPoint;
-            projectile.X = refreshedOrigin.X;
-            projectile.Y = usesAuthoredShootPoint ? refreshedOrigin.Y : refreshedOrigin.Y - 20f;
-            projectile.PreviousX = projectile.X;
-            projectile.PreviousY = projectile.Y;
             projectile.OwnerX = refreshedOrigin.X;
             projectile.OwnerY = refreshedOrigin.Y;
+            projectile.X = refreshedOrigin.X + preservedOwnerRelativeOffset.X;
+            projectile.Y = projectileBaseY + preservedOwnerRelativeOffset.Y;
+            projectile.PreviousX = projectile.X;
+            projectile.PreviousY = projectile.Y;
+        }
+
+        internal static Vector2 ResolveQueuedProjectileOwnerRelativeLaunchOffset(ActiveProjectile projectile)
+        {
+            if (projectile == null)
+            {
+                return Vector2.Zero;
+            }
+
+            float ownerRelativeX = projectile.X - projectile.OwnerX;
+            float ownerRelativeY = projectile.Y - projectile.OwnerY;
+            if (!projectile.UsesAuthoredShootPoint)
+            {
+                ownerRelativeY += 20f;
+            }
+
+            return new Vector2(ownerRelativeX, ownerRelativeY);
         }
 
         internal static bool DoesQueuedFollowUpWeaponMatch(int requiredWeaponCode, int equippedWeaponCode)
@@ -14342,7 +14365,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool ShouldClearSupportSummonSuspend(ActiveSummon summon, int currentTime)
         {
-            return SummonRuntimeRules.ShouldClearSupportSuspend(summon, currentTime);
+            return SummonRuntimeRules.ShouldClearHealingRobotSupportSuspend(
+                summon,
+                currentTime,
+                HEALING_ROBOT_SKILL_ID);
         }
 
         private bool ProcessFriendlySummonBuffSupport(ActiveSummon summon, int currentTime)
@@ -15921,8 +15947,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (levelData == null || levelData.Time <= 0)
                 return;
 
-            CancelConflictingBattleMageAuraBuffs(skill.SkillId, currentTime);
-            CancelActiveBuff(skill.SkillId, currentTime, playFinish: false);
+            CancelReplacedBuffsOnApply(skill.SkillId, currentTime);
 
             var buff = new ActiveBuff
             {
@@ -16450,34 +16475,34 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skillId > 0 && _buffs.Any(buff => buff.SkillId == skillId);
         }
 
-        private bool TryHandleBattleMageAuraToggle(SkillData skill, int currentTime)
+        private void CancelReplacedBuffsOnApply(int skillId, int currentTime)
         {
-            if (!IsBattleMageAuraSkill(skill) || !HasActiveBuff(skill.SkillId))
-            {
-                return false;
-            }
-
-            bool cancelled = RequestClientSkillCancel(skill.SkillId, currentTime, enforceFieldCancelRestrictions: true);
-            return cancelled || HasActiveBuff(skill.SkillId);
-        }
-
-        private void CancelConflictingBattleMageAuraBuffs(int skillId, int currentTime)
-        {
-            if (!IsBattleMageAuraSkill(skillId))
-            {
-                return;
-            }
-
             for (int i = _buffs.Count - 1; i >= 0; i--)
             {
                 ActiveBuff activeBuff = _buffs[i];
-                if (activeBuff.SkillId == skillId || !IsBattleMageAuraSkill(activeBuff.SkillId))
+                if (activeBuff == null
+                    || !ShouldReplaceExistingBuffOnApply(skillId, activeBuff.SkillId))
                 {
                     continue;
                 }
 
                 RemoveBuffAt(i, currentTime, playFinish: true);
             }
+        }
+
+        private static bool ShouldReplaceExistingBuffOnApply(int castingSkillId, int activeSkillId)
+        {
+            if (castingSkillId <= 0 || activeSkillId <= 0)
+            {
+                return false;
+            }
+
+            if (castingSkillId == activeSkillId)
+            {
+                return true;
+            }
+
+            return !(IsBattleMageAuraSkill(castingSkillId) && IsBattleMageAuraSkill(activeSkillId));
         }
 
         private static bool IsBattleMageAuraSkill(SkillData skill)
@@ -16746,7 +16771,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            bool prefersUnderFace = animation.ZOrder < 0;
+            bool prefersUnderFace = ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation);
             if (prefersUnderFace)
             {
                 underFaceAnimation ??= animation;
@@ -16801,13 +16826,24 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
             ISet<string> directBuffIconEligibleLabels = BuildDirectBuffIconEligibleLabelSet(levelData);
-            BuffTemporaryStatPresentation familyOwnerTemporaryStat = ResolveFamilyOwnerTemporaryStat(temporaryStats);
+            BuffTemporaryStatPresentation authoredExplicitFamilyOwnerTemporaryStat = ResolveAuthoredExplicitFamilyOwnerTemporaryStat(
+                levelData,
+                temporaryStats);
+            BuffTemporaryStatPresentation familyOwnerTemporaryStat = authoredExplicitFamilyOwnerTemporaryStat
+                ?? ResolveFamilyOwnerTemporaryStat(temporaryStats);
             BuffTemporaryStatPresentation trayLaneTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
             BuffTemporaryStatPresentation iconOwnerTemporaryStat = ResolveIconOwnerTemporaryStat(
                 temporaryStats,
                 trayLaneTemporaryStat,
                 familyOwnerTemporaryStat,
                 directBuffIconEligibleLabels);
+            bool preferExplicitFamilyTrayOwner = iconOwnerTemporaryStat == null
+                && authoredExplicitFamilyOwnerTemporaryStat != null;
+            if (preferExplicitFamilyTrayOwner)
+            {
+                trayLaneTemporaryStat = authoredExplicitFamilyOwnerTemporaryStat;
+            }
+
             BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, trayLaneTemporaryStat);
             BuffTemporaryStatPresentation displayOwnerTemporaryStat = ResolveDisplayOwnerTemporaryStat(
                 trayLaneTemporaryStat,
@@ -16832,7 +16868,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 StartTime = startTime,
                 DurationMs = durationMs,
                 RemainingMs = Math.Max(0, durationMs - (currentTime - startTime)),
-                SortOrder = ResolveStatusBarBuffSortOrder(temporaryStats, trayLaneTemporaryStat, supplementalBuffIconEntry),
+                SortOrder = ResolveStatusBarBuffSortOrder(
+                    temporaryStats,
+                    trayLaneTemporaryStat,
+                    supplementalBuffIconEntry,
+                    preferExplicitFamilyTrayOwner),
                 FamilyDisplayName = ResolveBuffFamilyDisplayName(authoredFamilyDisplayName, displayOwnerTemporaryStat, supplementalBuffIconEntry),
                 TemporaryStatLabels = temporaryStats.Select(stat => stat.Label).ToArray(),
                 TemporaryStatDisplayNames = temporaryStatDisplayNames
@@ -16851,13 +16891,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
                 ISet<string> directBuffIconEligibleLabels = BuildDirectBuffIconEligibleLabelSet(buff?.LevelData);
-                BuffTemporaryStatPresentation familyOwnerTemporaryStat = ResolveFamilyOwnerTemporaryStat(temporaryStats);
+                BuffTemporaryStatPresentation authoredExplicitFamilyOwnerTemporaryStat = ResolveAuthoredExplicitFamilyOwnerTemporaryStat(
+                    buff?.LevelData,
+                    temporaryStats);
+                BuffTemporaryStatPresentation familyOwnerTemporaryStat = authoredExplicitFamilyOwnerTemporaryStat
+                    ?? ResolveFamilyOwnerTemporaryStat(temporaryStats);
                 BuffTemporaryStatPresentation trayLaneTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
                 BuffTemporaryStatPresentation iconOwnerTemporaryStat = ResolveIconOwnerTemporaryStat(
                     temporaryStats,
                     trayLaneTemporaryStat,
                     familyOwnerTemporaryStat,
                     directBuffIconEligibleLabels);
+                bool preferExplicitFamilyTrayOwner = iconOwnerTemporaryStat == null
+                    && authoredExplicitFamilyOwnerTemporaryStat != null;
+                if (preferExplicitFamilyTrayOwner)
+                {
+                    trayLaneTemporaryStat = authoredExplicitFamilyOwnerTemporaryStat;
+                }
+
                 BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, trayLaneTemporaryStat);
                 BuffTemporaryStatPresentation displayOwnerTemporaryStat = ResolveDisplayOwnerTemporaryStat(
                     trayLaneTemporaryStat,
@@ -16881,7 +16932,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     StartTime = buff.StartTime,
                     DurationMs = buff.Duration,
                     RemainingMs = buff.GetRemainingTime(currentTime),
-                    SortOrder = ResolveStatusBarBuffSortOrder(temporaryStats, trayLaneTemporaryStat, supplementalBuffIconEntry),
+                    SortOrder = ResolveStatusBarBuffSortOrder(
+                        temporaryStats,
+                        trayLaneTemporaryStat,
+                        supplementalBuffIconEntry,
+                        preferExplicitFamilyTrayOwner),
                     FamilyDisplayName = ResolveBuffFamilyDisplayName(authoredFamilyDisplayName, displayOwnerTemporaryStat, supplementalBuffIconEntry),
                     TemporaryStatLabels = temporaryStats.Select(stat => stat.Label).ToArray(),
                     TemporaryStatDisplayNames = temporaryStatDisplayNames
@@ -17165,6 +17220,137 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .ToArray();
         }
 
+        internal static IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> BuildAnimationDisplayerTemporaryStatAvatarEffectStatesForParity(
+            IEnumerable<ActiveBuff> activeBuffs)
+        {
+            if (activeBuffs == null)
+            {
+                return Array.Empty<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState>();
+            }
+
+            var orderedStates = new List<(RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState State, int PrimaryPriority, int SortOrder, int Index)>();
+            int index = 0;
+            foreach (ActiveBuff activeBuff in activeBuffs)
+            {
+                if (TryCreateAnimationDisplayerTemporaryStatAvatarEffectStateForParity(
+                        activeBuff,
+                        out RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state,
+                        out int primaryPriority,
+                        out int sortOrder))
+                {
+                    orderedStates.Add((state, primaryPriority, sortOrder, index));
+                }
+
+                index++;
+            }
+
+            return orderedStates
+                .OrderBy(candidate => candidate.PrimaryPriority)
+                .ThenBy(candidate => candidate.SortOrder)
+                .ThenBy(candidate => candidate.Index)
+                .Select(candidate => candidate.State)
+                .ToArray();
+        }
+
+        private static bool TryCreateAnimationDisplayerTemporaryStatAvatarEffectStateForParity(
+            ActiveBuff activeBuff,
+            out RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state,
+            out int primaryPriority,
+            out int sortOrder)
+        {
+            state = null;
+            primaryPriority = int.MaxValue;
+            sortOrder = int.MaxValue;
+
+            SkillData sourceSkill = activeBuff?.SkillData;
+            if (sourceSkill == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(activeBuff);
+            BuffTemporaryStatPresentation familyOwnerTemporaryStat = ResolveFamilyOwnerTemporaryStat(temporaryStats);
+            if (familyOwnerTemporaryStat == null)
+            {
+                return false;
+            }
+
+            SkillData paritySkill = ResolveBuffAvatarEffectSkill(sourceSkill);
+            SkillAnimation overlayAnimation = paritySkill?.AvatarOverlayEffect;
+            SkillAnimation overlaySecondaryAnimation = paritySkill?.AvatarOverlaySecondaryEffect;
+            SkillAnimation underFaceAnimation = paritySkill?.AvatarUnderFaceEffect;
+            SkillAnimation underFaceSecondaryAnimation = paritySkill?.AvatarUnderFaceSecondaryEffect;
+
+            if (overlayAnimation == null
+                && overlaySecondaryAnimation == null
+                && underFaceAnimation == null
+                && underFaceSecondaryAnimation == null)
+            {
+                overlayAnimation = CreateLoopingAvatarEffect(paritySkill?.AffectedEffect);
+                overlaySecondaryAnimation = CreateLoopingAvatarEffect(paritySkill?.AffectedSecondaryEffect);
+                if (overlayAnimation == null && overlaySecondaryAnimation == null)
+                {
+                    AssignAvatarBuffEffectPlane(
+                        CreateLoopingAvatarEffect(paritySkill?.Effect),
+                        ref overlayAnimation,
+                        ref overlaySecondaryAnimation,
+                        ref underFaceAnimation,
+                        ref underFaceSecondaryAnimation);
+                    AssignAvatarBuffEffectPlane(
+                        CreateLoopingAvatarEffect(paritySkill?.EffectSecondary),
+                        ref overlayAnimation,
+                        ref overlaySecondaryAnimation,
+                        ref underFaceAnimation,
+                        ref underFaceSecondaryAnimation);
+                    AssignAvatarBuffEffectPlane(
+                        CreateLoopingAvatarEffect(paritySkill?.RepeatEffect),
+                        ref overlayAnimation,
+                        ref overlaySecondaryAnimation,
+                        ref underFaceAnimation,
+                        ref underFaceSecondaryAnimation);
+                    AssignAvatarBuffEffectPlane(
+                        CreateLoopingAvatarEffect(paritySkill?.RepeatSecondaryEffect),
+                        ref overlayAnimation,
+                        ref overlaySecondaryAnimation,
+                        ref underFaceAnimation,
+                        ref underFaceSecondaryAnimation);
+                }
+            }
+
+            bool hasParityAnimations = overlayAnimation != null
+                || overlaySecondaryAnimation != null
+                || underFaceAnimation != null
+                || underFaceSecondaryAnimation != null
+                || paritySkill?.AffectedEffect != null
+                || paritySkill?.AffectedSecondaryEffect != null
+                || paritySkill?.Effect != null
+                || paritySkill?.EffectSecondary != null
+                || paritySkill?.RepeatEffect != null
+                || paritySkill?.RepeatSecondaryEffect != null;
+            if (!hasParityAnimations)
+            {
+                return false;
+            }
+
+            primaryPriority = familyOwnerTemporaryStat.PrimaryPriority > 0
+                ? familyOwnerTemporaryStat.PrimaryPriority
+                : (familyOwnerTemporaryStat.SortOrder > 0 ? familyOwnerTemporaryStat.SortOrder : GenericBuffPrimaryPriority);
+            sortOrder = familyOwnerTemporaryStat.SortOrder > 0
+                ? familyOwnerTemporaryStat.SortOrder
+                : int.MaxValue;
+            state = new RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState
+            {
+                SkillId = paritySkill.SkillId,
+                Skill = paritySkill,
+                OverlayAnimation = overlayAnimation,
+                OverlaySecondaryAnimation = overlaySecondaryAnimation,
+                UnderFaceAnimation = underFaceAnimation,
+                UnderFaceSecondaryAnimation = underFaceSecondaryAnimation,
+                AnimationStartTime = activeBuff.StartTime
+            };
+            return true;
+        }
+
         private static bool HasExplicitDamageReductionTemporaryStatOwner(SkillLevelData levelData)
         {
             return levelData != null
@@ -17249,6 +17435,51 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
+        private static BuffTemporaryStatPresentation ResolveAuthoredExplicitFamilyOwnerTemporaryStat(
+            SkillLevelData levelData,
+            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats)
+        {
+            if (levelData?.AuthoredPropertyOrder == null
+                || levelData.AuthoredPropertyOrder.Count == 0
+                || temporaryStats == null
+                || temporaryStats.Count == 0)
+            {
+                return null;
+            }
+
+            var activeTemporaryStatsByLabel = temporaryStats
+                .Where(stat => stat != null && !string.IsNullOrWhiteSpace(stat.Label))
+                .GroupBy(stat => stat.Label, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            if (activeTemporaryStatsByLabel.Count == 0)
+            {
+                return null;
+            }
+
+            foreach (string propertyName in levelData.AuthoredPropertyOrder)
+            {
+                if (string.IsNullOrWhiteSpace(propertyName)
+                    || !TryResolveAuthoredPropertyFamilyDisplayName(propertyName, out _)
+                    || !AuthoredPropertyTemporaryStatLabels.TryGetValue(propertyName, out string[] labels)
+                    || labels == null)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < labels.Length; i++)
+                {
+                    string label = labels[i];
+                    if (!string.IsNullOrWhiteSpace(label)
+                        && activeTemporaryStatsByLabel.TryGetValue(label, out BuffTemporaryStatPresentation temporaryStat))
+                    {
+                        return temporaryStat;
+                    }
+                }
+            }
+
+            return null;
+        }
+
         private static bool IsGenericStatTemporaryStatLabel(string label)
         {
             return string.Equals(label, "PAD", StringComparison.OrdinalIgnoreCase)
@@ -17270,8 +17501,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static int ResolveStatusBarBuffSortOrder(
             IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats,
             BuffTemporaryStatPresentation primaryTemporaryStat,
-            BuffIconCatalogEntry supplementalBuffIconEntry)
+            BuffIconCatalogEntry supplementalBuffIconEntry,
+            bool preferPrimaryTemporaryStatSortOrder = false)
         {
+            if (preferPrimaryTemporaryStatSortOrder && primaryTemporaryStat?.SortOrder > 0)
+            {
+                return primaryTemporaryStat.SortOrder;
+            }
+
             int bestSortOrder = int.MaxValue;
             if (temporaryStats != null)
             {
@@ -17599,13 +17836,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             ISet<string> directBuffIconEligibleLabels = BuildDirectBuffIconEligibleLabelSet(levelData);
+            BuffTemporaryStatPresentation authoredExplicitFamilyOwnerTemporaryStat = ResolveAuthoredExplicitFamilyOwnerTemporaryStat(
+                levelData,
+                temporaryStats);
             BuffTemporaryStatPresentation trayLaneTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
-            BuffTemporaryStatPresentation familyOwnerTemporaryStat = ResolveFamilyOwnerTemporaryStat(temporaryStats);
+            BuffTemporaryStatPresentation familyOwnerTemporaryStat = authoredExplicitFamilyOwnerTemporaryStat
+                ?? ResolveFamilyOwnerTemporaryStat(temporaryStats);
             BuffTemporaryStatPresentation iconOwnerTemporaryStat = ResolveIconOwnerTemporaryStat(
                 temporaryStats,
                 trayLaneTemporaryStat,
                 familyOwnerTemporaryStat,
                 directBuffIconEligibleLabels);
+            if (iconOwnerTemporaryStat == null && authoredExplicitFamilyOwnerTemporaryStat != null)
+            {
+                trayLaneTemporaryStat = authoredExplicitFamilyOwnerTemporaryStat;
+            }
+
             BuffTemporaryStatPresentation displayOwnerTemporaryStat = ResolveDisplayOwnerTemporaryStat(
                 trayLaneTemporaryStat,
                 iconOwnerTemporaryStat,

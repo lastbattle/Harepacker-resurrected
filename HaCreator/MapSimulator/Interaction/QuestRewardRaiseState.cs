@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Xna.Framework;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
@@ -30,6 +31,40 @@ namespace HaCreator.MapSimulator.Interaction
         public bool AwaitingOwnerDestroyAck { get; set; }
         public Dictionary<int, int> SelectedItemsByGroup { get; } = new Dictionary<int, int>();
         public List<QuestRewardRaisePlacedPiece> PlacedPieces { get; } = new List<QuestRewardRaisePlacedPiece>();
+
+        public QuestRewardRaiseState CloneShallow()
+        {
+            QuestRewardRaiseState clone = new()
+            {
+                Source = Source,
+                Prompt = Prompt,
+                GroupIndex = GroupIndex,
+                ManagerSessionId = ManagerSessionId,
+                RequestId = RequestId,
+                OwnerItemId = OwnerItemId,
+                QrData = QrData,
+                MaxDropCount = MaxDropCount,
+                WindowPosition = WindowPosition,
+                WindowMode = WindowMode,
+                DisplayMode = DisplayMode,
+                OpenDispatchSummary = OpenDispatchSummary,
+                LastInboundSummary = LastInboundSummary,
+                AwaitingConfirmAck = AwaitingConfirmAck,
+                AwaitingOwnerDestroyAck = AwaitingOwnerDestroyAck
+            };
+
+            foreach (KeyValuePair<int, int> selectedItem in SelectedItemsByGroup)
+            {
+                clone.SelectedItemsByGroup[selectedItem.Key] = selectedItem.Value;
+            }
+
+            foreach (QuestRewardRaisePlacedPiece piece in PlacedPieces)
+            {
+                clone.PlacedPieces.Add(piece.Clone());
+            }
+
+            return clone;
+        }
     }
 
     internal enum QuestRewardRaisePieceLifecycleState
@@ -56,5 +91,25 @@ namespace HaCreator.MapSimulator.Interaction
         public byte[] LastInboundPayload { get; set; } = Array.Empty<byte>();
         public string LastInboundSummary { get; set; } = string.Empty;
         public QuestRewardRaisePieceLifecycleState LifecycleState { get; set; } = QuestRewardRaisePieceLifecycleState.PendingAddAck;
+
+        public QuestRewardRaisePlacedPiece Clone()
+        {
+            return new QuestRewardRaisePlacedPiece
+            {
+                RequestId = RequestId,
+                InventoryType = InventoryType,
+                SlotIndex = SlotIndex,
+                ItemId = ItemId,
+                Quantity = Quantity,
+                Label = Label,
+                PacketOpcode = PacketOpcode,
+                PacketPayload = PacketPayload?.ToArray() ?? Array.Empty<byte>(),
+                DispatchSummary = DispatchSummary,
+                LastInboundPacketType = LastInboundPacketType,
+                LastInboundPayload = LastInboundPayload?.ToArray() ?? Array.Empty<byte>(),
+                LastInboundSummary = LastInboundSummary,
+                LifecycleState = LifecycleState
+            };
+        }
     }
 }

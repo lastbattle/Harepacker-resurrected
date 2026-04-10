@@ -81,27 +81,7 @@ namespace HaCreator.MapSimulator
 
         internal static IEnumerable<string> EnumerateNpcSpeakFallbackActions(WzImage source)
         {
-            if (source == null)
-            {
-                yield break;
-            }
-
-            HashSet<string> yieldedActions = new(StringComparer.OrdinalIgnoreCase);
-            foreach (NpcClientActionSetLoader.NpcClientActionSetDefinition actionSet in NpcClientActionSetLoader.GetClientActionSets(source))
-            {
-                foreach (WzImageProperty action in actionSet.Actions ?? Array.Empty<WzImageProperty>())
-                {
-                    if (action == null
-                        || string.IsNullOrWhiteSpace(action.Name)
-                        || action["speak"] == null
-                        || !yieldedActions.Add(action.Name))
-                    {
-                        continue;
-                    }
-
-                    yield return action.Name;
-                }
-            }
+            return NpcClientActionSetLoader.EnumerateAuthoredSpeakFallbackActions(source);
         }
 
         internal static string ResolvePreferredNpcAction(
@@ -109,53 +89,30 @@ namespace HaCreator.MapSimulator
             IEnumerable<string> availableActions,
             IEnumerable<string> speakFallbackActions)
         {
-            List<string> availableActionOrder = new();
-            var availableActionMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string action in availableActions ?? Array.Empty<string>())
+            int clientActionId = shopActionId.GetValueOrDefault();
+            if (clientActionId <= 0)
             {
-                if (!string.IsNullOrWhiteSpace(action) && !availableActionMap.ContainsKey(action))
-                {
-                    availableActionMap[action] = action;
-                    availableActionOrder.Add(action);
-                }
+                clientActionId = 1;
             }
 
-            if (availableActionMap.Count <= 0)
+            string resolvedAction = NpcClientActionSetLoader.ResolveClientActionName(
+                clientActionId,
+                availableActions,
+                speakFallbackActions);
+            if (!string.IsNullOrWhiteSpace(resolvedAction))
             {
-                return AnimationKeys.Stand;
+                return resolvedAction;
             }
 
-            foreach (string candidate in EnumerateNpcActionCandidates(shopActionId))
-            {
-                if (!string.IsNullOrWhiteSpace(candidate)
-                    && availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
-                {
-                    return resolvedCandidate;
-                }
-            }
-
-            foreach (string candidate in speakFallbackActions ?? Array.Empty<string>())
-            {
-                if (!string.IsNullOrWhiteSpace(candidate)
-                    && availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
-                {
-                    return resolvedCandidate;
-                }
-            }
-
+            List<string> availableActionOrder = availableActions?
+                .Where(static action => !string.IsNullOrWhiteSpace(action))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? new List<string>();
             foreach (string action in availableActionOrder)
             {
                 if (action.IndexOf("shop", StringComparison.OrdinalIgnoreCase) >= 0
                     || action.IndexOf("say", StringComparison.OrdinalIgnoreCase) >= 0
                     || action.IndexOf("speak", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return action;
-                }
-            }
-
-            foreach (string action in availableActionOrder)
-            {
-                if (action.StartsWith("stand", StringComparison.OrdinalIgnoreCase))
                 {
                     return action;
                 }
@@ -171,6 +128,18 @@ namespace HaCreator.MapSimulator
                 && bodyPart <= 59)
             {
                 encodedPosition = -bodyPart;
+                return true;
+            }
+
+            return TryEncodeLegacyEquippedPosition(slot, out encodedPosition);
+        }
+
+        internal static bool TryEncodeLegacyEquippedPosition(EquipSlot slot, out int encodedPosition)
+        {
+            int legacySlotPosition = (int)slot;
+            if (legacySlotPosition > 0 && legacySlotPosition <= 59)
+            {
+                encodedPosition = -legacySlotPosition;
                 return true;
             }
 

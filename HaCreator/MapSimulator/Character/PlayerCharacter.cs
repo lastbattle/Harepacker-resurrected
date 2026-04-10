@@ -4703,6 +4703,20 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (!string.Equals(
+                    preparedActionName ?? string.Empty,
+                    currentActionName ?? string.Empty,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (preparedFrameIndex != currentFrameIndex
+                || preparedFacingRight != currentFacingRight)
+            {
+                return false;
+            }
+
             return preparedSourceSignature == ComputeMirrorImageSourceLayerSignature(liveSourceParts);
         }
 

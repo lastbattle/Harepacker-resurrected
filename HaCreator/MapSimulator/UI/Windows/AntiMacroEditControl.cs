@@ -12,6 +12,9 @@ namespace HaCreator.MapSimulator.UI
     {
         internal const int ClientControlId = 1000;
         internal const int ClientFontStringPoolId = 0x1A25;
+        internal const int ClientFontHeightPixels = 12;
+        internal static readonly Point ClientTextOrigin = new(0, -2);
+        internal static readonly Point ClientCaretOrigin = Point.Zero;
 
         private readonly record struct VisualStyle(
             bool DrawChrome,
@@ -63,8 +66,8 @@ namespace HaCreator.MapSimulator.UI
             CaretColor: new Color(32, 32, 32),
             BackgroundColor: Color.Transparent,
             BorderColor: Color.Transparent,
-            TextPadding: new Point(0, -2),
-            CaretPadding: Point.Zero);
+            TextPadding: ClientTextOrigin,
+            CaretPadding: ClientCaretOrigin);
 
         private sealed class InputVisualState
         {
@@ -157,7 +160,7 @@ namespace HaCreator.MapSimulator.UI
                 _clientTextRasterizer = new ClientTextRasterizer(
                     _pixelTexture.GraphicsDevice,
                     resolvedFontFamily,
-                    basePointSize: 12f,
+                    basePointSize: ClientFontHeightPixels,
                     preferEmbeddedPrivateFontSources: true);
             }
             catch

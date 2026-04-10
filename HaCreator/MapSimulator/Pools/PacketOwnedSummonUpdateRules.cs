@@ -272,22 +272,27 @@ namespace HaCreator.MapSimulator.Pools
             int ownerCharacterLevel)
         {
             SkillData skill = summon?.SkillData;
-            return skill?.ZoneEffect?.ResolveAnimationVariantPath(
+            return skill?.ZoneEffect?.ResolveTileUolPath(
                 skillLevel > 0 ? skillLevel : summon?.Level ?? 1,
-                Math.Max(1, ownerCharacterLevel),
-                skill?.MaxLevel ?? 0);
+                Math.Max(1, ownerCharacterLevel))
+                   ?? skill?.ZoneEffect?.ResolveAnimationVariantPath(
+                       skillLevel > 0 ? skillLevel : summon?.Level ?? 1,
+                       Math.Max(1, ownerCharacterLevel),
+                       skill?.MaxLevel ?? 0);
         }
 
         internal static string ResolveClientOwnedReactiveAttackChainAnimationPath(
             ActiveSummon summon,
-            int ownerCharacterLevel = 1)
+            int ownerCharacterLevel = 1,
+            bool flip = false)
         {
             SkillData skill = summon?.SkillData;
             if (summon?.SkillId == 4111007)
             {
-                string resolvedBallAnimationPath = skill?.Projectile?.ResolveGetBallLikeAnimationPath(
+                string resolvedBallAnimationPath = skill?.Projectile?.ResolveGetBallLikeUolPath(
                     summon.Level,
                     Math.Max(1, ownerCharacterLevel),
+                    flip,
                     skill?.MaxLevel ?? 0);
                 if (!string.IsNullOrWhiteSpace(resolvedBallAnimationPath))
                 {
@@ -295,7 +300,12 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            return skill?.Projectile?.AnimationPath;
+            return skill?.Projectile?.ResolveGetBallLikeUolPath(
+                       summon?.Level ?? 1,
+                       Math.Max(1, ownerCharacterLevel),
+                       flip,
+                       skill?.MaxLevel ?? 0)
+                   ?? skill?.Projectile?.AnimationPath;
         }
 
         internal static Vector2 ResolvePacketOwnedMobAttackHitAnchor(

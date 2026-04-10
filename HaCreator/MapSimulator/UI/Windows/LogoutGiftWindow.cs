@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
+        private MouseState _currentMouseState;
         private Func<LogoutGiftOwnerSnapshot> _snapshotProvider;
         private Func<int, string> _selectHandler;
         private Func<string> _closeHandler;
@@ -35,6 +36,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<int, Texture2D> _itemIconProvider;
         private LogoutGiftOwnerSnapshot _snapshot = new();
         private bool _hasAuthoredFrameTexture;
+        private LogoutGiftButtonSkin _buttonSkin;
         private int _pendingSelectionIndex;
 
         internal LogoutGiftWindow(GraphicsDevice device)
@@ -48,12 +50,13 @@ namespace HaCreator.MapSimulator.UI
         public override bool CapturesKeyboardInput => IsVisible;
         internal Point ActiveFrameSize => new(CurrentFrame?.Width ?? DefaultWidth, CurrentFrame?.Height ?? DefaultHeight);
 
-        internal void ConfigureVisualAssets(Texture2D frameTexture)
+        internal void ConfigureVisualAssets(Texture2D frameTexture, LogoutGiftButtonSkin buttonSkin)
         {
             _hasAuthoredFrameTexture = frameTexture != null;
             Frame = frameTexture == null
                 ? null
                 : new DXObject(0, 0, frameTexture, 0);
+            _buttonSkin = buttonSkin;
         }
 
         internal void SetSnapshotProvider(Func<LogoutGiftOwnerSnapshot> snapshotProvider)
@@ -83,6 +86,7 @@ namespace HaCreator.MapSimulator.UI
             _pendingSelectionIndex = ClampSelectionIndex(_pendingSelectionIndex);
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
+            _currentMouseState = mouseState;
 
             if (IsVisible)
             {
@@ -218,6 +222,8 @@ namespace HaCreator.MapSimulator.UI
             Rectangle iconBounds = GetClientIconBounds(Position, index);
             Rectangle buttonBounds = GetClientSelectButtonBounds(Position, index);
             bool selected = index == _pendingSelectionIndex;
+            bool buttonHovered = buttonBounds.Contains(_currentMouseState.Position);
+            bool buttonPressed = buttonHovered && _currentMouseState.LeftButton == ButtonState.Pressed;
             Color fill = selected ? new Color(255, 241, 194) : new Color(238, 228, 207);
             Color border = selected ? new Color(198, 142, 76) : new Color(163, 134, 103);
 
@@ -249,12 +255,20 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.Draw(_pixel, buttonBounds, fill);
-            sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Y, buttonBounds.Width, 1), border);
-            sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Bottom - 1, buttonBounds.Width, 1), border);
-            sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Y, 1, buttonBounds.Height), border);
-            sprite.Draw(_pixel, new Rectangle(buttonBounds.Right - 1, buttonBounds.Y, 1, buttonBounds.Height), border);
-            DrawCenteredText(sprite, "Select", buttonBounds, new Color(70, 49, 31), 0.27f);
+            Texture2D buttonTexture = ResolveButtonTexture(selected, buttonHovered, buttonPressed);
+            if (buttonTexture != null)
+            {
+                sprite.Draw(buttonTexture, buttonBounds, Color.White);
+            }
+            else
+            {
+                sprite.Draw(_pixel, buttonBounds, fill);
+                sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Y, buttonBounds.Width, 1), border);
+                sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Bottom - 1, buttonBounds.Width, 1), border);
+                sprite.Draw(_pixel, new Rectangle(buttonBounds.X, buttonBounds.Y, 1, buttonBounds.Height), border);
+                sprite.Draw(_pixel, new Rectangle(buttonBounds.Right - 1, buttonBounds.Y, 1, buttonBounds.Height), border);
+                DrawCenteredText(sprite, "Select", buttonBounds, new Color(70, 49, 31), 0.27f);
+            }
         }
 
         private void DrawCenteredText(SpriteBatch sprite, string text, Rectangle bounds, Color color, float scale)
@@ -330,11 +344,12 @@ namespace HaCreator.MapSimulator.UI
 
         internal static Rectangle GetClientSelectButtonBounds(Point origin, int index)
         {
+            Point buttonSize = LogoutGiftButtonSkin.ResolveFrameSize(null);
             return new Rectangle(
                 origin.X + ClientSelectButtonLeft + (index * ClientColumnStride),
                 origin.Y + ClientSelectButtonTop,
-                ClientSelectButtonWidth,
-                ClientSelectButtonHeight);
+                buttonSize.X > 0 ? buttonSize.X : ClientSelectButtonWidth,
+                buttonSize.Y > 0 ? buttonSize.Y : ClientSelectButtonHeight);
         }
 
         private Rectangle GetCloseBounds()
@@ -372,6 +387,11 @@ namespace HaCreator.MapSimulator.UI
         private bool Released(MouseState mouseState)
         {
             return mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
+        }
+
+        private Texture2D ResolveButtonTexture(bool selected, bool hovered, bool pressed)
+        {
+            return _buttonSkin?.ResolveTexture(selected, hovered, pressed);
         }
 
         private void ShowFeedback(string message)
@@ -444,5 +464,65 @@ namespace HaCreator.MapSimulator.UI
         public long Price { get; init; }
         public int Count { get; init; }
         public bool OnSale { get; init; }
+    }
+
+    internal sealed class LogoutGiftButtonSkin
+    {
+        private const int DefaultSelectButtonWidth = 52;
+        private const int DefaultSelectButtonHeight = 18;
+
+        internal LogoutGiftButtonSkin(
+            Texture2D normal,
+            Texture2D hovered,
+            Texture2D pressed,
+            Texture2D disabled,
+            Texture2D keyFocused)
+        {
+            Normal = normal;
+            Hovered = hovered;
+            Pressed = pressed;
+            Disabled = disabled;
+            KeyFocused = keyFocused;
+            Size = ResolveFrameSize(this);
+        }
+
+        internal Texture2D Normal { get; }
+        internal Texture2D Hovered { get; }
+        internal Texture2D Pressed { get; }
+        internal Texture2D Disabled { get; }
+        internal Texture2D KeyFocused { get; }
+        internal Point Size { get; }
+
+        internal Texture2D ResolveTexture(bool selected, bool hovered, bool pressed)
+        {
+            if (pressed)
+            {
+                return Pressed ?? Hovered ?? KeyFocused ?? Normal;
+            }
+
+            if (hovered)
+            {
+                return Hovered ?? KeyFocused ?? Normal;
+            }
+
+            if (selected)
+            {
+                return KeyFocused ?? Hovered ?? Normal;
+            }
+
+            return Normal ?? Hovered ?? Pressed ?? Disabled ?? KeyFocused;
+        }
+
+        internal static Point ResolveFrameSize(LogoutGiftButtonSkin skin)
+        {
+            Texture2D texture = skin?.Normal
+                ?? skin?.Hovered
+                ?? skin?.Pressed
+                ?? skin?.Disabled
+                ?? skin?.KeyFocused;
+            return texture == null
+                ? new Point(DefaultSelectButtonWidth, DefaultSelectButtonHeight)
+                : new Point(texture.Width, texture.Height);
+        }
     }
 }

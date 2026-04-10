@@ -148,7 +148,7 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            bool prefersUnderFace = animation.ZOrder < 0;
+            bool prefersUnderFace = ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation);
             if (prefersUnderFace)
             {
                 underFaceAnimation ??= animation;

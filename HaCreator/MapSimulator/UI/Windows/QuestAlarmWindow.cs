@@ -1177,12 +1177,17 @@ namespace HaCreator.MapSimulator.UI
                 return string.Empty;
             }
 
+            if (!string.IsNullOrWhiteSpace(entry.TooltipText))
+            {
+                return entry.TooltipText;
+            }
+
             if (entry.IsRecentlyUpdated)
             {
                 return QuestAlarmOwnerStringPoolText.GetRecentUpdateTooltip();
             }
 
-            return entry.TooltipText ?? string.Empty;
+            return string.Empty;
         }
 
         private int GetDeleteQuestIdAtPoint(int mouseX, int mouseY)

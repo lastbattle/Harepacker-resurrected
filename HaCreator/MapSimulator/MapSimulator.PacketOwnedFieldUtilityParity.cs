@@ -356,9 +356,55 @@ namespace HaCreator.MapSimulator
                 CachePacketOwnedFootholdNames(entries);
             }
 
+            ResetPacketOwnedFootholdRuntime(_packetFieldUtilityFootholdEntries);
             for (int i = 0; i < _packetFieldUtilityFootholdEntries.Count; i++)
             {
                 ApplyPacketOwnedFootholdEntryToRuntime(_packetFieldUtilityFootholdEntries[i]);
+            }
+        }
+
+        private void ResetPacketOwnedFootholdRuntime(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)
+        {
+            if (_dynamicFootholds == null)
+            {
+                return;
+            }
+
+            HashSet<int> mentionedPlatformIds = new();
+            if (entries != null)
+            {
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    if (TryResolvePacketOwnedDynamicPlatform(entries[i], out DynamicPlatform platform))
+                    {
+                        mentionedPlatformIds.Add(platform.Id);
+                    }
+                }
+            }
+
+            ResetUnmentionedPacketOwnedFootholdPlatforms(_dynamicFootholds, mentionedPlatformIds);
+        }
+
+        internal static void ResetUnmentionedPacketOwnedFootholdPlatforms(
+            DynamicFootholdSystem dynamicFootholds,
+            IReadOnlySet<int> mentionedPlatformIds)
+        {
+            if (dynamicFootholds == null)
+            {
+                return;
+            }
+
+            for (int platformId = 0; platformId < dynamicFootholds.PlatformCount; platformId++)
+            {
+                DynamicPlatform platform = dynamicFootholds.GetPlatform(platformId);
+                if (platform == null
+                    || (mentionedPlatformIds?.Contains(platformId) ?? false))
+                {
+                    continue;
+                }
+
+                platform.IsActive = false;
+                platform.IsVisible = false;
             }
         }
 

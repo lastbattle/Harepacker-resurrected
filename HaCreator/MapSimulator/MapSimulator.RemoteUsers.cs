@@ -20,10 +20,26 @@ namespace HaCreator.MapSimulator
         private const string RemoteUserCommandUsage =
             "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...";
         private const string RemoteUserPacketTokenUsage =
-            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|179|180|181|182|183|184|210|211|212|213|214|215|223|225|226|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|pickup|melee|effect|avatarmodified|tempset|tempreset>";
+            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|179|180|181|182|183|184|210|211|212|213|214|215|219|220|221|222|223|225|226|228|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|emotion|activeeffect|upgradetomb|officialchair|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname>";
         private readonly RemoteUserPacketInboxManager _remoteUserPacketInbox = new();
         private readonly PacketOwnedRelationshipRecordRuntime _packetOwnedRelationshipRecordRuntime = new();
         private readonly PacketOwnedPortableChairRecordRuntime _packetOwnedPortableChairRecordRuntime = new();
+
+        private void HandleRemoteUpgradeTombEffect(RemoteUserActorPool.RemoteUpgradeTombPresentation presentation)
+        {
+            if (_animationEffects == null || _tombFallFrames == null || _tombFallFrames.Count == 0)
+            {
+                return;
+            }
+
+            _animationEffects.AddOneTime(
+                _tombFallFrames,
+                presentation.Position.X,
+                presentation.Position.Y,
+                flip: false,
+                presentation.CurrentTime,
+                zOrder: 1);
+        }
 
         private void RememberRemoteTownPortalOwnerFieldObservation(
             uint ownerCharacterId,
@@ -546,7 +562,7 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser preparedclear <characterId>");
             }
 
-            return _remoteUserPool.TryClearPreparedSkill(characterId, out string message)
+            return _remoteUserPool.TryClearPreparedSkill(characterId, Environment.TickCount, out string message)
                 ? ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} prepared skill cleared.")
                 : ChatCommandHandler.CommandResult.Error(message);
         }
@@ -865,7 +881,7 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                bool cleared = _remoteUserPool.TryClearPreparedSkill(officialClearPacket.CharacterId, out string clearMessage);
+                bool cleared = _remoteUserPool.TryClearPreparedSkill(officialClearPacket.CharacterId, Environment.TickCount, out string clearMessage);
                 result = cleared
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialClearPacket.CharacterId}."
                     : clearMessage;
@@ -902,6 +918,21 @@ namespace HaCreator.MapSimulator
                 return activeEffectApplied;
             }
 
+            if (packetType == (int)RemoteUserPacketType.UserUpgradeTombOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParseUpgradeTombEffect(payload, out RemoteUserUpgradeTombPacket tombPacket, out string tombError))
+                {
+                    result = tombError;
+                    return false;
+                }
+
+                bool tombApplied = _remoteUserPool.TryApplyUpgradeTombEffect(tombPacket, currentTime, out string tombMessage);
+                result = tombApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {tombPacket.CharacterId}."
+                    : tombMessage;
+                return tombApplied;
+            }
+
             if (packetType == (int)RemoteUserPacketType.UserPortableChairOfficial)
             {
                 if (!RemoteUserPacketCodec.TryParsePortableChair(payload, out RemoteUserPortableChairPacket officialChairPacket, out string chairError))
@@ -919,6 +950,26 @@ namespace HaCreator.MapSimulator
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialChairPacket.CharacterId}."
                     : chairMessage;
                 return chairApplied;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserGuildNameChangedOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParseGuildNameChanged(payload, out RemoteUserGuildNameChangedPacket guildPacket, out string guildError))
+                {
+                    result = guildError;
+                    return false;
+                }
+
+                bool guildApplied = _remoteUserPool.TryApplyProfileMetadata(
+                    guildPacket.CharacterId,
+                    level: null,
+                    guildPacket.GuildName,
+                    jobId: null,
+                    out string guildMessage);
+                result = guildApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {guildPacket.CharacterId}."
+                    : guildMessage;
+                return guildApplied;
             }
 
             switch ((RemoteUserPacketType)packetType)
@@ -1205,7 +1256,7 @@ namespace HaCreator.MapSimulator
                         return false;
                     }
 
-                    bool cleared = _remoteUserPool.TryClearPreparedSkill(clearPacket.CharacterId, out string clearMessage);
+                    bool cleared = _remoteUserPool.TryClearPreparedSkill(clearPacket.CharacterId, Environment.TickCount, out string clearMessage);
                     result = cleared
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {clearPacket.CharacterId}."
                         : clearMessage;

@@ -478,6 +478,8 @@ namespace HaCreator.MapSimulator.Interaction
         private EntrustedShopChildDialogKind? _entrustedChildDialogKind;
         private int _entrustedVisitListSelectedIndex = -1;
         private int _entrustedBlacklistSelectedIndex = -1;
+        private EntrustedShopBlacklistPromptRequest _entrustedBlacklistPromptRequest;
+        private EntrustedShopNoticeSnapshot _entrustedBlacklistNotice;
         private string _miniRoomOmokDialogStatus = string.Empty;
         private string _entrustedChildDialogStatus = string.Empty;
         private int _employeeTemplateId;
@@ -628,6 +630,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string MiniRoomOmokLastClientSoundPath => _miniRoomOmokLastClientSoundPath;
         public string MiniRoomOmokLastOutboundPacketSummary => _miniRoomOmokLastOutboundPacketSummary;
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog => BuildEntrustedChildDialogSnapshot();
+        public Func<EntrustedShopBlacklistPromptRequest, bool> EntrustedBlacklistPromptRequested { get; set; }
+        public Action<EntrustedShopNoticeSnapshot> EntrustedBlacklistNoticeRequested { get; set; }
 
         public void BindInventory(IInventoryRuntime inventoryRuntime)
         {
@@ -1105,7 +1109,13 @@ namespace HaCreator.MapSimulator.Interaction
                 CanPrimaryAction = canPrimaryAction,
                 CanSecondaryAction = canSecondaryAction,
                 SelectedIndex = selectedIndex,
-                Entries = entries
+                Entries = entries,
+                BlacklistPromptRequest = kind == EntrustedShopChildDialogKind.Blacklist
+                    ? CloneEntrustedBlacklistPromptRequest(_entrustedBlacklistPromptRequest)
+                    : null,
+                BlacklistNotice = kind == EntrustedShopChildDialogKind.Blacklist
+                    ? CloneEntrustedBlacklistNotice(_entrustedBlacklistNotice)
+                    : null
             };
         }
 
@@ -1129,6 +1139,42 @@ namespace HaCreator.MapSimulator.Interaction
             return kind == EntrustedShopChildDialogKind.VisitList
                 ? "CEntrustedShopDlg::CVisitListDlg"
                 : "CEntrustedShopDlg::CBlackListDlg";
+        }
+
+        private static EntrustedShopBlacklistPromptRequest CloneEntrustedBlacklistPromptRequest(EntrustedShopBlacklistPromptRequest source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new EntrustedShopBlacklistPromptRequest
+            {
+                OwnerName = source.OwnerName,
+                Title = source.Title,
+                PromptText = source.PromptText,
+                DefaultText = source.DefaultText,
+                CurrentText = source.CurrentText,
+                StringPoolId = source.StringPoolId,
+                MinimumLength = source.MinimumLength,
+                MaximumLength = source.MaximumLength
+            };
+        }
+
+        private static EntrustedShopNoticeSnapshot CloneEntrustedBlacklistNotice(EntrustedShopNoticeSnapshot source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new EntrustedShopNoticeSnapshot
+            {
+                OwnerName = source.OwnerName,
+                Title = source.Title,
+                Text = source.Text,
+                StringPoolId = source.StringPoolId
+            };
         }
 
         public string DescribePacketOwnerStatus()
@@ -1783,24 +1829,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _tradeRemoteLocked = true;
             _tradeRemoteAccepted = false;
-            _tradeVerificationPending = _tradeLocalLocked;
-            if (_tradeVerificationPending)
-            {
-                _tradeLocalAccepted = false;
-                _tradeLocalVerificationEntries.Clear();
-                _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
-                _tradeLocalVerificationReady = _tradeLocalVerificationEntries.Count > 0;
-                _tradeAutoCrcReplyPending = _tradeLocalVerificationEntries.Count > 0;
-                RoomState = "CRC verification";
-                StatusMessage = $"Trading-room packet requested CRC verification. Prepared {_tradeLocalVerificationEntries.Count} local item checksum entr{(_tradeLocalVerificationEntries.Count == 1 ? "y" : "ies")} for subtype {TradingRoomItemCrcPacketType}.";
-            }
-            else
-            {
-                _tradeLocalAccepted = false;
-                _tradeAutoCrcReplyPending = false;
-                RoomState = "Negotiating";
-                StatusMessage = $"{ResolveRemoteTraderName()} locked the trade and requested CRC verification.";
-            }
+            _tradeLocalAccepted = false;
+            _tradeRemoteVerificationReady = false;
+            _tradeRemoteVerificationEntries.Clear();
+            _tradeLocalVerificationEntries.Clear();
+            _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
+            _tradeLocalVerificationReady = true;
+            _tradeAutoCrcReplyPending = true;
+            _tradeVerificationPending = true;
+            RoomState = "CRC verification";
+            StatusMessage = $"Trading-room packet requested CRC verification. Prepared {_tradeLocalVerificationEntries.Count} local item checksum entr{(_tradeLocalVerificationEntries.Count == 1 ? "y" : "ies")} for subtype {TradingRoomItemCrcPacketType}, including zero-row replies when no local offer items are staged.";
 
             RefreshTradeOccupantsAndRows();
             PersistState();
@@ -1837,11 +1875,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (_tradeLocalLocked && _tradeRemoteLocked && _tradeLocalVerificationEntries.Count == 0)
             {
                 _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
-                _tradeLocalVerificationReady = _tradeLocalVerificationEntries.Count > 0;
+                _tradeLocalVerificationReady = true;
             }
 
-            _tradeVerificationPending = _tradeLocalVerificationEntries.Count == 0
-                || _tradeRemoteVerificationEntries.Count == 0
+            _tradeVerificationPending = !_tradeLocalVerificationReady
+                || !_tradeRemoteVerificationReady
                 || !remoteVerificationMatched;
             _tradeAutoCrcReplyPending = false;
             RoomState = _tradeVerificationPending
@@ -1849,7 +1887,9 @@ namespace HaCreator.MapSimulator.Interaction
                 : "Locked";
             RefreshTradeOccupantsAndRows();
             StatusMessage = entries.Count == 0
-                ? "Trading-room CRC packet cleared the remote checksum list."
+                ? remoteVerificationMatched
+                    ? "Trading-room CRC packet verified an empty remote checksum list against the current preview offer."
+                    : $"Trading-room CRC packet carried an empty remote checksum list, but verification is still pending: {verificationDetail}"
                 : remoteVerificationMatched
                     ? $"Trading-room CRC packet verified {entries.Count} remote checksum entr{(entries.Count == 1 ? "y" : "ies")} against the current preview offer."
                     : $"Trading-room CRC packet synced {entries.Count} remote checksum entr{(entries.Count == 1 ? "y" : "ies")}, but verification is still pending: {verificationDetail}";
@@ -2913,7 +2953,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
                 }
 
-                if (RequiresMerchantSeatEnterResultStub(seatIndex))
+                if (RequiresMerchantSeatBaseStub(seatIndex))
                 {
                     int merchantId = reader.ReadInt();
                     string merchantName = NormalizeName(reader.ReadMapleString());
@@ -3145,29 +3185,33 @@ namespace HaCreator.MapSimulator.Interaction
                 message = "Mini-room base update packet did not include a nested room packet type.";
                 return false;
             }
+            bool handled;
+            string ownerName;
             if (nestedPacketType == PersonalShopBasePacketType)
             {
-                message = "Mini-room base update packet attempted to nest another base packet type 25, which is not modeled.";
-                return false;
+                ownerName = "CMiniRoomBaseDlg::OnPacketBase";
+                handled = TryDispatchMiniRoomBasePacket(nestedReader, out message);
             }
-
-            bool handled = Kind switch
+            else
             {
-                SocialRoomKind.PersonalShop => TryDispatchPersonalShopPacket(nestedReader, nestedPacketType, out message),
-                SocialRoomKind.EntrustedShop => TryDispatchEntrustedShopPacket(nestedReader, nestedPacketType, out message),
-                SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(nestedPayload, nestedReader, nestedPacketType, out message),
-                SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(nestedReader, nestedPacketType, tickCount: 0, out message),
-                _ => false
-            };
+                handled = Kind switch
+                {
+                    SocialRoomKind.PersonalShop => TryDispatchPersonalShopPacket(nestedReader, nestedPacketType, out message),
+                    SocialRoomKind.EntrustedShop => TryDispatchEntrustedShopPacket(nestedReader, nestedPacketType, out message),
+                    SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(nestedPayload, nestedReader, nestedPacketType, out message),
+                    SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(nestedReader, nestedPacketType, tickCount: 0, out message),
+                    _ => false
+                };
 
-            string ownerName = Kind switch
-            {
-                SocialRoomKind.PersonalShop => "CPersonalShopDlg::OnPacket",
-                SocialRoomKind.EntrustedShop => "CEntrustedShopDlg::OnPacket",
-                SocialRoomKind.TradingRoom => "CTradingRoomDlg::OnPacket",
-                SocialRoomKind.MiniRoom => "CMiniRoomBaseDlg-derived OnPacket",
-                _ => "room-specific owner"
-            };
+                ownerName = Kind switch
+                {
+                    SocialRoomKind.PersonalShop => "CPersonalShopDlg::OnPacket",
+                    SocialRoomKind.EntrustedShop => "CEntrustedShopDlg::OnPacket",
+                    SocialRoomKind.TradingRoom => "CTradingRoomDlg::OnPacket",
+                    SocialRoomKind.MiniRoom => "CMiniRoomBaseDlg-derived OnPacket",
+                    _ => "room-specific owner"
+                };
+            }
 
             string payloadPreview = BuildPacketHexPreview(nestedPayload);
             string detail = handled
@@ -3180,6 +3224,15 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryApplyMiniRoomBaseEnterPacket(PacketReader reader, out string message)
         {
             int seatIndex = reader.ReadByte();
+            if (RequiresMerchantSeatBaseStub(seatIndex))
+            {
+                int merchantId = reader.ReadInt();
+                string merchantName = NormalizeName(reader.ReadMapleString());
+                ApplyMiniRoomBaseMerchantSeatEnterPacket(seatIndex, merchantId, merchantName);
+                message = StatusMessage;
+                return true;
+            }
+
             if (!TryReadPacketOwnedAvatarLook(reader, out LoginAvatarLook avatarLook, out string error))
             {
                 message = error;
@@ -3291,6 +3344,15 @@ namespace HaCreator.MapSimulator.Interaction
             EnsureOccupantSlot(normalizedSeatIndex, merchantName, ResolveBasePacketOccupantRole(normalizedSeatIndex), detail, isReady: false, avatarBuild: null);
         }
 
+        private void ApplyMiniRoomBaseMerchantSeatEnterPacket(int seatIndex, int merchantId, string merchantName)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            ApplyMiniRoomBaseEnterResultMerchantSeat(normalizedSeatIndex, merchantId, merchantName);
+            RoomState = "Visitor update";
+            StatusMessage = $"{merchantName} entered {ResolveBasePacketSeatLabel(normalizedSeatIndex).ToLowerInvariant()} through CMiniRoomBaseDlg::OnEnterBase with merchant id {merchantId}.";
+            PersistState();
+        }
+
         private void ApplyMiniRoomBaseEnterResultSeat(int seatIndex, string occupantName, int jobCode, LoginAvatarLook avatarLook)
         {
             int normalizedSeatIndex = Math.Max(0, seatIndex);
@@ -3310,7 +3372,7 @@ namespace HaCreator.MapSimulator.Interaction
             EnsureOccupantSlot(normalizedSeatIndex, occupantName, role, detail, isReady: false, avatarBuild: avatarBuild);
         }
 
-        private bool RequiresMerchantSeatEnterResultStub(int seatIndex)
+        private bool RequiresMerchantSeatBaseStub(int seatIndex)
         {
             return Kind == SocialRoomKind.EntrustedShop && seatIndex == 0;
         }
@@ -3335,6 +3397,12 @@ namespace HaCreator.MapSimulator.Interaction
             string leavingName = ResolveMiniRoomSeatName(normalizedSeatIndex);
             if (normalizedSeatIndex <= 0)
             {
+                if (Kind == SocialRoomKind.EntrustedShop)
+                {
+                    _employeePacketEmployerId = 0;
+                    _employeePoolRuntime.SetPreferredEmployerId(0);
+                }
+
                 RoomState = "Closed";
                 StatusMessage = $"{leavingName} left the room through CMiniRoomBaseDlg::OnLeaveBase.";
                 if (Kind == SocialRoomKind.MiniRoom)
@@ -4061,6 +4129,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             EntrustedShopChildDialogKind closingKind = _entrustedChildDialogKind.Value;
             _entrustedChildDialogKind = null;
+            _entrustedBlacklistPromptRequest = null;
+            _entrustedBlacklistNotice = null;
             _entrustedChildDialogStatus = $"{ResolveEntrustedChildDialogOwnerName(closingKind)} closed through SetRet and returned to the parent entrusted-shop shell.";
             StatusMessage = _entrustedChildDialogStatus;
             PersistState();
@@ -4172,6 +4242,9 @@ namespace HaCreator.MapSimulator.Interaction
                 MaximumLength = 12
             };
 
+            _entrustedBlacklistPromptRequest = CloneEntrustedBlacklistPromptRequest(request);
+            _entrustedBlacklistNotice = null;
+
             _entrustedChildDialogStatus =
                 $"CBlackListDlg::AddBlackList opened the shared UtilDlgEx prompt (StringPool 0x{request.StringPoolId:X}, {request.MinimumLength}-{request.MaximumLength} chars).";
             StatusMessage = _entrustedChildDialogStatus;
@@ -4182,7 +4255,48 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool TryAddEntrustedBlacklistEntry(string visitorName, out string message)
         {
+            if (string.IsNullOrWhiteSpace(visitorName))
+            {
+                return TryOpenEntrustedBlacklistPrompt(out message);
+            }
+
             return TrySubmitEntrustedBlacklistPrompt(visitorName, out message, out _);
+        }
+
+        public bool TryOpenEntrustedBlacklistPrompt(out string message)
+        {
+            message = null;
+            if (!TryCreateEntrustedBlacklistPromptRequest(out EntrustedShopBlacklistPromptRequest request, out string requestMessage))
+            {
+                message = requestMessage;
+                return false;
+            }
+
+            if (EntrustedBlacklistPromptRequested == null)
+            {
+                message = "Entrusted-shop blacklist add requires a registered UtilDlgEx prompt owner.";
+                return false;
+            }
+
+            bool shown = false;
+            try
+            {
+                shown = EntrustedBlacklistPromptRequested.Invoke(CloneEntrustedBlacklistPromptRequest(request));
+            }
+            catch
+            {
+                shown = false;
+            }
+
+            if (!shown)
+            {
+                _entrustedBlacklistPromptRequest = null;
+                message = "Entrusted-shop blacklist add prompt could not be opened.";
+                return false;
+            }
+
+            message = requestMessage;
+            return true;
         }
 
         public bool TrySubmitEntrustedBlacklistPrompt(string visitorName, out string message, out int? noticeStringPoolId)
@@ -4195,6 +4309,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            _entrustedBlacklistPromptRequest = null;
             if (_blockedVisitors.Count >= 20)
             {
                 message = "Blacklist add is disabled because the client-side 20-name limit has been reached.";
@@ -4206,6 +4321,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 noticeStringPoolId = EntrustedShopBlacklistDialogText.InvalidNameNoticeStringPoolId;
                 message = EntrustedShopBlacklistDialogText.GetInvalidNameNotice();
+                PublishEntrustedBlacklistNotice(message, noticeStringPoolId.Value);
                 _entrustedChildDialogStatus =
                     $"CBlackListDlg::AddBlackList rejected the submitted name and raised StringPool 0x{noticeStringPoolId.Value:X}.";
                 StatusMessage = _entrustedChildDialogStatus;
@@ -4217,6 +4333,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 noticeStringPoolId = EntrustedShopBlacklistDialogText.OwnerNoticeStringPoolId;
                 message = EntrustedShopBlacklistDialogText.GetOwnerNotice();
+                PublishEntrustedBlacklistNotice(message, noticeStringPoolId.Value);
                 _entrustedChildDialogStatus =
                     $"CBlackListDlg::AddBlackList rejected owner name {resolvedName} and raised StringPool 0x{noticeStringPoolId.Value:X}.";
                 StatusMessage = _entrustedChildDialogStatus;
@@ -4228,6 +4345,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 noticeStringPoolId = EntrustedShopBlacklistDialogText.DuplicateNoticeStringPoolId;
                 message = EntrustedShopBlacklistDialogText.GetDuplicateNotice();
+                PublishEntrustedBlacklistNotice(message, noticeStringPoolId.Value);
                 _entrustedChildDialogStatus =
                     $"CBlackListDlg::AddBlackList rejected duplicate name {resolvedName} and raised StringPool 0x{noticeStringPoolId.Value:X}.";
                 StatusMessage = _entrustedChildDialogStatus;
@@ -4235,6 +4353,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            _entrustedBlacklistNotice = null;
             _blockedVisitors.Add(resolvedName);
             _entrustedBlacklistSelectedIndex = _blockedVisitors.Count - 1;
             EnsureMerchantPacketNotes();
@@ -4245,6 +4364,18 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        public void DismissEntrustedBlacklistNotice()
+        {
+            _entrustedBlacklistNotice = null;
+            PersistState();
+        }
+
+        public void CancelEntrustedBlacklistPrompt()
+        {
+            _entrustedBlacklistPromptRequest = null;
+            PersistState();
         }
 
         public bool TryDeleteSelectedEntrustedBlacklistEntry(out string message)
@@ -4792,6 +4923,25 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        private void PublishEntrustedBlacklistNotice(string text, int stringPoolId)
+        {
+            _entrustedBlacklistNotice = new EntrustedShopNoticeSnapshot
+            {
+                OwnerName = ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.Blacklist),
+                Title = "Blacklist",
+                Text = text ?? string.Empty,
+                StringPoolId = stringPoolId
+            };
+
+            try
+            {
+                EntrustedBlacklistNoticeRequested?.Invoke(CloneEntrustedBlacklistNotice(_entrustedBlacklistNotice));
+            }
+            catch
+            {
+            }
         }
 
         public bool TryRespondMiniRoomTieRequest(bool accept, out string message)
@@ -6486,6 +6636,53 @@ namespace HaCreator.MapSimulator.Interaction
             return _employeePacketEmployerId == normalizedEmployerId
                 || _employeePoolRuntime.PreferredEmployerId == normalizedEmployerId
                 || _employeePoolRuntime.HasEmployer(normalizedEmployerId);
+        }
+
+        internal int ScoreEmployeeRoutingHint(SocialRoomEmployeePoolCodec.RoutingHint hint)
+        {
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                return 0;
+            }
+
+            int score = _employeePoolRuntime.ScoreRoutingHint(hint);
+
+            if (hint.MiniRoomType != 0)
+            {
+                bool kindMatches = (hint.MiniRoomType == 3 && Kind == SocialRoomKind.PersonalShop)
+                    || ((hint.MiniRoomType == 4 || hint.MiniRoomType == 5) && Kind == SocialRoomKind.EntrustedShop);
+                score += kindMatches ? 30 : -20;
+            }
+
+            if (!string.IsNullOrWhiteSpace(hint.OwnerName))
+            {
+                string normalizedHintOwner = NormalizeName(hint.OwnerName);
+                string normalizedRuntimeOwner = NormalizeName(OwnerName);
+                if (string.Equals(normalizedRuntimeOwner, normalizedHintOwner, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 35;
+                }
+                else if (!string.IsNullOrWhiteSpace(OwnerName))
+                {
+                    score -= 5;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(hint.BalloonTitle))
+            {
+                string normalizedHintTitle = hint.BalloonTitle.Trim();
+                if (!string.IsNullOrWhiteSpace(RoomTitle)
+                    && string.Equals(RoomTitle.Trim(), normalizedHintTitle, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += 20;
+                }
+                else if (!string.IsNullOrWhiteSpace(RoomTitle))
+                {
+                    score -= 5;
+                }
+            }
+
+            return Math.Max(0, score);
         }
 
         internal void ApplyPacketOwnedEmployeePoolState(

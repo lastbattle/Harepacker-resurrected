@@ -172,6 +172,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly Dictionary<string, List<int>> _reactorsByName = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, int> _reactorIndicesByPacketObjectId = new Dictionary<int, int>();
         private readonly Dictionary<int, int> _reactorsOnLocalUser = new Dictionary<int, int>();
+        private readonly Queue<ReactorTouchStateChange> _pendingPacketTouchStateChanges = new Queue<ReactorTouchStateChange>();
         private readonly List<ReactorSpawnPoint> _spawnPoints = new List<ReactorSpawnPoint>();
         #endregion
 
@@ -346,6 +347,7 @@ namespace HaCreator.MapSimulator.Pools
             _reactorsByName.Clear();
             _reactorIndicesByPacketObjectId.Clear();
             _reactorsOnLocalUser.Clear();
+            _pendingPacketTouchStateChanges.Clear();
             _spawnPoints.Clear();
             _nextPoolId = 1;
         }
@@ -569,6 +571,22 @@ namespace HaCreator.MapSimulator.Pools
                     objectId,
                     UsesPacketObjectIdForLocalTouch(GetReactorData(index), objectId),
                     IsTouching: false));
+            }
+
+            return changes;
+        }
+
+        public List<ReactorTouchStateChange> DrainPendingPacketTouchStateChanges()
+        {
+            if (_pendingPacketTouchStateChanges.Count == 0)
+            {
+                return new List<ReactorTouchStateChange>();
+            }
+
+            var changes = new List<ReactorTouchStateChange>(_pendingPacketTouchStateChanges.Count);
+            while (_pendingPacketTouchStateChanges.Count > 0)
+            {
+                changes.Add(_pendingPacketTouchStateChanges.Dequeue());
             }
 
             return changes;
@@ -1098,6 +1116,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 int index = kvp.Key;
                 ReactorRuntimeData data = kvp.Value;
+                ReactorItem reactor = GetReactor(index);
                 if (data?.RequiredQuestId is not int)
                     continue;
 
@@ -1106,7 +1125,10 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     if (matchesQuest)
                     {
-                        if (data.State == ReactorState.Idle)
+                        if (data.State == ReactorState.Idle
+                            && ShouldAutoActivateQuestRefresh(
+                                data,
+                                reactor?.GetAuthoredEventTypes(data.VisualState)))
                         {
                             ActivateReactor(index, playerId: 0, currentTick, ReactorActivationType.Quest, data.RequiredQuestId.Value);
                         }
@@ -2384,7 +2406,8 @@ namespace HaCreator.MapSimulator.Pools
             out int index)
         {
             index = -1;
-            int match = -1;
+            int matchCount = 0;
+            int touchedMatch = -1;
 
             for (int i = 0; i < GetReactorCount(); i++)
             {
@@ -2413,16 +2436,43 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (match >= 0)
+                matchCount++;
+                if (matchCount == 1)
                 {
-                    return false;
+                    index = i;
                 }
 
-                match = i;
+                if (IsLocallyTouchedReactor(index: i, data))
+                {
+                    if (touchedMatch >= 0)
+                    {
+                        index = -1;
+                        return false;
+                    }
+
+                    touchedMatch = i;
+                }
             }
 
-            index = match;
-            return index >= 0;
+            if (matchCount <= 0)
+            {
+                index = -1;
+                return false;
+            }
+
+            if (matchCount == 1)
+            {
+                return true;
+            }
+
+            if (touchedMatch >= 0)
+            {
+                index = touchedMatch;
+                return true;
+            }
+
+            index = -1;
+            return false;
         }
 
         private void ApplyPacketOwnershipToReactor(int index, int packetObjectId, bool canRespawn)
@@ -2439,6 +2489,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int previousTouchObjectId = ResolveLocalTouchObjectId(data);
+            bool wasLocallyTouched = previousTouchObjectId > 0
+                && _reactorsOnLocalUser.TryGetValue(previousTouchObjectId, out int touchedIndex)
+                && touchedIndex == index;
             UntrackPacketObjectId(data.PacketObjectId);
             data.PacketObjectId = packetObjectId;
             data.IsPacketOwned = true;
@@ -2453,11 +2506,20 @@ namespace HaCreator.MapSimulator.Pools
                 spawnPoint.CanRespawn = canRespawn;
             }
 
-            if (previousTouchObjectId != packetObjectId
-                && _reactorsOnLocalUser.TryGetValue(previousTouchObjectId, out int touchedIndex)
-                && touchedIndex == index)
+            if (previousTouchObjectId != packetObjectId && wasLocallyTouched)
             {
                 _reactorsOnLocalUser.Remove(previousTouchObjectId);
+                _reactorsOnLocalUser[packetObjectId] = index;
+                ReactorItem reactor = GetReactor(index);
+                if (reactor != null)
+                {
+                    _pendingPacketTouchStateChanges.Enqueue(new ReactorTouchStateChange(
+                        reactor,
+                        index,
+                        packetObjectId,
+                        UsesPacketObjectIdForLocalTouch(data, packetObjectId),
+                        IsTouching: true));
+                }
             }
         }
 
@@ -2480,6 +2542,19 @@ namespace HaCreator.MapSimulator.Pools
         private static bool UsesPacketObjectIdForLocalTouch(ReactorRuntimeData data, int objectId)
         {
             return data?.PacketObjectId == objectId;
+        }
+
+        private bool IsLocallyTouchedReactor(int index, ReactorRuntimeData data)
+        {
+            if (data == null)
+            {
+                return false;
+            }
+
+            int touchObjectId = ResolveLocalTouchObjectId(data);
+            return touchObjectId > 0
+                && _reactorsOnLocalUser.TryGetValue(touchObjectId, out int touchedIndex)
+                && touchedIndex == index;
         }
 
         private static bool IsSameReactorTemplate(string left, string right)
@@ -2560,6 +2635,47 @@ namespace HaCreator.MapSimulator.Pools
                 ? ToActivationMask(data.ActivationType)
                 : data.SupportedActivationTypes;
             return (supportedTypes & ToActivationMask(activationType)) != 0;
+        }
+
+        internal static bool ShouldAutoActivateQuestRefresh(
+            ReactorRuntimeData data,
+            IEnumerable<int> currentStateEventTypes)
+        {
+            if (!SupportsActivationType(data, ReactorActivationType.Quest))
+            {
+                return false;
+            }
+
+            ReactorActivationTypeMask currentStateMask = ReactorActivationTypeMask.None;
+            if (currentStateEventTypes != null)
+            {
+                foreach (int eventType in currentStateEventTypes)
+                {
+                    currentStateMask |= EventTypeToActivationMask(eventType);
+                }
+            }
+
+            ReactorActivationTypeMask blockingInteractiveTypes =
+                ReactorActivationTypeMask.Touch
+                | ReactorActivationTypeMask.Hit
+                | ReactorActivationTypeMask.Skill
+                | ReactorActivationTypeMask.Item;
+
+            if (currentStateMask != ReactorActivationTypeMask.None)
+            {
+                return (currentStateMask & ReactorActivationTypeMask.Quest) != 0
+                    && (currentStateMask & blockingInteractiveTypes) == ReactorActivationTypeMask.None;
+            }
+
+            if (data?.PrimaryActivationType != ReactorActivationType.Quest)
+            {
+                return false;
+            }
+
+            ReactorActivationTypeMask supportedTypes = data.SupportedActivationTypes == ReactorActivationTypeMask.None
+                ? ToActivationMask(data.ActivationType)
+                : data.SupportedActivationTypes;
+            return (supportedTypes & blockingInteractiveTypes) == ReactorActivationTypeMask.None;
         }
 
         private static bool CanActivateWith(
@@ -2841,7 +2957,13 @@ namespace HaCreator.MapSimulator.Pools
                     reactor.GetAuthoredEventTypes(sourceState),
                     data.HitOption,
                     data.ReactorType,
-                    out int properEventIndex))
+                    out int properEventIndex,
+                    out bool hasAuthoredHitEvent))
+            {
+                return 0;
+            }
+
+            if (!hasAuthoredHitEvent)
             {
                 return 0;
             }
@@ -2870,11 +2992,14 @@ namespace HaCreator.MapSimulator.Pools
             IEnumerable<int> sourceEventTypes,
             int hitOption,
             ReactorType reactorType,
-            out int properEventIndex)
+            out int properEventIndex,
+            out bool hasAuthoredHitEvent)
         {
             properEventIndex = packetProperEventIndex;
+            hasAuthoredHitEvent = false;
             if (packetProperEventIndex != -2)
             {
+                hasAuthoredHitEvent = packetProperEventIndex >= 0;
                 return true;
             }
 
@@ -2884,6 +3009,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            hasAuthoredHitEvent = properEventIndex >= 0;
             return true;
         }
 

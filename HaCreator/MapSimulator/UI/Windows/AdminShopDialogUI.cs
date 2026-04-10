@@ -672,6 +672,17 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            return TryBeginPacketOwnedAdminShopSession(snapshot, out message);
+        }
+
+        internal bool TryBeginPacketOwnedAdminShopSession(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, out string message)
+        {
+            message = "Packet-owned admin-shop payload could not be decoded.";
+            if (snapshot == null)
+            {
+                return false;
+            }
+
             _packetOwnedAdminShopSession.BeginOpen(
                 snapshot,
                 "CAdminShopDlg::OnPacket reused the admin-shop unique-modeless owner surface.");
@@ -688,9 +699,37 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        public string ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(string blockingOwner, int npcTemplateId, int itemCount)
+        internal string BuildPacketOwnedAdminShopOwnerFooter()
         {
-            _packetOwnedAdminShopSession.RecordBlockedByOwner(npcTemplateId, itemCount, blockingOwner);
+            return _packetOwnedAdminShopSession.HasObservableState
+                ? BuildPacketOwnedAdminShopStateSummary()
+                : _packetOwnedAdminShopSession.BuildTransportSummary();
+        }
+
+        internal void RecordPacketOwnedAdminShopOwnerSurfaceShown()
+        {
+            if (!_packetOwnedAdminShopSession.HasObservableState)
+            {
+                return;
+            }
+
+            _packetOwnedAdminShopSession.RecordOwnerSurfaceShown(
+                "CAdminShopDlg unique-modeless owner surface is visible.");
+        }
+
+        internal void RecordPacketOwnedAdminShopOwnerSurfaceHidden(string ownerState)
+        {
+            if (!_packetOwnedAdminShopSession.HasObservableState)
+            {
+                return;
+            }
+
+            _packetOwnedAdminShopSession.RecordOwnerSurfaceHidden(ownerState);
+        }
+
+        internal string ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(string blockingOwner, AdminShopPacketOwnedOpenPayloadSnapshot snapshot)
+        {
+            _packetOwnedAdminShopSession.RecordBlockedByOwner(snapshot, blockingOwner);
             _footerMessage = string.IsNullOrWhiteSpace(blockingOwner)
                 ? "Packet 367 arrived while another unique-modeless owner was active, so the admin-shop owner stayed unchanged."
                 : $"Packet 367 arrived while {blockingOwner} owned the unique-modeless slot, so the admin-shop owner stayed unchanged.";
@@ -1303,6 +1342,19 @@ namespace HaCreator.MapSimulator.UI
         public string GetWishlistSearchCatalogSessionSignature()
         {
             return BuildWishlistSearchCatalogSessionSignature(_paneStates[AdminShopPane.Npc].SourceEntries, _currentMode);
+        }
+
+        public string GetWishlistSearchServiceStateSignature()
+        {
+            string catalogSignature = GetWishlistSearchCatalogSessionSignature();
+            return _packetOwnedAdminShopSession.HasObservableState
+                ? string.Concat(catalogSignature, "|", _packetOwnedAdminShopSession.BuildWishlistSearchSessionSignature())
+                : catalogSignature;
+        }
+
+        public string GetWishlistSearchServiceStateSummary()
+        {
+            return _packetOwnedAdminShopSession.BuildWishlistSearchStateSummary();
         }
 
         public bool TrySubmitWishlistSearch(string query, int categoryIndex, out string message)
@@ -3862,8 +3914,8 @@ namespace HaCreator.MapSimulator.UI
 
         private IEnumerable<AdminShopEntry> CreatePacketOwnedInventoryBackedUserEntries(IEnumerable<AdminShopEntry> npcEntries)
         {
-            Dictionary<InventoryType, Dictionary<int, AdminShopEntry>> sellTemplatesByType = BuildPacketOwnedSellTemplateLookup(npcEntries);
-            foreach ((InventoryType inventoryType, Dictionary<int, AdminShopEntry> templatesByItemId) in sellTemplatesByType)
+            Dictionary<InventoryType, Dictionary<int, List<AdminShopEntry>>> sellTemplatesByType = BuildPacketOwnedSellTemplateLookup(npcEntries);
+            foreach ((InventoryType inventoryType, Dictionary<int, List<AdminShopEntry>> templatesByItemId) in sellTemplatesByType)
             {
                 IReadOnlyList<InventorySlotData> slots = _inventory.GetSlots(inventoryType);
                 if (slots == null || slots.Count == 0)
@@ -3876,7 +3928,7 @@ namespace HaCreator.MapSimulator.UI
                     InventorySlotData slot = slots[slotIndex];
                     if (slot == null
                         || slot.IsDisabled
-                        || !templatesByItemId.TryGetValue(slot.ItemId, out AdminShopEntry catalogEntry))
+                        || !templatesByItemId.TryGetValue(slot.ItemId, out List<AdminShopEntry> catalogEntries))
                     {
                         continue;
                     }
@@ -3887,14 +3939,22 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
-                    yield return CreateInventoryBackedUserEntry(catalogEntry, slot, slotIndex);
+                    foreach (AdminShopEntry catalogEntry in catalogEntries)
+                    {
+                        if (catalogEntry == null)
+                        {
+                            continue;
+                        }
+
+                        yield return CreateInventoryBackedUserEntry(catalogEntry, slot, slotIndex);
+                    }
                 }
             }
         }
 
-        private static Dictionary<InventoryType, Dictionary<int, AdminShopEntry>> BuildPacketOwnedSellTemplateLookup(IEnumerable<AdminShopEntry> npcEntries)
+        private static Dictionary<InventoryType, Dictionary<int, List<AdminShopEntry>>> BuildPacketOwnedSellTemplateLookup(IEnumerable<AdminShopEntry> npcEntries)
         {
-            Dictionary<InventoryType, Dictionary<int, AdminShopEntry>> lookup = new();
+            Dictionary<InventoryType, Dictionary<int, List<AdminShopEntry>>> lookup = new();
             foreach (AdminShopEntry entry in npcEntries)
             {
                 if (!RequiresInventorySource(entry)
@@ -3906,13 +3966,19 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                if (!lookup.TryGetValue(entry.SourceInventoryType, out Dictionary<int, AdminShopEntry> entriesByItemId))
+                if (!lookup.TryGetValue(entry.SourceInventoryType, out Dictionary<int, List<AdminShopEntry>> entriesByItemId))
                 {
-                    entriesByItemId = new Dictionary<int, AdminShopEntry>();
+                    entriesByItemId = new Dictionary<int, List<AdminShopEntry>>();
                     lookup[entry.SourceInventoryType] = entriesByItemId;
                 }
 
-                entriesByItemId.TryAdd(entry.SourceItemId, entry);
+                if (!entriesByItemId.TryGetValue(entry.SourceItemId, out List<AdminShopEntry> entries))
+                {
+                    entries = new List<AdminShopEntry>();
+                    entriesByItemId[entry.SourceItemId] = entries;
+                }
+
+                entries.Add(entry);
             }
 
             return lookup;
@@ -6704,13 +6770,17 @@ namespace HaCreator.MapSimulator.UI
             PacketOwnedNpcUtilityOutboundRequest request = BuildPacketOwnedAdminShopOutboundRequest(mode, npcTemplateId);
             if (DispatchPacketOwnedAdminShopOutboundRequest == null)
             {
-                return $"{request.Summary} No packet-owner bridge was available, so the simulator retained the outbound acknowledgement locally.";
+                string retainedSummary = $"{request.Summary} No packet-owner bridge was available, so the simulator retained the outbound acknowledgement locally.";
+                _packetOwnedAdminShopSession.RecordOutboundRequest(request.Opcode, request.Payload?.ToArray(), retainedSummary);
+                return retainedSummary;
             }
 
             string dispatchSummary = DispatchPacketOwnedAdminShopOutboundRequest(request);
-            return string.IsNullOrWhiteSpace(dispatchSummary)
+            string resolvedSummary = string.IsNullOrWhiteSpace(dispatchSummary)
                 ? request.Summary
                 : dispatchSummary;
+            _packetOwnedAdminShopSession.RecordOutboundRequest(request.Opcode, request.Payload?.ToArray(), resolvedSummary);
+            return resolvedSummary;
         }
 
         private static PacketOwnedNpcUtilityOutboundRequest BuildPacketOwnedAdminShopOutboundRequest(int mode, int npcTemplateId)

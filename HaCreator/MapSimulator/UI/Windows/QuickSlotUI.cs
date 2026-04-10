@@ -848,13 +848,13 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            if (frameIndex >= 15)
+            float remainingProgress = SkillManager.ResolveCooldownMaskFallbackFillRatio(frameIndex);
+            int overlayHeight = (int)Math.Ceiling(SLOT_SIZE * remainingProgress);
+            if (overlayHeight <= 0)
             {
                 return;
             }
 
-            float remainingProgress = 1f - (frameIndex / 14f);
-            int overlayHeight = (int)(SLOT_SIZE * remainingProgress);
             sprite.Draw(_cooldownOverlayTexture,
                 new Rectangle(slotX, slotY + SLOT_SIZE - overlayHeight, SLOT_SIZE, overlayHeight),
                 Color.White);

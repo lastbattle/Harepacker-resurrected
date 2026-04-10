@@ -83,6 +83,11 @@ namespace HaCreator.MapSimulator
             public bool HasAvatarAnimations => OverlayAnimation != null || UnderFaceAnimation != null;
         }
 
+        private readonly record struct AnimationDisplayerSkillUseBranchRequest(
+            string BranchName,
+            Point OriginOffset,
+            bool FollowOwnerFacing = true);
+
         private void RegisterAnimationDisplayerChatCommand()
         {
             _chat.CommandHandler.RegisterCommand(
@@ -354,6 +359,19 @@ namespace HaCreator.MapSimulator
             startFrames = null;
             repeatFrames = null;
             endFrames = null;
+
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (ownerCharacterId > 0
+                && ownerCharacterId == localCharacterId
+                && TryResolveAnimationDisplayerSpecificUserStateFrames(
+                    SkillManager.BuildAnimationDisplayerTemporaryStatAvatarEffectStatesForParity(_playerManager?.Skills?.ActiveBuffs),
+                    out _,
+                    out startFrames,
+                    out repeatFrames,
+                    out endFrames))
+            {
+                return true;
+            }
 
             if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor actor) == true
                 && actor != null
@@ -767,7 +785,7 @@ namespace HaCreator.MapSimulator
                 if (!TryRegisterAnimationDisplayerSkillUseBranch(
                         castInfo.CasterId,
                         skillId,
-                        branchName,
+                        new AnimationDisplayerSkillUseBranchRequest(branchName, Point.Zero),
                         castInfo.CasterX,
                         castInfo.CasterY,
                         castInfo.FacingRight,
@@ -832,6 +850,44 @@ namespace HaCreator.MapSimulator
             TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
+        private void HandleAnimationDisplayerPreparedSkillStarted(PreparedSkill prepared)
+        {
+            if (prepared?.SkillData == null)
+            {
+                return;
+            }
+
+            SkillAnimation effectAnimation = prepared.IsHolding
+                ? prepared.SkillData.RepeatEffect ?? prepared.SkillData.KeydownEffect
+                : prepared.SkillData.PrepareEffect ?? prepared.SkillData.Effect;
+            SkillAnimation secondaryEffectAnimation = prepared.IsHolding
+                ? prepared.SkillData.RepeatSecondaryEffect ?? prepared.SkillData.KeydownSecondaryEffect
+                : prepared.SkillData.PrepareSecondaryEffect;
+            SkillCastInfo castInfo = BuildAnimationDisplayerLocalSkillUseRequest(
+                prepared.SkillId,
+                prepared.SkillData,
+                prepared.StartTime,
+                effectAnimation,
+                secondaryEffectAnimation);
+            TryRegisterAnimationDisplayerSkillUse(castInfo);
+        }
+
+        private void HandleAnimationDisplayerPreparedSkillReleased(PreparedSkill prepared)
+        {
+            if (prepared?.SkillData == null)
+            {
+                return;
+            }
+
+            SkillCastInfo castInfo = BuildAnimationDisplayerLocalSkillUseRequest(
+                prepared.SkillId,
+                prepared.SkillData,
+                currTickCount,
+                prepared.SkillData.KeydownEndEffect,
+                prepared.SkillData.KeydownEndSecondaryEffect);
+            TryRegisterAnimationDisplayerSkillUse(castInfo);
+        }
+
         private SkillCastInfo BuildAnimationDisplayerLocalSkillUseRequest(
             int skillId,
             SkillData skillData,
@@ -874,12 +930,12 @@ namespace HaCreator.MapSimulator
             bool fallbackFacingRight = getOwnerFacingRight?.Invoke() ?? presentation.FacingRight;
             int delayRate = ResolveAnimationDisplayerSkillUseDelayRate(presentation.ActionSpeed);
 
-            foreach (string branchName in EnumerateAnimationDisplayerSkillUseBranchNames(presentation.SkillId))
+            foreach (AnimationDisplayerSkillUseBranchRequest branchRequest in EnumerateAnimationDisplayerSkillUseBranchRequests(presentation))
             {
                 TryRegisterAnimationDisplayerSkillUseBranch(
                     presentation.CharacterId,
                     presentation.SkillId,
-                    branchName,
+                    branchRequest,
                     fallbackPosition.X,
                     fallbackPosition.Y,
                     fallbackFacingRight,
@@ -893,7 +949,7 @@ namespace HaCreator.MapSimulator
         private bool TryRegisterAnimationDisplayerSkillUseBranch(
             int ownerCharacterId,
             int skillId,
-            string branchName,
+            AnimationDisplayerSkillUseBranchRequest branchRequest,
             float casterX,
             float casterY,
             bool facingRight,
@@ -902,11 +958,30 @@ namespace HaCreator.MapSimulator
             Func<Vector2> getOwnerPosition = null,
             Func<bool> getOwnerFacingRight = null)
         {
-            if (skillId <= 0 || string.IsNullOrWhiteSpace(branchName))
+            if (skillId <= 0 || string.IsNullOrWhiteSpace(branchRequest.BranchName))
             {
                 return false;
             }
 
+            string branchName = branchRequest.BranchName;
+            bool hasOriginOffset = branchRequest.OriginOffset != Point.Zero;
+            float branchX = casterX + branchRequest.OriginOffset.X;
+            float branchY = casterY + branchRequest.OriginOffset.Y;
+            Func<Vector2> branchOwnerPosition = getOwnerPosition;
+            if (hasOriginOffset && getOwnerPosition != null)
+            {
+                branchOwnerPosition = () =>
+                {
+                    Vector2 ownerPosition = getOwnerPosition();
+                    ownerPosition.X += branchRequest.OriginOffset.X;
+                    ownerPosition.Y += branchRequest.OriginOffset.Y;
+                    return ownerPosition;
+                };
+            }
+
+            Func<bool> branchOwnerFacingRight = branchRequest.FollowOwnerFacing
+                ? getOwnerFacingRight
+                : null;
             string effectUol = BuildAnimationDisplayerSkillUseBranchUol(skillId, branchName);
             if (TryGetAnimationDisplayerSkillUseAvatarEffectVariants(effectUol, out List<AnimationDisplayerSkillUseAvatarEffectVariant> avatarVariants))
             {
@@ -919,6 +994,7 @@ namespace HaCreator.MapSimulator
                             branchName,
                             i,
                             avatarVariants[i],
+                            branchRequest,
                             delayRate,
                             currentTime))
                     {
@@ -946,20 +1022,20 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (getOwnerPosition != null || getOwnerFacingRight != null)
+                if (branchOwnerPosition != null || branchOwnerFacingRight != null)
                 {
                     _animationEffects.AddOneTimeAttached(
                         adjustedFrames,
-                        getOwnerPosition,
-                        getOwnerFacingRight,
-                        casterX,
-                        casterY,
+                        branchOwnerPosition,
+                        branchOwnerFacingRight,
+                        branchX,
+                        branchY,
                         facingRight,
                         currentTime);
                 }
                 else
                 {
-                    _animationEffects.AddOneTime(adjustedFrames, casterX, casterY, facingRight, currentTime);
+                    _animationEffects.AddOneTime(adjustedFrames, branchX, branchY, facingRight, currentTime);
                 }
 
                 registered = true;
@@ -974,6 +1050,7 @@ namespace HaCreator.MapSimulator
             string branchName,
             int variantIndex,
             AnimationDisplayerSkillUseAvatarEffectVariant variant,
+            AnimationDisplayerSkillUseBranchRequest branchRequest,
             int delayRate,
             int currentTime)
         {
@@ -982,8 +1059,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            SkillAnimation overlayAnimation = ApplyAnimationDisplayerDelayRate(variant.OverlayAnimation, delayRate);
-            SkillAnimation underFaceAnimation = ApplyAnimationDisplayerDelayRate(variant.UnderFaceAnimation, delayRate);
+            SkillAnimation overlayAnimation = ApplyAnimationDisplayerOriginOffset(
+                ApplyAnimationDisplayerDelayRate(variant.OverlayAnimation, delayRate),
+                branchRequest.OriginOffset);
+            SkillAnimation underFaceAnimation = ApplyAnimationDisplayerOriginOffset(
+                ApplyAnimationDisplayerDelayRate(variant.UnderFaceAnimation, delayRate),
+                branchRequest.OriginOffset);
             if (overlayAnimation == null && underFaceAnimation == null)
             {
                 return false;
@@ -1217,6 +1298,60 @@ namespace HaCreator.MapSimulator
             };
             animation.CalculateDuration();
             return animation;
+        }
+
+        private static SkillAnimation ApplyAnimationDisplayerOriginOffset(SkillAnimation animation, Point originOffset)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0 || originOffset == Point.Zero)
+            {
+                return animation;
+            }
+
+            var shiftedFrames = new List<SkillFrame>(animation.Frames.Count);
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                SkillFrame frame = animation.Frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                var shiftedOrigin = new Point(
+                    frame.Origin.X - originOffset.X,
+                    frame.Origin.Y - originOffset.Y);
+                shiftedFrames.Add(new SkillFrame
+                {
+                    Texture = frame.Texture,
+                    Origin = shiftedOrigin,
+                    Delay = frame.Delay,
+                    Bounds = new Rectangle(
+                        -shiftedOrigin.X,
+                        -shiftedOrigin.Y,
+                        frame.Bounds.Width,
+                        frame.Bounds.Height),
+                    Flip = frame.Flip,
+                    Z = frame.Z,
+                    AlphaStart = frame.AlphaStart,
+                    AlphaEnd = frame.AlphaEnd
+                });
+            }
+
+            if (shiftedFrames.Count == 0)
+            {
+                return null;
+            }
+
+            SkillAnimation shiftedAnimation = new()
+            {
+                Name = animation.Name,
+                Frames = shiftedFrames,
+                Loop = animation.Loop,
+                Origin = new Point(animation.Origin.X - originOffset.X, animation.Origin.Y - originOffset.Y),
+                ZOrder = animation.ZOrder,
+                PositionCode = animation.PositionCode
+            };
+            shiftedAnimation.CalculateDuration();
+            return shiftedAnimation;
         }
 
         private static int? TryResolveAnimationDisplayerSkillUsePositionCode(WzImageProperty property)
@@ -1462,6 +1597,38 @@ namespace HaCreator.MapSimulator
                 }
 
                 yield return child.Name;
+            }
+        }
+
+        private IEnumerable<AnimationDisplayerSkillUseBranchRequest> EnumerateAnimationDisplayerSkillUseBranchRequests(
+            RemoteUserActorPool.RemoteSkillUsePresentation presentation)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (presentation.BranchNames != null)
+            {
+                for (int i = 0; i < presentation.BranchNames.Count; i++)
+                {
+                    string branchName = presentation.BranchNames[i];
+                    if (string.IsNullOrWhiteSpace(branchName) || !seen.Add(branchName))
+                    {
+                        continue;
+                    }
+
+                    yield return new AnimationDisplayerSkillUseBranchRequest(branchName, Point.Zero);
+                }
+            }
+
+            if (seen.Count > 0)
+            {
+                yield break;
+            }
+
+            foreach (string branchName in EnumerateAnimationDisplayerSkillUseBranchNames(presentation.SkillId))
+            {
+                if (seen.Add(branchName))
+                {
+                    yield return new AnimationDisplayerSkillUseBranchRequest(branchName, Point.Zero);
+                }
             }
         }
 

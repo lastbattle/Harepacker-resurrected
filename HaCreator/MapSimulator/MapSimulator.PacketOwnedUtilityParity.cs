@@ -84,6 +84,8 @@ namespace HaCreator.MapSimulator
         private const string PacketOwnedTimeBombInvincibilityDurationTemplate = "Invincible for #time more seconds after getting attacked.";
         private const string PacketOwnedTimeBombInvincibilityChanceTemplate = "#prop% chance to become invincible for #time seconds when attacked.";
         private static readonly int[] PacketOwnedFallbackTimeBombInvincibilityOptionIds = { 20366, 30366, 30371, 40366, 40371 };
+        private static readonly IReadOnlyDictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> PacketOwnedFallbackTimeBombInvincibilityOptionDefinitions =
+            CreatePacketOwnedFallbackTimeBombInvincibilityOptionDefinitions();
         private const string PacketOwnedApspPromptPrimaryLabel = "OK";
         private const string PacketOwnedApspPromptSecondaryLabel = "Cancel";
         private const int PacketOwnedTutorBalloonScreenMargin = 6;
@@ -454,11 +456,15 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            string itemName = InventoryItemMetadataResolver.TryResolveItemName(_lastDeliveryItemId, out string resolvedItemName)
-                ? resolvedItemName
-                : _lastDeliveryItemId > 0
-                    ? $"Item {_lastDeliveryItemId}"
-                    : "Unknown delivery item";
+            if (!TryResolvePacketOwnedDeliveryItemInfo(_lastDeliveryItemId, out string itemName))
+            {
+                string unavailable = _lastDeliveryItemId > 0
+                    ? $"Packet-authored delivery item {_lastDeliveryItemId} could not be resolved through the client item-info seam, so the delivery owner stayed closed."
+                    : "Packet-authored delivery item info was missing, so the delivery owner stayed closed.";
+                NotifyEventAlarmOwnerActivity("packet-owned delivery quest");
+                ShowUtilityFeedbackMessage(unavailable);
+                return unavailable;
+            }
 
             string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.QuestDelivery);
             if (!string.IsNullOrWhiteSpace(blockingOwner))
@@ -1037,6 +1043,43 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private static bool TryResolvePacketOwnedDeliveryItemInfo(int itemId, out string itemName)
+        {
+            itemName = string.Empty;
+            if (itemId <= 0
+                || !InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                return false;
+            }
+
+            WzImage itemImage = Program.FindImage(category, imagePath);
+            if (itemImage == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                itemImage.ParseImage();
+                string itemNodeName = string.Equals(category, "Character", StringComparison.OrdinalIgnoreCase)
+                    ? itemId.ToString("D8", CultureInfo.InvariantCulture)
+                    : itemId.ToString("D7", CultureInfo.InvariantCulture);
+                if (itemImage[itemNodeName] is not WzSubProperty)
+                {
+                    return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            itemName = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedItemName) && !string.IsNullOrWhiteSpace(resolvedItemName)
+                ? resolvedItemName
+                : $"Item {itemId}";
+            return true;
+        }
+
         private void HandleQuestDeliveryWindowRequest(QuestDeliveryWindow.DeliveryEntry entry)
         {
             if (entry == null)
@@ -1394,6 +1437,19 @@ namespace HaCreator.MapSimulator
             _lastClassCompetitionNavigatePending = false;
         }
 
+        private bool TryApplyPacketOwnedClassCompetitionPagePayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload != null && payload.Length > 0)
+            {
+                message = $"Class-competition launch packet should be empty, but received {payload.Length} trailing byte(s).";
+                return false;
+            }
+
+            message = ApplyClassCompetitionPageLaunch();
+            return true;
+        }
+
         private bool TryApplyPacketOwnedClassCompetitionAuthPayload(byte[] payload, out string message)
         {
             message = null;
@@ -1446,6 +1502,17 @@ namespace HaCreator.MapSimulator
             out QuestDetailDeliveryType deliveryType,
             out string error)
         {
+            return TryDecodePacketOwnedDeliveryQuestPayload(payload, out questId, out itemId, out disallowedQuestIds, out deliveryType, out error);
+        }
+
+        private static bool TryDecodePacketOwnedDeliveryQuestPayload(
+            byte[] payload,
+            out int questId,
+            out int itemId,
+            out int[] disallowedQuestIds,
+            out QuestDetailDeliveryType deliveryType,
+            out string error)
+        {
             questId = 0;
             itemId = 0;
             disallowedQuestIds = Array.Empty<int>();
@@ -1465,7 +1532,17 @@ namespace HaCreator.MapSimulator
                 questId = reader.ReadInt32();
                 itemId = reader.ReadInt32();
                 disallowedQuestIds = DecodePacketOwnedDeliveryQuestIdsWithOptionalCount(reader).ToArray();
-                deliveryType = DecodePacketOwnedDeliveryType(reader);
+                if (!TryDecodePacketOwnedDeliveryType(reader, out deliveryType, out error))
+                {
+                    return false;
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    error = $"Delivery-quest payload has {reader.BaseStream.Length - reader.BaseStream.Position} trailing byte(s) after the optional delivery-type discriminator.";
+                    return false;
+                }
+
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException or IOException or InvalidDataException)
@@ -2006,8 +2083,7 @@ namespace HaCreator.MapSimulator
                     return TryApplyPacketOwnedFieldHazardPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.OpenClassCompetitionPagePacketType:
-                    message = ApplyClassCompetitionPageLaunch();
-                    return true;
+                    return TryApplyPacketOwnedClassCompetitionPagePayload(payload, out message);
 
                 case PacketOwnedClassCompetitionAuthRequestOpcode:
                     return TryApplyPacketOwnedClassCompetitionAuthPayload(payload, out message);
@@ -3058,28 +3134,20 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedDeliveryQuestPayload(byte[] payload, out string message)
         {
             message = null;
-            if (payload == null || payload.Length < 8)
+            if (!TryDecodePacketOwnedDeliveryQuestPayload(
+                    payload,
+                    out int questId,
+                    out int itemId,
+                    out int[] disallowedQuestIds,
+                    out QuestDetailDeliveryType packetOwnedDeliveryType,
+                    out string error))
             {
-                message = "Delivery-quest payload must contain questId and itemId Int32 values.";
+                message = error ?? "Delivery-quest payload could not be decoded.";
                 return false;
             }
 
-            try
-            {
-                using var stream = new MemoryStream(payload, writable: false);
-                using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
-                int questId = reader.ReadInt32();
-                int itemId = reader.ReadInt32();
-                List<int> disallowedQuestIds = DecodePacketOwnedDeliveryQuestIdsWithOptionalCount(reader);
-                QuestDetailDeliveryType packetOwnedDeliveryType = DecodePacketOwnedDeliveryType(reader);
-                message = ApplyDeliveryQuestLaunch(questId, itemId, disallowedQuestIds, packetOwnedDeliveryType);
-                return true;
-            }
-            catch (Exception ex) when (ex is EndOfStreamException or IOException)
-            {
-                message = $"Delivery-quest payload could not be decoded: {ex.Message}";
-                return false;
-            }
+            message = ApplyDeliveryQuestLaunch(questId, itemId, disallowedQuestIds, packetOwnedDeliveryType);
+            return true;
         }
 
         private bool TryApplyPacketOwnedMiniMapOnOffPayload(byte[] payload, out string message)
@@ -4233,48 +4301,7 @@ namespace HaCreator.MapSimulator
             }
 
             string normalizedDescriptor = NormalizePacketOwnedClientSoundDescriptor(descriptor);
-            if (TryResolvePacketOwnedRadioTrackViaClientStyleLookup(normalizedDescriptor, out resolution))
-            {
-                return true;
-            }
-
-            WzBinaryProperty soundProperty = Program.InfoManager.GetBgm(normalizedDescriptor);
-            if (soundProperty != null)
-            {
-                resolution = CreatePacketOwnedRadioTrackResolution(
-                    soundProperty,
-                    normalizedDescriptor,
-                    normalizedDescriptor,
-                    ResolvePacketOwnedRadioDisplayName(soundProperty, normalizedDescriptor.Split('/').LastOrDefault() ?? normalizedDescriptor));
-                return true;
-            }
-
-            if (!normalizedDescriptor.Contains("/", StringComparison.Ordinal))
-            {
-                string[] bgmPrefixes =
-                {
-                    "BgmUI",
-                    "BgmEvent",
-                    "BgmEvent2",
-                };
-
-                for (int i = 0; i < bgmPrefixes.Length; i++)
-                {
-                    string bgmCandidate = $"{bgmPrefixes[i]}/{normalizedDescriptor}";
-                    soundProperty = Program.InfoManager.GetBgm(bgmCandidate);
-                    if (soundProperty != null)
-                    {
-                        resolution = CreatePacketOwnedRadioTrackResolution(
-                            soundProperty,
-                            bgmCandidate,
-                            bgmCandidate,
-                            ResolvePacketOwnedRadioDisplayName(soundProperty, normalizedDescriptor));
-                        return true;
-                    }
-                }
-            }
-
-            return false;
+            return TryResolvePacketOwnedRadioTrackViaClientStyleLookup(normalizedDescriptor, out resolution);
         }
 
         private static bool TryResolvePacketOwnedRadioTrackViaClientStyleLookup(
@@ -4576,11 +4603,6 @@ namespace HaCreator.MapSimulator
             {
                 yield return trackTemplateDescriptor;
             }
-
-            if (yieldedDescriptors.Add(normalized))
-            {
-                yield return normalized;
-            }
         }
 
         internal static IEnumerable<string> BuildPacketOwnedRadioClientAudioDescriptorCandidates(string descriptor)
@@ -4599,11 +4621,6 @@ namespace HaCreator.MapSimulator
                 && yieldedDescriptors.Add(audioTemplateDescriptor))
             {
                 yield return audioTemplateDescriptor;
-            }
-
-            if (yieldedDescriptors.Add(normalized))
-            {
-                yield return normalized;
             }
         }
 
@@ -7436,7 +7453,13 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<int>();
             }
 
-            return InferPacketOwnedTimeBombInvincibilityOptionIds(armorPart.PotentialLines, candidateDefinitions);
+            IReadOnlyList<int> inferredIds = InferPacketOwnedTimeBombInvincibilityOptionIds(armorPart.PotentialLines, candidateDefinitions);
+            if (inferredIds.Count > 0)
+            {
+                armorPart.ItemOptionIds = inferredIds.ToList();
+            }
+
+            return inferredIds;
         }
 
         private CharacterPart ResolvePacketOwnedTimeBombArmorPart()
@@ -7547,6 +7570,45 @@ namespace HaCreator.MapSimulator
             return inferredIds;
         }
 
+        internal static IReadOnlyList<int> InferPacketOwnedTimeBombInvincibilityOptionIds(IEnumerable<string> potentialLines)
+        {
+            return InferPacketOwnedTimeBombInvincibilityOptionIds(
+                potentialLines,
+                CreatePacketOwnedTimeBombInvincibilityOptionDefinitions());
+        }
+
+        internal static IReadOnlyList<int> MergePacketOwnedTimeBombInvincibilityOptionIds(
+            IEnumerable<int> existingItemOptionIds,
+            IEnumerable<string> potentialLines)
+        {
+            IReadOnlyList<int> inferredIds = InferPacketOwnedTimeBombInvincibilityOptionIds(potentialLines);
+            var mergedIds = new List<int>();
+            var seenIds = new HashSet<int>();
+
+            if (existingItemOptionIds != null)
+            {
+                foreach (int itemOptionId in existingItemOptionIds)
+                {
+                    if (IsPacketOwnedTimeBombInvincibilityOptionId(itemOptionId) || !seenIds.Add(itemOptionId))
+                    {
+                        continue;
+                    }
+
+                    mergedIds.Add(itemOptionId);
+                }
+            }
+
+            foreach (int itemOptionId in inferredIds)
+            {
+                if (seenIds.Add(itemOptionId))
+                {
+                    mergedIds.Add(itemOptionId);
+                }
+            }
+
+            return mergedIds;
+        }
+
         internal static string RenderPacketOwnedTimeBombInvincibilityOptionLine(
             string displayTemplate,
             PacketOwnedTimeBombInvincibilityOptionLevelData levelData)
@@ -7578,10 +7640,16 @@ namespace HaCreator.MapSimulator
 
         private Dictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> BuildPacketOwnedTimeBombInvincibilityOptionDefinitions()
         {
+            return new Dictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition>(
+                CreatePacketOwnedTimeBombInvincibilityOptionDefinitions());
+        }
+
+        internal static IReadOnlyDictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> CreatePacketOwnedTimeBombInvincibilityOptionDefinitions()
+        {
             var definitions = new Dictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition>();
             foreach (int itemOptionId in PacketOwnedTimeBombInvincibilityOptionIds.Value)
             {
-                PacketOwnedTimeBombInvincibilityOptionDefinition definition = ResolvePacketOwnedTimeBombInvincibilityOptionDefinition(itemOptionId);
+                PacketOwnedTimeBombInvincibilityOptionDefinition definition = CreatePacketOwnedTimeBombInvincibilityOptionDefinition(itemOptionId);
                 if (definition != null)
                 {
                     definitions[itemOptionId] = definition;
@@ -7603,22 +7671,45 @@ namespace HaCreator.MapSimulator
                 return cached;
             }
 
+            PacketOwnedTimeBombInvincibilityOptionDefinition definition = CreatePacketOwnedTimeBombInvincibilityOptionDefinition(itemOptionId);
+            if (definition == null)
+            {
+                return null;
+            }
+
+            _packetOwnedTimeBombInvincibilityOptions[itemOptionId] = definition;
+            return definition;
+        }
+
+        internal static PacketOwnedTimeBombInvincibilityOptionDefinition CreatePacketOwnedTimeBombInvincibilityOptionDefinition(int itemOptionId)
+        {
+            if (itemOptionId <= 0)
+            {
+                return null;
+            }
+
+            if (TryGetPacketOwnedFallbackTimeBombInvincibilityOptionDefinition(itemOptionId, out PacketOwnedTimeBombInvincibilityOptionDefinition fallbackDefinition)
+                && Program.DataSource?.GetImage("Item", "ItemOption.img") == null)
+            {
+                return fallbackDefinition;
+            }
+
             WzImage itemOptionImage = Program.DataSource?.GetImage("Item", "ItemOption.img");
             if (itemOptionImage == null)
             {
-                return null;
+                return fallbackDefinition;
             }
 
             itemOptionImage.ParseImage();
             WzImageProperty optionRoot = itemOptionImage.GetFromPath($"{itemOptionId:D6}");
             if (optionRoot == null)
             {
-                return null;
+                return fallbackDefinition;
             }
 
             if (optionRoot["level"] is not WzSubProperty levelProperty)
             {
-                return null;
+                return fallbackDefinition;
             }
 
             string displayTemplate = optionRoot["info"]?["string"]?.GetString() ?? string.Empty;
@@ -7642,8 +7733,74 @@ namespace HaCreator.MapSimulator
                 DisplayTemplate = displayTemplate,
                 Levels = levels
             };
-            _packetOwnedTimeBombInvincibilityOptions[itemOptionId] = definition;
             return definition;
+        }
+
+        private static bool TryGetPacketOwnedFallbackTimeBombInvincibilityOptionDefinition(
+            int itemOptionId,
+            out PacketOwnedTimeBombInvincibilityOptionDefinition definition)
+        {
+            return PacketOwnedFallbackTimeBombInvincibilityOptionDefinitions.TryGetValue(itemOptionId, out definition);
+        }
+
+        private static IReadOnlyDictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> CreatePacketOwnedFallbackTimeBombInvincibilityOptionDefinitions()
+        {
+            return new Dictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition>
+            {
+                [20366] = CreatePacketOwnedFallbackTimeBombInvincibilityDurationDefinition(1),
+                [30366] = CreatePacketOwnedFallbackTimeBombInvincibilityDurationDefinition(2),
+                [40366] = CreatePacketOwnedFallbackTimeBombInvincibilityDurationDefinition(3),
+                [30371] = CreatePacketOwnedFallbackTimeBombInvincibilityChanceDefinition(2, new[]
+                {
+                    5, 5, 5, 5,
+                    6, 6, 6, 6,
+                    7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
+                }),
+                [40371] = CreatePacketOwnedFallbackTimeBombInvincibilityChanceDefinition(4, new[]
+                {
+                    5, 5, 5, 5,
+                    6, 6, 6, 6,
+                    7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
+                })
+            };
+        }
+
+        private static PacketOwnedTimeBombInvincibilityOptionDefinition CreatePacketOwnedFallbackTimeBombInvincibilityDurationDefinition(int durationSeconds)
+        {
+            var levels = new PacketOwnedTimeBombInvincibilityOptionLevelData[21];
+            for (int level = 1; level < levels.Length; level++)
+            {
+                levels[level] = new PacketOwnedTimeBombInvincibilityOptionLevelData(durationSeconds * 1000, 0);
+            }
+
+            return new PacketOwnedTimeBombInvincibilityOptionDefinition
+            {
+                DisplayTemplate = PacketOwnedTimeBombInvincibilityDurationTemplate,
+                Levels = levels
+            };
+        }
+
+        private static PacketOwnedTimeBombInvincibilityOptionDefinition CreatePacketOwnedFallbackTimeBombInvincibilityChanceDefinition(
+            int probabilityPercent,
+            IReadOnlyList<int> durationSecondsByLevel)
+        {
+            var levels = new PacketOwnedTimeBombInvincibilityOptionLevelData[21];
+            if (durationSecondsByLevel != null)
+            {
+                int maxLevel = Math.Min(durationSecondsByLevel.Count, levels.Length - 1);
+                for (int level = 1; level <= maxLevel; level++)
+                {
+                    levels[level] = new PacketOwnedTimeBombInvincibilityOptionLevelData(
+                        Math.Max(0, durationSecondsByLevel[level - 1]) * 1000,
+                        probabilityPercent);
+                }
+            }
+
+            return new PacketOwnedTimeBombInvincibilityOptionDefinition
+            {
+                DisplayTemplate = PacketOwnedTimeBombInvincibilityChanceTemplate,
+                Levels = levels
+            };
         }
 
         internal static int[] CreatePacketOwnedTimeBombInvincibilityOptionIds()
@@ -7700,6 +7857,11 @@ namespace HaCreator.MapSimulator
 
             return string.Equals(displayTemplate, PacketOwnedTimeBombInvincibilityDurationTemplate, StringComparison.Ordinal)
                 || string.Equals(displayTemplate, PacketOwnedTimeBombInvincibilityChanceTemplate, StringComparison.Ordinal);
+        }
+
+        internal static bool IsPacketOwnedTimeBombInvincibilityOptionId(int itemOptionId)
+        {
+            return itemOptionId > 0 && PacketOwnedTimeBombInvincibilityOptionIds.Value.Contains(itemOptionId);
         }
 
         private static Dictionary<string, int> BuildPacketOwnedTimeBombPotentialLineLookup(
@@ -8977,28 +9139,20 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedDeliveryPayload(byte[] payload, out string message)
         {
             message = null;
-            if (payload == null || payload.Length < 8)
+            if (!TryDecodePacketOwnedDeliveryQuestPayload(
+                    payload,
+                    out int questId,
+                    out int itemId,
+                    out int[] disallowedQuestIds,
+                    out QuestDetailDeliveryType packetOwnedDeliveryType,
+                    out string error))
             {
-                message = "Delivery payload must contain questId and itemId Int32 values.";
+                message = error ?? "Delivery payload could not be decoded.";
                 return false;
             }
 
-            try
-            {
-                using MemoryStream stream = new(payload, writable: false);
-                using BinaryReader reader = new(stream);
-                int questId = reader.ReadInt32();
-                int itemId = reader.ReadInt32();
-                List<int> disallowedQuestIds = DecodePacketOwnedDeliveryQuestIdsWithOptionalCount(reader);
-                QuestDetailDeliveryType packetOwnedDeliveryType = DecodePacketOwnedDeliveryType(reader);
-                message = ApplyDeliveryQuestLaunch(questId, itemId, disallowedQuestIds, packetOwnedDeliveryType);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                message = $"Delivery payload could not be decoded: {ex.Message}";
-                return false;
-            }
+            message = ApplyDeliveryQuestLaunch(questId, itemId, disallowedQuestIds, packetOwnedDeliveryType);
+            return true;
         }
 
         private static List<int> DecodePacketOwnedDisallowedDeliveryQuestIds(BinaryReader reader)
@@ -9078,27 +9232,36 @@ namespace HaCreator.MapSimulator
             return questIds;
         }
 
-        private static QuestDetailDeliveryType DecodePacketOwnedDeliveryType(BinaryReader reader)
+        private static bool TryDecodePacketOwnedDeliveryType(BinaryReader reader, out QuestDetailDeliveryType deliveryType, out string error)
         {
+            deliveryType = QuestDetailDeliveryType.None;
+            error = null;
             if (reader == null)
             {
-                return QuestDetailDeliveryType.None;
+                return true;
             }
 
             int remaining = (int)(reader.BaseStream.Length - reader.BaseStream.Position);
             if (remaining <= 0)
             {
-                return QuestDetailDeliveryType.None;
+                return true;
             }
 
             int rawType = remaining switch
             {
-                >= 4 => reader.ReadInt32(),
+                4 => reader.ReadInt32(),
                 2 => reader.ReadUInt16(),
-                _ => reader.ReadByte()
+                1 => reader.ReadByte(),
+                _ => int.MinValue
             };
+            if (rawType == int.MinValue)
+            {
+                error = $"Delivery-quest payload left {remaining} byte(s) for the optional delivery-type discriminator; expected 0, 1, 2, or 4 bytes.";
+                return false;
+            }
 
-            return QuestDetailDeliveryTypeCodec.FromClientRawValue(rawType);
+            deliveryType = QuestDetailDeliveryTypeCodec.FromClientRawValue(rawType);
+            return true;
         }
 
         private static bool TryParseQuestDeliveryTypeToken(string token, out QuestDetailDeliveryType deliveryType)

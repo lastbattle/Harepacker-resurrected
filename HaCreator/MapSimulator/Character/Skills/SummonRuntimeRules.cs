@@ -423,6 +423,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return ClientSupportOwnedAttackAction;
             }
 
+            if (assistType == SummonAssistType.SummonAction
+                && string.Equals(
+                    branchName,
+                    ResolveLocalSummonActionBranch(skill),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return PacketSkillActionSubsummon;
+            }
+
             return 0;
         }
 

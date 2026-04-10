@@ -3,7 +3,14 @@ namespace HaCreator.MapSimulator.Fields
     public readonly record struct PassiveTransferFieldInterfaceState(
         bool HasLiveFieldInterface,
         bool AllowsTransferField,
-        bool HasPendingSpecialTransfer);
+        bool HasPendingSpecialTransfer,
+        bool HasPendingPacketOwnedTransfer);
+
+    public readonly record struct PassiveTransferFieldReplayState(
+        bool HasOneTimeActionCompleted,
+        bool IsImmovable,
+        bool IsAttractLocked,
+        bool IsOnFoothold);
 
     public static class PassiveTransferFieldReadinessEvaluator
     {
@@ -11,7 +18,16 @@ namespace HaCreator.MapSimulator.Fields
         {
             return state.HasLiveFieldInterface
                    && state.AllowsTransferField
-                   && !state.HasPendingSpecialTransfer;
+                   && !state.HasPendingSpecialTransfer
+                   && !state.HasPendingPacketOwnedTransfer;
+        }
+
+        public static bool CanReplayHandleUpKeyDown(PassiveTransferFieldReplayState state)
+        {
+            return state.HasOneTimeActionCompleted
+                   && !state.IsImmovable
+                   && !state.IsAttractLocked
+                   && state.IsOnFoothold;
         }
     }
 }

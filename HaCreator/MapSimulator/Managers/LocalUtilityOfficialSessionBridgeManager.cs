@@ -101,7 +101,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,253,254,269,270,1011,1023; outbound opcodes=45,113,117,134,135,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,253,254,255,256,269,270,1011,1023; outbound opcodes=45,113,117,134,135,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -596,6 +596,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.AccountMoreInfoPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.HireTutorClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.TutorMsgClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.PassiveMoveClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.AntiMacroResultPacketType
@@ -611,6 +613,8 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.FollowCharacterClientPacketType => "FollowCharacter(193)",
                 LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType => "SetDirectionMode(253)",
                 LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",
+                LocalUtilityPacketInboxManager.HireTutorClientPacketType => "HireTutor(255)",
+                LocalUtilityPacketInboxManager.TutorMsgClientPacketType => "TutorMsg(256)",
                 LocalUtilityPacketInboxManager.PassiveMoveClientPacketType => "PassiveMove(269)",
                 LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
                 LocalUtilityPacketInboxManager.AntiMacroResultPacketType => "AntiMacroResult(1011)",

@@ -401,9 +401,15 @@ namespace HaCreator.MapSimulator.Managers
                     return;
                 }
 
-                _pendingMessages.Enqueue(new SnowBallPacketInboxMessage(opcode, payload, $"official-session:{pair.RemoteEndpoint}", $"packetraw {Convert.ToHexString(raw)}"));
+                byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
+                _pendingMessages.Enqueue(new SnowBallPacketInboxMessage(
+                    SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
+                    relayPayload,
+                    $"official-session:{pair.RemoteEndpoint}",
+                    $"packetraw {Convert.ToHexString(raw)}"));
                 ReceivedCount++;
-                LastStatus = $"Queued SnowBall opcode {opcode} from live session {pair.RemoteEndpoint}.";
+                LastStatus =
+                    $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for SnowBall opcode {opcode} from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
             {

@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.Character.Skills;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -1271,13 +1272,8 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            if (frameIndex >= 15)
-            {
-                return;
-            }
-
-            float remainingProgress = 1f - (frameIndex / 14f);
-            int overlayHeight = Math.Clamp((int)Math.Round(iconRect.Height * remainingProgress), 0, iconRect.Height);
+            float remainingProgress = SkillManager.ResolveCooldownMaskFallbackFillRatio(frameIndex);
+            int overlayHeight = Math.Clamp((int)Math.Ceiling(iconRect.Height * remainingProgress), 0, iconRect.Height);
             if (overlayHeight <= 0)
             {
                 return;

@@ -141,6 +141,15 @@ namespace HaCreator.MapSimulator.Character
 
         private readonly record struct MorphActionCacheKey(int TemplateId, string ActionName);
 
+        private sealed class CharacterImageEntry
+        {
+            public WzImage BaseImage { get; init; }
+            public WzObject ActionSourceRoot { get; init; }
+            public bool HasWeeklyVariant { get; init; }
+            public bool UsesWeeklyVariantOverride { get; init; }
+            public int ResolvedWeeklyVariantIndex { get; init; } = -1;
+        }
+
         private sealed class MorphImageEntry
         {
             public int TemplateId { get; init; }
@@ -2163,32 +2172,22 @@ namespace HaCreator.MapSimulator.Character
         public CharacterPart LoadEquipment(int itemId)
         {
             if (_equipCache.TryGetValue(itemId, out var cached))
-                return cached?.Clone();
+            {
+                int resolvedWeeklyVariantIndex = ResolveClientWeeklyVariantIndex(DateTime.Now.DayOfWeek);
+                if (!cached.HasWeeklyVariant || cached.ResolvedWeeklyVariantIndex == resolvedWeeklyVariantIndex)
+                {
+                    return cached?.Clone();
+                }
+            }
 
             // Determine equipment folder based on ID range
             string folder = GetEquipmentFolder(itemId);
             if (folder == null)
                 return null;
 
-            string imgName = itemId.ToString("D8") + ".img";
-            WzImage imgNode = null;
-
-            // Try WzFile first
-            var equipDir = _characterWz?.WzDirectory?[folder];
-            if (equipDir != null)
-            {
-                imgNode = equipDir[imgName] as WzImage;
-            }
-
-            // Fall back to Program.FindImage
-            if (imgNode == null)
-            {
-                imgNode = Program.FindImage("Character", $"{folder}/{imgName}");
-            }
-
-            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] LoadEquipment id={itemId}, folder={folder}, found={imgNode != null}");
-
-            if (imgNode == null)
+            CharacterImageEntry imageEntry = GetCharacterImageEntry(itemId, folder);
+            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] LoadEquipment id={itemId}, folder={folder}, found={imageEntry?.BaseImage != null}, weeklyOverride={imageEntry?.UsesWeeklyVariantOverride == true}, weeklyIndex={imageEntry?.ResolvedWeeklyVariantIndex ?? -1}");
+            if (imageEntry?.BaseImage == null)
                 return null;
 
             CharacterPart part;
@@ -2197,25 +2196,27 @@ namespace HaCreator.MapSimulator.Character
             // Create appropriate part type
             if (folder == "Weapon")
             {
-                part = LoadWeapon(imgNode as WzImage, itemId);
+                part = LoadWeapon(imageEntry, itemId);
             }
             else
             {
                 part = new CharacterPart
                 {
                     ItemId = itemId,
-                    Name = GetItemName(imgNode as WzImage) ?? $"Equip_{itemId}",
+                    Name = GetItemName(imageEntry.BaseImage) ?? $"Equip_{itemId}",
                     Type = GetPartType(folder),
                     Slot = slot
                 };
 
-                LoadPartAnimations(part, imgNode as WzImage);
+                LoadPartAnimations(part, imageEntry.ActionSourceRoot);
             }
 
             if (part != null)
             {
                 // Load info
-                LoadEquipInfo(part, imgNode as WzImage);
+                LoadEquipInfo(part, imageEntry.BaseImage);
+                part.UsesWeeklyVariantOverride = imageEntry.UsesWeeklyVariantOverride;
+                part.ResolvedWeeklyVariantIndex = imageEntry.ResolvedWeeklyVariantIndex;
                 AttachTamingMobOverlayResolver(part);
                 AttachTamingMobActionFrameOwner(part);
                 _equipCache[itemId] = part;
@@ -2231,8 +2232,9 @@ namespace HaCreator.MapSimulator.Character
             return part;
         }
 
-        private WeaponPart LoadWeapon(WzImage img, int itemId)
+        private WeaponPart LoadWeapon(CharacterImageEntry imageEntry, int itemId)
         {
+            WzImage img = imageEntry?.BaseImage;
             if (img == null) return null;
 
             var weapon = new WeaponPart
@@ -2257,15 +2259,18 @@ namespace HaCreator.MapSimulator.Character
             {
                 LoadEquipInfo(weapon, img);
                 weapon.AttackSpeed = GetIntValue(info["attackSpeed"]) ?? 6;
+                weapon.WalkFrameCount = GetIntValue(info["walk"]) ?? 0;
+                weapon.StandFrameCount = GetIntValue(info["stand"]) ?? 0;
+                weapon.AttackFrameCount = GetIntValue(info["attack"]) ?? 0;
                 weapon.Attack = weapon.BonusWeaponAttack;
                 weapon.WeaponType = ResolveWeaponType(itemId);
                 weapon.AfterImageType = GetStringValue(info["afterImage"]);
                 weapon.IsTwoHanded = GetIntValue(info["twoHanded"]) == 1;
-                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon info: attackSpeed={weapon.AttackSpeed}, PAD={weapon.Attack}, twoHanded={weapon.IsTwoHanded}");
+                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon info: attackSpeed={weapon.AttackSpeed}, walk={weapon.WalkFrameCount}, stand={weapon.StandFrameCount}, attack={weapon.AttackFrameCount}, PAD={weapon.Attack}, twoHanded={weapon.IsTwoHanded}");
             }
 
             // Load animations - weapon structure is action/frame/weapon (e.g., stand1/0/weapon)
-            LoadWeaponAnimations(weapon, img);
+            LoadWeaponAnimations(weapon, imageEntry?.ActionSourceRoot ?? img);
 
             System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon loaded with {weapon.Animations.Count} animations");
 
@@ -2276,18 +2281,18 @@ namespace HaCreator.MapSimulator.Character
         /// Load weapon animations - handles weapon-specific structure
         /// Weapon structure: action/frame/weapon (e.g., stand1/0/weapon)
         /// </summary>
-        private void LoadWeaponAnimations(WeaponPart weapon, WzImage img)
+        private void LoadWeaponAnimations(WeaponPart weapon, WzObject actionSourceRoot)
         {
-            if (img == null) return;
+            if (weapon == null || actionSourceRoot == null) return;
 
             // Combine standard and attack actions
             var allActions = BuildEagerActionLoadOrder(
-                BuildAvailableActionSet(img.WzProperties.Select(prop => prop.Name)),
+                BuildAvailableActionSet(EnumerateChildProperties(actionSourceRoot).Select(prop => prop.Name)),
                 includeAttackActions: true);
 
             foreach (var action in allActions)
             {
-                var actionNode = img[action];
+                var actionNode = GetChildProperty(actionSourceRoot, action);
                 if (actionNode == null) continue;
 
                 var anim = LoadWeaponAnimation(actionNode, action);
@@ -2503,7 +2508,9 @@ namespace HaCreator.MapSimulator.Character
 
             part.VSlot = GetStringValue(info["vslot"]);
             part.ISlot = GetStringValue(info["islot"]);
+            part.Sfx = GetStringValue(info["sfx"]);
             part.IsCash = GetIntValue(info["cash"]) == 1;
+            part.HasWeeklyVariant = GetIntValue(info["weekly"]) == 1;
             part.RequiredJobMask = GetIntValue(info["reqJob"]) ?? 0;
             part.RequiredLevel = GetIntValue(info["reqLevel"]) ?? 0;
             part.RequiredSTR = GetIntValue(info["reqSTR"]) ?? 0;
@@ -2768,15 +2775,13 @@ namespace HaCreator.MapSimulator.Character
 
         #region Animation Loading
 
-        private void LoadPartAnimations(CharacterPart part, WzImage img, bool includeAttackActions = true)
+        private void LoadPartAnimations(CharacterPart part, WzObject actionSourceRoot, bool includeAttackActions = true)
         {
-            if (img == null) return;
+            if (part == null || actionSourceRoot == null) return;
 
-            img.ParseImage();
-
-            HashSet<string> availableActions = BuildAvailableActionSet(img.WzProperties.Select(prop => prop.Name));
+            HashSet<string> availableActions = BuildAvailableActionSet(EnumerateChildProperties(actionSourceRoot).Select(prop => prop.Name));
             part.AvailableAnimations = availableActions;
-            part.AnimationResolver = actionName => LoadAnimationForAction(img, actionName);
+            part.AnimationResolver = actionName => LoadAnimationForAction(actionSourceRoot, actionName);
 
             // Startup only needs the common locomotion and attack families. Less common
             // actions are resolved lazily the first time the assembler requests them.
@@ -2784,7 +2789,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (var action in actionsToLoad)
             {
-                CharacterAnimation anim = LoadAnimationForAction(img, action);
+                CharacterAnimation anim = LoadAnimationForAction(actionSourceRoot, action);
                 if (anim != null && anim.Frames.Count > 0)
                 {
                     part.Animations[action] = anim;
@@ -2863,14 +2868,14 @@ namespace HaCreator.MapSimulator.Character
             Debug.WriteLine($"[LoadAnimation] Fallback scan for '{fallbackKey}' because direct numbered frames contained no canvas. Frame0 children: {frameContents}. First resolved UOL type: {resolvedType}.");
         }
 
-        private CharacterAnimation LoadAnimationForAction(WzImage img, string actionName)
+        private CharacterAnimation LoadAnimationForAction(WzObject actionSourceRoot, string actionName)
         {
-            if (img == null || string.IsNullOrWhiteSpace(actionName))
+            if (actionSourceRoot == null || string.IsNullOrWhiteSpace(actionName))
             {
                 return null;
             }
 
-            WzImageProperty actionNode = img[actionName];
+            WzImageProperty actionNode = GetChildProperty(actionSourceRoot, actionName);
             if (actionNode == null)
             {
                 return null;
@@ -3061,6 +3066,115 @@ namespace HaCreator.MapSimulator.Character
 
             anim.CalculateTotalDuration();
             return anim;
+        }
+
+        private CharacterImageEntry GetCharacterImageEntry(int itemId, string folder, WzImage exactImage = null)
+        {
+            WzImage baseImage = exactImage ?? GetEquipmentImage(folder, itemId);
+            if (baseImage == null)
+            {
+                return null;
+            }
+
+            baseImage.ParseImage();
+
+            bool hasWeeklyVariant = GetIntValue(baseImage["info"]?["weekly"]) == 1;
+            WzObject actionSourceRoot = baseImage;
+            bool usesWeeklyVariantOverride = false;
+            int resolvedWeeklyVariantIndex = -1;
+
+            if (hasWeeklyVariant
+                && TryResolveWeeklyActionSource(baseImage, DateTime.Now.DayOfWeek, out WzImageProperty weeklyActionRoot, out resolvedWeeklyVariantIndex))
+            {
+                actionSourceRoot = weeklyActionRoot;
+                usesWeeklyVariantOverride = true;
+            }
+
+            return new CharacterImageEntry
+            {
+                BaseImage = baseImage,
+                ActionSourceRoot = actionSourceRoot,
+                HasWeeklyVariant = hasWeeklyVariant,
+                UsesWeeklyVariantOverride = usesWeeklyVariantOverride,
+                ResolvedWeeklyVariantIndex = usesWeeklyVariantOverride ? resolvedWeeklyVariantIndex : -1
+            };
+        }
+
+        private WzImage GetEquipmentImage(string folder, int itemId)
+        {
+            if (string.IsNullOrWhiteSpace(folder) || itemId <= 0)
+            {
+                return null;
+            }
+
+            string imgName = itemId.ToString("D8") + ".img";
+
+            var equipDir = _characterWz?.WzDirectory?[folder];
+            if (equipDir?[imgName] is WzImage directImage)
+            {
+                return directImage;
+            }
+
+            return Program.FindImage("Character", $"{folder}/{imgName}");
+        }
+
+        internal static int ResolveClientWeeklyVariantIndex(DayOfWeek dayOfWeek)
+        {
+            return dayOfWeek switch
+            {
+                DayOfWeek.Monday => 0,
+                DayOfWeek.Tuesday => 1,
+                DayOfWeek.Wednesday => 2,
+                DayOfWeek.Thursday => 3,
+                DayOfWeek.Friday => 4,
+                DayOfWeek.Saturday => 5,
+                _ => -1
+            };
+        }
+
+        internal static bool TryResolveWeeklyActionSource(
+            WzImage baseImage,
+            DayOfWeek dayOfWeek,
+            out WzImageProperty weeklyActionRoot,
+            out int resolvedWeeklyVariantIndex)
+        {
+            weeklyActionRoot = null;
+            resolvedWeeklyVariantIndex = ResolveClientWeeklyVariantIndex(dayOfWeek);
+            if (baseImage == null || resolvedWeeklyVariantIndex < 0)
+            {
+                return false;
+            }
+
+            baseImage.ParseImage();
+
+            WzImageProperty weeklyRoot = baseImage["weekly"];
+            if (weeklyRoot == null)
+            {
+                return false;
+            }
+
+            weeklyActionRoot = weeklyRoot[resolvedWeeklyVariantIndex.ToString(CultureInfo.InvariantCulture)];
+            return weeklyActionRoot != null;
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateChildProperties(WzObject sourceRoot)
+        {
+            return sourceRoot switch
+            {
+                WzImage image => image.WzProperties.Cast<WzImageProperty>(),
+                WzImageProperty property => property.WzProperties.Cast<WzImageProperty>(),
+                _ => Enumerable.Empty<WzImageProperty>()
+            };
+        }
+
+        private static WzImageProperty GetChildProperty(WzObject sourceRoot, string name)
+        {
+            return sourceRoot switch
+            {
+                WzImage image => image[name],
+                WzImageProperty property => property[name],
+                _ => null
+            };
         }
 
         private CharacterFrame LoadFrame(WzCanvasProperty canvas, string frameName, string frameUol = null)

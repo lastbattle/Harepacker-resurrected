@@ -716,6 +716,26 @@ namespace HaCreator.MapSimulator.Loaders
             int height = 132)
         {
             Texture2D noticeTexture = LoadCanvasTexture(utilDialogProperty, "notice", device);
+            Texture2D topTexture = LoadCanvasTexture(utilDialogProperty, "t", device);
+            Texture2D centerTexture = LoadCanvasTexture(utilDialogProperty, "c", device);
+            Texture2D bottomTexture = LoadCanvasTexture(utilDialogProperty, "s", device);
+
+            if (topTexture != null && centerTexture != null && bottomTexture != null)
+            {
+                Texture2D stitchedTexture = CreateStitchedUtilDlgFrameTexture(
+                    topTexture,
+                    centerTexture,
+                    bottomTexture,
+                    topTexture.Width,
+                    height,
+                    device);
+                if (stitchedTexture != null)
+                {
+                    int cropX = ResolveUtilDlgFrameCropX(stitchedTexture, noticeTexture, width);
+                    return CropTextureHorizontally(stitchedTexture, cropX, width, device);
+                }
+            }
+
             if (noticeTexture != null
                 && width == noticeTexture.Width)
             {
@@ -728,15 +748,6 @@ namespace HaCreator.MapSimulator.Loaders
                 {
                     return CreateExtendedUtilDlgNoticeFrameTexture(noticeTexture, height, device);
                 }
-            }
-
-            Texture2D topTexture = LoadCanvasTexture(utilDialogProperty, "t", device);
-            Texture2D centerTexture = LoadCanvasTexture(utilDialogProperty, "c", device);
-            Texture2D bottomTexture = LoadCanvasTexture(utilDialogProperty, "s", device);
-
-            if (topTexture != null && centerTexture != null && bottomTexture != null)
-            {
-                return CreateStitchedUtilDlgFrameTexture(topTexture, centerTexture, bottomTexture, width, height, device);
             }
 
             return noticeTexture;
@@ -825,6 +836,129 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D frameTexture = new(device, frameWidth, frameHeight);
             frameTexture.SetData(frameData);
             return frameTexture;
+        }
+
+        internal static int ResolveUtilDlgFrameCropX(
+            Color[] stitchedData,
+            int stitchedWidth,
+            int stitchedHeight,
+            Color[] noticeData,
+            int noticeWidth,
+            int noticeHeight,
+            int targetWidth)
+        {
+            if (stitchedData == null
+                || stitchedWidth <= 0
+                || stitchedHeight <= 0
+                || targetWidth <= 0)
+            {
+                return 0;
+            }
+
+            int maxCropX = Math.Max(0, stitchedWidth - Math.Min(targetWidth, stitchedWidth));
+            if (noticeData == null
+                || noticeWidth <= 0
+                || noticeHeight <= 0
+                || noticeData.Length < noticeWidth * noticeHeight)
+            {
+                return maxCropX / 2;
+            }
+
+            int comparisonWidth = Math.Min(Math.Min(targetWidth, noticeWidth), stitchedWidth);
+            int comparisonHeight = Math.Min(stitchedHeight, noticeHeight);
+            if (comparisonWidth <= 0 || comparisonHeight <= 0)
+            {
+                return maxCropX / 2;
+            }
+
+            long bestScore = long.MaxValue;
+            int bestCropX = maxCropX / 2;
+            for (int cropX = 0; cropX <= maxCropX; cropX++)
+            {
+                long score = 0;
+                for (int y = 0; y < comparisonHeight; y++)
+                {
+                    int stitchedRow = y * stitchedWidth;
+                    int noticeRow = y * noticeWidth;
+                    for (int x = 0; x < comparisonWidth; x++)
+                    {
+                        Color stitched = stitchedData[stitchedRow + cropX + x];
+                        Color notice = noticeData[noticeRow + x];
+                        score += Math.Abs(stitched.A - notice.A);
+                        score += Math.Abs(stitched.R - notice.R);
+                        score += Math.Abs(stitched.G - notice.G);
+                        score += Math.Abs(stitched.B - notice.B);
+                    }
+                }
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestCropX = cropX;
+                }
+            }
+
+            return bestCropX;
+        }
+
+        private static int ResolveUtilDlgFrameCropX(
+            Texture2D stitchedTexture,
+            Texture2D noticeTexture,
+            int targetWidth)
+        {
+            if (stitchedTexture == null)
+            {
+                return 0;
+            }
+
+            Color[] stitchedData = GetTextureData(stitchedTexture);
+            Color[] noticeData = noticeTexture != null
+                ? GetTextureData(noticeTexture)
+                : null;
+            return ResolveUtilDlgFrameCropX(
+                stitchedData,
+                stitchedTexture.Width,
+                stitchedTexture.Height,
+                noticeData,
+                noticeTexture?.Width ?? 0,
+                noticeTexture?.Height ?? 0,
+                targetWidth);
+        }
+
+        private static Texture2D CropTextureHorizontally(
+            Texture2D texture,
+            int cropX,
+            int targetWidth,
+            GraphicsDevice device)
+        {
+            if (texture == null)
+            {
+                return null;
+            }
+
+            int width = Math.Max(1, Math.Min(targetWidth, texture.Width));
+            int clampedCropX = Math.Clamp(cropX, 0, Math.Max(0, texture.Width - width));
+            if (clampedCropX == 0 && width == texture.Width)
+            {
+                return texture;
+            }
+
+            int height = texture.Height;
+            Color[] sourceData = GetTextureData(texture);
+            Color[] croppedData = new Color[width * height];
+            for (int y = 0; y < height; y++)
+            {
+                Array.Copy(
+                    sourceData,
+                    (y * texture.Width) + clampedCropX,
+                    croppedData,
+                    y * width,
+                    width);
+            }
+
+            Texture2D croppedTexture = new(device, width, height);
+            croppedTexture.SetData(croppedData);
+            return croppedTexture;
         }
 
         private static Color[] GetTextureData(Texture2D texture)
@@ -3396,6 +3530,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             SeedStarterEnhancementInventory(manager.InventoryWindow as IInventoryRuntime);
             UIWindowBase itemUpgrade = CreateItemUpgradeWindow(
+                manager,
                 uiWindow1Image,
                 uiWindow2Image,
                 basicImage,
@@ -7470,6 +7605,7 @@ namespace HaCreator.MapSimulator.Loaders
 
 
         private static UIWindowBase CreateItemUpgradeWindow(
+            UIWindowManager manager,
             WzImage uiWindow1Image,
             WzImage uiWindow2Image,
             WzImage basicImage,
@@ -7565,6 +7701,22 @@ namespace HaCreator.MapSimulator.Loaders
                 uiWindow2Image?["MiracleCube_8th"] as WzSubProperty,
                 btClickSound,
                 btOverSound,
+                device);
+            ConfigureCubeAnimationTheme(
+                manager,
+                ItemUpgradeUI.VisualThemeKind.MiracleCube,
+                uiWindow2Image?["MiracleCube"] as WzSubProperty
+                    ?? uiWindow1Image?["MiracleCube"] as WzSubProperty,
+                device);
+            ConfigureCubeAnimationTheme(
+                manager,
+                ItemUpgradeUI.VisualThemeKind.HyperMiracleCube,
+                uiWindow2Image?["HyperMiracleCube"] as WzSubProperty,
+                device);
+            ConfigureCubeAnimationTheme(
+                manager,
+                ItemUpgradeUI.VisualThemeKind.MapleMiracleCube,
+                uiWindow2Image?["MiracleCube_8th"] as WzSubProperty,
                 device);
             UIObject startButton = LoadButton(sourceProperty, "BtStart", btClickSound, btOverSound, device);
             if (startButton == null)
@@ -7677,6 +7829,24 @@ namespace HaCreator.MapSimulator.Loaders
                     useCubePresentationChrome
                         ? LoadAnimationFrames(sourceProperty["Effect"] as WzSubProperty, device)
                         : null));
+        }
+
+        private static void ConfigureCubeAnimationTheme(
+            UIWindowManager manager,
+            ItemUpgradeUI.VisualThemeKind themeKind,
+            WzSubProperty sourceProperty,
+            GraphicsDevice device)
+        {
+            ProductionEnhancementAnimationDisplayer animationDisplayer = manager?.ProductionEnhancementAnimationDisplayer;
+            if (animationDisplayer == null || sourceProperty == null || device == null)
+            {
+                return;
+            }
+
+            animationDisplayer.ConfigureCube(
+                themeKind,
+                LoadWindowOverlayFrames(sourceProperty["Effect"] as WzSubProperty, device),
+                Point.Zero);
         }
 
 

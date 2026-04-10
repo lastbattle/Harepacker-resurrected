@@ -207,7 +207,25 @@ namespace HaCreator.MapSimulator
             int safetyCharmCount = GetInventoryWindowItemCount(5130000);
             int wheelOfFortuneCount = GetInventoryWindowItemCount(5510000);
             bool canUsePremiumCurrentFieldRecovery = IsPremiumCurrentFieldReviveUsable();
+            bool canUseUpgradeTombRevive = IsUpgradeTombReviveUsable();
 
+            return ResolveReviveOwnerVariant(
+                hasSoulStone,
+                premiumSafetyCharmCount,
+                safetyCharmCount,
+                wheelOfFortuneCount,
+                canUsePremiumCurrentFieldRecovery,
+                canUseUpgradeTombRevive);
+        }
+
+        internal static ReviveOwnerVariant ResolveReviveOwnerVariant(
+            bool hasSoulStone,
+            int premiumSafetyCharmCount,
+            int safetyCharmCount,
+            int wheelOfFortuneCount,
+            bool canUsePremiumCurrentFieldRecovery,
+            bool canUseUpgradeTombRevive)
+        {
             // Client evidence:
             // - CUIRevive::OnCreate checks soul-stone state first.
             // - It then gates the upgrade-tomb branch on is_fieldtype_upgradetomb_usable plus Wheel of Fortune ownership.
@@ -220,9 +238,9 @@ namespace HaCreator.MapSimulator
             // other branches from the live inventory seam plus the closest available field rule.
             return ReviveOwnerRuntime.ResolveClientVariant(
                 hasSoulStone,
-                hasUpgradeTombChoice: wheelOfFortuneCount > 0 && IsUpgradeTombReviveUsable(),
+                hasUpgradeTombChoice: wheelOfFortuneCount > 0 && canUseUpgradeTombRevive,
                 hasPremiumSafetyCharm: canUsePremiumCurrentFieldRecovery && premiumSafetyCharmCount > 0,
-                hasSafetyCharm: canUsePremiumCurrentFieldRecovery && safetyCharmCount > 0);
+                hasSafetyCharm: safetyCharmCount > 0);
         }
 
         private bool IsPremiumCurrentFieldReviveUsable()

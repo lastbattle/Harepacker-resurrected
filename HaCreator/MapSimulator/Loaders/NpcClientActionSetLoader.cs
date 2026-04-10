@@ -20,8 +20,8 @@ namespace HaCreator.MapSimulator.Loaders
     {
         private static readonly string[] ActionZeroClientActionCandidates =
         {
-            Animation.AnimationKeys.Stand,
-            "default"
+            "default",
+            Animation.AnimationKeys.Stand
         };
 
         private static readonly string[] ActionOneClientActionCandidates =
@@ -226,6 +226,84 @@ namespace HaCreator.MapSimulator.Loaders
             if (yielded.Add(numericCandidate))
             {
                 yield return numericCandidate;
+            }
+        }
+
+        internal static string ResolveClientActionName(
+            int clientActionId,
+            IEnumerable<string> availableActionNames,
+            IEnumerable<string> authoredSpeakFallbackActions = null)
+        {
+            List<string> availableActionOrder = new();
+            var availableActionMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string actionName in availableActionNames ?? Array.Empty<string>())
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && !availableActionMap.ContainsKey(actionName))
+                {
+                    availableActionMap[actionName] = actionName;
+                    availableActionOrder.Add(actionName);
+                }
+            }
+
+            if (availableActionMap.Count <= 0)
+            {
+                return Animation.AnimationKeys.Stand;
+            }
+
+            foreach (string candidate in EnumerateClientActionNameCandidates(clientActionId))
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) &&
+                    availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
+                {
+                    return resolvedCandidate;
+                }
+            }
+
+            if (clientActionId == 2)
+            {
+                foreach (string candidate in authoredSpeakFallbackActions ?? Array.Empty<string>())
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate) &&
+                        availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
+                    {
+                        return resolvedCandidate;
+                    }
+                }
+            }
+
+            foreach (string actionName in availableActionOrder)
+            {
+                if (actionName.StartsWith(Animation.AnimationKeys.Stand, StringComparison.OrdinalIgnoreCase))
+                {
+                    return actionName;
+                }
+            }
+
+            return availableActionOrder[0];
+        }
+
+        internal static IEnumerable<string> EnumerateAuthoredSpeakFallbackActions(WzImage source)
+        {
+            if (source == null)
+            {
+                yield break;
+            }
+
+            HashSet<string> yieldedActions = new(StringComparer.OrdinalIgnoreCase);
+            foreach (NpcClientActionSetDefinition actionSet in GetClientActionSets(source))
+            {
+                foreach (WzImageProperty action in actionSet.Actions ?? Array.Empty<WzImageProperty>())
+                {
+                    if (action == null
+                        || string.IsNullOrWhiteSpace(action.Name)
+                        || action["speak"] == null
+                        || !yieldedActions.Add(action.Name))
+                    {
+                        continue;
+                    }
+
+                    yield return action.Name;
+                }
             }
         }
 

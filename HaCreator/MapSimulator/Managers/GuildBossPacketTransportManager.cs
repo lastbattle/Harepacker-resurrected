@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Fields;
 using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
@@ -255,6 +256,17 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!TryParseRelayPayload(tokens, 1, out payload, out message))
+                {
+                    packetType = 0;
+                    return false;
+                }
+
+                return true;
+            }
+
             if (packetType == OutboundPulleyRequestOpcode)
             {
                 ignored = true;
@@ -330,11 +342,59 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!TryValidateRelayPayload(payload, out error))
+                {
+                    packetType = 0;
+                    payload = Array.Empty<byte>();
+                    return false;
+                }
+
+                return true;
+            }
+
             if (packetType != PacketTypeHealerMove && packetType != PacketTypePulleyStateChange)
             {
                 error = $"Unsupported guild boss raw packet opcode: {packetType}";
                 packetType = 0;
                 payload = Array.Empty<byte>();
+                return false;
+            }
+
+            payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+            packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            return true;
+        }
+
+        private static bool TryParseRelayPayload(string[] tokens, int valueIndex, out byte[] payload, out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = null;
+            if (!TryParseHexPayload(tokens, valueIndex, out payload))
+            {
+                error =
+                    $"Guild boss packet {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} requires a current-wrapper relay payload.";
+                return false;
+            }
+
+            return TryValidateRelayPayload(payload, out error);
+        }
+
+        private static bool TryValidateRelayPayload(byte[] relayPayload, out string error)
+        {
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    relayPayload,
+                    out int wrapperPacketType,
+                    out _,
+                    out error))
+            {
+                return false;
+            }
+
+            if (wrapperPacketType != PacketTypeHealerMove && wrapperPacketType != PacketTypePulleyStateChange)
+            {
+                error = $"Unsupported guild boss current-wrapper relay packet opcode: {wrapperPacketType}";
                 return false;
             }
 
@@ -514,6 +574,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType switch
             {
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode => $"current-wrapper relay ({SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode})",
                 PacketTypeHealerMove => "healer (344)",
                 PacketTypePulleyStateChange => "pulley (345)",
                 _ => packetType.ToString(CultureInfo.InvariantCulture)

@@ -15,12 +15,10 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedNpcShopOutboundOpcode = -1;
         private byte[] _lastPacketOwnedNpcShopOutboundPayload = Array.Empty<byte>();
         private string _lastPacketOwnedNpcShopOutboundSummary;
-        private int _lastPacketOwnedAdminShopOutboundOpcode = -1;
-        private byte[] _lastPacketOwnedAdminShopOutboundPayload = Array.Empty<byte>();
-        private string _lastPacketOwnedAdminShopOutboundSummary;
         private int _lastPacketOwnedStoreBankOutboundOpcode = -1;
         private byte[] _lastPacketOwnedStoreBankOutboundPayload = Array.Empty<byte>();
         private string _lastPacketOwnedStoreBankOutboundSummary;
+        private bool _packetOwnedStoreBankGetAllPromptActive;
 
         private bool TryApplyPacketOwnedNpcUtilityPacket(int packetType, byte[] payload, out string message)
         {
@@ -46,6 +44,11 @@ namespace HaCreator.MapSimulator
                 case 370:
                 {
                     bool applied = _packetOwnedStoreBankRuntime.TryApplyPacket(packetType, payload, out message);
+                    if (applied && !_packetOwnedStoreBankRuntime.HasPendingGetAllRequest)
+                    {
+                        HidePacketOwnedStoreBankGetAllPrompt();
+                    }
+
                     if (applied && packetType == 370 && payload.Length > 0 && payload[0] == 35)
                     {
                         PublishDynamicObjectTagStatesForNpc(_packetOwnedStoreBankRuntime.NpcTemplateId, currTickCount);
@@ -123,11 +126,9 @@ namespace HaCreator.MapSimulator
 
         private string BuildPacketOwnedAdminShopFooter()
         {
-            return DescribePacketOwnedNpcUtilityOutboundStatus(
-                "admin-shop",
-                _lastPacketOwnedAdminShopOutboundOpcode,
-                _lastPacketOwnedAdminShopOutboundPayload,
-                _lastPacketOwnedAdminShopOutboundSummary);
+            return uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI adminShopWindow
+                ? adminShopWindow.BuildPacketOwnedAdminShopOwnerFooter()
+                : "admin-shop outbound=idle.";
         }
 
         private IReadOnlyList<string> BuildPacketOwnedStoreBankLines()
@@ -244,20 +245,26 @@ namespace HaCreator.MapSimulator
                 int itemCount = BitConverter.ToUInt16(payload, sizeof(int));
                 if (itemCount > 0)
                 {
+                    if (!AdminShopPacketOwnedOpenCodec.TryDecode(payload, out AdminShopPacketOwnedOpenPayloadSnapshot snapshot))
+                    {
+                        message = "Admin-shop packet 367 payload could not be decoded with the recovered CAdminShopDlg::SetAdminShopDlg layout.";
+                        return false;
+                    }
+
                     string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
                     if (!string.IsNullOrWhiteSpace(blockingOwner))
                     {
-                        message = adminShopWindow.ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(blockingOwner, npcTemplateId, itemCount);
+                        message = adminShopWindow.ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(blockingOwner, snapshot);
                         return true;
                     }
 
-                    if (!adminShopWindow.TryBeginPacketOwnedAdminShopSession(payload, out message))
+                    if (!adminShopWindow.TryBeginPacketOwnedAdminShopSession(snapshot, out message))
                     {
                         return false;
                     }
 
                     PublishDynamicObjectTagStatesForNpc(npcTemplateId, currTickCount);
-                    message = ShowPacketOwnedUniqueUtilityWindow(MapSimulatorWindowNames.CashShop, "Admin Shop", message);
+                    message = ShowPacketOwnedAdminShopOwnerWindow(adminShopWindow, message);
                     return true;
                 }
 
@@ -295,10 +302,40 @@ namespace HaCreator.MapSimulator
             if (reopenRequested)
             {
                 PublishDynamicObjectTagStatesForNpc(adminShopWindow.PacketOwnedAdminShopNpcTemplateId, currTickCount);
-                message = ShowPacketOwnedUniqueUtilityWindow(MapSimulatorWindowNames.CashShop, "Admin Shop", message);
+                message = ShowPacketOwnedAdminShopOwnerWindow(adminShopWindow, message);
             }
 
             return true;
+        }
+
+        private string ShowPacketOwnedAdminShopOwnerWindow(AdminShopDialogUI adminShopWindow, string defaultMessage)
+        {
+            if (adminShopWindow == null)
+            {
+                return defaultMessage ?? "Admin Shop owner is unavailable.";
+            }
+
+            if (uiWindowManager == null)
+            {
+                return defaultMessage ?? "Admin Shop owner is unavailable because the UI window manager is missing.";
+            }
+
+            string blockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
+            if (!string.IsNullOrWhiteSpace(blockingOwner))
+            {
+                adminShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
+                    $"CAdminShopDlg owner surface stayed hidden because {blockingOwner} already owned the unique-modeless slot.");
+                return $"{defaultMessage} Admin Shop stayed in status-only mode because {blockingOwner} is already visible.";
+            }
+
+            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashShop);
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.CashShop) is UIWindowBase window)
+            {
+                uiWindowManager.BringToFront(window);
+            }
+
+            adminShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceShown();
+            return defaultMessage;
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedNpcShopCommand(string[] args)
@@ -456,14 +493,7 @@ namespace HaCreator.MapSimulator
         {
             if (_packetOwnedStoreBankRuntime.HasPendingGetAllRequest)
             {
-                bool hasGetAllOutbound = _packetOwnedStoreBankRuntime.TryBuildPendingGetAllOutboundRequest(
-                    out PacketOwnedNpcUtilityOutboundRequest getAllRequest,
-                    out string getAllOutboundError);
-                DispatchPacketOwnedStoreBankOutboundRequest(
-                    hasGetAllOutbound,
-                    getAllRequest,
-                    _packetOwnedStoreBankRuntime.ConsumePendingGetAllRequest(),
-                    getAllOutboundError);
+                OpenPacketOwnedStoreBankGetAllPrompt();
                 return;
             }
 
@@ -479,6 +509,74 @@ namespace HaCreator.MapSimulator
                 request,
                 localMessage,
                 hasRequest ? null : _packetOwnedStoreBankRuntime.StatusMessage);
+        }
+
+        private void OpenPacketOwnedStoreBankGetAllPrompt()
+        {
+            if (!_packetOwnedStoreBankRuntime.HasPendingGetAllRequest)
+            {
+                return;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is not InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                bool hasGetAllOutbound = _packetOwnedStoreBankRuntime.TryBuildPendingGetAllOutboundRequest(
+                    out PacketOwnedNpcUtilityOutboundRequest getAllRequest,
+                    out string getAllOutboundError);
+                DispatchPacketOwnedStoreBankOutboundRequest(
+                    hasGetAllOutbound,
+                    getAllRequest,
+                    _packetOwnedStoreBankRuntime.ConsumePendingGetAllRequest(),
+                    getAllOutboundError);
+                return;
+            }
+
+            _packetOwnedStoreBankGetAllPromptActive = true;
+            ConfigureInGameConfirmDialog(
+                "Store Bank",
+                _packetOwnedStoreBankRuntime.BuildPendingGetAllPromptBody(),
+                "Recovered CStoreBankDlg::SendGetAllRequest confirmation owner.",
+                onConfirm: AcceptPacketOwnedStoreBankGetAllPrompt,
+                onCancel: CancelPacketOwnedStoreBankGetAllPrompt);
+            ShowWindow(
+                MapSimulatorWindowNames.InGameConfirmDialog,
+                confirmDialogWindow,
+                trackDirectionModeOwner: true);
+        }
+
+        private void AcceptPacketOwnedStoreBankGetAllPrompt()
+        {
+            _packetOwnedStoreBankGetAllPromptActive = false;
+            bool hasGetAllOutbound = _packetOwnedStoreBankRuntime.TryBuildPendingGetAllOutboundRequest(
+                out PacketOwnedNpcUtilityOutboundRequest getAllRequest,
+                out string getAllOutboundError);
+            DispatchPacketOwnedStoreBankOutboundRequest(
+                hasGetAllOutbound,
+                getAllRequest,
+                _packetOwnedStoreBankRuntime.ConsumePendingGetAllRequest(),
+                getAllOutboundError);
+        }
+
+        private void CancelPacketOwnedStoreBankGetAllPrompt()
+        {
+            _packetOwnedStoreBankGetAllPromptActive = false;
+            _packetOwnedStoreBankRuntime.CancelPendingGetAllRequest();
+        }
+
+        private void HidePacketOwnedStoreBankGetAllPrompt()
+        {
+            if (!_packetOwnedStoreBankGetAllPromptActive)
+            {
+                return;
+            }
+
+            _packetOwnedStoreBankGetAllPromptActive = false;
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.InGameConfirmDialog) is InGameConfirmDialogWindow confirmDialogWindow)
+            {
+                confirmDialogWindow.Hide();
+            }
+
+            ClearInGameConfirmDialogActions();
         }
 
         private string DispatchPacketOwnedNpcShopOutboundRequest(
@@ -499,14 +597,17 @@ namespace HaCreator.MapSimulator
 
         private string DispatchPacketOwnedAdminShopOutboundRequest(PacketOwnedNpcUtilityOutboundRequest request)
         {
+            int adminShopOpcode = -1;
+            byte[] adminShopPayload = Array.Empty<byte>();
+            string adminShopSummary = null;
             return DispatchPacketOwnedNpcUtilityOutboundRequest(
                 true,
                 request,
                 string.Empty,
                 null,
-                ref _lastPacketOwnedAdminShopOutboundOpcode,
-                ref _lastPacketOwnedAdminShopOutboundPayload,
-                ref _lastPacketOwnedAdminShopOutboundSummary).Trim();
+                ref adminShopOpcode,
+                ref adminShopPayload,
+                ref adminShopSummary).Trim();
         }
 
         private string DispatchPacketOwnedStoreBankOutboundRequest(

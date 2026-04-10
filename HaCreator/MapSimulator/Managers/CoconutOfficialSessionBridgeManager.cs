@@ -456,9 +456,15 @@ namespace HaCreator.MapSimulator.Managers
                     return;
                 }
 
-                _pendingMessages.Enqueue(new CoconutPacketInboxMessage(opcode, payload, $"official-session:{pair.RemoteEndpoint}", $"packetraw {Convert.ToHexString(raw)}"));
+                byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
+                _pendingMessages.Enqueue(new CoconutPacketInboxMessage(
+                    SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
+                    relayPayload,
+                    $"official-session:{pair.RemoteEndpoint}",
+                    $"packetraw {Convert.ToHexString(raw)}"));
                 ReceivedCount++;
-                LastStatus = $"Queued Coconut opcode {opcode} from live session {pair.RemoteEndpoint}.";
+                LastStatus =
+                    $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Coconut opcode {opcode} from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
             {

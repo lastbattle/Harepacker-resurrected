@@ -44,6 +44,13 @@ namespace HaCreator.MapSimulator.UI
         private const float ClientHeaderScale = 0.58f;
         private const float ClientDetailScale = 0.58f;
         private const float ClientNavigationScale = 0.52f;
+        private const int TOOLTIP_PADDING = 8;
+        private const int TOOLTIP_ICON_SIZE = 28;
+        private const int TOOLTIP_GAP = 8;
+        private const int TOOLTIP_OFFSET_X = 18;
+        private const int TOOLTIP_OFFSET_Y = 18;
+        private const int TOOLTIP_SECTION_GAP = 4;
+        private const int TOOLTIP_FALLBACK_WIDTH = 220;
         private static readonly Regex RichTextTokenRegex = new(
             @"(\{\{ITEMICON:\d+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\{\{QUESTSTYLE:[^}]+\}\}|\r?\n|\s+)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -54,6 +61,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<QuestDetailNpcButtonStyle, ActionButtonBinding> _npcButtons = new();
         private readonly Dictionary<string, TimeLimitIndicatorStyle> _timeLimitIndicatorStyles = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Texture2D> _questSurfaceTextures = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
+        private readonly Point[] _tooltipFrameOrigins = new Point[3];
 
         private SpriteFont _font;
         private IDXObject _foreground;
@@ -205,6 +214,32 @@ namespace HaCreator.MapSimulator.UI
             _timeLimitGaugeLeftTexture = gaugeLeftTexture;
             _timeLimitGaugeMiddleTexture = gaugeMiddleTexture;
             _timeLimitGaugeRightTexture = gaugeRightTexture;
+        }
+
+        public void SetTooltipTextures(Texture2D[] tooltipFrames)
+        {
+            if (tooltipFrames == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < Math.Min(_tooltipFrames.Length, tooltipFrames.Length); i++)
+            {
+                _tooltipFrames[i] = tooltipFrames[i];
+            }
+        }
+
+        public void SetTooltipOrigins(Point[] tooltipOrigins)
+        {
+            if (tooltipOrigins == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < Math.Min(_tooltipFrameOrigins.Length, tooltipOrigins.Length); i++)
+            {
+                _tooltipFrameOrigins[i] = tooltipOrigins[i];
+            }
         }
 
         public void SetTimeLimitIndicatorStyle(string styleKey, Texture2D[] frames, Point[] origins, int[] delays)
@@ -1707,12 +1742,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string title = string.IsNullOrWhiteSpace(_hoveredQuestItem.Title) ? $"Item #{_hoveredQuestItem.ItemId}" : _hoveredQuestItem.Title;
-            const int tooltipWidth = 220;
-            const int padding = 8;
-            const int iconSize = 28;
-            const int gap = 8;
-            float titleWidth = tooltipWidth - (padding * 2);
-            float bodyWidth = tooltipWidth - ((padding * 2) + iconSize + gap);
+            int tooltipWidth = ResolveTooltipWidth();
+            float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
+            float bodyWidth = tooltipWidth - ((TOOLTIP_PADDING * 2) + TOOLTIP_ICON_SIZE + TOOLTIP_GAP);
             InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(
                 _hoveredQuestItem.ItemId,
                 InventoryItemMetadataResolver.ResolveInventoryType(_hoveredQuestItem.ItemId));
@@ -1750,56 +1782,179 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (bodyHeight > 0f)
                 {
-                    bodyHeight += 4f;
+                    bodyHeight += TOOLTIP_SECTION_GAP;
                 }
 
                 bodyHeight += wrappedSections[i].Height;
             }
 
-            int tooltipHeight = (int)Math.Ceiling((padding * 2) + titleHeight + 6f + Math.Max(iconSize, bodyHeight));
+            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + 6f + Math.Max(TOOLTIP_ICON_SIZE, bodyHeight));
 
             int viewportWidth = sprite.GraphicsDevice.Viewport.Width;
             int viewportHeight = sprite.GraphicsDevice.Viewport.Height;
-            int tooltipX = _lastMousePosition.X + 18;
-            int tooltipY = _lastMousePosition.Y + 18;
-            if (tooltipX + tooltipWidth > viewportWidth - 4)
-            {
-                tooltipX = Math.Max(4, _lastMousePosition.X - tooltipWidth - 18);
-            }
+            Rectangle backgroundRect = ResolveTooltipRect(
+                new Point(_lastMousePosition.X + TOOLTIP_OFFSET_X, _lastMousePosition.Y + TOOLTIP_OFFSET_Y),
+                tooltipWidth,
+                tooltipHeight,
+                viewportWidth,
+                viewportHeight,
+                stackalloc[] { 1, 0, 2 },
+                out int tooltipFrameIndex);
+            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
 
-            if (tooltipY + tooltipHeight > viewportHeight - 4)
-            {
-                tooltipY = Math.Max(4, _lastMousePosition.Y - tooltipHeight - 18);
-            }
-
-            Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
-            sprite.Draw(_pixel, backgroundRect, new Color(18, 24, 37, 235));
-            sprite.Draw(_pixel, new Rectangle(backgroundRect.X, backgroundRect.Y, backgroundRect.Width, 1), new Color(112, 146, 201));
-            sprite.Draw(_pixel, new Rectangle(backgroundRect.X, backgroundRect.Bottom - 1, backgroundRect.Width, 1), new Color(112, 146, 201));
-            sprite.Draw(_pixel, new Rectangle(backgroundRect.X, backgroundRect.Y, 1, backgroundRect.Height), new Color(112, 146, 201));
-            sprite.Draw(_pixel, new Rectangle(backgroundRect.Right - 1, backgroundRect.Y, 1, backgroundRect.Height), new Color(112, 146, 201));
-
-            float textY = tooltipY + padding;
-            DrawTooltipLines(sprite, wrappedTitle, new Vector2(tooltipX + padding, textY), new Color(255, 220, 120));
+            float textY = backgroundRect.Y + TOOLTIP_PADDING;
+            DrawTooltipLines(sprite, wrappedTitle, new Vector2(backgroundRect.X + TOOLTIP_PADDING, textY), new Color(255, 220, 120));
             textY += titleHeight + 6f;
 
             if (_hoveredQuestItem.Icon != null)
             {
-                sprite.Draw(_hoveredQuestItem.Icon, new Rectangle(tooltipX + padding, (int)textY, iconSize, iconSize), Color.White);
+                sprite.Draw(_hoveredQuestItem.Icon, new Rectangle(backgroundRect.X + TOOLTIP_PADDING, (int)textY, TOOLTIP_ICON_SIZE, TOOLTIP_ICON_SIZE), Color.White);
             }
 
-            float bodyX = tooltipX + padding + iconSize + gap;
+            float bodyX = backgroundRect.X + TOOLTIP_PADDING + TOOLTIP_ICON_SIZE + TOOLTIP_GAP;
             float sectionY = textY;
             for (int i = 0; i < wrappedSections.Count; i++)
             {
                 if (i > 0)
                 {
-                    sectionY += 4f;
+                    sectionY += TOOLTIP_SECTION_GAP;
                 }
 
                 DrawTooltipLines(sprite, wrappedSections[i].Lines, new Vector2(bodyX, sectionY), wrappedSections[i].Color);
                 sectionY += wrappedSections[i].Height;
             }
+        }
+
+        private int ResolveTooltipWidth()
+        {
+            int textureWidth = _tooltipFrames[1]?.Width ?? 0;
+            return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
+        }
+
+        private Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)
+        {
+            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
+                ? _tooltipFrames[tooltipFrameIndex]
+                : null;
+            Point origin = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrameOrigins.Length
+                ? _tooltipFrameOrigins[tooltipFrameIndex]
+                : Point.Zero;
+
+            if (tooltipFrame != null && origin != Point.Zero)
+            {
+                float scaleX = tooltipFrame.Width > 0 ? tooltipWidth / (float)tooltipFrame.Width : 1f;
+                float scaleY = tooltipFrame.Height > 0 ? tooltipHeight / (float)tooltipFrame.Height : 1f;
+                return new Rectangle(
+                    anchorPoint.X - (int)Math.Round(origin.X * scaleX),
+                    anchorPoint.Y - (int)Math.Round(origin.Y * scaleY),
+                    tooltipWidth,
+                    tooltipHeight);
+            }
+
+            return tooltipFrameIndex switch
+            {
+                0 => new Rectangle(anchorPoint.X - tooltipWidth - TOOLTIP_OFFSET_X, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight),
+                2 => new Rectangle(anchorPoint.X, anchorPoint.Y + TOOLTIP_OFFSET_Y, tooltipWidth, tooltipHeight),
+                _ => new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight)
+            };
+        }
+
+        private static int ComputeTooltipOverflow(Rectangle rect, int renderWidth, int renderHeight)
+        {
+            int overflow = 0;
+            if (rect.Left < TOOLTIP_PADDING)
+            {
+                overflow += TOOLTIP_PADDING - rect.Left;
+            }
+
+            if (rect.Top < TOOLTIP_PADDING)
+            {
+                overflow += TOOLTIP_PADDING - rect.Top;
+            }
+
+            if (rect.Right > renderWidth - TOOLTIP_PADDING)
+            {
+                overflow += rect.Right - (renderWidth - TOOLTIP_PADDING);
+            }
+
+            if (rect.Bottom > renderHeight - TOOLTIP_PADDING)
+            {
+                overflow += rect.Bottom - (renderHeight - TOOLTIP_PADDING);
+            }
+
+            return overflow;
+        }
+
+        private static Rectangle ClampTooltipRect(Rectangle rect, int renderWidth, int renderHeight)
+        {
+            int minX = TOOLTIP_PADDING;
+            int minY = TOOLTIP_PADDING;
+            int maxX = Math.Max(minX, renderWidth - TOOLTIP_PADDING - rect.Width);
+            int maxY = Math.Max(minY, renderHeight - TOOLTIP_PADDING - rect.Height);
+            return new Rectangle(
+                Math.Clamp(rect.X, minX, maxX),
+                Math.Clamp(rect.Y, minY, maxY),
+                rect.Width,
+                rect.Height);
+        }
+
+        private Rectangle ResolveTooltipRect(
+            Point anchorPoint,
+            int tooltipWidth,
+            int tooltipHeight,
+            int renderWidth,
+            int renderHeight,
+            ReadOnlySpan<int> framePreference,
+            out int tooltipFrameIndex)
+        {
+            Rectangle bestRect = Rectangle.Empty;
+            int bestFrame = framePreference.Length > 0 ? framePreference[0] : 1;
+            int bestOverflow = int.MaxValue;
+
+            for (int i = 0; i < framePreference.Length; i++)
+            {
+                int frameIndex = framePreference[i];
+                Rectangle candidate = CreateTooltipRectFromAnchor(anchorPoint, tooltipWidth, tooltipHeight, frameIndex);
+                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight);
+                if (overflow == 0)
+                {
+                    tooltipFrameIndex = frameIndex;
+                    return candidate;
+                }
+
+                if (overflow < bestOverflow)
+                {
+                    bestOverflow = overflow;
+                    bestFrame = frameIndex;
+                    bestRect = candidate;
+                }
+            }
+
+            tooltipFrameIndex = bestFrame;
+            return ClampTooltipRect(bestRect, renderWidth, renderHeight);
+        }
+
+        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
+        {
+            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
+                ? _tooltipFrames[tooltipFrameIndex]
+                : null;
+            if (tooltipFrame != null)
+            {
+                sprite.Draw(tooltipFrame, rect, Color.White);
+                return;
+            }
+
+            sprite.Draw(_pixel, rect, new Color(18, 24, 37, 235));
+            DrawTooltipBorder(sprite, rect);
+        }
+
+        private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)
+        {
+            sprite.Draw(_pixel, new Rectangle(rect.X, rect.Y, rect.Width, 1), new Color(112, 146, 201));
+            sprite.Draw(_pixel, new Rectangle(rect.X, rect.Bottom - 1, rect.Width, 1), new Color(112, 146, 201));
+            sprite.Draw(_pixel, new Rectangle(rect.X, rect.Y, 1, rect.Height), new Color(112, 146, 201));
+            sprite.Draw(_pixel, new Rectangle(rect.Right - 1, rect.Y, 1, rect.Height), new Color(112, 146, 201));
         }
 
         private void DrawTooltipLines(SpriteBatch sprite, IReadOnlyList<string> lines, Vector2 position, Color color)

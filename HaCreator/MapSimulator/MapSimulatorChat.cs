@@ -128,6 +128,8 @@ namespace HaCreator.MapSimulator
         private string _whisperTarget = string.Empty;
         private string _replyTarget = string.Empty;
         private string _localPlayerName = string.Empty;
+        private string _lastOutgoingWhisperText = string.Empty;
+        private string _lastOutgoingWhisperTarget = string.Empty;
         private readonly List<string> _whisperCandidates = new List<string>();
         private bool _isWhisperTargetPickerActive;
         private WhisperTargetPickerPresentation _whisperTargetPickerPresentation = WhisperTargetPickerPresentation.Inline;
@@ -168,6 +170,8 @@ namespace HaCreator.MapSimulator
         internal bool IsWhisperTargetPickerActive => _isWhisperTargetPickerActive;
         internal int WhisperTargetPickerSelectionIndex => _whisperTargetPickerSelectionIndex;
         internal WhisperTargetPickerPresentation CurrentWhisperTargetPickerPresentation => _whisperTargetPickerPresentation;
+        internal string LastOutgoingWhisperText => _lastOutgoingWhisperText;
+        internal string LastOutgoingWhisperTarget => _lastOutgoingWhisperTarget;
 
         private enum ChatSubmitDisposition
         {
@@ -928,6 +932,13 @@ namespace HaCreator.MapSimulator
             _whisperTarget = string.Empty;
         }
 
+        public void ActivateTarget(MapSimulatorChatTargetType targetType, int tickCount, string initialText = null)
+        {
+            _chatTarget = targetType;
+            _whisperTarget = string.Empty;
+            Activate(tickCount, initialText);
+        }
+
         public void BeginWhisperTo(string whisperTarget, int tickCount)
         {
             if (!TryArmWhisperTarget(whisperTarget, tickCount))
@@ -1270,18 +1281,10 @@ namespace HaCreator.MapSimulator
                 string[] parts = trimmedMessage.Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 1)
                 {
-                    if (string.IsNullOrWhiteSpace(_whisperTarget) && _whisperCandidates.Count == 0)
-                    {
-                        AddClientMessage("Usage: /w <name> [message]", tickCount, ClientChatLogType.Error);
-                    }
-                    else
-                    {
-                        OpenWhisperTargetPicker(
-                            tickCount,
-                            _whisperTarget,
-                            WhisperTargetPickerPresentation.Modal);
-                    }
-
+                    OpenWhisperTargetPicker(
+                        tickCount,
+                        _whisperTarget,
+                        WhisperTargetPickerPresentation.Modal);
                     disposition = ChatSubmitDisposition.KeepChatOpen;
                     return true;
                 }
@@ -1306,16 +1309,9 @@ namespace HaCreator.MapSimulator
             string replyTarget = !string.IsNullOrWhiteSpace(_replyTarget) ? _replyTarget : _whisperTarget;
             if (string.IsNullOrWhiteSpace(replyTarget))
             {
-                if (_whisperCandidates.Count == 0)
-                {
-                    AddClientMessage("No whisper target selected.", tickCount, ClientChatLogType.Error);
-                }
-                else
-                {
-                    OpenWhisperTargetPicker(
-                        tickCount,
-                        presentation: WhisperTargetPickerPresentation.Modal);
-                }
+                OpenWhisperTargetPicker(
+                    tickCount,
+                    presentation: WhisperTargetPickerPresentation.Modal);
                 disposition = ChatSubmitDisposition.KeepChatOpen;
                 return true;
             }
@@ -1385,6 +1381,8 @@ namespace HaCreator.MapSimulator
                 tickCount,
                 (int)ClientChatLogType.OutgoingWhisper,
                 _whisperTarget);
+            _lastOutgoingWhisperTarget = _whisperTarget ?? string.Empty;
+            _lastOutgoingWhisperText = message?.Trim() ?? string.Empty;
             MessageSubmitted?.Invoke(message, tickCount);
         }
 
@@ -1741,13 +1739,43 @@ namespace HaCreator.MapSimulator
                 trimmed = withoutChannelSuffix;
             }
 
-            int lastSpaceIndex = trimmed.LastIndexOf(' ');
-            if (lastSpaceIndex >= 0 && lastSpaceIndex + 1 < trimmed.Length)
+            return ExtractCharacterName(trimmed);
+        }
+
+        internal static string ExtractCharacterName(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
             {
-                trimmed = trimmed[(lastSpaceIndex + 1)..];
+                return string.Empty;
             }
 
-            return trimmed.Trim();
+            string trimmed = text.Trim();
+            int validLength = 0;
+            while (validLength < trimmed.Length)
+            {
+                char c = trimmed[validLength];
+                bool isAsciiLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+                bool isAsciiDigit = c >= '0' && c <= '9';
+                if (!isAsciiLetter && !isAsciiDigit)
+                {
+                    break;
+                }
+
+                validLength++;
+            }
+
+            if (validLength == 0)
+            {
+                return string.Empty;
+            }
+
+            if (validLength != trimmed.Length
+                && !string.IsNullOrWhiteSpace(trimmed[validLength..]))
+            {
+                return string.Empty;
+            }
+
+            return trimmed[..validLength];
         }
 
         internal static WhisperTargetValidationResult ValidateWhisperTargetCandidate(
@@ -2029,6 +2057,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            int prefixMatchIndex = -1;
             for (int i = 0; i < _whisperCandidates.Count; i++)
             {
                 if (string.Equals(_whisperCandidates[i], normalizedInput, StringComparison.OrdinalIgnoreCase))
@@ -2036,9 +2065,15 @@ namespace HaCreator.MapSimulator
                     _whisperTargetPickerSelectionIndex = i;
                     return;
                 }
+
+                if (prefixMatchIndex < 0
+                    && _whisperCandidates[i].StartsWith(normalizedInput, StringComparison.OrdinalIgnoreCase))
+                {
+                    prefixMatchIndex = i;
+                }
             }
 
-            _whisperTargetPickerSelectionIndex = -1;
+            _whisperTargetPickerSelectionIndex = prefixMatchIndex;
         }
 
         private void SetInputText(string text)

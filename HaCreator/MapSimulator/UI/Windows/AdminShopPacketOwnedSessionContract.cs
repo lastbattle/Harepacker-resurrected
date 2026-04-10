@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.UI
     {
         public bool IsActive { get; private set; }
         public bool IsWaitingForResult { get; private set; }
+        public bool IsOwnerSurfaceVisible { get; private set; }
         public bool WouldDisconnect { get; private set; }
         public bool HasObservableState => IsActive
             || OpenCount > 0
@@ -25,6 +26,8 @@ namespace HaCreator.MapSimulator.UI
         public int ResultCount { get; private set; }
         public int LastSubtype { get; private set; } = -1;
         public int LastResultCode { get; private set; } = -1;
+        public int LastOutboundOpcode { get; private set; } = -1;
+        public byte[] LastOutboundPayload { get; private set; } = Array.Empty<byte>();
         public string LastNotice { get; private set; } = string.Empty;
         public string LastOutboundSummary { get; private set; } = string.Empty;
         public string LastOwnerState { get; private set; } = string.Empty;
@@ -40,6 +43,7 @@ namespace HaCreator.MapSimulator.UI
             AskItemWishlist = snapshot.AskItemWishlist;
             IsActive = true;
             IsWaitingForResult = false;
+            IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
             NpcTemplateId = snapshot.NpcTemplateId;
             DecodedItemCount = snapshot.CommodityCount;
@@ -47,6 +51,8 @@ namespace HaCreator.MapSimulator.UI
             OpenCount++;
             LastSubtype = -1;
             LastResultCode = -1;
+            LastOutboundOpcode = -1;
+            LastOutboundPayload = Array.Empty<byte>();
             LastNotice = string.Empty;
             LastOutboundSummary = string.Empty;
             LastOwnerState = ownerState ?? string.Empty;
@@ -56,6 +62,7 @@ namespace HaCreator.MapSimulator.UI
         {
             IsActive = false;
             IsWaitingForResult = false;
+            IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
             DecodedItemCount = 0;
             NpcTemplateId = 0;
@@ -64,21 +71,29 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = -1;
             LastResultCode = -1;
             LastNotice = noticeText ?? string.Empty;
-            LastOutboundSummary = outboundSummary ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(outboundSummary))
+            {
+                LastOutboundSummary = outboundSummary;
+            }
+
             LastOwnerState = ownerState ?? LastOwnerState;
         }
 
-        public void RecordBlockedByOwner(int npcTemplateId, int decodedItemCount, string blockingOwner)
+        public void RecordBlockedByOwner(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string blockingOwner)
         {
+            snapshot ??= new AdminShopPacketOwnedOpenPayloadSnapshot();
             IsActive = false;
             IsWaitingForResult = false;
+            IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
-            AskItemWishlist = false;
-            NpcTemplateId = Math.Max(0, npcTemplateId);
-            DecodedItemCount = Math.Max(0, decodedItemCount);
-            TrailingByteCount = 0;
+            AskItemWishlist = snapshot.AskItemWishlist;
+            NpcTemplateId = Math.Max(0, snapshot.NpcTemplateId);
+            DecodedItemCount = Math.Max(0, snapshot.CommodityCount);
+            TrailingByteCount = Math.Max(0, snapshot.TrailingByteCount);
             LastSubtype = -1;
             LastResultCode = -1;
+            LastOutboundOpcode = -1;
+            LastOutboundPayload = Array.Empty<byte>();
             LastNotice = string.Empty;
             LastOutboundSummary = string.Empty;
             LastOwnerState = string.IsNullOrWhiteSpace(blockingOwner)
@@ -92,7 +107,6 @@ namespace HaCreator.MapSimulator.UI
             ResultCount++;
             LastSubtype = subtype;
             LastResultCode = resultCode;
-            LastOutboundSummary = string.Empty;
             WouldDisconnect = false;
         }
 
@@ -121,14 +135,97 @@ namespace HaCreator.MapSimulator.UI
             LastNotice = string.Empty;
         }
 
+        public void RecordOutboundRequest(int opcode, byte[] payload, string outboundSummary)
+        {
+            LastOutboundOpcode = opcode;
+            LastOutboundPayload = payload?.ToArray() ?? Array.Empty<byte>();
+            LastOutboundSummary = outboundSummary ?? string.Empty;
+        }
+
         public void SetLastOutboundSummary(string outboundSummary)
         {
             LastOutboundSummary = outboundSummary ?? string.Empty;
         }
 
+        public void RecordOwnerSurfaceShown(string ownerState = null)
+        {
+            IsOwnerSurfaceVisible = true;
+            if (!string.IsNullOrWhiteSpace(ownerState))
+            {
+                LastOwnerState = ownerState;
+            }
+        }
+
+        public void RecordOwnerSurfaceHidden(string ownerState = null)
+        {
+            bool shouldRefreshOwnerState = IsActive || IsOwnerSurfaceVisible;
+            IsOwnerSurfaceVisible = false;
+            if (shouldRefreshOwnerState && !string.IsNullOrWhiteSpace(ownerState))
+            {
+                LastOwnerState = ownerState;
+            }
+        }
+
         public void SetLastOwnerState(string ownerState)
         {
             LastOwnerState = ownerState ?? string.Empty;
+        }
+
+        public string BuildTransportSummary()
+        {
+            if (LastOutboundOpcode < 0)
+            {
+                return string.IsNullOrWhiteSpace(LastOutboundSummary)
+                    ? "admin-shop outbound=idle."
+                    : $"admin-shop outbound=idle ({LastOutboundSummary})";
+            }
+
+            string payloadHex = Convert.ToHexString(LastOutboundPayload ?? Array.Empty<byte>());
+            return string.IsNullOrWhiteSpace(LastOutboundSummary)
+                ? $"admin-shop outbound={LastOutboundOpcode}[{payloadHex}]."
+                : $"admin-shop outbound={LastOutboundOpcode}[{payloadHex}] ({LastOutboundSummary})";
+        }
+
+        public string BuildWishlistSearchSessionSignature()
+        {
+            return string.Join("|",
+                IsActive ? "1" : "0",
+                IsWaitingForResult ? "1" : "0",
+                WouldDisconnect ? "1" : "0",
+                OpenCount,
+                ResultCount,
+                BlockedByOwnerCount,
+                NpcTemplateId,
+                DecodedItemCount,
+                TrailingByteCount,
+                AskItemWishlist ? "1" : "0",
+                LastSubtype,
+                LastResultCode,
+                LastNotice ?? string.Empty,
+                LastOutboundSummary ?? string.Empty,
+                LastOwnerState ?? string.Empty);
+        }
+
+        public string BuildWishlistSearchStateSummary()
+        {
+            if (!HasObservableState)
+            {
+                return string.Empty;
+            }
+
+            string packetText = OpenCount > 0
+                ? $"pkt open {OpenCount}"
+                : "pkt idle";
+            string resultText = ResultCount > 0
+                ? $"result {ResultCount}"
+                : "result 0";
+            string waitText = IsWaitingForResult
+                ? "awaiting packet 366"
+                : "service idle";
+            string wishlistText = AskItemWishlist
+                ? "wish prompt on"
+                : "wish prompt off";
+            return $"{packetText}, {resultText}, {waitText}, {wishlistText}";
         }
 
         public string BuildStateSummary(IReadOnlyList<AdminShopDialogUI.PacketOwnedAdminShopCommoditySnapshot> rows)
@@ -142,9 +239,7 @@ namespace HaCreator.MapSimulator.UI
             string resultText = LastSubtype >= 0
                 ? $"last result subtype {LastSubtype}, code {LastResultCode}"
                 : "no result packet yet";
-            string outboundText = string.IsNullOrWhiteSpace(LastOutboundSummary)
-                ? "no mirrored reopen/close packet yet"
-                : LastOutboundSummary;
+            string transportText = BuildTransportSummary();
             string disconnectText = WouldDisconnect
                 ? "client-disconnect parity hazard recorded"
                 : "no disconnect hazard recorded";
@@ -155,6 +250,11 @@ namespace HaCreator.MapSimulator.UI
             string waitText = IsWaitingForResult
                 ? ", waiting for packet 366"
                 : string.Empty;
+            string visibilityText = IsOwnerSurfaceVisible
+                ? "owner surface visible"
+                : IsActive
+                    ? "owner surface staged but hidden"
+                    : "owner surface hidden";
             string ownerText = string.IsNullOrWhiteSpace(LastOwnerState)
                 ? "owner state unresolved"
                 : LastOwnerState;
@@ -162,7 +262,7 @@ namespace HaCreator.MapSimulator.UI
                 ? $", blocked opens {BlockedByOwnerCount}"
                 : string.Empty;
 
-            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}), packets open={OpenCount}/result={ResultCount}, {resultText}, {outboundText}, {disconnectText}{waitText}, {ownerText}{blockedText}";
+            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}), packets open={OpenCount}/result={ResultCount}, {resultText}, {transportText}, {disconnectText}{waitText}, {visibilityText}, {ownerText}{blockedText}";
         }
     }
 }

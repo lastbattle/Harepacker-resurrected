@@ -331,7 +331,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int startTime = ResolveStartTime(currentTime, createInfo.StartDelayUnits);
-            int expireTime = ResolveAreaBuffItemExpireTime(startTime, itemProperty, createInfo.SkillId);
+            int expireTime = ResolveAreaBuffItemExpireTime(startTime, itemProperty, createInfo.SkillId, animation);
             return new ActiveAffectedArea
             {
                 ObjectId = createInfo.ObjectId,
@@ -451,13 +451,20 @@ namespace HaCreator.MapSimulator.Pools
             return durationSeconds > 0 ? currentTime + (durationSeconds * 1000) : 0;
         }
 
-        private static int ResolveAreaBuffItemExpireTime(int startTime, WzSubProperty itemProperty, int itemId)
+        private static int ResolveAreaBuffItemExpireTime(
+            int startTime,
+            WzSubProperty itemProperty,
+            int itemId,
+            SkillAnimation animation)
         {
-            int durationMs = ResolveAreaBuffItemDurationMs(itemProperty, itemId);
+            int durationMs = ResolveAreaBuffItemDurationMs(itemProperty, itemId, animation);
             return durationMs > 0 ? startTime + durationMs : 0;
         }
 
-        internal static int ResolveAreaBuffItemDurationMs(WzSubProperty itemProperty, int itemId)
+        internal static int ResolveAreaBuffItemDurationMs(
+            WzSubProperty itemProperty,
+            int itemId,
+            SkillAnimation animation = null)
         {
             string itemDescription = itemId > 0 && InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string resolvedDescription)
                 ? resolvedDescription
@@ -467,7 +474,8 @@ namespace HaCreator.MapSimulator.Pools
                 itemDescription,
                 LoadLinkedAreaBuffItemProperty,
                 LoadLinkedAreaBuffItemDescription,
-                LoadLinkedAreaBuffPathProperty);
+                LoadLinkedAreaBuffPathProperty,
+                animation);
         }
 
         private static int ResolveStartTime(int currentTime, short startDelayUnits)
@@ -792,8 +800,7 @@ namespace HaCreator.MapSimulator.Pools
 
             SkillAnimation animation = new SkillAnimation
             {
-                Name = node.Name,
-                Loop = true
+                Name = node.Name
             };
 
             List<(int index, SkillFrame frame)> orderedFrames = new();
@@ -825,7 +832,20 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             animation.CalculateDuration();
+            animation.Loop = ResolveAnimationLoop(node);
             return animation;
+        }
+
+        private static bool ResolveAnimationLoop(WzImageProperty node)
+        {
+            if (node == null)
+            {
+                return false;
+            }
+
+            return GetInt(node, "loop") != 0
+                   || GetInt(node, "repeat") != 0
+                   || GetInt(node, "r") != 0;
         }
 
         private SkillFrame LoadCanvasFrame(WzImageProperty frameNode)

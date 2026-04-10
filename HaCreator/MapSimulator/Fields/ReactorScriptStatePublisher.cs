@@ -61,10 +61,23 @@ namespace HaCreator.MapSimulator.Fields
             var normalizedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string scriptName in scriptNames)
             {
-                if (!string.IsNullOrWhiteSpace(scriptName))
+                if (string.IsNullOrWhiteSpace(scriptName))
                 {
-                    normalizedNames.Add(scriptName.Trim());
+                    continue;
                 }
+
+                IReadOnlyList<string> parsedNames = Interaction.QuestRuntimeManager.ParseScriptNames(scriptName);
+                if (parsedNames.Count > 0)
+                {
+                    for (int i = 0; i < parsedNames.Count; i++)
+                    {
+                        normalizedNames.Add(parsedNames[i]);
+                    }
+
+                    continue;
+                }
+
+                normalizedNames.Add(scriptName.Trim());
             }
 
             return normalizedNames.Count == 0 ? Array.Empty<string>() : new List<string>(normalizedNames);

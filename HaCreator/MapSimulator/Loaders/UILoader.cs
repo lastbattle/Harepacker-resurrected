@@ -640,7 +640,9 @@ namespace HaCreator.MapSimulator.Loaders
                     chatUI.SetChatTargetTextures(chatTargetTextures, chatTargetOrigins);
                     chatUI.SetWhisperPickerTextures(
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["list5"] as WzCanvasProperty, device),
-                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["list4"] as WzCanvasProperty, device));
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["list4"] as WzCanvasProperty, device),
+                        GetCanvasOrigin(uiWindow2DialogImage?["UtilDlgEx"]?["list5"] as WzCanvasProperty),
+                        GetCanvasOrigin(uiWindow2DialogImage?["UtilDlgEx"]?["list4"] as WzCanvasProperty));
             chatUI.SetWhisperPickerDialogTextures(
                 LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["t"] as WzCanvasProperty, device),
                 LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["c"] as WzCanvasProperty, device),
@@ -1902,12 +1904,11 @@ namespace HaCreator.MapSimulator.Loaders
         internal readonly record struct CollapsedMinimapTitleChromeMetrics(int LaneTop, int LaneHeight, int LeftInset, int RightInset);
 
         internal static int ResolveCollapsedMinimapButtonReserveWidthForTesting(
-            int minimizeButtonWidth,
-            int maximizeButtonWidth,
+            int stateButtonWidth,
             int mapButtonWidth,
             int rightInset)
         {
-            return Math.Max(Math.Max(0, minimizeButtonWidth), Math.Max(0, maximizeButtonWidth))
+            return Math.Max(0, stateButtonWidth)
                 + Math.Max(0, mapButtonWidth)
                 + Math.Max(0, rightInset);
         }
@@ -2597,7 +2598,6 @@ namespace HaCreator.MapSimulator.Loaders
                 fallbackLeftInset: 4,
                 fallbackRightInset: 4);
             int collapsedButtonReserveWidth = ResolveCollapsedMinimapButtonReserveWidthForTesting(
-                ResolveUiButtonSnapshotWidth(collapsedMinimizeButtonProperty),
                 ResolveUiButtonSnapshotWidth(collapsedMaximizeButtonProperty),
                 ResolveUiButtonSnapshotWidth(collapsedMapButtonProperty),
                 collapsedTitleChromeMetrics.RightInset);

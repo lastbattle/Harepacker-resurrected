@@ -1922,7 +1922,7 @@ namespace HaCreator.MapSimulator.Pools
         /// <param name="maxCount">Maximum mesos to explode</param>
         /// <returns>List of meso drops that will explode</returns>
         public List<DropItem> GetExplosiveDropInRect(float centerX, float centerY, float width, float height,
-            int playerId, int currentTime, int maxCount = 0)
+            int playerId, int currentTime, int maxCount = 0, bool enforceOwnership = true)
         {
             if (maxCount <= 0)
                 maxCount = MAX_MESO_EXPLOSION_DROPS;
@@ -1945,8 +1945,10 @@ namespace HaCreator.MapSimulator.Pools
                 if (drop.Type != DropType.Meso)
                     continue;
 
-                // Check ownership - can only explode your own mesos
-                if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+                if (enforceOwnership
+                    && drop.OwnerId > 0
+                    && drop.OwnerId != playerId
+                    && currentTime < drop.OwnerExpireTime)
                     continue;
 
                 // Check if in rect
@@ -1967,7 +1969,7 @@ namespace HaCreator.MapSimulator.Pools
         /// Convenience overload using radius instead of rectangle.
         /// </summary>
         public List<DropItem> GetExplosiveDropInRange(float centerX, float centerY, float radius,
-            int playerId, int currentTime, int maxCount = 0)
+            int playerId, int currentTime, int maxCount = 0, bool enforceOwnership = true)
         {
             if (maxCount <= 0)
                 maxCount = MAX_MESO_EXPLOSION_DROPS;
@@ -1983,7 +1985,10 @@ namespace HaCreator.MapSimulator.Pools
                 if (drop.Type != DropType.Meso)
                     continue;
 
-                if (drop.OwnerId > 0 && drop.OwnerId != playerId && currentTime < drop.OwnerExpireTime)
+                if (enforceOwnership
+                    && drop.OwnerId > 0
+                    && drop.OwnerId != playerId
+                    && currentTime < drop.OwnerExpireTime)
                     continue;
 
                 float dx = drop.X - centerX;

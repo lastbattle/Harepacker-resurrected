@@ -106,16 +106,16 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex DestroyChanceRegex = new Regex(@"(?:chance\s+of\s+being\s+destroyed|destroyed\s+(?:in|at)\s+(?:a\s+)?)\s*(\d+)\s*%\s*(?:[-\s]*chance|rate)?|(\d+)\s*%\s*(?:[-\s]*chance\s+of\s+being\s+destroyed|chance\s+of\s+being\s+destroyed)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex CompleteDestroyRegex = new Regex(@"(?:if\s+(?:it\s+)?fails?|upon\s+failure).*?(?:completely\s+destroyed|destroyed\s+completely)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|Physical\s+Attack(?:\s+Power)?|Attack\s+Power|(?<![A-Za-z.])ATT(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Attack(?:\s+Power)?|Magical\s+Power|Magic\s+Power|M\.?\s*ATT)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|Physical\s+Defense|Weapon\s+Def(?:ense)?|PDD|(?<![A-Za-z.])DEF(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex MagicDefenseBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Defense|Magic\s+Def(?:ense)?|M\.?\s*DEF|MDD)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|Physical\s+Attack(?:\s+Power)?|Weapon\s+ATT|Physical\s+ATT|Attack\s+Power|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])ATT(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Attack(?:\s+Power)?|Magical\s+Power|Magic\s+Power|Magic\s+ATT|Magical\s+ATT|M\.?\s*ATT)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|Physical\s+Defense|Weapon\s+Def(?:ense)?|Weapon\s+DEF|Physical\s+DEF|PDD|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])DEF(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MagicDefenseBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Defense|Magic\s+Def(?:ense)?|Magic\s+DEF|Magical\s+DEF|M\.?\s*DEF|MDD)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex StrengthBonusRegex = new Regex(@"(?:STR|Strength)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex DexterityBonusRegex = new Regex(@"(?:DEX|Dexterity)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex IntelligenceBonusRegex = new Regex(@"(?:INT|Intelligence)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex LuckBonusRegex = new Regex(@"(?:LUK|Luck)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex MaxHpBonusRegex = new Regex(@"(?:Max\s*HP|HP)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex MaxMpBonusRegex = new Regex(@"(?:Max\s*MP|MP)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MaxHpBonusRegex = new Regex(@"(?:Max\s*HP|MHP|HP)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MaxMpBonusRegex = new Regex(@"(?:Max\s*MP|MMP|MP)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex AccuracyBonusRegex = new Regex(@"(?:Accuracy|ACC)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex AvoidabilityBonusRegex = new Regex(@"(?:Avoidability|Aviodability|Avoid)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex SpeedBonusRegex = new Regex(@"(?:Movement\s+)?Speed(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -126,7 +126,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex WeaponMagicAttackBonusRegex = new Regex(@"(?:Weapon|Physical)\s*(?:\/|&|and)\s*(?:Magic|M\.?\s*)\s*(?:ATT|Attack)\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponMagicDefenseBonusRegex = new Regex(@"(?:Weapon|Physical|PDD)\s*(?:\/|&|and)\s*(?:Magic|Magical|M\.?\s*|MDD)\s*(?:DEF|Defense)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex AccuracyAvoidabilityBonusRegex = new Regex(@"Accuracy\s*(?:\/|&|and)\s*(?:Avoidability|Aviodability|Avoid)\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex HpMpBonusRegex = new Regex(@"(?:Max\s*)?HP\s*(?:\/|&|and)\s*(?:Max\s*)?MP\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex HpMpBonusRegex = new Regex(@"(?:(?:Max\s*)?HP|MHP)\s*(?:\/|&|and)\s*(?:(?:Max\s*)?MP|MMP)\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex SpeedJumpBonusRegex = new Regex(@"(?:Movement\s+)?Speed\s*(?:\/|&|and)\s*Jump\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex DoesNotAffectUpgradeSlotsRegex = new Regex(@"does\s+not\s+affect\s+the\s+number\s+of\s+upgrades", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
@@ -194,6 +194,8 @@ namespace HaCreator.MapSimulator.UI
         private VisualThemeKind _activeThemeKind = VisualThemeKind.Enhancement;
         private WindowPresentationState _presentationState = WindowPresentationState.Idle;
         private int _presentationElapsedMs;
+        private int _presentationDurationMs;
+        private bool _presentationUsesSharedOverlay;
         private ItemUpgradeAttemptResult _presentationResult;
         private VisualThemeKind? _lockedThemeKind;
         private ProductionEnhancementAnimationDisplayer _productionEnhancementAnimationDisplayer;
@@ -407,7 +409,7 @@ namespace HaCreator.MapSimulator.UI
             if (_presentationState == WindowPresentationState.Casting)
             {
                 _presentationElapsedMs += (int)gameTime.ElapsedGameTime.TotalMilliseconds;
-                if (_presentationElapsedMs >= ResolveThemeEffectDuration())
+                if (_presentationElapsedMs >= Math.Max(_presentationDurationMs, 1))
                 {
                     _presentationState = WindowPresentationState.Result;
                     _presentationElapsedMs = 0;
@@ -1672,16 +1674,30 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryStartThemePresentation(VisualThemeKind themeKind, ItemUpgradeAttemptResult result)
         {
-            if (!_visualThemes.TryGetValue(themeKind, out WindowVisualTheme theme) ||
-                theme.EffectFrames == null ||
-                theme.EffectFrames.Count == 0)
+            bool hasLocalThemeFrames =
+                _visualThemes.TryGetValue(themeKind, out WindowVisualTheme theme) &&
+                theme.EffectFrames != null &&
+                theme.EffectFrames.Count > 0;
+            int sharedDurationMs = 0;
+            bool hasSharedThemeFrames =
+                _productionEnhancementAnimationDisplayer?.TryGetCubePresentationDurationMs(themeKind, out sharedDurationMs) == true;
+            if (!hasLocalThemeFrames && !hasSharedThemeFrames)
             {
                 return false;
+            }
+
+            if (hasSharedThemeFrames)
+            {
+                _productionEnhancementAnimationDisplayer.PlayCubeResult(themeKind, Environment.TickCount);
             }
 
             _lockedThemeKind = themeKind;
             _presentationState = WindowPresentationState.Casting;
             _presentationElapsedMs = 0;
+            _presentationDurationMs = hasSharedThemeFrames
+                ? sharedDurationMs
+                : ResolveThemeEffectDuration(theme);
+            _presentationUsesSharedOverlay = hasSharedThemeFrames;
             _presentationResult = result;
             _statusMessage = $"Using {ResolveConsumableName(result.ConsumableItemId)}...";
             ApplyVisualTheme(themeKind);
@@ -1700,6 +1716,8 @@ namespace HaCreator.MapSimulator.UI
         {
             _presentationState = WindowPresentationState.Idle;
             _presentationElapsedMs = 0;
+            _presentationDurationMs = 0;
+            _presentationUsesSharedOverlay = false;
             _presentationResult = default;
             _lockedThemeKind = null;
             _lastUpgradeSucceeded = null;
@@ -1733,6 +1751,7 @@ namespace HaCreator.MapSimulator.UI
         private void DrawThemeEffect(SpriteBatch sprite, int windowX, int windowY)
         {
             if (_presentationState != WindowPresentationState.Casting ||
+                _presentationUsesSharedOverlay ||
                 !_visualThemes.TryGetValue(_lockedThemeKind ?? _activeThemeKind, out WindowVisualTheme theme) ||
                 theme.EffectFrames == null ||
                 theme.EffectFrames.Count == 0)
@@ -1782,9 +1801,9 @@ namespace HaCreator.MapSimulator.UI
             return frames[^1];
         }
 
-        private int ResolveThemeEffectDuration()
+        private int ResolveThemeEffectDuration(WindowVisualTheme theme)
         {
-            if (!_visualThemes.TryGetValue(_lockedThemeKind ?? _activeThemeKind, out WindowVisualTheme theme) ||
+            if (theme == null ||
                 theme.EffectFrames == null ||
                 theme.EffectFrames.Count == 0)
             {
@@ -2276,11 +2295,18 @@ namespace HaCreator.MapSimulator.UI
             {
                 part.PotentialTierText = $"{state.PotentialTier} Potential";
                 part.PotentialLines = new List<string>(EnumerateVisiblePotentialLines(state));
+                part.ItemOptionIds = new List<int>(
+                    MapSimulator.MergePacketOwnedTimeBombInvincibilityOptionIds(
+                        part.ItemOptionIds,
+                        part.PotentialLines));
             }
             else
             {
                 part.PotentialTierText = null;
                 part.PotentialLines = new List<string>();
+                part.ItemOptionIds = new List<int>(
+                    (part.ItemOptionIds ?? new List<int>())
+                        .Where(static itemOptionId => !MapSimulator.IsPacketOwnedTimeBombInvincibilityOptionId(itemOptionId)));
             }
         }
 
@@ -3966,7 +3992,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string normalized = text.Trim();
-            if (normalized.IndexOf("face accessory", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (normalized.IndexOf("face accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("face accessories", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.FaceAccessory);
             }
@@ -3982,7 +4009,8 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.FaceAccessory);
             }
 
-            if (normalized.IndexOf("eye accessory", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (normalized.IndexOf("eye accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("eye accessories", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.EyeAccessory);
             }
@@ -4023,7 +4051,8 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.Shield);
             }
 
-            if (normalized.IndexOf("accessory", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (normalized.IndexOf("accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("accessories", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.FaceAccessory);
                 targetSlots.Add(EquipSlot.EyeAccessory);
@@ -4166,6 +4195,11 @@ namespace HaCreator.MapSimulator.UI
             return GetRequiredEquipItemIdsForTests(MapleMiracleCubeId);
         }
 
+        internal static string ResolveConsumableOwnerPathForTests(int consumableItemId)
+        {
+            return ResolveConsumableOwnerPath(consumableItemId);
+        }
+
         internal static string ResolveRequiredEquipFamilyLabelForTests(int consumableItemId)
         {
             return TryGetConsumableDefinition(consumableItemId, out EnhancementConsumableDefinition definition)
@@ -4190,6 +4224,17 @@ namespace HaCreator.MapSimulator.UI
             return TryGetConsumableCompatibilityBlockReason(consumable, selectedPart, out string reason)
                 ? null
                 : reason;
+        }
+
+        internal static void ResetCachesForTests()
+        {
+            ConsumableRequirementCache.Clear();
+            ConsumableOwnerPathCache.Clear();
+            DynamicConsumableDefinitionCache.Clear();
+            EquipUpgradeSlotCountCache.Clear();
+            VegaModifierProfileCache.Clear();
+            VegaCompatibleScrollProfileCache.Clear();
+            ScrollTargetSlotCache.Clear();
         }
 
         private readonly struct VegaModifierProfile

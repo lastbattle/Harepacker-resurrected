@@ -187,7 +187,9 @@ namespace HaCreator.MapSimulator.Managers
                 "preparedclear" => (int)RemoteUserPacketType.UserPreparedSkillClear,
                 "emotion" => (int)RemoteUserPacketType.UserEmotionOfficial,
                 "activeeffect" or "activeeffectitem" or "setactiveeffectitem" => (int)RemoteUserPacketType.UserActiveEffectItemOfficial,
+                "upgradetomb" or "showupgradetomb" => (int)RemoteUserPacketType.UserUpgradeTombOfficial,
                 "officialchair" or "setactiveportablechair" => (int)RemoteUserPacketType.UserPortableChairOfficial,
+                "guildname" or "guildnamechanged" => (int)RemoteUserPacketType.UserGuildNameChangedOfficial,
                 "pickup" or "droppickup" => (int)RemoteUserPacketType.UserDropPickup,
                 "melee" or "attack" or "meleeattack" => (int)RemoteUserPacketType.UserMeleeAttack,
                 "effect" or "itemeffect" or "ringeffect" => (int)RemoteUserPacketType.UserItemEffect,
@@ -206,7 +208,9 @@ namespace HaCreator.MapSimulator.Managers
             {
                 (int)RemoteUserPacketType.UserEmotionOfficial => $"UserEmotionOfficial (0x{packetType:X})",
                 (int)RemoteUserPacketType.UserActiveEffectItemOfficial => $"UserActiveEffectItemOfficial (0x{packetType:X})",
+                (int)RemoteUserPacketType.UserUpgradeTombOfficial => $"UserUpgradeTombOfficial (0x{packetType:X})",
                 (int)RemoteUserPacketType.UserPortableChairOfficial => $"UserPortableChairOfficial (0x{packetType:X})",
+                (int)RemoteUserPacketType.UserGuildNameChangedOfficial => $"UserGuildNameChangedOfficial (0x{packetType:X})",
                 _ => Enum.IsDefined(typeof(RemoteUserPacketType), packetType)
                     ? $"{(RemoteUserPacketType)packetType} (0x{packetType:X})"
                     : $"packet {packetType}"

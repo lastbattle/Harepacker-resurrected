@@ -1317,6 +1317,24 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(iconInfoProperty, "backgrnd2", device),
                 iconInfoSheets);
 
+            WzSubProperty bigBangTooltipProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty
+                ?? uiWindow1Image?["Skill"]?["main"] as WzSubProperty;
+            if (bigBangTooltipProperty != null)
+            {
+                quest.SetTooltipTextures(new[]
+                {
+                    LoadCanvasTexture(bigBangTooltipProperty, "tip0", device),
+                    LoadCanvasTexture(bigBangTooltipProperty, "tip1", device),
+                    LoadCanvasTexture(bigBangTooltipProperty, "tip2", device)
+                });
+                quest.SetTooltipOrigins(new[]
+                {
+                    ResolveTooltipOrigin(bigBangTooltipProperty["tip0"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(bigBangTooltipProperty["tip1"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(bigBangTooltipProperty["tip2"] as WzCanvasProperty)
+                });
+            }
+
 
             return quest;
 
@@ -1425,6 +1443,23 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject allLevelButton = LoadButton(questProperty, "BtAllLevel", btClickSound, btOverSound, device);
             quest.InitializeLevelFilterButtons(myLevelButton, allLevelButton);
             quest.InitializeDetailButton(LoadButton(questProperty, "BtDetail", btClickSound, btOverSound, device));
+
+            WzSubProperty legacyTooltipProperty = uiWindowImage?["Skill"]?["main"] as WzSubProperty;
+            if (legacyTooltipProperty != null)
+            {
+                quest.SetTooltipTextures(new[]
+                {
+                    LoadCanvasTexture(legacyTooltipProperty, "tip0", device),
+                    LoadCanvasTexture(legacyTooltipProperty, "tip1", device),
+                    LoadCanvasTexture(legacyTooltipProperty, "tip2", device)
+                });
+                quest.SetTooltipOrigins(new[]
+                {
+                    ResolveTooltipOrigin(legacyTooltipProperty["tip0"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(legacyTooltipProperty["tip1"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(legacyTooltipProperty["tip2"] as WzCanvasProperty)
+                });
+            }
 
 
             return quest;
@@ -1558,6 +1593,23 @@ namespace HaCreator.MapSimulator.Loaders
             window.InitializeCloseButton(closeButton);
 
             InitializeQuestDetailButtons(window, questInfoProperty, questProperty, legacyQuestProperty, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, true);
+            WzSubProperty bigBangTooltipProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty
+                ?? uiWindow1Image?["Skill"]?["main"] as WzSubProperty;
+            if (bigBangTooltipProperty != null)
+            {
+                window.SetTooltipTextures(new[]
+                {
+                    LoadCanvasTexture(bigBangTooltipProperty, "tip0", device),
+                    LoadCanvasTexture(bigBangTooltipProperty, "tip1", device),
+                    LoadCanvasTexture(bigBangTooltipProperty, "tip2", device)
+                });
+                window.SetTooltipOrigins(new[]
+                {
+                    ResolveTooltipOrigin(bigBangTooltipProperty["tip0"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(bigBangTooltipProperty["tip1"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(bigBangTooltipProperty["tip2"] as WzCanvasProperty)
+                });
+            }
             return window;
 
         }
@@ -1622,6 +1674,22 @@ namespace HaCreator.MapSimulator.Loaders
             window.InitializeCloseButton(closeButton);
 
             InitializeQuestDetailButtons(window, questProperty, questProperty, questProperty, clickSound, overSound, device, frameTexture.Width, frameTexture.Height, false);
+            WzSubProperty legacyTooltipProperty = uiWindow1Image?["Skill"]?["main"] as WzSubProperty;
+            if (legacyTooltipProperty != null)
+            {
+                window.SetTooltipTextures(new[]
+                {
+                    LoadCanvasTexture(legacyTooltipProperty, "tip0", device),
+                    LoadCanvasTexture(legacyTooltipProperty, "tip1", device),
+                    LoadCanvasTexture(legacyTooltipProperty, "tip2", device)
+                });
+                window.SetTooltipOrigins(new[]
+                {
+                    ResolveTooltipOrigin(legacyTooltipProperty["tip0"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(legacyTooltipProperty["tip1"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(legacyTooltipProperty["tip2"] as WzCanvasProperty)
+                });
+            }
             return window;
 
         }
@@ -2836,7 +2904,8 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(userInfoProperty, "BtItem", clickSound, overSound, device),
                 LoadButton(userInfoProperty, "BtWish", clickSound, overSound, device),
                 LoadButton(userInfoProperty, "BtFamily", clickSound, overSound, device),
-                LoadButton(uiWindowImage?["ContextMenu"] as WzSubProperty, "BtFollow", clickSound, overSound, device));
+                LoadButton(uiWindowImage?["ContextMenu"] as WzSubProperty, "BtFollow", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtSearch", clickSound, overSound, device));
             RegisterLegacyUserInfoFrame(window, "Pet", userInfoProperty, "backgrnd2", device);
             RegisterLegacyUserInfoFrame(window, "Ride", userInfoProperty, "backgrnd5", device);
             RegisterLegacyUserInfoFrame(window, "Collection", userInfoProperty, "backgrnd7", device);

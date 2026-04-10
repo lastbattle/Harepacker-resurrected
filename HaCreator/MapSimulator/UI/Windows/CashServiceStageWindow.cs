@@ -132,6 +132,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<int> _packetRouteOrder = new();
         private readonly List<PacketCatalogEntry> _cashPacketCatalogEntries = new();
         private readonly List<PacketCatalogEntry> _cashInventoryPacketEntries = new();
+        private readonly List<PacketCatalogEntry> _cashLockerPacketEntries = new();
+        private readonly List<PacketCatalogEntry> _cashGiftPacketEntries = new();
         private readonly Dictionary<int, bool> _cashPurchaseRecordStates = new();
         private readonly List<OneADayHistoryEntry> _cashOneADayHistoryEntries = new();
         private readonly List<PacketCatalogEntry> _itcPacketCatalogEntries = new();
@@ -241,6 +243,8 @@ namespace HaCreator.MapSimulator.UI
         public string CashTransferWorldLastSummary => _cashTransferWorldLastSummary;
         public string CashGachaponLastSummary => _cashGachaponLastSummary;
         public IReadOnlyList<PacketCatalogEntry> CashInventoryPacketEntries => _cashInventoryPacketEntries;
+        public IReadOnlyList<PacketCatalogEntry> CashLockerPacketEntries => _cashLockerPacketEntries;
+        public IReadOnlyList<PacketCatalogEntry> CashGiftPacketEntries => _cashGiftPacketEntries;
         public int ItcNormalItemMutationCount => _itcNormalItemMutationCount;
         public int ItcNormalItemSubtype => _itcNormalItemSubtype;
         public int ItcNormalItemPage => _itcNormalItemPage;
@@ -357,6 +361,8 @@ namespace HaCreator.MapSimulator.UI
             _cashItemLastSummary = "No cash-item result routed yet.";
             _cashPacketCatalogEntries.Clear();
             _cashInventoryPacketEntries.Clear();
+            _cashLockerPacketEntries.Clear();
+            _cashGiftPacketEntries.Clear();
             _cashPurchaseRecordStates.Clear();
             _cashPacketPaneLabel = "Packet wishlist";
             _cashPacketBrowseModeLabel = "Wish";

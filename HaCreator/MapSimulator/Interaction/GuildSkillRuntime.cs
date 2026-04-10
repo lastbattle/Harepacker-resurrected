@@ -115,6 +115,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             _activeGuildStateKey = newGuildStateKey;
             _isInGuild = inGuild;
+            if (inGuild)
+            {
+                // Persist packet-owned guild level/point echoes so later local-context refreshes
+                // do not fall back to the simulator seed between owner updates.
+                SaveCurrentGuildState(newGuildStateKey);
+            }
+
             EnsureRecommendation();
         }
 
@@ -782,7 +789,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            if (_skills.Any(skill => skill.SkillId == _recommendedSkillId && CanLevelUp(skill)))
+            if (_skills.Any(skill => skill.SkillId == _recommendedSkillId))
             {
                 return;
             }
@@ -1147,14 +1154,14 @@ namespace HaCreator.MapSimulator.Interaction
             return ResolveLocalFallbackGuildLevel(savedGuildLevel);
         }
 
-        private static int ResolveGuildPoints(int? requestedGuildPoints, int savedGuildPoints)
+        private int ResolveGuildPoints(int? requestedGuildPoints, int savedGuildPoints)
         {
             if (requestedGuildPoints.HasValue)
             {
                 return Math.Max(0, requestedGuildPoints.Value);
             }
 
-            return Math.Max(0, savedGuildPoints);
+            return Math.Max(0, Math.Max(_guildPoints, savedGuildPoints));
         }
 
         private int ResolveLocalFallbackGuildLevel(int savedGuildLevel = 0)

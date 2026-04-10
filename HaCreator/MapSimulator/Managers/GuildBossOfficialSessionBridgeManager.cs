@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Fields;
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
@@ -338,6 +339,23 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public bool TrySendOrQueuePulleyRequest(GuildBossField.PulleyPacketRequest request, out bool queued, out string status)
+        {
+            queued = false;
+            if (HasConnectedSession)
+            {
+                return TrySendPulleyRequest(request, out status);
+            }
+
+            if (!TryQueuePulleyRequest(request, out status))
+            {
+                return false;
+            }
+
+            queued = true;
+            return true;
+        }
+
         public bool TryQueuePulleyRequest(GuildBossField.PulleyPacketRequest request, out string status)
         {
             if (!IsRunning && !HasAttachedClient)
@@ -476,9 +494,15 @@ namespace HaCreator.MapSimulator.Managers
                     return;
                 }
 
-                _pendingMessages.Enqueue(new GuildBossPacketInboxMessage(opcode, payload, $"official-session:{pair.RemoteEndpoint}", $"packetraw {Convert.ToHexString(raw)}"));
+                byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
+                _pendingMessages.Enqueue(new GuildBossPacketInboxMessage(
+                    SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
+                    relayPayload,
+                    $"official-session:{pair.RemoteEndpoint}",
+                    $"packetraw {Convert.ToHexString(raw)}"));
                 ReceivedCount++;
-                LastStatus = $"Queued Guild Boss opcode {opcode} from live session {pair.RemoteEndpoint}.";
+                LastStatus =
+                    $"Queued CField::OnPacket opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay for Guild Boss opcode {opcode} from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
             {

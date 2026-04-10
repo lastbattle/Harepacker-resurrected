@@ -356,7 +356,7 @@ namespace HaCreator.MapSimulator.UI
             return ellipsis;
         }
 
-        private static string GetFollowUpStateText(FieldHazardFollowUpKind kind)
+        internal static string GetFollowUpStateText(FieldHazardFollowUpKind kind)
         {
             return kind switch
             {
@@ -365,11 +365,13 @@ namespace HaCreator.MapSimulator.UI
                 FieldHazardFollowUpKind.Consumed => "USED",
                 FieldHazardFollowUpKind.Failure => "FAILED",
                 FieldHazardFollowUpKind.Throttled => "WAIT",
+                FieldHazardFollowUpKind.Deferred => "QUEUE",
+                FieldHazardFollowUpKind.Dispatched => "SENT",
                 _ => string.Empty
             };
         }
 
-        private static Color GetFollowUpColor(FieldHazardFollowUpKind kind)
+        internal static Color GetFollowUpColor(FieldHazardFollowUpKind kind)
         {
             return kind switch
             {
@@ -378,6 +380,8 @@ namespace HaCreator.MapSimulator.UI
                 FieldHazardFollowUpKind.Consumed => new Color(170, 255, 170),
                 FieldHazardFollowUpKind.Failure => new Color(255, 181, 145),
                 FieldHazardFollowUpKind.Throttled => new Color(255, 219, 145),
+                FieldHazardFollowUpKind.Deferred => new Color(180, 203, 255),
+                FieldHazardFollowUpKind.Dispatched => new Color(154, 244, 226),
                 _ => Color.White
             };
         }

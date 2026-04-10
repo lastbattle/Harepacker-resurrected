@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Func<int, string> ResolveItemCountText { get; init; }
         public Func<int, string> ResolveQuestStateText { get; init; }
         public Func<int, string> ResolveQuestRecordText { get; init; }
+        public Func<string, string> ResolveQuestDetailRecordText { get; init; }
         public Func<string> ResolveJobNameText { get; init; }
     }
 
@@ -44,7 +45,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CurrentMapNameRegex = new(@"#m#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex JobNameRegex = new(@"#j#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestDetailRecordRegex = new(@"#j(?<token>[A-Za-z0-9_]+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex JobNameRegex = new(@"#j(?![A-Za-z0-9_])#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex SelectedMobRegex = new(@"#M(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -54,7 +56,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex FontNameRegex = new(@"#fn[^#]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontSizeRegex = new(@"#fs-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontTableRegex = new(@"#w(?:[^#\s]*#)?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)", RegexOptions.Compiled);
+        private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled);
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L\d+#", RegexOptions.Compiled);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -82,6 +84,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = SkillNameRegex.Replace(formatted, static match => ResolveSkillName(match.Groups[1].Value));
             formatted = MapNameRegex.Replace(formatted, static match => ResolveMapName(match.Groups[1].Value));
             formatted = CurrentMapNameRegex.Replace(formatted, _ => ResolveCurrentMapName(context));
+            formatted = QuestDetailRecordRegex.Replace(formatted, match => ResolveQuestDetailRecordText(match.Groups["token"].Value, context, match.Value));
             formatted = JobNameRegex.Replace(formatted, _ => ResolveJobNameText(context));
             formatted = SelectedMobRegex.Replace(formatted, static match => ResolveSelectedMobText(match.Groups[1].Value));
             formatted = QuestAmountRegex.Replace(formatted, static match => ResolveQuestAmountText(match.Groups[1].Value));
@@ -183,6 +186,26 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "your job";
+        }
+
+        private static string ResolveQuestDetailRecordText(string token, PacketOwnedBalloonTextFormattingContext context, string fallbackText)
+        {
+            string normalizedToken = token?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return fallbackText ?? string.Empty;
+            }
+
+            if (context?.ResolveQuestDetailRecordText != null)
+            {
+                string resolvedText = context.ResolveQuestDetailRecordText(normalizedToken);
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return fallbackText ?? string.Empty;
         }
 
         private static string ResolveNpcName(string npcIdText)

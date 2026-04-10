@@ -115,6 +115,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1030;
         public const int EventAlarmTextPacketType = 1031;
         public const int EventCalendarEntriesPacketType = 1032;
+        public const int RankingPagePacketType = 1033;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
 
@@ -393,6 +394,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("eventlistentries", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = EventCalendarEntriesPacketType;
+                return true;
+            }
+
+            if (token.Equals("ranking", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("rankingpage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("rankingentries", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuiranking", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RankingPagePacketType;
                 return true;
             }
 
@@ -930,6 +940,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == BuffzoneEffectClientPacketType
                 || packetType == EventAlarmTextPacketType
                 || packetType == EventCalendarEntriesPacketType
+                || packetType == RankingPagePacketType
                 || packetType == PlayEventSoundPacketType
                 || packetType == PlayEventSoundClientPacketType
                 || packetType == PlayMinigameSoundPacketType
@@ -1122,6 +1133,7 @@ namespace HaCreator.MapSimulator.Managers
                 RadioSchedulePacketType => "RadioSchedule(1010)",
                 LogoutGiftClientPacketType => "OnLogoutGift(432)",
                 AntiMacroResultPacketType => "AntiMacroResult(1011)",
+                RankingPagePacketType => "RankingPage(1033)",
                 InitialQuizTimerRuntime.PacketType => "InitialQuizStart(43)",
                 FollowCharacterPacketType => "FollowCharacter(1012)",
                 SetDirectionModePacketType => "SetDirectionMode(1013)",

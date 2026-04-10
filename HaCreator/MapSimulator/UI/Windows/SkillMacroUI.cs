@@ -2432,7 +2432,7 @@ namespace HaCreator.MapSimulator.UI
                 width,
                 height,
                 origin,
-                Math.Max(0, ownerBounds.Y - height - 1));
+                ownerBounds.Y - height - 1);
         }
 
         private Viewport GetActiveViewport()

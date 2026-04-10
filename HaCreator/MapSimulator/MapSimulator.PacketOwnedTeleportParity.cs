@@ -479,6 +479,14 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryResolvePendingCrossMapTeleportPortalIndexBySourceMetadata(
+                portalPool,
+                target,
+                out portalIndex))
+            {
+                return true;
+            }
+
             if (target.HasFallbackCoordinates
                 && TryResolvePacketOwnedTeleportPortalByPosition(
                     portalPool,
@@ -493,6 +501,80 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private static bool TryResolvePendingCrossMapTeleportPortalIndexBySourceMetadata(
+            PortalPool portalPool,
+            PendingCrossMapTeleportTarget target,
+            out int portalIndex)
+        {
+            portalIndex = -1;
+            if (portalPool == null || target == null)
+            {
+                return false;
+            }
+
+            if (!TryCollectPacketOwnedTeleportLivePortalNames(
+                portalPool,
+                out PortalInstance[] livePortals,
+                out string[] livePortalNames))
+            {
+                return false;
+            }
+
+            var metadataCandidateNames = new List<string>();
+            if (TryCollectPacketOwnedPortalRequestTargetNamesByReciprocalLink(
+                livePortals,
+                target.SourceMapId,
+                target.SourcePortalName,
+                out string[] reciprocalCandidateNames))
+            {
+                foreach (string reciprocalCandidateName in reciprocalCandidateNames)
+                {
+                    AddPacketOwnedTeleportCandidateName(metadataCandidateNames, reciprocalCandidateName);
+                }
+            }
+
+            if (TryResolvePacketOwnedPortalRequestTargetByMapOnlyReturn(
+                livePortals,
+                target.SourceMapId,
+                out PortalInstance mapOnlyPortal))
+            {
+                AddPacketOwnedTeleportCandidateName(metadataCandidateNames, mapOnlyPortal.pn);
+            }
+
+            if (metadataCandidateNames.Count == 0)
+            {
+                return false;
+            }
+
+            if (TryResolvePacketOwnedTargetPortalNameByMetadataIntersection(
+                target.TargetPortalNameCandidates,
+                metadataCandidateNames,
+                out string intersectedCandidatePortalName)
+                && TryResolvePacketOwnedTeleportPortalIndexByName(
+                    portalPool,
+                    intersectedCandidatePortalName,
+                    out portalIndex))
+            {
+                return true;
+            }
+
+            if (target.HasFallbackCoordinates
+                && TryResolvePacketOwnedTeleportPortalIndexByCandidateNamesAndPosition(
+                    portalPool,
+                    metadataCandidateNames,
+                    target.FallbackX.Value,
+                    target.FallbackY.Value,
+                    out portalIndex))
+            {
+                return true;
+            }
+
+            return TryResolvePacketOwnedTeleportPortalIndexByCandidateNames(
+                portalPool,
+                metadataCandidateNames,
+                out portalIndex);
+        }
+
         private static bool TryResolvePacketOwnedTeleportPortalIndexByName(PortalPool portalPool, string portalName, out int portalIndex)
         {
             portalIndex = -1;
@@ -503,6 +585,37 @@ namespace HaCreator.MapSimulator
 
             portalIndex = portalPool.GetPortalIndexByName(portalName);
             return portalPool.GetPortal(portalIndex)?.PortalInstance != null;
+        }
+
+        private static bool TryCollectPacketOwnedTeleportLivePortalNames(
+            PortalPool portalPool,
+            out PortalInstance[] livePortals,
+            out string[] livePortalNames)
+        {
+            livePortals = Array.Empty<PortalInstance>();
+            livePortalNames = Array.Empty<string>();
+            if (portalPool == null)
+            {
+                return false;
+            }
+
+            var portals = new List<PortalInstance>();
+            var names = new List<string>();
+            for (int i = 0; i < portalPool.PortalCount; i++)
+            {
+                PortalInstance portalInstance = portalPool.GetPortal(i)?.PortalInstance;
+                if (portalInstance == null)
+                {
+                    continue;
+                }
+
+                portals.Add(portalInstance);
+                AddPacketOwnedTeleportCandidateName(names, portalInstance.pn);
+            }
+
+            livePortals = portals.ToArray();
+            livePortalNames = names.ToArray();
+            return livePortals.Length > 0;
         }
 
         internal static bool TryResolvePacketOwnedTeleportPortalIndexByNameAndPosition(

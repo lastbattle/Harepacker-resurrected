@@ -713,7 +713,7 @@ namespace HaCreator.MapSimulator.Companions
                 }
             }
 
-            return null;
+            return ResolveCanonicalActionProperty(petImgEntry.Children, requestedAction);
         }
 
         private static IEnumerable<string> EnumerateActionCandidates(string requestedAction)
@@ -937,6 +937,38 @@ namespace HaCreator.MapSimulator.Companions
                 if (property != null)
                 {
                     return property;
+                }
+            }
+
+            return ResolveCanonicalActionProperty(resolvedRoot.WzProperties, requestedAction);
+        }
+
+        private static WzImageProperty ResolveCanonicalActionProperty(
+            IEnumerable<WzImageProperty> candidateProperties,
+            string requestedAction)
+        {
+            string normalizedRequestedAction = PetActionAliases.NormalizeActionName(requestedAction);
+            if (string.IsNullOrWhiteSpace(normalizedRequestedAction) || candidateProperties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty candidateProperty in candidateProperties)
+            {
+                if (candidateProperty == null ||
+                    string.IsNullOrWhiteSpace(candidateProperty.Name) ||
+                    !string.Equals(
+                        PetActionAliases.NormalizeActionName(candidateProperty.Name),
+                        normalizedRequestedAction,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                WzImageProperty resolvedProperty = ResolveActionProperty(candidateProperty);
+                if (resolvedProperty != null)
+                {
+                    return resolvedProperty;
                 }
             }
 

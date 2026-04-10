@@ -901,7 +901,7 @@ namespace HaCreator.MapSimulator.Managers
                     tentativePacketType,
                     inferredReason));
                 RecordRecentPacket(opcode, rawPacket, null, $"deferred:{inferredReason}");
-                LastStatus = $"Deferred tentative Dojo opcode {opcode} as {DescribePacketType(tentativePacketType)} from payload inference ({inferredReason}); waiting for clear or timeout field-state evidence before dispatch.";
+                LastStatus = $"Deferred tentative Dojo opcode {opcode} as {DescribePacketType(tentativePacketType)} from payload inference ({inferredReason}); waiting for stable clear-or-timeover field-state evidence before dispatch.";
             }
         }
 
@@ -1015,15 +1015,6 @@ namespace HaCreator.MapSimulator.Managers
             {
                 packetType = DojoField.PacketTypeTimeOver;
                 reason = timeOverActive ? "time-over presentation already active" : "live Dojo timer already expired";
-                return true;
-            }
-
-            if (timerRunning)
-            {
-                packetType = DojoField.PacketTypeClear;
-                reason = transferMapId > 0
-                    ? $"live timer still running for transfer target {transferMapId}{FormatPortalSuffix(portalName)}"
-                    : "live timer still running before timeout";
                 return true;
             }
 

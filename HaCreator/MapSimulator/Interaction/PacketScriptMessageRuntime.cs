@@ -1199,6 +1199,8 @@ namespace HaCreator.MapSimulator.Interaction
                 : pet.DisplayName.Trim();
             string slotText = pet.Source switch
             {
+                PacketScriptPetSelectionSource.LiveCashInventory when pet.InventoryPosition > 0 => $"cash slot {pet.InventoryPosition}",
+                PacketScriptPetSelectionSource.LiveCashInventory => "cash slot ?",
                 PacketScriptPetSelectionSource.AuthoritativeCharacterData when pet.InventoryPosition > 0 => $"cash slot {pet.InventoryPosition}",
                 PacketScriptPetSelectionSource.AuthoritativeCharacterData => "cash slot ?",
                 _ => pet.SlotIndex >= 0 ? $"slot {pet.SlotIndex + 1}" : "slot ?"
@@ -1219,6 +1221,8 @@ namespace HaCreator.MapSimulator.Interaction
             string itemText = pet.ItemId > 0 ? $"item {pet.ItemId}" : "unknown item";
             string slotText = pet.Source switch
             {
+                PacketScriptPetSelectionSource.LiveCashInventory when pet.InventoryPosition > 0 => $"cash slot {pet.InventoryPosition}",
+                PacketScriptPetSelectionSource.LiveCashInventory => "unknown cash slot",
                 PacketScriptPetSelectionSource.AuthoritativeCharacterData when pet.InventoryPosition > 0 => $"cash slot {pet.InventoryPosition}",
                 PacketScriptPetSelectionSource.AuthoritativeCharacterData => "unknown cash slot",
                 _ => pet.SlotIndex >= 0 ? $"slot {pet.SlotIndex + 1}" : "unknown slot"

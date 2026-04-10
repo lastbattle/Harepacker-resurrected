@@ -603,7 +603,7 @@ namespace HaCreator.MapSimulator.Loaders
                 if (string.IsNullOrWhiteSpace(resolved) && !string.IsNullOrWhiteSpace(sharedTemplate))
                     resolved = ResolveSkillTemplate(sharedTemplate, skillEntry, level, maxLevel);
 
-                string fallbackStats = BuildFallbackLevelDescription(skillEntry, level);
+                string fallbackStats = BuildFallbackLevelDescription(skillEntry, stringEntry, level);
                 if (string.IsNullOrWhiteSpace(resolved) || ContainsUnresolvedSkillToken(resolved))
                     resolved = fallbackStats;
 
@@ -668,7 +668,10 @@ namespace HaCreator.MapSimulator.Loaders
             return false;
         }
 
-        private static string BuildFallbackLevelDescription(WzSubProperty skillEntry, int level)
+        private static string BuildFallbackLevelDescription(
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            int level)
         {
             if (skillEntry == null || level <= 0)
                 return string.Empty;
@@ -679,22 +682,26 @@ namespace HaCreator.MapSimulator.Loaders
             var builder = new StringBuilder();
             var appendedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            AppendFallbackStatsFromNode(builder, skillEntry, levelNode, commonNode, infoNode, level, levelNode, appendedKeys);
-            AppendFallbackStatsFromNode(builder, skillEntry, levelNode, commonNode, infoNode, level, commonNode, appendedKeys);
-            AppendFallbackStatsFromNode(builder, skillEntry, levelNode, commonNode, infoNode, level, infoNode, appendedKeys);
-            AppendFallbackStatsInDefaultOrder(builder, skillEntry, levelNode, commonNode, infoNode, level, appendedKeys);
+            AppendFallbackStatsFromNode(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, levelNode, appendedKeys);
+            AppendFallbackStatsFromNode(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, commonNode, appendedKeys);
+            AppendFallbackStatsFromNode(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, infoNode, appendedKeys);
+            AppendFallbackStatsInDefaultOrder(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, appendedKeys);
 
             return builder.ToString().Trim();
         }
 
-        internal static string BuildFallbackLevelDescriptionForTests(WzSubProperty skillEntry, int level)
+        internal static string BuildFallbackLevelDescriptionForTests(
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            int level)
         {
-            return BuildFallbackLevelDescription(skillEntry, level);
+            return BuildFallbackLevelDescription(skillEntry, stringEntry, level);
         }
 
         private static void AppendFallbackStatsFromNode(
             StringBuilder builder,
             WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
             WzImageProperty levelNode,
             WzImageProperty commonNode,
             WzImageProperty infoNode,
@@ -728,7 +735,7 @@ namespace HaCreator.MapSimulator.Loaders
                 if (appendedKeys.Contains(statKey))
                     continue;
 
-                if (!TryAppendFallbackStat(builder, skillEntry, levelNode, commonNode, infoNode, level, statKey, useGenericFallback))
+                if (!TryAppendFallbackStat(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, statKey, useGenericFallback))
                     continue;
 
                 appendedKeys.Add(statKey);
@@ -738,6 +745,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static void AppendFallbackStatsInDefaultOrder(
             StringBuilder builder,
             WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
             WzImageProperty levelNode,
             WzImageProperty commonNode,
             WzImageProperty infoNode,
@@ -749,7 +757,7 @@ namespace HaCreator.MapSimulator.Loaders
                 if (appendedKeys.Contains(statKey))
                     continue;
 
-                if (!TryAppendFallbackStat(builder, skillEntry, levelNode, commonNode, infoNode, level, statKey))
+                if (!TryAppendFallbackStat(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, statKey))
                     continue;
 
                 appendedKeys.Add(statKey);
@@ -788,6 +796,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static bool TryAppendFallbackStat(
             StringBuilder builder,
             WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
             WzImageProperty levelNode,
             WzImageProperty commonNode,
             WzImageProperty infoNode,
@@ -833,6 +842,7 @@ namespace HaCreator.MapSimulator.Loaders
             if (TryAppendContextualSingleLetterFallbackStat(
                     builder,
                     skillEntry,
+                    stringEntry,
                     levelNode,
                     commonNode,
                     infoNode,
@@ -871,6 +881,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static bool TryAppendContextualSingleLetterFallbackStat(
             StringBuilder builder,
             WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
             WzImageProperty levelNode,
             WzImageProperty commonNode,
             WzImageProperty infoNode,
@@ -888,8 +899,18 @@ namespace HaCreator.MapSimulator.Loaders
                 _ => null
             };
 
+            Func<int, string> formatter = FormatSignedValue;
             if (label == null || !HasAdvancedBlessingFallbackShape(levelNode, commonNode, infoNode))
-                return false;
+            {
+                if (!TryResolveDescriptionBackedSingleLetterFallbackPresentation(
+                        stringEntry,
+                        statKey,
+                        out label,
+                        out formatter))
+                {
+                    return false;
+                }
+            }
 
             int originalLength = builder.Length;
             AppendIntStat(
@@ -901,8 +922,267 @@ namespace HaCreator.MapSimulator.Loaders
                 infoNode,
                 level,
                 statKey,
-                FormatSignedValue);
+                formatter);
             return builder.Length != originalLength;
+        }
+
+        private static bool TryResolveDescriptionBackedSingleLetterFallbackPresentation(
+            WzSubProperty stringEntry,
+            string statKey,
+            out string label,
+            out Func<int, string> formatter)
+        {
+            label = null;
+            formatter = null;
+            if (stringEntry == null || string.IsNullOrWhiteSpace(statKey))
+            {
+                return false;
+            }
+
+            string placeholderToken = $"#{statKey.Trim()}";
+            foreach (string clause in EnumeratePlaceholderContextClauses(stringEntry, placeholderToken))
+            {
+                if (!TryResolveSingleLetterContextLabel(clause, placeholderToken, out label))
+                {
+                    continue;
+                }
+
+                formatter = ResolveSingleLetterContextFormatter(label, clause, placeholderToken);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> EnumeratePlaceholderContextClauses(
+            WzSubProperty stringEntry,
+            string placeholderToken)
+        {
+            if (stringEntry == null || string.IsNullOrWhiteSpace(placeholderToken))
+            {
+                yield break;
+            }
+
+            foreach (WzStringProperty stringProperty in stringEntry.WzProperties.OfType<WzStringProperty>())
+            {
+                string value = stringProperty.Value;
+                if (string.IsNullOrWhiteSpace(value)
+                    || value.IndexOf(placeholderToken, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+
+                string normalizedValue = value
+                    .Replace("\\r\\n", "\n", StringComparison.Ordinal)
+                    .Replace("\\n", "\n", StringComparison.Ordinal)
+                    .Replace("\\r", "\n", StringComparison.Ordinal);
+
+                int searchIndex = 0;
+                while (searchIndex < normalizedValue.Length)
+                {
+                    int tokenIndex = normalizedValue.IndexOf(
+                        placeholderToken,
+                        searchIndex,
+                        StringComparison.OrdinalIgnoreCase);
+                    if (tokenIndex < 0)
+                    {
+                        break;
+                    }
+
+                    int start = tokenIndex;
+                    while (start > 0 && !IsPlaceholderClauseBoundary(normalizedValue[start - 1]))
+                    {
+                        start--;
+                    }
+
+                    int end = tokenIndex + placeholderToken.Length;
+                    while (end < normalizedValue.Length && !IsPlaceholderClauseBoundary(normalizedValue[end]))
+                    {
+                        end++;
+                    }
+
+                    string clause = normalizedValue[start..end].Trim();
+                    if (!string.IsNullOrWhiteSpace(clause))
+                    {
+                        yield return clause;
+                    }
+
+                    searchIndex = tokenIndex + placeholderToken.Length;
+                }
+            }
+        }
+
+        private static bool IsPlaceholderClauseBoundary(char value)
+        {
+            return value == ',' || value == '\n' || value == '\r' || value == ';' || value == '|';
+        }
+
+        private static bool TryResolveSingleLetterContextLabel(
+            string clause,
+            string placeholderToken,
+            out string label)
+        {
+            label = null;
+            if (string.IsNullOrWhiteSpace(clause) || string.IsNullOrWhiteSpace(placeholderToken))
+            {
+                return false;
+            }
+
+            string normalizedClause = NormalizeSingleLetterContextClause(clause, placeholderToken);
+            if (string.IsNullOrWhiteSpace(normalizedClause))
+            {
+                return false;
+            }
+
+            if (normalizedClause.Contains("max movement speed", StringComparison.Ordinal)
+                || normalizedClause.Contains("movement speed limit", StringComparison.Ordinal))
+            {
+                label = "Max Movement Speed";
+            }
+            else if (normalizedClause.Contains("attack speed", StringComparison.Ordinal)
+                     || normalizedClause.Contains("weapon speed", StringComparison.Ordinal))
+            {
+                label = "Attack Speed";
+            }
+            else if (normalizedClause.Contains("weapon att", StringComparison.Ordinal)
+                     || normalizedClause.Contains("weapon attack", StringComparison.Ordinal))
+            {
+                label = "Weapon ATT";
+            }
+            else if (normalizedClause.Contains("magic att", StringComparison.Ordinal)
+                     || normalizedClause.Contains("magic attack", StringComparison.Ordinal))
+            {
+                label = "Magic ATT";
+            }
+            else if (normalizedClause.Contains("weapon def", StringComparison.Ordinal)
+                     || normalizedClause.Contains("weapon defense", StringComparison.Ordinal))
+            {
+                label = "Weapon DEF";
+            }
+            else if (normalizedClause.Contains("magic def", StringComparison.Ordinal)
+                     || normalizedClause.Contains("magic defense", StringComparison.Ordinal))
+            {
+                label = "Magic DEF";
+            }
+            else if (normalizedClause.Contains("enemy accuracy", StringComparison.Ordinal))
+            {
+                label = "Enemy Accuracy";
+            }
+            else if (normalizedClause.Contains("accuracy", StringComparison.Ordinal))
+            {
+                label = "Accuracy";
+            }
+            else if (normalizedClause.Contains("avoidability", StringComparison.Ordinal)
+                     || normalizedClause.Contains("avoidance", StringComparison.Ordinal))
+            {
+                label = "Avoidability";
+            }
+            else if (normalizedClause.Contains("critical rate", StringComparison.Ordinal)
+                     || normalizedClause.Contains("critical hit rate", StringComparison.Ordinal))
+            {
+                label = "Critical Rate";
+            }
+            else if (normalizedClause.Contains("damage over time", StringComparison.Ordinal))
+            {
+                label = "Damage Over Time";
+            }
+            else if (normalizedClause.Contains("damage", StringComparison.Ordinal))
+            {
+                label = "Damage";
+            }
+            else if (normalizedClause.Contains("mp cost", StringComparison.Ordinal)
+                     || (normalizedClause.Contains("additional", StringComparison.Ordinal)
+                         && normalizedClause.Contains("mp every", StringComparison.Ordinal)))
+            {
+                label = "MP Cost";
+            }
+            else if (normalizedClause.Contains("hp cost", StringComparison.Ordinal))
+            {
+                label = "HP Cost";
+            }
+            else if (normalizedClause.Contains("all stats", StringComparison.Ordinal)
+                     || normalizedClause.Contains("all stat", StringComparison.Ordinal))
+            {
+                label = "All Stats";
+            }
+            else if (normalizedClause.Contains("combo orb", StringComparison.Ordinal))
+            {
+                label = "Max Combo Orbs";
+            }
+            else if ((normalizedClause.Contains("monster", StringComparison.Ordinal)
+                      || normalizedClause.Contains("enemy", StringComparison.Ordinal)
+                      || normalizedClause.Contains("mob", StringComparison.Ordinal)
+                      || normalizedClause.Contains("robot", StringComparison.Ordinal))
+                     && (normalizedClause.Contains("up to", StringComparison.Ordinal)
+                         || normalizedClause.Contains("max ", StringComparison.Ordinal)))
+            {
+                label = "Mob Count";
+            }
+            else if (normalizedClause.Contains("range", StringComparison.Ordinal))
+            {
+                label = "Range";
+            }
+            else if (normalizedClause.Contains("jump", StringComparison.Ordinal))
+            {
+                label = "Jump";
+            }
+            else if (normalizedClause.Contains("speed", StringComparison.Ordinal))
+            {
+                label = "Speed";
+            }
+
+            return !string.IsNullOrWhiteSpace(label);
+        }
+
+        private static string NormalizeSingleLetterContextClause(string clause, string placeholderToken)
+        {
+            if (string.IsNullOrWhiteSpace(clause))
+            {
+                return string.Empty;
+            }
+
+            return Regex.Replace(
+                    clause.Replace(placeholderToken, " ", StringComparison.OrdinalIgnoreCase),
+                    "#[A-Za-z0-9_]+",
+                    " ")
+                .Replace(':', ' ')
+                .Replace('[', ' ')
+                .Replace(']', ' ')
+                .ToLowerInvariant();
+        }
+
+        private static Func<int, string> ResolveSingleLetterContextFormatter(
+            string label,
+            string clause,
+            string placeholderToken)
+        {
+            if (string.Equals(label, "Attack Speed", StringComparison.Ordinal))
+            {
+                return FormatActionSpeedValue;
+            }
+
+            if (clause.IndexOf($"-{placeholderToken}%", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return FormatNegativePercentValue;
+            }
+
+            if (clause.IndexOf($"{placeholderToken}%", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return static value => $"{value.ToString(CultureInfo.InvariantCulture)}%";
+            }
+
+            return label switch
+            {
+                "Weapon ATT" => FormatSignedValue,
+                "Magic ATT" => FormatSignedValue,
+                "Weapon DEF" => FormatSignedValue,
+                "Magic DEF" => FormatSignedValue,
+                "Accuracy" => FormatSignedValue,
+                "Avoidability" => FormatSignedValue,
+                "Speed" => FormatSignedValue,
+                "Jump" => FormatSignedValue,
+                _ => null
+            };
         }
 
         private static bool HasAdvancedBlessingFallbackShape(

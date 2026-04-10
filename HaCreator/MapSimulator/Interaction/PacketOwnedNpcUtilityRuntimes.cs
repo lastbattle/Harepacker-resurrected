@@ -36,6 +36,9 @@ namespace HaCreator.MapSimulator.Interaction
         InventoryType InventoryType,
         InventoryType PacketGroupInventoryType,
         int ItemId,
+        long ItemSerialNumber,
+        long CashSerialNumber,
+        string Title,
         int ClientStock,
         string PrimaryText,
         string SecondaryText,
@@ -45,6 +48,14 @@ namespace HaCreator.MapSimulator.Interaction
         bool HasCashSerialNumber,
         bool IsRechargeBundle,
         bool WasRetainedFromPreviousSnapshot);
+
+    internal readonly record struct StoreBankOwnerSelectionAnchor(
+        InventoryType PacketGroupInventoryType,
+        int PacketGroupRowIndex,
+        int ItemId,
+        long ItemSerialNumber,
+        long CashSerialNumber,
+        string Title);
 
     internal sealed class PacketOwnedShopDialogRuntime
     {
@@ -912,6 +923,9 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class PacketOwnedStoreBankDialogRuntime
     {
+        private const int StoreBankGetAllFeePromptStringPoolId = 0x0DC4;
+        private const int StoreBankGetAllNoFeePromptStringPoolId = 0x0DC5;
+
         private sealed class StoreBankEquipData
         {
             internal short RemainingUpgradeCount { get; init; }
@@ -1097,6 +1111,59 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal string BuildPendingGetAllPromptBody()
+        {
+            if (!HasPendingGetAllRequest)
+            {
+                return "No packet-authored store-bank get-all prompt is waiting.";
+            }
+
+            if (_pendingGetAllFee <= 0)
+            {
+                return MapleStoryStringPool.GetOrFallback(
+                    StoreBankGetAllNoFeePromptStringPoolId,
+                    "Would you like to retrieve all stored items?");
+            }
+
+            string promptFormat = MapleStoryStringPool.GetOrFallback(
+                StoreBankGetAllFeePromptStringPoolId,
+                "Stored item retrieval after %d day(s) costs %d mesos.");
+            int clampedPassingDay = Math.Min(100, Math.Max(0, _pendingGetAllPassingDay));
+
+            try
+            {
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    promptFormat,
+                    _pendingGetAllPassingDay,
+                    clampedPassingDay,
+                    _pendingGetAllFee);
+            }
+            catch (FormatException)
+            {
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Stored item retrieval after {0} day(s) costs {1} mesos.",
+                    _pendingGetAllPassingDay,
+                    _pendingGetAllFee);
+            }
+        }
+
+        internal string CancelPendingGetAllRequest()
+        {
+            if (!HasPendingGetAllRequest)
+            {
+                return "No packet-authored store-bank get-all prompt was waiting.";
+            }
+
+            HasPendingGetAllRequest = false;
+            GetAllRequestWasAccepted = false;
+            _hasAcceptedGetAllRequestInFlight = false;
+            StatusMessage = "CStoreBankDlg dismissed the staged SendGetAllRequest prompt without sending opcode 69, mode 27.";
+            AppendNote(StatusMessage);
+            return StatusMessage;
+        }
+
         internal bool TryApplyPacket(int packetType, byte[] payload, out string message)
         {
             payload ??= Array.Empty<byte>();
@@ -1209,6 +1276,9 @@ namespace HaCreator.MapSimulator.Interaction
                     item.InventoryType,
                     item.PacketGroupInventoryType,
                     item.ItemId,
+                    item.ItemSerialNumber,
+                    item.CashSerialNumber,
+                    item.Title,
                     item.ClientStock,
                     primaryText,
                     string.Join(" | ", secondaryParts),
@@ -1221,6 +1291,70 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return rows;
+        }
+
+        internal static int ResolveOwnerRowIndex(IReadOnlyList<StoreBankOwnerRowSnapshot> rows, StoreBankOwnerSelectionAnchor anchor)
+        {
+            if (rows == null || rows.Count == 0)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < rows.Count; i++)
+            {
+                StoreBankOwnerRowSnapshot row = rows[i];
+                if (anchor.CashSerialNumber > 0
+                    && row.CashSerialNumber == anchor.CashSerialNumber
+                    && row.ItemId == anchor.ItemId)
+                {
+                    return i;
+                }
+            }
+
+            for (int i = 0; i < rows.Count; i++)
+            {
+                StoreBankOwnerRowSnapshot row = rows[i];
+                if (anchor.ItemSerialNumber > 0
+                    && row.ItemSerialNumber == anchor.ItemSerialNumber
+                    && row.ItemId == anchor.ItemId)
+                {
+                    return i;
+                }
+            }
+
+            for (int i = 0; i < rows.Count; i++)
+            {
+                StoreBankOwnerRowSnapshot row = rows[i];
+                if (row.PacketGroupInventoryType == anchor.PacketGroupInventoryType
+                    && row.PacketGroupRowIndex == anchor.PacketGroupRowIndex
+                    && row.ItemId == anchor.ItemId)
+                {
+                    return i;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(anchor.Title))
+            {
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    StoreBankOwnerRowSnapshot row = rows[i];
+                    if (row.ItemId == anchor.ItemId
+                        && string.Equals(row.Title, anchor.Title, StringComparison.Ordinal))
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            for (int i = 0; i < rows.Count; i++)
+            {
+                if (rows[i].ItemId == anchor.ItemId)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         internal bool TryBuildSelectedGetOutboundRequest(int ownerRowIndex, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
@@ -1913,7 +2047,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool IsCashItem(StoreBankItemEntry item)
         {
-            return item != null && item.InventoryType == InventoryType.CASH;
+            return item != null && item.HasCashSerialNumber;
         }
 
         private static string FormatFileTime(long value)
@@ -2594,6 +2728,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _pageIndex;
 
         internal bool IsOpen { get; private set; }
+        internal int CurrentPageIndex => _pageIndex;
         internal bool OnCalc { get; private set; }
         internal bool ServerOnCalc { get; private set; }
         internal bool DotTrackingEnabled { get; private set; }

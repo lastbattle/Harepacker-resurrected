@@ -99,6 +99,7 @@ namespace HaCreator.MapSimulator.UI
         private int _searchResultSessionToken;
         private string _searchResultSessionSelectedEntryKey = string.Empty;
         private string _searchResultSessionCatalogSignature = string.Empty;
+        private string _searchResultSessionServiceSignature = string.Empty;
         private PopupMode _popupMode;
 
         public AdminShopWishListUI(
@@ -426,6 +427,11 @@ namespace HaCreator.MapSimulator.UI
             return _statusMessage;
         }
 
+        public string GetWishlistSearchServiceStateSummary()
+        {
+            return _sourceDialog?.GetWishlistSearchServiceStateSummary() ?? string.Empty;
+        }
+
         public void OnSearchResultAddOnClosed(string message)
         {
             if (!string.IsNullOrWhiteSpace(message))
@@ -592,6 +598,8 @@ namespace HaCreator.MapSimulator.UI
                 Hide();
                 return;
             }
+
+            RefreshWishlistSearchResultSessionState();
 
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
@@ -1615,6 +1623,7 @@ namespace HaCreator.MapSimulator.UI
             AdvanceWishlistSearchResultSessionToken();
             ClearWishlistSearchResultSession(advanceToken: false);
             _searchResultSessionCatalogSignature = _sourceDialog?.GetWishlistSearchCatalogSessionSignature() ?? string.Empty;
+            _searchResultSessionServiceSignature = _sourceDialog?.GetWishlistSearchServiceStateSignature() ?? _searchResultSessionCatalogSignature;
             if (results == null)
             {
                 return;
@@ -1643,6 +1652,7 @@ namespace HaCreator.MapSimulator.UI
             _searchResultSessionPageIndex = 0;
             _searchResultSessionSelectedEntryKey = string.Empty;
             _searchResultSessionCatalogSignature = string.Empty;
+            _searchResultSessionServiceSignature = string.Empty;
         }
 
         private void InvalidateWishlistSearchResultSession()
@@ -1677,6 +1687,14 @@ namespace HaCreator.MapSimulator.UI
                 && !string.Equals(_searchResultSessionCatalogSignature, liveCatalogSignature, StringComparison.Ordinal))
             {
                 ResetWishlistSearchResultSessionForCatalogChange();
+                return new List<AdminShopDialogUI.WishlistSearchResult>();
+            }
+
+            string liveServiceSignature = _sourceDialog.GetWishlistSearchServiceStateSignature();
+            if (!string.IsNullOrWhiteSpace(_searchResultSessionServiceSignature)
+                && !string.Equals(_searchResultSessionServiceSignature, liveServiceSignature, StringComparison.Ordinal))
+            {
+                ResetWishlistSearchResultSessionForServiceTransition();
                 return new List<AdminShopDialogUI.WishlistSearchResult>();
             }
 
@@ -1741,6 +1759,36 @@ namespace HaCreator.MapSimulator.UI
             ClearWishlistSearchResultSession();
             _statusMessage = "SearchItemName invalidated the staged result session after the admin-shop catalog payload changed.";
             UpdatePopupButtons();
+        }
+
+        private void ResetWishlistSearchResultSessionForServiceTransition()
+        {
+            _searchResults.Clear();
+            _selectedResultIndex = 0;
+            _resultScrollOffset = 0;
+            if (IsSearchResultAddOnOpen())
+            {
+                HideSearchResultAddOnRequested?.Invoke();
+            }
+
+            if (_popupMode == PopupMode.Results)
+            {
+                _popupMode = PopupMode.None;
+            }
+
+            ClearWishlistSearchResultSession();
+            _statusMessage = "SearchItemName invalidated the staged result session after the packet-authored admin-shop owner changed state.";
+            UpdatePopupButtons();
+        }
+
+        private void RefreshWishlistSearchResultSessionState()
+        {
+            if (_searchResultSessionEntryKeys.Count <= 0)
+            {
+                return;
+            }
+
+            _ = GetLiveWishlistSearchResultSessionResults();
         }
 
         private void AdvanceWishlistSearchResultSessionToken()

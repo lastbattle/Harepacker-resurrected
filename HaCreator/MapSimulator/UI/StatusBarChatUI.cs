@@ -154,6 +154,8 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle? _whisperPickerBounds;
         private Texture2D _whisperPickerSelectedTexture;
         private Texture2D _whisperPickerRowTexture;
+        private Point _whisperPickerSelectedOrigin;
+        private Point _whisperPickerRowOrigin;
         private Texture2D _whisperPickerDialogTopTexture;
         private Texture2D _whisperPickerDialogCenterTexture;
         private Texture2D _whisperPickerDialogBottomTexture;
@@ -268,10 +270,16 @@ namespace HaCreator.MapSimulator.UI
             RefreshTextMetrics();
         }
 
-        public void SetWhisperPickerTextures(Texture2D selectedTexture, Texture2D rowTexture)
+        public void SetWhisperPickerTextures(
+            Texture2D selectedTexture,
+            Texture2D rowTexture,
+            Point selectedOrigin,
+            Point rowOrigin)
         {
             _whisperPickerSelectedTexture = selectedTexture;
             _whisperPickerRowTexture = rowTexture;
+            _whisperPickerSelectedOrigin = selectedOrigin;
+            _whisperPickerRowOrigin = rowOrigin;
         }
 
         public void SetWhisperPickerDialogTextures(
@@ -1051,21 +1059,38 @@ namespace HaCreator.MapSimulator.UI
             bool registerHitRegion)
         {
             Texture2D rowTexture = isSelected ? _whisperPickerSelectedTexture : _whisperPickerRowTexture;
+            Point rowOrigin = isSelected ? _whisperPickerSelectedOrigin : _whisperPickerRowOrigin;
+            Point rowOriginDelta = StatusBarChatLayoutRules.ResolveWhisperPickerRowOriginDelta(
+                _whisperPickerRowOrigin,
+                rowOrigin);
             if (rowTexture != null)
             {
-                sprite.Draw(rowTexture, new Rectangle(x, y, width, height), Color.White);
+                sprite.Draw(
+                    rowTexture,
+                    new Rectangle(
+                        x + rowOriginDelta.X,
+                        y + rowOriginDelta.Y,
+                        width,
+                        height),
+                    Color.White);
             }
             else if (_pixelTexture != null)
             {
                 sprite.Draw(_pixelTexture,
-                    new Rectangle(x, y, width, height),
+                    new Rectangle(
+                        x + rowOriginDelta.X,
+                        y + rowOriginDelta.Y,
+                        width,
+                        height),
                     isSelected ? new Color(83, 116, 168, 235) : new Color(28, 33, 45, 235));
             }
 
             DrawTextWithShadow(
                 sprite,
                 text ?? string.Empty,
-                new Vector2(x + WhisperPickerFramePadding + 1, y + Math.Max(0f, (height - MeasureChatText("Ag").Y) * 0.5f)),
+                new Vector2(
+                    x + WhisperPickerFramePadding + 1 + rowOriginDelta.X,
+                    y + rowOriginDelta.Y + Math.Max(0f, (height - MeasureChatText("Ag").Y) * 0.5f)),
                 isSelected ? Color.White : new Color(244, 240, 227),
                 Color.Black);
 

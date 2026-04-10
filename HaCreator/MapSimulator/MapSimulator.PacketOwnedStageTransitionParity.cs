@@ -250,18 +250,30 @@ namespace HaCreator.MapSimulator
             IReadOnlyDictionary<InventoryType, int> slotLimits = snapshot.InventorySlotLimits;
             if (slotLimits == null)
             {
-                return;
+                inventoryWindow.ApplyCashItemSerialMetadata(Array.Empty<PacketCharacterDataItemSlot>());
             }
-
-            foreach ((InventoryType inventoryType, int slotLimit) in slotLimits)
+            else
             {
-                if (inventoryType == InventoryType.NONE)
+                foreach ((InventoryType inventoryType, int slotLimit) in slotLimits)
                 {
-                    continue;
-                }
+                    if (inventoryType == InventoryType.NONE)
+                    {
+                        continue;
+                    }
 
-                inventoryWindow.SetSlotLimit(inventoryType, slotLimit);
+                    inventoryWindow.SetSlotLimit(inventoryType, slotLimit);
+                }
             }
+
+            IReadOnlyList<PacketCharacterDataItemSlot> cashItems = Array.Empty<PacketCharacterDataItemSlot>();
+            if (snapshot.InventoryItemsByType != null
+                && snapshot.InventoryItemsByType.TryGetValue(InventoryType.CASH, out IReadOnlyList<PacketCharacterDataItemSlot> decodedCashItems)
+                && decodedCashItems != null)
+            {
+                cashItems = decodedCashItems;
+            }
+
+            inventoryWindow.ApplyCashItemSerialMetadata(cashItems);
         }
 
         private void ApplyPacketOwnedCharacterSkillSnapshot(PacketCharacterDataSnapshot snapshot)
@@ -345,6 +357,10 @@ namespace HaCreator.MapSimulator
             RestorePacketOwnedBackEffect();
             _packetStageTransitionRuntime.Clear();
             ClearPacketOwnedScriptSelectablePets();
+            if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow)
+            {
+                inventoryWindow.ClearCashItemSerialMetadata();
+            }
         }
 
         private void UpdatePacketOwnedStageTransitionState(int currentTick)

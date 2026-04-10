@@ -898,11 +898,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            string descriptor = VegaOwnerStringPoolText.GetResultLoopSoundDescriptor();
-            if (string.IsNullOrWhiteSpace(descriptor))
-            {
-                descriptor = VegaResultPreludeLoopSoundFallback;
-            }
+            string descriptor = ResolveVegaResultLoopSoundDescriptor();
 
             if (!TryResolvePacketOwnedWzSound(descriptor, "UI.img", out MapleLib.WzLib.WzProperties.WzBinaryProperty soundProperty, out string resolvedDescriptor))
             {
@@ -930,6 +926,34 @@ namespace HaCreator.MapSimulator
 
             _vegaResultLoopSoundActive = false;
             _vegaResultLoopSoundInstanceKey = string.Empty;
+        }
+
+        private static string ResolveVegaResultLoopSoundDescriptor()
+        {
+            return NormalizeVegaResultLoopSoundDescriptor(
+                VegaOwnerStringPoolText.GetResultLoopSoundDescriptor());
+        }
+
+        internal static string NormalizeVegaResultLoopSoundDescriptorForTests(string descriptor)
+        {
+            return NormalizeVegaResultLoopSoundDescriptor(descriptor);
+        }
+
+        private static string NormalizeVegaResultLoopSoundDescriptor(string descriptor)
+        {
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                return VegaResultPreludeLoopSoundFallback;
+            }
+
+            string normalized = descriptor.Trim();
+            if (normalized.StartsWith("UI/", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("Etc/", StringComparison.OrdinalIgnoreCase))
+            {
+                return VegaResultPreludeLoopSoundFallback;
+            }
+
+            return normalized;
         }
 
         private static bool TryDecodeVegaResultPayload(byte[] payload, out byte resultCode)

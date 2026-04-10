@@ -462,18 +462,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
-            _renderableReactorsBuffer.Sort(static (left, right) =>
-            {
-                int result = left.RenderSortKey.CompareTo(right.RenderSortKey);
-                if (result != 0)
-                {
-                    return result;
-                }
-
-                int leftY = left.ReactorInstance?.Y ?? 0;
-                int rightY = right.ReactorInstance?.Y ?? 0;
-                return leftY.CompareTo(rightY);
-            });
+            _renderableReactorsBuffer.Sort(CompareRenderableReactors);
 
             for (int i = 0; i < _renderableReactorsBuffer.Count; i++)
             {
@@ -484,6 +473,17 @@ namespace HaCreator.MapSimulator.Managers
                     context.RenderParams,
                     context.TickCount);
             }
+        }
+
+        internal static int CompareRenderableReactors(ReactorItem left, ReactorItem right)
+        {
+            int result = left.RenderSortKey.CompareTo(right.RenderSortKey);
+            if (result != 0)
+            {
+                return result;
+            }
+
+            return left.CurrentWorldY.CompareTo(right.CurrentWorldY);
         }
 
         /// <summary>

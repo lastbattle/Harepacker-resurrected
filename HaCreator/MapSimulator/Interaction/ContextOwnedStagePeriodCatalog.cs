@@ -55,6 +55,35 @@ namespace HaCreator.MapSimulator.Interaction
             return affectedMaps;
         }
 
+        internal void ApplyCacheData(
+            ContextOwnedStagePeriodCatalogEntry entry,
+            IDictionary<string, ContextOwnedStageUnitEnableState> keywordCache,
+            IDictionary<int, ContextOwnedStageUnitEnableState> questCache,
+            IDictionary<string, byte> stagePeriodCache)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            ApplyThemeScopedEnableState(entry.StageTheme, entry.Keywords, keywordCache);
+            ApplyThemeScopedEnableState(entry.StageTheme, entry.EnabledQuestIds, questCache);
+            if (stagePeriodCache != null && !string.IsNullOrWhiteSpace(entry.StageTheme))
+            {
+                stagePeriodCache[entry.StageTheme] = entry.Mode;
+            }
+        }
+
+        internal static HashSet<string> CaptureEnabledKeywords(IDictionary<string, ContextOwnedStageUnitEnableState> keywordCache)
+        {
+            return CaptureEnabledValues(keywordCache);
+        }
+
+        internal static HashSet<int> CaptureEnabledQuestIds(IDictionary<int, ContextOwnedStageUnitEnableState> questCache)
+        {
+            return CaptureEnabledValues(questCache);
+        }
+
         internal static ContextOwnedStageSystemCatalog Build(
             string stageSystemPath,
             string stageKeywordPath,
@@ -550,6 +579,57 @@ namespace HaCreator.MapSimulator.Interaction
             imageName = parts[^1];
             return !string.IsNullOrWhiteSpace(category) && !string.IsNullOrWhiteSpace(imageName);
         }
+
+        private static void ApplyThemeScopedEnableState<TKey>(
+            string stageTheme,
+            IEnumerable<TKey> enabledKeys,
+            IDictionary<TKey, ContextOwnedStageUnitEnableState> cache)
+        {
+            if (cache == null || string.IsNullOrWhiteSpace(stageTheme))
+            {
+                return;
+            }
+
+            foreach ((TKey key, ContextOwnedStageUnitEnableState state) in cache.ToArray())
+            {
+                if (state != null && string.Equals(state.StageTheme, stageTheme, StringComparison.Ordinal))
+                {
+                    state.Enabled = false;
+                }
+            }
+
+            foreach (TKey key in enabledKeys ?? Enumerable.Empty<TKey>())
+            {
+                if (!cache.TryGetValue(key, out ContextOwnedStageUnitEnableState state) || state == null)
+                {
+                    state = new ContextOwnedStageUnitEnableState(stageTheme, enabled: true);
+                    cache[key] = state;
+                    continue;
+                }
+
+                state.StageTheme = stageTheme;
+                state.Enabled = true;
+            }
+        }
+
+        private static HashSet<TKey> CaptureEnabledValues<TKey>(IDictionary<TKey, ContextOwnedStageUnitEnableState> cache)
+        {
+            HashSet<TKey> enabledValues = new();
+            if (cache == null)
+            {
+                return enabledValues;
+            }
+
+            foreach ((TKey key, ContextOwnedStageUnitEnableState state) in cache)
+            {
+                if (state?.Enabled == true)
+                {
+                    enabledValues.Add(key);
+                }
+            }
+
+            return enabledValues;
+        }
     }
 
     internal sealed class ContextOwnedStageThemeCatalogEntry
@@ -630,6 +710,18 @@ namespace HaCreator.MapSimulator.Interaction
         int Z,
         string SpineAnimation,
         bool SpineRandomStart);
+
+    internal sealed class ContextOwnedStageUnitEnableState
+    {
+        internal ContextOwnedStageUnitEnableState(string stageTheme, bool enabled)
+        {
+            StageTheme = stageTheme ?? string.Empty;
+            Enabled = enabled;
+        }
+
+        internal string StageTheme { get; set; }
+        internal bool Enabled { get; set; }
+    }
 
     internal sealed record ContextOwnedStageAffectedMapEntry(
         int FieldId,

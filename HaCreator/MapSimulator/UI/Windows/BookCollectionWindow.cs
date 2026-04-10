@@ -390,6 +390,7 @@ namespace HaCreator.MapSimulator.UI
                 ClosingRequested?.Invoke();
             }
 
+            ResetImePresentationPlacement();
             ResetBookState();
             base.Hide();
 
@@ -606,7 +607,7 @@ namespace HaCreator.MapSimulator.UI
             ClearSearchSelection();
             ClearCompositionText();
             ResetSearchKeyRepeatState();
-            UpdateImePresentationPlacement();
+            ResetImePresentationPlacement();
         }
 
         private void UpdateHoverState()
@@ -2999,6 +3000,22 @@ namespace HaCreator.MapSimulator.UI
                 clauseAnchorWidth,
                 clauseWidth);
             WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+        }
+
+        private void ResetImePresentationPlacement()
+        {
+            if (_font == null || ResolveImeWindowHandle == null)
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            WindowsImePresentationBridge.TryResetPlacement(windowHandle);
         }
 
         private int MeasureImePlacementWidth(string text)

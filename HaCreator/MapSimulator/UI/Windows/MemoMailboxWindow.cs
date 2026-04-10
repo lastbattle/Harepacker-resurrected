@@ -640,7 +640,7 @@ namespace HaCreator.MapSimulator.UI
             if (snapshot.Entries.Count == 0)
             {
                 sprite.DrawString(_font, "No parcels are waiting in the receive backlog.", new Vector2(contentBounds.X, contentBounds.Y + 4), new Color(59, 70, 84), 0f, Vector2.Zero, 0.45f, SpriteEffects.None, 0f);
-                sprite.DrawString(_font, "Use /memo packet deliver ... to seed packet-shaped parcel rows.", new Vector2(contentBounds.X, contentBounds.Y + 22), new Color(105, 114, 127), 0f, Vector2.Zero, 0.39f, SpriteEffects.None, 0f);
+                sprite.DrawString(_font, "Packet-owned deliveries will appear here when the parcel owner receives them.", new Vector2(contentBounds.X, contentBounds.Y + 22), new Color(105, 114, 127), 0f, Vector2.Zero, 0.39f, SpriteEffects.None, 0f);
                 return;
             }
 
@@ -1069,6 +1069,47 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void MoveReceiveSelection(MemoMailboxSnapshot snapshot, int delta)
+        {
+            int currentIndex = GetEntryIndex(snapshot, _selectedMemoId);
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            SelectReceiveEntryByIndex(snapshot, Math.Clamp(currentIndex + delta, 0, snapshot.Entries.Count - 1));
+        }
+
+        private void SelectReceiveEntryByIndex(MemoMailboxSnapshot snapshot, int index)
+        {
+            if (snapshot.Entries.Count == 0)
+            {
+                _selectedMemoId = -1;
+                _openedMemoId = -1;
+                _scrollOffset = 0;
+                return;
+            }
+
+            MemoMailboxEntrySnapshot entry = snapshot.Entries[Math.Clamp(index, 0, snapshot.Entries.Count - 1)];
+            _selectedMemoId = entry.MemoId;
+            OpenSelectedMemo(snapshot);
+            EnsureSelectionVisible(snapshot, index);
+        }
+
+        private void EnsureSelectionVisible(MemoMailboxSnapshot snapshot, int selectedIndex)
+        {
+            if (selectedIndex < _scrollOffset)
+            {
+                _scrollOffset = selectedIndex;
+            }
+            else if (selectedIndex >= _scrollOffset + MaxVisibleEntries)
+            {
+                _scrollOffset = selectedIndex - MaxVisibleEntries + 1;
+            }
+
+            ClampScroll(snapshot);
+        }
+
         private void ClampScroll(MemoMailboxSnapshot snapshot)
         {
             int maxOffset = GetMaxScrollOffset(snapshot);
@@ -1185,6 +1226,24 @@ namespace HaCreator.MapSimulator.UI
             foreach (MemoMailboxEntrySnapshot entry in snapshot.Entries)
             {
                 return entry.MemoId;
+            }
+
+            return -1;
+        }
+
+        private static int GetEntryIndex(MemoMailboxSnapshot snapshot, int memoId)
+        {
+            if (snapshot == null || memoId <= 0)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < snapshot.Entries.Count; i++)
+            {
+                if (snapshot.Entries[i].MemoId == memoId)
+                {
+                    return i;
+                }
             }
 
             return -1;
@@ -1326,7 +1385,14 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboardInput(MemoMailboxSnapshot snapshot, MemoMailboxDraftSnapshot draftSnapshot, KeyboardState keyboardState, int tickCount)
         {
-            if (_activeInputField == ComposeInputField.None || snapshot.ActiveTab == ParcelDialogTab.Receive)
+            if (snapshot.ActiveTab == ParcelDialogTab.Receive)
+            {
+                HandleReceiveKeyboardInput(snapshot, keyboardState);
+                ResetKeyRepeat();
+                return;
+            }
+
+            if (_activeInputField == ComposeInputField.None)
             {
                 ResetKeyRepeat();
                 return;
@@ -1383,6 +1449,55 @@ namespace HaCreator.MapSimulator.UI
             if (_lastHeldKey != Keys.None && !keyboardState.IsKeyDown(_lastHeldKey))
             {
                 ResetKeyRepeat();
+            }
+        }
+
+        private void HandleReceiveKeyboardInput(MemoMailboxSnapshot snapshot, KeyboardState keyboardState)
+        {
+            if (snapshot.Entries.Count == 0)
+            {
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.Up))
+            {
+                MoveReceiveSelection(snapshot, -1);
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.Down))
+            {
+                MoveReceiveSelection(snapshot, 1);
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.PageUp))
+            {
+                MoveReceiveSelection(snapshot, -MaxVisibleEntries);
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.PageDown))
+            {
+                MoveReceiveSelection(snapshot, MaxVisibleEntries);
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.Home))
+            {
+                SelectReceiveEntryByIndex(snapshot, 0);
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.End))
+            {
+                SelectReceiveEntryByIndex(snapshot, snapshot.Entries.Count - 1);
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.Enter))
+            {
+                OpenSelectedMemo(snapshot);
             }
         }
 

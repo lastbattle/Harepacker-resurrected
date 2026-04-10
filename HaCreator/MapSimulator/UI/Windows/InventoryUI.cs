@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI.Controls;
 using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -148,6 +149,7 @@ namespace HaCreator.MapSimulator.UI
         public Action<string> ItemConsumptionBlocked { get; set; }
         public Func<int, InventoryType, bool> ItemUseRequested { get; set; }
         public Func<int, InventoryType, int, bool> ItemUseRequestedAtSlot { get; set; }
+        public Func<InventoryType, int, InventorySlotData, bool> InventoryDropRequested { get; set; }
         public Func<bool> EquipmentDragStartBlocked { get; set; }
 
         public int CurrentTab
@@ -703,6 +705,30 @@ namespace HaCreator.MapSimulator.UI
             foreach (KeyValuePair<InventoryType, List<InventorySlotData>> kvp in _inventoryData)
             {
                 kvp.Value.Clear();
+            }
+        }
+
+        internal void ApplyCashItemSerialMetadata(IReadOnlyList<PacketCharacterDataItemSlot> authoritativeCashItems)
+        {
+            if (_inventoryData.TryGetValue(InventoryType.CASH, out List<InventorySlotData> cashSlots))
+            {
+                PacketScriptPetSelectionSnapshotResolver.ApplyAuthoritativeCashSerialMetadata(cashSlots, authoritativeCashItems);
+            }
+        }
+
+        internal void ClearCashItemSerialMetadata()
+        {
+            if (!_inventoryData.TryGetValue(InventoryType.CASH, out List<InventorySlotData> cashSlots))
+            {
+                return;
+            }
+
+            for (int i = 0; i < cashSlots.Count; i++)
+            {
+                if (cashSlots[i] != null)
+                {
+                    cashSlots[i].CashItemSerialNumber = null;
+                }
             }
         }
 
@@ -3004,6 +3030,7 @@ namespace HaCreator.MapSimulator.UI
         public int? OwnerAccountId { get; set; }
         public int? OwnerCharacterId { get; set; }
         public bool IsCashOwnershipLocked { get; set; }
+        public long? CashItemSerialNumber { get; set; }
         public int PendingRequestId { get; set; }
 
         public InventorySlotData Clone()
@@ -3026,6 +3053,7 @@ namespace HaCreator.MapSimulator.UI
                 OwnerAccountId = OwnerAccountId,
                 OwnerCharacterId = OwnerCharacterId,
                 IsCashOwnershipLocked = IsCashOwnershipLocked,
+                CashItemSerialNumber = CashItemSerialNumber,
                 PendingRequestId = PendingRequestId
             };
         }

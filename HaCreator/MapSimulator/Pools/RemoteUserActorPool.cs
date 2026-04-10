@@ -41,6 +41,11 @@ namespace HaCreator.MapSimulator.Pools
             bool FacingRight,
             int CurrentTime,
             IReadOnlyList<string> BranchNames = null);
+        public readonly record struct RemoteUpgradeTombPresentation(
+            int CharacterId,
+            int ItemId,
+            Vector2 Position,
+            int CurrentTime);
 
         private readonly record struct RemoteMechanicModePresentation(
             string StandActionName,
@@ -276,6 +281,7 @@ namespace HaCreator.MapSimulator.Pools
         public int Count => _actorsById.Count;
         public IEnumerable<RemoteUserActor> Actors => _actorsById.Values;
         public event Action<RemoteSkillUsePresentation> SkillUseRegistered;
+        public event Action<RemoteUpgradeTombPresentation> UpgradeTombEffectRegistered;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
         public Action<int, string> ActorRemovedCallback { get; set; }
@@ -952,7 +958,12 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        public bool TrySetPortableChair(int characterId, int? chairItemId, out string message, int? pairCharacterId = null)
+        public bool TrySetPortableChair(
+            int characterId,
+            int? chairItemId,
+            out string message,
+            int? pairCharacterId = null,
+            bool syncPairRecordFromChairState = false)
         {
             message = null;
             if (_loader == null)
@@ -972,6 +983,11 @@ namespace HaCreator.MapSimulator.Pools
             {
                 actor.Build.ActivePortableChair = null;
                 actor.PreferredPortableChairPairCharacterId = null;
+                if (syncPairRecordFromChairState)
+                {
+                    SyncPortableChairRecordFromChairState(characterId, chairItemId: null, preferredPairCharacterId: null);
+                }
+
                 SetActorAction(actor, CharacterPart.GetActionString(CharacterAction.Stand1), allowSitFallback: false, Environment.TickCount);
                 SyncTemporaryStatPresentation(actor);
                 actor.ClearMeleeAfterImage();
@@ -987,6 +1003,11 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.Build.ActivePortableChair = chair;
             actor.PreferredPortableChairPairCharacterId = pairCharacterId;
+            if (syncPairRecordFromChairState)
+            {
+                SyncPortableChairRecordFromChairState(actor.CharacterId, chair.ItemId, pairCharacterId);
+            }
+
             ApplyPortableChairMount(actor, chair);
             SetActorAction(actor, "sit", allowSitFallback: true, Environment.TickCount);
             SyncTemporaryStatPresentation(actor);
@@ -1273,6 +1294,10 @@ namespace HaCreator.MapSimulator.Pools
                 if (actor.Build.ActivePortableChair != null)
                 {
                     ApplyPortableChairMount(actor, actor.Build.ActivePortableChair);
+                    SyncPortableChairRecordFromChairState(
+                        actor.CharacterId,
+                        actor.Build.ActivePortableChair.ItemId,
+                        ResolvePortableChairPairPreference(actor.CharacterId));
                 }
                 else
                 {
@@ -1662,13 +1687,43 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        public bool TryClearPreparedSkill(int characterId, out string message)
+        public bool TryApplyUpgradeTombEffect(RemoteUserUpgradeTombPacket packet, int currentTime, out string message)
+        {
+            message = null;
+            if (!_actorsById.ContainsKey(packet.CharacterId))
+            {
+                message = $"Remote user {packet.CharacterId} is not active.";
+                return false;
+            }
+
+            UpgradeTombEffectRegistered?.Invoke(new RemoteUpgradeTombPresentation(
+                packet.CharacterId,
+                packet.ItemId,
+                new Vector2(packet.PositionX, packet.PositionY),
+                currentTime));
+            message = $"Remote user {packet.CharacterId} upgrade tomb effect registered at ({packet.PositionX}, {packet.PositionY}).";
+            return true;
+        }
+
+        public bool TryClearPreparedSkill(int characterId, int currentTime, out string message)
         {
             message = null;
             if (!_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
             {
                 message = $"Remote character {characterId} does not exist.";
                 return false;
+            }
+
+            if (actor.PreparedSkill != null
+                && RemotePreparedSkillUseEffectSkillIds.Contains(actor.PreparedSkill.SkillId))
+            {
+                SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                    actor.CharacterId,
+                    actor.PreparedSkill.SkillId,
+                    null,
+                    actor.FacingRight,
+                    currentTime,
+                    new[] { "keydownend" }));
             }
 
             actor.PreparedSkill = null;
@@ -2052,6 +2107,7 @@ namespace HaCreator.MapSimulator.Pools
                 actor.BaseActionRawCode,
                 ownerBodyOriginY,
                 dragonActionName,
+                dragonActionElapsedMs,
                 metadata);
             anchor = new Vector2(
                 dragonAnchor.X - RemoteDragonKeyDownBarHalfWidth,
@@ -2066,10 +2122,11 @@ namespace HaCreator.MapSimulator.Pools
             int? ownerRawActionCode,
             float ownerBodyOriginY,
             string dragonActionName,
+            int dragonActionElapsedMs,
             RemoteDragonHudMetadata metadata)
         {
             float side = actor.FacingRight ? -1f : 1f;
-            int originX = metadata.ResolveOriginX(dragonActionName);
+            int originX = metadata.ResolveOriginX(dragonActionName, dragonActionElapsedMs);
 
             if (UsesRemoteDragonLadderAnchor(ownerActionName, ownerRawActionCode))
             {
@@ -2171,14 +2228,13 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (frames.Count == 0)
+                int height = Math.Max(1, rb.Y.Value - lt.Y.Value);
+                int delayMs = Math.Max(1, GetWzIntValue(frame["delay"]) ?? 100);
+                frames.Add(new RemoteDragonHudFrameMetrics(origin.X.Value, height, delayMs));
+                if (frames.Count == 1)
                 {
                     originX = origin.X.Value;
                 }
-
-                int height = Math.Max(1, rb.Y.Value - lt.Y.Value);
-                int delayMs = Math.Max(1, GetWzIntValue(frame["delay"]) ?? 100);
-                frames.Add(new RemoteDragonHudFrameMetrics(height, delayMs));
             }
 
             if (frames.Count == 0)
@@ -4311,6 +4367,18 @@ namespace HaCreator.MapSimulator.Pools
                 characterId,
                 chairItemId,
                 preferredPairCharacterId);
+        }
+
+        private void SyncPortableChairRecordFromChairState(int characterId, int? chairItemId, int? preferredPairCharacterId)
+        {
+            int resolvedChairItemId = chairItemId ?? 0;
+            if (characterId <= 0 || resolvedChairItemId <= 0 || resolvedChairItemId / 1000 != 3012)
+            {
+                ClearPortableChairPairRecord(characterId);
+                return;
+            }
+
+            SyncPortableChairPairRecord(characterId, resolvedChairItemId, preferredPairCharacterId);
         }
 
         private void ClearPortableChairPairRecord(int characterId)
@@ -7545,12 +7613,14 @@ namespace HaCreator.MapSimulator.Pools
 
     internal readonly struct RemoteDragonHudFrameMetrics
     {
-        public RemoteDragonHudFrameMetrics(int height, int delayMs)
+        public RemoteDragonHudFrameMetrics(int originX, int height, int delayMs)
         {
+            OriginX = Math.Max(0, originX);
             Height = Math.Max(1, height);
             DelayMs = Math.Max(1, delayMs);
         }
 
+        public int OriginX { get; }
         public int Height { get; }
         public int DelayMs { get; }
     }
@@ -7570,14 +7640,24 @@ namespace HaCreator.MapSimulator.Pools
 
         public int ResolveFrameHeight(int elapsedMs)
         {
+            return ResolveFrameMetrics(elapsedMs).Height;
+        }
+
+        public int ResolveOriginX(int elapsedMs)
+        {
+            return ResolveFrameMetrics(elapsedMs).OriginX;
+        }
+
+        private RemoteDragonHudFrameMetrics ResolveFrameMetrics(int elapsedMs)
+        {
             if (Frames == null || Frames.Count == 0)
             {
-                return 1;
+                return new RemoteDragonHudFrameMetrics(0, 1, 1);
             }
 
             if (Frames.Count == 1)
             {
-                return Frames[0].Height;
+                return Frames[0];
             }
 
             int remainingMs = Math.Max(0, elapsedMs);
@@ -7591,13 +7671,13 @@ namespace HaCreator.MapSimulator.Pools
                 RemoteDragonHudFrameMetrics frame = Frames[i];
                 if (remainingMs < frame.DelayMs || i == Frames.Count - 1)
                 {
-                    return frame.Height;
+                    return frame;
                 }
 
                 remainingMs -= frame.DelayMs;
             }
 
-            return Frames[Frames.Count - 1].Height;
+            return Frames[Frames.Count - 1];
         }
     }
 
@@ -7623,8 +7703,18 @@ namespace HaCreator.MapSimulator.Pools
                 && ActionTimelines.ContainsKey(actionName);
         }
 
-        public int ResolveOriginX(string actionName)
+        public int ResolveOriginX(string actionName, int elapsedMs = 0)
         {
+            if (!string.IsNullOrWhiteSpace(actionName)
+                && ActionTimelines.TryGetValue(actionName, out RemoteDragonHudAnimationTimeline actionTimeline))
+            {
+                int actionOriginX = actionTimeline.ResolveOriginX(elapsedMs);
+                if (actionOriginX > 0)
+                {
+                    return actionOriginX;
+                }
+            }
+
             if (string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase) && MoveOriginX > 0)
             {
                 return MoveOriginX;

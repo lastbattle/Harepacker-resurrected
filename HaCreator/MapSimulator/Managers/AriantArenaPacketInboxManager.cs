@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using HaCreator.MapSimulator.Fields;
 using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Managers
@@ -79,6 +80,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeMeleeAttack4 = 214;
         private const int PacketTypeSkillPrepare = 215;
         private const int PacketTypeSkillCancel = 217;
+        private const int PacketTypeEmotion = 219;
         private const int PacketTypeSetActiveEffectItem = 220;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
@@ -190,10 +192,28 @@ namespace HaCreator.MapSimulator.Managers
             string typeToken = separatorIndex >= 0 ? trimmed[..separatorIndex] : trimmed;
             string payloadToken = separatorIndex >= 0 ? trimmed[(separatorIndex + 1)..].Trim() : string.Empty;
 
+            if (typeToken.Equals("packetraw", StringComparison.OrdinalIgnoreCase)
+                || typeToken.Equals("wrapped", StringComparison.OrdinalIgnoreCase)
+                || typeToken.Equals("opcode", StringComparison.OrdinalIgnoreCase))
+            {
+                return TryParsePacketRawLine(payloadToken, out packetType, out payload, out error);
+            }
+
             if (!TryParsePacketType(typeToken, out packetType))
             {
                 error = $"Unsupported Ariant packet type: {typeToken}";
                 return false;
+            }
+
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!TryParseRelayPayload(payloadToken, out payload, out error))
+                {
+                    packetType = 0;
+                    return false;
+                }
+
+                return true;
             }
 
             if (packetType == PacketTypeShowResult)
@@ -224,6 +244,142 @@ namespace HaCreator.MapSimulator.Managers
                 error = $"Invalid Ariant packet hex payload: {payloadToken}";
                 return false;
             }
+        }
+
+        private static bool TryParsePacketRawLine(string payloadToken, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            string compactHex = RemoveWhitespace(payloadToken);
+            if (string.IsNullOrWhiteSpace(compactHex))
+            {
+                error = "Ariant packetraw requires an opcode-wrapped hex payload.";
+                return false;
+            }
+
+            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                compactHex = compactHex[2..];
+            }
+
+            byte[] packetBytes;
+            try
+            {
+                packetBytes = Convert.FromHexString(compactHex);
+            }
+            catch (FormatException)
+            {
+                error = $"Invalid Ariant packetraw hex payload: {payloadToken}";
+                return false;
+            }
+
+            if (packetBytes.Length < sizeof(ushort))
+            {
+                error = "Ariant packetraw payload is too short.";
+                return false;
+            }
+
+            packetType = BitConverter.ToUInt16(packetBytes, 0);
+            payload = packetBytes.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : packetBytes.AsSpan(sizeof(ushort)).ToArray();
+
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!TryValidateRelayPayload(payload, out error))
+                {
+                    packetType = 0;
+                    payload = Array.Empty<byte>();
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (!IsSupportedRelayPacketType(packetType))
+            {
+                error = $"Ariant packetraw payload does not contain a supported opcode {packetType} packet.";
+                packetType = 0;
+                payload = Array.Empty<byte>();
+                return false;
+            }
+
+            payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+            packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            return true;
+        }
+
+        private static bool TryParseRelayPayload(string payloadToken, out byte[] relayPayload, out string error)
+        {
+            relayPayload = Array.Empty<byte>();
+            error = null;
+
+            string compactHex = RemoveWhitespace(payloadToken);
+            if (string.IsNullOrWhiteSpace(compactHex))
+            {
+                error =
+                    $"Ariant packet {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} requires a current-wrapper relay payload.";
+                return false;
+            }
+
+            if (compactHex.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                compactHex = compactHex[2..];
+            }
+
+            try
+            {
+                relayPayload = Convert.FromHexString(compactHex);
+            }
+            catch (FormatException)
+            {
+                error = $"Invalid Ariant relay packet hex payload: {payloadToken}";
+                return false;
+            }
+
+            return TryValidateRelayPayload(relayPayload, out error);
+        }
+
+        private static bool TryValidateRelayPayload(byte[] relayPayload, out string error)
+        {
+            if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    relayPayload,
+                    out int wrapperPacketType,
+                    out _,
+                    out error))
+            {
+                return false;
+            }
+
+            if (!IsSupportedRelayPacketType(wrapperPacketType))
+            {
+                error = $"Unsupported Ariant current-wrapper relay packet opcode: {wrapperPacketType}";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsSupportedRelayPacketType(int packetType)
+        {
+            return packetType == PacketTypeShowResult
+                || packetType == PacketTypeUserEnterField
+                || packetType == PacketTypeUserLeaveField
+                || packetType == PacketTypeUserMove
+                || packetType == PacketTypeMeleeAttack1
+                || packetType == PacketTypeMeleeAttack2
+                || packetType == PacketTypeMeleeAttack3
+                || packetType == PacketTypeMeleeAttack4
+                || packetType == PacketTypeSkillPrepare
+                || packetType == PacketTypeSkillCancel
+                || packetType == PacketTypeSetActiveEffectItem
+                || packetType == PacketTypeSetActivePortableChair
+                || packetType == PacketTypeAvatarModified
+                || packetType == PacketTypeTemporaryStatSet
+                || packetType == PacketTypeTemporaryStatReset
+                || packetType == PacketTypeUserScore;
         }
 
         public static bool TryParseLine(string text, out AriantArenaPacketInboxMessage message, out string error)
@@ -361,6 +517,7 @@ namespace HaCreator.MapSimulator.Managers
                 "214" or "melee4" or "melee" or "attack" => AssignPacketType(PacketTypeMeleeAttack4, out packetType),
                 "215" or "prepare" or "skillprepare" => AssignPacketType(PacketTypeSkillPrepare, out packetType),
                 "217" or "prepareclear" or "preparedclear" or "skillcancel" => AssignPacketType(PacketTypeSkillCancel, out packetType),
+                "219" or "emotion" => AssignPacketType(PacketTypeEmotion, out packetType),
                 "220" or "activeeffect" or "activeeffectitem" or "setactiveeffectitem" => AssignPacketType(PacketTypeSetActiveEffectItem, out packetType),
                 "222" or "chair" or "setchair" => AssignPacketType(PacketTypeSetActivePortableChair, out packetType),
                 "223" or "avatarmod" or "avatarmodified" or "look" => AssignPacketType(PacketTypeAvatarModified, out packetType),
@@ -391,6 +548,7 @@ namespace HaCreator.MapSimulator.Managers
                 PacketTypeMeleeAttack4 => "melee4 (214)",
                 PacketTypeSkillPrepare => "skillprepare (215)",
                 PacketTypeSkillCancel => "skillcancel (217)",
+                PacketTypeEmotion => "emotion (219)",
                 PacketTypeSetActiveEffectItem => "setactiveeffectitem (220)",
                 PacketTypeSetActivePortableChair => "chair (222)",
                 PacketTypeAvatarModified => "avatarmodified (223)",

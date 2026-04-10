@@ -19,12 +19,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            List<TradeVerificationEntry> entries = BuildTradeVerificationEntries(isLocalParty: true);
-            if (entries.Count == 0)
-            {
-                message = "Trading-room CRC reply requires at least one local offer item with a valid item id.";
-                return false;
-            }
+            List<TradeVerificationEntry> entries = _tradeLocalVerificationEntries.Count > 0 || _tradeLocalVerificationReady
+                ? new List<TradeVerificationEntry>(_tradeLocalVerificationEntries)
+                : BuildTradeVerificationEntries(isLocalParty: true);
 
             using MemoryStream stream = new MemoryStream();
             using BinaryWriter writer = new BinaryWriter(stream);
@@ -38,7 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             rawPacket = stream.ToArray();
-            message = $"Built trading-room subtype {TradingRoomItemCrcPacketType} CRC reply with {entries.Count} entr{(entries.Count == 1 ? "y" : "ies")} for outbound opcode 144.";
+            message = $"Built trading-room subtype {TradingRoomItemCrcPacketType} CRC reply with {entries.Count} entr{(entries.Count == 1 ? "y" : "ies")} for outbound opcode 144, matching the client OnTrade path even when the row count is zero.";
             return true;
         }
 

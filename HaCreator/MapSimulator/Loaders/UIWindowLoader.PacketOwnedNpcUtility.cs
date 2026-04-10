@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -107,8 +108,12 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Point position)
         {
+            const int StoreBankNumberImageStringPoolId = 0x050E;
+            const int StoreBankCashIconStringPoolId = 0x095F;
             WzSubProperty storeBankProperty = uiWindow2Image?["StoreBank"] as WzSubProperty;
             WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
+            string numberImagePath = MapleStoryStringPool.GetOrFallback(StoreBankNumberImageStringPoolId, "UI/Basic.img/ItemNo");
+            string cashIconPath = MapleStoryStringPool.GetOrFallback(StoreBankCashIconStringPoolId, "UI/CashShop.img/CashItem/0");
             Texture2D frameTexture = LoadCanvasTexture(storeBankProperty, "backgrnd", device)
                 ?? CreatePlaceholderWindowTexture(device, 210, 330, "Store Bank");
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
@@ -122,8 +127,10 @@ namespace HaCreator.MapSimulator.Loaders
                 getButton,
                 exitButton,
                 LoadCanvasTexture(storeBankProperty, "en", device),
-                LoadDigitTextures(basicImage?["ItemNo"] as WzSubProperty, device),
-                LoadCanvasTexture(cashShopImage?["CashItem"] as WzSubProperty, "0", device),
+                LoadDigitTextures(ResolveUiProperty(basicImage, numberImagePath) as WzSubProperty ?? basicImage?["ItemNo"] as WzSubProperty, device),
+                ResolveUiCanvasProperty(cashShopImage, cashIconPath) is WzCanvasProperty cashIconCanvas
+                    ? LoadCanvasTexture(cashIconCanvas, device)
+                    : LoadCanvasTexture(cashShopImage?["CashItem"] as WzSubProperty, "0", device),
                 LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device),
                 device)
             {

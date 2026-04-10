@@ -74,14 +74,15 @@ namespace HaCreator.MapSimulator.UI
 
         public static string FormatItemPickup(string itemName, string itemTypeName, int quantity)
         {
-            if (string.IsNullOrWhiteSpace(itemName) || string.IsNullOrWhiteSpace(itemTypeName))
+            if (!CanFormatSuccessPickup(itemName))
             {
                 return string.Empty;
             }
 
+            string normalizedItemTypeName = NormalizeItemTypeName(itemTypeName);
             return quantity > 1
-                ? FormatClientString(ItemMultiScreenStringPoolId, $"You have gained a(n) {itemTypeName} ({itemName}) x {quantity}.", itemTypeName, itemName, quantity)
-                : FormatClientString(ItemSingleScreenStringPoolId, $"You have gained a(n) {itemTypeName} ({itemName}).", itemTypeName, itemName);
+                ? FormatClientString(ItemMultiScreenStringPoolId, $"You have gained a(n) {normalizedItemTypeName} ({itemName}) x {quantity}.", normalizedItemTypeName, itemName, quantity)
+                : FormatClientString(ItemSingleScreenStringPoolId, $"You have gained a(n) {normalizedItemTypeName} ({itemName}).", normalizedItemTypeName, itemName);
         }
 
         public static string FormatQuestItemPickup(string itemName, string itemTypeName)
@@ -92,7 +93,7 @@ namespace HaCreator.MapSimulator.UI
         public static bool TryFormatItemPickup(string itemName, string itemTypeName, int quantity, out string message)
         {
             message = string.Empty;
-            if (string.IsNullOrWhiteSpace(itemName) || string.IsNullOrWhiteSpace(itemTypeName))
+            if (!CanFormatSuccessPickup(itemName))
             {
                 return false;
             }
@@ -104,7 +105,7 @@ namespace HaCreator.MapSimulator.UI
         public static bool TryFormatQuestItemPickup(string itemName, string itemTypeName, out string message)
         {
             message = string.Empty;
-            if (string.IsNullOrWhiteSpace(itemName) || string.IsNullOrWhiteSpace(itemTypeName))
+            if (!CanFormatSuccessPickup(itemName))
             {
                 return false;
             }
@@ -255,6 +256,18 @@ namespace HaCreator.MapSimulator.UI
         private static string FormatActorLabel(string actorName, string fallback)
         {
             return string.IsNullOrWhiteSpace(actorName) ? fallback : actorName;
+        }
+
+        private static bool CanFormatSuccessPickup(string itemName)
+        {
+            return !string.IsNullOrWhiteSpace(itemName);
+        }
+
+        private static string NormalizeItemTypeName(string itemTypeName)
+        {
+            return string.IsNullOrWhiteSpace(itemTypeName)
+                ? string.Empty
+                : itemTypeName;
         }
 
         private static string FormatRemoteScreenMessage(string actorName, string fallback)

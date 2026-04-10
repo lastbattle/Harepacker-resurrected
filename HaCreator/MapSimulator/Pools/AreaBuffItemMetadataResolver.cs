@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using HaCreator.MapSimulator.Character.Skills;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 
@@ -18,7 +19,8 @@ namespace HaCreator.MapSimulator.Pools
             string itemDescription = null,
             Func<string, WzSubProperty> linkedItemPropertyLoader = null,
             Func<string, string> linkedItemDescriptionLoader = null,
-            Func<string, WzImageProperty> linkedPropertyLoader = null)
+            Func<string, WzImageProperty> linkedPropertyLoader = null,
+            SkillAnimation animation = null)
         {
             return ResolveDurationMsCore(
                 itemProperty,

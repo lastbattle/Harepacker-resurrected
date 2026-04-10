@@ -846,6 +846,12 @@ namespace HaCreator.MapSimulator.UI
                         return true;
                     }
 
+                    if (TryHandleInventoryDropRequest(inventoryWindow, mouseState.X, mouseState.Y))
+                    {
+                        inventoryWindow.CancelInventoryDrag();
+                        return true;
+                    }
+
                     inventoryWindow.OnInventoryMouseUp(mouseState.X, mouseState.Y);
                 }
 
@@ -986,6 +992,34 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return true;
+        }
+
+        private bool TryHandleInventoryDropRequest(InventoryUI inventoryWindow, int mouseX, int mouseY)
+        {
+            if (inventoryWindow?.DraggedSlotData == null
+                || inventoryWindow.InventoryDropRequested == null)
+            {
+                return false;
+            }
+
+            UIWindowBase targetWindow = GetTopmostWindowAt(mouseX, mouseY);
+            if (targetWindow != null)
+            {
+                return false;
+            }
+
+            if (inventoryWindow.InventoryDropRequested(
+                    inventoryWindow.DraggedInventoryType,
+                    inventoryWindow.DraggedSlotIndex,
+                    inventoryWindow.DraggedSlotData.Clone()) != true)
+            {
+                return false;
+            }
+
+            return inventoryWindow.TryRemoveSlotAt(
+                inventoryWindow.DraggedInventoryType,
+                inventoryWindow.DraggedSlotIndex,
+                out _);
         }
 
         private bool HandleEquipmentInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased)

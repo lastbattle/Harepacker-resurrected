@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int PacketTypeMeleeAttack4 = 214;
         private const int PacketTypeSkillPrepare = 215;
         private const int PacketTypeSkillCancel = 217;
+        private const int PacketTypeEmotion = 219;
         private const int PacketTypeSetActiveEffectItem = 220;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
@@ -163,6 +164,8 @@ namespace HaCreator.MapSimulator.Fields
                         return TryApplyRemotePreparedSkillPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeSkillCancel:
                         return TryApplyRemotePreparedSkillClearPacket(payload, out errorMessage);
+                    case PacketTypeEmotion:
+                        return TryApplyRemoteEmotionPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeSetActiveEffectItem:
                         return TryApplyRemoteActiveEffectItemPacket(payload, out errorMessage);
                     case PacketTypeSetActivePortableChair:
@@ -871,7 +874,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return _remoteUserPool.TryClearPreparedSkill(packet.CharacterId, out errorMessage);
+            return _remoteUserPool.TryClearPreparedSkill(packet.CharacterId, Environment.TickCount, out errorMessage);
         }
 
         private bool TryApplyRemoteActiveEffectItemPacket(byte[] payload, out string errorMessage)
@@ -889,6 +892,23 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return _remoteUserPool.TryApplyActiveEffectItem(packet, Environment.TickCount, out errorMessage);
+        }
+
+        private bool TryApplyRemoteEmotionPacket(byte[] payload, int currentTimeMs, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseEmotion(payload, out RemoteUserEmotionPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryGetRemoteActor(packet.CharacterId, out _))
+            {
+                errorMessage = $"Remote Ariant actor id {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            return _remoteUserPool.TryApplyEmotion(packet, currentTimeMs, out errorMessage);
         }
 
         private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, int currentTimeMs, out string errorMessage)
