@@ -38,11 +38,32 @@ namespace HaCreator.MapSimulator
         {
             if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
             {
-                return _specialFieldRuntime.TryDispatchCurrentWrapperRelayPayload(payload, currTickCount, out message);
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperRelayPayload(payload, currTickCount, out message);
+                if (TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out string portalImpactMessage))
+                {
+                    message = string.IsNullOrWhiteSpace(message)
+                        ? portalImpactMessage
+                        : $"{message} {portalImpactMessage}";
+                    return true;
+                }
+
+                return applied;
+            }
+
+            if (packetType == PartyRaidField.ClientSessionValuePacketType)
+            {
+                return TryApplyClientOwnedSessionValuePacket(payload, currTickCount, out message);
             }
 
             if (TryApplyClientOwnedWrapperPacket(packetType, payload, currTickCount, out message))
             {
+                if (TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out string portalImpactMessage))
+                {
+                    message = string.IsNullOrWhiteSpace(message)
+                        ? portalImpactMessage
+                        : $"{message} {portalImpactMessage}";
+                }
+
                 return true;
             }
 
@@ -54,6 +75,29 @@ namespace HaCreator.MapSimulator
                 (tag, state, transitionTimeMs, currentTimeMs) => SetDynamicObjectTagState(tag, state, transitionTimeMs, currentTimeMs),
                 HandleFieldSpecificDataPacketHandoff,
                 out message);
+        }
+
+        private bool TryApplyClientOwnedSessionValuePacket(byte[] payload, int currentTick, out string message)
+        {
+            if (!TryDecodeMapleStringPairPayload(payload, out string key, out string value, out string error))
+            {
+                message = $"CWvsContext::OnSessionValue packet did not decode into a session key/value pair. {error}";
+                return false;
+            }
+
+            if (TryApplyStructuredFieldSpecificPair(
+                    key,
+                    value,
+                    PacketFieldSpecificDataOwnerHint.Session,
+                    currentTick,
+                    out string target))
+            {
+                message = $"CWvsContext::OnSessionValue applied {key}={value} ({target}).";
+                return true;
+            }
+
+            message = $"CWvsContext::OnSessionValue decoded {key}={value}, but no active session owner accepted it.";
+            return false;
         }
 
         private string HandleFieldSpecificDataPacketHandoff(byte[] payload, int currentTick)
@@ -302,44 +346,53 @@ namespace HaCreator.MapSimulator
             return $"{source} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PortalSessionValueRequestCodec.Opcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
         }
 
-        private void TryApplyPendingPortalSessionValueImpact(string key, string value)
+        private bool TryApplyPendingPortalSessionValueImpact(string key, string value)
         {
             PendingPortalSessionValueImpact pendingImpact = _pendingPortalSessionValueImpact;
             if (pendingImpact?.IsValid != true
                 || _pendingPortalSessionValueImpactMapId != (_mapBoard?.MapInfo?.id ?? -1)
                 || !pendingImpact.Matches(key, value))
             {
-                return;
+                return false;
             }
 
             PlayerCharacter player = _playerManager?.Player;
             if (player?.Physics == null)
             {
-                return;
+                return false;
             }
 
             player.Physics.SetImpactNext(pendingImpact.VelocityX, pendingImpact.VelocityY);
             _pendingPortalSessionValueImpact = null;
             _pendingPortalSessionValueImpactMapId = -1;
             _ = ClearPacketOwnedTeleportPassengerLink();
+            return true;
         }
 
-        private void TryApplyPendingPortalSessionValueImpactFromPacket(int packetType, byte[] payload)
+        private bool TryApplyPendingPortalSessionValueImpactFromPacket(int packetType, byte[] payload)
         {
+            return TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out _);
+        }
+
+        private bool TryApplyPendingPortalSessionValueImpactFromPacket(int packetType, byte[] payload, out string message)
+        {
+            message = null;
             if (_pendingPortalSessionValueImpact?.IsValid != true
                 || !TryDecodePortalSessionValueImpactPacketPairs(packetType, payload, out IReadOnlyList<KeyValuePair<string, string>> pairs, out _))
             {
-                return;
+                return false;
             }
 
             foreach (KeyValuePair<string, string> pair in pairs)
             {
-                TryApplyPendingPortalSessionValueImpact(pair.Key, pair.Value);
-                if (_pendingPortalSessionValueImpact?.IsValid != true)
+                if (TryApplyPendingPortalSessionValueImpact(pair.Key, pair.Value))
                 {
-                    break;
+                    message = $"Released pending portal session-value impact from packet {packetType} for {pair.Key}={pair.Value}.";
+                    return true;
                 }
             }
+
+            return false;
         }
 
         internal static bool TryDecodePortalSessionValueImpactPacketPairs(

@@ -37,7 +37,9 @@ namespace HaCreator.MapSimulator.Interaction
     {
         None,
         Npc,
-        Map
+        Map,
+        Mob,
+        Item
     }
 
     internal readonly record struct QuestDetailInlineReference(
@@ -256,6 +258,7 @@ namespace HaCreator.MapSimulator.Interaction
         public float ProgressRatio { get; init; }
         public bool IsReadyToComplete { get; init; }
         public bool IsRecentlyUpdated { get; init; }
+        public bool IsAutoRegisterCandidate { get; init; }
         public IReadOnlyList<QuestLogLineSnapshot> RequirementLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
         public IReadOnlyList<string> IssueLines { get; init; } = Array.Empty<string>();
         public string DemandText { get; init; } = string.Empty;

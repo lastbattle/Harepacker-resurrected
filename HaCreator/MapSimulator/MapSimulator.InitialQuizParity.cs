@@ -22,6 +22,8 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizHintLabelStringPoolId = 3958;
         private const int InitialQuizAnswerLabelStringPoolId = 3959;
         private const int InitialQuizAnswerNoticeStringPoolId = 3960;
+        private const int InitialQuizMinInputNoticeStringPoolId = 0x0F79;
+        private const int InitialQuizMaxInputNoticeStringPoolId = 0x0F7A;
         private const int InitialQuizTimeoutNoticeStringPoolId = 3964;
         private const float InitialQuizOwnerTextScale = 0.44f;
         private const float InitialQuizOwnerSecondaryTextScale = 0.42f;
@@ -38,7 +40,6 @@ namespace HaCreator.MapSimulator
         private Texture2D _initialQuizOwnerOkButtonDisabledTexture;
         private Texture2D _initialQuizOwnerOkButtonKeyFocusedTexture;
         private Texture2D[] _initialQuizOwnerDigits;
-        private Texture2D[] _initialQuizOwnerHeaderDigits;
         private Texture2D _initialQuizOwnerCommaTexture;
         private InitialQuizAnimationFrame[] _initialQuizOwnerAnimationFrames = Array.Empty<InitialQuizAnimationFrame>();
         private Point _initialQuizOwnerBackground3Origin = Point.Zero;
@@ -142,7 +143,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            SubmitInitialQuizOwnerResult(string.Empty, currentTickCount, showFeedback: false);
+            SubmitInitialQuizOwnerResult(string.Empty, currentTickCount, showFeedback: false, validateAnswer: false);
         }
 
         private bool HandleInitialQuizOwnerMouse(MouseState mouseState, MouseState previousMouseState, int currentTickCount)
@@ -317,15 +318,39 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private void SubmitInitialQuizOwnerResult(string answerText, int currentTickCount, bool showFeedback)
+        private void SubmitInitialQuizOwnerResult(string answerText, int currentTickCount, bool showFeedback, bool validateAnswer = true)
         {
             if (_initialQuizOwnerResultSent)
             {
                 return;
             }
 
-            _initialQuizOwnerResultSent = true;
             string submittedValue = answerText ?? string.Empty;
+            InitialQuizOwnerSubmissionValidation validation = ValidateInitialQuizOwnerSubmission(
+                submittedValue,
+                _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currentTickCount, out InitialQuizOwnerSnapshot snapshot)
+                    ? snapshot.MinInputByteLength
+                    : 0,
+                snapshot?.MaxInputByteLength ?? 0,
+                validateAnswer);
+            if (!validation.CanSubmit)
+            {
+                if (showFeedback && !string.IsNullOrWhiteSpace(validation.NoticeMessage))
+                {
+                    ShowUtilityFeedbackMessage(validation.NoticeMessage);
+                }
+
+                if (validation.RefocusInput)
+                {
+                    _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+                    _initialQuizOwnerPressedOkButton = false;
+                    _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+                }
+
+                return;
+            }
+
+            _initialQuizOwnerResultSent = true;
             NpcInteractionInputSubmission submission = new()
             {
                 EntryId = 1,
@@ -383,8 +408,6 @@ namespace HaCreator.MapSimulator
             DrawInitialQuizOwnerLayer(_initialQuizOwnerBackgroundTexture3, overlayBounds);
 
             DrawInitialQuizOwnerTimerDigits(ownerBounds, snapshot.RemainingSeconds);
-            DrawInitialQuizOwnerQuestionNumber(ownerBounds, Math.Max(0, snapshot.QuestionNumber));
-
             DrawInitialQuizOwnerAnimationFrame(ownerBounds, currentTickCount);
 
             DrawInitialQuizOwnerSingleLineText(
@@ -527,33 +550,6 @@ namespace HaCreator.MapSimulator
             DrawInitialQuizOwnerDigitGlyph(ownerBounds, timerText[4], 174, 33);
         }
 
-        private void DrawInitialQuizOwnerQuestionNumber(Rectangle ownerBounds, int questionNumber)
-        {
-            string questionText = Math.Max(0, questionNumber).ToString();
-            if (_initialQuizOwnerHeaderDigits == null || _initialQuizOwnerHeaderDigits.Length == 0)
-            {
-                DrawInitialQuizOwnerSingleLineText(
-                    questionText,
-                    new Rectangle(ownerBounds.X + 219, ownerBounds.Y + 72, 30, 24),
-                    Color.White,
-                    InitialQuizOwnerTextScale);
-                return;
-            }
-
-            int drawX = ownerBounds.X + 219;
-            for (int i = 0; i < questionText.Length; i++)
-            {
-                Texture2D digitTexture = ResolveInitialQuizOwnerDigitTexture(questionText[i], _initialQuizOwnerHeaderDigits, null);
-                if (digitTexture == null)
-                {
-                    continue;
-                }
-
-                _spriteBatch.Draw(digitTexture, new Rectangle(drawX, ownerBounds.Y + 72, digitTexture.Width, digitTexture.Height), Color.White);
-                drawX += digitTexture.Width;
-            }
-        }
-
         private Texture2D ResolveInitialQuizOwnerOkButtonTexture(bool enabled)
         {
             InitialQuizOwnerButtonVisualState state = ResolveInitialQuizOwnerButtonVisualState(
@@ -649,10 +645,6 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerOkButtonDisabledTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "disabled") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "disabled"));
             _initialQuizOwnerOkButtonKeyFocusedTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "keyFocused") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "keyFocused"));
             _initialQuizOwnerDigits = LoadInitialQuizOwnerDigits(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty, out _initialQuizOwnerCommaTexture);
-            _initialQuizOwnerHeaderDigits = LoadInitialQuizOwnerDigits(
-                ResolveInitialQuizOwnerHeaderDigits(preferred),
-                ResolveInitialQuizOwnerHeaderDigits(fallback),
-                out _);
             _initialQuizOwnerAnimationFrames = LoadInitialQuizOwnerAnimationFrames(preferred?["ani"] as WzSubProperty, fallback?["ani"] as WzSubProperty);
             _initialQuizOwnerBackground3Origin = ResolveCanvasOrigin(preferredBackground3 ?? fallbackBackground3);
         }
@@ -706,12 +698,6 @@ namespace HaCreator.MapSimulator
                     .FirstOrDefault();
         }
 
-        private static WzSubProperty ResolveInitialQuizOwnerHeaderDigits(WzSubProperty ownerProperty)
-        {
-            return ownerProperty?["number"] as WzSubProperty
-                ?? ownerProperty?["num2"] as WzSubProperty;
-        }
-
         internal static bool ShouldShowInitialQuizOwnerHint(string hintText)
         {
             return !string.IsNullOrWhiteSpace(hintText);
@@ -759,6 +745,56 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldDrawInitialQuizOwnerCursor(int currentTickCount, int cursorBlinkStartedAt)
         {
             return ((currentTickCount - cursorBlinkStartedAt) / 500) % 2 == 0;
+        }
+
+        internal static InitialQuizOwnerSubmissionValidation ValidateInitialQuizOwnerSubmission(
+            string answerText,
+            int minInputByteLength,
+            int maxInputByteLength,
+            bool validateAnswer)
+        {
+            if (!validateAnswer)
+            {
+                return InitialQuizOwnerSubmissionValidation.Accepted;
+            }
+
+            if (string.IsNullOrWhiteSpace(answerText))
+            {
+                return new InitialQuizOwnerSubmissionValidation(false, null, true);
+            }
+
+            int inputByteLength = Encoding.Default.GetByteCount(answerText ?? string.Empty);
+            int minimum = Math.Max(0, minInputByteLength);
+            if (inputByteLength < minimum)
+            {
+                return new InitialQuizOwnerSubmissionValidation(
+                    false,
+                    FormatInitialQuizOwnerInputLengthNotice(
+                        InitialQuizMinInputNoticeStringPoolId,
+                        "You must enter atleast {0} letters. (Korean)",
+                        minimum),
+                    true);
+            }
+
+            int maximum = Math.Max(0, maxInputByteLength);
+            if (inputByteLength > maximum)
+            {
+                return new InitialQuizOwnerSubmissionValidation(
+                    false,
+                    FormatInitialQuizOwnerInputLengthNotice(
+                        InitialQuizMaxInputNoticeStringPoolId,
+                        "You must enter less than {0} letters. (Korean)",
+                        maximum),
+                    true);
+            }
+
+            return InitialQuizOwnerSubmissionValidation.Accepted;
+        }
+
+        private static string FormatInitialQuizOwnerInputLengthNotice(int stringPoolId, string fallbackFormat, int byteLength)
+        {
+            string format = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackFormat);
+            return string.Format(format.Replace("%d", "{0}", StringComparison.Ordinal), byteLength);
         }
 
         internal static string ComposeInitialQuizOwnerTimerText(int remainingSeconds)
@@ -913,6 +949,11 @@ namespace HaCreator.MapSimulator
                 Keys.OemTilde => shiftPressed ? '~' : '`',
                 _ => null
             };
+        }
+
+        internal sealed record InitialQuizOwnerSubmissionValidation(bool CanSubmit, string NoticeMessage, bool RefocusInput)
+        {
+            internal static InitialQuizOwnerSubmissionValidation Accepted { get; } = new(true, null, false);
         }
     }
 }

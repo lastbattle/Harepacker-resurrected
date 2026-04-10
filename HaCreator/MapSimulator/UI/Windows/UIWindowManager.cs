@@ -1372,6 +1372,7 @@ namespace HaCreator.MapSimulator.UI
             if (focusTarget != null)
             {
                 BringToFront(focusTarget);
+                focusTarget.RefreshImePresentationPlacement();
                 return;
             }
 
@@ -1381,6 +1382,7 @@ namespace HaCreator.MapSimulator.UI
                 if (windows[i].IsVisible)
                 {
                     _focusedWindow = windows[i];
+                    _focusedWindow.RefreshImePresentationPlacement();
                     break;
                 }
             }

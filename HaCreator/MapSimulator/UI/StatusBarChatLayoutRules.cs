@@ -13,6 +13,10 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientWhisperPickerModalComboHeight = 18;
         internal const int ClientWhisperPickerModalComboChromeHeight = 20;
         internal const int ClientWhisperPickerModalComboButtonWidth = 17;
+        internal const int ClientWhisperPickerModalComboDropdownRowHeight = 17;
+        internal const int ClientWhisperPickerModalComboDropdownLeftSliceWidth = 5;
+        internal const int ClientWhisperPickerModalComboDropdownCenterSliceWidth = 5;
+        internal const int ClientWhisperPickerModalComboDropdownRightSliceWidth = 18;
         internal const int ClientWhisperPickerModalComboBottomOffset = 63;
         internal const int ClientWhisperPickerModalListGap = 6;
         internal const int ClientWhisperPickerModalOkButtonLeft = 157;
@@ -252,6 +256,49 @@ namespace HaCreator.MapSimulator.UI
                 comboBounds.Bottom,
                 resolvedWidth,
                 safeRowHeight * safeVisibleRowCount);
+        }
+
+        public static int ResolveWhisperPickerModalComboDropdownRowHeight(params int[] textureHeights)
+        {
+            int resolvedHeight = ClientWhisperPickerModalComboDropdownRowHeight;
+            if (textureHeights == null)
+            {
+                return resolvedHeight;
+            }
+
+            for (int i = 0; i < textureHeights.Length; i++)
+            {
+                resolvedHeight = Math.Max(resolvedHeight, textureHeights[i]);
+            }
+
+            return resolvedHeight;
+        }
+
+        public static int ResolveWhisperPickerModalComboDropdownMinimumWidth(
+            int leftSliceWidth,
+            int centerSliceWidth,
+            int rightSliceWidth)
+        {
+            return Math.Max(
+                1,
+                Math.Max(0, leftSliceWidth)
+                    + Math.Max(0, centerSliceWidth)
+                    + Math.Max(0, rightSliceWidth));
+        }
+
+        public static Rectangle ResolveWhisperPickerModalComboDropdownCenterSliceBounds(
+            Rectangle rowBounds,
+            int leftSliceWidth,
+            int rightSliceWidth)
+        {
+            int safeLeftWidth = Math.Max(0, leftSliceWidth);
+            int safeRightWidth = Math.Max(0, rightSliceWidth);
+            int centerWidth = Math.Max(0, rowBounds.Width - safeLeftWidth - safeRightWidth);
+            return new Rectangle(
+                rowBounds.X + safeLeftWidth,
+                rowBounds.Y,
+                centerWidth,
+                rowBounds.Height);
         }
 
         public static Rectangle ResolveWhisperPickerModalVisibleRowBounds(

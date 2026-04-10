@@ -226,10 +226,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _packetQuestResultDialogSession.Close(PacketQuestResultUtilDialogModalResult.Close);
             }
 
-            IsVisible = false;
-            _inputValue = string.Empty;
-            _compositionText = string.Empty;
-            RestartPacketQuestResultDialogLocalState();
+            HideOverlayAfterClose();
         }
 
         public bool ContainsPoint(int x, int y, int renderWidth, int renderHeight)
@@ -1886,7 +1883,7 @@ namespace HaCreator.MapSimulator.Interaction
                         PacketQuestResultUtilDialogModalResult.NextOrOk,
                         _currentPage,
                         closesDialog: true);
-                    Close();
+                    HideOverlayAfterClose();
                     return new NpcInteractionOverlayResult(
                         true,
                         null,
@@ -1897,7 +1894,7 @@ namespace HaCreator.MapSimulator.Interaction
                         PacketQuestResultUtilDialogModalResult.Close,
                         _currentPage,
                         closesDialog: true);
-                    Close();
+                    HideOverlayAfterClose();
                     return new NpcInteractionOverlayResult(
                         true,
                         null,
@@ -1906,6 +1903,14 @@ namespace HaCreator.MapSimulator.Interaction
                 default:
                     return defaultResult;
             }
+        }
+
+        private void HideOverlayAfterClose()
+        {
+            IsVisible = false;
+            _inputValue = string.Empty;
+            _compositionText = string.Empty;
+            RestartPacketQuestResultDialogLocalState();
         }
 
         private void UpdatePacketQuestResultButtonInteractionState(

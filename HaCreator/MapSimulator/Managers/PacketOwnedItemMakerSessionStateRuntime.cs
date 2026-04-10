@@ -80,6 +80,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             ApplyDisassemblyTargetChanges(disassemblyTargets, update.DisassemblyTargetAdditions, update.DisassemblyTargetRemovals);
+            if (!update.HasAuthoritativeDisassemblyTargetsOverride
+                && HasEntries(update.DisassemblyTargetAdditions))
+            {
+                hasAuthoritativeDisassemblyTargets = true;
+            }
 
             if (update.HasAuthoritativeHiddenRecipeListOverride)
             {
@@ -96,6 +101,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             ApplyHiddenRecipeChanges(hiddenRecipeEntries, update.HiddenRecipeAdditions, update.HiddenRecipeRemovals);
+            if (!update.HasAuthoritativeHiddenRecipeListOverride
+                && HasEntries(update.HiddenRecipeAdditions))
+            {
+                hasAuthoritativeHiddenRecipeList = true;
+            }
 
             if (!hasAuthoritativeDisassemblyTargets)
             {
@@ -115,6 +125,11 @@ namespace HaCreator.MapSimulator.Managers
                 HasAuthoritativeHiddenRecipeList = hasAuthoritativeHiddenRecipeList,
                 HiddenRecipeEntries = NormalizeHiddenRecipeEntries(hiddenRecipeEntries)
             };
+        }
+
+        private static bool HasEntries<T>(IReadOnlyList<T> entries)
+        {
+            return entries != null && entries.Count > 0;
         }
 
         private static IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry> NormalizeDisassemblyTargets(

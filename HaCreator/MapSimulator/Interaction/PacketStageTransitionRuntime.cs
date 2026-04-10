@@ -36,13 +36,14 @@ namespace HaCreator.MapSimulator.Interaction
         private const ulong CharacterDataRelationshipRecordFlag = 0x800UL;
         private const ulong CharacterDataMapTransferFlag = 0x1000UL;
         private const ulong CharacterDataSkillCooldownFlag = 0x4000UL;
-        private const ulong CharacterDataOpaquePreMapTransferFlag = 0x8000UL;
+        private const ulong CharacterDataInt16ValueRecordFlag = 0x8000UL;
         private const ulong CharacterDataQuestRecordFlag = 0x10000UL;
         private const ulong CharacterDataShortFileTimeRecordFlag = 0x20000UL;
         private const int CharacterDataMiniGameRecordByteLength = 0x14;
         private const int CharacterDataCoupleRecordByteLength = 0x21;
         private const int CharacterDataFriendRecordByteLength = 0x25;
         private const int CharacterDataMarriageRecordByteLength = 0x30;
+        private const int SetFieldServerFileTimeByteLength = sizeof(long);
         internal const int LogoutGiftEntryCount = 3;
         internal const int LogoutGiftConfigByteLength = sizeof(int) + (LogoutGiftEntryCount * sizeof(int));
 
@@ -1402,7 +1403,8 @@ namespace HaCreator.MapSimulator.Interaction
             decoratedSnapshot = snapshot;
             long startPosition = reader.BaseStream.Position;
             byte[] remainingBytes = ReadRemainingBytes(reader);
-            int maxOpaqueByteCount = (characterDataFlags & CharacterDataOpaquePreMapTransferFlag) != 0
+            bool hasInt16ValueRecordSection = (characterDataFlags & CharacterDataInt16ValueRecordFlag) != 0;
+            int maxOpaqueByteCount = hasInt16ValueRecordSection
                 ? remainingBytes.Length
                 : 0;
             int bestScore = int.MinValue;
@@ -1418,6 +1420,7 @@ namespace HaCreator.MapSimulator.Interaction
                         snapshot,
                         remainingBytes,
                         opaqueByteCount,
+                        decodeInt16ValueRecords: hasInt16ValueRecordSection && opaqueByteCount == 0,
                         out PacketCharacterDataSnapshot candidateSnapshot))
                 {
                     continue;
@@ -1453,6 +1456,7 @@ namespace HaCreator.MapSimulator.Interaction
             PacketCharacterDataSnapshot snapshot,
             byte[] remainingBytes,
             int opaqueByteCount,
+            bool decodeInt16ValueRecords,
             out PacketCharacterDataSnapshot decoratedSnapshot)
         {
             decoratedSnapshot = snapshot;
@@ -1462,15 +1466,29 @@ namespace HaCreator.MapSimulator.Interaction
                 byte[] opaquePreMapTransferBytes = opaqueByteCount == 0
                     ? Array.Empty<byte>()
                     : remainingBytes.Take(opaqueByteCount).ToArray();
-                ulong opaquePreMapTransferFlags = characterDataFlags & CharacterDataOpaquePreMapTransferFlag;
+                ulong opaquePreMapTransferFlags = decodeInt16ValueRecords
+                    ? 0
+                    : characterDataFlags & CharacterDataInt16ValueRecordFlag;
                 reader.BaseStream.Position = startPosition + opaqueByteCount;
 
                 decoratedSnapshot = snapshot with
                 {
                     OpaquePreMapTransferFlags = opaquePreMapTransferFlags,
                     OpaquePreMapTransferSectionByteCount = opaquePreMapTransferBytes?.Length ?? 0,
-                    OpaquePreMapTransferSectionBytes = opaquePreMapTransferBytes ?? Array.Empty<byte>()
+                    OpaquePreMapTransferSectionBytes = opaquePreMapTransferBytes ?? Array.Empty<byte>(),
+                    Int16ValueRecordCount = 0,
+                    Int16ValueRecords = null
                 };
+
+                if (decodeInt16ValueRecords)
+                {
+                    IReadOnlyDictionary<int, int> int16ValueRecords = ReadCharacterDataInt16ValueRecords(reader);
+                    decoratedSnapshot = decoratedSnapshot with
+                    {
+                        Int16ValueRecordCount = int16ValueRecords.Count,
+                        Int16ValueRecords = int16ValueRecords
+                    };
+                }
 
                 if ((characterDataFlags & CharacterDataQuestRecordFlag) != 0)
                 {
@@ -1569,9 +1587,24 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static int GetKnownCharacterDataTailCandidateScore(long trailingBytes)
         {
-            if (trailingBytes == 0 || trailingBytes == LogoutGiftConfigByteLength)
+            if (trailingBytes == LogoutGiftConfigByteLength + SetFieldServerFileTimeByteLength)
             {
-                return int.MaxValue - (int)trailingBytes;
+                return int.MaxValue;
+            }
+
+            if (trailingBytes == SetFieldServerFileTimeByteLength)
+            {
+                return int.MaxValue - 1;
+            }
+
+            if (trailingBytes == LogoutGiftConfigByteLength)
+            {
+                return int.MaxValue - 2;
+            }
+
+            if (trailingBytes == 0)
+            {
+                return int.MaxValue - 3;
             }
 
             return trailingBytes < 0

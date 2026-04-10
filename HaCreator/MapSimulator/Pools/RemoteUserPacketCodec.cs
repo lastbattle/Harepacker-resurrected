@@ -2407,6 +2407,18 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string normalizedName = ResolveHelperMarkerWzName(markerType);
+            if (!markerType.HasValue)
+            {
+                payload = new byte[HelperNumericPayloadLength];
+                payload[0] = (byte)characterId;
+                payload[1] = (byte)(characterId >> 8);
+                payload[2] = (byte)(characterId >> 16);
+                payload[3] = (byte)(characterId >> 24);
+                payload[4] = HelperMarkerClearValue;
+                payload[5] = showDirectionOverlay ? (byte)1 : (byte)0;
+                return true;
+            }
+
             byte[] nameBytes = Encoding.UTF8.GetBytes(normalizedName);
             if (nameBytes.Length > byte.MaxValue)
             {

@@ -926,13 +926,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Texture2D iconTexture = shortcutVisualState.IconTexture;
-            float maxWidth = bounds.Width - 2f;
-            float maxHeight = bounds.Height - 2f;
-            float scale = Math.Min(maxWidth / iconTexture.Width, maxHeight / iconTexture.Height);
-            scale = compact ? Math.Min(scale, 0.5f) : Math.Min(scale, 1f);
-            Vector2 drawPosition = new(
-                bounds.Center.X - ((iconTexture.Width * scale) * 0.5f),
-                bounds.Center.Y - ((iconTexture.Height * scale) * 0.5f));
+            float scale = ResolveShortcutVisualScale(bounds, iconTexture, shortcutVisualState.DrawLayer, compact);
+            Vector2 drawPosition = ResolveShortcutVisualPosition(bounds, iconTexture, shortcutVisualState.DrawLayer, scale);
             Color tint = shortcutVisualState.Unavailable ? new Color(170, 170, 170, 210) : Color.White;
             sprite.Draw(iconTexture, drawPosition, null, tint, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
 
@@ -955,7 +950,7 @@ namespace HaCreator.MapSimulator.UI
                     0f);
             }
 
-            if (!string.IsNullOrWhiteSpace(shortcutVisualState.BadgeText))
+            if (ShouldDrawShortcutVisualBadge(shortcutVisualState))
             {
                 sprite.DrawString(
                     _font,
@@ -968,6 +963,59 @@ namespace HaCreator.MapSimulator.UI
                     SpriteEffects.None,
                     0f);
             }
+        }
+
+        private static float ResolveShortcutVisualScale(
+            Rectangle bounds,
+            Texture2D iconTexture,
+            ShortcutVisualState.ClientDrawLayer drawLayer,
+            bool compact)
+        {
+            float maxWidth = Math.Max(1f, bounds.Width - 2f);
+            float maxHeight = Math.Max(1f, bounds.Height - 2f);
+            float scale = Math.Min(maxWidth / iconTexture.Width, maxHeight / iconTexture.Height);
+
+            if (drawLayer is ShortcutVisualState.ClientDrawLayer.Skill or ShortcutVisualState.ClientDrawLayer.Macro)
+            {
+                return compact ? scale : Math.Min(scale, 1f);
+            }
+
+            if (drawLayer is ShortcutVisualState.ClientDrawLayer.ItemStack
+                or ShortcutVisualState.ClientDrawLayer.ItemUnavailable
+                or ShortcutVisualState.ClientDrawLayer.CashItem)
+            {
+                return compact ? Math.Min(scale, 0.5f) : Math.Min(scale, 1f);
+            }
+
+            return compact ? Math.Min(scale, 0.5f) : Math.Min(scale, 1f);
+        }
+
+        private static Vector2 ResolveShortcutVisualPosition(
+            Rectangle bounds,
+            Texture2D iconTexture,
+            ShortcutVisualState.ClientDrawLayer drawLayer,
+            float scale)
+        {
+            if (drawLayer is ShortcutVisualState.ClientDrawLayer.Skill or ShortcutVisualState.ClientDrawLayer.Macro)
+            {
+                return new Vector2(
+                    bounds.Right - (iconTexture.Width * scale) - 1f,
+                    bounds.Bottom - (iconTexture.Height * scale) - 1f);
+            }
+
+            return new Vector2(
+                bounds.Center.X - ((iconTexture.Width * scale) * 0.5f),
+                bounds.Center.Y - ((iconTexture.Height * scale) * 0.5f));
+        }
+
+        private static bool ShouldDrawShortcutVisualBadge(ShortcutVisualState shortcutVisualState)
+        {
+            if (string.IsNullOrWhiteSpace(shortcutVisualState.BadgeText))
+            {
+                return false;
+            }
+
+            return shortcutVisualState.DrawLayer == ShortcutVisualState.ClientDrawLayer.None;
         }
 
         private static int ComparePaletteSlotOrder(int left, int right)

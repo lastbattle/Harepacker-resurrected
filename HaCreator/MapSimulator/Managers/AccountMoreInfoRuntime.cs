@@ -41,7 +41,7 @@ namespace HaCreator.MapSimulator.Managers
         public string LastDispatchText { get; init; } = string.Empty;
     }
 
-        internal sealed class AccountMoreInfoRuntime
+    internal sealed class AccountMoreInfoRuntime
     {
         internal const int ClientOpcode = 193;
         internal const string CountryNameRootPath = "Etc/CountryName.img";
@@ -81,8 +81,11 @@ namespace HaCreator.MapSimulator.Managers
 
         private static readonly object CountryNameCatalogSync = new();
         private static bool _countryNameCatalogLoaded;
+        private static bool _hasCountryNameCatalogData;
         private static IReadOnlyDictionary<int, string> _areaGroupDisplayNames = new Dictionary<int, string>();
         private static IReadOnlyDictionary<int, IReadOnlyDictionary<int, string>> _areaDetailDisplayNames = new Dictionary<int, IReadOnlyDictionary<int, string>>();
+        private static IReadOnlyList<int> _areaGroupItemParams = Array.Empty<int>();
+        private static IReadOnlyDictionary<int, IReadOnlyList<int>> _areaDetailItemParams = new Dictionary<int, IReadOnlyList<int>>();
 
         private bool _isOpen;
         private bool _isFirstEntry;
@@ -233,11 +236,12 @@ namespace HaCreator.MapSimulator.Managers
             switch (field)
             {
                 case AccountMoreInfoEditableField.AreaGroup:
-                    _areaGroup = Wrap(_areaGroup + delta, 0, 255);
+                    _areaGroup = AdjustAreaGroup(_areaGroup, delta);
+                    _areaDetail = 0;
                     break;
 
                 case AccountMoreInfoEditableField.AreaDetail:
-                    _areaDetail = Wrap(_areaDetail + delta, 0, 255);
+                    _areaDetail = AdjustAreaDetail(_areaGroup, _areaDetail, delta);
                     break;
 
                 case AccountMoreInfoEditableField.BirthYear:
@@ -388,6 +392,21 @@ namespace HaCreator.MapSimulator.Managers
             return lookup;
         }
 
+        internal static IReadOnlyList<int> BuildClientSortedCountryNameItemParams(IReadOnlyDictionary<int, string> lookup)
+        {
+            if (lookup == null || lookup.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            return lookup
+                .Where(entry => entry.Key != 0 && !string.IsNullOrWhiteSpace(entry.Value))
+                .OrderBy(entry => entry.Value, StringComparer.Ordinal)
+                .Select(entry => entry.Key)
+                .Prepend(0)
+                .ToArray();
+        }
+
         private static int Wrap(int value, int minInclusive, int maxInclusive)
         {
             if (minInclusive >= maxInclusive)
@@ -437,6 +456,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 Dictionary<int, string> areaGroups = new();
                 Dictionary<int, IReadOnlyDictionary<int, string>> areaDetails = new();
+                Dictionary<int, IReadOnlyList<int>> areaDetailItemParams = new();
                 WzImage countryNameImage = HaCreator.Program.FindImage("Etc", "CountryName.img");
                 if (countryNameImage != null)
                 {
@@ -455,7 +475,9 @@ namespace HaCreator.MapSimulator.Managers
                             continue;
                         }
 
-                        areaDetails[areaGroup] = BuildCountryNameLookup(container);
+                        IReadOnlyDictionary<int, string> detailLookup = BuildCountryNameLookup(container);
+                        areaDetails[areaGroup] = detailLookup;
+                        areaDetailItemParams[areaGroup] = BuildClientSortedCountryNameItemParams(detailLookup);
                     }
                 }
 
@@ -464,10 +486,56 @@ namespace HaCreator.MapSimulator.Managers
                     areaGroups[0] = AccountMoreInfoOwnerStringPoolText.ResolveDefaultRegionItem();
                 }
 
+                _hasCountryNameCatalogData = areaGroups.Count > 1;
                 _areaGroupDisplayNames = areaGroups;
                 _areaDetailDisplayNames = areaDetails;
+                _areaGroupItemParams = BuildClientSortedCountryNameItemParams(areaGroups);
+                _areaDetailItemParams = areaDetailItemParams;
                 _countryNameCatalogLoaded = true;
             }
+        }
+
+        private static int AdjustAreaGroup(int currentAreaGroup, int delta)
+        {
+            EnsureCountryNameCatalogLoaded();
+            return _hasCountryNameCatalogData && _areaGroupItemParams.Count > 0
+                ? CycleCountryNameItemParam(_areaGroupItemParams, currentAreaGroup, delta)
+                : Wrap(currentAreaGroup + delta, 0, 255);
+        }
+
+        private static int AdjustAreaDetail(int currentAreaGroup, int currentAreaDetail, int delta)
+        {
+            EnsureCountryNameCatalogLoaded();
+            return _hasCountryNameCatalogData
+                && _areaDetailItemParams.TryGetValue(currentAreaGroup, out IReadOnlyList<int> itemParams)
+                && itemParams.Count > 0
+                    ? CycleCountryNameItemParam(itemParams, currentAreaDetail, delta)
+                    : Wrap(currentAreaDetail + delta, 0, 255);
+        }
+
+        private static int CycleCountryNameItemParam(IReadOnlyList<int> itemParams, int currentValue, int delta)
+        {
+            if (itemParams == null || itemParams.Count == 0)
+            {
+                return currentValue;
+            }
+
+            int currentIndex = -1;
+            for (int i = 0; i < itemParams.Count; i++)
+            {
+                if (itemParams[i] == currentValue)
+                {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            return itemParams[Wrap(currentIndex + delta, 0, itemParams.Count - 1)];
         }
 
         private static bool TryGetCountryNameEntry(WzImageProperty child, out int id, out string name)

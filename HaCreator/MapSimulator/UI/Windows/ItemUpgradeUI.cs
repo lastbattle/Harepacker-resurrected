@@ -90,6 +90,7 @@ namespace HaCreator.MapSimulator.UI
             1402107, 1412068, 1422070, 1432096, 1442133, 1452126,
             1462114, 1472137, 1482099, 1492098
         };
+        private const string MapleMiracleCubeOwnerPath = "UI/UIWindow2.img/MiracleCube_8th";
 
         private readonly Random _random = new Random();
         private readonly Dictionary<EquipSlot, UpgradeState> _upgradeStates = new Dictionary<EquipSlot, UpgradeState>();
@@ -2864,6 +2865,12 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (string.IsNullOrWhiteSpace(ownerPath) &&
+                itemId == MapleMiracleCubeId)
+            {
+                ownerPath = MapleMiracleCubeOwnerPath;
+            }
+
             ConsumableOwnerPathCache[itemId] = ownerPath;
             return ownerPath;
         }
@@ -4346,7 +4353,11 @@ namespace HaCreator.MapSimulator.UI
                 return string.Empty;
             }
 
-            var segments = subsetText
+            string normalizedSubsetText = subsetText
+                .Replace(", and ", ", ", StringComparison.OrdinalIgnoreCase)
+                .Replace(" and ", ", ", StringComparison.OrdinalIgnoreCase);
+
+            var segments = normalizedSubsetText
                 .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(static segment => segment.Trim())
                 .Where(static segment => !string.IsNullOrWhiteSpace(segment))

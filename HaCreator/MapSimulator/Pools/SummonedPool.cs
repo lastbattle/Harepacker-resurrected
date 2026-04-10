@@ -98,6 +98,7 @@ namespace HaCreator.MapSimulator.Pools
         private const int TeslaCoilSkillId = 35111002;
         private const int HealingRobotSkillId = 35111011;
         private const int TeslaCoilMasterySkillId = 35120001;
+        private const byte HealingRobotHealSkillAction = 13;
         private const int TeslaMinimumImpactDelayMs = 300;
         private const int PacketOwnedSummonBodyContactCooldownMs = 700;
         private const int PacketOwnedSummonPassiveEffectCooldownMs = 240;
@@ -766,6 +767,11 @@ namespace HaCreator.MapSimulator.Pools
             state.LastSkillAction = (byte)(attackAction & 0x7F);
             state.LastSkillTime = currentTime;
             state.Summon.TeslaCoilState = state.TeslaCoilState > 0 ? (byte)2 : state.Summon.TeslaCoilState;
+            if (ShouldApplyHealingRobotSkillPacketFacing(state.Summon, state.LastSkillAction))
+            {
+                state.Summon.FacingRight = ResolveHealingRobotSkillPacketFacingRight(attackAction);
+            }
+
             BeginPacketOwnedSkillAnimation(state, currentTime);
             return true;
         }
@@ -1795,6 +1801,18 @@ namespace HaCreator.MapSimulator.Pools
         private static bool DecodeFacingRight(byte moveAction)
         {
             return (moveAction & 1) == 0;
+        }
+
+        internal static bool ShouldApplyHealingRobotSkillPacketFacing(ActiveSummon summon, byte normalizedAction)
+        {
+            return summon?.SkillId == HealingRobotSkillId
+                   && normalizedAction == HealingRobotHealSkillAction;
+        }
+
+        internal static bool ResolveHealingRobotSkillPacketFacingRight(byte rawSkillAction)
+        {
+            // CSummoned::TryDoingHealingRobot sends (moveAction << 7) | 13.
+            return (rawSkillAction & 0x80) == 0;
         }
 
         private bool TryResolveBodyContactDamage(PacketOwnedSummonState state, int currentTime)

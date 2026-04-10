@@ -434,6 +434,13 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
+                    if (IsWhisperTargetPickerModalComboFocused()
+                        && !_isWhisperTargetPickerComboDropdownOpen)
+                    {
+                        ToggleWhisperTargetPickerModalComboDropdown();
+                        return true;
+                    }
+
                     OpenWhisperTargetPickerModalComboDropdown();
                     MoveWhisperTargetPickerSelection(1, WhisperTargetPickerNavigationMode.Step);
                     return true;
@@ -463,10 +470,17 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive
                     && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
-                    && _whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons
                     && oldKeyboardState.IsKeyUp(Keys.Left))
                 {
-                    MoveWhisperTargetPickerModalButtonFocus(-1);
+                    if (_whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons)
+                    {
+                        MoveWhisperTargetPickerModalButtonFocus(-1);
+                    }
+                    else
+                    {
+                        ToggleWhisperTargetPickerModalComboDropdown();
+                    }
+
                     return true;
                 }
 
@@ -496,10 +510,17 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive
                     && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
-                    && _whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons
                     && oldKeyboardState.IsKeyUp(Keys.Right))
                 {
-                    MoveWhisperTargetPickerModalButtonFocus(1);
+                    if (_whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons)
+                    {
+                        MoveWhisperTargetPickerModalButtonFocus(1);
+                    }
+                    else
+                    {
+                        ToggleWhisperTargetPickerModalComboDropdown();
+                    }
+
                     return true;
                 }
 
@@ -846,7 +867,6 @@ namespace HaCreator.MapSimulator
                 chatLogType,
                 whisperTargetCandidate,
                 channelId);
-            ClientChatMessageAdded?.Invoke(text, chatLogType, tickCount);
         }
 
         public void AddMessage(string text, Color color, int tickCount, int chatLogType, string whisperTargetCandidate)
@@ -887,6 +907,11 @@ namespace HaCreator.MapSimulator
             while (_messages.Count > MAX_CHAT_MESSAGES)
             {
                 _messages.RemoveAt(0);
+            }
+
+            if (chatLogType >= 0)
+            {
+                ClientChatMessageAdded?.Invoke(text, chatLogType, tickCount);
             }
         }
 
@@ -2047,6 +2072,13 @@ namespace HaCreator.MapSimulator
 
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
             _isWhisperTargetPickerComboDropdownOpen = false;
+        }
+
+        private bool IsWhisperTargetPickerModalComboFocused()
+        {
+            return _isWhisperTargetPickerActive
+                && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                && _whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.ComboBox;
         }
 
         internal static int ResolveWhisperTargetPickerFirstVisibleIndex(

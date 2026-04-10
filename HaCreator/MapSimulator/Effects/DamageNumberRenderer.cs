@@ -70,6 +70,9 @@ namespace HaCreator.MapSimulator.Effects
         /// <summary>Whether this is a miss</summary>
         public bool IsMiss { get; set; }
 
+        /// <summary>Optional BasicEff special text sprite name, such as Miss or guard.</summary>
+        public string SpecialTextName { get; set; }
+
         /// <summary>Color type (Red for player damage, Blue for received, Violet for party)</summary>
         public DamageColorType ColorType { get; set; }
 
@@ -151,8 +154,8 @@ namespace HaCreator.MapSimulator.Effects
         public string GetDamageString()
         {
             if (IsMiss)
-                return "Miss";
-            return Damage.ToString();
+                return DamageNumberRenderer.ResolveSpecialTextName(SpecialTextName);
+            return DamageNumberRenderer.FormatDamageValue(Damage);
         }
     }
 
@@ -266,13 +269,14 @@ namespace HaCreator.MapSimulator.Effects
         /// <param name="currentTime">Current game tick</param>
         /// <param name="comboIndex">Multi-hit combo index for stacking</param>
         public void SpawnDamageNumber(int damage, float x, float y, DamageColorType colorType,
-            bool isCritical, bool isMiss, int currentTime, int comboIndex = 0)
+            bool isCritical, bool isMiss, int currentTime, int comboIndex = 0, string specialTextName = null)
         {
             // Limit active numbers
             if (_activeNumbers.Count >= MAX_ACTIVE_NUMBERS)
             {
                 var oldest = _activeNumbers[0];
                 _activeNumbers.RemoveAt(0);
+                ReleaseCompositeCanvas(oldest);
                 _pool.Enqueue(oldest);
             }
 
@@ -291,6 +295,7 @@ namespace HaCreator.MapSimulator.Effects
             dmgNumber.SpawnTime = currentTime;
             dmgNumber.IsCritical = useCriticalPresentation;
             dmgNumber.IsMiss = isMiss;
+            dmgNumber.SpecialTextName = isMiss ? ResolveSpecialTextName(specialTextName) : null;
             dmgNumber.ColorType = colorType;
             dmgNumber.Size = useCriticalPresentation ? DamageNumberSize.Large : DamageNumberSize.Small;
             dmgNumber.ComboIndex = comboIndex;
@@ -344,6 +349,17 @@ namespace HaCreator.MapSimulator.Effects
         public void SpawnMiss(float x, float y, DamageColorType colorType, int currentTime)
         {
             SpawnDamageNumber(0, x, y, colorType, false, true, currentTime, 0);
+        }
+
+        public void SpawnSpecialText(string specialTextName, float x, float y, DamageColorType colorType, int currentTime)
+        {
+            if (string.IsNullOrWhiteSpace(specialTextName))
+            {
+                SpawnMiss(x, y, colorType, currentTime);
+                return;
+            }
+
+            SpawnDamageNumber(0, x, y, colorType, false, true, currentTime, 0, specialTextName.Trim());
         }
         #endregion
 
@@ -505,6 +521,7 @@ namespace HaCreator.MapSimulator.Effects
                 dmgNumber.ColorType,
                 dmgNumber.IsCritical,
                 dmgNumber.IsMiss,
+                dmgNumber.SpecialTextName,
                 largeDigitSet,
                 smallDigitSet);
         }
@@ -512,6 +529,11 @@ namespace HaCreator.MapSimulator.Effects
         internal static bool UsesCriticalPresentation(DamageColorType colorType, bool isCritical)
         {
             return colorType == DamageColorType.Red && isCritical;
+        }
+
+        internal static string ResolveSpecialTextName(string specialTextName)
+        {
+            return string.IsNullOrWhiteSpace(specialTextName) ? "Miss" : specialTextName.Trim();
         }
 
         internal static string FormatDamageValue(int damage)
@@ -575,16 +597,35 @@ namespace HaCreator.MapSimulator.Effects
             DamageNumberDigitSet largeDigitSet,
             DamageNumberDigitSet smallDigitSet)
         {
-            string damageString = isMiss ? "Miss" : FormatDamageValue(damage);
+            return PrepareVisual(
+                damage,
+                colorType,
+                isCritical,
+                isMiss,
+                specialTextName: null,
+                largeDigitSet,
+                smallDigitSet);
+        }
+
+        internal static PreparedDamageNumberVisual PrepareVisual(
+            int damage,
+            DamageColorType colorType,
+            bool isCritical,
+            bool isMiss,
+            string specialTextName,
+            DamageNumberDigitSet largeDigitSet,
+            DamageNumberDigitSet smallDigitSet)
+        {
+            string damageString = isMiss ? ResolveSpecialTextName(specialTextName) : FormatDamageValue(damage);
             bool useCriticalPresentation = UsesCriticalPresentation(colorType, isCritical);
 
             if (isMiss)
             {
                 PreparedSpriteDrawInfo? missSprite = null;
 
-                if (smallDigitSet.SpecialOrigins.TryGetValue("Miss", out Point missOrigin))
+                if (smallDigitSet.SpecialOrigins.TryGetValue(damageString, out Point missOrigin))
                 {
-                    missSprite = new PreparedSpriteDrawInfo("Miss", -missOrigin.X, -missOrigin.Y);
+                    missSprite = new PreparedSpriteDrawInfo(damageString, -missOrigin.X, -missOrigin.Y);
                 }
 
                 return new PreparedDamageNumberVisual(

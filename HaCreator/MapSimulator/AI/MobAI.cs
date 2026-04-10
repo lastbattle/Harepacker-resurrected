@@ -161,6 +161,7 @@ namespace HaCreator.MapSimulator.AI
         public bool EffectFacingAttach { get; set; } // attackN/info/effect/attachfacing
         public bool Tremble { get; set; }           // attackN/info/tremble or info/attack/N/tremble
         public bool IsAngerAttack { get; set; }     // attackN/info/AngerAttack
+        public bool IsSpecialAttack { get; set; }   // attackN/info/specialAttack
         public int DiseaseSkillId { get; set; }     // info/attack/N/disease -> MobSkill.img id
         public int DiseaseLevel { get; set; }       // info/attack/N/level -> MobSkill.img level
         public int EffectTriggerRecovery { get; set; } // Latest authored effect spawn time from action start
@@ -369,6 +370,7 @@ namespace HaCreator.MapSimulator.AI
         private int _angerChargeTarget = 0;
         private int _angerChargeCount = 0;
         private int _angerAttackIndex = -1;
+        private int _angerGaugeFullChargeEffectIntervalMs;
 
         // Status effects
         private MobStatusEffect _statusEffects = MobStatusEffect.None;
@@ -411,6 +413,7 @@ namespace HaCreator.MapSimulator.AI
         public int AngerChargeTarget => _angerChargeTarget;
         public int AngerChargeCount => _angerChargeCount;
         public bool IsAngerCharged => HasAngerGauge && _angerChargeCount >= _angerChargeTarget;
+        public int AngerGaugeFullChargeEffectIntervalMs => _angerGaugeFullChargeEffectIntervalMs;
 
         // Status effect properties
         public MobStatusEffect StatusEffects => _statusEffects;
@@ -467,6 +470,7 @@ namespace HaCreator.MapSimulator.AI
             _angerChargeTarget = 0;
             _angerChargeCount = 0;
             _angerAttackIndex = -1;
+            _angerGaugeFullChargeEffectIntervalMs = 0;
 
             // Bosses have larger aggro range
             if (isBoss)
@@ -516,6 +520,13 @@ namespace HaCreator.MapSimulator.AI
             if (attack?.IsAngerAttack == true)
             {
                 _angerAttackIndex = _attacks.Count;
+            }
+
+            if (attack?.IsSpecialAttack == true && attack.AttackAfter > 0)
+            {
+                _angerGaugeFullChargeEffectIntervalMs = _angerGaugeFullChargeEffectIntervalMs > 0
+                    ? Math.Min(_angerGaugeFullChargeEffectIntervalMs, attack.AttackAfter)
+                    : attack.AttackAfter;
             }
 
             _attacks.Add(attack);

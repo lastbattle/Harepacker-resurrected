@@ -197,7 +197,7 @@ namespace HaCreator.MapSimulator.Fields
                     case PacketTypeHit:
                         return TryApplyRemoteHitPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeEffect:
-                        return TryApplyRemoteItemEffectPacket(payload, currentTimeMs, out errorMessage);
+                        return TryApplyRemoteEffectPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeThrowGrenade:
                         return TryApplyRemoteThrowGrenadePacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeUserScore:
@@ -986,10 +986,10 @@ namespace HaCreator.MapSimulator.Fields
             return _remoteUserPool.TryApplyEmotion(packet, currentTimeMs, out errorMessage);
         }
 
-        private bool TryApplyRemoteItemEffectPacket(byte[] payload, int currentTimeMs, out string errorMessage)
+        private bool TryApplyRemoteEffectPacket(byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
-            if (!RemoteUserPacketCodec.TryParseItemEffect(payload, out RemoteUserItemEffectPacket packet, out errorMessage))
+            if (!RemoteUserPacketCodec.TryParseEffect(payload, out RemoteUserEffectPacket packet, out errorMessage))
             {
                 return false;
             }
@@ -1000,13 +1000,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return _remoteUserPool.TrySetItemEffect(
-                packet.CharacterId,
-                packet.RelationshipType,
-                packet.ItemId,
-                packet.PairCharacterId,
-                currentTimeMs,
-                out errorMessage);
+            return _remoteUserPool.TryApplyEffect(packet, currentTimeMs, out errorMessage);
         }
 
         private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, int currentTimeMs, out string errorMessage)

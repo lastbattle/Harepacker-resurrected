@@ -311,6 +311,32 @@ namespace HaCreator.MapSimulator.Managers
             return TryAttachEstablishedSession(candidate, out status);
         }
 
+        public bool TryAttachEstablishedSessionAndStartProxy(
+            int listenPort,
+            int remotePort,
+            string processSelector,
+            int? localPort,
+            out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            return TryAttachEstablishedSessionAndStartProxy(listenPort, candidate, out status);
+        }
+
         public bool TryAttachEstablishedSession(SessionDiscoveryCandidate candidate, out string status)
         {
             if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
@@ -334,6 +360,50 @@ namespace HaCreator.MapSimulator.Managers
                 RemoteHost = candidate.RemoteEndpoint.Address.ToString();
                 RemotePort = candidate.RemoteEndpoint.Port;
                 LastStatus = $"Observed already-established Guild Boss Maple socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. This path cannot decrypt or inject opcode {OutboundPulleyRequestOpcode} after the Maple handshake; reconnect through the localhost proxy for live packet ownership.";
+                status = LastStatus;
+                return true;
+            }
+        }
+
+        public bool TryAttachEstablishedSessionAndStartProxy(int listenPort, SessionDiscoveryCandidate candidate, out string status)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
+            {
+                status = "Guild boss official-session proxy attach requires an established Maple client socket pair.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (listenPort < 0 || listenPort > ushort.MaxValue)
+            {
+                status = "Guild boss official-session proxy attach listen port must be 0 or a valid TCP port.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (HasAttachedClient)
+                {
+                    status = $"Guild boss official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before preparing an already-established socket pair for reconnect.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                StopInternal(clearPending: true);
+                _passiveEstablishedSession = candidate;
+
+                if (!TryStartProxyListener(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
+                {
+                    LastStatus = $"Observed already-established Guild Boss Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
+                    status = LastStatus;
+                    return false;
+                }
+
+                LastStatus =
+                    $"Observed already-established Guild Boss Maple socket pair {DescribeEstablishedSession(candidate)}. " +
+                    $"Armed localhost proxy on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}; reconnect Maple through this proxy to recover decrypt/inject ownership. " +
+                    $"Opcode {OutboundPulleyRequestOpcode} requests will queue until the proxied handshake initializes.";
                 status = LastStatus;
                 return true;
             }
@@ -408,7 +478,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool TrySendOrQueuePulleyRequest(GuildBossField.PulleyPacketRequest request, out bool queued, out string status)
         {
             queued = false;
-            if (HasPassiveEstablishedSocketPair)
+            if (HasPassiveEstablishedSocketPair && !IsRunning)
             {
                 return TrySendPulleyRequest(request, out status);
             }
@@ -429,7 +499,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryQueuePulleyRequest(GuildBossField.PulleyPacketRequest request, out string status)
         {
-            if (HasPassiveEstablishedSocketPair)
+            if (HasPassiveEstablishedSocketPair && !IsRunning)
             {
                 status = $"Guild boss official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Deferred opcode {OutboundPulleyRequestOpcode} queueing only applies to sessions that reconnect through the localhost proxy.";
                 LastStatus = status;
@@ -445,7 +515,9 @@ namespace HaCreator.MapSimulator.Managers
 
             _pendingOutboundRequests.Enqueue(new PendingPulleyRequest(request, BuildPulleyRequestPacket()));
             QueuedCount++;
-            status = $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} for deferred live-session injection.";
+            status = HasPassiveEstablishedSocketPair
+                ? $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} for the proxied reconnect handshake."
+                : $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} for deferred live-session injection.";
             LastStatus = status;
             return true;
         }
@@ -491,6 +563,33 @@ namespace HaCreator.MapSimulator.Managers
             catch (Exception ex)
             {
                 LastStatus = $"Guild boss official-session bridge error: {ex.Message}";
+            }
+        }
+
+        private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
+        {
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+
+            try
+            {
+                RemoteHost = NormalizeRemoteHost(remoteHost);
+                RemotePort = remotePort;
+                _listenerCancellation = new CancellationTokenSource();
+                _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
+                _listener.Start();
+                ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
+                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
+                status = $"Guild boss official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                StopInternal(clearPending: false);
+                status = $"Guild boss official-session bridge failed to start: {ex.Message}";
+                LastStatus = status;
+                return false;
             }
         }
 
@@ -881,6 +980,11 @@ namespace HaCreator.MapSimulator.Managers
         private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
         {
             return $"observing established socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}; proxy reconnect required for decrypt/inject";
+        }
+
+        private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)

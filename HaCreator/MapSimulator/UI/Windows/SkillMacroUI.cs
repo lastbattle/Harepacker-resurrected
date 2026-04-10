@@ -2386,6 +2386,11 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
         {
+            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState))
+            {
+                return Rectangle.Empty;
+            }
+
             int visibleCount = GetVisibleCandidateCount();
             if (visibleCount <= 0)
             {
@@ -2832,6 +2837,25 @@ namespace HaCreator.MapSimulator.UI
                 clauseAnchorWidth,
                 clauseWidth);
             WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+        }
+
+        public override void RefreshImePresentationPlacement()
+        {
+            UpdateImePresentationPlacement();
+        }
+
+        protected override void ResetImePresentationPlacement()
+        {
+            if (ResolveImeWindowHandle == null)
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle != IntPtr.Zero)
+            {
+                WindowsImePresentationBridge.TryResetPlacement(windowHandle);
+            }
         }
 
         private int MeasureImePlacementWidth(string text)

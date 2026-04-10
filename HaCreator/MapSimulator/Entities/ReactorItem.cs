@@ -794,10 +794,7 @@ namespace HaCreator.MapSimulator.Entities
             WzImageProperty sourceProperty)
         {
             int duration = TryReadHitDuration(sourceProperty);
-            if (duration > 0
-                || sourceProperty == null
-                || (sourceKind != HitAnimationSourceKind.StateLayer
-                    && sourceKind != HitAnimationSourceKind.IndexedHit))
+            if (duration > 0 || sourceProperty == null)
             {
                 return duration;
             }
@@ -851,7 +848,7 @@ namespace HaCreator.MapSimulator.Entities
             {
                 int? priority = ResolveClientHitTypePriority(hitOption, eventType)
                     ?? TryResolveClientHitEventPriority(eventType, reactorType);
-                if (priority.HasValue && priority.Value < bestPriority)
+                if (priority.HasValue && priority.Value >= 0 && priority.Value < bestPriority)
                 {
                     bestPriority = priority.Value;
                     eventIndex = index;
@@ -1752,14 +1749,57 @@ namespace HaCreator.MapSimulator.Entities
             IEnumerable<int> indexedSelectorValues = eventNode.WzProperties
                 .Where(property => int.TryParse(property?.Name, out _))
                 .OrderBy(property => int.Parse(property.Name))
-                .Select(property => TryReadOptionalInt(WzInfoTools.GetRealProperty(property)))
-                .Where(static value => value.HasValue)
-                .Select(static value => value.Value);
+                .SelectMany(property => ReadIndexedSelectorValues(WzInfoTools.GetRealProperty(property)));
 
             return namedSelectorValues
                 .Concat(indexedSelectorValues)
                 .Distinct()
                 .ToArray();
+        }
+
+        private static IEnumerable<int> ReadIndexedSelectorValues(WzImageProperty property)
+        {
+            int? directValue = TryReadOptionalInt(property);
+            if (directValue.HasValue)
+            {
+                yield return directValue.Value;
+            }
+
+            if (property is not WzSubProperty selectorNode)
+            {
+                yield break;
+            }
+
+            foreach (int selectorValue in ReadNamedSelectorValues(selectorNode))
+            {
+                yield return selectorValue;
+            }
+        }
+
+        private static IEnumerable<int> ReadNamedSelectorValues(WzSubProperty eventNode)
+        {
+            int?[] selectorValues =
+            {
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["id"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["quest"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["questID"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["questid"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["reqQuest"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["item"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemID"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemid"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skill"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillID"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillid"]))
+            };
+
+            foreach (int? selectorValue in selectorValues)
+            {
+                if (selectorValue.HasValue)
+                {
+                    yield return selectorValue.Value;
+                }
+            }
         }
 
         private static int? TryReadOptionalInt(WzImageProperty property)

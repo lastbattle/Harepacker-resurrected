@@ -65,6 +65,9 @@ namespace HaCreator.MapSimulator.UI
             public int DiscountRate { get; init; }
         }
 
+        private const int CashItemInfoPacketByteLength = 55;
+        private const int GiftListPacketByteLength = 98;
+
         internal sealed class GiftListPacketSnapshot
         {
             public long SerialNumber { get; init; }
@@ -204,6 +207,9 @@ namespace HaCreator.MapSimulator.UI
         private string _cashNameChangeLastSummary = "No packet-authored name-change result routed yet.";
         private string _cashTransferWorldLastSummary = "No packet-authored transfer-world result routed yet.";
         private string _cashGachaponLastSummary = "No packet-authored cash gachapon result routed yet.";
+        private int _cashGachaponAnimationSequence;
+        private bool _cashGachaponAnimationIsCopyResult;
+        private bool _cashGachaponAnimationIsJackpot;
         private CashNameChangePossibleState _cashNameChangePossibleState = new();
         private CashTransferWorldPossibleState _cashTransferWorldPossibleState = new();
         private int _itcNormalItemSubtype = -1;
@@ -265,6 +271,9 @@ namespace HaCreator.MapSimulator.UI
         public string CashNameChangeLastSummary => _cashNameChangeLastSummary;
         public string CashTransferWorldLastSummary => _cashTransferWorldLastSummary;
         public string CashGachaponLastSummary => _cashGachaponLastSummary;
+        public int CashGachaponAnimationSequence => _cashGachaponAnimationSequence;
+        public bool CashGachaponAnimationIsCopyResult => _cashGachaponAnimationIsCopyResult;
+        public bool CashGachaponAnimationIsJackpot => _cashGachaponAnimationIsJackpot;
         public int CashItemResultSubtype => _cashItemResultSubtype;
         public CashNameChangePossibleState CashNameChangePossibleResult => _cashNameChangePossibleState;
         public CashTransferWorldPossibleState CashTransferWorldPossibleResult => _cashTransferWorldPossibleState;
@@ -398,6 +407,9 @@ namespace HaCreator.MapSimulator.UI
             _cashNameChangeLastSummary = "No packet-authored name-change result routed yet.";
             _cashTransferWorldLastSummary = "No packet-authored transfer-world result routed yet.";
             _cashGachaponLastSummary = "No packet-authored cash gachapon result routed yet.";
+            _cashGachaponAnimationSequence = 0;
+            _cashGachaponAnimationIsCopyResult = false;
+            _cashGachaponAnimationIsJackpot = false;
             _cashNameChangePossibleState = new CashNameChangePossibleState();
             _cashTransferWorldPossibleState = new CashTransferWorldPossibleState();
             _cashOneADayItemDate = 0;
@@ -1709,34 +1721,28 @@ namespace HaCreator.MapSimulator.UI
         private bool TryApplyCashGachaponDone(byte[] payload, bool isCopyResult, out string message)
         {
             message = null;
-            using MemoryStream stream = new(payload, writable: false);
-            using BinaryReader reader = new(stream);
-            if (stream.Length < 1)
+            if (!TryDecodeCashGachaponResultPayload(payload, hasSubtypeByte: true, out CashGachaponResultPayload result))
             {
                 return false;
             }
 
-            _ = reader.ReadByte();
-            int itemId = stream.Length - stream.Position >= sizeof(int)
-                ? Math.Max(0, reader.ReadInt32())
-                : 0;
-            int count = stream.Length - stream.Position >= sizeof(short)
-                ? Math.Max(1, (int)reader.ReadInt16())
-                : 1;
-            _cashGachaponLastSummary = itemId > 0
-                ? $"{(isCopyResult ? "Cash gachapon copy" : "Cash gachapon open")} yielded item {itemId.ToString(CultureInfo.InvariantCulture)} x{count.ToString(CultureInfo.InvariantCulture)}."
+            _cashGachaponLastSummary = result.ItemId > 0
+                ? $"{(isCopyResult ? "Cash gachapon copy" : "Cash gachapon open")} yielded item {result.ItemId.ToString(CultureInfo.InvariantCulture)} x{result.Count.ToString(CultureInfo.InvariantCulture)}{(result.IsJackpot ? " with jackpot animation" : string.Empty)}."
                 : $"{(isCopyResult ? "Cash gachapon copy" : "Cash gachapon open")} completed inside the dedicated stage.";
             AppendCashPacketCatalogEntry("Packet gachapon", "Gachapon", new PacketCatalogEntry
             {
                 Title = isCopyResult ? "Gachapon copy" : "Gachapon open",
                 Detail = _cashGachaponLastSummary,
                 Seller = "CCashShop gachapon",
-                PriceLabel = itemId > 0 ? $"Item {itemId.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
-                StateLabel = isCopyResult ? "Copied" : "Opened",
-                ItemId = itemId,
-                Quantity = count
+                PriceLabel = result.ItemId > 0 ? $"Item {result.ItemId.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = result.IsJackpot
+                    ? (isCopyResult ? "Copied jackpot" : "Opened jackpot")
+                    : (isCopyResult ? "Copied" : "Opened"),
+                ItemId = result.ItemId,
+                Quantity = result.Count
             });
             _noticeState = _cashGachaponLastSummary;
+            RecordCashGachaponAnimationResult(isCopyResult, result.IsJackpot);
             message = isCopyResult
                 ? $"CCashShop::OnCashItemResCashGachaponCopyDone confirmed {_cashGachaponLastSummary}"
                 : $"CCashShop::OnCashItemResCashGachaponOpenDone confirmed {_cashGachaponLastSummary}";
@@ -2123,23 +2129,68 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildCashGachaponPacketResult(byte[] payload, int packetType)
         {
-            int itemId = payload != null && payload.Length >= sizeof(int)
-                ? Math.Max(0, BitConverter.ToInt32(payload, 0))
-                : 0;
-            _cashGachaponLastSummary = itemId > 0
-                ? $"CashShop gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)} staged item {itemId.ToString(CultureInfo.InvariantCulture)}."
+            TryDecodeCashGachaponResultPayload(payload, hasSubtypeByte: false, out CashGachaponResultPayload result);
+            bool isCopyResult = packetType == 393;
+            _cashGachaponLastSummary = result.ItemId > 0
+                ? $"CashShop gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)} staged item {result.ItemId.ToString(CultureInfo.InvariantCulture)} x{result.Count.ToString(CultureInfo.InvariantCulture)}{(result.IsJackpot ? " with jackpot animation" : string.Empty)}."
                 : "CashShop gachapon result reached the dedicated stage.";
             AppendCashPacketCatalogEntry("Packet gachapon", "Gachapon", new PacketCatalogEntry
             {
                 Title = $"Gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)}",
                 Detail = _cashGachaponLastSummary,
                 Seller = "CCashShop gachapon",
-                PriceLabel = itemId > 0 ? $"Item {itemId.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
-                StateLabel = "Pending",
-                ItemId = itemId
+                PriceLabel = result.ItemId > 0 ? $"Item {result.ItemId.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = result.IsJackpot ? "Pending jackpot" : "Pending",
+                ItemId = result.ItemId,
+                Quantity = result.Count
             });
             _noticeState = _cashGachaponLastSummary;
+            RecordCashGachaponAnimationResult(isCopyResult, result.IsJackpot);
             return _cashGachaponLastSummary;
+        }
+
+        private void RecordCashGachaponAnimationResult(bool isCopyResult, bool isJackpot)
+        {
+            _cashGachaponAnimationIsCopyResult = isCopyResult;
+            _cashGachaponAnimationIsJackpot = isJackpot;
+            _cashGachaponAnimationSequence++;
+        }
+
+        internal readonly struct CashGachaponResultPayload
+        {
+            public CashGachaponResultPayload(int itemId, int count, bool isJackpot)
+            {
+                ItemId = Math.Max(0, itemId);
+                Count = Math.Max(1, count);
+                IsJackpot = isJackpot;
+            }
+
+            public int ItemId { get; }
+            public int Count { get; }
+            public bool IsJackpot { get; }
+        }
+
+        internal static bool TryDecodeCashGachaponResultPayload(
+            byte[] payload,
+            bool hasSubtypeByte,
+            out CashGachaponResultPayload result)
+        {
+            result = default;
+            int offset = hasSubtypeByte ? 1 : 0;
+            if (payload == null || payload.Length < offset + sizeof(int))
+            {
+                return false;
+            }
+
+            int itemId = Math.Max(0, BitConverter.ToInt32(payload, offset));
+            offset += sizeof(int);
+            int count = payload.Length > offset
+                ? Math.Max(1, (int)payload[offset])
+                : 1;
+            offset++;
+            bool isJackpot = payload.Length > offset && payload[offset] != 0;
+            result = new CashGachaponResultPayload(itemId, count, isJackpot);
+            return true;
         }
 
         private string ApplyCashOneADayPacket(byte[] payload)

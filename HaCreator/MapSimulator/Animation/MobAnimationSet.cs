@@ -90,6 +90,7 @@ namespace HaCreator.MapSimulator.Animation
             public bool IsJumpAttack { get; set; }
             public bool Tremble { get; set; }
             public bool IsAngerAttack { get; set; }
+            public bool IsSpecialAttack { get; set; }
 
             public bool ResolveHitAttach(int frameIndex)
             {

@@ -54,7 +54,8 @@ namespace HaCreator.MapSimulator.Pools
             int CharacterId,
             Vector2 Position,
             int Delta,
-            int CurrentTime);
+            int CurrentTime,
+            byte GuardType = 0);
 
         private readonly record struct RemoteMechanicModePresentation(
             string StandActionName,
@@ -1971,7 +1972,8 @@ namespace HaCreator.MapSimulator.Pools
                     packet.CharacterId,
                     ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f),
                     0,
-                    currentTime));
+                    currentTime,
+                    packet.IncDecType));
             }
 
             if (packet.SkillId is > 0)
@@ -2778,12 +2780,15 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             if (ownerRawActionCode.HasValue
-                && DragonActionLoader.TryGetClientActionNameFromRawActionCode(ownerRawActionCode.Value, out string rawActionName)
-                && IsExplicitRemoteDragonAction(rawActionName)
-                && metadata.HasAction(rawActionName))
+                && DragonActionLoader.TryGetClientActionNameFromRawActionCode(ownerRawActionCode.Value, out string rawActionName))
             {
-                actionName = rawActionName;
-                return true;
+                if (IsExplicitRemoteDragonAction(rawActionName) && metadata.HasAction(rawActionName))
+                {
+                    actionName = rawActionName;
+                    return true;
+                }
+
+                return false;
             }
 
             foreach (string candidate in EnumerateRemoteDragonActionCandidates(ownerActionName))
@@ -3133,6 +3138,7 @@ namespace HaCreator.MapSimulator.Pools
                     spriteBatch,
                     skeletonMeshRenderer,
                     actor,
+                    frame,
                     screenX,
                     screenY,
                     tickCount,
@@ -3141,6 +3147,7 @@ namespace HaCreator.MapSimulator.Pools
                     spriteBatch,
                     skeletonMeshRenderer,
                     actor,
+                    frame,
                     screenX,
                     screenY,
                     tickCount,
@@ -6383,6 +6390,7 @@ namespace HaCreator.MapSimulator.Pools
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,
             RemoteUserActor actor,
+            AssembledFrame frame,
             int screenX,
             int screenY,
             int currentTime,
@@ -6398,6 +6406,7 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 actor.TemporaryStatBarrierEffect,
+                frame,
                 screenX,
                 screenY,
                 currentTime,
@@ -6407,6 +6416,7 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 actor.TemporaryStatBlessingArmorEffect,
+                frame,
                 screenX,
                 screenY,
                 currentTime,
@@ -6416,6 +6426,7 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 actor.TemporaryStatRepeatEffect,
+                frame,
                 screenX,
                 screenY,
                 currentTime,
@@ -6425,6 +6436,7 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 actor.TemporaryStatAuraEffect,
+                frame,
                 screenX,
                 screenY,
                 currentTime,
@@ -6434,6 +6446,7 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 actor.TemporaryStatMagicShieldEffect,
+                frame,
                 screenX,
                 screenY,
                 currentTime,
@@ -6443,6 +6456,7 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 actor.TemporaryStatSoulArrowEffect,
+                frame,
                 screenX,
                 screenY,
                 currentTime,
@@ -6452,6 +6466,7 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 actor.TemporaryStatWeaponChargeEffect,
+                frame,
                 screenX,
                 screenY,
                 currentTime,
@@ -6461,6 +6476,7 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 actor.TemporaryStatFinalCutEffect,
+                frame,
                 screenX,
                 screenY,
                 currentTime,
@@ -6471,6 +6487,7 @@ namespace HaCreator.MapSimulator.Pools
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,
             RemoteUserActor actor,
+            AssembledFrame frame,
             int screenX,
             int screenY,
             int currentTime,
@@ -6498,6 +6515,7 @@ namespace HaCreator.MapSimulator.Pools
                     skeletonRenderer,
                     actor,
                     animation,
+                    frame,
                     screenX,
                     screenY,
                     elapsedTime);
@@ -6509,6 +6527,7 @@ namespace HaCreator.MapSimulator.Pools
             SkeletonMeshRenderer skeletonRenderer,
             RemoteUserActor actor,
             RemoteTemporaryStatAvatarEffectState state,
+            AssembledFrame frame,
             int screenX,
             int screenY,
             int currentTime,
@@ -6522,13 +6541,13 @@ namespace HaCreator.MapSimulator.Pools
             int elapsedTime = Math.Max(0, currentTime - state.AnimationStartTime);
             if (drawFrontLayers)
             {
-                DrawRemoteTemporaryStatAvatarEffectAnimation(spriteBatch, skeletonRenderer, actor, state.OverlayAnimation, screenX, screenY, elapsedTime);
-                DrawRemoteTemporaryStatAvatarEffectAnimation(spriteBatch, skeletonRenderer, actor, state.OverlaySecondaryAnimation, screenX, screenY, elapsedTime);
+                DrawRemoteTemporaryStatAvatarEffectAnimation(spriteBatch, skeletonRenderer, actor, state.OverlayAnimation, frame, screenX, screenY, elapsedTime);
+                DrawRemoteTemporaryStatAvatarEffectAnimation(spriteBatch, skeletonRenderer, actor, state.OverlaySecondaryAnimation, frame, screenX, screenY, elapsedTime);
                 return;
             }
 
-            DrawRemoteTemporaryStatAvatarEffectAnimation(spriteBatch, skeletonRenderer, actor, state.UnderFaceAnimation, screenX, screenY, elapsedTime);
-            DrawRemoteTemporaryStatAvatarEffectAnimation(spriteBatch, skeletonRenderer, actor, state.UnderFaceSecondaryAnimation, screenX, screenY, elapsedTime);
+            DrawRemoteTemporaryStatAvatarEffectAnimation(spriteBatch, skeletonRenderer, actor, state.UnderFaceAnimation, frame, screenX, screenY, elapsedTime);
+            DrawRemoteTemporaryStatAvatarEffectAnimation(spriteBatch, skeletonRenderer, actor, state.UnderFaceSecondaryAnimation, frame, screenX, screenY, elapsedTime);
         }
 
         private static void DrawRemoteTemporaryStatAvatarEffectAnimation(
@@ -6536,6 +6555,7 @@ namespace HaCreator.MapSimulator.Pools
             SkeletonMeshRenderer skeletonRenderer,
             RemoteUserActor actor,
             SkillAnimation animation,
+            AssembledFrame ownerFrame,
             int screenX,
             int screenY,
             int elapsedTime)
@@ -6545,18 +6565,27 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            SkillFrame frame = animation.GetFrameAtTime(elapsedTime);
-            if (frame?.Texture == null)
+            SkillFrame effectFrame = animation.GetFrameAtTime(elapsedTime);
+            if (effectFrame?.Texture == null)
             {
                 return;
             }
 
-            bool shouldFlip = actor.FacingRight ^ frame.Flip;
+            ClientOwnedAvatarEffectParity.TryResolveFaceOwnedAvatarEffectAnchor(
+                ownerFrame,
+                actor.FacingRight,
+                screenX,
+                screenY,
+                animation.PositionCode,
+                out int anchorX,
+                out int anchorY);
+
+            bool shouldFlip = actor.FacingRight ^ effectFrame.Flip;
             int drawX = shouldFlip
-                ? screenX - (frame.Texture.Width - frame.Origin.X)
-                : screenX - frame.Origin.X;
-            int drawY = screenY - frame.Origin.Y;
-            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, Color.White, shouldFlip, null);
+                ? anchorX - (effectFrame.Texture.Width - effectFrame.Origin.X)
+                : anchorX - effectFrame.Origin.X;
+            int drawY = anchorY - effectFrame.Origin.Y;
+            effectFrame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, Color.White, shouldFlip, null);
         }
 
         private static void DrawRemotePacketOwnedEmotionEffect(
@@ -6579,6 +6608,7 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 state.EffectAnimation,
+                ownerFrame: null,
                 screenX,
                 screenY,
                 elapsedTime);
@@ -6610,6 +6640,7 @@ namespace HaCreator.MapSimulator.Pools
                         spriteBatch,
                         skeletonRenderer,
                         actor,
+                        frame,
                         screenX,
                         screenY,
                         currentTime,
@@ -6618,6 +6649,7 @@ namespace HaCreator.MapSimulator.Pools
                         spriteBatch,
                         skeletonRenderer,
                         actor,
+                        frame,
                         screenX,
                         screenY,
                         currentTime,
@@ -6641,6 +6673,7 @@ namespace HaCreator.MapSimulator.Pools
                     spriteBatch,
                     skeletonRenderer,
                     actor,
+                    frame,
                     screenX,
                     screenY,
                     currentTime,
@@ -6649,6 +6682,7 @@ namespace HaCreator.MapSimulator.Pools
                     spriteBatch,
                     skeletonRenderer,
                     actor,
+                    frame,
                     screenX,
                     screenY,
                     currentTime,
@@ -7812,15 +7846,26 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                Color tint = Color.White * MathHelper.Clamp(layer.Alpha * fadeAlpha, 0f, 1f);
-                bool shouldFlip = state.FacingRight ^ frame.Flip;
-                int drawX = shouldFlip
-                    ? screenX - (frame.Texture.Width - frame.Origin.X)
-                    : screenX - frame.Origin.X;
-                int drawY = screenY - frame.Origin.Y;
-                frame.Texture.DrawBackground(spriteBatch, skeletonMeshRenderer, null, drawX, drawY, tint, shouldFlip, null);
-            }
-        }
+                  Color tint = Color.White * MathHelper.Clamp(layer.Alpha * fadeAlpha, 0f, 1f);
+                  bool shouldFlip = state.FacingRight ^ frame.Flip;
+                  float zoom = MathHelper.Clamp(layer.Zoom, 0.01f, 10f);
+                  int drawWidth = Math.Max(1, (int)Math.Round(frame.Texture.Width * zoom));
+                  int drawHeight = Math.Max(1, (int)Math.Round(frame.Texture.Height * zoom));
+                  int drawX = shouldFlip
+                      ? screenX - (int)Math.Round((frame.Texture.Width - frame.Origin.X) * zoom)
+                      : screenX - (int)Math.Round(frame.Origin.X * zoom);
+                  int drawY = screenY - (int)Math.Round(frame.Origin.Y * zoom);
+                  spriteBatch.Draw(
+                      frame.Texture.Texture,
+                      new Rectangle(drawX, drawY, drawWidth, drawHeight),
+                      null,
+                      tint,
+                      0f,
+                      Vector2.Zero,
+                      shouldFlip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
+                      0f);
+              }
+          }
 
         private void ApplyMovementSnapshot(RemoteUserActor actor, int currentTime)
         {

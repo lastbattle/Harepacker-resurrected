@@ -1,7 +1,9 @@
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -33,12 +35,15 @@ namespace HaCreator.MapSimulator.Managers
         private const string DefaultProcessName = "MapleStory";
 
         private readonly ConcurrentQueue<MessengerOfficialSessionBridgeMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private BridgePair _activePair;
+
+        private readonly record struct PendingOutboundPacket(int Opcode, byte[] RawPacket);
 
         private sealed class BridgePair
         {
@@ -89,6 +94,13 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
+        public int SentCount { get; private set; }
+        public int QueuedCount { get; private set; }
+        public int PendingOutboundPacketCount => _pendingOutboundPackets.Count;
+        public int LastSentOpcode { get; private set; } = -1;
+        public byte[] LastSentRawPacket { get; private set; } = Array.Empty<byte>();
+        public int LastQueuedOpcode { get; private set; } = -1;
+        public byte[] LastQueuedRawPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Messenger official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -99,7 +111,13 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Messenger official-session bridge {lifecycle}; {session}; received={ReceivedCount}; opcode={MessengerOpcode}. {LastStatus}";
+            string lastOutbound = LastSentOpcode >= 0
+                ? $" lastOut={LastSentOpcode}[{Convert.ToHexString(LastSentRawPacket)}]."
+                : string.Empty;
+            string lastQueued = LastQueuedOpcode >= 0
+                ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
+                : string.Empty;
+            return $"Messenger official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingOutboundPacketCount}; queued={QueuedCount}; inbound opcode={MessengerOpcode}; outbound opcode={MessengerPacketCodec.ClientMessengerRequestOpcode}.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort, ushort messengerOpcode)
@@ -205,6 +223,62 @@ namespace HaCreator.MapSimulator.Managers
             return _pendingMessages.TryDequeue(out message);
         }
 
+        public bool TrySendOutboundPacket(int opcode, IReadOnlyList<byte> payload, out string status)
+        {
+            BridgePair pair;
+            lock (_sync)
+            {
+                pair = _activePair;
+            }
+
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = "Messenger official-session bridge has no connected Maple session for outbound injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (!TryBuildRawPacket(opcode, payload, out byte[] rawPacket, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                pair.ServerSession.SendPacket(rawPacket);
+                SentCount++;
+                LastSentOpcode = opcode;
+                LastSentRawPacket = rawPacket;
+                status = $"Injected Messenger outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ClearActivePair(pair, $"Messenger official-session outbound injection failed: {ex.Message}");
+                status = LastStatus;
+                return false;
+            }
+        }
+
+        public bool TryQueueOutboundPacket(int opcode, IReadOnlyList<byte> payload, out string status)
+        {
+            if (!TryBuildRawPacket(opcode, payload, out byte[] rawPacket, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(opcode, rawPacket));
+            QueuedCount++;
+            LastQueuedOpcode = opcode;
+            LastQueuedRawPacket = rawPacket;
+            status = $"Queued Messenger outbound opcode {opcode} for deferred live-session injection.";
+            LastStatus = status;
+            return true;
+        }
+
         public void RecordDispatchResult(string source, bool success, string detail)
         {
             string summary = string.IsNullOrWhiteSpace(detail) ? "Messenger OnPacket payload" : detail;
@@ -305,7 +379,10 @@ namespace HaCreator.MapSimulator.Managers
                     pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
                     pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
                     pair.InitCompleted = true;
-                    LastStatus = $"Messenger official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
+                    int flushed = FlushPendingOutboundPackets(pair);
+                    LastStatus = flushed > 0
+                        ? $"Messenger official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued Messenger request(s)."
+                        : $"Messenger official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
                     pair.ClientSession.WaitForData();
                     return;
                 }
@@ -422,6 +499,9 @@ namespace HaCreator.MapSimulator.Managers
             if (clearPending)
             {
                 ResetInboundState();
+                while (_pendingOutboundPackets.TryDequeue(out _))
+                {
+                }
             }
         }
 
@@ -432,6 +512,51 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             ReceivedCount = 0;
+            SentCount = 0;
+            QueuedCount = 0;
+            LastSentOpcode = -1;
+            LastSentRawPacket = Array.Empty<byte>();
+            LastQueuedOpcode = -1;
+            LastQueuedRawPacket = Array.Empty<byte>();
+        }
+
+        private int FlushPendingOutboundPackets(BridgePair pair)
+        {
+            int flushed = 0;
+            while (_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket pending))
+            {
+                pair.ServerSession.SendPacket(pending.RawPacket);
+                SentCount++;
+                LastSentOpcode = pending.Opcode;
+                LastSentRawPacket = pending.RawPacket;
+                flushed++;
+            }
+
+            return flushed;
+        }
+
+        private static bool TryBuildRawPacket(int opcode, IReadOnlyList<byte> payload, out byte[] rawPacket, out string status)
+        {
+            rawPacket = Array.Empty<byte>();
+            if (opcode < ushort.MinValue || opcode > ushort.MaxValue)
+            {
+                status = $"Messenger outbound opcode {opcode} is outside the 16-bit Maple packet range.";
+                return false;
+            }
+
+            byte[] safePayload = payload == null
+                ? Array.Empty<byte>()
+                : payload as byte[] ?? payload.ToArray();
+            rawPacket = new byte[sizeof(ushort) + safePayload.Length];
+            rawPacket[0] = (byte)(opcode & 0xFF);
+            rawPacket[1] = (byte)((opcode >> 8) & 0xFF);
+            if (safePayload.Length > 0)
+            {
+                Buffer.BlockCopy(safePayload, 0, rawPacket, sizeof(ushort), safePayload.Length);
+            }
+
+            status = null;
+            return true;
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

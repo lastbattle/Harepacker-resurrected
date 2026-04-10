@@ -1149,13 +1149,22 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Meso Guard Cost";
             }
+            else if (normalizedClause.Contains("full strength", StringComparison.Ordinal))
+            {
+                label = "Full Strength Chance";
+            }
             else if (normalizedClause.Contains("chance", StringComparison.Ordinal))
             {
                 label = "Chance";
             }
-            else if (normalizedClause.Contains("full strength", StringComparison.Ordinal))
+            else if (normalizedClause.Contains("attacks absorbed", StringComparison.Ordinal)
+                     || normalizedClause.Contains("damage is absorbed", StringComparison.Ordinal))
             {
-                label = "Full Strength Chance";
+                label = "Attacks Absorbed";
+            }
+            else if (normalizedClause.Contains("time to next shield", StringComparison.Ordinal))
+            {
+                label = "Time to Next Shield Available";
             }
             else if (normalizedClause.Contains("number of attacks", StringComparison.Ordinal)
                      || normalizedClause.Contains("attack count", StringComparison.Ordinal)
@@ -1167,6 +1176,18 @@ namespace HaCreator.MapSimulator.Loaders
             else if (normalizedClause.Contains("damage over time", StringComparison.Ordinal))
             {
                 label = "Damage Over Time";
+            }
+            else if (normalizedClause.Contains("damage reflected", StringComparison.Ordinal))
+            {
+                label = "Damage Reflected";
+            }
+            else if (normalizedClause.Contains("damage distributed", StringComparison.Ordinal))
+            {
+                label = "Damage Distributed";
+            }
+            else if (normalizedClause.Contains("amount absorbed", StringComparison.Ordinal))
+            {
+                label = "Amount Absorbed";
             }
             else if (normalizedClause.Contains("damage", StringComparison.Ordinal))
             {
@@ -1199,6 +1220,10 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Max MP";
             }
+            else if (normalizedClause.Contains("hp recovery", StringComparison.Ordinal))
+            {
+                label = "HP Recovery";
+            }
             else if (normalizedClause.Contains("max stack", StringComparison.Ordinal))
             {
                 label = "Max Stacks";
@@ -1220,6 +1245,12 @@ namespace HaCreator.MapSimulator.Loaders
             else if (normalizedClause.Contains("teleport distance", StringComparison.Ordinal))
             {
                 label = "Teleport Distance";
+            }
+            else if (normalizedClause.Equals("distance", StringComparison.Ordinal)
+                     || normalizedClause.StartsWith("distance ", StringComparison.Ordinal)
+                     || normalizedClause.Contains(" distance ", StringComparison.Ordinal))
+            {
+                label = "Distance";
             }
             else if (normalizedClause.Contains("every", StringComparison.Ordinal)
                      && normalizedClause.Contains(" sec", StringComparison.Ordinal))

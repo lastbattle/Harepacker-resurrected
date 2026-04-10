@@ -263,7 +263,17 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void SetSkillManager(SkillManager skillManager)
         {
+            if (_skillManager != null)
+            {
+                _skillManager.HotkeysChanged -= InvalidateQuickSlotValidationCache;
+            }
+
             _skillManager = skillManager;
+            if (_skillManager != null)
+            {
+                _skillManager.HotkeysChanged += InvalidateQuickSlotValidationCache;
+            }
+
             InvalidateQuickSlotValidationCache();
         }
 

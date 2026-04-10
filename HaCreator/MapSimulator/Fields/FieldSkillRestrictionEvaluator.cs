@@ -329,7 +329,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            foreach (int candidate in EnumerateSkillRestrictionJobCandidates(currentJobId, skill))
+            foreach (int candidate in EnumerateSkillRestrictionClassCandidates(Math.Abs(currentJobId), skill))
             {
                 if (ContainsIntValue(property, candidate))
                 {
@@ -399,71 +399,63 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private static IEnumerable<int> EnumerateSkillRestrictionJobCandidates(int currentJobId, SkillData skill)
+        private static IEnumerable<int> EnumerateSkillRestrictionClassCandidates(int currentJobId, SkillData skill)
         {
-            HashSet<int> yielded = new HashSet<int>();
-
-            foreach (int candidate in EnumerateJobRestrictionBranchCandidates(Math.Abs(currentJobId)))
+            foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
             {
-                if (yielded.Add(candidate))
-                {
-                    yield return candidate;
-                }
+                yield return candidate;
             }
 
-            foreach (int candidate in EnumerateSkillOwnedJobRestrictionCandidates(skill))
-            {
-                if (yielded.Add(candidate))
-                {
-                    yield return candidate;
-                }
-            }
-        }
-
-        private static IEnumerable<int> EnumerateSkillOwnedJobRestrictionCandidates(SkillData skill)
-        {
             if (skill == null)
             {
                 yield break;
             }
 
-            int skillJobId = Math.Abs(skill.Job);
-            if (skillJobId == 0)
+            if (skill.IsFourthJob)
             {
-                yield return 0;
+                yield return 4;
             }
 
-            foreach (int candidate in EnumerateJobRestrictionBranchCandidates(skillJobId))
+            foreach (int candidate in EnumerateClassCandidatesForJobId(Math.Abs(skill.Job)))
             {
                 yield return candidate;
             }
 
-            int skillBookId = Math.Abs(skill.SkillId / 10000);
-            if (skillBookId == 0)
-            {
-                yield return 0;
-            }
-
-            foreach (int candidate in EnumerateJobRestrictionBranchCandidates(skillBookId))
+            foreach (int candidate in EnumerateClassCandidatesForJobId(Math.Abs(skill.SkillId / 10000)))
             {
                 yield return candidate;
             }
         }
 
-        private static IEnumerable<int> EnumerateJobRestrictionBranchCandidates(int jobId)
+        private static IEnumerable<int> EnumerateClassCandidatesForJobId(int jobId)
         {
-            if (jobId == 0)
+            int classGrade = GetClientJobClassGrade(jobId);
+            if (classGrade > 0)
             {
-                yield return 0;
-                yield break;
+                yield return classGrade;
+            }
+        }
+
+        private static int GetClientJobClassGrade(int jobId)
+        {
+            // WZ noSkill/class entries are authored as advancement tiers, not full job ids.
+            if (jobId < 100)
+            {
+                return 0;
             }
 
-            int candidate = jobId;
-            while (candidate > 0)
+            int branchDigit = jobId % 10;
+            if (branchDigit == 1)
             {
-                yield return candidate;
-                candidate /= 10;
+                return 3;
             }
+
+            if (branchDigit == 2)
+            {
+                return 4;
+            }
+
+            return jobId % 100 == 0 ? 1 : 2;
         }
 
         private static bool IsMysticDoorSkill(SkillData skill)

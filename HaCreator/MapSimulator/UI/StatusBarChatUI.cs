@@ -149,6 +149,82 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private sealed class WhisperPickerComboDropdownStateVisuals
+        {
+            public Texture2D Left { get; set; }
+            public Texture2D Center { get; set; }
+            public Texture2D Right { get; set; }
+
+            public bool HasAnyTexture => Left != null || Center != null || Right != null;
+
+            public int Height => Math.Max(
+                Math.Max(Left?.Height ?? 0, Center?.Height ?? 0),
+                Right?.Height ?? 0);
+
+            public int Width => StatusBarChatLayoutRules.ResolveWhisperPickerModalComboDropdownMinimumWidth(
+                Left?.Width ?? 0,
+                Center?.Width ?? 0,
+                Right?.Width ?? 0);
+        }
+
+        private sealed class WhisperPickerComboDropdownVisuals
+        {
+            public WhisperPickerComboDropdownStateVisuals Normal { get; set; } = new WhisperPickerComboDropdownStateVisuals();
+            public WhisperPickerComboDropdownStateVisuals Hover { get; set; } = new WhisperPickerComboDropdownStateVisuals();
+            public WhisperPickerComboDropdownStateVisuals Pressed { get; set; } = new WhisperPickerComboDropdownStateVisuals();
+            public WhisperPickerComboDropdownStateVisuals Disabled { get; set; } = new WhisperPickerComboDropdownStateVisuals();
+            public WhisperPickerComboDropdownStateVisuals Selected { get; set; } = new WhisperPickerComboDropdownStateVisuals();
+
+            public WhisperPickerComboDropdownStateVisuals ResolveState(
+                PacketScriptOwnerButtonVisualState state,
+                bool selected)
+            {
+                if (state == PacketScriptOwnerButtonVisualState.Disabled)
+                {
+                    return Disabled.HasAnyTexture ? Disabled : Normal;
+                }
+
+                if (state == PacketScriptOwnerButtonVisualState.Pressed)
+                {
+                    return Pressed.HasAnyTexture ? Pressed : (Hover.HasAnyTexture ? Hover : Normal);
+                }
+
+                if (selected && Selected.HasAnyTexture)
+                {
+                    return Selected;
+                }
+
+                if (state == PacketScriptOwnerButtonVisualState.Hover)
+                {
+                    return Hover.HasAnyTexture ? Hover : Normal;
+                }
+
+                return Normal;
+            }
+
+            public int ResolveRowHeight()
+            {
+                return StatusBarChatLayoutRules.ResolveWhisperPickerModalComboDropdownRowHeight(
+                    Normal.Height,
+                    Hover.Height,
+                    Pressed.Height,
+                    Disabled.Height,
+                    Selected.Height);
+            }
+
+            public int ResolveMinimumWidth()
+            {
+                return Math.Max(
+                    StatusBarChatLayoutRules.ResolveWhisperPickerModalComboDropdownMinimumWidth(
+                        StatusBarChatLayoutRules.ClientWhisperPickerModalComboDropdownLeftSliceWidth,
+                        StatusBarChatLayoutRules.ClientWhisperPickerModalComboDropdownCenterSliceWidth,
+                        StatusBarChatLayoutRules.ClientWhisperPickerModalComboDropdownRightSliceWidth),
+                    Math.Max(
+                        Math.Max(Normal.Width, Hover.Width),
+                        Math.Max(Math.Max(Pressed.Width, Disabled.Width), Selected.Width)));
+            }
+        }
+
         public sealed class ChatTargetLabelPlacement
         {
             public Texture2D Texture { get; set; }
@@ -197,6 +273,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _whisperPickerDialogLineTexture;
         private WhisperPickerButtonVisuals _whisperPickerComboVisuals = new WhisperPickerButtonVisuals();
         private WhisperPickerButtonVisuals _whisperPickerComboToggleVisuals = new WhisperPickerButtonVisuals();
+        private WhisperPickerComboDropdownVisuals _whisperPickerComboDropdownVisuals = new WhisperPickerComboDropdownVisuals();
         private WhisperPickerButtonVisuals _whisperPickerPrevButtonVisuals = new WhisperPickerButtonVisuals();
         private WhisperPickerButtonVisuals _whisperPickerNextButtonVisuals = new WhisperPickerButtonVisuals();
         private WhisperPickerButtonVisuals _whisperPickerOkButtonVisuals = new WhisperPickerButtonVisuals();
@@ -399,6 +476,58 @@ namespace HaCreator.MapSimulator.UI
                 Hover = comboToggleHoverTexture,
                 Pressed = comboTogglePressedTexture,
                 Disabled = comboToggleDisabledTexture
+            };
+        }
+
+        public void SetWhisperPickerComboDropdownTextures(
+            Texture2D normalLeftTexture,
+            Texture2D normalCenterTexture,
+            Texture2D normalRightTexture,
+            Texture2D hoverLeftTexture,
+            Texture2D hoverCenterTexture,
+            Texture2D hoverRightTexture,
+            Texture2D pressedLeftTexture,
+            Texture2D pressedCenterTexture,
+            Texture2D pressedRightTexture,
+            Texture2D disabledLeftTexture,
+            Texture2D disabledCenterTexture,
+            Texture2D disabledRightTexture,
+            Texture2D selectedLeftTexture,
+            Texture2D selectedCenterTexture,
+            Texture2D selectedRightTexture)
+        {
+            _whisperPickerComboDropdownVisuals = new WhisperPickerComboDropdownVisuals
+            {
+                Normal = new WhisperPickerComboDropdownStateVisuals
+                {
+                    Left = normalLeftTexture,
+                    Center = normalCenterTexture,
+                    Right = normalRightTexture
+                },
+                Hover = new WhisperPickerComboDropdownStateVisuals
+                {
+                    Left = hoverLeftTexture,
+                    Center = hoverCenterTexture,
+                    Right = hoverRightTexture
+                },
+                Pressed = new WhisperPickerComboDropdownStateVisuals
+                {
+                    Left = pressedLeftTexture,
+                    Center = pressedCenterTexture,
+                    Right = pressedRightTexture
+                },
+                Disabled = new WhisperPickerComboDropdownStateVisuals
+                {
+                    Left = disabledLeftTexture,
+                    Center = disabledCenterTexture,
+                    Right = disabledRightTexture
+                },
+                Selected = new WhisperPickerComboDropdownStateVisuals
+                {
+                    Left = selectedLeftTexture,
+                    Center = selectedCenterTexture,
+                    Right = selectedRightTexture
+                }
             };
         }
 
@@ -1018,8 +1147,10 @@ namespace HaCreator.MapSimulator.UI
                 WhisperPickerVisibleRows);
             int rowHeight = Math.Max(
                 Math.Max(
-                    _whisperPickerSelectedTexture?.Height ?? 0,
-                    _whisperPickerRowTexture?.Height ?? 0),
+                    ResolveWhisperPickerModalComboDropdownRowHeight(),
+                    Math.Max(
+                        _whisperPickerSelectedTexture?.Height ?? 0,
+                        _whisperPickerRowTexture?.Height ?? 0)),
                 ResolveFontLineSpacing() + WhisperPickerRowPadding);
             int buttonRowHeight = ResolveWhisperPickerButtonRowHeight();
             int modalWidth = StatusBarChatLayoutRules.ClientWhisperPickerModalWidth;
@@ -1084,6 +1215,7 @@ namespace HaCreator.MapSimulator.UI
                     ResolveWhisperPickerMaxCandidateWidth(chatState, firstVisibleIndex, visibleCount));
                 _whisperPickerDropdownBounds = listBounds;
                 _whisperPickerBounds = Rectangle.Union(_whisperPickerBounds.Value, listBounds);
+                MouseState mouseState = Mouse.GetState();
 
                 for (int i = 0; i < visibleCount; i++)
                 {
@@ -1096,15 +1228,13 @@ namespace HaCreator.MapSimulator.UI
                         listBounds,
                         rowHeight,
                         i);
-                    DrawWhisperPickerRow(
+                    DrawWhisperPickerModalComboDropdownRow(
                         sprite,
-                        rowBounds.X,
-                        rowBounds.Y,
-                        rowBounds.Width,
-                        rowBounds.Height,
+                        rowBounds,
                         candidateText,
                         isSelected: candidateIndex == chatState.WhisperTargetPickerSelectionIndex,
-                        registerHitRegion: true);
+                        registerHitRegion: true,
+                        mouseState: mouseState);
                 }
             }
 
@@ -1178,6 +1308,101 @@ namespace HaCreator.MapSimulator.UI
                     comboBounds.Y + Math.Max(0f, (comboBounds.Height - MeasureChatText("Ag").Y) * 0.5f)),
                 new Color(24, 24, 24),
                 new Color(255, 255, 255, 160));
+        }
+
+        private void DrawWhisperPickerModalComboDropdownRow(
+            SpriteBatch sprite,
+            Rectangle rowBounds,
+            string text,
+            bool isSelected,
+            bool registerHitRegion,
+            MouseState mouseState)
+        {
+            bool hovered = rowBounds.Contains(mouseState.X, mouseState.Y);
+            bool pressed = hovered && mouseState.LeftButton == ButtonState.Pressed;
+            PacketScriptOwnerButtonVisualState state = PacketScriptOwnerVisualStateResolver.ResolveButtonState(
+                true,
+                hovered,
+                pressed);
+            WhisperPickerComboDropdownStateVisuals rowVisuals = _whisperPickerComboDropdownVisuals.ResolveState(
+                state,
+                isSelected);
+
+            if (rowVisuals.HasAnyTexture)
+            {
+                DrawWhisperPickerComboDropdownRowBackground(sprite, rowBounds, rowVisuals);
+            }
+            else
+            {
+                DrawWhisperPickerRow(
+                    sprite,
+                    rowBounds.X,
+                    rowBounds.Y,
+                    rowBounds.Width,
+                    rowBounds.Height,
+                    text,
+                    isSelected,
+                    registerHitRegion);
+                return;
+            }
+
+            Color textColor = isSelected || pressed
+                ? Color.White
+                : new Color(24, 24, 24);
+            DrawTextWithShadow(
+                sprite,
+                text ?? string.Empty,
+                new Vector2(
+                    rowBounds.X + WhisperPickerFramePadding + 1,
+                    rowBounds.Y + Math.Max(0f, (rowBounds.Height - MeasureChatText("Ag").Y) * 0.5f)),
+                textColor,
+                isSelected || pressed ? Color.Black : new Color(255, 255, 255, 160));
+
+            if (registerHitRegion && !string.IsNullOrWhiteSpace(text))
+            {
+                _whisperPickerHitRegions.Add(new WhisperPickerHitRegion
+                {
+                    Bounds = rowBounds,
+                    WhisperTarget = text
+                });
+            }
+        }
+
+        private void DrawWhisperPickerComboDropdownRowBackground(
+            SpriteBatch sprite,
+            Rectangle rowBounds,
+            WhisperPickerComboDropdownStateVisuals rowVisuals)
+        {
+            Texture2D leftTexture = rowVisuals.Left;
+            Texture2D centerTexture = rowVisuals.Center;
+            Texture2D rightTexture = rowVisuals.Right;
+            int leftWidth = leftTexture?.Width ?? StatusBarChatLayoutRules.ClientWhisperPickerModalComboDropdownLeftSliceWidth;
+            int rightWidth = rightTexture?.Width ?? StatusBarChatLayoutRules.ClientWhisperPickerModalComboDropdownRightSliceWidth;
+            Rectangle centerBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalComboDropdownCenterSliceBounds(
+                rowBounds,
+                leftWidth,
+                rightWidth);
+
+            DrawComboDropdownSlice(sprite, leftTexture, new Rectangle(rowBounds.X, rowBounds.Y, leftWidth, rowBounds.Height));
+            DrawComboDropdownSlice(sprite, centerTexture, centerBounds);
+            DrawComboDropdownSlice(sprite, rightTexture, new Rectangle(rowBounds.Right - rightWidth, rowBounds.Y, rightWidth, rowBounds.Height));
+        }
+
+        private void DrawComboDropdownSlice(SpriteBatch sprite, Texture2D texture, Rectangle destination)
+        {
+            if (destination.Width <= 0 || destination.Height <= 0)
+            {
+                return;
+            }
+
+            if (texture != null)
+            {
+                sprite.Draw(texture, destination, Color.White);
+            }
+            else if (_pixelTexture != null)
+            {
+                sprite.Draw(_pixelTexture, destination, new Color(238, 238, 238, 255));
+            }
         }
 
         private void DrawWhisperPickerRow(
@@ -1258,10 +1483,15 @@ namespace HaCreator.MapSimulator.UI
         private int ResolveWhisperPickerMinimumRowWidth()
         {
             return Math.Max(
-                96,
+                Math.Max(96, _whisperPickerComboDropdownVisuals.ResolveMinimumWidth()),
                 Math.Max(
                     _whisperPickerSelectedTexture?.Width ?? 0,
                     _whisperPickerRowTexture?.Width ?? 0));
+        }
+
+        private int ResolveWhisperPickerModalComboDropdownRowHeight()
+        {
+            return _whisperPickerComboDropdownVisuals.ResolveRowHeight();
         }
 
         private int ResolveWhisperPickerModalDividerWidth(int modalWidth)

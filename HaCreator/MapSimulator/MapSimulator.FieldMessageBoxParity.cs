@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Managers;
 using System;
+using System.Linq;
 using System.Net;
 
 namespace HaCreator.MapSimulator
@@ -141,6 +142,70 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Info(DescribeFieldMessageBoxOfficialSessionBridgeStatus());
             }
 
+            if (string.Equals(args[0], "history", StringComparison.OrdinalIgnoreCase))
+            {
+                int historyCount = 10;
+                if (args.Length >= 2 && (!int.TryParse(args[1], out historyCount) || historyCount <= 0))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messagebox session history [count]");
+                }
+
+                return ChatCommandHandler.CommandResult.Info(_fieldMessageBoxOfficialSessionBridge.DescribeRecentOutboundPackets(historyCount));
+            }
+
+            if (string.Equals(args[0], "clearhistory", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_fieldMessageBoxOfficialSessionBridge.ClearRecentOutboundPackets());
+            }
+
+            if (string.Equals(args[0], "replay", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !int.TryParse(args[1], out int replayIndex) || replayIndex <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messagebox session replay <historyIndex>");
+                }
+
+                return _fieldMessageBoxOfficialSessionBridge.TryReplayRecentOutboundPacket(replayIndex, out string replayStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(replayStatus)
+                    : ChatCommandHandler.CommandResult.Error(replayStatus);
+            }
+
+            if (string.Equals(args[0], "sendraw", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] rawPacket))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messagebox session sendraw <opcode-prefixed-hex>");
+                }
+
+                return _fieldMessageBoxOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string sendStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(sendStatus)
+                    : ChatCommandHandler.CommandResult.Error(sendStatus);
+            }
+
+            if (string.Equals(args[0], "send", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2
+                    || !int.TryParse(args[1], out int opcode)
+                    || opcode < 0
+                    || opcode > ushort.MaxValue)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messagebox session send <opcode> [payloadhex=..|payloadb64=..]");
+                }
+
+                byte[] payload = Array.Empty<byte>();
+                if (args.Length >= 3 && !TryParseBinaryPayloadArgument(args[2], out payload, out string payloadError))
+                {
+                    return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /messagebox session send <opcode> [payloadhex=..|payloadb64=..]");
+                }
+
+                byte[] rawPacket = new byte[sizeof(ushort) + payload.Length];
+                BitConverter.GetBytes((ushort)opcode).CopyTo(rawPacket, 0);
+                Buffer.BlockCopy(payload, 0, rawPacket, sizeof(ushort), payload.Length);
+                return _fieldMessageBoxOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string sendStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(sendStatus)
+                    : ChatCommandHandler.CommandResult.Error(sendStatus);
+            }
+
             if (string.Equals(args[0], "discover", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length < 2 || !int.TryParse(args[1], out int discoverRemotePort) || discoverRemotePort <= 0)
@@ -239,7 +304,7 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Ok(DescribeFieldMessageBoxOfficialSessionBridgeStatus());
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /messagebox session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /messagebox session [status|history [count]|clearhistory|replay <historyIndex>|send <opcode> [payloadhex=..|payloadb64=..]|sendraw <opcode-prefixed-hex>|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
         }
     }
 }

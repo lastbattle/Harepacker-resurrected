@@ -180,6 +180,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCollectionFooterRuleTop = 221;
         private const int ClientCollectionTextLaneLeft = 0;
         private const int ClientCollectionTextLaneWidthInt = 190;
+        private const int ClientCollectionTextAnalyzerMargin = 1;
+        private const int ClientCollectionTextAnalyzerWrapWidth = ClientCollectionTextLaneWidthInt - (ClientCollectionTextAnalyzerMargin * 2);
         private const int ClientCollectionValueLaneWidth = 72;
         private const int ClientCollectionValueLaneLeft = ClientCollectionTextLaneWidthInt - ClientCollectionValueLaneWidth;
         private const int ClientCollectionLabelLaneLeft = ClientCollectionTextLaneLeft;
@@ -607,29 +609,18 @@ namespace HaCreator.MapSimulator.UI
 
             if (hasLabel && hasValue)
             {
+                string headline = BuildEntryHeadlineText(label, value);
                 AddWrappedTextRecords(
                     records,
-                    label,
-                    ClientCollectionLabelLaneLeft,
+                    headline,
+                    ClientCollectionTextLaneLeft,
                     top,
-                    ClientCollectionLabelLaneWidth,
+                    ClientCollectionTextLaneWidthInt,
                     styleIndex,
                     CollectionBookTextAlignment.Left,
                     CollectionBookRecordRole.Label,
                     measureTextWidth);
-                AddWrappedTextRecords(
-                    records,
-                    value,
-                    ClientCollectionValueLaneLeft,
-                    top,
-                    ClientCollectionValueLaneWidth,
-                    styleIndex,
-                    CollectionBookTextAlignment.Right,
-                    CollectionBookRecordRole.Value,
-                    measureTextWidth);
-                bottom = Math.Max(
-                    GetWrappedRecordBottom(label, top, ClientCollectionLabelLaneWidth, styleIndex, measureTextWidth),
-                    GetWrappedRecordBottom(value, top, ClientCollectionValueLaneWidth, styleIndex, measureTextWidth));
+                bottom = GetWrappedRecordBottom(headline, top, ClientCollectionTextLaneWidthInt, styleIndex, measureTextWidth);
                 return bottom;
             }
 
@@ -732,9 +723,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (hasLabel && hasValue)
             {
-                return Math.Max(
-                    GetWrappedRecordBottom(label, top, ClientCollectionLabelLaneWidth, styleIndex, measureTextWidth),
-                    GetWrappedRecordBottom(value, top, ClientCollectionValueLaneWidth, styleIndex, measureTextWidth));
+                return GetWrappedRecordBottom(BuildEntryHeadlineText(label, value), top, ClientCollectionTextLaneWidthInt, styleIndex, measureTextWidth);
             }
 
             if (hasLabel)
@@ -769,7 +758,14 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < lines.Count; i++)
             {
-                records.Add(CreateTextRecord(lines[i], left, top + (i * ClientCollectionDetailLineStep), width, styleIndex, alignment, role));
+                records.Add(CreateTextRecord(
+                    lines[i],
+                    ResolveAnalyzedTextLeft(left, alignment),
+                    top + (i * ClientCollectionDetailLineStep),
+                    width,
+                    styleIndex,
+                    alignment,
+                    role));
             }
         }
 
@@ -813,8 +809,30 @@ namespace HaCreator.MapSimulator.UI
 
             return QuestAlarmTextLayout.WrapText(
                 text,
-                Math.Min(width, ClientCollectionTextLaneWidth),
+                Math.Min(Math.Max(1, width - (ClientCollectionTextAnalyzerMargin * 2)), ClientCollectionTextAnalyzerWrapWidth),
                 segment => measureTextWidth?.Invoke(segment, styleIndex) ?? MeasureApproximateCollectionTextWidth(segment));
+        }
+
+        private static int ResolveAnalyzedTextLeft(int left, CollectionBookTextAlignment alignment)
+        {
+            return alignment == CollectionBookTextAlignment.Left
+                ? left + ClientCollectionTextAnalyzerMargin
+                : left;
+        }
+
+        private static string BuildEntryHeadlineText(string label, string value)
+        {
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                return value?.Trim() ?? string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return label.Trim();
+            }
+
+            return $"{label.Trim()}: {value.Trim()}";
         }
 
         private static float MeasureApproximateCollectionTextWidth(string text)

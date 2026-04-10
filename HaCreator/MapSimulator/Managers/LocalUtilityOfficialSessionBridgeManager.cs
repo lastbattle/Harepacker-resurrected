@@ -18,6 +18,10 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class LocalUtilityOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18496;
+        internal const int FollowCharacterRequestPayloadLength = sizeof(int) + sizeof(byte) + sizeof(byte);
+        internal const byte FollowCharacterWithdrawDriverId = 0;
+        internal const byte FollowCharacterWithdrawAutoRequest = 0;
+        internal const byte FollowCharacterWithdrawKeyInput = 1;
         private const string DefaultProcessName = "MapleStory";
         private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
 
@@ -101,7 +105,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,253,254,255,256,269,270,366,367,1011,1023; outbound opcodes=45,74,113,117,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,234,250,253,254,255,256,261,269,270,274,275,291,366,367,1011,1023; outbound opcodes=45,74,113,117,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -314,7 +318,7 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static byte[] BuildFollowCharacterRequestPayload(int driverId, bool autoRequest, bool keyInput)
         {
-            byte[] payload = new byte[sizeof(int) + sizeof(byte) + sizeof(byte)];
+            byte[] payload = new byte[FollowCharacterRequestPayloadLength];
             BitConverter.GetBytes(driverId).CopyTo(payload, 0);
             payload[sizeof(int)] = autoRequest ? (byte)1 : (byte)0;
             payload[sizeof(int) + sizeof(byte)] = keyInput ? (byte)1 : (byte)0;
@@ -323,7 +327,10 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static byte[] BuildFollowCharacterWithdrawPayload()
         {
-            return BuildFollowCharacterRequestPayload(0, autoRequest: false, keyInput: true);
+            return BuildFollowCharacterRequestPayload(
+                FollowCharacterWithdrawDriverId,
+                FollowCharacterWithdrawAutoRequest != 0,
+                FollowCharacterWithdrawKeyInput != 0);
         }
 
         public void Dispose()
@@ -594,14 +601,20 @@ namespace HaCreator.MapSimulator.Managers
             return packetType == LocalUtilityPacketInboxManager.FollowCharacterClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetGenderPacketType
                 || packetType == LocalUtilityPacketInboxManager.AccountMoreInfoPacketType
+                || packetType == LocalUtilityPacketInboxManager.TeleportClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.HireTutorClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.TutorMsgClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.RadioScheduleClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.NotifyHpDecByFieldPacketType
                 || packetType == LocalUtilityPacketInboxManager.DamageMeterPacketType
                 || packetType == LocalUtilityPacketInboxManager.PassiveMoveClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.OpenClassCompetitionPagePacketType
+                || packetType == LocalUtilityPacketInboxManager.QuestGuideResultPacketType
+                || packetType == LocalUtilityPacketInboxManager.DeliveryQuestPacketType
+                || packetType == LocalUtilityPacketInboxManager.ClassCompetitionAuthCachePacketType
                 || packetType == LocalUtilityPacketInboxManager.AdminShopResultClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.AntiMacroResultPacketType
@@ -615,15 +628,21 @@ namespace HaCreator.MapSimulator.Managers
             {
                 LocalUtilityPacketInboxManager.SetGenderPacketType => "SetGender(58)",
                 LocalUtilityPacketInboxManager.AccountMoreInfoPacketType => "AccountMoreInfo(133)",
+                LocalUtilityPacketInboxManager.TeleportClientPacketType => "OnTeleport(234)",
                 LocalUtilityPacketInboxManager.FollowCharacterClientPacketType => "FollowCharacter(193)",
                 LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType => "SetDirectionMode(253)",
                 LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",
                 LocalUtilityPacketInboxManager.HireTutorClientPacketType => "HireTutor(255)",
                 LocalUtilityPacketInboxManager.TutorMsgClientPacketType => "TutorMsg(256)",
+                LocalUtilityPacketInboxManager.RadioScheduleClientPacketType => "RadioSchedule(261)",
                 LocalUtilityPacketInboxManager.NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
                 LocalUtilityPacketInboxManager.DamageMeterPacketType => "DamageMeter(267)",
                 LocalUtilityPacketInboxManager.PassiveMoveClientPacketType => "PassiveMove(269)",
                 LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
+                LocalUtilityPacketInboxManager.OpenClassCompetitionPagePacketType => "OpenClassCompetitionPage(250)",
+                LocalUtilityPacketInboxManager.QuestGuideResultPacketType => "QuestGuideResult(274)",
+                LocalUtilityPacketInboxManager.DeliveryQuestPacketType => "DeliveryQuest(275)",
+                LocalUtilityPacketInboxManager.ClassCompetitionAuthCachePacketType => "ClassCompetitionAuthCache(291)",
                 LocalUtilityPacketInboxManager.AdminShopResultClientPacketType => "CAdminShopDlg::OnPacket Result(366)",
                 LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType => "CAdminShopDlg::OnPacket Open(367)",
                 LocalUtilityPacketInboxManager.AntiMacroResultPacketType => "AntiMacroResult(1011)",

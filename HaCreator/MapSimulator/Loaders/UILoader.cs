@@ -653,6 +653,22 @@ namespace HaCreator.MapSimulator.Loaders
                         LoadCanvasTexture(uiBasicImage?["BtComboBox"]?["mouseOver"]?["0"] as WzCanvasProperty, device),
                         LoadCanvasTexture(uiBasicImage?["BtComboBox"]?["pressed"]?["0"] as WzCanvasProperty, device),
                         LoadCanvasTexture(uiBasicImage?["BtComboBox"]?["disabled"]?["0"] as WzCanvasProperty, device));
+                    chatUI.SetWhisperPickerComboDropdownTextures(
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["normal"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["normal"]?["1"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["normal"]?["2"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["mouseOver"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["mouseOver"]?["1"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["mouseOver"]?["2"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["pressed"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["pressed"]?["1"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["pressed"]?["2"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["disabled"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["disabled"]?["1"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["disabled"]?["2"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["selected"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["selected"]?["1"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiBasicImage?["ComboBox"]?["selected"]?["2"] as WzCanvasProperty, device));
                     chatUI.SetWhisperPickerDialogTextures(
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["t"] as WzCanvasProperty, device),
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["c"] as WzCanvasProperty, device),
@@ -1996,6 +2012,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         internal static CollapsedMinimapTitleChromeMetrics ResolveCollapsedMinimapTitleChromeMetricsForTesting(
             System.Drawing.Bitmap leftCap,
+            System.Drawing.Bitmap centerCap,
             System.Drawing.Bitmap rightCap,
             int barHeight,
             int fallbackLaneTop,
@@ -2008,7 +2025,12 @@ namespace HaCreator.MapSimulator.Loaders
                 barHeight,
                 resolvedLaneTop,
                 fallbackButtonHeight);
-            if (TryResolveCollapsedMinimapOpaqueLane(leftCap, rightCap, out int opaqueLaneTop, out int opaqueLaneHeight))
+            if (TryResolveCollapsedMinimapInteriorLane(leftCap, centerCap, rightCap, out int interiorLaneTop, out int interiorLaneHeight))
+            {
+                resolvedLaneTop = interiorLaneTop;
+                resolvedLaneHeight = interiorLaneHeight;
+            }
+            else if (TryResolveCollapsedMinimapOpaqueLane(leftCap, rightCap, out int opaqueLaneTop, out int opaqueLaneHeight))
             {
                 resolvedLaneTop = opaqueLaneTop;
                 resolvedLaneHeight = opaqueLaneHeight;
@@ -2301,6 +2323,87 @@ namespace HaCreator.MapSimulator.Loaders
             laneTop = firstOpaqueRow;
             laneHeight = Math.Max(1, (lastOpaqueRow - firstOpaqueRow) + 1);
             return true;
+        }
+
+        private static bool TryResolveCollapsedMinimapInteriorLane(
+            SD.Bitmap leftCap,
+            SD.Bitmap centerCap,
+            SD.Bitmap rightCap,
+            out int laneTop,
+            out int laneHeight)
+        {
+            laneTop = 0;
+            laneHeight = 0;
+            if (!TryGetBitmapDimensions(leftCap, out int leftWidth, out int leftHeight) ||
+                !TryGetBitmapDimensions(centerCap, out int centerWidth, out int centerHeight) ||
+                !TryGetBitmapDimensions(rightCap, out int rightWidth, out int rightHeight))
+            {
+                return false;
+            }
+
+            int scanHeight = Math.Min(Math.Min(leftHeight, centerHeight), rightHeight);
+            int bestTop = -1;
+            int bestHeight = 0;
+            int currentTop = -1;
+            int currentHeight = 0;
+            for (int y = 0; y < scanHeight; y++)
+            {
+                bool isInteriorRow =
+                    IsCollapsedMinimapInteriorPixel(centerCap.GetPixel(centerWidth / 2, y)) &&
+                    HasCollapsedMinimapInteriorRun(leftCap, leftWidth, y) &&
+                    HasCollapsedMinimapInteriorRun(rightCap, rightWidth, y);
+                if (isInteriorRow)
+                {
+                    if (currentTop < 0)
+                    {
+                        currentTop = y;
+                    }
+
+                    currentHeight++;
+                    if (currentHeight > bestHeight)
+                    {
+                        bestTop = currentTop;
+                        bestHeight = currentHeight;
+                    }
+
+                    continue;
+                }
+
+                currentTop = -1;
+                currentHeight = 0;
+            }
+
+            if (bestTop < 0 || bestHeight <= 0)
+            {
+                return false;
+            }
+
+            laneTop = bestTop;
+            laneHeight = bestHeight;
+            return true;
+        }
+
+        private static bool HasCollapsedMinimapInteriorRun(SD.Bitmap bitmap, int width, int y)
+        {
+            const int minimumRunLength = 4;
+            int runLength = 0;
+            for (int x = 0; x < width; x++)
+            {
+                if (IsCollapsedMinimapInteriorPixel(bitmap.GetPixel(x, y)))
+                {
+                    runLength++;
+                    if (runLength >= minimumRunLength)
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                runLength = 0;
+            }
+
+            return false;
         }
 
         private static bool IsCollapsedMinimapRowFullyOpaque(SD.Bitmap bitmap, int width, int y)
@@ -2600,6 +2703,7 @@ namespace HaCreator.MapSimulator.Loaders
                 fallbackHeight: 20);
             CollapsedMinimapTitleChromeMetrics collapsedTitleChromeMetrics = ResolveCollapsedMinimapTitleChromeMetricsForTesting(
                 collapsedBarLeft,
+                collapsedBarCenter,
                 collapsedBarRight,
                 collapsedBarHeight,
                 fallbackLaneTop: 4,

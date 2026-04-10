@@ -9,10 +9,10 @@ public sealed class ShootAmmoSelection
     public int UseItemId { get; init; }
     public int CashSlotIndex { get; init; } = -1;
     public int CashItemId { get; init; }
-    // Client moving-shoot entries retain the queue-time bullet slot positions
-    // separately from the live fire-time slot refresh.
-    public int QueuedUseSlotIndex { get; init; } = -1;
-    public int QueuedCashSlotIndex { get; init; } = -1;
+    // Client moving-shoot entries retain one-based queue-time bullet slot positions
+    // separately from the simulator's zero-based live fire-time slot refresh.
+    public int QueuedUseSlotIndex { get; init; }
+    public int QueuedCashSlotIndex { get; init; }
 
     public bool HasUseAmmo => UseSlotIndex >= 0 && UseItemId > 0;
     public bool HasCashAmmo => CashSlotIndex >= 0 && CashItemId > 0;
@@ -68,8 +68,8 @@ public static class ClientShootAmmoResolver
                 UseItemId = activeBulletItemId,
                 CashSlotIndex = cashSlotIndex,
                 CashItemId = cashItemId,
-                QueuedUseSlotIndex = activeSlotIndex,
-                QueuedCashSlotIndex = cashSlotIndex
+                QueuedUseSlotIndex = ToClientSlotPosition(activeSlotIndex),
+                QueuedCashSlotIndex = ToClientSlotPosition(cashSlotIndex)
             };
             return true;
         }
@@ -92,8 +92,8 @@ public static class ClientShootAmmoResolver
                     UseItemId = fallbackActiveBulletItemId,
                     CashSlotIndex = cashSlotIndex,
                     CashItemId = cashItemId,
-                    QueuedUseSlotIndex = fallbackSlotIndex,
-                    QueuedCashSlotIndex = cashSlotIndex
+                    QueuedUseSlotIndex = ToClientSlotPosition(fallbackSlotIndex),
+                    QueuedCashSlotIndex = ToClientSlotPosition(cashSlotIndex)
                 };
                 return true;
             }
@@ -103,8 +103,8 @@ public static class ClientShootAmmoResolver
                 UseItemId = fallbackActiveBulletItemId,
                 CashSlotIndex = cashSlotIndex,
                 CashItemId = cashItemId,
-                QueuedUseSlotIndex = -1,
-                QueuedCashSlotIndex = cashSlotIndex
+                QueuedUseSlotIndex = 0,
+                QueuedCashSlotIndex = ToClientSlotPosition(cashSlotIndex)
             };
             return false;
         }
@@ -122,8 +122,8 @@ public static class ClientShootAmmoResolver
             {
                 CashSlotIndex = cashSlotIndex,
                 CashItemId = cashItemId,
-                QueuedUseSlotIndex = -1,
-                QueuedCashSlotIndex = cashSlotIndex
+                QueuedUseSlotIndex = 0,
+                QueuedCashSlotIndex = ToClientSlotPosition(cashSlotIndex)
             };
             return false;
         }
@@ -134,8 +134,8 @@ public static class ClientShootAmmoResolver
             UseItemId = useItemId,
             CashSlotIndex = cashSlotIndex,
             CashItemId = cashItemId,
-            QueuedUseSlotIndex = useSlotIndex,
-            QueuedCashSlotIndex = cashSlotIndex
+            QueuedUseSlotIndex = ToClientSlotPosition(useSlotIndex),
+            QueuedCashSlotIndex = ToClientSlotPosition(cashSlotIndex)
         };
         return true;
     }
@@ -180,12 +180,12 @@ public static class ClientShootAmmoResolver
             UseItemId = queuedSelection.UseItemId,
             CashSlotIndex = refreshedCashSlotIndex,
             CashItemId = queuedSelection.CashItemId,
-            QueuedUseSlotIndex = queuedSelection.QueuedUseSlotIndex >= 0
+            QueuedUseSlotIndex = queuedSelection.QueuedUseSlotIndex > 0
                 ? queuedSelection.QueuedUseSlotIndex
-                : queuedSelection.UseSlotIndex,
-            QueuedCashSlotIndex = queuedSelection.QueuedCashSlotIndex >= 0
+                : ToClientSlotPosition(queuedSelection.UseSlotIndex),
+            QueuedCashSlotIndex = queuedSelection.QueuedCashSlotIndex > 0
                 ? queuedSelection.QueuedCashSlotIndex
-                : queuedSelection.CashSlotIndex
+                : ToClientSlotPosition(queuedSelection.CashSlotIndex)
         };
     }
 
@@ -266,6 +266,11 @@ public static class ClientShootAmmoResolver
         }
 
         return 0;
+    }
+
+    internal static int ToClientSlotPosition(int runtimeSlotIndex)
+    {
+        return runtimeSlotIndex >= 0 ? runtimeSlotIndex + 1 : 0;
     }
 
     private static int FindSlotIndexByItemId(IReadOnlyList<InventorySlotData> slots, int itemId)

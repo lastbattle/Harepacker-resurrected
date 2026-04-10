@@ -136,6 +136,7 @@ namespace HaCreator.MapSimulator.Effects
         public int SpawnTime { get; set; }
         public bool IsCritical { get; set; }
         public bool IsMiss { get; set; }
+        public string SpecialTextName { get; set; }
         public float Alpha { get; set; } = 1.0f;
         public float Scale { get; set; } = 1.0f;
         public int ComboIndex { get; set; } = 0;    // For stacking multiple hits
@@ -604,6 +605,7 @@ namespace HaCreator.MapSimulator.Effects
             display.SpawnTime = currentTime;
             display.IsCritical = isCritical;
             display.IsMiss = isMiss;
+            display.SpecialTextName = isMiss ? "Miss" : null;
             display.Alpha = 1.0f;
             display.Scale = isCritical ? 1.2f : 1.0f;
             display.ComboIndex = comboIndex;
@@ -650,6 +652,44 @@ namespace HaCreator.MapSimulator.Effects
         public void AddMiss(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
         {
             AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType);
+        }
+
+        public void AddGuard(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
+        {
+            AddSpecialText("guard", x, y, currentTime, colorType);
+        }
+
+        public void AddSpecialText(string specialTextName, float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
+        {
+            if (string.IsNullOrWhiteSpace(specialTextName))
+            {
+                AddMiss(x, y, currentTime, colorType);
+                return;
+            }
+
+            if (_useWzDamageNumbers && _wzDamageRenderer != null)
+            {
+                _wzDamageRenderer.SpawnSpecialText(specialTextName, x, y, colorType, currentTime);
+                return;
+            }
+
+            var display = new DamageNumberDisplay
+            {
+                Damage = 0,
+                X = x,
+                Y = y,
+                StartY = y,
+                SpawnTime = currentTime,
+                IsCritical = false,
+                IsMiss = true,
+                SpecialTextName = specialTextName,
+                Alpha = 1.0f,
+                Scale = 1.0f,
+                ComboIndex = 0,
+                ColorType = colorType
+            };
+
+            _damageNumbers.Add(display);
         }
 
         /// <summary>
@@ -1527,7 +1567,7 @@ namespace HaCreator.MapSimulator.Effects
                 int screenX = (int)dmg.X - mapShiftX + centerX;
                 int screenY = (int)dmg.Y - mapShiftY + centerY;
 
-                string text = dmg.IsMiss ? "MISS" : dmg.Damage.ToString();
+                string text = dmg.IsMiss ? (dmg.SpecialTextName ?? "MISS").ToUpperInvariant() : dmg.Damage.ToString();
 
                 // Color based on damage type
                 Color color;

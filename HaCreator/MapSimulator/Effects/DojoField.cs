@@ -256,15 +256,11 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
-            int resolvedClearMapIdHint = clearMapIdHint > 0 ? clearMapIdHint : pendingTransferMapIdHint;
-            string resolvedClearPortalNameHint = !string.IsNullOrWhiteSpace(clearPortalNameHint)
-                ? clearPortalNameHint
-                : pendingTransferPortalNameHint;
             if (TryResolveAmbiguousTransferPacketType(
                     payload,
                     candidates,
-                    resolvedClearMapIdHint,
-                    resolvedClearPortalNameHint,
+                    clearMapIdHint,
+                    clearPortalNameHint,
                     exitMapIdHint,
                     out packetType,
                     out reason,

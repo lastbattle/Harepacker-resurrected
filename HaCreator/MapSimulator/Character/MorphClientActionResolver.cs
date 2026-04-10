@@ -252,7 +252,13 @@ namespace HaCreator.MapSimulator.Character
             {
                 // `savage` still appears on the client morph request surface, but pirate
                 // morphs publish generic stab branches rather than a dedicated `savage` node.
-                ["savage"] = new[] { "stabO1", "stabO2", "proneStab" }
+                ["savage"] = new[] { "stabO1", "stabO2", "proneStab" },
+                // The client raw table still exposes dual-blade swing-family names while
+                // archer morphs such as 1003/1103 only publish generic swingT branches.
+                ["swingC1"] = new[] { "swingT1", "swingT3" },
+                ["swingC2"] = new[] { "swingT1", "swingT3" },
+                ["swingDb1"] = new[] { "swingT1", "swingT3" },
+                ["swingDb2"] = new[] { "swingT1", "swingT3" }
             };
 
         private static readonly string[] ClientPublishedMorphStabFallbackAliases =
@@ -277,7 +283,10 @@ namespace HaCreator.MapSimulator.Character
             {
                 // Skill/531.img/skill/5311003 still publishes `cannonJump`, while the
                 // current morph surfaces continue to expose only generic `jump`.
-                ["cannonJump"] = new[] { "jump" }
+                ["cannonJump"] = new[] { "jump" },
+                // The client morph action table also carries `spiritJump`; current
+                // Morph/*.img surfaces publish generic jump instead of that raw root.
+                ["spiritJump"] = new[] { "jump" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedMovementMorphFallbackAliases =

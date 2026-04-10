@@ -75,6 +75,11 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsOpen { get; init; }
         public bool HasPremiumChoice { get; init; }
         public ReviveOwnerVariant Variant { get; init; }
+        public string ClientBackgroundUolSymbol { get; init; } = string.Empty;
+        public string ClientYesButtonUolSymbol { get; init; } = string.Empty;
+        public string ClientNoButtonUolSymbol { get; init; } = string.Empty;
+        public int ClientFocusButtonId { get; init; }
+        public int ClientYesButtonOffsetX { get; init; }
         public string Title { get; init; } = "Revive";
         public string Subtitle { get; init; } = string.Empty;
         public string PrimaryTitle { get; init; } = string.Empty;
@@ -90,8 +95,19 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class ReviveOwnerRuntime
     {
-        private const int AutoResolveMs = 0x927C0;
+        internal const int AutoResolveMs = 0x927C0;
+        internal const int NativeWindowWidth = 300;
+        internal const int NativeWindowHeight = 131;
+        internal const int NativeWindowLeft = -150;
+        internal const int NativeWindowTop = -195;
+        internal const string ClientPremiumSafetyCharmBackgroundUolSymbol = "aUi_138";
+        internal const string ClientYesButtonUolSymbol = "aUi_139";
+        internal const string ClientNoButtonUolSymbol = "aUi_140";
+        internal const string ClientDefaultBackgroundUolSymbol = "aUi_141";
+        internal const string ClientUpgradeTombBackgroundUolSymbol = "aUi_142";
+        internal const string ClientSoulStoneBackgroundUolSymbol = "aUi_143";
         private const float PremiumChoiceMinDistanceSquared = 1f;
+        private const int DefaultBranchYesButtonOffsetX = 42;
         internal const int ClientCloseButtonId = 1;
         internal const int ClientYesButtonId = 6;
         internal const int ClientNoButtonId = 7;
@@ -247,6 +263,26 @@ namespace HaCreator.MapSimulator.Interaction
                 or ReviveOwnerVariant.PremiumSafetyCharmChoice;
         }
 
+        public static ReviveOwnerNativeBranchSpec ResolveNativeBranchSpec(ReviveOwnerVariant variant)
+        {
+            string backgroundUolSymbol = variant switch
+            {
+                ReviveOwnerVariant.SoulStoneChoice => ClientSoulStoneBackgroundUolSymbol,
+                ReviveOwnerVariant.UpgradeTombChoice => ClientUpgradeTombBackgroundUolSymbol,
+                ReviveOwnerVariant.PremiumSafetyCharmChoice => ClientPremiumSafetyCharmBackgroundUolSymbol,
+                _ => ClientDefaultBackgroundUolSymbol
+            };
+
+            bool hasNoButton = HasPremiumChoiceForVariant(variant);
+            return new ReviveOwnerNativeBranchSpec(
+                backgroundUolSymbol,
+                ClientYesButtonUolSymbol,
+                hasNoButton ? ClientNoButtonUolSymbol : string.Empty,
+                ClientYesButtonId,
+                hasNoButton ? 0 : DefaultBranchYesButtonOffsetX,
+                hasNoButton);
+        }
+
         public static int GetConsumableCashItemId(ReviveOwnerVariant variant)
         {
             return variant switch
@@ -282,12 +318,18 @@ namespace HaCreator.MapSimulator.Interaction
                 ReviveOwnerVariant.SoulStoneChoice => "Soul Stone branch available.",
                 _ => "Default revive branch only."
             };
+            ReviveOwnerNativeBranchSpec nativeBranchSpec = ResolveNativeBranchSpec(Variant);
 
             return new ReviveOwnerSnapshot
             {
                 IsOpen = true,
                 HasPremiumChoice = HasPremiumChoice,
                 Variant = Variant,
+                ClientBackgroundUolSymbol = nativeBranchSpec.BackgroundUolSymbol,
+                ClientYesButtonUolSymbol = nativeBranchSpec.YesButtonUolSymbol,
+                ClientNoButtonUolSymbol = nativeBranchSpec.NoButtonUolSymbol,
+                ClientFocusButtonId = nativeBranchSpec.FocusButtonId,
+                ClientYesButtonOffsetX = nativeBranchSpec.YesButtonOffsetX,
                 Title = "Revive",
                 Subtitle = subtitle,
                 PrimaryTitle = ResolvePrimaryTitle(Variant),
@@ -334,5 +376,31 @@ namespace HaCreator.MapSimulator.Interaction
                 ? string.Empty
                 : "Return to Safety";
         }
+    }
+
+    internal readonly struct ReviveOwnerNativeBranchSpec
+    {
+        public ReviveOwnerNativeBranchSpec(
+            string backgroundUolSymbol,
+            string yesButtonUolSymbol,
+            string noButtonUolSymbol,
+            int focusButtonId,
+            int yesButtonOffsetX,
+            bool hasNoButton)
+        {
+            BackgroundUolSymbol = backgroundUolSymbol ?? string.Empty;
+            YesButtonUolSymbol = yesButtonUolSymbol ?? string.Empty;
+            NoButtonUolSymbol = noButtonUolSymbol ?? string.Empty;
+            FocusButtonId = focusButtonId;
+            YesButtonOffsetX = yesButtonOffsetX;
+            HasNoButton = hasNoButton;
+        }
+
+        public string BackgroundUolSymbol { get; }
+        public string YesButtonUolSymbol { get; }
+        public string NoButtonUolSymbol { get; }
+        public int FocusButtonId { get; }
+        public int YesButtonOffsetX { get; }
+        public bool HasNoButton { get; }
     }
 }

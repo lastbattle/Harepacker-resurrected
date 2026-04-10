@@ -321,7 +321,6 @@ namespace HaCreator.MapSimulator
 
         private void DrawPacketOwnedLocalOverlayState(int currentTickCount, int mapCenterX, int mapCenterY)
         {
-            DrawPacketOwnedFieldFadeOverlay(currentTickCount);
             DrawPacketOwnedBalloonOverlay(currentTickCount, mapCenterX, mapCenterY);
         }
 

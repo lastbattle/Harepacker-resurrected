@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -76,6 +77,32 @@ namespace HaCreator.MapSimulator.Character
             return positionCode == FaceOwnedPlanePositionCode
                    || zOrder < 0
                    || (isClientMovementOwner && !positionCode.HasValue && zOrder == 0);
+        }
+
+        internal static bool TryResolveFaceOwnedAvatarEffectAnchor(
+            AssembledFrame assembledFrame,
+            bool facingRight,
+            int screenX,
+            int screenY,
+            int? positionCode,
+            out int anchorX,
+            out int anchorY)
+        {
+            anchorX = screenX;
+            anchorY = screenY;
+
+            if (positionCode != FaceOwnedPlanePositionCode
+                || assembledFrame?.MapPoints == null
+                || !assembledFrame.MapPoints.TryGetValue("brow", out Point anchorPoint))
+            {
+                return false;
+            }
+
+            anchorX = facingRight
+                ? screenX + anchorPoint.X
+                : screenX - anchorPoint.X;
+            anchorY = screenY - assembledFrame.FeetOffset + anchorPoint.Y;
+            return true;
         }
 
         private static HashSet<string> BuildRotateSensitiveActionNames()

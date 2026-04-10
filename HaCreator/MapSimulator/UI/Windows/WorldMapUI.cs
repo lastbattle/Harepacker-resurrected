@@ -2764,6 +2764,25 @@ namespace HaCreator.MapSimulator.UI
             WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
         }
 
+        public override void RefreshImePresentationPlacement()
+        {
+            UpdateImePresentationPlacement();
+        }
+
+        protected override void ResetImePresentationPlacement()
+        {
+            if (ResolveImeWindowHandle == null)
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle != IntPtr.Zero)
+            {
+                WindowsImePresentationBridge.TryResetPlacement(windowHandle);
+            }
+        }
+
         private int MeasureImePlacementWidth(string text)
         {
             if (_font == null || string.IsNullOrEmpty(text))

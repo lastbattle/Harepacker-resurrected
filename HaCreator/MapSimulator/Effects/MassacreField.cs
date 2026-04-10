@@ -303,6 +303,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _bonusPresentationStartTick = int.MinValue;
         private int _resultPresentationStartTick = int.MinValue;
         private MassacreResultPresentation _resultPresentation = MassacreResultPresentation.None;
+        private string _resultPresentationOwner = string.Empty;
         private char _resultRank = 'D';
         private int _resultScore;
         private int _resultKillRate;
@@ -340,6 +341,12 @@ namespace HaCreator.MapSimulator.Effects
         internal char ResultRank => _resultRank;
         internal int ResultScore => _resultScore;
         internal bool IsDangerOverlayActive => ShouldDrawDangerOverlay();
+        public string GetPacketOwnerName(int packetType)
+        {
+            return packetType == PacketTypeResult
+                ? "CField_MassacreResult::OnPacket"
+                : "CField_Massacre::OnPacket";
+        }
         public bool TryApplyPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
@@ -527,6 +534,7 @@ namespace HaCreator.MapSimulator.Effects
             _resultKillRate = 0;
             _resultCoolRate = 0;
             _resultMissRate = 0;
+            _resultPresentationOwner = string.Empty;
         }
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
         {
@@ -698,7 +706,7 @@ namespace HaCreator.MapSimulator.Effects
             string countEffectText = HasCountEffectPresentation ? $", countFx=stage{_countEffectPresentationStage}" : string.Empty;
             string bonusText = HasBonusPresentation ? ", bonusFx=active" : string.Empty;
             string resultText = HasResultPresentation
-                ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}:counts={_hitCount}/{_coolCount}/{_missCount}:rates={_resultKillRate}/{_resultCoolRate}/{_resultMissRate}"
+                ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}:owner={_resultPresentationOwner}:counts={_hitCount}/{_coolCount}/{_missCount}:rates={_resultKillRate}/{_resultCoolRate}/{_resultMissRate}"
                 : string.Empty;
             string evidenceText = string.Join(
                 "; ",
@@ -1055,6 +1063,7 @@ namespace HaCreator.MapSimulator.Effects
         public void ShowResultPresentation(bool clear, int currentTimeMs, int? scoreOverride = null, char? rankOverride = null)
         {
             _resultPresentation = clear ? MassacreResultPresentation.Clear : MassacreResultPresentation.Fail;
+            _resultPresentationOwner = "simulator-authored clear/fail transition";
             _resultPresentationStartTick = currentTimeMs;
             _resultScore = Math.Max(0, scoreOverride ?? _killCount);
             _resultRank = NormalizeRank(rankOverride ?? ComputeResultRank());
@@ -1063,6 +1072,7 @@ namespace HaCreator.MapSimulator.Effects
         public void ShowPacketOwnedResultPresentation(int currentTimeMs, int? scoreOverride = null, char? rankOverride = null)
         {
             _resultPresentation = MassacreResultPresentation.PacketOwned;
+            _resultPresentationOwner = "CField_MassacreResult::OnMassacreResult";
             _resultPresentationStartTick = currentTimeMs;
             _resultScore = Math.Max(0, scoreOverride ?? _killCount);
             _resultRank = NormalizeRank(rankOverride ?? ComputeResultRank());
@@ -1896,6 +1906,7 @@ namespace HaCreator.MapSimulator.Effects
             _bonusPresentationStartTick = int.MinValue;
             _resultPresentationStartTick = int.MinValue;
             _resultPresentation = MassacreResultPresentation.None;
+            _resultPresentationOwner = string.Empty;
 
             if (nextMode == MassacreMapMode.Result)
             {

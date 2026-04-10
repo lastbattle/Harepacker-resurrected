@@ -433,8 +433,8 @@ namespace HaCreator.MapSimulator.Interaction
                 string title = ReadMapleString(reader);
                 string problemText = ReadMapleString(reader);
                 string hintText = ReadMapleString(reader);
-                int correctAnswer = reader.ReadInt32();
-                int questionNumber = reader.ReadInt32();
+                int minInputLength = reader.ReadInt32();
+                int maxInputLength = reader.ReadInt32();
                 int remainingSeconds = reader.ReadInt32();
 
                 result = CreateDecodedResult(CreateEntry(
@@ -445,7 +445,7 @@ namespace HaCreator.MapSimulator.Interaction
                         $"Title: {FormatQuotedValue(title)}",
                         NpcDialogueTextFormatter.Format(problemText),
                         string.IsNullOrWhiteSpace(hintText) ? null : $"Hint text: {FormatQuotedValue(hintText)}",
-                        $"Client payload: answer={correctAnswer}, questionNo={questionNumber}, remaining={remainingSeconds} sec.",
+                        $"Client payload: minInput={minInputLength}, maxInput={maxInputLength}, remaining={remainingSeconds} sec.",
                         "Client `CWvsContext::OnInitialQuiz` opens the dedicated `CUIInitialQuiz` owner instead of mutating the NPC overlay."),
                     null),
                     suppressDialogMutation: true,
@@ -454,8 +454,8 @@ namespace HaCreator.MapSimulator.Interaction
                         title,
                         problemText,
                         hintText,
-                        correctAnswer,
-                        questionNumber,
+                        minInputLength,
+                        maxInputLength,
                         remainingSeconds));
                 return true;
             }
@@ -1763,6 +1763,9 @@ namespace HaCreator.MapSimulator.Interaction
             int RemainingQuestions,
             int RemainingSeconds)
         {
+            internal int InitialQuizMinInputLength => CorrectAnswer;
+            internal int InitialQuizMaxInputLength => QuestionNumber;
+
             internal static PacketScriptClientOwnerRuntimeSync CreateClose(PacketScriptClientOwnerRuntimeKind kind)
             {
                 return new PacketScriptClientOwnerRuntimeSync(kind, true, string.Empty, string.Empty, string.Empty, 0, 0, 0, 0, 0, 0);
@@ -1772,8 +1775,8 @@ namespace HaCreator.MapSimulator.Interaction
                 string title,
                 string problemText,
                 string hintText,
-                int correctAnswer,
-                int questionNumber,
+                int minInputLength,
+                int maxInputLength,
                 int remainingSeconds)
             {
                 return new PacketScriptClientOwnerRuntimeSync(
@@ -1782,8 +1785,8 @@ namespace HaCreator.MapSimulator.Interaction
                     title ?? string.Empty,
                     problemText ?? string.Empty,
                     hintText ?? string.Empty,
-                    correctAnswer,
-                    questionNumber,
+                    minInputLength,
+                    maxInputLength,
                     0,
                     0,
                     0,

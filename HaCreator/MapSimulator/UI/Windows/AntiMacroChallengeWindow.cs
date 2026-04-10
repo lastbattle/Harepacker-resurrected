@@ -713,6 +713,14 @@ namespace HaCreator.MapSimulator.UI
             return !string.IsNullOrWhiteSpace(currentInput) && remainingMilliseconds > 0;
         }
 
+        internal static int ResolveRemainingMilliseconds(int expiresAtTickCount, int currentTickCount)
+        {
+            // `CUIAntiMacro::Update` compares `timeGetTime()` against the timeout with
+            // signed 32-bit tick math, so keep the same wrap behavior around TickCount.
+            int delta = unchecked(expiresAtTickCount - currentTickCount);
+            return Math.Max(0, delta);
+        }
+
         private int GetRemainingSeconds(int tickCount)
         {
             return GetRemainingMilliseconds(tickCount) / 1000;
@@ -725,7 +733,7 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            return Math.Max(0, _expiresAt - tickCount);
+            return ResolveRemainingMilliseconds(_expiresAt, tickCount);
         }
 
         private bool UsingNativeEditHost => _nativeEditHost.IsAttached;

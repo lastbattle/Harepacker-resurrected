@@ -793,13 +793,23 @@ namespace HaCreator.MapSimulator.Fields
                 : style.SignPlusOrigin;
             if (signTexture != null && digitsDrawn > 0)
             {
-                int signSlotIndex = ClientBitmapDigitCount - digitsDrawn;
+                int signSlotIndex = CalculateClientBitmapNumberSignSlot(digitsDrawn);
                 float drawX = topCenter.X + (signSlotIndex * ClientBitmapDigitWidth) - signOrigin.X;
                 float drawY = topCenter.Y - signOrigin.Y;
                 spriteBatch.Draw(signTexture, new Vector2(drawX, drawY), Color.White);
             }
 
             return drewDigit;
+        }
+
+        private static int CalculateClientBitmapNumberSignSlot(int digitsDrawn)
+        {
+            return ClientBitmapDigitCount - Math.Clamp(digitsDrawn, 0, ClientBitmapDigitCount) - 1;
+        }
+
+        internal static int CalculateClientBitmapNumberSignSlotForTesting(int digitsDrawn)
+        {
+            return CalculateClientBitmapNumberSignSlot(digitsDrawn);
         }
 
         private Texture2D LoadCanvasTexture(WzImageProperty source)

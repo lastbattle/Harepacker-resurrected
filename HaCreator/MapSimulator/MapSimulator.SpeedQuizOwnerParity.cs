@@ -21,7 +21,7 @@ namespace HaCreator.MapSimulator
         private SpeedQuizOwnerButtonKind _speedQuizOwnerHoveredButton;
         private SpeedQuizOwnerButtonKind _speedQuizOwnerPressedButton;
 
-        private enum SpeedQuizOwnerButtonKind
+        internal enum SpeedQuizOwnerButtonKind
         {
             None,
             GiveUp,
@@ -88,18 +88,16 @@ namespace HaCreator.MapSimulator
                 _speedQuizOwnerPressedButton = _speedQuizOwnerHoveredButton;
                 _speedQuizOwnerCursorBlinkStartedAt = currentTickCount;
             }
-            else if (!leftPressed)
+            else if (!leftPressed && !justReleased)
             {
                 _speedQuizOwnerPressedButton = SpeedQuizOwnerButtonKind.None;
             }
 
             if (justReleased)
             {
-                SpeedQuizOwnerButtonKind confirmedButton =
-                    _speedQuizOwnerPressedButton != SpeedQuizOwnerButtonKind.None &&
-                    _speedQuizOwnerPressedButton == _speedQuizOwnerHoveredButton
-                        ? _speedQuizOwnerPressedButton
-                        : SpeedQuizOwnerButtonKind.None;
+                SpeedQuizOwnerButtonKind confirmedButton = ResolveSpeedQuizOwnerReleaseConfirmation(
+                    _speedQuizOwnerPressedButton,
+                    _speedQuizOwnerHoveredButton);
                 _speedQuizOwnerPressedButton = SpeedQuizOwnerButtonKind.None;
 
                 switch (confirmedButton)
@@ -115,6 +113,15 @@ namespace HaCreator.MapSimulator
             }
 
             return snapshot.RemainingMs > 0 || _speedQuizOwnerResultSent;
+        }
+
+        internal static SpeedQuizOwnerButtonKind ResolveSpeedQuizOwnerReleaseConfirmation(
+            SpeedQuizOwnerButtonKind pressedButton,
+            SpeedQuizOwnerButtonKind hoveredButton)
+        {
+            return pressedButton != SpeedQuizOwnerButtonKind.None && pressedButton == hoveredButton
+                ? pressedButton
+                : SpeedQuizOwnerButtonKind.None;
         }
 
         private bool HandleSpeedQuizOwnerKeyboard(KeyboardState newKeyboardState, KeyboardState oldKeyboardState, int currentTickCount)
@@ -335,10 +342,18 @@ namespace HaCreator.MapSimulator
 
             string inputText = _speedQuizOwnerInput.ToString();
             bool showPlaceholder = string.IsNullOrEmpty(inputText);
-            string displayText = showPlaceholder ? "Type answer..." : inputText;
+            const float inputTextScale = 0.38f;
+            string displayText = showPlaceholder
+                ? "Type answer..."
+                : ResolveSpeedQuizOwnerInputTextView(
+                    inputText,
+                    _speedQuizOwnerCursorIndex,
+                    Math.Max(1f, inputBounds.Width - 8f),
+                    text => _fontChat.MeasureString(text ?? string.Empty).X * inputTextScale)
+                    .VisibleText;
             Color textColor = showPlaceholder ? new Color(123, 123, 123) : Color.Black;
             Vector2 drawPosition = new(inputBounds.X + 4, inputBounds.Y - 1);
-            _spriteBatch.DrawString(_fontChat, displayText, drawPosition, textColor, 0f, Vector2.Zero, 0.38f, SpriteEffects.None, 0f);
+            _spriteBatch.DrawString(_fontChat, displayText, drawPosition, textColor, 0f, Vector2.Zero, inputTextScale, SpriteEffects.None, 0f);
 
             if (!enabled || showPlaceholder)
             {
@@ -351,11 +366,59 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            string prefix = inputText[..Math.Clamp(_speedQuizOwnerCursorIndex, 0, inputText.Length)];
-            int cursorX = inputBounds.X + 4 + (int)Math.Round(_fontChat.MeasureString(prefix).X * 0.38f);
+            SpeedQuizOwnerInputTextView textView = ResolveSpeedQuizOwnerInputTextView(
+                inputText,
+                _speedQuizOwnerCursorIndex,
+                Math.Max(1f, inputBounds.Width - 8f),
+                text => _fontChat.MeasureString(text ?? string.Empty).X * inputTextScale);
+            string prefix = textView.VisibleText[..Math.Clamp(textView.VisibleCursorIndex, 0, textView.VisibleText.Length)];
+            int cursorX = inputBounds.X + 4 + (int)Math.Round(_fontChat.MeasureString(prefix).X * inputTextScale);
             Rectangle cursorBounds = new(cursorX, inputBounds.Y + 2, 1, Math.Max(9, inputBounds.Height - 4));
             _spriteBatch.Draw(_packetScriptOwnerPixelTexture, cursorBounds, Color.Black);
         }
+
+        internal static SpeedQuizOwnerInputTextView ResolveSpeedQuizOwnerInputTextView(
+            string inputText,
+            int cursorIndex,
+            float maxTextWidth,
+            Func<string, float> measureText)
+        {
+            inputText ??= string.Empty;
+            measureText ??= static text => text?.Length ?? 0;
+
+            if (inputText.Length == 0)
+            {
+                return new SpeedQuizOwnerInputTextView(string.Empty, 0, 0);
+            }
+
+            int cursor = Math.Clamp(cursorIndex, 0, inputText.Length);
+            float boundedWidth = Math.Max(1f, maxTextWidth);
+            int start = 0;
+            while (start < cursor &&
+                   measureText(inputText[start..cursor]) > boundedWidth)
+            {
+                start++;
+            }
+
+            int end = inputText.Length;
+            while (end > cursor &&
+                   measureText(inputText[start..end]) > boundedWidth)
+            {
+                end--;
+            }
+
+            if (end <= start)
+            {
+                end = Math.Min(inputText.Length, start + 1);
+            }
+
+            return new SpeedQuizOwnerInputTextView(
+                inputText[start..end],
+                Math.Clamp(cursor - start, 0, end - start),
+                start);
+        }
+
+        internal readonly record struct SpeedQuizOwnerInputTextView(string VisibleText, int VisibleCursorIndex, int SourceStartIndex);
 
         private void DrawSpeedQuizOwnerButton(
             PacketScriptButtonVisuals visuals,

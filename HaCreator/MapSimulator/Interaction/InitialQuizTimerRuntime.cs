@@ -16,8 +16,8 @@ namespace HaCreator.MapSimulator.Interaction
         private string _title = string.Empty;
         private string _problemText = string.Empty;
         private string _hintText = string.Empty;
-        private int _answer;
-        private int _questionNumber;
+        private int _minInputByteLength;
+        private int _maxInputByteLength;
 
         internal int BoundCharacterId => _boundCharacterId;
         internal int LastObservedRuntimeCharacterId => _lastObservedRuntimeCharacterId;
@@ -48,7 +48,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int remainingSeconds = GetDisplayRemainingSeconds(currentTickCount);
-            return $"Context-owned initial quiz active: question {_questionNumber}, {remainingSeconds}s remaining, title={FormatQuotedValue(_title)}, {DescribeCharacterBinding()}";
+            return $"Context-owned initial quiz active: inputBytes={_minInputByteLength}..{_maxInputByteLength}, {remainingSeconds}s remaining, title={FormatQuotedValue(_title)}, {DescribeCharacterBinding()}";
         }
 
         internal bool TryBuildOwnerSnapshot(int currentTickCount, out InitialQuizOwnerSnapshot snapshot)
@@ -64,8 +64,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _title,
                 _problemText,
                 _hintText,
-                _answer,
-                _questionNumber,
+                _minInputByteLength,
+                _maxInputByteLength,
                 GetDisplayRemainingSeconds(currentTickCount),
                 remainingMs);
             return true;
@@ -84,16 +84,16 @@ namespace HaCreator.MapSimulator.Interaction
             _title = string.Empty;
             _problemText = string.Empty;
             _hintText = string.Empty;
-            _answer = 0;
-            _questionNumber = 0;
+            _minInputByteLength = 0;
+            _maxInputByteLength = 0;
         }
 
         internal string ApplyClientOwnerState(
             string title,
             string problemText,
             string hintText,
-            int answer,
-            int questionNumber,
+            int minInputLength,
+            int maxInputLength,
             int remainingSeconds,
             int currentTickCount,
             int runtimeCharacterId)
@@ -102,19 +102,19 @@ namespace HaCreator.MapSimulator.Interaction
             _title = title ?? string.Empty;
             _problemText = problemText ?? string.Empty;
             _hintText = hintText ?? string.Empty;
-            _answer = answer;
-            _questionNumber = Math.Max(0, questionNumber);
+            _minInputByteLength = Math.Max(0, minInputLength) * 2;
+            _maxInputByteLength = Math.Max(0, maxInputLength) * 2;
             _expiresAtTick = currentTickCount + (Math.Max(0, remainingSeconds) * 1000);
             return
-                $"Synced context-owned initial quiz owner: question {_questionNumber}, {Math.Max(0, remainingSeconds)}s remaining, title={FormatQuotedValue(_title)}, {DescribeCharacterBinding()}";
+                $"Synced context-owned initial quiz owner: inputBytes={_minInputByteLength}..{_maxInputByteLength}, {Math.Max(0, remainingSeconds)}s remaining, title={FormatQuotedValue(_title)}, {DescribeCharacterBinding()}";
         }
 
         internal bool TryApplyClientOwnerState(
             string title,
             string problemText,
             string hintText,
-            int answer,
-            int questionNumber,
+            int minInputLength,
+            int maxInputLength,
             int remainingSeconds,
             int currentTickCount,
             int runtimeCharacterId,
@@ -132,8 +132,8 @@ namespace HaCreator.MapSimulator.Interaction
                 title,
                 problemText,
                 hintText,
-                answer,
-                questionNumber,
+                minInputLength,
+                maxInputLength,
                 remainingSeconds,
                 currentTickCount,
                 runtimeCharacterId)
@@ -171,16 +171,16 @@ namespace HaCreator.MapSimulator.Interaction
                 string title = ReadMapleString(reader);
                 string problemText = ReadMapleString(reader);
                 string hintText = ReadMapleString(reader);
-                int answer = reader.ReadInt32();
-                int questionNumber = reader.ReadInt32();
+                int minInputLength = reader.ReadInt32();
+                int maxInputLength = reader.ReadInt32();
                 int remainingSeconds = reader.ReadInt32();
 
                 return TryApplyClientOwnerState(
                     title,
                     problemText,
                     hintText,
-                    answer,
-                    questionNumber,
+                    minInputLength,
+                    maxInputLength,
                     remainingSeconds,
                     currentTickCount,
                     runtimeCharacterId,
@@ -273,8 +273,8 @@ namespace HaCreator.MapSimulator.Interaction
         string Title,
         string ProblemText,
         string HintText,
-        int CorrectAnswer,
-        int QuestionNumber,
+        int MinInputByteLength,
+        int MaxInputByteLength,
         int RemainingSeconds,
         int RemainingMs);
 }

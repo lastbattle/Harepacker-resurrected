@@ -705,7 +705,7 @@ namespace HaCreator.MapSimulator.UI
 
             HashSet<int> yieldedQuestIds = new();
             foreach (QuestAlarmEntrySnapshot recentEntry in orderedEntries
-                .Where(entry => entry?.IsRecentlyUpdated == true)
+                .Where(entry => entry?.IsRecentlyUpdated == true && entry.IsAutoRegisterCandidate)
                 .OrderByDescending(entry => entry.UpdateSequence)
                 .ThenBy(entry => entry.QuestId))
             {
@@ -718,7 +718,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < orderedEntries.Count; i++)
             {
                 QuestAlarmEntrySnapshot entry = orderedEntries[i];
-                if (entry != null && yieldedQuestIds.Add(entry.QuestId))
+                if (entry != null && entry.IsAutoRegisterCandidate && yieldedQuestIds.Add(entry.QuestId))
                 {
                     yield return entry;
                 }

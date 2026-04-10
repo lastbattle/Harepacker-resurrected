@@ -71,6 +71,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (presentation.GuardType != 0)
+            {
+                _combatEffects.AddGuard(presentation.Position.X, presentation.Position.Y, presentation.CurrentTime);
+                return;
+            }
+
             _combatEffects.AddMiss(presentation.Position.X, presentation.Position.Y, presentation.CurrentTime);
         }
 
@@ -1274,7 +1280,8 @@ namespace HaCreator.MapSimulator
                     officialChairPacket.CharacterId,
                     officialChairPacket.ChairItemId,
                     out string chairMessage,
-                    officialChairPacket.PairCharacterId);
+                    officialChairPacket.PairCharacterId,
+                    syncPairRecordFromChairState: true);
                 result = chairApplied
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialChairPacket.CharacterId}."
                     : chairMessage;

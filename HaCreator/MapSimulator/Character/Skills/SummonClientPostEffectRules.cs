@@ -145,6 +145,13 @@ internal static class SummonClientPostEffectRules
             return true;
         }
 
+        if (!string.IsNullOrWhiteSpace(skillData.Projectile?.BallUolPath)
+            || !string.IsNullOrWhiteSpace(skillData.Projectile?.FlipBallUolPath)
+            || !string.IsNullOrWhiteSpace(skillData.Projectile?.AnimationPath))
+        {
+            return true;
+        }
+
         if (skillData.SummonProjectileAnimations?.Count > 0)
         {
             return true;

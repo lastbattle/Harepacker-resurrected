@@ -972,7 +972,7 @@ namespace HaCreator.MapSimulator
                 SyncPacketOwnedAnimationDisplayerFollow();
 
 
-                if (_gameState.IsPlayerInputEnabled && _playerManager.IsPlayerActive)
+                if (_playerManager.IsPlayerActive)
                 {
                     Vector2 updatedPlayerPosition = _playerManager.GetPlayerPosition();
                     CheckReactorTouch(updatedPlayerPosition.X, updatedPlayerPosition.Y, currentTick: currTickCount);

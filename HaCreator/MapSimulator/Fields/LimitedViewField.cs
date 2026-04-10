@@ -45,6 +45,8 @@ namespace HaCreator.MapSimulator.Fields
         private float _clientOwnedMaskHeight;
         private float _clientOwnedMaskOriginX;
         private float _clientOwnedMaskOriginY;
+        private int _clientOwnedSmallDarkPatchWidth;
+        private int _clientOwnedSmallDarkPatchHeight;
         private int _clientOwnedDarkLayerWidth;
         private int _clientOwnedDarkLayerHeight;
         private int _clientOwnedDarkLayerOffsetX;
@@ -257,9 +259,16 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedDarkLayerOffsetY = offsetY;
         }
 
-        public void EnableClientOwnedCircleMask(float radius, float width, float height, float originX, float originY)
+        public void ConfigureClientOwnedSmallDarkPatch(int width, int height)
+        {
+            _clientOwnedSmallDarkPatchWidth = Math.Max(0, width);
+            _clientOwnedSmallDarkPatchHeight = Math.Max(0, height);
+        }
+
+        public void EnableClientOwnedCircleMask(float radius, float width, float height, float originX, float originY, int smallDarkPatchWidth = 0, int smallDarkPatchHeight = 0)
         {
             ConfigureClientOwnedMask(width, height, originX, originY, immediateMode: true);
+            ConfigureClientOwnedSmallDarkPatch(smallDarkPatchWidth, smallDarkPatchHeight);
             _clientOwnedUpdateParityMode = true;
             _pulseEnabled = false;
             _edgeSoftness = 0f;
@@ -298,6 +307,8 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedMaskHeight = 0f;
             _clientOwnedMaskOriginX = 0f;
             _clientOwnedMaskOriginY = 0f;
+            _clientOwnedSmallDarkPatchWidth = 0;
+            _clientOwnedSmallDarkPatchHeight = 0;
             _clientOwnedDarkLayerWidth = 0;
             _clientOwnedDarkLayerHeight = 0;
             _clientOwnedDarkLayerOffsetX = 0;
@@ -538,8 +549,12 @@ namespace HaCreator.MapSimulator.Fields
             Color fogColor,
             bool drawDarkLayer)
         {
-            int width = _clientOwnedViewrangeTexture.Width;
-            int height = _clientOwnedViewrangeTexture.Height;
+            int width = _clientOwnedSmallDarkPatchWidth > 0
+                ? _clientOwnedSmallDarkPatchWidth
+                : _clientOwnedViewrangeTexture.Width;
+            int height = _clientOwnedSmallDarkPatchHeight > 0
+                ? _clientOwnedSmallDarkPatchHeight
+                : _clientOwnedViewrangeTexture.Height;
             int left = centerX - (width / 2);
             int top = centerY - (height / 2);
             int right = left + width;
@@ -839,6 +854,7 @@ namespace HaCreator.MapSimulator.Fields
         }
 
         internal IReadOnlyList<Vector2> ClientOwnedPreviousMaskTopLefts => _clientOwnedPreviousMaskTopLefts;
+        internal Point ClientOwnedSmallDarkPatchSize => new(_clientOwnedSmallDarkPatchWidth, _clientOwnedSmallDarkPatchHeight);
 
         private Vector2 GetClientOwnedUpdateParityScreenPosition(Vector2 worldPosition, int mapShiftX, int mapShiftY, int centerX, int centerY)
         {

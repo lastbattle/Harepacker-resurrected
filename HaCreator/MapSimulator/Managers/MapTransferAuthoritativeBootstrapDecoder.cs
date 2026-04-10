@@ -14,7 +14,7 @@ namespace HaCreator.MapSimulator.Managers
         private const ulong CharacterDataRelationshipRecordFlag = 0x800UL;
         internal const ulong CharacterDataMapTransferFlag = 0x1000UL;
         private const ulong CharacterDataSkillCooldownFlag = 0x4000UL;
-        private const ulong CharacterDataOpaquePreMapTransferFlag = 0x8000UL;
+        private const ulong CharacterDataInt16ValueRecordFlag = 0x8000UL;
         private const ulong CharacterDataQuestRecordFlag = 0x10000UL;
         private const ulong CharacterDataShortFileTimeRecordFlag = 0x20000UL;
         private const int LogoutGiftConfigByteLength =
@@ -398,8 +398,9 @@ namespace HaCreator.MapSimulator.Managers
                 candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipInt16ValueRecordGroup));
             }
 
-            if ((characterDataFlags & CharacterDataOpaquePreMapTransferFlag) != 0)
+            if ((characterDataFlags & CharacterDataInt16ValueRecordFlag) != 0)
             {
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipInt16ValueRecordGroup));
                 candidateStarts = ExpandOpaquePreMapTransferOffsets(candidateStarts, payload);
             }
 
@@ -426,13 +427,26 @@ namespace HaCreator.MapSimulator.Managers
             foreach (KnownLeadingOffsetCandidate candidate in candidateStarts)
             {
                 if (!offsets.TryGetValue(candidate.Offset, out int existingOpaqueByteCount) ||
-                    existingOpaqueByteCount < 0 ||
-                    (candidate.OpaquePreMapTransferByteCount >= 0 &&
-                     candidate.OpaquePreMapTransferByteCount < existingOpaqueByteCount))
+                    ShouldPreferKnownLeadingOffsetCandidate(candidate.OpaquePreMapTransferByteCount, existingOpaqueByteCount))
                 {
                     offsets[candidate.Offset] = candidate.OpaquePreMapTransferByteCount;
                 }
             }
+        }
+
+        private static bool ShouldPreferKnownLeadingOffsetCandidate(int candidateOpaqueByteCount, int existingOpaqueByteCount)
+        {
+            if (candidateOpaqueByteCount < 0)
+            {
+                return true;
+            }
+
+            if (existingOpaqueByteCount < 0)
+            {
+                return false;
+            }
+
+            return candidateOpaqueByteCount < existingOpaqueByteCount;
         }
 
         private static HashSet<KnownLeadingOffsetCandidate> ExtendKnownLeadingOffsets(

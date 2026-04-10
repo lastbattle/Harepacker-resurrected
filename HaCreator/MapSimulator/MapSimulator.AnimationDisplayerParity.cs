@@ -96,7 +96,9 @@ namespace HaCreator.MapSimulator
             public Point SpawnOffsetMin { get; init; }
             public Point SpawnOffsetMax { get; init; }
             public bool UsesRelativeEmission { get; init; }
+            public bool SpawnRelativeToTarget { get; init; }
             public bool SpawnOnlyOnOwnerMove { get; init; }
+            public bool SuppressOwnerFlip { get; init; }
             public int ThetaDegrees { get; init; }
             public float Radius { get; init; }
         }
@@ -586,7 +588,10 @@ namespace HaCreator.MapSimulator
                         ? followDefinition.UpdateIntervalMs
                         : AnimationDisplayerFollowUpdateIntervalMs,
                     SpawnFrameVariants = followFrameVariants,
-                    SpawnRelativeToTarget = relativeEmission,
+                    SpawnRelativeToTarget = ResolveAnimationDisplayerFollowSpawnRelativeToTarget(
+                        relativeEmission,
+                        followDefinition?.SpawnRelativeToTarget),
+                    SuppressTargetFlip = followDefinition?.SuppressOwnerFlip ?? false,
                     SpawnOnlyOnTargetMove = followDefinition?.SpawnOnlyOnOwnerMove ?? false,
                     SpawnArea = followDefinition?.EmissionArea ?? BuildAnimationDisplayerFollowEmissionArea(),
                     SpawnUsesEmissionBox = !relativeEmission,
@@ -1499,7 +1504,9 @@ namespace HaCreator.MapSimulator
                     Flip = frame.Flip,
                     Z = frame.Z,
                     AlphaStart = frame.AlphaStart,
-                    AlphaEnd = frame.AlphaEnd
+                    AlphaEnd = frame.AlphaEnd,
+                    ZoomStart = frame.ZoomStart,
+                    ZoomEnd = frame.ZoomEnd
                 });
             }
 
@@ -1575,7 +1582,9 @@ namespace HaCreator.MapSimulator
                     Flip = frame.Flip,
                     Z = frame.Z,
                     AlphaStart = frame.AlphaStart,
-                    AlphaEnd = frame.AlphaEnd
+                    AlphaEnd = frame.AlphaEnd,
+                    ZoomStart = frame.ZoomStart,
+                    ZoomEnd = frame.ZoomEnd
                 });
             }
 
@@ -2244,7 +2253,7 @@ namespace HaCreator.MapSimulator
         private AnimationDisplayerFollowEquipmentDefinition LoadAnimationDisplayerFollowEquipmentDefinition(int itemId)
         {
             WzSubProperty effectProperty = ResolveAnimationDisplayerFollowEquipmentProperty(itemId);
-            if (effectProperty == null || GetAnimationDisplayerNumericValue(effectProperty, "follow") != 1)
+            if (effectProperty == null)
             {
                 return null;
             }
@@ -2258,12 +2267,14 @@ namespace HaCreator.MapSimulator
             }
 
             Rectangle emissionArea = BuildAnimationDisplayerFollowEquipmentEmissionArea(effectProperty);
-            int updateIntervalMs = effectProperty["interval"]?.GetInt() ?? AnimationDisplayerFollowUpdateIntervalMs;
-            int spawnDurationMs = effectProperty["delay"]?.GetInt() ?? 0;
+            int updateIntervalMs = GetAnimationDisplayerNumericValue(effectProperty, "interval")
+                ?? AnimationDisplayerFollowUpdateIntervalMs;
+            int spawnDurationMs = GetAnimationDisplayerNumericValue(effectProperty, "delay") ?? 0;
             Point spawnOffsetMin = BuildAnimationDisplayerFollowEquipmentSpawnOffsetMin(effectProperty);
             Point spawnOffsetMax = BuildAnimationDisplayerFollowEquipmentSpawnOffsetMax(effectProperty, spawnOffsetMin);
             IReadOnlyList<Vector2> generationPoints = LoadAnimationDisplayerFollowEquipmentGenerationPoints(effectProperty["genPoint"]);
             float radius = BuildAnimationDisplayerFollowEquipmentRadius(generationPoints, spawnOffsetMax);
+            int authoredFollowFlag = GetAnimationDisplayerNumericValue(effectProperty, "follow") ?? 0;
 
             return new AnimationDisplayerFollowEquipmentDefinition
             {
@@ -2276,9 +2287,13 @@ namespace HaCreator.MapSimulator
                 SpawnOffsetMin = spawnOffsetMin,
                 SpawnOffsetMax = spawnOffsetMax,
                 UsesRelativeEmission = GetAnimationDisplayerNumericValue(effectProperty, "emission") != 0,
+                SpawnRelativeToTarget = authoredFollowFlag != 0,
                 SpawnOnlyOnOwnerMove = GetAnimationDisplayerNumericValue(effectProperty, "genOnMove")
                     == 1
                     || GetAnimationDisplayerNumericValue(effectProperty, "bGenOnMove") == 1,
+                SuppressOwnerFlip = GetAnimationDisplayerNumericValue(effectProperty, "bNoFlip")
+                    == 1
+                    || GetAnimationDisplayerNumericValue(effectProperty, "noFlip") == 1,
                 ThetaDegrees = GetAnimationDisplayerNumericValue(effectProperty, "nTheta")
                     ?? GetAnimationDisplayerNumericValue(effectProperty, "theta")
                     ?? AnimationDisplayerFollowThetaDegrees,
@@ -2500,6 +2515,13 @@ namespace HaCreator.MapSimulator
         internal static Point BuildAnimationDisplayerFollowSpawnOffsetMax(bool relativeEmission)
         {
             return BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission);
+        }
+
+        internal static bool ResolveAnimationDisplayerFollowSpawnRelativeToTarget(
+            bool commandRelativeEmission,
+            bool? authoredRelativePosition)
+        {
+            return commandRelativeEmission && (authoredRelativePosition ?? true);
         }
 
         private static Point BuildAnimationDisplayerFollowSpawnOffsetMax(bool relativeEmission, AnimationDisplayerFollowEquipmentDefinition followDefinition)

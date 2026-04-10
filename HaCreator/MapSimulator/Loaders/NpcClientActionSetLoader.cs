@@ -57,15 +57,17 @@ namespace HaCreator.MapSimulator.Loaders
             int templateId = ResolveTemplateId(source);
             List<NpcClientActionSetDefinition> actionSets = GetClientActionSets(source);
 
+            int clientActionSetIndex = ResolveClientActionSetIndex(
+                actionSets,
+                localPlayerGender,
+                hasQuestCheckContext,
+                questStateProvider,
+                questRecordValueProvider,
+                requestedClientActionSetIndex);
             var animationSet = new NpcAnimationSet
             {
-                ClientActionSetIndex = ResolveClientActionSetIndex(
-                    actionSets,
-                    localPlayerGender,
-                    hasQuestCheckContext,
-                    questStateProvider,
-                    questRecordValueProvider,
-                    requestedClientActionSetIndex)
+                ClientActionSetIndex = clientActionSetIndex,
+                IsHiddenToLocalUser = IsClientActionSetHiddenToLocalUser(actionSets, clientActionSetIndex)
             };
 
             foreach (NpcActionDescriptor action in EnumerateActionsForIndex(actionSets, animationSet.ClientActionSetIndex))
@@ -395,6 +397,37 @@ namespace HaCreator.MapSimulator.Loaders
             return actionSets;
         }
 
+        internal static bool IsClientActionSetHiddenToLocalUser(
+            IReadOnlyList<NpcClientActionSetDefinition> actionSets,
+            int selectedClientActionSetIndex)
+        {
+            return TryGetClientActionSetDefinition(actionSets, selectedClientActionSetIndex, out NpcClientActionSetDefinition selected)
+                   && selected.Hide;
+        }
+
+        private static bool TryGetClientActionSetDefinition(
+            IReadOnlyList<NpcClientActionSetDefinition> actionSets,
+            int selectedClientActionSetIndex,
+            out NpcClientActionSetDefinition selected)
+        {
+            selected = default;
+            if (actionSets == null || actionSets.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < actionSets.Count; i++)
+            {
+                if (actionSets[i].Index == selectedClientActionSetIndex)
+                {
+                    selected = actionSets[i];
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static IEnumerable<NpcActionDescriptor> EnumerateActionsForIndex(
             IReadOnlyList<NpcClientActionSetDefinition> actionSets,
             int selectedClientActionSetIndex)
@@ -404,15 +437,12 @@ namespace HaCreator.MapSimulator.Loaders
                 yield break;
             }
 
-            NpcClientActionSetDefinition selected = actionSets[0];
-            for (int i = 0; i < actionSets.Count; i++)
-            {
-                if (actionSets[i].Index == selectedClientActionSetIndex)
-                {
-                    selected = actionSets[i];
-                    break;
-                }
-            }
+            NpcClientActionSetDefinition selected = TryGetClientActionSetDefinition(
+                actionSets,
+                selectedClientActionSetIndex,
+                out NpcClientActionSetDefinition matched)
+                ? matched
+                : actionSets[0];
 
             foreach (WzImageProperty actionProperty in selected.Actions)
             {

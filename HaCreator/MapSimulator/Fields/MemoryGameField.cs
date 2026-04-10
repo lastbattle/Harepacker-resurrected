@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.Fields
     {
         private const int DefaultRows = 4;
         private const int DefaultColumns = 4;
+        private const int DefaultGameKind = 0;
         private const int DefaultLocalPlayerIndex = 0;
         private const int DefaultMismatchHideDelayMs = 900;
         private const int DefaultTurnSeconds = 15;
@@ -95,6 +96,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int ClientReadyIndicatorY = 184;
         private const int CardFaceTextureCount = 15;
         private const int CardBackTextureCount = 3;
+        private const int CardWidth = 49;
+        private const int CardHeight = 62;
         private const int DigitTextureCount = 10;
         private const byte MiniRoomBaseEnterPacketType = 4;
         private const byte MiniRoomBaseGameplayPacketType = 6;
@@ -196,6 +199,9 @@ namespace HaCreator.MapSimulator.Fields
         private Texture2D _banButtonDisabledTexture;
         private int _rows;
         private int _columns;
+        private int _gameKind = DefaultGameKind;
+        private int _cardsPerRow = 4;
+        private Point _firstCardOffset = new(89, 106);
         private int _localPlayerIndex;
         private int _currentTurnIndex;
         private int _pendingHideTick;
@@ -353,6 +359,8 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<bool> ReadyStates => _readyStates;
         public IReadOnlyList<bool> LeaveBookingStates => _leaveBookingStates;
         public IReadOnlyList<string> PlayerNames => _playerNames;
+        public int GameKind => _gameKind;
+        public int CardsPerRow => _cardsPerRow;
         public string Title => _title;
         public string StatusMessage => _statusMessage;
         public MemoryGamePacketType? LastPacketType => _lastPacketType;

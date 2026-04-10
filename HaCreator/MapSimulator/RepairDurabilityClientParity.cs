@@ -301,7 +301,7 @@ namespace HaCreator.MapSimulator
 
             if (LooksLikeUtf16Le(payload))
             {
-                int terminatorIndex = payload.IndexOf(stackalloc byte[] { 0, 0 });
+                int terminatorIndex = FindUtf16LeTerminator(payload);
                 if (terminatorIndex >= 0)
                 {
                     payload = payload[..terminatorIndex];
@@ -324,6 +324,19 @@ namespace HaCreator.MapSimulator
             }
 
             return Encoding.UTF8.GetString(payload).Trim();
+        }
+
+        private static int FindUtf16LeTerminator(ReadOnlySpan<byte> payload)
+        {
+            for (int i = 0; i + 1 < payload.Length; i += 2)
+            {
+                if (payload[i] == 0 && payload[i + 1] == 0)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private static bool LooksLikeUtf16Le(ReadOnlySpan<byte> payload)

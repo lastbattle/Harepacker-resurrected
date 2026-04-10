@@ -167,6 +167,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly HashSet<int> _skillsWithoutRepeatSound = new();
         private readonly Dictionary<int, int[]> _affectedSkillParentCache = new();
         private readonly Dictionary<int, int[]> _dummySkillParentCache = new();
+        private readonly Dictionary<int, int[]> _requiredSkillParentCache = new();
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterChargeAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
@@ -2957,7 +2958,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (int linkedSkillId in EnumerateSummonSourceCandidateSkillIds(
                          skill,
                          LoadSummonSourceCandidateSkillMetadata,
-                         FindAffectedSkillParentIds))
+                         FindVisibleSummonSourceParentIds))
             {
                 if (linkedSkillId <= 0 || !yieldedSkillIds.Add(linkedSkillId))
                 {
@@ -3025,6 +3026,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (int linkedSkillId in EnumerateDirectSummonSourceCandidateSkillIds(skill))
             {
                 EnqueueSummonSourceCandidateSkillId(pendingSkillIds, enqueuedSkillIds, linkedSkillId);
+            }
+
+            foreach (int reverseParentSkillId in reverseAffectedSkillResolver?.Invoke(skill.SkillId) ?? Array.Empty<int>())
+            {
+                EnqueueSummonSourceCandidateSkillId(pendingSkillIds, enqueuedSkillIds, reverseParentSkillId);
             }
 
             while (pendingSkillIds.Count > 0)
@@ -3181,6 +3187,39 @@ namespace HaCreator.MapSimulator.Character.Skills
             return resolvedParentIds;
         }
 
+        internal IReadOnlyList<int> FindVisibleSummonSourceParentIds(int linkedSkillId)
+        {
+            if (linkedSkillId <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var parentSkillIds = new SortedSet<int>();
+            AddParentSkillIds(parentSkillIds, FindAffectedSkillParentIds(linkedSkillId));
+            AddParentSkillIds(parentSkillIds, FindDummySkillParentIds(linkedSkillId));
+            AddParentSkillIds(parentSkillIds, FindRequiredSkillParentIds(linkedSkillId));
+
+            return parentSkillIds.Count == 0
+                ? Array.Empty<int>()
+                : parentSkillIds.ToArray();
+        }
+
+        private static void AddParentSkillIds(SortedSet<int> parentSkillIds, IReadOnlyList<int> linkedParentSkillIds)
+        {
+            if (parentSkillIds == null || linkedParentSkillIds == null)
+            {
+                return;
+            }
+
+            foreach (int linkedParentSkillId in linkedParentSkillIds)
+            {
+                if (linkedParentSkillId > 0)
+                {
+                    parentSkillIds.Add(linkedParentSkillId);
+                }
+            }
+        }
+
         internal IReadOnlyList<int> FindDummySkillParentIds(int dummySkillId)
         {
             if (dummySkillId <= 0)
@@ -3229,6 +3268,57 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int[] resolvedParentIds = parentSkillIds.ToArray();
             _dummySkillParentCache[dummySkillId] = resolvedParentIds;
+            return resolvedParentIds;
+        }
+
+        internal IReadOnlyList<int> FindRequiredSkillParentIds(int requiredSkillId)
+        {
+            if (requiredSkillId <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (_requiredSkillParentCache.TryGetValue(requiredSkillId, out int[] cachedParentIds))
+            {
+                return cachedParentIds;
+            }
+
+            var parentSkillIds = new SortedSet<int>();
+            foreach (int jobId in EnumerateAffectedSkillParentCandidateJobIds(requiredSkillId))
+            {
+                WzImage jobImage = GetSkillImage($"{jobId}.img");
+                if (jobImage == null)
+                {
+                    continue;
+                }
+
+                jobImage.ParseImage();
+                WzImageProperty skillRoot = jobImage["skill"];
+                if (skillRoot?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty candidateSkillNode in skillRoot.WzProperties)
+                {
+                    if (candidateSkillNode == null
+                        || !int.TryParse(candidateSkillNode.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parentSkillId)
+                        || parentSkillId <= 0
+                        || parentSkillId == requiredSkillId)
+                    {
+                        continue;
+                    }
+
+                    int[] linkedRequiredSkillIds = ResolveRequiredSkillIds(candidateSkillNode, candidateSkillNode["info"]);
+                    if (Array.IndexOf(linkedRequiredSkillIds, requiredSkillId) >= 0)
+                    {
+                        parentSkillIds.Add(parentSkillId);
+                    }
+                }
+            }
+
+            int[] resolvedParentIds = parentSkillIds.ToArray();
+            _requiredSkillParentCache[requiredSkillId] = resolvedParentIds;
             return resolvedParentIds;
         }
 
@@ -4647,6 +4737,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Shadow-partner and companion layers can carry authored alpha ramps per frame.
             frame.AlphaStart = Math.Clamp(ResolveFrameInt(metadataNode, canvas, "a0", 255), 0, 255);
             frame.AlphaEnd = Math.Clamp(ResolveFrameInt(metadataNode, canvas, "a1", 255), 0, 255);
+            frame.ZoomStart = ResolveFrameInt(metadataNode, canvas, "z0");
+            frame.ZoomEnd = ResolveFrameInt(metadataNode, canvas, "z1");
 
             return frame;
         }
@@ -4664,7 +4756,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     || frameNode["delay"] != null
                     || frameNode["lt"] != null
                     || frameNode["rb"] != null
-                    || frameNode["z"] != null))
+                    || frameNode["z"] != null
+                    || frameNode["z0"] != null
+                    || frameNode["z1"] != null))
             {
                 return frameNode;
             }
@@ -5657,6 +5751,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.Speed = PreferPrimaryStat(levelData.Speed, GetInt(node, "indieSpeed", 0, level));
             levelData.Jump = PreferPrimaryStat(levelData.Jump, GetInt(node, "indieJump", 0, level));
             levelData.Speed = PreferPrimaryStat(levelData.Speed, GetInt(node, "psdSpeed", 0, level));
+            levelData.SpeedMax = PreferPrimaryStat(levelData.SpeedMax, GetInt(node, "speedMax", 0, level));
             levelData.Jump = PreferPrimaryStat(levelData.Jump, GetInt(node, "psdJump", 0, level));
             levelData.EnhancedPAD = GetInt(node, "epad", 0, level);
             levelData.EnhancedMAD = GetInt(node, "emad", 0, level);

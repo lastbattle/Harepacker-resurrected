@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -109,6 +110,10 @@ namespace HaCreator.MapSimulator.UI
         private const int JoypadClientCancelButtonLeft = 120;
         private const int JoypadClientButtonTop = 302;
         private const int JoypadClientSelectableButtonCount = 12;
+        private const int JoypadClientEmptyButtonNameStringPoolId = 0x1A54;
+        private const int JoypadClientButtonItemFormatStringPoolId = 0x180E;
+        private const int JoypadClientButtonLabelFormatStringPoolId = 0x180F;
+        private const int JoypadClientDefaultButtonUolStringPoolId = 0x1810;
         private const int JoypadRowsTop = 136;
         private const int JoypadRowPitch = 20;
         private const int JoypadFooterReserve = 52;
@@ -971,10 +976,40 @@ namespace HaCreator.MapSimulator.UI
         private void BuildJoypadRows()
         {
             _joypadRows.Clear();
+            AddJoypadBindingRow(InputAction.Jump, "Jump", "Cycles the jump pad button without consuming reserved movement directions.", 0, 71);
+            AddJoypadBindingRow(InputAction.Attack, "Attack", "Cycles the basic attack pad button without remapping the left stick or D-pad.", 1, 89);
+            AddJoypadBindingRow(InputAction.Pickup, "Pickup", "Cycles the pickup or loot pad button from the shared utility set.", 2, 107);
+            AddJoypadBindingRow(InputAction.Interact, "Interact", "Cycles the talk or portal pad button from the shared utility set.", 3, 148);
+            AddJoypadBindingRow(InputAction.Skill1, "Skill 1", "Cycles the primary shoulder or face button for the first skill slot.", 4, 166);
+            AddJoypadBindingRow(InputAction.Skill2, "Skill 2", "Cycles the secondary shoulder or face button for the second skill slot.", 5, 184);
+            AddJoypadBindingRow(InputAction.Skill3, "Skill 3", "Cycles the tertiary trigger binding for the next staged skill slot.", 6, 202);
+            AddJoypadBindingRow(InputAction.Skill4, "Skill 4", "Cycles the fourth staged skill trigger from the same shared utility family.", 7, 220);
+            AddJoypadBindingRow(InputAction.QuickSlot1, "Quick Slot 1", "Cycles the first staged quick-slot button without exposing directional inputs.", 8, 238);
+            AddJoypadBindingRow(InputAction.QuickSlot2, "Quick Slot 2", "Cycles the second staged quick-slot button from the same utility-button family.", 9, 256);
+            AddJoypadBindingRow(InputAction.ToggleInventory, "Inventory", "Cycles the utility menu pad button while keeping movement inputs reserved.", 10, 274);
+            AddJoypadBindingRow(InputAction.Escape, "Escape", "Cycles the system or cancel pad button while keeping movement inputs reserved.", 11, 292);
+            _joypadRows.Add(new JoypadRow(
+                null,
+                "Default",
+                "Mirrors CUIJoyPad button 1009 / StringPool[0x1810]; confirm stages the client default combo assignment instead of applying immediately.",
+                session => DescribeResetProfileState(session),
+                (session, direction) =>
+                {
+                    if (direction < 0)
+                    {
+                        CopyJoypadSession(_originalJoypadSession, session);
+                        return;
+                    }
+
+                    ResetJoypadSession(session);
+                },
+                JoypadRowKind.Reset,
+                clientControlId: JoypadClientDefaultButtonId,
+                clientY: JoypadClientButtonTop));
             _joypadRows.Add(new JoypadRow(
                 null,
                 "Calibration",
-                "Left click advances the shared dead-zone and trigger preset; right click steps backward.",
+                "Simulator extension: left click advances the shared dead-zone and trigger preset; right click steps backward.",
                 session => FormatCalibrationPreset(session),
                 (session, direction) => ApplyCalibrationPresetStep(session, direction),
                 JoypadRowKind.Calibration,
@@ -982,7 +1017,7 @@ namespace HaCreator.MapSimulator.UI
             _joypadRows.Add(new JoypadRow(
                 null,
                 "Controller Slot",
-                "Left click advances the active XInput slot; right click steps backward while still preferring connected pads.",
+                "Simulator extension: left click advances the active XInput slot; right click steps backward while still preferring connected pads.",
                 session => $"P{(int)session.GamepadIndex + 1}",
                 (session, direction) => session.GamepadIndex = GetNextPreferredGamepadIndex(session.GamepadIndex, direction),
                 JoypadRowKind.ControllerSlot));
@@ -1040,49 +1075,23 @@ namespace HaCreator.MapSimulator.UI
                 session => session.LeftStickInvertY ? "On" : "Off",
                 (session, _) => session.LeftStickInvertY = !session.LeftStickInvertY,
                 JoypadRowKind.Toggle));
-            _joypadRows.Add(new JoypadRow(
-                null,
-                "Reset Profile",
-                "Left click stages the default MapleStory-shaped pad profile; right click restores the live profile captured when this owner opened.",
-                session => DescribeResetProfileState(session),
-                (session, direction) =>
-                {
-                    if (direction < 0)
-                    {
-                        CopyJoypadSession(_originalJoypadSession, session);
-                        return;
-                    }
-
-                    ResetJoypadSession(session);
-                },
-                JoypadRowKind.Reset));
-
-            AddJoypadBindingRow(InputAction.Jump, "Jump", "Cycles the jump pad button without consuming reserved movement directions.");
-            AddJoypadBindingRow(InputAction.Attack, "Attack", "Cycles the basic attack pad button without remapping the left stick or D-pad.");
-            AddJoypadBindingRow(InputAction.Pickup, "Pickup", "Cycles the pickup or loot pad button from the shared utility set.");
-            AddJoypadBindingRow(InputAction.Interact, "Interact", "Cycles the talk or portal pad button from the shared utility set.");
-            AddJoypadBindingRow(InputAction.Skill1, "Skill 1", "Cycles the primary shoulder or face button for the first skill slot.");
-            AddJoypadBindingRow(InputAction.Skill2, "Skill 2", "Cycles the secondary shoulder or face button for the second skill slot.");
-            AddJoypadBindingRow(InputAction.Skill3, "Skill 3", "Cycles the tertiary trigger binding for the next staged skill slot.");
-            AddJoypadBindingRow(InputAction.Skill4, "Skill 4", "Cycles the fourth staged skill trigger from the same shared utility family.");
-            AddJoypadBindingRow(InputAction.QuickSlot1, "Quick Slot 1", "Cycles the first staged quick-slot button without exposing directional inputs.");
-            AddJoypadBindingRow(InputAction.QuickSlot2, "Quick Slot 2", "Cycles the second staged quick-slot button from the same utility-button family.");
-            AddJoypadBindingRow(InputAction.ToggleInventory, "Inventory", "Cycles the utility menu pad button while keeping movement inputs reserved.");
             AddJoypadBindingRow(InputAction.ToggleMinimap, "Minimap", "Cycles the minimap toggle pad button without exposing the stick directions.");
             AddJoypadBindingRow(InputAction.ToggleChat, "Chat", "Cycles the chat-focus pad button from the non-directional client utility family.");
             AddJoypadBindingRow(InputAction.ToggleQuickSlot, "Quick Slot UI", "Cycles the quick-slot-bar toggle while still keeping movement reserved.");
             AddJoypadBindingRow(InputAction.ToggleKeyConfig, "Key Config", "Cycles the key-setting shortcut from the same staged utility set.");
-            AddJoypadBindingRow(InputAction.Escape, "Escape", "Cycles the system or cancel pad button while keeping movement inputs reserved.");
         }
 
-        private void AddJoypadBindingRow(InputAction action, string label, string description)
+        private void AddJoypadBindingRow(InputAction action, string label, string description, int clientSlotIndex = -1, int clientY = 0)
         {
             _joypadRows.Add(new JoypadRow(
                 action,
                 label,
                 $"{description} Left click arms live pad capture; right click clears the staged pad button.",
                 session => FormatGamepadButton(GetJoypadBinding(session, action)),
-                (_, _) => { }));
+                (_, _) => { },
+                JoypadRowKind.Binding,
+                clientControlId: clientSlotIndex >= 0 ? JoypadClientComboFirstId + clientSlotIndex : 0,
+                clientY: clientY));
         }
 
         private List<OptionRow> BuildClientOptionRows()

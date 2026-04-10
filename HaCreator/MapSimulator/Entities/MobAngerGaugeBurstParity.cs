@@ -9,6 +9,16 @@ namespace HaCreator.MapSimulator.Entities
 
         public static int ResolveRepeatIntervalMs(IReadOnlyList<IDXObject> frames)
         {
+            return ResolveRepeatIntervalMs(frames, specialAttackAfterMs: 0);
+        }
+
+        public static int ResolveRepeatIntervalMs(IReadOnlyList<IDXObject> frames, int specialAttackAfterMs)
+        {
+            if (specialAttackAfterMs > 0)
+            {
+                return specialAttackAfterMs;
+            }
+
             if (frames == null || frames.Count == 0)
             {
                 return 0;

@@ -614,7 +614,7 @@ namespace HaCreator.MapSimulator.Pools
             RemovalTargetScale = targetScale;
             Alpha = Math.Max(Alpha, 0f);
 
-            if (!UseLayeredMesoAnimation && AnimFrames != null && AnimFrames.Count > 1)
+            if (IsPacketControlled && AnimFrames != null && AnimFrames.Count > 1)
             {
                 FreezeAnimationDuringRemovalFade = true;
             }

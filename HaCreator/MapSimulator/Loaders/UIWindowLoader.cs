@@ -812,6 +812,7 @@ namespace HaCreator.MapSimulator.Loaders
             // CUtilDlg::OnCreate draws the bottom slice at m_height - 0x0F, so the
             // frame canvas clips to the first 15 pixels of UtilDlgEx/s.
             const int clientVisibleBottomHeight = 15;
+            const int clientCenterBandStride = 16;
 
             int frameWidth = Math.Max(1, width);
             int frameHeight = Math.Max(1, height);
@@ -828,12 +829,10 @@ namespace HaCreator.MapSimulator.Loaders
 
             BlitTextureStrip(frameData, frameWidth, 0, topData, topTexture.Width, topHeight, frameWidth);
 
-            int centerY = topHeight;
-            while (centerY < topHeight + centerHeight)
+            foreach (int centerY in EnumerateUtilDlgCenterBandYPositions(topHeight, centerHeight, clientCenterBandStride))
             {
                 int stripHeight = Math.Min(centerTexture.Height, (topHeight + centerHeight) - centerY);
                 BlitTextureStrip(frameData, frameWidth, centerY, centerData, centerTexture.Width, stripHeight, frameWidth);
-                centerY += stripHeight;
             }
 
             if (bottomHeight > 0)
@@ -844,6 +843,25 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D frameTexture = new Texture2D(device, frameWidth, frameHeight);
             frameTexture.SetData(frameData);
             return frameTexture;
+        }
+
+        internal static IReadOnlyList<int> EnumerateUtilDlgCenterBandYPositions(
+            int topHeight,
+            int centerHeight,
+            int stride)
+        {
+            int normalizedTopHeight = Math.Max(0, topHeight);
+            int normalizedCenterHeight = Math.Max(0, centerHeight);
+            int normalizedStride = Math.Max(1, stride);
+            int centerEndY = normalizedTopHeight + normalizedCenterHeight;
+
+            List<int> positions = new();
+            for (int centerY = normalizedTopHeight; centerY < centerEndY; centerY += normalizedStride)
+            {
+                positions.Add(centerY);
+            }
+
+            return positions;
         }
 
         private static Texture2D CreateExtendedUtilDlgNoticeFrameTexture(
@@ -2477,6 +2495,7 @@ namespace HaCreator.MapSimulator.Loaders
                 new Point(x + cascade, y + cascade));
             RegisterCashShopStageChildWindows(manager, basicImage, soundUIImage, device,
                 new Point(x + cascade, y + cascade));
+            RegisterCashServiceModalOwnerWindows(manager, uiWindow1Image, uiWindow2Image, device, screenWidth, screenHeight);
             RegisterAdminShopWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 MapSimulatorWindowNames.Mts, AdminShopServiceMode.Mts,
                 new Point(x + (cascade * 2), y + (cascade * 2)),
@@ -3448,6 +3467,60 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopList);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopStatus);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopOneADay);
+        }
+
+        private static void RegisterCashServiceModalOwnerWindows(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight)
+        {
+            RegisterCashServiceModalOwnerWindow(manager, uiWindow1Image, uiWindow2Image, device, screenWidth, screenHeight, MapSimulatorWindowNames.CashCouponDialog);
+            RegisterCashServiceModalOwnerWindow(manager, uiWindow1Image, uiWindow2Image, device, screenWidth, screenHeight, MapSimulatorWindowNames.CashPurchaseConfirmDialog);
+            RegisterCashServiceModalOwnerWindow(manager, uiWindow1Image, uiWindow2Image, device, screenWidth, screenHeight, MapSimulatorWindowNames.CashReceiveGiftDialog);
+            RegisterCashServiceModalOwnerWindow(manager, uiWindow1Image, uiWindow2Image, device, screenWidth, screenHeight, MapSimulatorWindowNames.CashNameChangeLicenseDialog);
+            RegisterCashServiceModalOwnerWindow(manager, uiWindow1Image, uiWindow2Image, device, screenWidth, screenHeight, MapSimulatorWindowNames.CashTransferWorldLicenseDialog);
+        }
+
+        private static void RegisterCashServiceModalOwnerWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            GraphicsDevice device,
+            int screenWidth,
+            int screenHeight,
+            string windowName)
+        {
+            if (manager == null || device == null || manager.GetWindow(windowName) != null)
+            {
+                return;
+            }
+
+            Texture2D frameTexture = ResolveCashServiceModalFrameTexture(uiWindow1Image, uiWindow2Image, device, windowName)
+                ?? CreateFilledTexture(device, 266, 158, new Color(34, 34, 34, 240), new Color(118, 118, 118, 255));
+            CashServiceModalOwnerWindow window = new(windowName, frameTexture, device, screenWidth, screenHeight, null);
+            manager.RegisterCustomWindow(window);
+        }
+
+        private static Texture2D ResolveCashServiceModalFrameTexture(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            GraphicsDevice device,
+            string windowName)
+        {
+            WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
+            return windowName switch
+            {
+                MapSimulatorWindowNames.CashCouponDialog => LoadCanvasTexture(uiWindow2Image?["Coupon"] as WzSubProperty, "backgrnd", device)
+                    ?? LoadCanvasTexture(uiWindow1Image?["Coupon"] as WzSubProperty, "backgrnd", device),
+                MapSimulatorWindowNames.CashNameChangeLicenseDialog => LoadCanvasTexture(cashShopImage?["CSChangeName"]?["Base"] as WzSubProperty, "backgrndnotice", device)
+                    ?? LoadCanvasTexture(cashShopImage?["CSChangeName"]?["Base"] as WzSubProperty, "backgrnd", device),
+                MapSimulatorWindowNames.CashTransferWorldLicenseDialog => LoadCanvasTexture(cashShopImage?["CSTransferWorld"]?["Base"] as WzSubProperty, "backgrndnotice", device)
+                    ?? LoadCanvasTexture(cashShopImage?["CSTransferWorld"]?["Base"] as WzSubProperty, "backgrnd", device),
+                _ => null
+            };
         }
 
         private static void RegisterItcStageChildWindows(

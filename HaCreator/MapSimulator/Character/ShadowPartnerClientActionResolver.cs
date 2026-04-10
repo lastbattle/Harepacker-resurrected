@@ -199,11 +199,6 @@ namespace HaCreator.MapSimulator.Character
             "alert3",
             "alert4",
             "alert5",
-            // The client raw action table continues the indexed alert family through
-            // `alert6` / `alert7`; the helper loader still resolves those through the
-            // authored `alert` row and clamps the requested helper frame when needed.
-            "alert6",
-            "alert7",
             // The client raw-action table also surfaces back-action aliases that collapse onto
             // the authored ladder/rope helper branches instead of their own WZ rows.
             "ladder2",

@@ -7,6 +7,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal delegate bool HexByteDecoder(string hexBytes, out byte[] payload);
     internal delegate ChatCommandHandler.CommandResult MessengerPacketCommandApplier(MessengerPacketType packetType, byte[] payload);
     internal delegate ChatCommandHandler.CommandResult MessengerDispatchCommandApplier(byte[] payload);
+    internal delegate ChatCommandHandler.CommandResult MessengerDispatchSubtypeCommandApplier(byte packetSubtype, byte[] payload);
     internal delegate bool MessengerInviteResolutionPayloadBuilder(bool accepted, string contactName, out byte[] payload, out string message);
     internal delegate bool MessengerAvatarPayloadBuilder(string participantToken, int? slotOverride, out byte[] payload, out string message);
     internal delegate bool MessengerEnterPayloadBuilder(string participantToken, int? slotOverride, int? channelOverride, bool? isNewOverride, out byte[] payload, out string message);
@@ -16,7 +17,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal static class MessengerCommandRouter
     {
         private const string PacketRawUsage = "Usage: /messenger packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex bytes>";
-        private const string RemoteUsage = "Usage: /messenger remote <invite|accept|reject|leave|room|whisper> ...";
+        private const string RemoteUsage = "Usage: /messenger remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...";
         private const string RemoveUsage = "Usage: /messenger packet remove <name>";
         private const string UpsertUsage = "Usage: /messenger packet upsert <name>|<online|offline>|<channel>|<level>|<job>|<location>|<status>";
         private const string InviteUsage = "Usage: /messenger packet invite <name>";
@@ -31,6 +32,7 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryPayloadArgumentParser parseBinaryPayloadArgument,
             MessengerPacketCommandApplier applyPacket,
             MessengerDispatchCommandApplier applyDispatch,
+            MessengerDispatchSubtypeCommandApplier applyDispatchSubtype,
             MessengerInviteResolutionPayloadBuilder buildInviteResolutionPayload,
             MessengerAvatarPayloadBuilder buildAvatarPayload,
             MessengerEnterPayloadBuilder buildEnterPayload,
@@ -124,21 +126,21 @@ namespace HaCreator.MapSimulator.Interaction
                 case "avatar":
                     if (!LooksLikeBinaryPayloadArgument(args, 2))
                     {
-                        return BuildAndApplyAvatarPayload(args, buildAvatarPayload, applyPacket);
+                        return BuildAndApplyAvatarPayload(args, buildAvatarPayload, applyDispatchSubtype);
                     }
 
                     goto default;
                 case "enter":
                     if (!LooksLikeBinaryPayloadArgument(args, 2))
                     {
-                        return BuildAndApplyEnterPayload(args, buildEnterPayload, applyPacket);
+                        return BuildAndApplyEnterPayload(args, buildEnterPayload, applyDispatchSubtype);
                     }
 
                     goto default;
                 case "migrated":
                     if (!LooksLikeBinaryPayloadArgument(args, 2))
                     {
-                        return BuildAndApplyMigratedPayload(buildMigratedPayload, applyPacket);
+                        return BuildAndApplyMigratedPayload(buildMigratedPayload, applyDispatchSubtype);
                     }
 
                     goto default;
@@ -146,7 +148,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case "selfenter":
                     if (!LooksLikeBinaryPayloadArgument(args, 2))
                     {
-                        return BuildAndApplySelfEnterResultPayload(args, buildSelfEnterResultPayload, applyPacket);
+                        return BuildAndApplySelfEnterResultPayload(args, buildSelfEnterResultPayload, applyDispatchSubtype);
                     }
 
                     goto default;
@@ -215,6 +217,7 @@ namespace HaCreator.MapSimulator.Interaction
             string[] args,
             MessengerRuntime runtime,
             MessengerPacketCommandApplier applyPacket,
+            MessengerDispatchSubtypeCommandApplier applyDispatchSubtype,
             MessengerInviteResolutionPayloadBuilder buildInviteResolutionPayload,
             MessengerAvatarPayloadBuilder buildAvatarPayload,
             MessengerEnterPayloadBuilder buildEnterPayload,
@@ -279,14 +282,14 @@ namespace HaCreator.MapSimulator.Interaction
 
                     return applyPacket(MessengerPacketType.Whisper, MessengerPacketCodec.BuildChatPayload(args[2], string.Join(" ", args.Skip(3))));
                 case "avatar":
-                    return BuildAndApplyAvatarPayload(args, buildAvatarPayload, applyPacket, usage: "Usage: /messenger remote avatar <name|local> [slot]");
+                    return BuildAndApplyAvatarPayload(args, buildAvatarPayload, applyDispatchSubtype, usage: "Usage: /messenger remote avatar <name|local> [slot]");
                 case "enter":
-                    return BuildAndApplyEnterPayload(args, buildEnterPayload, applyPacket, usage: "Usage: /messenger remote enter <name|local> [slot] [channel] [new|existing]");
+                    return BuildAndApplyEnterPayload(args, buildEnterPayload, applyDispatchSubtype, usage: "Usage: /messenger remote enter <name|local> [slot] [channel] [new|existing]");
                 case "migrated":
-                    return BuildAndApplyMigratedPayload(buildMigratedPayload, applyPacket);
+                    return BuildAndApplyMigratedPayload(buildMigratedPayload, applyDispatchSubtype);
                 case "selfenterresult":
                 case "selfenter":
-                    return BuildAndApplySelfEnterResultPayload(args, buildSelfEnterResultPayload, applyPacket, usage: "Usage: /messenger remote selfenterresult [slot|fail]");
+                    return BuildAndApplySelfEnterResultPayload(args, buildSelfEnterResultPayload, applyDispatchSubtype, usage: "Usage: /messenger remote selfenterresult [slot|fail]");
                 default:
                     return ChatCommandHandler.CommandResult.Error(RemoteUsage);
             }
@@ -311,7 +314,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static ChatCommandHandler.CommandResult BuildAndApplyAvatarPayload(
             string[] args,
             MessengerAvatarPayloadBuilder buildAvatarPayload,
-            MessengerPacketCommandApplier applyPacket,
+            MessengerDispatchSubtypeCommandApplier applyDispatchSubtype,
             string usage = "Usage: /messenger packet avatar <name|local> [slot]")
         {
             if (args.Length < 3)
@@ -329,13 +332,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return ChatCommandHandler.CommandResult.Error(message);
             }
 
-            return applyPacket(MessengerPacketType.Avatar, payload);
+            return applyDispatchSubtype(7, payload);
         }
 
         private static ChatCommandHandler.CommandResult BuildAndApplyEnterPayload(
             string[] args,
             MessengerEnterPayloadBuilder buildEnterPayload,
-            MessengerPacketCommandApplier applyPacket,
+            MessengerDispatchSubtypeCommandApplier applyDispatchSubtype,
             string usage = "Usage: /messenger packet enter <name|local> [slot] [channel] [new|existing]")
         {
             if (args.Length < 3)
@@ -355,25 +358,25 @@ namespace HaCreator.MapSimulator.Interaction
                 return ChatCommandHandler.CommandResult.Error(message);
             }
 
-            return applyPacket(MessengerPacketType.Enter, payload);
+            return applyDispatchSubtype(0, payload);
         }
 
         private static ChatCommandHandler.CommandResult BuildAndApplyMigratedPayload(
             MessengerMigratedPayloadBuilder buildMigratedPayload,
-            MessengerPacketCommandApplier applyPacket)
+            MessengerDispatchSubtypeCommandApplier applyDispatchSubtype)
         {
             if (!buildMigratedPayload(out byte[] payload, out string message))
             {
                 return ChatCommandHandler.CommandResult.Error(message);
             }
 
-            return applyPacket(MessengerPacketType.Migrated, payload);
+            return applyDispatchSubtype(8, payload);
         }
 
         private static ChatCommandHandler.CommandResult BuildAndApplySelfEnterResultPayload(
             string[] args,
             MessengerSelfEnterResultPayloadBuilder buildSelfEnterResultPayload,
-            MessengerPacketCommandApplier applyPacket,
+            MessengerDispatchSubtypeCommandApplier applyDispatchSubtype,
             string usage = "Usage: /messenger packet selfenterresult [slot|fail]")
         {
             if (!TryParseOptionalSelfEnterSlot(args, 2, usage, out int? slotOverride))
@@ -386,7 +389,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return ChatCommandHandler.CommandResult.Error(message);
             }
 
-            return applyPacket(MessengerPacketType.SelfEnterResult, payload);
+            return applyDispatchSubtype(1, payload);
         }
 
         private static bool TryParsePacketPayload(

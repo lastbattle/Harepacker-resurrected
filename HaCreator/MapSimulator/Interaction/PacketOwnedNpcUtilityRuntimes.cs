@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Interaction
         long ItemSerialNumber,
         long CashSerialNumber,
         long BaseExpirationTime,
+        int NativeItemTypeIndex,
         string ClientDisplayName,
         string Title,
         string MetadataSummary,
@@ -38,6 +39,7 @@ namespace HaCreator.MapSimulator.Interaction
         int ItemId,
         long ItemSerialNumber,
         long CashSerialNumber,
+        int NativeItemTypeIndex,
         string Title,
         int ClientStock,
         string PrimaryText,
@@ -1002,6 +1004,7 @@ namespace HaCreator.MapSimulator.Interaction
             internal long ItemSerialNumber { get; init; }
             internal long CashSerialNumber { get; init; }
             internal long BaseExpirationTime { get; init; }
+            internal int NativeItemTypeIndex { get; init; }
             internal bool IsRechargeBundle { get; init; }
             internal string MetadataSummary { get; init; } = string.Empty;
             internal StoreBankEquipData EquipData { get; init; }
@@ -1270,6 +1273,7 @@ namespace HaCreator.MapSimulator.Interaction
                     item.ItemId,
                     item.ItemSerialNumber,
                     item.CashSerialNumber,
+                    item.NativeItemTypeIndex,
                     item.Title,
                     item.ClientStock,
                     primaryText,
@@ -1476,9 +1480,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            IsOpen = true;
-            ResetTransientRequestState();
             _lastSubtype = payload[0];
+            if (!IsOpen)
+            {
+                StatusMessage = $"CStoreBankDlg ignored packet 369 subtype {_lastSubtype.ToString(CultureInfo.InvariantCulture)} because no store-bank unique-modeless owner is open.";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return true;
+            }
+
+            ResetTransientRequestState();
             StatusMessage = _lastSubtype switch
             {
                 30 => $"CStoreBankDlg result 30 cleared the list and disabled the Get button: {ResolveStoreBankNoticeText(0x0DC6, "Stored items were cleared.")}",
@@ -1512,15 +1523,24 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            ResetTransientRequestState();
             _lastSubtype = payload[0];
             switch (_lastSubtype)
             {
                 case 35:
+                    ResetTransientRequestState();
                     _openCount++;
                     return TryApplyOpenPacket(payload, out message);
 
                 case 36:
+                    if (!IsOpen)
+                    {
+                        StatusMessage = "CStoreBankDlg ignored packet 370 subtype 36 because no store-bank unique-modeless owner is open.";
+                        AppendNote(StatusMessage);
+                        message = StatusMessage;
+                        return true;
+                    }
+
+                    ResetTransientRequestState();
                     if (payload.Length < 1 + (sizeof(int) * 2))
                     {
                         message = "Store-bank packet 370 subtype 36 requires passing-day and fee integers.";
@@ -1538,6 +1558,15 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case 37:
+                    if (!IsOpen)
+                    {
+                        StatusMessage = "CStoreBankDlg ignored packet 370 subtype 37 because no store-bank unique-modeless owner is open.";
+                        AppendNote(StatusMessage);
+                        message = StatusMessage;
+                        return true;
+                    }
+
+                    ResetTransientRequestState();
                     if (payload.Length < 1 + (sizeof(int) * 2) + sizeof(byte))
                     {
                         message = "Store-bank packet 370 subtype 37 requires two 4-byte values and a channel byte.";
@@ -1555,11 +1584,21 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
 
                 case 38:
+                    if (!IsOpen)
+                    {
+                        StatusMessage = "CStoreBankDlg ignored packet 370 subtype 38 because no store-bank unique-modeless owner is open.";
+                        AppendNote(StatusMessage);
+                        message = StatusMessage;
+                        return true;
+                    }
+
+                    ResetTransientRequestState();
                     IsOpen = true;
                     StatusMessage = $"CStoreBankDlg showed notice {FormatStoreBankStringPoolId(0x0DC3)}: {ResolveStoreBankNoticeText(0x0DC3, "Store-bank notice 38.")}";
                     break;
 
                 default:
+                    ResetTransientRequestState();
                     IsOpen = true;
                     StatusMessage = $"CStoreBankDlg packet 370 subtype {_lastSubtype.ToString(CultureInfo.InvariantCulture)} is not modeled beyond owner tracking.";
                     break;
@@ -1889,6 +1928,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (item.PacketGroupInventoryType != item.InventoryType)
             {
                 parts.Add($"group {item.PacketGroupInventoryType}");
+            }
+
+            if (item.NativeItemTypeIndex > 0)
+            {
+                parts.Add($"native TI {item.NativeItemTypeIndex.ToString(CultureInfo.InvariantCulture)}");
             }
 
             if (item.Quantity > 1)
@@ -2266,6 +2310,7 @@ namespace HaCreator.MapSimulator.Interaction
             int clientStock = ResolveClientStock(slotType, quantity);
             int encodedByteLength = checked((int)(stream.Position - itemStartPosition));
             long itemSerialNumber = ResolveNativeItemSerialNumber(equipData, bundleData);
+            int nativeItemTypeIndex = ResolveNativeItemTypeIndex(itemId);
 
             entry = new StoreBankItemEntry
             {
@@ -2286,6 +2331,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ItemSerialNumber = itemSerialNumber,
                 CashSerialNumber = cashSerialNumber,
                 BaseExpirationTime = baseExpirationTime,
+                NativeItemTypeIndex = nativeItemTypeIndex,
                 IsRechargeBundle = slotType == 2 && itemId / 10000 is 207 or 233,
                 MetadataSummary = metadataSummary,
                 EquipData = equipData,
@@ -2324,6 +2370,7 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.ItemSerialNumber,
                 entry.CashSerialNumber,
                 entry.BaseExpirationTime,
+                entry.NativeItemTypeIndex,
                 entry.ClientDisplayName,
                 entry.Title,
                 entry.MetadataSummary,
@@ -2358,6 +2405,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ItemSerialNumber = item.ItemSerialNumber,
                 CashSerialNumber = item.CashSerialNumber,
                 BaseExpirationTime = item.BaseExpirationTime,
+                NativeItemTypeIndex = item.NativeItemTypeIndex,
                 IsRechargeBundle = item.IsRechargeBundle,
                 MetadataSummary = item.MetadataSummary,
                 EquipData = item.EquipData,
@@ -2379,6 +2427,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return 0;
+        }
+
+        private static int ResolveNativeItemTypeIndex(int itemId)
+        {
+            int typeIndex = itemId / 1_000_000;
+            return typeIndex is >= 1 and <= 5 ? typeIndex : 0;
         }
 
         private static int ResolveClientStock(byte slotType, int quantity)

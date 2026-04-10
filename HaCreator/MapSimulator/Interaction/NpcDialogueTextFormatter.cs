@@ -45,8 +45,9 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex MalformedQuestDetailStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])", RegexOptions.Compiled);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex LiteralWordHashRegex = new(@"#(?=[A-Z][A-Za-z]+\b)", RegexOptions.Compiled);
 
         public static string Format(string text, NpcDialogueFormattingContext context = null)
         {
@@ -82,6 +83,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = QuestRecordRegex.Replace(formatted, match => ResolveQuestRecordText(match.Groups[1].Value, context));
             formatted = StyleTagRegex.Replace(formatted, string.Empty);
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
+            formatted = LiteralWordHashRegex.Replace(formatted, string.Empty);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
 
             return NormalizeWhitespace(formatted);
@@ -120,6 +122,11 @@ namespace HaCreator.MapSimulator.Interaction
             preservedMarkers = MalformedQuestDetailStyleRegex.Replace(
                 preservedMarkers,
                 match => BuildQuestStyleMarker(match.Groups["tag"].Value));
+            preservedMarkers = Regex.Replace(
+                preservedMarkers,
+                "#c#",
+                BuildQuestStyleMarker("c"),
+                RegexOptions.IgnoreCase);
             string styleInput = preservedMarkers;
             preservedMarkers = QuestDetailStyleRegex.Replace(
                 preservedMarkers,
@@ -151,15 +158,40 @@ namespace HaCreator.MapSimulator.Interaction
             char nextCharacter = text[nextIndex];
             if (string.Equals(styleTag, "m", StringComparison.OrdinalIgnoreCase))
             {
-                return nextCharacter == '#' || char.IsDigit(nextCharacter);
+                return nextCharacter == '#' ||
+                       IsTerminatedQuestDetailNumericToken(text, nextIndex);
             }
 
             if (string.Equals(styleTag, "c", StringComparison.OrdinalIgnoreCase))
             {
-                return char.IsDigit(nextCharacter);
+                return IsTerminatedQuestDetailNumericToken(text, nextIndex);
             }
 
             return false;
+        }
+
+        private static bool IsTerminatedQuestDetailNumericToken(string text, int digitStartIndex)
+        {
+            if (string.IsNullOrEmpty(text) ||
+                digitStartIndex < 0 ||
+                digitStartIndex >= text.Length ||
+                !char.IsDigit(text[digitStartIndex]))
+            {
+                return false;
+            }
+
+            int index = digitStartIndex + 1;
+            while (index < text.Length && char.IsDigit(text[index]))
+            {
+                index++;
+            }
+
+            if (index < text.Length && text[index] == ':')
+            {
+                index++;
+            }
+
+            return index < text.Length && text[index] == '#';
         }
 
         public static string BuildItemIconMarker(int itemId)

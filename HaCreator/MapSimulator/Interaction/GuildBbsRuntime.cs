@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -53,6 +54,9 @@ namespace HaCreator.MapSimulator.Interaction
         private const int EnterTitleStringPoolId = 0x1A5D;
         private const int DeletePostPromptStringPoolId = 0xEB2;
         private const int ExistingNoticeStringPoolId = 0xEB3;
+        private const int ClientGuildBbsRequestOpcode = 179;
+        private const byte ClientRegisterRequestType = 0;
+        private const byte ClientCommentRequestType = 4;
 
         private sealed class GuildBbsCommentState
         {
@@ -816,6 +820,76 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, authority={AuthoritySourceLabel} [{DescribePermissionMask(EffectivePermissionMask)}], cashEmoticons={OwnedCashEmoticonCount}/{_cashEmoticonCount} ({CashOwnershipSourceLabel})";
         }
 
+        public string BuildClientRegisterRequestPreview()
+        {
+            if (!IsWriteMode)
+            {
+                return "Guild BBS write mode is not active.";
+            }
+
+            string resolvedTitle = _compose.Title?.Trim() ?? string.Empty;
+            string resolvedBody = _compose.Body?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(resolvedTitle))
+            {
+                return GetEnterTitleNotice();
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedBody))
+            {
+                return GetEnterTextNotice();
+            }
+
+            if (!ClientCurseProcessParity.TryValidateText(resolvedTitle, out string titleNotice))
+            {
+                return titleNotice;
+            }
+
+            if (!ClientCurseProcessParity.TryValidateText(resolvedBody, out string bodyNotice))
+            {
+                return bodyNotice;
+            }
+
+            var payload = new List<byte>();
+            EncodeByte(payload, ClientRegisterRequestType);
+            EncodeByte(payload, _compose.EditThreadId > 0 ? 1 : 0);
+            if (_compose.EditThreadId > 0)
+            {
+                EncodeInt32(payload, _compose.EditThreadId);
+            }
+
+            EncodeByte(payload, _compose.IsNotice ? 1 : 0);
+            EncodeString(payload, resolvedTitle);
+            EncodeString(payload, resolvedBody);
+            EncodeInt32(payload, ResolveClientEmoticonId(_compose.EmoticonKind, _compose.EmoticonSlot));
+            return FormatClientPacketPreview("register", payload);
+        }
+
+        public string BuildClientCommentRequestPreview()
+        {
+            GuildBbsThreadState selectedThread = GetSelectedThread();
+            if (selectedThread == null)
+            {
+                return "Select a Guild BBS thread before replying.";
+            }
+
+            string replyBody = _replyDraft.Body?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(replyBody))
+            {
+                return GetEnterTextNotice();
+            }
+
+            if (!ClientCurseProcessParity.TryValidateText(replyBody, out string notice))
+            {
+                return notice;
+            }
+
+            var payload = new List<byte>();
+            EncodeByte(payload, ClientCommentRequestType);
+            EncodeInt32(payload, selectedThread.ThreadId);
+            EncodeString(payload, replyBody);
+            return FormatClientPacketPreview("comment", payload);
+        }
+
         private GuildBbsComposeState CreateDraftFromContext()
         {
             return new GuildBbsComposeState
@@ -1001,6 +1075,46 @@ namespace HaCreator.MapSimulator.Interaction
                 GuildBbsEmoticonKind.Cash => $"Cash {(slotIndex / ClientVisibleCashEmoticonCount) + 1}-{(slotIndex % ClientVisibleCashEmoticonCount) + 1}",
                 _ => "None"
             };
+        }
+
+        private static int ResolveClientEmoticonId(GuildBbsEmoticonKind kind, int slotIndex)
+        {
+            return kind switch
+            {
+                GuildBbsEmoticonKind.Basic when slotIndex >= 0 => slotIndex,
+                GuildBbsEmoticonKind.Cash when slotIndex >= 0 => ClientCashEmoticonIdStart + slotIndex,
+                _ => 0
+            };
+        }
+
+        private static void EncodeByte(List<byte> payload, int value)
+        {
+            payload.Add((byte)value);
+        }
+
+        private static void EncodeInt32(List<byte> payload, int value)
+        {
+            payload.Add((byte)value);
+            payload.Add((byte)(value >> 8));
+            payload.Add((byte)(value >> 16));
+            payload.Add((byte)(value >> 24));
+        }
+
+        private static void EncodeString(List<byte> payload, string value)
+        {
+            byte[] encoded = Encoding.Default.GetBytes(value ?? string.Empty);
+            int length = Math.Min(encoded.Length, ushort.MaxValue);
+            payload.Add((byte)length);
+            payload.Add((byte)(length >> 8));
+            for (int i = 0; i < length; i++)
+            {
+                payload.Add(encoded[i]);
+            }
+        }
+
+        private static string FormatClientPacketPreview(string requestKind, IReadOnlyCollection<byte> payload)
+        {
+            return $"CUIGuildBBS {requestKind} request preview: opcode={ClientGuildBbsRequestOpcode}, payloadhex={Convert.ToHexString(payload.ToArray())}.";
         }
 
         private bool CanWriteThread()

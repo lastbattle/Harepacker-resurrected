@@ -77,6 +77,7 @@ namespace HaCreator.MapSimulator
             public byte? PacketOwnedPreludeCode { get; set; }
             public byte? PacketOwnedTerminalCode { get; set; }
             public bool PacketOwnedResultObserved { get; set; }
+            public bool? PacketOwnedPreludeSuccess { get; set; }
         }
 
         private sealed class PendingVegaPromptState
@@ -711,33 +712,55 @@ namespace HaCreator.MapSimulator
 
             if (TryMapPacketOwnedVegaPreludeCode(resultCode, out bool success))
             {
-                if (!TryApplyPendingVegaPacketOwnedResult(success, out ItemUpgradeUI.ItemUpgradeAttemptResult result, out string error))
-                {
-                    message = error;
-                    return false;
-                }
-
+                ItemUpgradeUI.ItemUpgradeAttemptResult result = BuildPacketOwnedVegaPreludeResult(
+                    _pendingVegaCastState.Request,
+                    success);
                 result = RewriteVegaOwnerResultMessage(result, _pendingVegaCastState.UseWhiteScroll);
                 _pendingVegaCastState.PacketOwnedPreludeCode = resultCode;
                 _pendingVegaCastState.PacketOwnedResultObserved = true;
-                _pendingVegaCastState.ResultApplied = true;
+                _pendingVegaCastState.PacketOwnedPreludeSuccess = success;
                 _pendingVegaCastState.Result = result;
-                _pendingVegaCastState.ResultReadyAtTick = currTickCount;
+                _pendingVegaCastState.ResultReadyAtTick = currTickCount + VegaOwnerExternalResultFallbackDelayMs;
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
                 {
                     vegaSpellWindow.ApplyPacketOwnedResultPrelude(result);
                 }
 
                 EnsureVegaResultLoopSoundPlaying();
-                message = $"Applied packet-owned Vega prelude result code {resultCode} through CUIVega::OnVegaResult ownership.";
+                message = $"Observed packet-owned Vega prelude result code {resultCode} through CUIVega::OnVegaResult ownership and deferred equipment mutation until the terminal result packet.";
                 return true;
             }
 
             if (TryMapPacketOwnedVegaTerminalCode(resultCode, out bool terminalSuccess))
             {
+                if (_pendingVegaCastState.PacketOwnedPreludeSuccess.HasValue)
+                {
+                    terminalSuccess = _pendingVegaCastState.PacketOwnedPreludeSuccess.Value;
+                }
+
+                if (!_pendingVegaCastState.ResultApplied)
+                {
+                    if (!TryApplyPendingVegaPacketOwnedResult(
+                            terminalSuccess,
+                            out ItemUpgradeUI.ItemUpgradeAttemptResult result,
+                            out string error))
+                    {
+                        message = error;
+                        return false;
+                    }
+
+                    result = RewriteVegaOwnerResultMessage(result, _pendingVegaCastState.UseWhiteScroll);
+                    _pendingVegaCastState.ResultApplied = true;
+                    _pendingVegaCastState.Result = result;
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
+                    {
+                        vegaSpellWindow.ApplyResolvedSpellResult(result);
+                    }
+                }
+
                 _pendingVegaCastState.PacketOwnedTerminalCode = resultCode;
                 _pendingVegaCastState.PacketOwnedResultObserved = true;
-                message = $"Observed packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}).";
+                message = $"Applied packet-owned Vega terminal result code {resultCode} ({(terminalSuccess ? "success" : "failure")}) after the recovered prelude.";
                 return true;
             }
 
@@ -1132,6 +1155,39 @@ namespace HaCreator.MapSimulator
             }
 
             return true;
+        }
+
+        private static ItemUpgradeUI.ItemUpgradeAttemptResult BuildPacketOwnedVegaPreludeResult(
+            VegaSpellUI.VegaOwnerRequest request,
+            bool success)
+        {
+            string statusMessage = success
+                ? $"{request.EquipName} is responding to Vega's Spell."
+                : $"{request.EquipName} is resisting Vega's Spell.";
+            return new ItemUpgradeUI.ItemUpgradeAttemptResult(
+                success,
+                statusMessage,
+                request.ScrollItemId,
+                request.ModifierItemId);
+        }
+
+        internal static string BuildPacketOwnedVegaPreludeResultMessageForTests(
+            string equipName,
+            bool success)
+        {
+            var request = new VegaSpellUI.VegaOwnerRequest(
+                EquipSlot.Weapon,
+                1302000,
+                equipName,
+                5610000,
+                "Vega's Spell(10%)",
+                2040000,
+                "Scroll",
+                1,
+                10,
+                30,
+                requiresWhiteScrollPrompt: false);
+            return BuildPacketOwnedVegaPreludeResult(request, success).StatusMessage;
         }
 
         private void EnsureVegaResultLoopSoundPlaying()

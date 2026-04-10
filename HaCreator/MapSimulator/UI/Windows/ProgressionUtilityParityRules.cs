@@ -108,5 +108,42 @@ namespace HaCreator.MapSimulator.UI
             int normalizedWidth = Math.Max(0, frameWidth);
             return new Point(Math.Max(8, normalizedWidth - 22), 10);
         }
+
+        internal static RankingWindowSnapshot ApplyPacketOwnedRankingOwnerState(
+            RankingWindowSnapshot fallback,
+            PacketOwnedRankingOwnerStateSnapshot ownerState)
+        {
+            fallback ??= new RankingWindowSnapshot();
+            if (ownerState?.HasAnyState != true)
+            {
+                return fallback;
+            }
+
+            return new RankingWindowSnapshot
+            {
+                Title = fallback.Title,
+                Subtitle = ChooseOwnerText(ownerState.Subtitle, fallback.Subtitle),
+                StatusText = ChooseOwnerText(ownerState.StatusText, fallback.StatusText),
+                NavigationCaption = ChooseOwnerText(ownerState.NavigationCaption, fallback.NavigationCaption),
+                NavigationSeedText = string.IsNullOrWhiteSpace(ownerState.NavigateUrl)
+                    ? fallback.NavigationSeedText
+                    : $"NavigateUrl => {ownerState.NavigateUrl.Trim()}",
+                NavigationHostText = ChooseOwnerText(ownerState.NavigationHostText, fallback.NavigationHostText),
+                NavigationRequestText = ChooseOwnerText(ownerState.NavigationRequestText, fallback.NavigationRequestText),
+                NavigationStateText = ChooseOwnerText(ownerState.NavigationStateText, fallback.NavigationStateText),
+                IsLoading = ownerState.IsLoading ?? fallback.IsLoading,
+                LoadingStartTick = ownerState.LoadingStartTick != int.MinValue
+                    ? ownerState.LoadingStartTick
+                    : fallback.LoadingStartTick,
+                Entries = fallback.Entries
+            };
+        }
+
+        private static string ChooseOwnerText(string ownerText, string fallbackText)
+        {
+            return string.IsNullOrWhiteSpace(ownerText)
+                ? fallbackText ?? string.Empty
+                : ownerText.Trim();
+        }
     }
 }

@@ -167,7 +167,8 @@ namespace HaCreator.MapSimulator.UI
             bool pickedByPet = false,
             string sourceName = null,
             RecentPickupRecord recentPickup = null,
-            string recentActorName = null)
+            string recentActorName = null,
+            Func<int, string> itemNameResolver = null)
         {
             switch (reason)
             {
@@ -182,7 +183,20 @@ namespace HaCreator.MapSimulator.UI
                 case DropPickupFailureReason.FieldRestricted:
                     return FormatCantPickupGeneric();
                 case DropPickupFailureReason.Unavailable:
-                    return FormatUnavailable(dropType, itemName, quantity, mesoAmount, recentPickup, recentActorName);
+                    PickupNoticeFailureContext resolvedContext = ResolveFailureContext(
+                        dropType,
+                        itemName,
+                        quantity,
+                        mesoAmount,
+                        recentPickup,
+                        itemNameResolver);
+                    return FormatUnavailable(
+                        resolvedContext.DropType,
+                        resolvedContext.ItemName,
+                        resolvedContext.Quantity,
+                        resolvedContext.MesoAmount,
+                        recentPickup,
+                        recentActorName);
                 default:
                     return FormatGenericFailure();
             }
@@ -450,6 +464,11 @@ namespace HaCreator.MapSimulator.UI
         {
             if (dropType == DropType.Meso)
             {
+                if (mesoAmount <= 0)
+                {
+                    return string.Empty;
+                }
+
                 return $"{mesoAmount} mesos";
             }
 

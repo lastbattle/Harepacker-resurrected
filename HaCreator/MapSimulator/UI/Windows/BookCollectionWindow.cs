@@ -1997,14 +1997,39 @@ namespace HaCreator.MapSimulator.UI
                 return null;
 
             itemImage.ParseImage();
-            string itemText = string.Equals(category, "Character", StringComparison.OrdinalIgnoreCase)
-                ? itemId.ToString("D8", CultureInfo.InvariantCulture)
-                : itemId.ToString("D7", CultureInfo.InvariantCulture);
-            WzSubProperty infoProperty = (itemImage[itemText] as WzSubProperty)?["info"] as WzSubProperty;
+            WzSubProperty itemProperty = null;
+            foreach (string itemText in EnumerateMonsterBookItemNodeNameCandidates(category, itemId))
+            {
+                itemProperty = itemImage[itemText] as WzSubProperty;
+                if (itemProperty != null)
+                {
+                    break;
+                }
+            }
+
+            WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
             Texture2D icon = (infoProperty?["iconRaw"] as WzCanvasProperty ?? infoProperty?["icon"] as WzCanvasProperty)?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
             if (icon != null)
                 _cardIconCache[itemId] = icon;
             return icon;
+        }
+
+        internal static IEnumerable<string> EnumerateMonsterBookItemNodeNameCandidates(string category, int itemId)
+        {
+            if (string.Equals(category, "Character", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return itemId.ToString("D8", CultureInfo.InvariantCulture);
+                yield break;
+            }
+
+            // Monster Book card entries in Item/Consume/0238.img are authored as 0238xxxx in WZ.
+            yield return itemId.ToString("D8", CultureInfo.InvariantCulture);
+
+            string sevenDigitId = itemId.ToString("D7", CultureInfo.InvariantCulture);
+            if (!string.Equals(sevenDigitId, itemId.ToString("D8", CultureInfo.InvariantCulture), StringComparison.Ordinal))
+            {
+                yield return sevenDigitId;
+            }
         }
 
         private static void DrawCardIcon(SpriteBatch sprite, Texture2D icon, Rectangle bounds, Color color)

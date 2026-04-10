@@ -13,7 +13,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool IsSupportedFieldStatePacketType(int packetType)
         {
-            return packetType == 149
+            return packetType == 93
+                || packetType == 149
                 || packetType == 162
                 || packetType == 163
                 || packetType == 166
@@ -51,7 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static string DescribeSupportedClientOpcodes()
         {
-            return "149, 162, 163, 166, 167, 169, 174, 178, reactor-pool";
+            return "93, 149, 162, 163, 166, 167, 169, 174, 178, reactor-pool";
         }
 
         internal static string DescribeFieldScopedPacketType(int packetType)

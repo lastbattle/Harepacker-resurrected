@@ -25,6 +25,15 @@ namespace HaCreator.MapSimulator
             MapSimulatorWindowNames.CashShopOneADay
         };
 
+        private static readonly string[] CashShopModalOwnerWindowNames =
+        {
+            MapSimulatorWindowNames.CashCouponDialog,
+            MapSimulatorWindowNames.CashPurchaseConfirmDialog,
+            MapSimulatorWindowNames.CashReceiveGiftDialog,
+            MapSimulatorWindowNames.CashNameChangeLicenseDialog,
+            MapSimulatorWindowNames.CashTransferWorldLicenseDialog
+        };
+
         private static readonly string[] ItcChildOwnerWindowNames =
         {
             MapSimulatorWindowNames.ItcCharacter,
@@ -54,6 +63,7 @@ namespace HaCreator.MapSimulator
 
         private sealed class CashShopOneADayArtSnapshot
         {
+            public bool HasNoItemCanvas { get; init; }
             public bool HasKeyFocusCanvas { get; init; }
             public bool HasPlateCanvas { get; init; }
             public bool HasPlateBigCanvas { get; init; }
@@ -132,6 +142,8 @@ namespace HaCreator.MapSimulator
                 cashTradingRoomWindow.SetTraderNames(_playerManager?.Player?.Build?.Name, "CashTrader");
             }
 
+            WireCashShopModalOwnerWindows();
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindow)
             {
                 mtsWindow.SetInventory(inventoryRuntime);
@@ -185,7 +197,7 @@ namespace HaCreator.MapSimulator
                 listWindow.SetContentProvider(() => BuildCashShopListOwnerLines(cashShopWindow));
                 listWindow.SetListRowSelectionAction(cashShopWindow.SelectListOwnerVisibleRow);
                 listWindow.SetListScrollAction(cashShopWindow.MoveListOwnerSelection);
-                listWindow.SetExternalAction("BtBuy", () => cashShopWindow.ExecuteCashStageListAction("BtBuy"));
+                listWindow.SetExternalAction("BtBuy", () => ShowCashPurchaseConfirmDialog(cashShopWindow));
                 listWindow.SetExternalAction("BtGift", () => cashShopWindow.ExecuteCashStageListAction("BtGift"));
                 listWindow.SetExternalAction("BtReserve", () => cashShopWindow.ExecuteCashStageListAction("BtReserve"));
                 listWindow.SetExternalAction("BtRemove", () => cashShopWindow.ExecuteCashStageListAction("BtRemove"));
@@ -221,9 +233,7 @@ namespace HaCreator.MapSimulator
                 statusWindow.SetExternalAction("BtCharge", () => "CCSWnd_Status kept the dedicated charge button armed; live billing flow remains outside the simulator.");
                 statusWindow.SetExternalAction("BtCheck", () => BuildCashShopStatusOwnerLines()[0]);
                 statusWindow.SetExternalAction("BtCoupon", () =>
-                    uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow cashStageWindow
-                        ? cashStageWindow.CashCouponLastSummary
-                        : "CCSWnd_Status is waiting for the parent CCashShop stage.");
+                    ShowCashCouponDialog());
                 statusWindow.SetExternalAction("BtExit", () =>
                 {
                     HideCashShopOwnerFamilyWindows();
@@ -284,6 +294,24 @@ namespace HaCreator.MapSimulator
                 oneADayWindow.SetExternalAction("BtJoin", () => "CCSWnd_OneADay joined the packet-armed reward session preview.");
                 oneADayWindow.SetExternalAction("BtShortcut", () => "CCSWnd_OneADay switched focus to the shortcut-help plate owner.");
                 oneADayWindow.SetExternalAction("BtClose", () => "CCSWnd_OneADay dismissed the current reward plate preview.");
+            }
+        }
+
+        private void WireCashShopModalOwnerWindows()
+        {
+            WireCashShopModalOwnerWindow(MapSimulatorWindowNames.CashCouponDialog, HandleCashCouponDialogButton);
+            WireCashShopModalOwnerWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog, HandleCashPurchaseConfirmDialogButton);
+            WireCashShopModalOwnerWindow(MapSimulatorWindowNames.CashReceiveGiftDialog, HandleCashReceiveGiftDialogButton);
+            WireCashShopModalOwnerWindow(MapSimulatorWindowNames.CashNameChangeLicenseDialog, HandleCashNameChangeLicenseDialogButton);
+            WireCashShopModalOwnerWindow(MapSimulatorWindowNames.CashTransferWorldLicenseDialog, HandleCashTransferWorldLicenseDialogButton);
+        }
+
+        private void WireCashShopModalOwnerWindow(string windowName, Action<int> buttonHandler)
+        {
+            if (uiWindowManager?.GetWindow(windowName) is CashServiceModalOwnerWindow modalWindow)
+            {
+                modalWindow.SetFont(_fontChat);
+                modalWindow.SetButtonHandler(buttonHandler);
             }
         }
 
@@ -463,11 +491,26 @@ namespace HaCreator.MapSimulator
                 UsedSlotCount = usedSlotCount,
                 SlotLimit = slotLimit,
                 CanExpand = snapshot.CanExpand || (slotLimit > 0 && usedSlotCount < slotLimit),
-                ScrollOffset = 0,
+                ScrollOffset = ResolveCashLockerInitialScrollOffset(_playerManager?.Player?.Build?.Job ?? 0),
                 WheelRange = 208,
                 HasNumberFont = true,
                 SharedCharacterNames = snapshot.SharedCharacterNames
             };
+        }
+
+        private static int ResolveCashLockerInitialScrollOffset(int jobId)
+        {
+            if (jobId / 1000 == 1)
+            {
+                return 5;
+            }
+
+            if (jobId / 100 == 21 || jobId == 2000)
+            {
+                return 6;
+            }
+
+            return jobId / 1000 == 3 ? 9 : 0;
         }
 
         private IReadOnlyList<string> BuildCashShopInventoryOwnerLines(AdminShopDialogUI cashShopWindow)
@@ -801,9 +844,10 @@ namespace HaCreator.MapSimulator
         {
             var cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
             WzSubProperty picturePlateProperty = cashShopImage?["PicturePlate"] as WzSubProperty;
-            WzSubProperty keyFocusProperty = TryResolveCashShopOneADayUiSubProperty(0x4ED, "OneADay.img", "CSOneADay", "Base01");
-            WzSubProperty plateBigProperty = TryResolveCashShopOneADayUiSubProperty(0x4EA, "OneADay.img", "CSOneADay", "ItemBoxBig");
+            WzSubProperty noItemProperty = TryResolveCashShopOneADayUiSubProperty(0x4ED, "OneADay.img", "CSOneADay", "NoItem");
+            WzSubProperty keyFocusProperty = TryResolveCashShopOneADayUiSubProperty(0x4EA, "OneADay.img", "CSOneADay", "Base01");
             WzSubProperty plateProperty = TryResolveCashShopOneADayUiSubProperty(0x4E9, "OneADay.img", "CSOneADay", "ItemBox");
+            WzSubProperty plateBigProperty = TryResolveCashShopOneADayUiSubProperty(0x16A5, "OneADay.img", "CSOneADay", "ItemBoxBig");
             WzSubProperty counterProperty = TryResolveCashShopOneADayUiSubProperty(0x16A7, "OneADay.img", "CSOneADay", "Counter");
             WzSubProperty buyButtonProperty = TryResolveCashShopOneADayUiSubProperty(0x16A8, "OneADay.img", "CSOneADay", "BtBuy");
             WzSubProperty itemBoxButtonProperty = TryResolveCashShopOneADayUiSubProperty(0x16A9, "OneADay.img", "CSOneADay", "BtItemBox");
@@ -834,6 +878,7 @@ namespace HaCreator.MapSimulator
 
             return new CashShopOneADayArtSnapshot
             {
+                HasNoItemCanvas = noItemProperty != null || picturePlateProperty?["NoItem"] != null,
                 HasKeyFocusCanvas = keyFocusProperty != null,
                 HasPlateCanvas = plateProperty != null || picturePlateProperty?["NoItem"] != null,
                 HasPlateBigCanvas = plateBigProperty != null,
@@ -843,9 +888,10 @@ namespace HaCreator.MapSimulator
                 NumberCanvasCount = numberCanvasCount,
                 PlateCount = plateCount,
                 ResolvedFromClientStringPool =
-                    keyFocusProperty != null
-                    || plateBigProperty != null
+                    noItemProperty != null
+                    || keyFocusProperty != null
                     || plateProperty != null
+                    || plateBigProperty != null
                     || counterProperty != null
                     || buyButtonProperty != null
                     || itemBoxButtonProperty != null
@@ -1206,7 +1252,16 @@ namespace HaCreator.MapSimulator
                 uiWindowManager?.HideWindow(CashShopChildOwnerWindowNames[i]);
             }
 
+            HideCashShopModalOwnerWindows();
             RefreshCashServiceStageBgmOverride();
+        }
+
+        private void HideCashShopModalOwnerWindows()
+        {
+            for (int i = 0; i < CashShopModalOwnerWindowNames.Length; i++)
+            {
+                uiWindowManager?.HideWindow(CashShopModalOwnerWindowNames[i]);
+            }
         }
 
         private void ShowCashShopChildOwnerWindows()
@@ -1290,6 +1345,14 @@ namespace HaCreator.MapSimulator
                 for (int i = 0; i < CashShopChildOwnerWindowNames.Length && !cashServiceVisible; i++)
                 {
                     cashServiceVisible = uiWindowManager.GetWindow(CashShopChildOwnerWindowNames[i])?.IsVisible == true;
+                }
+            }
+
+            if (!cashServiceVisible)
+            {
+                for (int i = 0; i < CashShopModalOwnerWindowNames.Length && !cashServiceVisible; i++)
+                {
+                    cashServiceVisible = uiWindowManager.GetWindow(CashShopModalOwnerWindowNames[i])?.IsVisible == true;
                 }
             }
 
@@ -1446,6 +1509,11 @@ namespace HaCreator.MapSimulator
                     TryFocusCashServiceCommodity(_lastPacketOwnedCommoditySerialNumber);
                 }
 
+                if (applied)
+                {
+                    TryOpenCashShopModalOwnerForPacket(cashShopStageWindow, packetType);
+                }
+
                 message = CombineCashServicePacketMessages(message, storageMessage, balanceMessage);
                 return applied || storageApplied || balanceApplied;
             }
@@ -1458,6 +1526,254 @@ namespace HaCreator.MapSimulator
             }
 
             return mtsStageWindow.TryApplyPacket(packetType, payload, currTickCount, out message);
+        }
+
+        private void TryOpenCashShopModalOwnerForPacket(CashServiceStageWindow stageWindow, int packetType)
+        {
+            if (stageWindow == null)
+            {
+                return;
+            }
+
+            if (packetType == 388 && stageWindow.CashNameChangePossibleResult.OpensLicenseDialog)
+            {
+                ShowCashNameChangeLicenseDialog(stageWindow);
+                return;
+            }
+
+            if (packetType == 390 && stageWindow.CashTransferWorldPossibleResult.OpensLicenseDialog)
+            {
+                ShowCashTransferWorldLicenseDialog(stageWindow);
+                return;
+            }
+
+            if (packetType == 384 && stageWindow.CashItemResultSubtype == 90 && stageWindow.CashGiftPacketEntries.Count > 0)
+            {
+                ShowCashReceiveGiftDialog(stageWindow);
+            }
+        }
+
+        private string ShowCashCouponDialog()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCouponUseSelectDlg is waiting for the parent CCashShop stage.";
+            }
+
+            if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashCouponDialog, out CashServiceModalOwnerWindow modalWindow))
+            {
+                return "CCouponUseSelectDlg owner is not registered in this UI build.";
+            }
+
+            modalWindow.Configure(
+                "CCouponUseSelectDlg",
+                "Enter the coupon code for the Cash Shop status owner.",
+                new[]
+                {
+                    stageWindow.CashCouponLastSummary,
+                    "Client evidence: edit control 1001 at (12,53), 32 character limit."
+                },
+                new[]
+                {
+                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "OK", IsPrimary = true },
+                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "Cancel" }
+                },
+                inputPlaceholder: "Coupon code",
+                inputActive: true,
+                inputMaxLength: 32);
+            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashCouponDialog);
+            return "CCouponUseSelectDlg opened from CCSWnd_Status::BtCoupon.";
+        }
+
+        private string ShowCashPurchaseConfirmDialog(AdminShopDialogUI cashShopWindow)
+        {
+            AdminShopDialogUI.ListOwnerSnapshot listSnapshot = cashShopWindow?.GetListOwnerSnapshot();
+            AdminShopDialogUI.OwnerEntrySnapshot selectedEntry = listSnapshot?.VisibleEntries?.FirstOrDefault(entry => entry.IsSelected);
+            if (selectedEntry == null)
+            {
+                string fallbackMessage = cashShopWindow?.ExecuteCashStageListAction("BtBuy")
+                    ?? "CConfirmPurchaseDlg is waiting for the Cash Shop list owner.";
+                return fallbackMessage;
+            }
+
+            if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog, out CashServiceModalOwnerWindow modalWindow))
+            {
+                return cashShopWindow.ExecuteCashStageListAction("BtBuy");
+            }
+
+            modalWindow.Configure(
+                "CConfirmPurchaseDlg",
+                $"Confirm purchase for {selectedEntry.Title}.",
+                new[]
+                {
+                    $"{selectedEntry.Seller} | {selectedEntry.PriceLabel}",
+                    selectedEntry.StateLabel,
+                    "Client evidence: dedicated purchase owner creates payment checkboxes and OK/Cancel buttons."
+                },
+                new[]
+                {
+                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "OK", IsPrimary = true },
+                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "Cancel" }
+                });
+            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog);
+            return $"CConfirmPurchaseDlg opened for {selectedEntry.Title}.";
+        }
+
+        private void ShowCashReceiveGiftDialog(CashServiceStageWindow stageWindow)
+        {
+            if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashReceiveGiftDialog, out CashServiceModalOwnerWindow modalWindow))
+            {
+                return;
+            }
+
+            modalWindow.Configure(
+                "CUIReceiveGift",
+                "Accept one packet-owned gift row from the Cash Shop gift inbox.",
+                new[]
+                {
+                    stageWindow.CashGiftLastSummary,
+                    "Client evidence: OnCashItemResLoadGiftDone allocates CUIReceiveGift and runs CDialog::DoModal per row."
+                },
+                new[]
+                {
+                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "Accept", IsPrimary = true },
+                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "Cancel" }
+                },
+                inputPlaceholder: "Reply message",
+                inputActive: true,
+                inputMaxLength: 64,
+                giftRows: stageWindow.CashGiftPacketEntries.Select(entry => $"{entry.Title} | {entry.Seller}"),
+                selectedGiftIndex: 0);
+            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
+        }
+
+        private void ShowCashNameChangeLicenseDialog(CashServiceStageWindow stageWindow)
+        {
+            if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashNameChangeLicenseDialog, out CashServiceModalOwnerWindow modalWindow))
+            {
+                return;
+            }
+
+            modalWindow.Configure(
+                "CUIChangingLicenseNotice",
+                "Confirm the name-change license notice before returning to the Cash Shop stage.",
+                new[]
+                {
+                    $"Birth date payload: {stageWindow.CashNameChangePossibleResult.BirthDate.ToString(CultureInfo.InvariantCulture)}.",
+                    "WZ: CashShop.img/CSChangeName/Base/backgrndnotice."
+                },
+                new[]
+                {
+                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "OK", IsPrimary = true }
+                });
+            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashNameChangeLicenseDialog);
+        }
+
+        private void ShowCashTransferWorldLicenseDialog(CashServiceStageWindow stageWindow)
+        {
+            if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashTransferWorldLicenseDialog, out CashServiceModalOwnerWindow modalWindow))
+            {
+                return;
+            }
+
+            modalWindow.Configure(
+                "CUITransferWorldLicenseNotice",
+                "Confirm the transfer-world license notice before returning to the Cash Shop stage.",
+                new[]
+                {
+                    $"Birth date payload: {stageWindow.CashTransferWorldPossibleResult.BirthDate.ToString(CultureInfo.InvariantCulture)}.",
+                    $"Decoded world list: {stageWindow.CashTransferWorldPossibleResult.WorldNames.Count.ToString(CultureInfo.InvariantCulture)} world(s).",
+                    "WZ: CashShop.img/CSTransferWorld/Base/backgrndnotice."
+                },
+                new[]
+                {
+                    new CashServiceModalOwnerWindow.ActionButtonState { Label = "OK", IsPrimary = true }
+                },
+                worldNames: stageWindow.CashTransferWorldPossibleResult.WorldNames);
+            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashTransferWorldLicenseDialog);
+        }
+
+        private bool TryGetCashServiceModalOwnerWindow(string windowName, out CashServiceModalOwnerWindow modalWindow)
+        {
+            modalWindow = uiWindowManager?.GetWindow(windowName) as CashServiceModalOwnerWindow;
+            if (modalWindow != null)
+            {
+                modalWindow.SetFont(_fontChat);
+                return true;
+            }
+
+            return false;
+        }
+
+        private void HandleCashCouponDialogButton(int buttonIndex)
+        {
+            if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashCouponDialog, out CashServiceModalOwnerWindow modalWindow)
+                || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashCouponDialog);
+                return;
+            }
+
+            string message = buttonIndex == 0
+                ? stageWindow.RecordCouponDialogSubmission(modalWindow.InputValue)
+                : "CCouponUseSelectDlg was cancelled before a coupon request was submitted.";
+            uiWindowManager.HideWindow(MapSimulatorWindowNames.CashCouponDialog);
+            _chat?.AddSystemMessage(message, currTickCount);
+        }
+
+        private void HandleCashPurchaseConfirmDialogButton(int buttonIndex)
+        {
+            string message;
+            if (buttonIndex == 0 && uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
+            {
+                message = cashShopWindow.ExecuteCashStageListAction("BtBuy");
+            }
+            else
+            {
+                message = "CConfirmPurchaseDlg cancelled the selected Cash Shop purchase.";
+            }
+
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog);
+            _chat?.AddSystemMessage(message, currTickCount);
+        }
+
+        private void HandleCashReceiveGiftDialogButton(int buttonIndex)
+        {
+            if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashReceiveGiftDialog, out CashServiceModalOwnerWindow modalWindow)
+                || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
+                return;
+            }
+
+            string message = buttonIndex == 0
+                ? stageWindow.CompleteReceiveGiftDialog(modalWindow.SelectedGiftIndex, modalWindow.InputValue)
+                : "CUIReceiveGift left the decoded gift row staged in the Cash Shop inbox.";
+            uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
+            _chat?.AddSystemMessage(message, currTickCount);
+
+            if (buttonIndex == 0 && stageWindow.CashGiftPacketEntries.Count > 0)
+            {
+                ShowCashReceiveGiftDialog(stageWindow);
+            }
+        }
+
+        private void HandleCashNameChangeLicenseDialogButton(int buttonIndex)
+        {
+            string message = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow
+                ? stageWindow.AcknowledgeNameChangeLicenseDialog()
+                : "CUIChangingLicenseNotice closed without an available CCashShop stage owner.";
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashNameChangeLicenseDialog);
+            _chat?.AddSystemMessage(message, currTickCount);
+        }
+
+        private void HandleCashTransferWorldLicenseDialogButton(int buttonIndex)
+        {
+            string message = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow
+                ? stageWindow.AcknowledgeTransferWorldLicenseDialog()
+                : "CUITransferWorldLicenseNotice closed without an available CCashShop stage owner.";
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashTransferWorldLicenseDialog);
+            _chat?.AddSystemMessage(message, currTickCount);
         }
 
         private bool TryApplyCashShopStorageExpansionPacketResult(int packetType, byte[] payload, out string message)

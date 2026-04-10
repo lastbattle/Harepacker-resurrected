@@ -599,11 +599,14 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
+                int layerTick = drop.FreezeAnimationDuringRemovalFade
+                    ? drop.LastStateChangeTime
+                    : context.TickCount;
                 PacketOwnedMesoLayerDrawState layerState = PacketOwnedMesoAnimationPresentation.ResolveLayerDrawState(
                     drop.MesoAnimationIconType,
                     layerIndex,
                     layerCount,
-                    context.TickCount,
+                    layerTick,
                     drop.SpawnTime,
                     drop.Alpha);
                 int drawX = screenX;

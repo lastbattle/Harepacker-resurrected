@@ -55,6 +55,11 @@ namespace HaCreator.MapSimulator.UI
                     writer.Write(payload.RequestedAtTick);
                     writer.Write((byte)payload.ResultKind);
                     writer.Write(payload.ResolvedBuildStateToken);
+                    if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.AuthoritativeStateAccept)
+                    {
+                        WriteAuthoritySlotStates(writer, payload.AuthoritySlotStates);
+                    }
+
                     if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.Reject)
                     {
                         writer.Write(payload.RejectReason ?? string.Empty);
@@ -195,6 +200,15 @@ namespace HaCreator.MapSimulator.UI
 
             CharacterEquipmentAuthorityResultKind resultKind = (CharacterEquipmentAuthorityResultKind)resultKindValue;
             int resolvedBuildStateToken = reader.ReadInt32();
+            CharacterEquipmentAuthoritySlotState[] authoritySlotStates = null;
+            if (resultKind == CharacterEquipmentAuthorityResultKind.AuthoritativeStateAccept)
+            {
+                if (!TryReadAuthoritySlotStates(reader, out authoritySlotStates, out errorMessage))
+                {
+                    return false;
+                }
+            }
+
             string rejectReason = null;
             if (resultKind == CharacterEquipmentAuthorityResultKind.Reject)
             {
@@ -213,7 +227,54 @@ namespace HaCreator.MapSimulator.UI
                 requestedAtTick,
                 ResultKind: resultKind,
                 ResolvedBuildStateToken: resolvedBuildStateToken,
+                AuthoritySlotStates: authoritySlotStates,
                 RejectReason: rejectReason);
+            return true;
+        }
+
+        private static void WriteAuthoritySlotStates(BinaryWriter writer, System.Collections.Generic.IReadOnlyList<CharacterEquipmentAuthoritySlotState> slotStates)
+        {
+            int count = slotStates?.Count ?? 0;
+            writer.Write(count);
+            for (int i = 0; i < count; i++)
+            {
+                CharacterEquipmentAuthoritySlotState state = slotStates[i];
+                writer.Write((int)state.Slot);
+                writer.Write(state.VisibleItemId);
+                writer.Write(state.HiddenItemId);
+            }
+        }
+
+        private static bool TryReadAuthoritySlotStates(
+            BinaryReader reader,
+            out CharacterEquipmentAuthoritySlotState[] slotStates,
+            out string errorMessage)
+        {
+            slotStates = null;
+            errorMessage = null;
+            int count = reader.ReadInt32();
+            if (count <= 0 || count > 4)
+            {
+                errorMessage = "Character equipment authority-result state must contain one to four slot states.";
+                return false;
+            }
+
+            slotStates = new CharacterEquipmentAuthoritySlotState[count];
+            for (int i = 0; i < count; i++)
+            {
+                int slotValue = reader.ReadInt32();
+                if (!Enum.IsDefined(typeof(HaCreator.MapSimulator.Character.EquipSlot), slotValue))
+                {
+                    errorMessage = $"Character equipment authority-result slot value {slotValue} is invalid.";
+                    return false;
+                }
+
+                slotStates[i] = new CharacterEquipmentAuthoritySlotState(
+                    (HaCreator.MapSimulator.Character.EquipSlot)slotValue,
+                    reader.ReadInt32(),
+                    reader.ReadInt32());
+            }
+
             return true;
         }
 

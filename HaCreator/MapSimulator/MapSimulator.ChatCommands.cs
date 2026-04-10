@@ -622,7 +622,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleTransportSessionCommand(string[] args)
         {
-            const string sessionUsage = "Usage: /transport session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]";
+            const string sessionUsage = "Usage: /transport session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]";
             string sessionAction = args.Length > 1 ? args[1] : "status";
 
             switch (sessionAction.ToLowerInvariant())
@@ -653,6 +653,37 @@ namespace HaCreator.MapSimulator
 
                     return ChatCommandHandler.CommandResult.Info(
                         _transportOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+
+                case "attach":
+                    if (args.Length < 3
+                        || !int.TryParse(args[2], out int attachRemotePort)
+                        || attachRemotePort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    string attachProcessSelector = args.Length >= 4 ? args[3] : null;
+                    int? attachLocalPortFilter = null;
+                    if (args.Length >= 5)
+                    {
+                        if (!int.TryParse(args[4], out int parsedAttachLocalPort) || parsedAttachLocalPort <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                        }
+
+                        attachLocalPortFilter = parsedAttachLocalPort;
+                    }
+
+                    if (!_transportOfficialSessionBridge.TryAttachEstablishedSession(
+                        attachRemotePort,
+                        attachProcessSelector,
+                        attachLocalPortFilter,
+                        out string attachStatus))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(attachStatus);
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(attachStatus);
 
                 case "history":
                     int historyCount = 10;
@@ -8641,6 +8672,9 @@ namespace HaCreator.MapSimulator
                                 payload => TryApplyPacketOwnedMessengerDispatchPayload(payload, out string dispatchMessage)
                                     ? ChatCommandHandler.CommandResult.Ok(dispatchMessage)
                                     : ChatCommandHandler.CommandResult.Error(dispatchMessage),
+                                (byte packetSubtype, byte[] payload) => GetPacketOwnedSocialUtilityDialogDispatcher().TryApplyMessengerDispatchSubtype(packetSubtype, payload, out string dispatchSubtypeMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(dispatchSubtypeMessage)
+                                    : ChatCommandHandler.CommandResult.Error(dispatchSubtypeMessage),
                                 (bool accepted, string contactName, out byte[] payload, out string message) => _messengerRuntime.TryBuildPendingInviteResolutionPayload(accepted, contactName, out payload, out message),
                                 (string participantToken, int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketAvatarPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, out payload, out message),
                                 (string participantToken, int? slotOverride, int? channelOverride, bool? isNewOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketEnterPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, channelOverride, isNewOverride, out payload, out message),
@@ -8664,6 +8698,9 @@ namespace HaCreator.MapSimulator
                                 (packetType, payload) => TryApplyPacketOwnedMessengerPacket(packetType, payload, out string packetMessage)
                                     ? ChatCommandHandler.CommandResult.Ok(packetMessage)
                                     : ChatCommandHandler.CommandResult.Error(packetMessage),
+                                (byte packetSubtype, byte[] payload) => GetPacketOwnedSocialUtilityDialogDispatcher().TryApplyMessengerDispatchSubtype(packetSubtype, payload, out string dispatchSubtypeMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(dispatchSubtypeMessage)
+                                    : ChatCommandHandler.CommandResult.Error(dispatchSubtypeMessage),
                                 (bool accepted, string contactName, out byte[] payload, out string message) => _messengerRuntime.TryBuildPendingInviteResolutionPayload(accepted, contactName, out payload, out message),
                                 (string participantToken, int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketAvatarPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, out payload, out message),
                                 (string participantToken, int? slotOverride, int? channelOverride, bool? isNewOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketEnterPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, channelOverride, isNewOverride, out payload, out message),
@@ -9010,7 +9047,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutility",
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
-            "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|hpdec|hazardresult|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|1011|1012|1013|1014|1026|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|hpdec|hazardresult|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|1011|1012|1013|1014|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
+                "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|teleport|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|hpdec|hazardresult|skillcooltime|193|231|232|234|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|366|367|1011|1012|1013|1014|1026|classcompetition|questguide|deliveryquest|adminshopopen|adminshopresult> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|teleport|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|hpdec|hazardresult|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|adminshopopen|adminshopresult|193|231|232|234|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|366|367|1011|1012|1013|1014|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "expedition",
@@ -9034,12 +9071,12 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutilitypacket",
                 "Inspect or inject packet-owned local utility and event dispatch payloads through the loopback inbox",
-            "/localutilitypacket [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|268|269|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]",
+                "/localutilitypacket [status|start [port]|stop|packet <sitresult|teleport|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|hpdec|skillcooltime|193|231|234|242|243|246|247|250|251|252|262|263|264|265|266|267|268|269|270|273|274|275|276|366|367|1011|1012|1013|1014|classcompetition|questguide|deliveryquest|adminshopopen|adminshopresult> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "npcutility",
                 "Inspect or drive packet-owned NPC shop, store-bank, and battle-record owners",
-                "/npcutility [status|packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]",
+                "/npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]",
                 HandlePacketOwnedNpcUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "adminshop",
@@ -10523,17 +10560,17 @@ namespace HaCreator.MapSimulator
                         case "quizclient":
                             if (args.Length < 6 ||
                                 !int.TryParse(args[1], out int quizClientNpcId) ||
-                                !int.TryParse(args[3], out int quizClientAnswer) ||
-                                !int.TryParse(args[4], out int quizClientQuestionNumber) ||
+                                !int.TryParse(args[3], out int quizClientMinInputLength) ||
+                                !int.TryParse(args[4], out int quizClientMaxInputLength) ||
                                 !int.TryParse(args[5], out int quizClientRemainingSeconds))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg quizclient <npcId> <title|problem|hint> <answer> <questionNo> <seconds>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg quizclient <npcId> <title|problem|hint> <minInput> <maxInput> <seconds>");
                             }
 
                             string[] quizClientSegments = args[2].Split(new[] { '|' }, 3, StringSplitOptions.None);
                             if (quizClientSegments.Length != 3)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg quizclient <npcId> <title|problem|hint> <answer> <questionNo> <seconds>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg quizclient <npcId> <title|problem|hint> <minInput> <maxInput> <seconds>");
                             }
 
                             return TryApplyPacketOwnedScriptMessagePacket(
@@ -10542,8 +10579,8 @@ namespace HaCreator.MapSimulator
                                     quizClientSegments[0],
                                     quizClientSegments[1],
                                     quizClientSegments[2],
-                                    quizClientAnswer,
-                                    quizClientQuestionNumber,
+                                    quizClientMinInputLength,
+                                    quizClientMaxInputLength,
                                     quizClientRemainingSeconds),
                                 out string quizClientMessage)
                                 ? ChatCommandHandler.CommandResult.Ok(quizClientMessage)
@@ -11335,8 +11372,8 @@ namespace HaCreator.MapSimulator
             string title,
             string problemText,
             string hintText,
-            int correctAnswer,
-            int questionNumber,
+            int minInputLength,
+            int maxInputLength,
             int remainingSeconds)
         {
             using var stream = new MemoryStream();
@@ -11349,8 +11386,8 @@ namespace HaCreator.MapSimulator
             WritePacketOwnedMapleString(writer, title);
             WritePacketOwnedMapleString(writer, problemText);
             WritePacketOwnedMapleString(writer, hintText);
-            writer.Write(correctAnswer);
-            writer.Write(questionNumber);
+            writer.Write(minInputLength);
+            writer.Write(maxInputLength);
             writer.Write(remainingSeconds);
             return stream.ToArray();
         }

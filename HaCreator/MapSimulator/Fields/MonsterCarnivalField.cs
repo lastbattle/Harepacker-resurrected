@@ -1882,9 +1882,10 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryValidateClientOwnedRawPacket(int packetType, out string errorMessage)
         {
             if (_definition?.IsReviveMode == true
-                && !IsRecoveredClientOwnedRawPacket(packetType))
+                && packetType != (int)MonsterCarnivalRawPacketType.Enter
+                && packetType != (int)MonsterCarnivalRawPacketType.GameResult)
             {
-                errorMessage = $"{_definition.ClientOwnerLabel} only owns raw packet types 346-353 in the client; packet {packetType} stays on the broader Carnival seam.";
+                errorMessage = $"{_definition.ClientOwnerLabel}::OnPacket only directly owns raw packet types 346 and 353 in the client; packet {packetType} is forwarded to CField::OnPacket.";
                 return false;
             }
 

@@ -54,6 +54,10 @@ namespace HaCreator.MapSimulator.Effects
         public const int TownPercentTextX = 227;
         public const int TownCakePercentTextY = 34;
         public const int TownPiePercentTextY = 54;
+        public const int TownBarEffectFlashThreshold = 90;
+        public const int ItemInfoGaugeAlternateThreshold = 95;
+        public const int ItemInfoRefreshIntervalMs = 1000;
+        public const int GaugeRefreshIntervalMs = 200;
         public const int ItemInfoRowCount = 8;
         public const int TimerboardBackgroundStringPoolId = 0x162F;
         public const int TimerboardFontStringPoolId = 0x1630;
@@ -179,7 +183,7 @@ namespace HaCreator.MapSimulator.Effects
             CakePieEventItemInfo info = new(
                 fieldId,
                 itemId,
-                Math.Clamp(percentage, 0, 100),
+                percentage,
                 eventStatus,
                 winnerTeam);
             _eventItemInfo[(fieldId, itemId)] = info;
@@ -415,7 +419,7 @@ namespace HaCreator.MapSimulator.Effects
                 }
             }
 
-            if (_blinkFlag && percent >= 95 && percent < 100 && _townBarEffect != null)
+            if (_blinkFlag && percent > TownBarEffectFlashThreshold && _townBarEffect != null)
             {
                 spriteBatch.Draw(_townBarEffect, new Vector2(bounds.X + TownFlashX, bounds.Y + flashY), Color.White);
             }
@@ -549,7 +553,7 @@ namespace HaCreator.MapSimulator.Effects
 
         private Texture2D ResolveItemInfoGaugeTexture(int itemId, int percent)
         {
-            bool blinkAlternate = _blinkFlag && percent >= 95 && percent < 100;
+            bool blinkAlternate = _blinkFlag && percent >= ItemInfoGaugeAlternateThreshold && percent < 100;
             if (itemId == CakeItemId)
             {
                 return blinkAlternate ? (_itemInfoPieGauge ?? _itemInfoCakeGauge) : _itemInfoCakeGauge;

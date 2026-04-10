@@ -308,6 +308,7 @@ namespace HaCreator.MapSimulator.Interaction
             public IReadOnlyList<QuestMobRequirement> EndMobRequirements { get; init; } = Array.Empty<QuestMobRequirement>();
             public IReadOnlyList<QuestItemRequirement> EndItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
             public IReadOnlyList<QuestPetRequirement> EndPetRequirements { get; init; } = Array.Empty<QuestPetRequirement>();
+            public IReadOnlyList<QuestSkillRequirement> EndSkillRequirements { get; init; } = Array.Empty<QuestSkillRequirement>();
             public int? EndPetRecallLimit { get; init; }
             public int? EndPetTamenessMinimum { get; init; }
             public int? EndPetTamenessMaximum { get; init; }
@@ -1909,7 +1910,8 @@ namespace HaCreator.MapSimulator.Interaction
                 .Select(item =>
                 {
                     List<string> issues = EvaluateCompletionIssues(item.Definition, build);
-                    CalculateProgress(item.Definition, GetOrCreateProgress(item.Definition.QuestId), out int currentProgress, out int totalProgress);
+                    QuestProgress progress = GetOrCreateProgress(item.Definition.QuestId);
+                    CalculateProgress(item.Definition, progress, out int currentProgress, out int totalProgress);
 
                     return new QuestAlarmEntrySnapshot
                     {
@@ -1924,6 +1926,7 @@ namespace HaCreator.MapSimulator.Interaction
                             : (issues.Count == 0 ? 1f : 0f),
                         IsReadyToComplete = issues.Count == 0,
                         IsRecentlyUpdated = IsQuestAlarmRecentlyUpdated(item.Definition.QuestId),
+                        IsAutoRegisterCandidate = HasClientQuestAlarmAutoRegisterProgress(item.Definition, progress),
                         RequirementLines = BuildRequirementLines(item.Definition, build, QuestStateType.Started),
                         IssueLines = issues,
                         DemandText = NpcDialogueTextFormatter.Format(item.Definition.DemandSummary, CreateDialogueFormattingContext(questId: item.Definition.QuestId))
@@ -3732,6 +3735,7 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndPetTamenessMaximum),
                 lines);
             AppendActionConsumeItemRequirementLines(definition.EndActions.RewardItems, lines);
+            AppendSkillRequirementLines(definition.EndSkillRequirements, lines);
         }
 
         private static void AppendActionMetadataRequirementLines(
@@ -4261,6 +4265,7 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndPetTamenessMinimum,
                     definition.EndPetTamenessMaximum),
                 issues);
+            AppendSkillIssues(definition.EndSkillRequirements, issues);
             AppendAvailabilityIssues(
                 definition.EndAvailableFrom,
                 definition.EndAvailableUntil,
@@ -6203,6 +6208,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndItemRequirements = ParseItemRequirements(endCheck?["item"]),
                 EndAllowedDays = ParseAllowedDays(endCheck?["dayOfWeek"]),
                 EndPetRequirements = ParsePetRequirements(endCheck?["pet"]),
+                EndSkillRequirements = ParseSkillRequirements(endCheck?["skill"]),
                 EndPetRecallLimit = ParsePetActiveLimit(endCheck),
                 EndPetTamenessMinimum = ParsePositiveInt(endCheck?["pettamenessmin"]),
                 EndPetTamenessMaximum = ParsePositiveInt(endCheck?["pettamenessmax"]),
@@ -6588,18 +6594,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<string>();
             }
 
-            string[] rawParts = value.Split(
-                new[] { ',', ';', '\r', '\n', '\t' },
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (rawParts.Length == 0)
+            var normalizedParts = new List<string>();
+            foreach (string rawPart in EnumerateDelimitedStringTokens(value))
             {
-                return Array.Empty<string>();
-            }
-
-            var normalizedParts = new List<string>(rawParts.Length);
-            for (int i = 0; i < rawParts.Length; i++)
-            {
-                string normalizedPart = NormalizeDelimitedToken(rawParts[i]);
+                string normalizedPart = NormalizeDelimitedToken(rawPart);
                 if (!string.IsNullOrWhiteSpace(normalizedPart))
                 {
                     normalizedParts.Add(normalizedPart);
@@ -6609,6 +6607,55 @@ namespace HaCreator.MapSimulator.Interaction
             return normalizedParts.Count == 0
                 ? Array.Empty<string>()
                 : normalizedParts.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+
+        private static IEnumerable<string> EnumerateDelimitedStringTokens(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                yield break;
+            }
+
+            int tokenStart = 0;
+            char quote = '\0';
+            for (int i = 0; i < value.Length; i++)
+            {
+                char current = value[i];
+                if (quote != '\0')
+                {
+                    if (current == quote)
+                    {
+                        quote = '\0';
+                    }
+
+                    continue;
+                }
+
+                if (current == '"' || current == '\'')
+                {
+                    quote = current;
+                    continue;
+                }
+
+                if (!IsScriptNameDelimiter(current))
+                {
+                    continue;
+                }
+
+                yield return value[tokenStart..i];
+                tokenStart = i + 1;
+            }
+
+            yield return value[tokenStart..];
+        }
+
+        private static bool IsScriptNameDelimiter(char value)
+        {
+            return value == ','
+                   || value == ';'
+                   || value == '\r'
+                   || value == '\n'
+                   || value == '\t';
         }
 
         private static string NormalizeDelimitedToken(string value)
@@ -10507,6 +10554,29 @@ namespace HaCreator.MapSimulator.Interaction
                        Math.Max(0, endQuestDemandCount));
         }
 
+        internal static bool HasClientQuestAlarmAutoRegisterProgressForTesting(
+            int questId,
+            int endMobDemandCount,
+            int endItemDemandCount,
+            int endMesoDemand,
+            int endQuestDemandCount,
+            bool hasDemandItemCount,
+            bool hasDemandMobProgress,
+            bool hasCurrentMeso,
+            bool hasPrecedeQuestRecordOrComplete)
+        {
+            return !IsClientQuestGuideSuppressedQuestId(questId) &&
+                   HasClientQuestAlarmAutoRegisterProgress(
+                       Math.Max(0, endMobDemandCount),
+                       Math.Max(0, endItemDemandCount),
+                       Math.Max(0, endMesoDemand),
+                       Math.Max(0, endQuestDemandCount),
+                       hasDemandItemCount,
+                       hasDemandMobProgress,
+                       hasCurrentMeso,
+                       hasPrecedeQuestRecordOrComplete);
+        }
+
         private static bool HasClientQuestAlarmCompletionDemand(QuestDefinition definition)
         {
             if (definition == null)
@@ -10531,6 +10601,55 @@ namespace HaCreator.MapSimulator.Interaction
                    endItemDemandCount > 0 ||
                    endMesoDemand > 0 ||
                    endQuestDemandCount > 0;
+        }
+
+        private bool HasClientQuestAlarmAutoRegisterProgress(QuestDefinition definition, QuestProgress progress)
+        {
+            if (!IsClientQuestAlarmRegistrationCandidate(definition) || progress == null)
+            {
+                return false;
+            }
+
+            bool hasDemandItemCount = definition.EndItemRequirements.Any(requirement =>
+                requirement != null &&
+                requirement.ItemId > 0 &&
+                GetResolvedItemCount(requirement.ItemId) > 0);
+            bool hasDemandMobProgress = definition.EndMobRequirements.Any(requirement =>
+                requirement != null &&
+                requirement.MobId > 0 &&
+                progress.MobKills.TryGetValue(requirement.MobId, out int count) &&
+                count > 0);
+            bool hasCurrentMeso = definition.EndMesoRequirement > 0 && GetCurrentMesoCount() > 0;
+            bool hasPrecedeQuestRecordOrComplete = definition.EndQuestRequirements.Any(requirement =>
+                requirement != null &&
+                requirement.QuestId > 0 &&
+                GetQuestState(requirement.QuestId) != QuestStateType.Not_Started);
+
+            return HasClientQuestAlarmAutoRegisterProgress(
+                definition.EndMobRequirements?.Count ?? 0,
+                definition.EndItemRequirements?.Count ?? 0,
+                definition.EndMesoRequirement,
+                definition.EndQuestRequirements?.Count ?? 0,
+                hasDemandItemCount,
+                hasDemandMobProgress,
+                hasCurrentMeso,
+                hasPrecedeQuestRecordOrComplete);
+        }
+
+        private static bool HasClientQuestAlarmAutoRegisterProgress(
+            int endMobDemandCount,
+            int endItemDemandCount,
+            int endMesoDemand,
+            int endQuestDemandCount,
+            bool hasDemandItemCount,
+            bool hasDemandMobProgress,
+            bool hasCurrentMeso,
+            bool hasPrecedeQuestRecordOrComplete)
+        {
+            return (endItemDemandCount > 0 && hasDemandItemCount) ||
+                   (endMobDemandCount > 0 && hasDemandMobProgress) ||
+                   (endMesoDemand > 0 && hasCurrentMeso) ||
+                   (endQuestDemandCount > 0 && hasPrecedeQuestRecordOrComplete);
         }
 
         private static string ResolveNpcName(int npcId)

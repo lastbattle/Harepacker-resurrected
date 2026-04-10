@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int FollowCharacterClientPacketType = 193;
         public const int SitResultPacketType = 231;
         public const int EmotionPacketType = 232;
+        public const int TeleportClientPacketType = 234;
         public const int MessageClientPacketType = 38;
         public const int MesoGiveSucceededPacketType = 236;
         public const int MesoGiveFailedPacketType = 237;
@@ -457,6 +458,27 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("adminshopresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshopreply", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshoponpacket366", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cadminshopdlg366", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshop366", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AdminShopResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("adminshopopen", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshop", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshopset", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshoponpacket367", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cadminshopdlg367", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("adminshop367", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AdminShopOpenClientPacketType;
+                return true;
+            }
+
             if (token.Equals("accountmoreinfo", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("moreinfo", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onaccountmoreinfo", StringComparison.OrdinalIgnoreCase))
@@ -500,6 +522,14 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onsitresult", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = SitResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("teleport", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onteleport", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("teleportresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = TeleportClientPacketType;
                 return true;
             }
 
@@ -1037,6 +1067,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == SetStandAloneModeClientPacketType
                 || packetType == FollowCharacterClientPacketType
                 || packetType == SitResultPacketType
+                || packetType == TeleportClientPacketType
                 || packetType == EmotionPacketType
                 || packetType == MessageClientPacketType
                 || packetType == MesoGiveSucceededPacketType
@@ -1064,6 +1095,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == NotifyHpDecByFieldPacketType
                 || packetType == OpenClassCompetitionPagePacketType
                 || packetType == MakerResultClientPacketType
+                || packetType == AdminShopResultClientPacketType
+                || packetType == AdminShopOpenClientPacketType
                 || packetType == ItemMakerHiddenRecipeUnlockPacketType
                 || packetType == ItemMakerSessionPacketType
                 || packetType == MechanicEquipStatePacketType
@@ -1208,6 +1241,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 SitResultPacketType => "OnSitResult(231)",
                 EmotionPacketType => "OnEmotion(232)",
+                TeleportClientPacketType => "OnTeleport(234)",
                 MessageClientPacketType => "OnMessage(38)",
                 OpenUiPacketType => "OpenUI(1000)",
                 OpenUiWithOptionPacketType => "OpenUIWithOption(1001)",

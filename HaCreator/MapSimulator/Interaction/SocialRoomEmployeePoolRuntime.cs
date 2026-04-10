@@ -507,11 +507,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_entries.TryGetValue(packet.EmployerId, out SocialRoomEmployeePoolEntryState existing))
             {
-                existing.Flags |= SocialRoomEmployeePoolFlags.EnteredField;
+                ApplyEnterField(existing, packet);
                 _lastTouchedEmployerId = existing.EmployerId;
                 string displayName = string.IsNullOrWhiteSpace(existing.NameTag) ? "Owner" : existing.NameTag;
                 message =
-                    $"Reactivated pooled employee enter-field packet: employer={existing.EmployerId}, owner={displayName}, template={(existing.TemplateId > 0 ? existing.TemplateId.ToString() : "legacy")}.";
+                    $"Refreshed pooled employee enter-field packet: employer={existing.EmployerId}, owner={displayName}, template={(existing.TemplateId > 0 ? existing.TemplateId.ToString() : "legacy")}, world=({existing.WorldX}, {existing.WorldY}).";
                 return true;
             }
 

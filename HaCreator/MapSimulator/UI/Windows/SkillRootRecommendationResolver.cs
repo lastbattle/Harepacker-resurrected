@@ -30,21 +30,17 @@ namespace HaCreator.MapSimulator.UI
             if (visibleSkills == null || visibleSkills.Count == 0 || entries == null || entries.Count == 0)
                 return 0;
 
-            HashSet<int> visibleSkillIds = visibleSkills
-                .Where(skill => skill != null)
-                .Select(skill => skill.SkillId)
-                .ToHashSet();
-            if (visibleSkillIds.Count == 0)
+            if (!visibleSkills.Any(skill => skill != null))
                 return 0;
 
             int previousSkillId = 0;
             foreach (SkillDataLoader.RecommendedSkillEntry entry in entries.OrderBy(entry => entry.SpentSpThreshold).ThenBy(entry => entry.SkillId))
             {
                 if (entry.SpentSpThreshold > spentSkillLevels)
-                    return visibleSkillIds.Contains(previousSkillId) ? previousSkillId : 0;
+                    return previousSkillId;
 
                 if (entry.SpentSpThreshold == spentSkillLevels)
-                    return visibleSkillIds.Contains(entry.SkillId) ? entry.SkillId : 0;
+                    return entry.SkillId;
 
                 previousSkillId = entry.SkillId;
             }

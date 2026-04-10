@@ -1804,7 +1804,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = TryApplyPacketOwnedUtilityPacket(message.PacketType, message.Payload, out string detail);
+                bool applied = TryApplyPacketOwnedUtilityPacket(message.PacketType, message.Payload, out string detail, message.Source);
                 _localUtilityPacketInbox.RecordDispatchResult(message, applied, detail);
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
@@ -1854,7 +1854,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = TryApplyPacketOwnedUtilityPacket(message.PacketType, message.Payload, out string detail);
+                bool applied = TryApplyPacketOwnedUtilityPacket(message.PacketType, message.Payload, out string detail, message.Source);
                 _localUtilityOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
@@ -2048,7 +2048,7 @@ namespace HaCreator.MapSimulator
             return $"Local utility packet outbox {enabledText}, {listeningText}, sent {_localUtilityPacketOutbox.SentCount} packet(s), pending {_localUtilityPacketOutbox.PendingPacketCount} packet(s).";
         }
 
-        private bool TryApplyPacketOwnedUtilityPacket(int packetType, byte[] payload, out string message)
+        private bool TryApplyPacketOwnedUtilityPacket(int packetType, byte[] payload, out string message, string source = null)
         {
             message = null;
             switch (packetType)
@@ -2140,8 +2140,8 @@ namespace HaCreator.MapSimulator
                   case MinimapOwnerContextRuntime.PacketType:
                       return TryApplyPacketOwnedMiniMapOnOffPayload(payload, out message);
 
-                  case PacketOwnedAntiMacroPacketType:
-                      return TryApplyPacketOwnedAntiMacroPayload(payload, out message);
+                case PacketOwnedAntiMacroPacketType:
+                    return TryApplyPacketOwnedAntiMacroPayload(payload, out message);
 
                 case InitialQuizTimerRuntime.PacketType:
                     return TryApplyPacketOwnedInitialQuizPayload(payload, out message);
@@ -2165,6 +2165,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.SitResultPacketType:
                     return TryApplyPacketOwnedChairSitResultPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.TeleportClientPacketType:
+                    return TryApplyPacketOwnedTeleportPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.EmotionPacketType:
                     return TryApplyPacketOwnedEmotionPayload(payload, out message);
@@ -2274,12 +2277,15 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.VegaResultClientPacketType:
                     return TryApplyPacketOwnedVegaResultPayload(payload, out message);
 
-                case LocalUtilityPacketInboxManager.QuestRewardRaiseOwnerSyncPacketType:
+                case LocalUtilityPacketInboxManager.PetConsumeResultPacketType:
                     if (ShouldHandlePacketOwned1026AsPetConsumeResult(payload))
                     {
                         return TryApplyPacketOwnedPetConsumeResultPayload(payload, out message);
                     }
 
+                    return TryApplyPacketOwnedQuestRewardRaisePayload(QuestRewardRaiseInboundPacketKind.OwnerSync, payload, out message);
+
+                case LocalUtilityPacketInboxManager.QuestRewardRaiseOwnerSyncPacketType:
                     return TryApplyPacketOwnedQuestRewardRaisePayload(QuestRewardRaiseInboundPacketKind.OwnerSync, payload, out message);
 
                 case LocalUtilityPacketInboxManager.QuestRewardRaisePutItemAddResultPacketType:
@@ -2318,12 +2324,10 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.PetConsumeMpItemInitPacketType:
                     return TryApplyPacketOwnedPetConsumeItemInitPayload(payload, mpItem: true, out message);
 
-                case LocalUtilityPacketInboxManager.AdminShopResultClientPacketType:
-                case LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType:
-                    return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out message);
-
                 case 364:
                 case 365:
+                case LocalUtilityPacketInboxManager.AdminShopResultClientPacketType:
+                case LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType:
                 case 369:
                 case 370:
                 case 420:
@@ -2590,6 +2594,12 @@ namespace HaCreator.MapSimulator
             }
 
             return true;
+        }
+
+        private bool TryApplyPacketOwnedTeleportPayload(byte[] payload, out string message)
+        {
+            StampPacketOwnedUtilityRequestState();
+            return TryApplyPacketOwnedTeleportResult(payload, out message);
         }
 
         internal static bool TryDecodePacketOwnedEmotionPayload(
@@ -11648,7 +11658,7 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Error(
-                $"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|242|243|246|247|250|251|252|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1018|1020|1021|1023|1025|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
+                $"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|teleport|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|234|242|243|246|247|250|251|252|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1018|1020|1021|1023|1025|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityPacketCommand(string[] args, bool rawHex)
@@ -11706,6 +11716,11 @@ namespace HaCreator.MapSimulator
                     break;
                 case "passivemove":
                     applied = TryApplyPacketOwnedPassiveMovePayload(payload, out message);
+                    break;
+                case "teleport":
+                case "onteleport":
+                case "teleportresult":
+                    applied = TryApplyPacketOwnedTeleportPayload(payload, out message);
                     break;
                 case "timebomb":
                     applied = TryApplyPacketOwnedTimeBombAttackPayload(payload, out message);
@@ -11797,8 +11812,7 @@ namespace HaCreator.MapSimulator
                     applied = TryApplyPacketOwnedSetGenderPayload(payload, out message);
                     break;
                 case "classcompetition":
-                    message = ApplyClassCompetitionPageLaunch();
-                    applied = true;
+                    applied = TryApplyPacketOwnedClassCompetitionPagePayload(payload, out message);
                     break;
                 case "classcompetitionauth":
                 case "classcompetitionkey":
@@ -11854,8 +11868,8 @@ namespace HaCreator.MapSimulator
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                ? "Usage: /localutility packetraw <sitresult|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> <hex>"
-                : "Usage: /localutility packet <sitresult|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> [payloadhex=..|payloadb64=..]");
+                ? "Usage: /localutility packetraw <sitresult|teleport|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> <hex>"
+                : "Usage: /localutility packet <sitresult|teleport|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> [payloadhex=..|payloadb64=..]");
             }
 
             return applied

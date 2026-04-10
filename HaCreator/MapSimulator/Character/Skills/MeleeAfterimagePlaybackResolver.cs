@@ -232,7 +232,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 layers ??= new List<AfterimageRenderableLayer>(frames.Count);
-                layers.Add(new AfterimageRenderableLayer(frame, ResolveFrameAlpha(frame, elapsed)));
+                layers.Add(new AfterimageRenderableLayer(
+                    frame,
+                    ResolveFrameAlpha(frame, elapsed),
+                    ResolveFrameZoom(frame, elapsed)));
             }
 
             return layers ?? (IReadOnlyList<AfterimageRenderableLayer>)Array.Empty<AfterimageRenderableLayer>();
@@ -257,6 +260,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frame.Delay), 0f, 1f);
 
             return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
+        }
+
+        public static float ResolveFrameZoom(SkillFrame frame, int frameElapsedMs)
+        {
+            if (frame == null)
+            {
+                return 1f;
+            }
+
+            int startZoom = frame.ZoomStart;
+            int endZoom = frame.ZoomEnd;
+            if (startZoom == 0 && endZoom == 0)
+            {
+                return 1f;
+            }
+
+            if (endZoom == 0)
+            {
+                endZoom = startZoom;
+            }
+
+            if (startZoom == 0)
+            {
+                startZoom = endZoom;
+            }
+
+            float progress = frame.Delay <= 0
+                ? 1f
+                : MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frame.Delay), 0f, 1f);
+            float interpolatedZoom = MathHelper.Lerp(startZoom, endZoom, progress);
+            return MathHelper.Clamp(interpolatedZoom / 100f, 0.01f, 10f);
         }
     }
 }

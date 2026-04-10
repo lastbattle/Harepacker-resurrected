@@ -60,6 +60,8 @@ namespace HaCreator.MapSimulator.Companions
 
     internal sealed class PetLoader
     {
+        internal const int ClientPetActionDefaultDelay = 180;
+
         private readonly record struct PetActionFrame(string Name, IDXObject Frame);
         private readonly record struct PetAnimationCacheKey(int PetItemId, int PetWearItemId);
         private readonly record struct PetActionCacheKey(int PetItemId, int PetWearItemId, string ActionName);
@@ -629,7 +631,7 @@ namespace HaCreator.MapSimulator.Companions
                 return emptyFrames;
             }
 
-            List<PetActionFrame> baseFrames = LoadNamedActionFrames(actionNode, fallbackDelayByFrameName: null, defaultDelay: 100);
+            List<PetActionFrame> baseFrames = LoadNamedActionFrames(actionNode, fallbackDelayByFrameName: null, defaultDelay: ClientPetActionDefaultDelay);
             if (baseFrames.Count == 0)
             {
                 List<IDXObject> emptyFrames = new();
@@ -657,14 +659,14 @@ namespace HaCreator.MapSimulator.Companions
             {
                 if (!string.IsNullOrWhiteSpace(baseFrame.Name) && baseFrame.Frame != null)
                 {
-                    baseDelayByFrameName[baseFrame.Name] = baseFrame.Frame.Delay > 0 ? baseFrame.Frame.Delay : 100;
+                    baseDelayByFrameName[baseFrame.Name] = ResolveComposedPetWearFrameDelay(baseFrame.Frame, null);
                 }
             }
 
             List<PetActionFrame> overlayFrames = LoadNamedActionFrames(
                 petWearActionNode,
                 baseDelayByFrameName,
-                defaultDelay: 100);
+                defaultDelay: ClientPetActionDefaultDelay);
             if (overlayFrames.Count == 0)
             {
                 List<IDXObject> loadedBaseFrames = baseFrames.Select(static entry => entry.Frame).ToList();
@@ -1086,7 +1088,7 @@ namespace HaCreator.MapSimulator.Companions
 
             effectImage.ParseImage();
             _clientMultiPetHangFrames = effectImage["Basic"]?["hang"] is WzSubProperty multiPetHangNode
-                ? LoadActionFrames(multiPetHangNode, defaultDelay: 100)
+                ? LoadActionFrames(multiPetHangNode, defaultDelay: ClientPetActionDefaultDelay)
                 : new List<IDXObject>();
 
             return _clientMultiPetHangFrames;
@@ -1197,7 +1199,7 @@ namespace HaCreator.MapSimulator.Companions
                     return baseFrame;
                 }
 
-                int delay = overlayFrame.Delay > 0 ? overlayFrame.Delay : baseFrame.Delay;
+                int delay = ResolveComposedPetWearFrameDelay(baseFrame, overlayFrame);
                 return new DXObject(new PointF(-composedBounds.X, -composedBounds.Y), texture, delay)
                 {
                     Tag = baseCanvas
@@ -1207,6 +1209,21 @@ namespace HaCreator.MapSimulator.Companions
             {
                 return baseFrame;
             }
+        }
+
+        internal static int ResolveComposedPetWearFrameDelay(IDXObject baseFrame, IDXObject overlayFrame)
+        {
+            if (baseFrame?.Delay > 0)
+            {
+                return baseFrame.Delay;
+            }
+
+            if (overlayFrame?.Delay > 0)
+            {
+                return overlayFrame.Delay;
+            }
+
+            return ClientPetActionDefaultDelay;
         }
 
         private static Rectangle ResolveCanvasBounds(WzCanvasProperty canvas, int width, int height)

@@ -1386,7 +1386,6 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalFieldMetadata? metadata,
             IEnumerable<RemoteTownPortalOwnerFieldObservation[]> ownerObservationsBySourceMap)
         {
-            _ = existingState;
             if (ownerObservationsBySourceMap == null)
             {
                 return null;
@@ -1401,6 +1400,18 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             RemoteTownPortalOwnerFieldObservation? selectedSourceObservation = SelectPreferredRemoteTownPortalOwnerObservationForSourceSelection(candidatesBySourceMap);
+            RemoteTownPortalOwnerFieldObservation? existingSourceObservation = CreateRemoteTownPortalExistingSourceObservation(existingState);
+            if (existingSourceObservation.HasValue
+                && (!selectedSourceObservation.HasValue
+                    || CompareRemoteTownPortalObservationQuality(
+                        existingSourceObservation.Value.ObservationSource,
+                        existingSourceObservation.Value.RecordedAt,
+                        selectedSourceObservation.Value.ObservationSource,
+                        selectedSourceObservation.Value.RecordedAt) > 0))
+            {
+                selectedSourceObservation = existingSourceObservation;
+            }
+
             if (!metadata.HasValue)
             {
                 return selectedSourceObservation?.SourceMapId;
@@ -1424,6 +1435,28 @@ namespace HaCreator.MapSimulator.Fields
             return comparison >= 0
                 ? metadata.Value.SourceMapId
                 : selectedSourceObservation.Value.SourceMapId;
+        }
+
+        private static RemoteTownPortalOwnerFieldObservation? CreateRemoteTownPortalExistingSourceObservation(RemoteTownPortalState? existingState)
+        {
+            if (!existingState.HasValue || !existingState.Value.Destination.HasValue)
+            {
+                return null;
+            }
+
+            RemoteTownPortalResolvedDestination destination = existingState.Value.Destination.Value;
+            if (destination.MapId <= 0 || destination.MapId == existingState.Value.MapId)
+            {
+                return null;
+            }
+
+            return new RemoteTownPortalOwnerFieldObservation(
+                destination.MapId,
+                destination.X,
+                destination.Y,
+                existingState.Value.MapId,
+                RemoteTownPortalObservationSource.InferredSourceField,
+                existingState.Value.PhaseStartedAt);
         }
 
         private static RemoteTownPortalOwnerFieldObservation? SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(

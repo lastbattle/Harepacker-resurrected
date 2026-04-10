@@ -1272,6 +1272,7 @@ namespace HaCreator.MapSimulator.Character
             Shoot2,
             GunShoot,
             HybridOneHandedMagic,
+            KnuckleHybrid,
             KataraSubWeapon
         }
 
@@ -1374,6 +1375,29 @@ namespace HaCreator.MapSimulator.Character
                     }
 
                     yield break;
+                case ClientAttackActionFamily.KnuckleHybrid:
+                    if (fallbackAttackType == AttackType.Shoot)
+                    {
+                        foreach (string candidate in EnumerateShootCandidates())
+                        {
+                            yield return candidate;
+                        }
+                    }
+
+                    foreach (string candidate in EnumerateOneHandedMeleeCandidates(fallbackAttackType))
+                    {
+                        yield return candidate;
+                    }
+
+                    if (fallbackAttackType != AttackType.Shoot)
+                    {
+                        foreach (string candidate in EnumerateShootCandidates())
+                        {
+                            yield return candidate;
+                        }
+                    }
+
+                    yield break;
                 case ClientAttackActionFamily.KataraSubWeapon:
                     foreach (string candidate in EnumerateKataraSubWeaponCandidates())
                     {
@@ -1399,7 +1423,7 @@ namespace HaCreator.MapSimulator.Character
                 5 => ClientAttackActionFamily.TwoHandedSwing,
                 6 => ClientAttackActionFamily.HybridOneHandedMagic,
                 7 => ClientAttackActionFamily.OneHandedMelee,
-                8 => ClientAttackActionFamily.OneHandedMelee,
+                8 => ClientAttackActionFamily.KnuckleHybrid,
                 9 => ClientAttackActionFamily.GunShoot,
                 10 when normalizedWeaponType == "katara" => ClientAttackActionFamily.KataraSubWeapon,
                 _ => ClientAttackActionFamily.None
@@ -1472,6 +1496,14 @@ namespace HaCreator.MapSimulator.Character
                 CharacterAction.StabT2,
                 CharacterAction.StabTF,
                 CharacterAction.SwingT2);
+        }
+
+        private static IEnumerable<string> EnumerateShootCandidates()
+        {
+            return EnumerateActionNames(
+                CharacterAction.Shoot1,
+                CharacterAction.Shoot2,
+                CharacterAction.ShootF);
         }
 
         private static IEnumerable<string> EnumerateKataraSubWeaponCandidates()
@@ -1738,6 +1770,7 @@ namespace HaCreator.MapSimulator.Character
         private const int DefaultMagicDefenseValue = 5;
         private const float DefaultSpeedValue = 100f;
         private const float DefaultJumpValue = 100f;
+        private const float DefaultMaxSpeedValue = 140f;
 
         public int Id { get; set; }
         public string Name { get; set; }
@@ -1979,7 +2012,10 @@ namespace HaCreator.MapSimulator.Character
         public int TotalAvoidability => Math.Max(0, ApplyRateBonus(GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability) + GetSkillStatBonus(BuffStatType.Avoidability), GetSkillStatBonus(BuffStatType.AvoidabilityPercent)));
         public int TotalHands => Math.Max(0, Hands + TotalDEX + TotalINT + TotalLUK + SumEquipmentBonus(part => part.BonusHands));
         public int TotalCriticalRate => Math.Max(0, CriticalRate + GetSkillStatBonus(BuffStatType.CriticalRate));
-        public float TotalSpeed => Math.Max(0f, ApplyRateBonus(Speed + SumEquipmentBonus(part => part.BonusSpeed) + GetSkillStatBonus(BuffStatType.Speed), GetSkillStatBonus(BuffStatType.SpeedPercent)));
+        public float TotalSpeed => Math.Clamp(
+            ApplyRateBonus(Speed + SumEquipmentBonus(part => part.BonusSpeed) + GetSkillStatBonus(BuffStatType.Speed), GetSkillStatBonus(BuffStatType.SpeedPercent)),
+            0f,
+            GetTotalSpeedCap());
         public float TotalJumpPower => Math.Max(0f, JumpPower + SumEquipmentBonus(part => part.BonusJump) + GetSkillStatBonus(BuffStatType.Jump));
 
         public bool CanIncreaseMaxHp()
@@ -2956,6 +2992,11 @@ namespace HaCreator.MapSimulator.Character
         private int GetSkillStatBonus(BuffStatType stat)
         {
             return Math.Max(0, SkillStatBonusProvider?.Invoke(stat) ?? 0);
+        }
+
+        private float GetTotalSpeedCap()
+        {
+            return Math.Max(DefaultMaxSpeedValue, Speed) + GetSkillStatBonus(BuffStatType.SpeedMax);
         }
 
         /// <summary>

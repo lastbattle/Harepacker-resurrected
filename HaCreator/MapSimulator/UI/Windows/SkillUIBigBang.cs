@@ -1114,8 +1114,8 @@ namespace HaCreator.MapSimulator.UI
             if (!CanLevelUp(skill, GetCurrentSkillPoints()))
                 return false;
 
-            if (OnSkillLevelUpRequested != null && !OnSkillLevelUpRequested(skill))
-                return false;
+            if (OnSkillLevelUpRequested != null)
+                return OnSkillLevelUpRequested(skill);
 
             skill.CurrentLevel = Math.Min(skill.MaxLevel, skill.CurrentLevel + 1);
             skillPointsByTab[_currentTab] = Math.Max(0, GetCurrentSkillPoints() - 1);

@@ -88,6 +88,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         AvoidabilityPercent,
         Speed,
         SpeedPercent,
+        SpeedMax,
         Jump,
         MaxHP,
         MaxMP,
@@ -233,6 +234,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int AccuracyPercent { get; set; }     // accR percentage accuracy boost
         public int AvoidabilityPercent { get; set; } // evaR percentage avoidability boost
         public int SpeedPercent { get; set; }        // speedRate percentage speed boost
+        public int SpeedMax { get; set; }            // speedMax max-speed cap boost
         public int AllStat { get; set; }             // Big Bang indie all-stat boost
         public int AbnormalStatusResistance { get; set; } // asrR / indieAsrR
         public int ElementalResistance { get; set; } // terR / indieTerR
@@ -271,9 +273,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Z { get; set; }
         public int AlphaStart { get; set; } = 255;
         public int AlphaEnd { get; set; } = 255;
+        public int ZoomStart { get; set; }
+        public int ZoomEnd { get; set; }
     }
 
-    public readonly record struct AfterimageRenderableLayer(SkillFrame Frame, float Alpha);
+    public readonly record struct AfterimageRenderableLayer(SkillFrame Frame, float Alpha, float Zoom = 1f);
 
     /// <summary>
     /// Skill effect animation
@@ -1919,6 +1923,57 @@ namespace HaCreator.MapSimulator.Character.Skills
 
     #region Active Projectile
 
+    public enum BulletAnimationOwnerKind
+    {
+        Normal,
+        Magic
+    }
+
+    public sealed class BulletAnimationPresentation
+    {
+        public BulletAnimationOwnerKind Kind { get; init; }
+        public int StartTime { get; init; }
+        public int EndTime { get; init; }
+        public Vector2 SourcePoint { get; init; }
+        public Vector2 DestinationPoint { get; init; }
+        public Vector2 TargetPoint { get; init; }
+        public int Z { get; init; }
+        public string EffectUol { get; init; }
+        public int WeaponItemId { get; init; }
+        public int BulletItemId { get; init; }
+        public bool HasAfterimage { get; init; }
+        public SkillAnimation Animation { get; init; }
+    }
+
+    public sealed class ProjectileAfterimageLayer
+    {
+        public SkillFrame Frame { get; init; }
+        public Vector2 Position { get; init; }
+        public bool Flip { get; init; }
+        public int StartTime { get; init; }
+        public int Duration { get; init; }
+        public int AlphaStart { get; init; }
+        public int AlphaEnd { get; init; }
+
+        public bool IsExpired(int currentTime)
+        {
+            return currentTime - StartTime >= Duration;
+        }
+
+        public float ResolveAlpha(int currentTime)
+        {
+            float progress = MathHelper.Clamp(
+                (currentTime - StartTime) / (float)Math.Max(1, Duration),
+                0f,
+                1f);
+
+            return MathHelper.Lerp(
+                Math.Clamp(AlphaStart, 0, 255),
+                Math.Clamp(AlphaEnd, 0, 255),
+                progress) / 255f;
+        }
+    }
+
     /// <summary>
     /// Active projectile in the world
     /// </summary>
@@ -1966,6 +2021,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool ForceCritical { get; set; }
         public bool IsQueuedFinalAttack { get; set; }
         public bool IsQueuedSparkAttack { get; set; }
+        public BulletAnimationPresentation BulletAnimation { get; set; }
+        public List<ProjectileAfterimageLayer> AfterimageLayers { get; } = new();
+        public int LastAfterimageUpdateTime { get; set; } = int.MinValue;
 
         public void Update(float deltaTime, int currentTime)
         {

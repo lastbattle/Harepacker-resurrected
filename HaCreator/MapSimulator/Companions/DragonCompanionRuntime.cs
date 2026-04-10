@@ -835,93 +835,90 @@ namespace HaCreator.MapSimulator.Companions
                 return FollowUpdateFlags.SnappedToTarget | FollowUpdateFlags.SnapEffect;
             }
 
-            float nextX = _visualAnchor.X;
-            if (_worldAnchor.X > _visualAnchor.X + ActiveFollowDistanceX)
-            {
-                nextX = Math.Min(_worldAnchor.X - ActiveFollowDistanceX, _visualAnchor.X + ActiveFollowStepX);
-                velocityX = 1d;
-            }
-            else if (_worldAnchor.X < _visualAnchor.X - ActiveFollowDistanceX)
-            {
-                nextX = Math.Max(_worldAnchor.X + ActiveFollowDistanceX, _visualAnchor.X - ActiveFollowStepX);
-                velocityX = -1d;
-            }
-            else
-            {
-                velocityX = 0d;
-            }
-
-            float absoluteDeltaY = Math.Abs(deltaY);
-            if (_activeVerticalFollowState == 0)
-            {
-                if (absoluteDeltaY > ActiveFollowVerticalCheckDistance)
-                {
-                    _activeVerticalCheckCount++;
-                    if (_activeVerticalCheckCount >= ActiveFollowVerticalCheckFrames)
-                    {
-                        _activeVerticalFollowState = 1;
-                    }
-                }
-                else
-                {
-                    _activeVerticalCheckCount = 0;
-                }
-            }
-            else
-            {
-                _activeVerticalCheckCount = 0;
-            }
-
-            float nextY = _visualAnchor.Y;
-            bool shouldMoveVertically = _activeVerticalFollowState != 0
-                || ShouldUseImmediateActiveVerticalFollow(deltaY);
-            if (deltaY >= 0f)
-            {
-                if (shouldMoveVertically)
-                {
-                    if (_activeVerticalFollowState < 0 && Math.Abs(deltaY) <= PassiveArrivalDistance)
-                    {
-                        _activeVerticalFollowState = 0;
-                    }
-                    else
-                    {
-                        float verticalStep = MathF.Min(ActiveFollowVerticalStepCap, absoluteDeltaY / ActiveFollowVerticalStepDivisor) + 1f;
-                        nextY = Math.Min(_worldAnchor.Y, _visualAnchor.Y + verticalStep);
-                        _activeVerticalFollowState = Math.Abs(_worldAnchor.Y - nextY) <= PassiveArrivalDistance ? -1 : 1;
-                    }
-
-                    velocityY = 1d;
-                }
-                else
-                {
-                    velocityY = 0d;
-                }
-            }
-            else
-            {
-                if (shouldMoveVertically)
-                {
-                    if (_activeVerticalFollowState < 0 && Math.Abs(deltaY) <= PassiveArrivalDistance)
-                    {
-                        _activeVerticalFollowState = 0;
-                    }
-                    else
-                    {
-                        float verticalStep = MathF.Min(ActiveFollowVerticalStepCap, absoluteDeltaY / ActiveFollowVerticalStepDivisor) + 1f;
-                        nextY = Math.Max(_worldAnchor.Y, _visualAnchor.Y - verticalStep);
-                        _activeVerticalFollowState = Math.Abs(_worldAnchor.Y - nextY) <= PassiveArrivalDistance ? -1 : 1;
-                    }
-
-                    velocityY = -1d;
-                }
-                else
-                {
-                    velocityY = 0d;
-                }
-            }
+            float nextX = ResolveClientActiveFollowHorizontalStep(
+                _visualAnchor.X,
+                _worldAnchor.X,
+                out velocityX);
+            float nextY = ResolveClientActiveFollowVerticalStep(
+                _visualAnchor.Y,
+                _worldAnchor.Y,
+                ref _activeVerticalFollowState,
+                ref _activeVerticalCheckCount,
+                out velocityY);
 
             _visualAnchor = new Vector2(nextX, nextY);
             return FollowUpdateFlags.None;
+        }
+
+        internal static float ResolveClientActiveFollowHorizontalStep(float currentX, float targetX, out double velocityX)
+        {
+            if (targetX > currentX + ActiveFollowDistanceX)
+            {
+                velocityX = 1d;
+                return Math.Min(targetX - ActiveFollowDistanceX, currentX + ActiveFollowStepX);
+            }
+
+            if (targetX < currentX - ActiveFollowDistanceX)
+            {
+                velocityX = -1d;
+                return Math.Max(targetX + ActiveFollowDistanceX, currentX - ActiveFollowStepX);
+            }
+
+            velocityX = 0d;
+            return currentX;
+        }
+
+        internal static float ResolveClientActiveFollowVerticalStep(
+            float currentY,
+            float targetY,
+            ref int followingState,
+            ref int checkCount,
+            out double velocityY)
+        {
+            float deltaY = targetY - currentY;
+            float absoluteDeltaY = Math.Abs(deltaY);
+            if (followingState == 0)
+            {
+                if (absoluteDeltaY > ActiveFollowVerticalCheckDistance)
+                {
+                    checkCount++;
+                    if (checkCount >= ActiveFollowVerticalCheckFrames)
+                    {
+                        followingState = 1;
+                    }
+                }
+                else
+                {
+                    checkCount = 0;
+                }
+            }
+            else
+            {
+                checkCount = 0;
+            }
+
+            bool shouldMoveVertically = followingState != 0
+                || ShouldUseImmediateActiveVerticalFollow(deltaY);
+            if (!shouldMoveVertically)
+            {
+                velocityY = 0d;
+                return currentY;
+            }
+
+            if (followingState < 0 && absoluteDeltaY <= PassiveArrivalDistance)
+            {
+                followingState = 0;
+                velocityY = deltaY >= 0f ? 1d : -1d;
+                return currentY;
+            }
+
+            float verticalStep = MathF.Min(ActiveFollowVerticalStepCap, absoluteDeltaY / ActiveFollowVerticalStepDivisor) + 1f;
+            float nextY = deltaY >= 0f
+                ? Math.Min(targetY, currentY + verticalStep)
+                : Math.Max(targetY, currentY - verticalStep);
+            followingState = Math.Abs(targetY - nextY) <= PassiveArrivalDistance ? -1 : 1;
+            velocityY = deltaY >= 0f ? 1d : -1d;
+            return nextY;
         }
 
         internal static bool ShouldUseImmediateActiveVerticalFollow(float deltaY)

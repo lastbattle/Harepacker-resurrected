@@ -863,6 +863,7 @@ namespace HaCreator.MapSimulator.Entities
                     EffectFacingAttach = attackInfo?.EffectFacingAttach == true,
                     Tremble = tremble,
                     IsAngerAttack = attackInfo?.IsAngerAttack == true,
+                    IsSpecialAttack = attackInfo?.IsSpecialAttack == true,
                     DiseaseSkillId = attackMeta?.Disease ?? 0,
                     DiseaseLevel = Math.Max(1, attackMeta?.Level ?? 1)
                 });
@@ -1797,7 +1798,9 @@ namespace HaCreator.MapSimulator.Entities
         private void RegisterAngerGaugeBurst(int tickCount)
         {
             List<IDXObject> effectFrames = _animationSet.GetAngerGaugeEffect();
-            int repeatIntervalMs = MobAngerGaugeBurstParity.ResolveRepeatIntervalMs(effectFrames);
+            int repeatIntervalMs = MobAngerGaugeBurstParity.ResolveRepeatIntervalMs(
+                effectFrames,
+                AI?.AngerGaugeFullChargeEffectIntervalMs ?? 0);
             if (repeatIntervalMs <= 0)
             {
                 return;

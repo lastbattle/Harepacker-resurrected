@@ -416,6 +416,7 @@ namespace HaCreator.MapSimulator.Interaction
             long? ExpirationTime,
             int? TailValue,
             string TailMetadataSummary);
+        private readonly record struct MerchantPacketItemRow(short Number, short Set, int Price, PacketOwnedTradeItem Item);
         private readonly record struct MiniRoomBaseEnterResultPayload(int RoomType, int ResultCode, int MaxUsers, int MyPosition, int OccupantCount);
         private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
         private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);

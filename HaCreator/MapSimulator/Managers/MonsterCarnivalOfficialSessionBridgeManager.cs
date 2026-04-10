@@ -378,6 +378,8 @@ namespace HaCreator.MapSimulator.Managers
         {
             string packetLabel = packetType is >= FirstCarnivalOpcode and <= LastCarnivalOpcode
                 ? $"Monster Carnival opcode {packetType}"
+                : packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
+                    ? $"CField::OnPacket relay {packetType}"
                 : $"Monster Carnival packet {packetType}";
             string summary = string.IsNullOrWhiteSpace(message) ? packetLabel : $"{packetLabel}: {message}";
             LastStatus = success
@@ -509,14 +511,37 @@ namespace HaCreator.MapSimulator.Managers
 
             int opcode = BitConverter.ToUInt16(rawPacket, 0);
             byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
-            if (opcode >= FirstCarnivalOpcode && opcode <= LastCarnivalOpcode)
+            if (opcode == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
             {
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(payload, out int relayedPacketType, out _, out string relayError)
+                    || !IsSupportedCarnivalPacketType(relayedPacketType))
+                {
+                    RecordRecentPacket(opcode, rawPacket, mappedPacketType: null, "unsupported-relay");
+                    LastStatus = string.IsNullOrWhiteSpace(relayError)
+                        ? $"Ignored CField::OnPacket relay {opcode}; relayed packet is not in the recovered Monster Carnival 346-353 handler family."
+                        : $"Ignored CField::OnPacket relay {opcode}; {relayError}";
+                    return false;
+                }
+
                 message = new MonsterCarnivalPacketInboxMessage(
                     opcode,
                     payload,
                     source,
                     $"packetraw {Convert.ToHexString(rawPacket)}");
-                RecordRecentPacket(opcode, rawPacket, opcode, "native");
+                RecordRecentPacket(opcode, rawPacket, relayedPacketType, "current-wrapper");
+                return true;
+            }
+
+            if (opcode >= FirstCarnivalOpcode && opcode <= LastCarnivalOpcode)
+            {
+                int relayedPacketType = opcode;
+                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref relayedPacketType, ref payload);
+                message = new MonsterCarnivalPacketInboxMessage(
+                    relayedPacketType,
+                    payload,
+                    source,
+                    $"packetraw {Convert.ToHexString(rawPacket)}");
+                RecordRecentPacket(opcode, rawPacket, opcode, "native-relay");
                 return true;
             }
 
@@ -527,12 +552,14 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            int relayOpcode = mappedPacketType;
+            SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref relayOpcode, ref payload);
             message = new MonsterCarnivalPacketInboxMessage(
-                mappedPacketType,
+                relayOpcode,
                 payload,
                 source,
                 $"packetraw {Convert.ToHexString(rawPacket)}");
-            RecordRecentPacket(opcode, rawPacket, mappedPacketType, "configured");
+            RecordRecentPacket(opcode, rawPacket, mappedPacketType, "configured-relay");
             return true;
         }
 
@@ -630,12 +657,28 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int opcode = BitConverter.ToUInt16(rawPacket, 0);
-            if (opcode < FirstCarnivalOpcode || opcode > LastCarnivalOpcode)
+            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
+            if (opcode == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                if (!SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(payload, out int relayedPacketType, out _, out _)
+                    || !IsSupportedCarnivalPacketType(relayedPacketType))
+                {
+                    return false;
+                }
+
+                message = new MonsterCarnivalPacketInboxMessage(
+                    opcode,
+                    payload,
+                    source,
+                    $"packetraw {Convert.ToHexString(rawPacket)}");
+                return true;
+            }
+
+            if (!IsSupportedCarnivalPacketType(opcode))
             {
                 return false;
             }
 
-            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
             byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
             message = new MonsterCarnivalPacketInboxMessage(
                 SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
@@ -667,11 +710,18 @@ namespace HaCreator.MapSimulator.Managers
                 && entryIndex >= 0;
         }
 
+        private static bool IsSupportedCarnivalPacketType(int packetType)
+        {
+            return packetType >= FirstCarnivalOpcode
+                && packetType <= LastCarnivalOpcode;
+        }
+
         private static string DescribePacketType(int packetType)
         {
             return packetType switch
             {
                 OutboundRequestOpcode => "requestsend",
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode => $"CField::OnPacket relay {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode}",
                 346 => "enter",
                 347 => "personalcp",
                 348 => "teamcp",

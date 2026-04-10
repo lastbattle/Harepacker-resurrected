@@ -1295,6 +1295,37 @@ namespace HaCreator.MapSimulator.UI
             return results;
         }
 
+        public IReadOnlyList<WishlistSearchResult> GetWishlistCategoryResults(string categoryKey, out string message)
+        {
+            AdminShopCategory requestedCategory = ResolveWishlistCategory(categoryKey);
+            string requestedCategoryLabel = GetWishlistCategoryLabel(categoryKey);
+            List<WishlistSearchResult> results = _paneStates[AdminShopPane.Npc]
+                .SourceEntries
+                .Where(entry => entry.SupportsWishlist && MatchesWishlistCategory(entry, categoryKey))
+                .OrderBy(entry => entry.Price)
+                .ThenBy(entry => entry.Title, StringComparer.OrdinalIgnoreCase)
+                .Select(entry => BuildWishlistSearchResult(entry, 0))
+                .Where(result => result != null)
+                .ToList();
+
+            if (results.Count == 0)
+            {
+                message = $"No wish-list category results were found for {requestedCategoryLabel}.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return Array.Empty<WishlistSearchResult>();
+            }
+
+            int alreadyWishlistedCount = results.Count(result => result.AlreadyWishlisted);
+            message = alreadyWishlistedCount > 0
+                ? $"CUIAdminShopWishListCategory staged {results.Count} {requestedCategoryLabel} result(s); {alreadyWishlistedCount} row(s) are already saved."
+                : $"CUIAdminShopWishListCategory staged {results.Count} {requestedCategoryLabel} result(s).";
+            _footerMessage = message;
+            UpdateActionButtonStates();
+            _ = requestedCategory;
+            return results;
+        }
+
         public bool TryResolveWishlistSearchResult(string entryKey, out WishlistSearchResult result)
         {
             result = null;
@@ -6897,7 +6928,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (!TryBuildPacketOwnedAdminShopTradeRequest(entry, requestQuantity, out PacketOwnedNpcUtilityOutboundRequest request, out string error))
+            if (!TryBuildPacketOwnedAdminShopTradeRequest(entry, requestQuantity, ResolvePacketOwnedTradeRequestPosition(entry), out PacketOwnedNpcUtilityOutboundRequest request, out string error))
             {
                 summary = error ?? string.Empty;
                 return false;
@@ -6905,6 +6936,23 @@ namespace HaCreator.MapSimulator.UI
 
             summary = DispatchPacketOwnedAdminShopOutbound(request);
             return true;
+        }
+
+        private int ResolvePacketOwnedTradeRequestPosition(AdminShopEntry entry)
+        {
+            if (!RequiresInventorySource(entry))
+            {
+                return 0;
+            }
+
+            if (entry.InventorySlotIndex >= 0)
+            {
+                return entry.InventorySlotIndex + 1;
+            }
+
+            return TryResolveSourceInventoryStack(entry, out SourceInventoryStackResolution sourceResolution)
+                ? sourceResolution.SlotIndex + 1
+                : 0;
         }
 
         private string DispatchPacketOwnedAdminShopWishlistRegister(AdminShopEntry entry)
@@ -6986,6 +7034,7 @@ namespace HaCreator.MapSimulator.UI
         private static bool TryBuildPacketOwnedAdminShopTradeRequest(
             AdminShopEntry entry,
             int requestCount,
+            int position,
             out PacketOwnedNpcUtilityOutboundRequest request,
             out string error)
         {
@@ -6997,9 +7046,6 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            int position = RequiresInventorySource(entry) && entry.InventorySlotIndex >= 0
-                ? entry.InventorySlotIndex + 1
-                : 0;
             return TryBuildPacketOwnedAdminShopTradeRequest(
                 entry.PacketSerialNumber,
                 requestCount,

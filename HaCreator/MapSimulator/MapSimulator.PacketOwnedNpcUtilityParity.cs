@@ -28,6 +28,10 @@ namespace HaCreator.MapSimulator
 
             switch (packetType)
             {
+                case LocalUtilityPacketInboxManager.AdminShopResultClientPacketType:
+                case LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType:
+                    return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out message);
+
                 case 364:
                 case 365:
                 {
@@ -87,6 +91,13 @@ namespace HaCreator.MapSimulator
                 default:
                     return false;
             }
+        }
+
+        internal static bool IsPacketOwnedNpcUtilityPacketType(int packetType)
+        {
+            return packetType is 364 or 365 or 369 or 370 or 420 or 421 or 422 or 423
+                || packetType == LocalUtilityPacketInboxManager.AdminShopResultClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType;
         }
 
         private string ShowPacketOwnedUniqueUtilityWindow(string windowName, string displayName, string defaultMessage)
@@ -172,7 +183,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]");
             }
         }
 
@@ -184,6 +195,7 @@ namespace HaCreator.MapSimulator
                 {
                     "Packet-owned NPC utility owner family:",
                     $"Shop: {BuildPacketOwnedNpcShopFooter()}",
+                    $"AdminShop: {BuildPacketOwnedAdminShopFooter()}",
                     $"StoreBank: {BuildPacketOwnedStoreBankFooter()}",
                     $"BattleRecord: {_packetOwnedBattleRecordRuntime.BuildFooter()}"
                 });
@@ -194,11 +206,11 @@ namespace HaCreator.MapSimulator
             bool rawHex = string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase);
             if (args.Length < 2
                 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int packetType)
-                || packetType is not (364 or 365 or 369 or 370 or 420 or 421 or 422 or 423))
+                || !IsPacketOwnedNpcUtilityPacketType(packetType))
             {
                 return ChatCommandHandler.CommandResult.Error(rawHex
-                    ? "Usage: /npcutility packetraw <364|365|369|370|420|421|422|423> <hex>"
-                    : "Usage: /npcutility packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
+                    ? "Usage: /npcutility packetraw <364|365|366|367|369|370|420|421|422|423> <hex>"
+                    : "Usage: /npcutility packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
             }
 
             byte[] payload = Array.Empty<byte>();
@@ -206,12 +218,12 @@ namespace HaCreator.MapSimulator
             {
                 if (args.Length < 3 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out payload))
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility packetraw <364|365|369|370|420|421|422|423> <hex>");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility packetraw <364|365|366|367|369|370|420|421|422|423> <hex>");
                 }
             }
             else if (args.Length >= 3 && !TryParseBinaryPayloadArgument(args[2], out payload, out string payloadError))
             {
-                return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /npcutility packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
+                return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /npcutility packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]");
             }
 
             return TryApplyPacketOwnedNpcUtilityPacket(packetType, payload, out string message)

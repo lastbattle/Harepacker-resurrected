@@ -1736,13 +1736,24 @@ namespace HaCreator.MapSimulator.UI
             WzSubProperty specProperty,
             WzSubProperty specExProperty)
         {
-            if (GetIntValue(specProperty?["effectedOnAlly"]) != 1
-                && GetIntValue(specExProperty?["effectedOnAlly"]) != 1)
+            bool affectsAllies = GetIntValue(specProperty?["effectedOnAlly"]) == 1
+                                  || GetIntValue(specExProperty?["effectedOnAlly"]) == 1;
+            bool affectsEnemies = GetIntValue(specProperty?["effectedOnEnemy"]) == 1
+                                   || GetIntValue(specExProperty?["effectedOnEnemy"]) == 1;
+            if (!affectsAllies && !affectsEnemies)
             {
                 return;
             }
 
-            effectLines.Add("Affects allies");
+            if (affectsAllies)
+            {
+                effectLines.Add("Affects allies");
+            }
+
+            if (affectsEnemies)
+            {
+                effectLines.Add("Affects enemies");
+            }
         }
 
         private static void AppendSpecExMobSkillMetadataLines(List<string> metadataLines, WzSubProperty specExProperty)

@@ -4141,11 +4141,22 @@ namespace HaCreator.MapSimulator.Character
 
                 Color frameTint = tint * MathHelper.Clamp(layer.Alpha * fadeAlpha, 0f, 1f);
                 bool shouldFlip = _activeMeleeAfterImage.FacingRight ^ frame.Flip;
+                float zoom = MathHelper.Clamp(layer.Zoom, 0.01f, 10f);
+                int drawWidth = Math.Max(1, (int)Math.Round(frame.Texture.Width * zoom));
+                int drawHeight = Math.Max(1, (int)Math.Round(frame.Texture.Height * zoom));
                 int drawX = shouldFlip
-                    ? screenX - (frame.Texture.Width - frame.Origin.X)
-                    : screenX - frame.Origin.X;
-                int drawY = screenY - frame.Origin.Y;
-                frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, frameTint, shouldFlip, null);
+                    ? screenX - (int)Math.Round((frame.Texture.Width - frame.Origin.X) * zoom)
+                    : screenX - (int)Math.Round(frame.Origin.X * zoom);
+                int drawY = screenY - (int)Math.Round(frame.Origin.Y * zoom);
+                spriteBatch.Draw(
+                    frame.Texture.Texture,
+                    new Rectangle(drawX, drawY, drawWidth, drawHeight),
+                    null,
+                    frameTint,
+                    0f,
+                    Vector2.Zero,
+                    shouldFlip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
+                    0f);
             }
         }
 
@@ -4666,6 +4677,10 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Rectangle bounds = CalculateMirrorImageSourceLayerBounds(clonedParts);
+            bool preservesPreparedPlacement = CanPreserveMirrorImagePreparedSourceLayerPlacement(
+                preservesExistingLayerObject,
+                preparedLayer.Bounds,
+                preparedLayer.Parts?.Count ?? 0);
             Texture2D composedTexture = CreateMirrorImageLayerTexture(
                 clonedParts,
                 bounds,
@@ -4674,11 +4689,15 @@ namespace HaCreator.MapSimulator.Character
             ReplacePreparedMirrorImageSourceLayerTexture(preparedLayer, composedTexture);
             preparedLayer.RenderLayer = renderLayer;
             preparedLayer.SourceSignature = sourceSignature;
-            preparedLayer.Bounds = bounds;
+            preparedLayer.Bounds = ResolveMirrorImagePreparedSourceLayerPlacementBounds(
+                preparedLayer.Bounds,
+                bounds,
+                preservesPreparedPlacement);
             preparedLayer.TextureSourceBounds = ResolveMirrorImagePreparedSnapshotSourceBounds(Rectangle.Empty, bounds);
-            preparedLayer.Origin = bounds.IsEmpty
-                ? Point.Zero
-                : ResolveMirrorImageSourceLayerOrigin(bounds);
+            preparedLayer.Origin = ResolveMirrorImagePreparedSourceLayerOrigin(
+                preparedLayer.Origin,
+                bounds,
+                preservesPreparedPlacement);
             preparedLayer.PreparedCurrentTime = ResolveMirrorImagePreparedSourceLayerUpdateTime(
                 preparedLayer.PreparedCurrentTime,
                 reusesExistingLayer: false,
@@ -5113,6 +5132,53 @@ namespace HaCreator.MapSimulator.Character
 
             return existingTextureWidth >= incomingBounds.Width
                    && existingTextureHeight >= incomingBounds.Height;
+        }
+
+        internal static bool CanPreserveMirrorImagePreparedSourceLayerPlacement(
+            bool preservesExistingLayerObject,
+            Rectangle existingBounds,
+            int existingPartCount)
+        {
+            return preservesExistingLayerObject
+                   && existingPartCount > 0
+                   && !existingBounds.IsEmpty;
+        }
+
+        internal static Rectangle ResolveMirrorImagePreparedSourceLayerPlacementBounds(
+            Rectangle existingBounds,
+            Rectangle incomingBounds,
+            bool preservesExistingLayerPlacement)
+        {
+            if (!preservesExistingLayerPlacement || existingBounds.IsEmpty)
+            {
+                return incomingBounds;
+            }
+
+            if (incomingBounds.Width <= 0 || incomingBounds.Height <= 0)
+            {
+                return existingBounds;
+            }
+
+            return new Rectangle(
+                existingBounds.X,
+                existingBounds.Y,
+                incomingBounds.Width,
+                incomingBounds.Height);
+        }
+
+        internal static Point ResolveMirrorImagePreparedSourceLayerOrigin(
+            Point existingOrigin,
+            Rectangle incomingBounds,
+            bool preservesExistingLayerPlacement)
+        {
+            if (preservesExistingLayerPlacement)
+            {
+                return existingOrigin;
+            }
+
+            return incomingBounds.IsEmpty
+                ? Point.Zero
+                : ResolveMirrorImageSourceLayerOrigin(incomingBounds);
         }
 
         private static void DrawMirrorImageSourcePartToTexture(SpriteBatch spriteBatch, AssembledPart part, Rectangle bounds)
@@ -6950,20 +7016,14 @@ namespace HaCreator.MapSimulator.Character
             out int anchorX,
             out int anchorY)
         {
-            anchorX = screenX;
-            anchorY = screenY;
-
-            if (positionCode != 1
-                || assembledFrame?.MapPoints == null
-                || !assembledFrame.MapPoints.TryGetValue("brow", out Point anchorPoint))
-            {
-                return;
-            }
-
-            anchorX = FacingRight
-                ? screenX + anchorPoint.X
-                : screenX - anchorPoint.X;
-            anchorY = screenY - assembledFrame.FeetOffset + anchorPoint.Y;
+            ClientOwnedAvatarEffectParity.TryResolveFaceOwnedAvatarEffectAnchor(
+                assembledFrame,
+                FacingRight,
+                screenX,
+                screenY,
+                positionCode,
+                out anchorX,
+                out anchorY);
         }
 
         private static int GetUnderFaceInsertionIndex(List<AssembledPart> parts)
@@ -7114,8 +7174,8 @@ namespace HaCreator.MapSimulator.Character
                 return 0;
             }
 
-            if (baseFrame.MapPoints.TryGetValue("navel", out Point baseNavel)
-                && currentFrame.MapPoints.TryGetValue("navel", out Point currentNavel))
+            if (baseFrame.MapPoints?.TryGetValue("navel", out Point baseNavel) == true
+                && currentFrame.MapPoints?.TryGetValue("navel", out Point currentNavel) == true)
             {
                 return currentNavel.Y - baseNavel.Y;
             }
@@ -7817,7 +7877,9 @@ namespace HaCreator.MapSimulator.Character
                     transform = CreateSingleActionTransform(skillId, "rapidfire", exitActionName: null);
                     return true;
                 case 35001001:
-                    transform = CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre", "flamethrower", "flamethrower_after");
+                    transform = IsRocketBoosterTransformAction(normalizedAction)
+                        ? CreateRocketBoosterTransform(skillId, normalizedAction)
+                        : CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre", "flamethrower", "flamethrower_after");
                     return true;
                 case 35101009:
                     transform = IsMechanicTankOwnedRushAction(normalizedAction)
@@ -8019,11 +8081,7 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            if (string.Equals(normalizedAction, "rbooster", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedAction, "rbooster_pre", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedAction, "rbooster_after", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedAction, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedAction, "tank_rbooster_after", StringComparison.OrdinalIgnoreCase))
+            if (IsRocketBoosterTransformAction(normalizedAction))
             {
                 transform = CreateRocketBoosterTransform(skillId, normalizedAction);
                 return true;
@@ -8402,6 +8460,15 @@ namespace HaCreator.MapSimulator.Character
                 HitActionNames = CreateActionVariants("rbooster", startupActionName),
                 ExitActionName = exitActionName
             };
+        }
+
+        private static bool IsRocketBoosterTransformAction(string actionName)
+        {
+            return string.Equals(actionName, "rbooster", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rbooster_after", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "tank_rbooster_after", StringComparison.OrdinalIgnoreCase);
         }
 
         private static SkillAvatarTransformState CreateDarkSightTransform(int skillId)

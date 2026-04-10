@@ -12,8 +12,8 @@ namespace HaCreator.MapSimulator.Interaction
             string title,
             string problemText,
             string hintText,
-            int correctAnswer,
-            int questionNumber,
+            int minInputLength,
+            int maxInputLength,
             int remainingSeconds)
         {
             using MemoryStream stream = new();
@@ -22,8 +22,8 @@ namespace HaCreator.MapSimulator.Interaction
             WriteMapleString(writer, title);
             WriteMapleString(writer, problemText);
             WriteMapleString(writer, hintText);
-            writer.Write(correctAnswer);
-            writer.Write(questionNumber);
+            writer.Write(minInputLength);
+            writer.Write(maxInputLength);
             writer.Write(remainingSeconds);
             return stream.ToArray();
         }

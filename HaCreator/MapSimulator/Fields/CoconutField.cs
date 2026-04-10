@@ -54,7 +54,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int ResultBannerTopY = 145;
         private const int BoardWidth = 258;
         private const int BoardHeight = 101;
-        private const int BoardTopY = 10;
+        private const int BoardRightOffsetX = 265;
+        private const int BoardTopY = 8;
         private const int Team0ScoreX = 25;
         private const int Team1ScoreX = 150;
         private const int ScoreY = 37;
@@ -210,6 +211,7 @@ namespace HaCreator.MapSimulator.Fields
         private int? _lastScorePacketTick;
         private int _previewTreeHitCount = DefaultPreviewTreeHitCount;
         private int _defaultRoundDurationSeconds = DefaultRoundDurationSecondsValue;
+        private int _expandRoundDurationSeconds = DefaultRoundDurationSecondsValue;
         private int _messageDurationMs = DefaultMessageDurationMs;
         private int _finalScoreMessageDurationMs = DefaultMessageDurationMs;
         private int _authoredTotalCoconutCount;
@@ -246,6 +248,7 @@ namespace HaCreator.MapSimulator.Fields
         internal int ResultExpiresAtTick => _resultExpireTime;
         internal int PreviewTreeHitCount => _previewTreeHitCount;
         internal int DefaultRoundDurationSeconds => _defaultRoundDurationSeconds;
+        internal int ExpandRoundDurationSeconds => _expandRoundDurationSeconds;
         internal int MessageDurationMs => _messageDurationMs;
         internal int FinalScoreMessageDurationMs => _finalScoreMessageDurationMs;
         internal int AuthoredTotalCoconutCount => _authoredTotalCoconutCount;
@@ -477,7 +480,7 @@ namespace HaCreator.MapSimulator.Fields
                     : "idle";
             int pendingRequests = _pendingAttackPacketRequests.Count;
             int unsentRequests = PendingUndispatchedAttackPacketRequestCount;
-            return $"Coconut runtime active, coconuts={_coconuts.Count}, authoredTotal={_authoredTotalCoconutCount}, localTeam={_localTeam}, teamSource={_localTeamSelectionSource}, objectName={_eventObjectName}, round={roundState}, score={_team0Score}-{_team1Score}, time={_timeRemaining}, result={_lastRoundResult}, pendingRequests={pendingRequests}, unsentRequests={unsentRequests}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, lastScoreTick={(_lastScorePacketTick?.ToString() ?? "None")}";
+            return $"Coconut runtime active, coconuts={_coconuts.Count}, authoredTotal={_authoredTotalCoconutCount}, localTeam={_localTeam}, teamSource={_localTeamSelectionSource}, objectName={_eventObjectName}, round={roundState}, score={_team0Score}-{_team1Score}, time={_timeRemaining}, defaultTime={_defaultRoundDurationSeconds}, expandTime={_expandRoundDurationSeconds}, result={_lastRoundResult}, pendingRequests={pendingRequests}, unsentRequests={unsentRequests}, lastPacket={(_lastPacketType?.ToString() ?? "None")}, lastScoreTick={(_lastScorePacketTick?.ToString() ?? "None")}";
         }
         #endregion
         #region Simulation (for testing)
@@ -1327,8 +1330,9 @@ namespace HaCreator.MapSimulator.Fields
         private void DrawUI(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, Texture2D pixel, SpriteFont font)
         {
             int screenWidth = spriteBatch.GraphicsDevice.Viewport.Width;
-            int boardX = (screenWidth - BoardWidth) / 2;
-            int boardY = BoardTopY;
+            Point boardPosition = ResolveClientBoardLayerPosition(screenWidth);
+            int boardX = boardPosition.X;
+            int boardY = boardPosition.Y;
             if (_boardBackground != null)
             {
                 _boardBackground.DrawBackground(spriteBatch, skeletonMeshRenderer, gameTime, boardX + _boardBackground.X, boardY + _boardBackground.Y, Color.White, false, null);
@@ -1394,6 +1398,10 @@ namespace HaCreator.MapSimulator.Fields
                 cursorX += glyph.Width + letterSpacing;
             }
             return true;
+        }
+        internal static Point ResolveClientBoardLayerPosition(int screenWidth)
+        {
+            return new Point(screenWidth - BoardRightOffsetX, BoardTopY);
         }
         private void DrawRoundResult(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, SpriteFont font, int tickCount)
         {
@@ -1479,6 +1487,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             _previewTreeHitCount = DefaultPreviewTreeHitCount;
             _defaultRoundDurationSeconds = DefaultRoundDurationSecondsValue;
+            _expandRoundDurationSeconds = DefaultRoundDurationSecondsValue;
             _messageDurationMs = DefaultMessageDurationMs;
             _finalScoreMessageDurationMs = DefaultMessageDurationMs;
             _authoredTotalCoconutCount = 0;
@@ -1501,6 +1510,7 @@ namespace HaCreator.MapSimulator.Fields
             _authoredTotalCoconutCount = ResolveAuthoredTotalCoconutCount(countFalling, countBombing, countStopped);
             _previewTreeHitCount = Math.Max(1, InfoTool.GetOptionalInt(coconutConfig["countHit"], DefaultPreviewTreeHitCount) ?? DefaultPreviewTreeHitCount);
             _defaultRoundDurationSeconds = Math.Max(0, InfoTool.GetOptionalInt(coconutConfig["timeDefault"], DefaultRoundDurationSecondsValue) ?? DefaultRoundDurationSecondsValue);
+            _expandRoundDurationSeconds = Math.Max(0, InfoTool.GetOptionalInt(coconutConfig["timeExpand"], _defaultRoundDurationSeconds) ?? _defaultRoundDurationSeconds);
 
             int messageSeconds = Math.Max(1, InfoTool.GetOptionalInt(coconutConfig["timeMessage"], DefaultMessageDurationMs / 1000) ?? (DefaultMessageDurationMs / 1000));
             int finalScoreSeconds = Math.Max(1, InfoTool.GetOptionalInt(coconutConfig["timeFinish"], DefaultMessageDurationMs / 1000) ?? (DefaultMessageDurationMs / 1000));

@@ -691,14 +691,24 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             string actorName = string.IsNullOrWhiteSpace(build.Name) ? "Guest" : build.Name.Trim();
+            WeddingRemoteParticipant participant = null;
             if (characterId.HasValue
                 && _audienceActorNamesById.TryGetValue(characterId.Value, out string previousName)
-                && !string.Equals(previousName, actorName, StringComparison.OrdinalIgnoreCase))
+                && !string.Equals(previousName, actorName, StringComparison.OrdinalIgnoreCase)
+                && _audienceActors.TryGetValue(previousName, out participant))
             {
                 _audienceActors.Remove(previousName);
+                if (_audienceActors.TryGetValue(actorName, out WeddingRemoteParticipant replacedParticipant)
+                    && replacedParticipant.CharacterId > 0
+                    && replacedParticipant.CharacterId != characterId.Value)
+                {
+                    _audienceActorNamesById.Remove(replacedParticipant.CharacterId);
+                }
+
+                _audienceActors[actorName] = participant;
             }
 
-            if (!_audienceActors.TryGetValue(actorName, out WeddingRemoteParticipant participant))
+            if (participant == null && !_audienceActors.TryGetValue(actorName, out participant))
             {
                 CharacterBuild actorBuild = build.Clone();
                 actorBuild.Name = actorName;

@@ -923,7 +923,8 @@ namespace HaCreator.MapSimulator.Loaders
                 IsRushAttack = InfoTool.GetInt(infoNode["rush"], 0) > 0,
                 IsJumpAttack = InfoTool.GetInt(infoNode["jumpAttack"], 0) > 0,
                 Tremble = InfoTool.GetInt(infoNode["tremble"], 0) > 0,
-                IsAngerAttack = InfoTool.GetInt(infoNode["AngerAttack"], 0) > 0
+                IsAngerAttack = InfoTool.GetInt(infoNode["AngerAttack"], 0) > 0,
+                IsSpecialAttack = InfoTool.GetInt(infoNode["specialAttack"], 0) > 0
             };
 
             if (explicitInfoHitAttach == int.MinValue
@@ -1925,6 +1926,9 @@ namespace HaCreator.MapSimulator.Loaders
                 hasQuestCheckContext,
                 questStateProvider,
                 questRecordValueProvider);
+            if (animationSet.IsHiddenToLocalUser)
+                return null;
+
             if (animationSet.ActionCount == 0) // fix japan ms v186, (9000021.img「ガガ」) なぜだ？;(
                 return null;
 

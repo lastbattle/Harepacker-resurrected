@@ -90,6 +90,25 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int opcode, out byte[] payload, out string error)
+        {
+            opcode = -1;
+            payload = Array.Empty<byte>();
+            error = string.Empty;
+
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                error = "Family client packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            opcode = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket);
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
+            return true;
+        }
+
         internal static bool TryParsePayloadToken(string token, out byte[] payload, out string error)
         {
             payload = Array.Empty<byte>();

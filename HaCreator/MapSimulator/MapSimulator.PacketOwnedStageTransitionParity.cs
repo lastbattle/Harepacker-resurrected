@@ -307,7 +307,6 @@ namespace HaCreator.MapSimulator
             if (skillRecords != null)
             {
                 _playerManager.Skills.ApplyAuthoritativeSkillRecordSnapshot(skillRecords);
-                RefreshVisibleSkillRootsFromCurrentRecords();
             }
 
             IReadOnlyDictionary<int, int> masterLevels = snapshot.SkillMasterLevels;

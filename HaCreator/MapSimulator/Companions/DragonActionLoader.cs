@@ -677,7 +677,9 @@ namespace HaCreator.MapSimulator.Companions
                 Flip = frame.Flip,
                 Z = frame.Z,
                 AlphaStart = frame.AlphaStart,
-                AlphaEnd = frame.AlphaEnd
+                AlphaEnd = frame.AlphaEnd,
+                ZoomStart = frame.ZoomStart,
+                ZoomEnd = frame.ZoomEnd
             };
         }
 

@@ -20087,7 +20087,6 @@ namespace HaCreator.MapSimulator
 
 
             _playerManager.Skills.SetSkillLevel(skillId, targetLevel);
-            RefreshVisibleSkillRootsFromCurrentRecords();
         }
 
 
@@ -24950,13 +24949,13 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_reactorTouchPacketOutbox.TrySendTouchRequest(change.ObjectId, change.IsTouching, out _))
+            if (_reactorPoolOfficialSessionBridgeEnabled
+                && _reactorPoolOfficialSessionBridge.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _))
             {
                 return;
             }
 
-            if (_reactorPoolOfficialSessionBridgeEnabled
-                && _reactorPoolOfficialSessionBridge.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _))
+            if (_reactorTouchPacketOutbox.TrySendTouchRequest(change.ObjectId, change.IsTouching, out _))
             {
                 return;
             }
@@ -25603,7 +25602,11 @@ namespace HaCreator.MapSimulator
         {
             if (!CanAttemptPortalInteract(currentTime))
             {
-                ClearPassiveTransferRequest();
+                if (!_passiveTransferRequestPending || !ShouldKeepPassiveTransferFieldRequestPending())
+                {
+                    ClearPassiveTransferRequest();
+                }
+
                 return;
             }
 
@@ -25678,7 +25681,7 @@ namespace HaCreator.MapSimulator
                     HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
                     HasPendingMapChange: _gameState.PendingMapChange,
                     HasPlayerInputControl: _gameState.IsPlayerInputEnabled,
-                    HasStandAloneControlOwner: false,
+                    HasStandAloneControlOwner: _gameState.StandAloneModeActive,
                     AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
                     HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
                     HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership(),
@@ -25720,6 +25723,16 @@ namespace HaCreator.MapSimulator
             }
 
             return ResolvePassiveTransferFieldReadyState();
+        }
+
+        private bool ShouldKeepPassiveTransferFieldRequestPending()
+        {
+            return PassiveTransferFieldReadinessEvaluator.ShouldKeepQueuedRetryPending(
+                new PassiveTransferFieldQueuedRetryState(
+                    HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
+                    HasPendingMapChange: _gameState.PendingMapChange,
+                    HasBoundPlayer: _playerManager?.Player != null,
+                    IsPlayerActive: _playerManager?.IsPlayerActive == true));
         }
 
         private bool CanReplayPassiveTransferFieldUpKeyPath(int currentTime)
@@ -27015,7 +27028,13 @@ namespace HaCreator.MapSimulator
 
         public bool SetDynamicObjectTagState(string tag, bool? isEnabled, int transitionTimeMs = 0, int? currentTimeMs = null)
         {
-            if (string.IsNullOrWhiteSpace(tag))
+            string normalizedTag = tag?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedTag))
+            {
+                return false;
+            }
+
+            if (!IsAvailableDynamicObjectTag(normalizedTag))
             {
                 return false;
             }
@@ -27024,13 +27043,34 @@ namespace HaCreator.MapSimulator
             int resolvedCurrentTime = currentTimeMs ?? Environment.TickCount;
             if (isEnabled.HasValue)
             {
-                _fieldEffects.PublishObjectState(tag, isEnabled.Value, Math.Max(0, transitionTimeMs), resolvedCurrentTime);
+                _fieldEffects.PublishObjectState(normalizedTag, isEnabled.Value, Math.Max(0, transitionTimeMs), resolvedCurrentTime);
                 return true;
             }
 
 
-            return _fieldEffects.ClearPublishedObjectState(tag);
+            return _fieldEffects.ClearPublishedObjectState(normalizedTag);
 
+        }
+
+        private bool IsAvailableDynamicObjectTag(string tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag))
+            {
+                return false;
+            }
+
+            foreach ((BaseDXDrawableItem _, QuestGatedMapObjectState state) in _questGatedMapObjects)
+            {
+                for (int i = 0; i < state.DynamicTags.Length; i++)
+                {
+                    if (string.Equals(state.DynamicTags[i], tag, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return _authoredDynamicObjectTagStates.ContainsKey(tag);
         }
 
 
@@ -28174,6 +28214,8 @@ namespace HaCreator.MapSimulator
             _playerManager.Skills.OnSkillCooldownStarted = HandleSkillCooldownStarted;
             _playerManager.Skills.OnSkillCooldownBlocked = HandleSkillCooldownBlocked;
             _playerManager.Skills.OnSkillCooldownCompleted = HandleSkillCooldownCompleted;
+            _playerManager.Skills.SkillRecordsChanged -= HandleSkillRecordsChanged;
+            _playerManager.Skills.SkillRecordsChanged += HandleSkillRecordsChanged;
 
 
             if (uiWindowManager.QuickSlotWindow != null)
@@ -28324,6 +28366,13 @@ namespace HaCreator.MapSimulator
                 skillId => skillDataById.TryGetValue(skillId, out SkillData skillData)
                     ? skillData.MaxLevel
                     : 0);
+            skillWindow.RecalculateSkillPointsFromCurrentLevels();
+            ApplyQuestGrantedSkillPointBonuses();
+        }
+
+        private void HandleSkillRecordsChanged()
+        {
+            RefreshVisibleSkillRootsFromCurrentRecords();
         }
 
 

@@ -7,5 +7,7 @@ namespace HaCreator.MapSimulator.Animation
     public class NpcAnimationSet : AnimationSetBase
     {
         public int ClientActionSetIndex { get; set; } = -1;
+
+        public bool IsHiddenToLocalUser { get; set; }
     }
 }

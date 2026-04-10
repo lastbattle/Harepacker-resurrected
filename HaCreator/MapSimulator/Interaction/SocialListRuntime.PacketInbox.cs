@@ -65,6 +65,30 @@ namespace HaCreator.MapSimulator.Interaction
                 : error ?? "Client guild-result payload could not be decoded.";
         }
 
+        internal string ApplyClientFriendResultPayload(byte[] payload)
+        {
+            if (payload == null)
+            {
+                return "Client friend-result payload is missing.";
+            }
+
+            return SocialListPacketCodec.TryParseClientFriendResult(payload, out SocialListClientFriendResultPacket packet, out string error)
+                ? ApplyClientFriendResultDelta(packet)
+                : error ?? "Client friend-result payload could not be decoded.";
+        }
+
+        internal string ApplyClientPartyResultPayload(byte[] payload)
+        {
+            if (payload == null)
+            {
+                return "Client party-result payload is missing.";
+            }
+
+            return SocialListPacketCodec.TryParseClientPartyResult(payload, out SocialListClientPartyResultPacket packet, out string error)
+                ? ApplyClientPartyResultDelta(packet)
+                : error ?? "Client party-result payload could not be decoded.";
+        }
+
         internal string ApplyClientAllianceResultPayload(byte[] payload)
         {
             if (payload == null)
@@ -133,6 +157,92 @@ namespace HaCreator.MapSimulator.Interaction
                     $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.SkillRecord}) decoded guild-skill record {packet.GuildSkillRecord.Value.SkillId} for guild {packet.GuildId}.",
                 _ => $"Unsupported client guild-result subtype {(byte)packet.Kind}."
             };
+        }
+
+        internal string ApplyClientFriendResultDelta(SocialListClientFriendResultPacket packet)
+        {
+            switch (packet.Kind)
+            {
+                case SocialListClientFriendResultKind.Reset:
+                case SocialListClientFriendResultKind.Refresh:
+                    return ApplyClientFriendListReplace(SocialListTab.Friend, packet.Entries, packet.Kind);
+
+                case SocialListClientFriendResultKind.ResetBlocked:
+                    return ApplyClientFriendListReplace(SocialListTab.Blacklist, packet.Entries, packet.Kind);
+
+                case SocialListClientFriendResultKind.Update:
+                case SocialListClientFriendResultKind.Insert:
+                    return packet.Entry.HasValue
+                        ? UpsertClientFriendEntry(SocialListTab.Friend, packet.Entry.Value, packet.Kind, packet.Summary)
+                        : $"Client OnFriendResult({(byte)packet.Kind}) did not include a friend entry.";
+
+                case SocialListClientFriendResultKind.Channel:
+                    return ApplyClientFriendChannelUpdate(packet);
+
+                case SocialListClientFriendResultKind.Capacity:
+                    return SetPacketSyncSummary(SocialListTab.Friend, $"Client OnFriendResult({(byte)packet.Kind}) updated friend capacity to {packet.FriendMax}.");
+
+                case SocialListClientFriendResultKind.NoticeInviteBlocked:
+                case SocialListClientFriendResultKind.NoticeTargetFull:
+                case SocialListClientFriendResultKind.NoticeTargetUnknown:
+                case SocialListClientFriendResultKind.NoticeSelf:
+                case SocialListClientFriendResultKind.NoticeDuplicate:
+                case SocialListClientFriendResultKind.NoticeFailure:
+                case SocialListClientFriendResultKind.NoticeFailureWithMessage:
+                case SocialListClientFriendResultKind.NoticeBlocked:
+                case SocialListClientFriendResultKind.NoticeCapacityExpanded:
+                    return SetPacketSyncSummary(
+                        SocialListTab.Friend,
+                        string.IsNullOrWhiteSpace(packet.Summary)
+                            ? $"Client OnFriendResult({(byte)packet.Kind}) reported {packet.Kind}."
+                            : $"Client OnFriendResult({(byte)packet.Kind}) reported {packet.Summary.Trim()}.");
+
+                default:
+                    return $"Unsupported client friend-result subtype {(byte)packet.Kind}.";
+            }
+        }
+
+        internal string ApplyClientPartyResultDelta(SocialListClientPartyResultPacket packet)
+        {
+            switch (packet.Kind)
+            {
+                case SocialListClientPartyResultKind.Load:
+                case SocialListClientPartyResultKind.Refresh:
+                    return ApplyClientPartyListReplace(packet);
+
+                case SocialListClientPartyResultKind.Join:
+                    if (packet.Entries.Count > 0)
+                    {
+                        return ApplyClientPartyListReplace(packet);
+                    }
+
+                    return SetPacketSyncSummary(
+                        SocialListTab.Party,
+                        string.IsNullOrWhiteSpace(packet.ActorName)
+                            ? $"Client OnPartyResult({(byte)packet.Kind}) reported a party join result for party {packet.PartyId}."
+                            : $"Client OnPartyResult({(byte)packet.Kind}) reported {packet.ActorName} joining party {packet.PartyId}.");
+
+                case SocialListClientPartyResultKind.Create:
+                    return SetPacketSyncSummary(SocialListTab.Party, $"Client OnPartyResult({(byte)packet.Kind}) created party {packet.PartyId}.");
+
+                case SocialListClientPartyResultKind.LeaderChange:
+                    return ApplyClientPartyLeaderChange(packet);
+
+                case SocialListClientPartyResultKind.MemberJobLevel:
+                    return ApplyClientPartyJobLevelChange(packet);
+
+                case SocialListClientPartyResultKind.Invite:
+                case SocialListClientPartyResultKind.SearchPacket:
+                case SocialListClientPartyResultKind.SearchPacket2:
+                case SocialListClientPartyResultKind.SearchPacket3:
+                case SocialListClientPartyResultKind.SearchApply:
+                case SocialListClientPartyResultKind.SearchPacket4:
+                case SocialListClientPartyResultKind.SearchPacket5:
+                    return SetPacketSyncSummary(SocialListTab.Party, $"Client OnPartyResult({(byte)packet.Kind}) reported {packet.Kind}.");
+
+                default:
+                    return $"Unsupported client party-result subtype {(byte)packet.Kind}.";
+            }
         }
 
         internal string ApplyClientAllianceResultDelta(SocialListClientAllianceResultPacket packet)
@@ -228,6 +338,305 @@ namespace HaCreator.MapSimulator.Interaction
             return removed > 0
                 ? $"Member #{memberId.Value} was removed from the packet-owned {GetHeaderTitle(tab)} roster."
                 : $"Member #{memberId.Value} was not present in the current {GetHeaderTitle(tab)} roster.";
+        }
+
+        private string ApplyClientFriendListReplace(
+            SocialListTab tab,
+            IReadOnlyList<SocialListClientFriendEntry> clientEntries,
+            SocialListClientFriendResultKind kind)
+        {
+            List<SocialEntryState> entries = _entriesByTab[tab];
+            SocialEntryState localState = tab == SocialListTab.Friend ? ResolveLocalEntryState(tab) : null;
+            entries.Clear();
+
+            if (localState != null)
+            {
+                entries.Add(localState);
+            }
+
+            for (int i = 0; i < clientEntries.Count; i++)
+            {
+                SocialListClientFriendEntry clientEntry = clientEntries[i];
+                SocialEntryState entry = CreateFriendEntry(tab, clientEntry);
+                if (tab == SocialListTab.Friend && !string.IsNullOrWhiteSpace(clientEntry.GroupName))
+                {
+                    _friendGroupByName[entry.Name] = clientEntry.GroupName.Trim();
+                }
+
+                entries.Add(entry);
+            }
+
+            _packetOwnedRosterByTab[tab] = true;
+            _lastPendingRequestByTab[tab] = null;
+            _lastPacketSyncSummaryByTab[tab] =
+                $"Client OnFriendResult({(byte)kind}) synchronized {clientEntries.Count} {GetHeaderTitle(tab).ToLowerInvariant()} entr{(clientEntries.Count == 1 ? "y" : "ies")}.";
+            ResetSelectionAfterMutation(tab);
+            return _lastPacketSyncSummaryByTab[tab];
+        }
+
+        private string UpsertClientFriendEntry(
+            SocialListTab tab,
+            SocialListClientFriendEntry clientEntry,
+            SocialListClientFriendResultKind kind,
+            string summary)
+        {
+            if (!string.IsNullOrWhiteSpace(clientEntry.GroupName))
+            {
+                _friendGroupByName[clientEntry.Name] = clientEntry.GroupName.Trim();
+            }
+
+            string detail = UpsertPacketEntry(
+                tab,
+                clientEntry.Name,
+                ResolveFriendPrimaryText(tab, clientEntry),
+                ResolveFriendSecondaryText(clientEntry),
+                ResolveFriendLocationText(clientEntry),
+                ResolveClientChannel(clientEntry.ChannelId),
+                IsClientFriendOnline(clientEntry),
+                isLeader: false,
+                tab == SocialListTab.Blacklist,
+                isLocalPlayer: false,
+                clientEntry.FriendId);
+            _lastPacketSyncSummaryByTab[tab] = string.IsNullOrWhiteSpace(summary)
+                ? $"Client OnFriendResult({(byte)kind}) upserted {clientEntry.Name}."
+                : $"Client OnFriendResult({(byte)kind}) upserted {clientEntry.Name}; {summary.Trim()}.";
+            return $"{_lastPacketSyncSummaryByTab[tab]} {detail}";
+        }
+
+        private string ApplyClientFriendChannelUpdate(SocialListClientFriendResultPacket packet)
+        {
+            if (packet.FriendId <= 0)
+            {
+                return "Client OnFriendResult channel update did not include a positive friend id.";
+            }
+
+            List<SocialEntryState> entries = _entriesByTab[SocialListTab.Friend];
+            int index = entries.FindIndex(entry => entry.MemberId == packet.FriendId);
+            if (index < 0)
+            {
+                _packetOwnedRosterByTab[SocialListTab.Friend] = true;
+                _lastPacketSyncSummaryByTab[SocialListTab.Friend] =
+                    $"Client OnFriendResult({(byte)packet.Kind}) channel update for friend #{packet.FriendId} did not match the packet-owned roster.";
+                return _lastPacketSyncSummaryByTab[SocialListTab.Friend];
+            }
+
+            SocialEntryState entry = entries[index];
+            bool isOnline = packet.ChannelId > 0 || string.Equals(packet.Summary, "Cash Shop", StringComparison.OrdinalIgnoreCase);
+            string location = string.Equals(packet.Summary, "Cash Shop", StringComparison.OrdinalIgnoreCase)
+                ? "Cash Shop"
+                : packet.ChannelId > 0
+                    ? $"Channel {packet.ChannelId}"
+                    : "Offline";
+            entries[index] = new SocialEntryState(
+                entry.Name,
+                entry.PrimaryText,
+                isOnline ? $"Ch. {Math.Max(1, packet.ChannelId)}" : "Offline",
+                location,
+                ResolveClientChannel(packet.ChannelId),
+                isOnline,
+                entry.IsLeader,
+                entry.IsBlocked)
+            {
+                MemberId = entry.MemberId,
+                IsLocalPlayer = entry.IsLocalPlayer
+            };
+
+            _packetOwnedRosterByTab[SocialListTab.Friend] = true;
+            _lastPendingRequestByTab[SocialListTab.Friend] = null;
+            _lastPacketSyncSummaryByTab[SocialListTab.Friend] =
+                $"Client OnFriendResult({(byte)packet.Kind}) updated {entry.Name}'s channel to {location}.";
+            ResetSelectionAfterMutation(SocialListTab.Friend);
+            return _lastPacketSyncSummaryByTab[SocialListTab.Friend];
+        }
+
+        private string ApplyClientPartyListReplace(SocialListClientPartyResultPacket packet)
+        {
+            List<SocialEntryState> entries = _entriesByTab[SocialListTab.Party];
+            SocialEntryState localState = ResolveLocalEntryState(SocialListTab.Party);
+            entries.Clear();
+
+            for (int i = 0; i < packet.Entries.Count; i++)
+            {
+                SocialListClientPartyEntry clientEntry = packet.Entries[i];
+                entries.Add(CreatePartyEntry(clientEntry, localState));
+            }
+
+            _packetOwnedRosterByTab[SocialListTab.Party] = true;
+            _lastPendingRequestByTab[SocialListTab.Party] = null;
+            _lastPacketSyncSummaryByTab[SocialListTab.Party] =
+                $"Client OnPartyResult({(byte)packet.Kind}) synchronized party {packet.PartyId} with {packet.Entries.Count} member entr{(packet.Entries.Count == 1 ? "y" : "ies")}.";
+            ResetSelectionAfterMutation(SocialListTab.Party);
+            return _lastPacketSyncSummaryByTab[SocialListTab.Party];
+        }
+
+        private string ApplyClientPartyLeaderChange(SocialListClientPartyResultPacket packet)
+        {
+            if (packet.MemberId <= 0)
+            {
+                return "Client OnPartyResult leader-change member id must be positive.";
+            }
+
+            List<SocialEntryState> entries = _entriesByTab[SocialListTab.Party];
+            bool found = false;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                SocialEntryState entry = entries[i];
+                bool isLeader = entry.MemberId == packet.MemberId && packet.Level > 0;
+                found |= entry.MemberId == packet.MemberId;
+                entries[i] = new SocialEntryState(
+                    entry.Name,
+                    isLeader ? "Leader" : NormalizePartyPrimaryText(entry.PrimaryText, isLeader),
+                    entry.SecondaryText,
+                    entry.LocationSummary,
+                    entry.Channel,
+                    entry.IsOnline,
+                    isLeader,
+                    entry.IsBlocked)
+                {
+                    MemberId = entry.MemberId,
+                    IsLocalPlayer = entry.IsLocalPlayer
+                };
+            }
+
+            _packetOwnedRosterByTab[SocialListTab.Party] = true;
+            _lastPendingRequestByTab[SocialListTab.Party] = null;
+            _lastPacketSyncSummaryByTab[SocialListTab.Party] = found
+                ? $"Client OnPartyResult({(byte)packet.Kind}) moved party leadership to member #{packet.MemberId}."
+                : $"Client OnPartyResult({(byte)packet.Kind}) could not map leader member #{packet.MemberId} onto the party roster.";
+            ResetSelectionAfterMutation(SocialListTab.Party);
+            return _lastPacketSyncSummaryByTab[SocialListTab.Party];
+        }
+
+        private string ApplyClientPartyJobLevelChange(SocialListClientPartyResultPacket packet)
+        {
+            if (packet.MemberId <= 0)
+            {
+                return "Client OnPartyResult member job or level update must include a positive member id.";
+            }
+
+            List<SocialEntryState> entries = _entriesByTab[SocialListTab.Party];
+            int index = entries.FindIndex(entry => entry.MemberId == packet.MemberId);
+            if (index < 0)
+            {
+                _packetOwnedRosterByTab[SocialListTab.Party] = true;
+                _lastPacketSyncSummaryByTab[SocialListTab.Party] =
+                    $"Client OnPartyResult({(byte)packet.Kind}) job/level update for member #{packet.MemberId} did not match the packet-owned roster.";
+                return _lastPacketSyncSummaryByTab[SocialListTab.Party];
+            }
+
+            SocialEntryState entry = entries[index];
+            entries[index] = new SocialEntryState(
+                entry.Name,
+                entry.IsLeader ? "Leader" : $"Job {packet.JobId}",
+                $"Lv. {Math.Max(1, packet.Level)}",
+                entry.LocationSummary,
+                entry.Channel,
+                entry.IsOnline,
+                entry.IsLeader,
+                entry.IsBlocked)
+            {
+                MemberId = entry.MemberId,
+                IsLocalPlayer = entry.IsLocalPlayer
+            };
+            _packetOwnedRosterByTab[SocialListTab.Party] = true;
+            _lastPendingRequestByTab[SocialListTab.Party] = null;
+            _lastPacketSyncSummaryByTab[SocialListTab.Party] =
+                $"Client OnPartyResult({(byte)packet.Kind}) updated {entry.Name} to job {packet.JobId}, level {Math.Max(1, packet.Level)}.";
+            ResetSelectionAfterMutation(SocialListTab.Party);
+            return _lastPacketSyncSummaryByTab[SocialListTab.Party];
+        }
+
+        private SocialEntryState CreateFriendEntry(SocialListTab tab, SocialListClientFriendEntry clientEntry)
+        {
+            return new SocialEntryState(
+                clientEntry.Name,
+                ResolveFriendPrimaryText(tab, clientEntry),
+                ResolveFriendSecondaryText(clientEntry),
+                ResolveFriendLocationText(clientEntry),
+                ResolveClientChannel(clientEntry.ChannelId),
+                IsClientFriendOnline(clientEntry),
+                isLeader: false,
+                tab == SocialListTab.Blacklist)
+            {
+                MemberId = clientEntry.FriendId > 0 ? clientEntry.FriendId : null,
+                IsLocalPlayer = false
+            };
+        }
+
+        private SocialEntryState CreatePartyEntry(SocialListClientPartyEntry clientEntry, SocialEntryState localState)
+        {
+            bool isLocal = localState != null && string.Equals(localState.Name, clientEntry.Name, StringComparison.OrdinalIgnoreCase);
+            return new SocialEntryState(
+                isLocal ? localState.Name : clientEntry.Name,
+                clientEntry.IsLeader ? "Leader" : $"Job {clientEntry.JobId}",
+                $"Lv. {Math.Max(1, clientEntry.Level)}",
+                clientEntry.FieldId > 0 ? $"Field {clientEntry.FieldId}" : "Unknown field",
+                ResolveClientChannel(clientEntry.ChannelId),
+                clientEntry.ChannelId > 0,
+                clientEntry.IsLeader,
+                isBlocked: false)
+            {
+                MemberId = clientEntry.MemberId > 0 ? clientEntry.MemberId : null,
+                IsLocalPlayer = isLocal
+            };
+        }
+
+        private static string ResolveFriendPrimaryText(SocialListTab tab, SocialListClientFriendEntry clientEntry)
+        {
+            if (tab == SocialListTab.Blacklist)
+            {
+                return "Blacklisted";
+            }
+
+            return string.IsNullOrWhiteSpace(clientEntry.GroupName)
+                ? "Friend"
+                : clientEntry.GroupName.Trim();
+        }
+
+        private static string ResolveFriendSecondaryText(SocialListClientFriendEntry clientEntry)
+        {
+            if (clientEntry.InShop)
+            {
+                return "Cash Shop";
+            }
+
+            return clientEntry.ChannelId > 0
+                ? $"Ch. {clientEntry.ChannelId}"
+                : "Offline";
+        }
+
+        private static string ResolveFriendLocationText(SocialListClientFriendEntry clientEntry)
+        {
+            if (clientEntry.InShop)
+            {
+                return "Cash Shop";
+            }
+
+            return clientEntry.ChannelId > 0
+                ? $"Channel {clientEntry.ChannelId}"
+                : "Offline";
+        }
+
+        private static int ResolveClientChannel(int channelId)
+        {
+            return Math.Max(1, channelId);
+        }
+
+        private static bool IsClientFriendOnline(SocialListClientFriendEntry clientEntry)
+        {
+            return clientEntry.InShop || clientEntry.ChannelId > 0;
+        }
+
+        private static string NormalizePartyPrimaryText(string primaryText, bool isLeader)
+        {
+            if (isLeader)
+            {
+                return "Leader";
+            }
+
+            return string.Equals(primaryText, "Leader", StringComparison.OrdinalIgnoreCase)
+                ? "Member"
+                : primaryText;
         }
 
         private string SelectEntryByMemberId(SocialListTab tab, int? memberId)
