@@ -96,6 +96,12 @@ namespace HaCreator.MapSimulator.Loaders
                 tooltipFrames[1] = LoadCanvasTexture(skillMainProperty, "tip1", device);
                 tooltipFrames[2] = LoadCanvasTexture(skillMainProperty, "tip2", device);
                 inventory.SetTooltipTextures(tooltipFrames);
+                inventory.SetTooltipOrigins(new[]
+                {
+                    ResolveTooltipOrigin(skillMainProperty["tip0"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(skillMainProperty["tip1"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(skillMainProperty["tip2"] as WzCanvasProperty)
+                });
             }
 
             ApplyInventoryEquipTooltipAssets(inventory, uiWindowImage, device);
@@ -294,6 +300,12 @@ namespace HaCreator.MapSimulator.Loaders
                 tooltipFrames[1] = LoadCanvasTexture(skillMainProperty, "tip1", device);
                 tooltipFrames[2] = LoadCanvasTexture(skillMainProperty, "tip2", device);
                 inventory.SetTooltipTextures(tooltipFrames);
+                inventory.SetTooltipOrigins(new[]
+                {
+                    ResolveTooltipOrigin(skillMainProperty["tip0"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(skillMainProperty["tip1"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(skillMainProperty["tip2"] as WzCanvasProperty)
+                });
             }
 
             ApplyInventoryEquipTooltipAssets(inventory, uiWindow2Image, device);

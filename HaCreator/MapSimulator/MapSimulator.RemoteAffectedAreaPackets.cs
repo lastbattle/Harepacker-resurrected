@@ -348,10 +348,9 @@ namespace HaCreator.MapSimulator
 
             supportSkills?.Add(skill);
 
-            int[] affectedSkillIds = skill.GetAffectedSkillIds();
-            for (int i = 0; i < affectedSkillIds.Length; i++)
+            foreach (int linkedSkillId in RemoteAffectedAreaSupportResolver.EnumerateRemoteAffectedAreaLinkedSkillIds(skill))
             {
-                SkillData affectedSkill = _playerManager?.SkillLoader?.LoadSkill(affectedSkillIds[i]);
+                SkillData affectedSkill = _playerManager?.SkillLoader?.LoadSkill(linkedSkillId);
                 if (affectedSkill != null)
                 {
                     CollectRemoteAffectedAreaSupportSkills(affectedSkill, supportSkills, visitedSkillIds);

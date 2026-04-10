@@ -55,17 +55,12 @@ namespace HaCreator.MapSimulator.Fields
                 return Array.Empty<FieldObjectScriptPublication>();
             }
 
-            var resolvedDelaysByScript = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            CollectScriptPublications(eventQProperty, 0, resolvedDelaysByScript);
-            if (resolvedDelaysByScript.Count == 0)
+            var publications = new List<FieldObjectScriptPublication>();
+            var seenPublications = new HashSet<(string ScriptName, int DelayMs)>();
+            CollectScriptPublications(eventQProperty, 0, publications, seenPublications);
+            if (publications.Count == 0)
             {
                 return Array.Empty<FieldObjectScriptPublication>();
-            }
-
-            var publications = new List<FieldObjectScriptPublication>(resolvedDelaysByScript.Count);
-            foreach ((string scriptName, int delayMs) in resolvedDelaysByScript)
-            {
-                publications.Add(new FieldObjectScriptPublication(scriptName, delayMs));
             }
 
             return publications.ToArray();
@@ -74,53 +69,24 @@ namespace HaCreator.MapSimulator.Fields
         private static void CollectScriptPublications(
             WzImageProperty property,
             int inheritedDelayMs,
-            IDictionary<string, int> resolvedDelaysByScript)
+            ICollection<FieldObjectScriptPublication> publications,
+            ISet<(string ScriptName, int DelayMs)> seenPublications)
         {
-            if (property == null || resolvedDelaysByScript == null)
+            if (property == null || publications == null || seenPublications == null)
             {
                 return;
             }
 
             if (property is WzStringProperty stringProperty)
             {
-                IReadOnlyList<string> scriptNames = QuestRuntimeManager.ParseScriptNames(stringProperty);
-                for (int i = 0; i < scriptNames.Count; i++)
-                {
-                    string scriptName = scriptNames[i]?.Trim();
-                    if (string.IsNullOrWhiteSpace(scriptName))
-                    {
-                        continue;
-                    }
-
-                    if (!resolvedDelaysByScript.TryGetValue(scriptName, out int existingDelayMs)
-                        || inheritedDelayMs < existingDelayMs)
-                    {
-                        resolvedDelaysByScript[scriptName] = inheritedDelayMs;
-                    }
-                }
-
+                AppendScriptPublications(stringProperty.Value, inheritedDelayMs, publications, seenPublications);
                 return;
             }
 
             IReadOnlyList<WzImageProperty> children = property.WzProperties;
             if (children == null || children.Count == 0)
             {
-                IReadOnlyList<string> scriptNames = QuestRuntimeManager.ParseScriptNames(property);
-                for (int i = 0; i < scriptNames.Count; i++)
-                {
-                    string scriptName = scriptNames[i]?.Trim();
-                    if (string.IsNullOrWhiteSpace(scriptName))
-                    {
-                        continue;
-                    }
-
-                    if (!resolvedDelaysByScript.TryGetValue(scriptName, out int existingDelayMs)
-                        || inheritedDelayMs < existingDelayMs)
-                    {
-                        resolvedDelaysByScript[scriptName] = inheritedDelayMs;
-                    }
-                }
-
+                AppendScriptPublications(property.GetString(), inheritedDelayMs, publications, seenPublications);
                 return;
             }
 
@@ -154,7 +120,32 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                CollectScriptPublications(child, effectiveDelayMs, resolvedDelaysByScript);
+                CollectScriptPublications(child, effectiveDelayMs, publications, seenPublications);
+            }
+        }
+
+        private static void AppendScriptPublications(
+            string rawScriptNames,
+            int delayMs,
+            ICollection<FieldObjectScriptPublication> publications,
+            ISet<(string ScriptName, int DelayMs)> seenPublications)
+        {
+            IReadOnlyList<string> scriptNames = QuestRuntimeManager.ParseScriptNames(rawScriptNames);
+            for (int i = 0; i < scriptNames.Count; i++)
+            {
+                string scriptName = scriptNames[i]?.Trim();
+                if (string.IsNullOrWhiteSpace(scriptName))
+                {
+                    continue;
+                }
+
+                var publicationKey = (scriptName, delayMs);
+                if (!seenPublications.Add(publicationKey))
+                {
+                    continue;
+                }
+
+                publications.Add(new FieldObjectScriptPublication(scriptName, delayMs));
             }
         }
 

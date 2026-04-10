@@ -73,12 +73,16 @@ namespace HaCreator.MapSimulator.Entities
         private readonly Dictionary<(int State, int ProperEventIndex), int> _stateIndexedHitDurations;
         private readonly Dictionary<int, IDXObject[]> _stateHitFrames;
         private readonly Dictionary<(int State, int ProperEventIndex), IDXObject[]> _stateIndexedHitFrames;
+        private readonly Dictionary<int, WzImageProperty> _stateLayerProperties;
+        private readonly Dictionary<int, WzImageProperty> _stateHitProperties;
+        private readonly Dictionary<(int State, int ProperEventIndex), WzImageProperty> _stateIndexedHitProperties;
         private readonly Dictionary<int, bool> _stateRepeatModes;
         private readonly Dictionary<int, AuthoredStateTransition[]> _stateTransitions;
         private readonly HashSet<int> _authoredStates;
         private readonly int[] _availableStates;
         private readonly int _rootHitDuration;
         private readonly IDXObject[] _rootHitFrames;
+        private readonly WzImageProperty _rootHitProperty;
         private readonly int _templateLayerMode;
         private readonly bool _templateMoveEnabled;
         private readonly int _originWorldX;
@@ -91,6 +95,15 @@ namespace HaCreator.MapSimulator.Entities
         private IDXObject[] _transientFrames;
         private int _transientFrameIndex;
         private int _lastTransientTick;
+
+        private enum HitAnimationSourceKind
+        {
+            None,
+            StateLayer,
+            IndexedHit,
+            StateHit,
+            RootHit
+        }
 
         public ReactorInstance ReactorInstance
         {
@@ -109,12 +122,16 @@ namespace HaCreator.MapSimulator.Entities
             _stateIndexedHitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
             _stateHitFrames = new Dictionary<int, IDXObject[]>();
             _stateIndexedHitFrames = new Dictionary<(int State, int ProperEventIndex), IDXObject[]>();
+            _stateLayerProperties = new Dictionary<int, WzImageProperty>();
+            _stateHitProperties = new Dictionary<int, WzImageProperty>();
+            _stateIndexedHitProperties = new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
             _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _authoredStates = new HashSet<int>();
             _availableStates = Array.Empty<int>();
             _rootHitDuration = 0;
             _rootHitFrames = Array.Empty<IDXObject>();
+            _rootHitProperty = null;
             _templateLayerMode = 0;
             _templateMoveEnabled = false;
             _originWorldX = reactorInstance?.X ?? 0;
@@ -128,7 +145,11 @@ namespace HaCreator.MapSimulator.Entities
             Dictionary<int, List<IDXObject>> stateFrames,
             Dictionary<int, List<IDXObject>> stateHitFrames = null,
             Dictionary<(int State, int ProperEventIndex), List<IDXObject>> stateIndexedHitFrames = null,
-            List<IDXObject> rootHitFrames = null)
+            List<IDXObject> rootHitFrames = null,
+            Dictionary<int, WzImageProperty> stateLayerProperties = null,
+            Dictionary<int, WzImageProperty> stateHitProperties = null,
+            Dictionary<(int State, int ProperEventIndex), WzImageProperty> stateIndexedHitProperties = null,
+            WzImageProperty rootHitProperty = null)
             : base(GetDefaultFrames(stateFrames), reactorInstance.Flip)
         {
             _reactorInstance = reactorInstance;
@@ -137,11 +158,21 @@ namespace HaCreator.MapSimulator.Entities
             _stateIndexedHitDurations = LoadStateIndexedHitDurations(reactorInstance);
             _stateHitFrames = ToFrameArrayDictionary(stateHitFrames);
             _stateIndexedHitFrames = ToFrameArrayDictionary(stateIndexedHitFrames);
+            _stateLayerProperties = stateLayerProperties != null
+                ? new Dictionary<int, WzImageProperty>(stateLayerProperties)
+                : new Dictionary<int, WzImageProperty>();
+            _stateHitProperties = stateHitProperties != null
+                ? new Dictionary<int, WzImageProperty>(stateHitProperties)
+                : new Dictionary<int, WzImageProperty>();
+            _stateIndexedHitProperties = stateIndexedHitProperties != null
+                ? new Dictionary<(int State, int ProperEventIndex), WzImageProperty>(stateIndexedHitProperties)
+                : new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
             _stateRepeatModes = LoadStateRepeatModes(reactorInstance);
             _stateTransitions = LoadStateTransitions(reactorInstance);
             _authoredStates = LoadAuthoredStates(reactorInstance);
             _rootHitDuration = LoadRootHitDuration(reactorInstance);
             _rootHitFrames = rootHitFrames?.Count > 0 ? rootHitFrames.ToArray() : Array.Empty<IDXObject>();
+            _rootHitProperty = rootHitProperty;
             _templateLayerMode = LoadTemplateLayerMode(reactorInstance);
             _templateMoveEnabled = LoadTemplateMoveEnabled(reactorInstance);
             _originWorldX = reactorInstance?.X ?? 0;
@@ -173,12 +204,16 @@ namespace HaCreator.MapSimulator.Entities
             _stateIndexedHitDurations = new Dictionary<(int State, int ProperEventIndex), int>();
             _stateHitFrames = new Dictionary<int, IDXObject[]>();
             _stateIndexedHitFrames = new Dictionary<(int State, int ProperEventIndex), IDXObject[]>();
+            _stateLayerProperties = new Dictionary<int, WzImageProperty>();
+            _stateHitProperties = new Dictionary<int, WzImageProperty>();
+            _stateIndexedHitProperties = new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
             _stateRepeatModes = new Dictionary<int, bool>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _authoredStates = new HashSet<int>();
             _availableStates = Array.Empty<int>();
             _rootHitDuration = 0;
             _rootHitFrames = Array.Empty<IDXObject>();
+            _rootHitProperty = null;
             _templateLayerMode = 0;
             _templateMoveEnabled = false;
             _originWorldX = reactorInstance?.X ?? 0;
@@ -471,7 +506,7 @@ namespace HaCreator.MapSimulator.Entities
             return !_stateRepeatModes.TryGetValue(resolvedState, out bool repeat) || repeat;
         }
 
-        internal bool TryResolveAutoHitEventIndex(int currentState, ReactorType reactorType, out int eventIndex)
+        internal bool TryResolveAutoHitEventIndex(int currentState, int hitOption, ReactorType reactorType, out int eventIndex)
         {
             int resolvedState = ResolveState(currentState);
             if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
@@ -481,7 +516,11 @@ namespace HaCreator.MapSimulator.Entities
                 return false;
             }
 
-            if (TryResolveClientHitEventIndex(transitions.Select(static transition => transition.EventType), reactorType, out eventIndex))
+            if (TryResolveClientHitEventIndex(
+                transitions.Select(static transition => transition.EventType),
+                hitOption,
+                reactorType,
+                out eventIndex))
             {
                 return true;
             }
@@ -499,6 +538,11 @@ namespace HaCreator.MapSimulator.Entities
             return true;
         }
 
+        internal bool TryResolveAutoHitEventIndex(int currentState, ReactorType reactorType, out int eventIndex)
+        {
+            return TryResolveAutoHitEventIndex(currentState, hitOption: -1, reactorType, out eventIndex);
+        }
+
         internal bool HasAuthoredEventIndex(int currentState, int properEventIndex)
         {
             return properEventIndex >= 0
@@ -511,45 +555,118 @@ namespace HaCreator.MapSimulator.Entities
             return TryResolveHitAnimation(state, properEventIndex, out _, out duration);
         }
 
+        internal bool TryResolveHitAnimationSourceProperty(int state, int properEventIndex, out WzImageProperty property)
+        {
+            return TryResolveHitAnimationSource(state, properEventIndex, out _, out property);
+        }
+
         private bool TryResolveHitAnimation(int state, int properEventIndex, out IDXObject[] frames, out int duration)
         {
+            if (!TryResolveHitAnimationSource(state, properEventIndex, out HitAnimationSourceKind sourceKind, out WzImageProperty sourceProperty))
+            {
+                frames = Array.Empty<IDXObject>();
+                duration = 0;
+                return false;
+            }
+
+            frames = ResolveHitAnimationFrames(sourceKind, state, properEventIndex);
+            duration = ResolveHitAnimationDuration(sourceKind, state, properEventIndex, sourceProperty);
+            return duration > 0;
+        }
+
+        private bool TryResolveHitAnimationSource(
+            int state,
+            int properEventIndex,
+            out HitAnimationSourceKind sourceKind,
+            out WzImageProperty sourceProperty)
+        {
+            sourceKind = HitAnimationSourceKind.None;
+            sourceProperty = null;
+
             if (properEventIndex < 0)
             {
-                if (HasAuthoredState(state))
+                if (_stateLayerProperties.TryGetValue(state, out sourceProperty) && sourceProperty != null)
                 {
-                    frames = ResolveStateFrames(state);
-                    duration = GetExactStateDuration(state);
-                    return duration > 0;
+                    sourceKind = HitAnimationSourceKind.StateLayer;
+                    return true;
                 }
 
-                frames = _rootHitFrames;
-                return TryGetRootHitAnimationDuration(out duration);
+                return TryResolveRootHitSource(out sourceKind, out sourceProperty);
             }
 
-            if (!HasAuthoredState(state) || !HasAuthoredEventIndex(state, properEventIndex))
+            if (!_stateLayerProperties.ContainsKey(state) || !HasAuthoredEventIndex(state, properEventIndex))
             {
-                frames = _rootHitFrames;
-                return TryGetRootHitAnimationDuration(out duration);
+                return TryResolveRootHitSource(out sourceKind, out sourceProperty);
             }
 
-            if (_stateIndexedHitDurations.TryGetValue((state, properEventIndex), out duration) && duration > 0)
+            if (_stateIndexedHitProperties.TryGetValue((state, properEventIndex), out sourceProperty) && sourceProperty != null)
             {
-                frames = _stateIndexedHitFrames.TryGetValue((state, properEventIndex), out IDXObject[] indexedFrames)
+                sourceKind = HitAnimationSourceKind.IndexedHit;
+                return true;
+            }
+
+            if (_stateHitProperties.TryGetValue(state, out sourceProperty) && sourceProperty != null)
+            {
+                sourceKind = HitAnimationSourceKind.StateHit;
+                return true;
+            }
+
+            return TryResolveRootHitSource(out sourceKind, out sourceProperty);
+        }
+
+        private bool TryResolveRootHitSource(out HitAnimationSourceKind sourceKind, out WzImageProperty sourceProperty)
+        {
+            sourceProperty = _rootHitProperty;
+            if (sourceProperty != null)
+            {
+                sourceKind = HitAnimationSourceKind.RootHit;
+                return true;
+            }
+
+            sourceKind = HitAnimationSourceKind.None;
+            return false;
+        }
+
+        private IDXObject[] ResolveHitAnimationFrames(HitAnimationSourceKind sourceKind, int state, int properEventIndex)
+        {
+            return sourceKind switch
+            {
+                HitAnimationSourceKind.StateLayer => _stateFrames.TryGetValue(state, out IDXObject[] stateFrames)
+                    ? stateFrames
+                    : Array.Empty<IDXObject>(),
+                HitAnimationSourceKind.IndexedHit => _stateIndexedHitFrames.TryGetValue((state, properEventIndex), out IDXObject[] indexedFrames)
                     ? indexedFrames
-                    : Array.Empty<IDXObject>();
-                return true;
-            }
-
-            if (_stateHitDurations.TryGetValue(state, out duration) && duration > 0)
-            {
-                frames = _stateHitFrames.TryGetValue(state, out IDXObject[] stateHitFrames)
+                    : Array.Empty<IDXObject>(),
+                HitAnimationSourceKind.StateHit => _stateHitFrames.TryGetValue(state, out IDXObject[] stateHitFrames)
                     ? stateHitFrames
-                    : Array.Empty<IDXObject>();
-                return true;
-            }
+                    : Array.Empty<IDXObject>(),
+                HitAnimationSourceKind.RootHit => _rootHitFrames,
+                _ => Array.Empty<IDXObject>()
+            };
+        }
 
-            frames = _rootHitFrames;
-            return TryGetRootHitAnimationDuration(out duration);
+        private int ResolveHitAnimationDuration(
+            HitAnimationSourceKind sourceKind,
+            int state,
+            int properEventIndex,
+            WzImageProperty sourceProperty)
+        {
+            int duration = sourceKind switch
+            {
+                HitAnimationSourceKind.StateLayer => GetExactStateDuration(state),
+                HitAnimationSourceKind.IndexedHit => _stateIndexedHitDurations.TryGetValue((state, properEventIndex), out int indexedDuration)
+                    ? indexedDuration
+                    : 0,
+                HitAnimationSourceKind.StateHit => _stateHitDurations.TryGetValue(state, out int stateHitDuration)
+                    ? stateHitDuration
+                    : 0,
+                HitAnimationSourceKind.RootHit => _rootHitDuration,
+                _ => 0
+            };
+
+            return duration > 0
+                ? duration
+                : TryReadHitDuration(sourceProperty);
         }
 
         private bool HasAuthoredState(int state)
@@ -579,7 +696,11 @@ namespace HaCreator.MapSimulator.Entities
             return duration > 0;
         }
 
-        internal static bool TryResolveClientHitEventIndex(IEnumerable<int> eventTypes, ReactorType reactorType, out int eventIndex)
+        internal static bool TryResolveClientHitEventIndex(
+            IEnumerable<int> eventTypes,
+            int hitOption,
+            ReactorType reactorType,
+            out int eventIndex)
         {
             eventIndex = -1;
             if (eventTypes == null)
@@ -592,7 +713,8 @@ namespace HaCreator.MapSimulator.Entities
             int index = 0;
             foreach (int eventType in eventTypes)
             {
-                int? priority = TryResolveClientHitEventPriority(eventType, reactorType);
+                int? priority = ResolveClientHitTypePriority(hitOption, eventType)
+                    ?? TryResolveClientHitEventPriority(eventType, reactorType);
                 if (priority.HasValue && priority.Value < bestPriority)
                 {
                     bestPriority = priority.Value;
@@ -608,6 +730,11 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return found;
+        }
+
+        internal static bool TryResolveClientHitEventIndex(IEnumerable<int> eventTypes, ReactorType reactorType, out int eventIndex)
+        {
+            return TryResolveClientHitEventIndex(eventTypes, hitOption: -1, reactorType, out eventIndex);
         }
 
         public Rectangle GetCurrentBounds(int tickCount)

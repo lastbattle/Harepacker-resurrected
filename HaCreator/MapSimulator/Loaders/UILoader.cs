@@ -482,6 +482,7 @@ namespace HaCreator.MapSimulator.Loaders
                     statusBar.SetCooldownMasks(LoadStatusBarCooldownMasks(device, isBigBang: true));
                     statusBar.SetTemporaryStatViewTexture(LoadStatusBarTemporaryStatViewTexture(device, isBigBang: true));
                     statusBar.SetTooltipTextures(LoadSkillTooltipTextures(device));
+                    statusBar.SetTooltipOrigins(LoadSkillTooltipOrigins());
                     statusBar.SetWarningAnimations(
                         LoadStatusBarWarningAnimation(mainBarProperties?["aniHPGauge"] as WzSubProperty, device),
                         LoadStatusBarWarningAnimation(mainBarProperties?["aniMPGauge"] as WzSubProperty, device));
@@ -857,6 +858,7 @@ namespace HaCreator.MapSimulator.Loaders
                     statusBar.SetCooldownMasks(LoadStatusBarCooldownMasks(device, isBigBang: false));
                     statusBar.SetTemporaryStatViewTexture(LoadStatusBarTemporaryStatViewTexture(device, isBigBang: false));
                     statusBar.SetTooltipTextures(LoadSkillTooltipTextures(device));
+                    statusBar.SetTooltipOrigins(LoadSkillTooltipOrigins());
                     statusBar.SetWarningAnimations(
                         LoadStatusBarWarningAnimation(gaugeProperties?["hpFlash"] as WzSubProperty, device),
                         LoadStatusBarWarningAnimation(gaugeProperties?["mpFlash"] as WzSubProperty, device));
@@ -1049,6 +1051,32 @@ namespace HaCreator.MapSimulator.Loaders
             tooltipFrames[2] = LoadCanvasTexture(mainProperty["tip2"] as WzCanvasProperty, device);
             _skillTooltipTextureCache[cacheKey] = tooltipFrames;
             return tooltipFrames;
+        }
+
+        private static Point[] LoadSkillTooltipOrigins()
+        {
+            Point[] tooltipOrigins = new Point[3];
+            WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
+            WzSubProperty mainProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
+            if (mainProperty == null)
+            {
+                return tooltipOrigins;
+            }
+
+            tooltipOrigins[0] = ResolveTooltipOrigin(mainProperty["tip0"] as WzCanvasProperty);
+            tooltipOrigins[1] = ResolveTooltipOrigin(mainProperty["tip1"] as WzCanvasProperty);
+            tooltipOrigins[2] = ResolveTooltipOrigin(mainProperty["tip2"] as WzCanvasProperty);
+            return tooltipOrigins;
+        }
+
+        private static Point ResolveTooltipOrigin(WzCanvasProperty canvas)
+        {
+            if (canvas?.GetCanvasOriginPosition() is not System.Drawing.PointF origin)
+            {
+                return Point.Zero;
+            }
+
+            return new Point((int)origin.X, (int)origin.Y);
         }
 
         private static Texture2D[] LoadStatusBarCooldownMasks(GraphicsDevice device, bool isBigBang)
@@ -2541,11 +2569,6 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty collapsedMaximizeButtonProperty = bBigBang
                 ? minimapFrameProperty["BtMax"] as WzSubProperty
                 : uiBasicImage["BtMax"] as WzSubProperty;
-            int collapsedButtonReserveWidth = ResolveCollapsedMinimapButtonReserveWidthForTesting(
-                ResolveUiButtonSnapshotWidth(collapsedMinimizeButtonProperty),
-                ResolveUiButtonSnapshotWidth(collapsedMaximizeButtonProperty),
-                ResolveUiButtonSnapshotWidth(collapsedMapButtonProperty),
-                rightInset: 6);
             WzSubProperty collapsedBarProperty = minimapFrameProperty["Min"] as WzSubProperty;
             System.Drawing.Bitmap collapsedBarLeft = ((WzCanvasProperty)collapsedBarProperty?["w"])?.GetLinkedWzCanvasBitmap();
             System.Drawing.Bitmap collapsedBarCenter = ((WzCanvasProperty)collapsedBarProperty?["c"])?.GetLinkedWzCanvasBitmap();
@@ -2571,6 +2594,11 @@ namespace HaCreator.MapSimulator.Loaders
                     ResolveUiButtonSnapshotHeight(collapsedMapButtonProperty)),
                 fallbackLeftInset: 4,
                 fallbackRightInset: 4);
+            int collapsedButtonReserveWidth = ResolveCollapsedMinimapButtonReserveWidthForTesting(
+                ResolveUiButtonSnapshotWidth(collapsedMinimizeButtonProperty),
+                ResolveUiButtonSnapshotWidth(collapsedMaximizeButtonProperty),
+                ResolveUiButtonSnapshotWidth(collapsedMapButtonProperty),
+                collapsedTitleChromeMetrics.RightInset);
             int collapsedTitleMaxBarWidth = Math.Max(1, fullMiniMapStackPanel.GetSize().Width);
             System.Drawing.Bitmap collapsedTitleContent = RenderCollapsedMinimapTitleContent(
                 mapMark,

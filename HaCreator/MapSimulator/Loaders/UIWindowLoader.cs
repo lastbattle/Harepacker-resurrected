@@ -5065,13 +5065,23 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzSubProperty iconProperty = utilDialogProperty?["QDeliveryIcon"] as WzSubProperty;
             int iconFrameCount = GetPropertyChildCount(iconProperty, 0);
-            List<Texture2D> iconFrames = new List<Texture2D>(iconFrameCount);
+            List<QuestDeliveryWindow.IconFrame> iconFrames = new List<QuestDeliveryWindow.IconFrame>(iconFrameCount);
             for (int i = 0; i < iconFrameCount; i++)
             {
-                Texture2D frame = LoadCanvasTexture(iconProperty, i.ToString(), device);
+                if (iconProperty?[i.ToString()]?.GetLinkedWzImageProperty() is not WzCanvasProperty canvas)
+                {
+                    continue;
+                }
+
+                Texture2D frame = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
                 if (frame != null)
                 {
-                    iconFrames.Add(frame);
+                    System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+                    int delay = Math.Max(1, canvas["delay"]?.GetInt() ?? 120);
+                    iconFrames.Add(new QuestDeliveryWindow.IconFrame(
+                        frame,
+                        new Point((int)origin.X, (int)origin.Y),
+                        delay));
                 }
             }
 
@@ -9406,16 +9416,7 @@ namespace HaCreator.MapSimulator.Loaders
                 inventory.AddItem(InventoryType.CASH, 5610001, null, 1); // Vega's Spell(60%)
             }
 
-
-            int[] mapleMiracleCubeCrimsonReqIds =
-            {
-                1003243, 1052358, 1072522, 1082315, 1102295, 1132093,
-                1302170, 1312069, 1322101, 1332145, 1372097, 1382121,
-                1402107, 1412068, 1422070, 1432096, 1442133, 1452126,
-                1462114, 1472137, 1482099, 1492098
-            };
-
-            foreach (int itemId in mapleMiracleCubeCrimsonReqIds)
+            foreach (int itemId in ItemUpgradeUI.GetStarterEnhancementEquipItemIds())
             {
                 if (inventory.GetItemCount(InventoryType.EQUIP, itemId) <= 0)
                 {

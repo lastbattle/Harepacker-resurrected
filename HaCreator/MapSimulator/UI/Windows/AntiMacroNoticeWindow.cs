@@ -2,6 +2,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -14,7 +15,9 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Point TextOrigin = new(87, 43);
         private static readonly Point OkButtonOrigin = new(84, 95);
         private static readonly Point CancelButtonOrigin = new(136, 95);
-        private const float WrapWidth = 160f;
+        private const float ClientWrapWidth = 160f;
+        private const int TextBaseY = 59;
+        private const int TextVerticalCenterStride = 8;
         private const int LineSpacing = 17;
 
         private readonly string _windowName;
@@ -25,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         private string[] _lines = Array.Empty<string>();
         private string _text = string.Empty;
         private int _stringPoolId = -1;
+        private KeyboardState _previousKeyboardState;
 
         public AntiMacroNoticeWindow(string windowName, Texture2D frameTexture)
             : base(new DXObject(0, 0, frameTexture, 0))
@@ -34,6 +38,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => _windowName;
         public override bool SupportsDragging => false;
+        public override bool CapturesKeyboardInput => IsVisible;
 
         public event Action<int> CloseRequested;
 
@@ -92,6 +97,33 @@ namespace HaCreator.MapSimulator.UI
             _lines = WrapText(_text);
         }
 
+        public override void Show()
+        {
+            _previousKeyboardState = Keyboard.GetState();
+            base.Show();
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+            if (!IsVisible)
+            {
+                return;
+            }
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (Pressed(keyboardState, Keys.Enter))
+            {
+                OnOkButtonReleased(_okButton);
+            }
+            else if (Pressed(keyboardState, Keys.Escape))
+            {
+                OnCancelButtonReleased(_cancelButton);
+            }
+
+            _previousKeyboardState = keyboardState;
+        }
+
         protected override void DrawContents(
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -114,7 +146,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            float y = Position.Y + TextOrigin.Y;
+            float y = Position.Y + ResolveClientNoticeTextStartY(_lines.Length);
             for (int i = 0; i < _lines.Length; i++)
             {
                 ClientTextDrawing.Draw(
@@ -135,27 +167,49 @@ namespace HaCreator.MapSimulator.UI
                     : new[] { text };
             }
 
+            return WrapTextForClientNotice(
+                text,
+                ClientWrapWidth,
+                candidate => ClientTextDrawing.Measure((GraphicsDevice)null, candidate, 1.0f, _font).X);
+        }
+
+        internal static string[] WrapTextForClientNotice(string text, float wrapWidth, Func<string, float> measureTextWidth)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            if (measureTextWidth == null)
+            {
+                throw new ArgumentNullException(nameof(measureTextWidth));
+            }
+
             List<string> lines = new();
-            string remaining = text.TrimStart();
+            string remaining = TrimSingleLeadingSpace(text);
             while (!string.IsNullOrEmpty(remaining))
             {
-                int breakIndex = FindWrapIndex(remaining);
+                int breakIndex = FindClientWrapIndex(remaining, wrapWidth, measureTextWidth);
                 lines.Add(remaining[..breakIndex].TrimEnd());
                 remaining = breakIndex >= remaining.Length
                     ? string.Empty
-                    : remaining[breakIndex..].TrimStart();
+                    : TrimSingleLeadingSpace(remaining[breakIndex..]);
             }
 
             return lines.ToArray();
         }
 
-        private int FindWrapIndex(string text)
+        internal static int ResolveClientNoticeTextStartY(int lineCount)
+        {
+            return TextBaseY - (TextVerticalCenterStride * Math.Max(1, lineCount));
+        }
+
+        private static int FindClientWrapIndex(string text, float wrapWidth, Func<string, float> measureTextWidth)
         {
             int bestFit = text.Length;
             for (int i = 1; i <= text.Length; i++)
             {
-                string candidate = text[..i];
-                if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, 1.0f, _font).X >= WrapWidth)
+                if (measureTextWidth(text[..i]) >= wrapWidth)
                 {
                     bestFit = i > 1 ? i - 1 : 1;
                     break;
@@ -169,6 +223,18 @@ namespace HaCreator.MapSimulator.UI
 
             int lastSpace = text.LastIndexOf(' ', bestFit - 1, bestFit);
             return lastSpace > 0 ? lastSpace : bestFit;
+        }
+
+        private static string TrimSingleLeadingSpace(string text)
+        {
+            return !string.IsNullOrEmpty(text) && text[0] == ' '
+                ? text[1..]
+                : text ?? string.Empty;
+        }
+
+        private bool Pressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
         }
 
         private void OnOkButtonReleased(UIObject sender)

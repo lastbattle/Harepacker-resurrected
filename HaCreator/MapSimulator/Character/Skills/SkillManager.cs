@@ -6969,6 +6969,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .ToArray();
         }
 
+        internal static IReadOnlyList<string> EnumeratePreparedAvatarActionCandidatesForTesting(
+            int skillId,
+            string prepareActionName,
+            string actionName = null)
+        {
+            return EnumeratePreparedAvatarActionCandidates(
+                    new SkillData
+                    {
+                        SkillId = skillId,
+                        ActionName = actionName
+                    },
+                    prepareActionName)
+                .ToArray();
+        }
+
         private static int ResolveKeyDownMaxHoldDuration(int skillId)
         {
             return skillId switch
@@ -8848,6 +8863,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return IsExplicitBoundJumpSkill(skill);
+        }
+
+        internal static bool AllowsClientOwnedOneTimeActionDuringSmoothingMovingShootPrepare(SkillData skill)
+        {
+            // `TryDoingSmoothingMovingShootAttackPrepare` only bypasses the active one-time
+            // action gate for client skill type 3 before it clears the current clip and arms
+            // the delayed moving-shot entry.
+            return skill?.ClientInfoType == 3
+                   && ShouldUseSmoothingMovingShoot(skill);
         }
 
         private static bool ShouldUseSmoothingMovingShoot(SkillData skill)
@@ -12413,6 +12437,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             UpdateSummonFacingTowardMob(summon, resolvedTargets[0], currentTime);
+            summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveLocalAttackBranch(summon.SkillData);
             summon.LastAttackAnimationStartTime = currentTime;
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             SpawnSummonAttackProjectiles(summon, resolvedTargets, currentTime);
@@ -14018,7 +14043,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool ShouldClearSupportSummonSuspend(ActiveSummon summon, int currentTime)
         {
-            return SummonRuntimeRules.ShouldClearSupportSuspend(summon, currentTime);
+            return SummonRuntimeRules.ShouldClearHealingRobotSupportSuspend(
+                summon,
+                currentTime,
+                HEALING_ROBOT_SKILL_ID);
         }
 
         private bool ProcessFriendlySummonBuffSupport(ActiveSummon summon, int currentTime)
@@ -16471,14 +16499,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
 
             IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
-            ISet<string> authoredTemporaryStatLabels = BuildAuthoredTemporaryStatLabelSet(levelData, temporaryStats);
+            ISet<string> directBuffIconEligibleLabels = BuildDirectBuffIconEligibleLabelSet(levelData);
             BuffTemporaryStatPresentation familyOwnerTemporaryStat = ResolveFamilyOwnerTemporaryStat(temporaryStats);
             BuffTemporaryStatPresentation trayLaneTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
             BuffTemporaryStatPresentation iconOwnerTemporaryStat = ResolveIconOwnerTemporaryStat(
                 temporaryStats,
                 trayLaneTemporaryStat,
                 familyOwnerTemporaryStat,
-                authoredTemporaryStatLabels);
+                directBuffIconEligibleLabels);
             BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, trayLaneTemporaryStat);
             string authoredFamilyDisplayName = ResolveAuthoredFamilyDisplayName(
                 levelData,
@@ -16516,14 +16544,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (var buff in _buffs)
             {
                 IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
-                ISet<string> authoredTemporaryStatLabels = BuildAuthoredTemporaryStatLabelSet(buff?.LevelData, temporaryStats);
+                ISet<string> directBuffIconEligibleLabels = BuildDirectBuffIconEligibleLabelSet(buff?.LevelData);
                 BuffTemporaryStatPresentation familyOwnerTemporaryStat = ResolveFamilyOwnerTemporaryStat(temporaryStats);
                 BuffTemporaryStatPresentation trayLaneTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
                 BuffTemporaryStatPresentation iconOwnerTemporaryStat = ResolveIconOwnerTemporaryStat(
                     temporaryStats,
                     trayLaneTemporaryStat,
                     familyOwnerTemporaryStat,
-                    authoredTemporaryStatLabels);
+                    directBuffIconEligibleLabels);
                 BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, trayLaneTemporaryStat);
                 string authoredFamilyDisplayName = ResolveAuthoredFamilyDisplayName(
                     buff?.LevelData,
@@ -17519,14 +17547,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats,
             BuffTemporaryStatPresentation primaryTemporaryStat,
             BuffTemporaryStatPresentation familyOwnerTemporaryStat,
-            ISet<string> authoredTemporaryStatLabels)
+            ISet<string> directBuffIconEligibleLabels)
         {
-            if (HasResolvedAuthoredBuffIcon(primaryTemporaryStat, authoredTemporaryStatLabels))
+            if (HasResolvedExplicitBuffIcon(primaryTemporaryStat, directBuffIconEligibleLabels))
             {
                 return primaryTemporaryStat;
             }
 
-            if (HasResolvedAuthoredBuffIcon(familyOwnerTemporaryStat, authoredTemporaryStatLabels))
+            if (HasResolvedExplicitBuffIcon(familyOwnerTemporaryStat, directBuffIconEligibleLabels))
             {
                 return familyOwnerTemporaryStat;
             }
@@ -17539,7 +17567,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             for (int i = 0; i < temporaryStats.Count; i++)
             {
                 BuffTemporaryStatPresentation candidate = temporaryStats[i];
-                if (HasResolvedAuthoredBuffIcon(candidate, authoredTemporaryStatLabels))
+                if (HasResolvedExplicitBuffIcon(candidate, directBuffIconEligibleLabels))
                 {
                     return candidate;
                 }
@@ -17553,18 +17581,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             return presentation != null && !string.IsNullOrWhiteSpace(presentation.IconKey);
         }
 
-        private static bool HasResolvedAuthoredBuffIcon(
+        private static bool HasResolvedExplicitBuffIcon(
             BuffTemporaryStatPresentation presentation,
-            ISet<string> authoredTemporaryStatLabels)
+            ISet<string> directBuffIconEligibleLabels)
         {
             if (!HasResolvedBuffIcon(presentation))
             {
                 return false;
             }
 
-            return authoredTemporaryStatLabels == null
-                || authoredTemporaryStatLabels.Count == 0
-                || authoredTemporaryStatLabels.Contains(presentation.Label);
+            return directBuffIconEligibleLabels != null
+                && directBuffIconEligibleLabels.Contains(presentation.Label);
         }
 
         private static string BuildCombinedTemporaryStatText(SkillData skill)
@@ -17683,6 +17710,72 @@ namespace HaCreator.MapSimulator.Character.Skills
             return authoredOrder.Count == 0
                 ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 : new HashSet<string>(authoredOrder.Keys, StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static ISet<string> BuildDirectBuffIconEligibleLabelSet(SkillLevelData levelData)
+        {
+            var labels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (levelData == null)
+            {
+                return labels;
+            }
+
+            void Track(bool condition, string label)
+            {
+                if (condition && !string.IsNullOrWhiteSpace(label))
+                {
+                    labels.Add(label);
+                }
+            }
+
+            Track(
+                levelData.PAD > 0
+                || levelData.AttackPercent > 0
+                || levelData.EnhancedPAD > 0
+                || HasAuthoredTemporaryStatProperty(levelData, "pad", "padX", "epad", "indiePad"),
+                "PAD");
+            Track(
+                levelData.PDD > 0
+                || levelData.DefensePercent > 0
+                || levelData.EnhancedPDD > 0
+                || HasAuthoredTemporaryStatProperty(levelData, "pdd", "pddX", "epdd", "pddR"),
+                "PDD");
+            Track(
+                levelData.MAD > 0
+                || levelData.MagicAttackPercent > 0
+                || levelData.EnhancedMAD > 0
+                || HasAuthoredTemporaryStatProperty(levelData, "mad", "madX", "emad", "indieMad"),
+                "MAD");
+            Track(
+                levelData.MDD > 0
+                || levelData.MagicDefensePercent > 0
+                || levelData.EnhancedMDD > 0
+                || HasAuthoredTemporaryStatProperty(levelData, "mdd", "mddX", "emdd", "mddR"),
+                "MDD");
+            Track(
+                levelData.ACC > 0
+                || levelData.AccuracyPercent > 0
+                || HasAuthoredTemporaryStatProperty(levelData, "acc", "accX", "indieAcc", "accR", "ar"),
+                "ACC");
+            Track(
+                levelData.EVA > 0
+                || levelData.AvoidabilityPercent > 0
+                || HasAuthoredTemporaryStatProperty(levelData, "eva", "evaX", "indieEva", "evaR", "er"),
+                "EVA");
+            Track(
+                levelData.Speed > 0
+                || levelData.SpeedPercent > 0
+                || HasAuthoredTemporaryStatProperty(levelData, "speed", "indieSpeed"),
+                "Speed");
+            Track(
+                levelData.Jump > 0
+                || HasAuthoredTemporaryStatProperty(levelData, "jump", "indieJump"),
+                "Jump");
+            Track(
+                HasAuthoredTemporaryStatProperty(levelData, "incCraft"),
+                CraftBuffLabel);
+
+            return labels;
         }
 
         private static int GetAuthoredTemporaryStatOrder(
@@ -19030,13 +19123,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                     }
 
                     SkillData[] supportSkills = ResolveAffectedSkillPassiveSupportSkills(skill);
-                    if (!UsesProjectedSupportAffectedSkillPassive(skill, levelData, supportSkills))
+                    SkillLevelData effectiveLevelData = ResolveAffectedSkillPassiveSupportLevelData(levelData, supportSkills);
+                    if (!UsesProjectedSupportAffectedSkillPassive(skill, effectiveLevelData, supportSkills))
                     {
                         continue;
                     }
 
                     int syntheticBuffId = ResolveAffectedSkillSupportBuffId(skill.SkillId);
-                    ApplyOrRefreshAffectedSkillSupportBuff(skill, supportSkills, levelData, currentTime, syntheticBuffId);
+                    ApplyOrRefreshAffectedSkillSupportBuff(skill, supportSkills, effectiveLevelData, currentTime, syntheticBuffId);
                     activeSupportBuffIds ??= new HashSet<int>();
                     activeSupportBuffIds.Add(syntheticBuffId);
                 }
@@ -19159,6 +19253,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             return supportSkills.ToArray();
         }
 
+        private SkillLevelData ResolveAffectedSkillPassiveSupportLevelData(
+            SkillLevelData primaryLevelData,
+            params SkillData[] supportSkills)
+        {
+            return ResolveAffectedSkillPassiveSupportLevelData(
+                primaryLevelData,
+                ResolveAffectedSkillPassiveLinkedSupportLevelData,
+                supportSkills);
+        }
+
+        private SkillLevelData ResolveAffectedSkillPassiveLinkedSupportLevelData(SkillData skill)
+        {
+            if (!TryResolveAffectedSkillPassiveLinkedSkillRuntimeLevel(
+                    skill,
+                    GetSkillLevel,
+                    _buffs,
+                    out int level))
+            {
+                return null;
+            }
+
+            return skill.GetLevel(level);
+        }
+
         internal static bool TryResolveAffectedSkillPassiveRuntimeLevel(
             SkillData skill,
             Func<int, int> getSkillLevel,
@@ -19199,6 +19317,88 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        internal static SkillLevelData ResolveAffectedSkillPassiveSupportLevelData(
+            SkillLevelData primaryLevelData,
+            Func<SkillData, SkillLevelData> resolveSupportLevelData,
+            params SkillData[] supportSkills)
+        {
+            if (supportSkills == null || supportSkills.Length == 0)
+            {
+                return primaryLevelData;
+            }
+
+            var levelDataEntries = new List<SkillLevelData>
+            {
+                primaryLevelData
+            };
+
+            for (int i = 0; i < supportSkills.Length; i++)
+            {
+                SkillLevelData supportLevelData = resolveSupportLevelData?.Invoke(supportSkills[i]);
+                if (supportLevelData != null)
+                {
+                    levelDataEntries.Add(supportLevelData);
+                }
+            }
+
+            SkillLevelData projectedLevelData =
+                RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(levelDataEntries.ToArray()) ?? primaryLevelData;
+            if (projectedLevelData == null)
+            {
+                return null;
+            }
+
+            int derivedDamageReductionRate = projectedLevelData.DamageReductionRate;
+            for (int i = 0; i < supportSkills.Length; i++)
+            {
+                SkillData supportSkill = supportSkills[i];
+                if (supportSkill == null)
+                {
+                    continue;
+                }
+
+                SkillLevelData supportLevelData = resolveSupportLevelData?.Invoke(supportSkill);
+                derivedDamageReductionRate = Math.Max(
+                    derivedDamageReductionRate,
+                    RemoteAffectedAreaSupportResolver.ResolveDerivedProjectedDamageReductionRate(supportSkill, supportLevelData));
+            }
+
+            if (derivedDamageReductionRate <= projectedLevelData.DamageReductionRate)
+            {
+                return projectedLevelData;
+            }
+
+            SkillLevelData derivedProjection = projectedLevelData.ShallowClone();
+            derivedProjection.DamageReductionRate = derivedDamageReductionRate;
+            return derivedProjection;
+        }
+
+        internal static bool TryResolveAffectedSkillPassiveLinkedSkillRuntimeLevel(
+            SkillData skill,
+            Func<int, int> getSkillLevel,
+            IEnumerable<ActiveBuff> activeBuffs,
+            out int level)
+        {
+            level = 0;
+
+            if (skill == null || getSkillLevel == null)
+            {
+                return false;
+            }
+
+            if (activeBuffs != null)
+            {
+                ActiveBuff activeBuff = activeBuffs.LastOrDefault(buff => buff?.SkillId == skill.SkillId);
+                if (activeBuff?.Level > 0
+                    && TryResolveAffectedSkillPassiveLevel(skill, activeBuff.Level, out level))
+                {
+                    return true;
+                }
+            }
+
+            return TryResolveAffectedSkillPassiveLevel(skill, getSkillLevel(skill.SkillId), out level);
         }
 
         private static bool TryResolveAffectedSkillPassiveLevel(

@@ -7998,7 +7998,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "family",
                 "Drive the family chart UI and packet-shaped family roster synchronization",
-                "/family [open|tree|status|reset|select <memberId>|packet <clear|seed|name <familyName>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>]",
+                "/family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -8026,10 +8026,16 @@ namespace HaCreator.MapSimulator
 
 
                             return ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.SelectMemberById(selectedMemberId));
+                        case "precept":
+                            return ChatCommandHandler.CommandResult.Ok(
+                                _familyChartRuntime.SetPrecept(
+                                    args.Length >= 2
+                                        ? string.Join(" ", args.Skip(1))
+                                        : string.Empty));
                         case "packet":
                             if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
                             }
 
 
@@ -8042,6 +8048,12 @@ namespace HaCreator.MapSimulator
                                 case "name":
                                     return ChatCommandHandler.CommandResult.Ok(
                                         _familyChartRuntime.SetFamilyNameFromPacket(
+                                            args.Length >= 3
+                                                ? string.Join(" ", args.Skip(2))
+                                                : string.Empty));
+                                case "precept":
+                                    return ChatCommandHandler.CommandResult.Ok(
+                                        _familyChartRuntime.SetPrecept(
                                             args.Length >= 3
                                                 ? string.Join(" ", args.Skip(2))
                                                 : string.Empty));
@@ -8130,10 +8142,10 @@ namespace HaCreator.MapSimulator
                                             currentReputation,
                                             todayReputation));
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
                             }
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|packet <clear|seed|name <familyName>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>]");
                     }
                 });
 
@@ -8206,9 +8218,19 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_messengerRuntime.SetPresence(string.Join(" ", args.Skip(1).Take(args.Length - 2)), online.Value));
 
                         case "packet":
-                            return MessengerCommandRouter.HandlePacketCommand(args, _messengerRuntime, TryParseBinaryPayloadArgument);
+                            return MessengerCommandRouter.HandlePacketCommand(
+                                args,
+                                _messengerRuntime,
+                                TryParseBinaryPayloadArgument,
+                                (packetType, payload) => ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ApplyPacketPayload(packetType, payload)),
+                                payload => ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ApplyPacketDispatchPayload(payload)));
                         case "packetraw":
-                            return MessengerCommandRouter.HandlePacketRawCommand(args, _messengerRuntime, TryDecodeHexBytes);
+                            return MessengerCommandRouter.HandlePacketRawCommand(
+                                args,
+                                _messengerRuntime,
+                                TryDecodeHexBytes,
+                                (packetType, payload) => ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ApplyPacketPayload(packetType, payload)),
+                                payload => ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ApplyPacketDispatchPayload(payload)));
                         case "remote":
                             return MessengerCommandRouter.HandleRemoteCommand(args, _messengerRuntime);
 
@@ -8546,7 +8568,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutility",
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
-            "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|hpdec|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
+            "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|hpdec|hazardresult|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|1011|1012|1013|1014|1026|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|hpdec|hazardresult|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|1011|1012|1013|1014|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "expedition",

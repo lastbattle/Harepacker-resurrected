@@ -9,8 +9,13 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const short VegaOwnerRequestOpcode = 0x55;
         private const int VegaOwnerLaunchDelayMs = 50;
         private const int VegaOwnerResultDelayMs = 50;
+        private const int VegaOwnerExclusiveRequestCooldownMs = 500;
+        private const int VegaOwnerExternalResultFallbackDelayMs = 3000;
+        private const int VegaResultPreludeLoopSoundStringPoolId = 0x1534;
+        private const string VegaResultPreludeLoopSoundFallback = "Sound/UI.img/EnchantDelay";
         private ActiveVegaModifierSelectionState _activeVegaModifierSelection;
         private bool _vegaExclusiveRequestSent;
         private int _vegaExclusiveRequestSentTick = int.MinValue;
@@ -50,6 +55,7 @@ namespace HaCreator.MapSimulator
             public int RequestedAtTick { get; init; }
             public int ResultReadyAtTick { get; set; }
             public byte[] EncodedPayload { get; init; } = Array.Empty<byte>();
+            public string RequestDispatchSummary { get; init; } = string.Empty;
             public bool ResultApplied { get; set; }
             public ItemUpgradeUI.ItemUpgradeAttemptResult Result { get; set; }
             public byte PrimaryResultCode { get; init; }
@@ -72,6 +78,7 @@ namespace HaCreator.MapSimulator
             vegaSpellWindow.StartSpellCastRequested = HandleVegaSpellCastRequested;
             vegaSpellWindow.ValidationFailed = HandleVegaSpellValidationFailed;
             vegaSpellWindow.ResultAcknowledged = HandleVegaSpellResultAcknowledged;
+            vegaSpellWindow.ResultPreludeStarted = HandleVegaSpellResultPreludeStarted;
         }
 
         private void QueueVegaSpellWindowLaunch(int itemId, InventoryType inventoryType, int slotIndex, string source)
@@ -159,7 +166,7 @@ namespace HaCreator.MapSimulator
                     _pendingVegaCastState.Request.ScrollItemId,
                     _pendingVegaCastState.Request.ModifierItemId);
                 _pendingVegaCastState = null;
-                ClearVegaExclusiveRequestState();
+                ClearVegaExclusiveRequestState(currTickCount);
                 ShowUtilityFeedbackMessage(result.StatusMessage);
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI failedWindow)
                 {
@@ -181,7 +188,7 @@ namespace HaCreator.MapSimulator
 
         private bool HandleVegaSpellCastRequested(VegaSpellUI.VegaOwnerRequest request)
         {
-            if (_pendingVegaCastState != null || _vegaExclusiveRequestSent)
+            if (_pendingVegaCastState != null || HasActiveVegaExclusiveRequestBlock(currTickCount))
             {
                 ShowUtilityFeedbackMessage(VegaOwnerStringPoolText.GetExclusiveRequestNotice());
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI busyWindow)
@@ -244,11 +251,18 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void HandleVegaSpellResultPreludeStarted()
+        {
+            TryPlaySharedProductionEnhancementSound(
+                VegaResultPreludeLoopSoundStringPoolId,
+                VegaResultPreludeLoopSoundFallback);
+        }
+
         private void HandleVegaSpellResultAcknowledged()
         {
             _pendingVegaCastState = null;
             _pendingVegaPromptState = null;
-            ClearVegaExclusiveRequestState();
+            ClearVegaExclusiveRequestState(currTickCount);
         }
 
         private void ShowVegaWhiteScrollPrompt(VegaSpellUI.VegaOwnerRequest request)
@@ -299,7 +313,24 @@ namespace HaCreator.MapSimulator
             }
 
             _pendingVegaPromptState = null;
-            int readyAtTick = currTickCount + Math.Max(vegaSpellWindow.GetCastingDurationMs(), VegaOwnerResultDelayMs);
+            int requestTick = currTickCount;
+            byte[] encodedPayload = BuildVegaRequestPayload(
+                modifierSlotPosition: requestContext.ModifierSlotIndex + 1,
+                modifierItemId: request.ModifierItemId,
+                equipItemId: request.EquipItemId,
+                equipSlotPosition: requestContext.EncodedEquipPosition,
+                scrollItemId: request.ScrollItemId,
+                scrollSlotPosition: requestContext.ScrollSlotIndex + 1,
+                useWhiteScroll: useWhiteScroll,
+                updateTick: requestTick);
+            string requestDispatchSummary = BuildVegaOutboundRequestLabel(
+                VegaOwnerRequestOpcode,
+                encodedPayload,
+                "Mirrored CUIVega::OnButtonClicked through the dedicated Vega owner seam.",
+                out int responseDelayMs);
+            int readyAtTick = requestTick + Math.Max(
+                vegaSpellWindow.GetCastingDurationMs(),
+                Math.Max(VegaOwnerResultDelayMs, responseDelayMs));
             (byte primaryResultCode, byte secondaryResultCode) = ResolveVegaResultCodes(success: true);
             if (!_playerManager?.Player?.Build?.Equipment?.ContainsKey(request.Slot) ?? true)
             {
@@ -316,20 +347,16 @@ namespace HaCreator.MapSimulator
                 ScrollInventoryType = requestContext.ScrollInventoryType,
                 ScrollSlotIndex = requestContext.ScrollSlotIndex,
                 EncodedEquipPosition = requestContext.EncodedEquipPosition,
-                RequestedAtTick = currTickCount,
+                RequestedAtTick = requestTick,
                 ResultReadyAtTick = readyAtTick,
-                EncodedPayload = EncodeVegaRequestPayload(
-                    request.EquipItemId,
-                    requestContext.EncodedEquipPosition,
-                    request.ScrollItemId,
-                    requestContext.ScrollSlotIndex + 1,
-                    useWhiteScroll,
-                    currTickCount),
+                EncodedPayload = encodedPayload,
+                RequestDispatchSummary = requestDispatchSummary,
                 PrimaryResultCode = primaryResultCode,
                 SecondaryResultCode = secondaryResultCode
             };
-            MarkVegaExclusiveRequestSent(currTickCount);
+            MarkVegaExclusiveRequestSent(requestTick);
             StampPacketOwnedUtilityRequestState();
+            ShowUtilityFeedbackMessage(requestDispatchSummary);
 
             string status = useWhiteScroll
                 ? $"{request.ModifierName} sent with White Scroll protection."
@@ -337,7 +364,9 @@ namespace HaCreator.MapSimulator
             vegaSpellWindow.StartSpellCast(status);
         }
 
-        private static byte[] EncodeVegaRequestPayload(
+        private static byte[] BuildVegaRequestPayload(
+            int modifierSlotPosition,
+            int modifierItemId,
             int equipItemId,
             int equipSlotPosition,
             int scrollItemId,
@@ -345,14 +374,22 @@ namespace HaCreator.MapSimulator
             bool useWhiteScroll,
             int updateTick)
         {
-            byte[] payload = new byte[sizeof(int) * 6];
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), equipItemId);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int), sizeof(int)), equipSlotPosition);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) * 2, sizeof(int)), scrollItemId);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) * 3, sizeof(int)), scrollSlotPosition);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) * 4, sizeof(int)), useWhiteScroll ? 1 : 0);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) * 5, sizeof(int)), updateTick);
+            byte[] payload = new byte[(sizeof(int) * 7) + sizeof(short)];
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), updateTick);
+            BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(sizeof(int), sizeof(short)), (short)Math.Max(0, modifierSlotPosition));
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(short), sizeof(int)), modifierItemId);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 2) + sizeof(short), sizeof(int)), equipItemId);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 3) + sizeof(short), sizeof(int)), equipSlotPosition);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 4) + sizeof(short), sizeof(int)), scrollItemId);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 5) + sizeof(short), sizeof(int)), scrollSlotPosition);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 6) + sizeof(short), sizeof(int)), useWhiteScroll ? 1 : 0);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 7) + sizeof(short), sizeof(int)), updateTick);
             return payload;
+        }
+
+        private bool HasActiveVegaExclusiveRequestBlock(int currentTick)
+        {
+            return IsVegaExclusiveRequestBlocked(_vegaExclusiveRequestSent, _vegaExclusiveRequestSentTick, currentTick);
         }
 
         private static ItemUpgradeUI.ItemUpgradeAttemptResult RewriteVegaOwnerResultMessage(
@@ -404,10 +441,66 @@ namespace HaCreator.MapSimulator
             _vegaExclusiveRequestSentTick = currentTick;
         }
 
-        private void ClearVegaExclusiveRequestState()
+        private void ClearVegaExclusiveRequestState(int currentTick)
         {
             _vegaExclusiveRequestSent = false;
-            _vegaExclusiveRequestSentTick = int.MinValue;
+            _vegaExclusiveRequestSentTick = currentTick;
+        }
+
+        private bool TryQueueVegaOutboundPacket(
+            short opcode,
+            byte[] payload,
+            out string dispatchSummary)
+        {
+            string payloadHex = payload.Length > 0 ? Convert.ToHexString(payload) : "<empty>";
+            string dispatchStatus = "live bridge unavailable";
+            string outboxStatus = "packet outbox unavailable";
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(opcode, payload, out dispatchStatus))
+            {
+                dispatchSummary = $"Mirrored opcode {opcode} [{payloadHex}] through the live local-utility bridge. {dispatchStatus}";
+                return true;
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(opcode, payload, out outboxStatus))
+            {
+                dispatchSummary = $"Mirrored opcode {opcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+                return true;
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(opcode, payload, out string queuedBridgeStatus))
+            {
+                dispatchSummary = $"Queued opcode {opcode} [{payloadHex}] for deferred official-session injection after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+                return true;
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(opcode, payload, out string queuedOutboxStatus))
+            {
+                dispatchSummary = $"Queued opcode {opcode} [{payloadHex}] for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+                return true;
+            }
+
+            dispatchSummary = $"Kept opcode {opcode} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted the Vega owner request. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+            return false;
+        }
+
+        private string BuildVegaOutboundRequestLabel(
+            short opcode,
+            byte[] payload,
+            string localMessage,
+            out int responseDelayMs)
+        {
+            responseDelayMs = VegaOwnerResultDelayMs;
+            bool queuedExternally = TryQueueVegaOutboundPacket(opcode, payload, out string dispatchSummary);
+            if (queuedExternally)
+            {
+                responseDelayMs = VegaOwnerExternalResultFallbackDelayMs;
+            }
+
+            return string.IsNullOrWhiteSpace(localMessage)
+                ? dispatchSummary
+                : $"{localMessage} {dispatchSummary}";
         }
 
         private bool TryResolveVegaRequestContext(
@@ -572,6 +665,8 @@ namespace HaCreator.MapSimulator
         }
 
         internal static byte[] BuildVegaRequestPayloadForTests(
+            int modifierSlotPosition,
+            int modifierItemId,
             int equipItemId,
             int equipSlotPosition,
             int scrollItemId,
@@ -579,7 +674,9 @@ namespace HaCreator.MapSimulator
             bool useWhiteScroll,
             int updateTick)
         {
-            return EncodeVegaRequestPayload(
+            return BuildVegaRequestPayload(
+                modifierSlotPosition,
+                modifierItemId,
                 equipItemId,
                 equipSlotPosition,
                 scrollItemId,
@@ -591,6 +688,22 @@ namespace HaCreator.MapSimulator
         internal static (byte PrimaryCode, byte SecondaryCode) ResolveVegaResultCodesForTests(bool success)
         {
             return ResolveVegaResultCodes(success);
+        }
+
+        internal static bool IsVegaExclusiveRequestBlockedForTests(bool requestSent, int lastRequestTick, int currentTick)
+        {
+            return IsVegaExclusiveRequestBlocked(requestSent, lastRequestTick, currentTick);
+        }
+
+        private static bool IsVegaExclusiveRequestBlocked(bool requestSent, int lastRequestTick, int currentTick)
+        {
+            if (requestSent)
+            {
+                return true;
+            }
+
+            return lastRequestTick != int.MinValue
+                && unchecked(currentTick - lastRequestTick) < VegaOwnerExclusiveRequestCooldownMs;
         }
 
         private readonly record struct VegaRequestContext(

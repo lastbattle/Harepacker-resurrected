@@ -150,6 +150,8 @@ namespace HaCreator.MapSimulator.Fields
         public int GuardianGenMax { get; init; }
         public int ReactorRed { get; init; }
         public int ReactorBlue { get; init; }
+        public int ReactorRedRequiredHits { get; init; } = 1;
+        public int ReactorBlueRequiredHits { get; init; } = 1;
         public string EffectWin { get; init; }
         public string EffectLose { get; init; }
         public string SoundWin { get; init; }
@@ -269,6 +271,8 @@ namespace HaCreator.MapSimulator.Fields
                 GuardianGenMax = ReadInt(property["guardianGenMax"]),
                 ReactorRed = ReadInt(property["reactorRed"]),
                 ReactorBlue = ReadInt(property["reactorBlue"]),
+                ReactorRedRequiredHits = ResolveGuardianReactorRequiredHits(ReadInt(property["reactorRed"])),
+                ReactorBlueRequiredHits = ResolveGuardianReactorRequiredHits(ReadInt(property["reactorBlue"])),
                 EffectWin = ReadString(property["effectWin"]),
                 EffectLose = ReadString(property["effectLose"]),
                 SoundWin = ReadString(property["soundWin"]),
@@ -511,6 +515,37 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return string.Join(" ", parts);
+        }
+
+        private static int ResolveGuardianReactorRequiredHits(int reactorId)
+        {
+            if (reactorId <= 0)
+            {
+                return 1;
+            }
+
+            try
+            {
+                WzImage reactorImage = FindImageSafe("Reactor", reactorId.ToString("D7", CultureInfo.InvariantCulture) + ".img");
+                if (reactorImage == null)
+                {
+                    return 1;
+                }
+
+                if (!reactorImage.Parsed)
+                {
+                    reactorImage.ParseImage();
+                }
+
+                int numericStateCount = reactorImage.WzProperties
+                    .Select(property => property?.Name)
+                    .Count(name => int.TryParse(name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _));
+                return Math.Max(1, numericStateCount);
+            }
+            catch
+            {
+                return 1;
+            }
         }
 
         private static WzImage FindImageSafe(string category, string imageName)
@@ -1582,7 +1617,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "CField_MonsterCarnivalWaitingRoom::Init only retains monsterCarnival/mapType, then delegates shared Carnival HUD flow.",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "CField_MonsterCarnivalS2_Game::Init keeps the Season 2 wrapper explicit, then delegates shared Carnival HUD flow.",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive owns OnShowGameResult codes 8-11 and routes them through the recovered 0x1020-0x1023 StringPool seam.",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive owns OnShowGameResult codes 8-11 and routes them through the recovered 0x1020-0x1023 StringPool seam into CUIStatusBar::ChatLogAdd.",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE => "Legacy Carnival wrapper stays on the shared Monster Carnival packet family in this simulator seam.",
                 _ => "CField_MonsterCarnival owns the shared packet family while the simulator keeps map-backed summon, CP, and request seams live."
             };
@@ -1600,7 +1635,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | Init reads monsterCarnival/mapType={_definition.MapType}",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | Season 2 Init reads monsterCarnival/mapType={_definition.MapType}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | revive owner packets 346-353 | failure ids 0x101B-0x101F | result ids 0x1020-0x1023 | UI 0x102B-0x1033",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | revive owner packets 346-353 | failure ids 0x101B-0x101F | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd | UI 0x102B-0x1033",
                 _ => $"{mapLabel} | shared Carnival packet family 346-353 | UI 0x102B-0x1033"
             };
         }
@@ -1958,11 +1993,13 @@ namespace HaCreator.MapSimulator.Fields
             else if (entry.Tab == MonsterCarnivalTab.Guardian)
             {
                 _occupiedGuardianSlots.Add(entry.Index);
-                _guardianPlacements[entry.Index] = new MonsterCarnivalGuardianPlacement(
+                MonsterCarnivalGuardianPlacement placement = new MonsterCarnivalGuardianPlacement(
                     entry,
                     ResolveGuardianSpawnPoint(entry.Index),
                     ResolveGuardianReactorId(ownerTeam),
                     ownerTeam);
+                placement.ReactorRequiredHits = ResolveGuardianRequiredHits(ownerTeam);
+                _guardianPlacements[entry.Index] = placement;
             }
         }
 
@@ -2003,6 +2040,16 @@ namespace HaCreator.MapSimulator.Fields
             return team == MonsterCarnivalTeam.Team0
                 ? Math.Max(0, _definition?.ReactorRed ?? 0)
                 : Math.Max(0, _definition?.ReactorBlue ?? 0);
+        }
+
+        private int ResolveGuardianRequiredHits(MonsterCarnivalTeam team)
+        {
+            if (team == MonsterCarnivalTeam.Team0)
+            {
+                return Math.Max(1, _definition?.ReactorRedRequiredHits ?? 1);
+            }
+
+            return Math.Max(1, _definition?.ReactorBlueRequiredHits ?? 1);
         }
 
         private void RegisterKnownCharacterTeam(string characterName, MonsterCarnivalTeam team)

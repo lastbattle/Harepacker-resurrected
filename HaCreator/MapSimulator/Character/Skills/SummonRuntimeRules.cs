@@ -240,7 +240,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return ResolvePacketSpecialBranch(
                     skill,
                     assistType,
-                    "subsummon");
+                    "subsummon")
+                       ?? ResolveAuthoredCustomSummonSkillBranch(skill, 0);
             }
 
             if (assistType.HasValue)
@@ -292,7 +293,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int attackIndex = normalizedAction - ClientDefaultSummonAttackActionBase + 1;
-            return ResolveNamedSummonBranch(skill, EnumeratePacketAttackBranchCandidates(attackIndex));
+            return ResolveNamedSummonBranch(skill, EnumeratePacketAttackBranchCandidates(attackIndex))
+                   ?? ResolveAuthoredCustomSummonSkillBranch(skill, attackIndex - 1);
         }
 
         internal static string ResolveSpawnPlaybackBranch(SkillData skill)
@@ -339,6 +341,23 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static string ResolveBeholderHealBranch(SkillData skill)
         {
             return ResolveNamedSummonBranch(skill, "skill1", "heal", "support");
+        }
+
+        internal static string ResolveLocalAttackBranch(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill.SummonAttackBranchName)
+                && skill.SummonNamedAnimations?.ContainsKey(skill.SummonAttackBranchName) == true)
+            {
+                return skill.SummonAttackBranchName;
+            }
+
+            return ResolvePacketAttackBranch(skill, ClientDefaultSummonAttackActionBase)
+                   ?? ResolveNamedSummonBranch(skill, "attack1", "attack", "attack0", "attackTriangle");
         }
 
         internal static string ResolveLocalSupportBranch(SkillData skill, bool preferHealFirst)
@@ -819,6 +838,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 "support",
                 "skill1",
                 "skill2",
+                "stand",
                 "attack1",
                 "attack",
                 "attack0"

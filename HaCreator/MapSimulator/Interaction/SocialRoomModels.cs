@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.PacketLib;
 using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Buffers.Binary;
@@ -296,6 +297,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     public sealed partial class SocialRoomRuntime
     {
+        private static readonly Dictionary<string, string> EmployeeNpcFuncHeadlineCache = new(StringComparer.Ordinal);
         private const int MiniRoomOmokBoardSize = 15;
         private const int TradingRoomClientItemSlotCount = 9;
         private const byte TradingRoomPutItemPacketType = 15;
@@ -1208,7 +1210,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 int templateId = hasPooledEmployee ? pooledEmployee.TemplateId : _employeeTemplateId;
                 bool usesCashEmployee = templateId > 0;
-                string headline = ResolveEmployeeDisplayHeadline("Hired Merchant");
+                string headline = ResolveEmployeeDisplayHeadline(ResolveEmployeeFuncHeadline(SocialRoomFieldActorTemplate.Merchant, "Merchant"));
                 string detail = $"{ResolveEmployeeDisplayOwnerName(pooledEmployee)} | {RoomState}";
                 return new SocialRoomFieldActorSnapshot(
                     Kind,
@@ -1259,7 +1261,11 @@ namespace HaCreator.MapSimulator.Interaction
             byte entrustedMiniRoomType = hasPooledEmployee ? pooledEmployee.MiniRoomType : (byte)0;
             SocialRoomFieldActorTemplate entrustedTemplate = ResolveEntrustedFieldActorTemplate(entrustedTemplateId, entrustedMiniRoomType);
             string entrustedHeadline = ResolveEmployeeDisplayHeadline(
-                entrustedTemplate == SocialRoomFieldActorTemplate.StoreBanker ? "Store Banker" : "Entrusted Shop");
+                ResolveEmployeeFuncHeadline(
+                    entrustedTemplate == SocialRoomFieldActorTemplate.StoreBanker
+                        ? SocialRoomFieldActorTemplate.StoreBanker
+                        : SocialRoomFieldActorTemplate.Merchant,
+                    entrustedTemplate == SocialRoomFieldActorTemplate.StoreBanker ? "Store Banker" : "Merchant"));
             string entrustedDetail = $"{ResolveEmployeeDisplayOwnerName(pooledEmployee)} | {RoomState} | {permitStatus}";
             return new SocialRoomFieldActorSnapshot(
                 Kind,
@@ -6317,6 +6323,30 @@ namespace HaCreator.MapSimulator.Interaction
         private string ResolveEmployeeDisplayHeadline(string fallbackHeadline)
         {
             string headline = RoomTitle;
+            return string.IsNullOrWhiteSpace(headline) ? fallbackHeadline : headline;
+        }
+
+        private static string ResolveEmployeeFuncHeadline(SocialRoomFieldActorTemplate template, string fallbackHeadline)
+        {
+            string npcId = template == SocialRoomFieldActorTemplate.StoreBanker ? "9030000" : "9071001";
+            if (EmployeeNpcFuncHeadlineCache.TryGetValue(npcId, out string cachedHeadline))
+            {
+                return string.IsNullOrWhiteSpace(cachedHeadline) ? fallbackHeadline : cachedHeadline;
+            }
+
+            string headline = fallbackHeadline;
+            WzImage npcStringImage = global::HaCreator.Program.FindImage("String", "Npc.img");
+            if (npcStringImage != null)
+            {
+                npcStringImage.ParseImage();
+                if (npcStringImage[npcId]?["func"] is WzStringProperty funcProperty
+                    && !string.IsNullOrWhiteSpace(funcProperty.Value))
+                {
+                    headline = funcProperty.Value.Trim();
+                }
+            }
+
+            EmployeeNpcFuncHeadlineCache[npcId] = headline ?? string.Empty;
             return string.IsNullOrWhiteSpace(headline) ? fallbackHeadline : headline;
         }
 

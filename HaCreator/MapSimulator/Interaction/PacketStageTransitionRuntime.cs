@@ -44,14 +44,6 @@ namespace HaCreator.MapSimulator.Interaction
         private const int CharacterDataFriendRecordByteLength = 0x25;
         private const int CharacterDataMarriageRecordByteLength = 0x30;
 
-        private enum CharacterDataLeadingTailLayout
-        {
-            None = 0,
-            MiniGameOnly,
-            RelationshipsOnly,
-            MiniGameAndRelationships
-        }
-
         private int _boundMapId = int.MinValue;
         private string _stageStatus = "Packet-owned stage transition idle.";
         private string _mapLoadStatus = "Packet-owned map-load presentation idle.";
@@ -178,6 +170,8 @@ namespace HaCreator.MapSimulator.Interaction
             string linkedCharacterName = "",
             int? meso = null,
             IReadOnlyDictionary<InventoryType, int> inventorySlotLimits = null,
+            int? preInventoryHeaderValue1 = null,
+            int? preInventoryHeaderValue2 = null,
             int damageSeed1 = 0,
             int damageSeed2 = 0,
             int damageSeed3 = 0,
@@ -261,6 +255,12 @@ namespace HaCreator.MapSimulator.Interaction
                 if (inventorySlotLimits != null)
                 {
                     WriteCharacterDataInventorySlotLimits(writer, inventorySlotLimits);
+                }
+
+                if ((characterDataFlags & 0x100000UL) != 0)
+                {
+                    writer.Write(preInventoryHeaderValue1 ?? 0);
+                    writer.Write(preInventoryHeaderValue2 ?? 0);
                 }
 
                 if ((characterDataFlags & 0x4UL) != 0)
@@ -1349,116 +1349,70 @@ namespace HaCreator.MapSimulator.Interaction
         {
             decoratedSnapshot = snapshot;
             long startPosition = reader.BaseStream.Position;
-            foreach (CharacterDataLeadingTailLayout leadingLayout in Enum.GetValues(typeof(CharacterDataLeadingTailLayout)))
+            byte[] remainingBytes = ReadRemainingBytes(reader);
+            int maxOpaqueByteCount = (characterDataFlags & CharacterDataOpaquePreMapTransferFlag) != 0
+                ? remainingBytes.Length
+                : 0;
+            int bestScore = int.MinValue;
+            int bestOpaqueByteCount = int.MaxValue;
+            long bestPosition = startPosition;
+            PacketCharacterDataSnapshot bestSnapshot = null;
+            for (int opaqueByteCount = 0; opaqueByteCount <= maxOpaqueByteCount; opaqueByteCount++)
             {
-                if (TryDecodeKnownCharacterDataTailSectionsWithLeadingLayout(
+                reader.BaseStream.Position = startPosition;
+                if (!TryDecodeKnownCharacterDataTailSectionsCandidate(
                         reader,
                         characterDataFlags,
                         snapshot,
-                        leadingLayout,
-                        out decoratedSnapshot))
+                        remainingBytes,
+                        opaqueByteCount,
+                        out PacketCharacterDataSnapshot candidateSnapshot))
                 {
-                    return true;
+                    continue;
                 }
 
-                if (reader.BaseStream.CanSeek)
+                long trailingBytes = reader.BaseStream.Length - reader.BaseStream.Position;
+                int candidateScore = GetKnownCharacterDataTailCandidateScore(trailingBytes);
+                if (candidateScore > bestScore ||
+                    (candidateScore == bestScore && opaqueByteCount < bestOpaqueByteCount))
                 {
-                    reader.BaseStream.Position = startPosition;
+                    bestScore = candidateScore;
+                    bestOpaqueByteCount = opaqueByteCount;
+                    bestPosition = reader.BaseStream.Position;
+                    bestSnapshot = candidateSnapshot;
                 }
             }
 
+            if (bestSnapshot != null)
+            {
+                reader.BaseStream.Position = bestPosition;
+                decoratedSnapshot = bestSnapshot;
+                return true;
+            }
+
+            reader.BaseStream.Position = startPosition;
             decoratedSnapshot = snapshot;
             return false;
         }
 
-        private static bool TryDecodeKnownCharacterDataTailSectionsWithLeadingLayout(
+        private static bool TryDecodeKnownCharacterDataTailSectionsCandidate(
             BinaryReader reader,
             ulong characterDataFlags,
             PacketCharacterDataSnapshot snapshot,
-            CharacterDataLeadingTailLayout leadingLayout,
+            byte[] remainingBytes,
+            int opaqueByteCount,
             out PacketCharacterDataSnapshot decoratedSnapshot)
         {
             decoratedSnapshot = snapshot;
             long startPosition = reader.BaseStream.Position;
             try
             {
-                if (!TryDecodeCharacterDataPreMapTransferSections(
-                        reader,
-                        characterDataFlags,
-                        decoratedSnapshot,
-                        out PacketCharacterDataSnapshot preMapTransferSnapshot))
-                {
-                    return false;
-                }
-
-                decoratedSnapshot = preMapTransferSnapshot;
-
-                long preKnownTailPosition = reader.BaseStream.Position;
+                byte[] opaquePreMapTransferBytes = opaqueByteCount == 0
+                    ? Array.Empty<byte>()
+                    : remainingBytes.Take(opaqueByteCount).ToArray();
                 ulong opaquePreMapTransferFlags = characterDataFlags & CharacterDataOpaquePreMapTransferFlag;
-                if (opaquePreMapTransferFlags == 0)
-                {
-                    if (!TryDecodeKnownCharacterDataTailSectionsAfterOpaqueMiddleSections(
-                            reader,
-                            characterDataFlags,
-                            leadingLayout,
-                            decoratedSnapshot,
-                            Array.Empty<byte>(),
-                            opaquePreMapTransferFlags,
-                            out PacketCharacterDataSnapshot decodedTailSnapshot))
-                    {
-                        return false;
-                    }
+                reader.BaseStream.Position = startPosition + opaqueByteCount;
 
-                    decoratedSnapshot = decodedTailSnapshot;
-                    return true;
-                }
-
-                byte[] remainingBytes = ReadRemainingBytes(reader);
-                for (int skippedByteCount = 0; skippedByteCount <= remainingBytes.Length; skippedByteCount++)
-                {
-                    reader.BaseStream.Position = preKnownTailPosition + skippedByteCount;
-                    byte[] opaqueBytes = skippedByteCount == 0
-                        ? Array.Empty<byte>()
-                        : remainingBytes.Take(skippedByteCount).ToArray();
-                    if (!TryDecodeKnownCharacterDataTailSectionsAfterOpaqueMiddleSections(
-                            reader,
-                            characterDataFlags,
-                            leadingLayout,
-                            decoratedSnapshot,
-                            opaqueBytes,
-                            opaquePreMapTransferFlags,
-                            out PacketCharacterDataSnapshot decodedTailSnapshot))
-                    {
-                        continue;
-                    }
-
-                    decoratedSnapshot = decodedTailSnapshot;
-                    return true;
-                }
-
-                return false;
-            }
-            catch (Exception) when (reader.BaseStream.CanSeek)
-            {
-                reader.BaseStream.Position = startPosition;
-                decoratedSnapshot = snapshot;
-                return false;
-            }
-        }
-
-        private static bool TryDecodeKnownCharacterDataTailSectionsAfterOpaqueMiddleSections(
-            BinaryReader reader,
-            ulong characterDataFlags,
-            CharacterDataLeadingTailLayout leadingLayout,
-            PacketCharacterDataSnapshot snapshot,
-            byte[] opaquePreMapTransferBytes,
-            ulong opaquePreMapTransferFlags,
-            out PacketCharacterDataSnapshot decoratedSnapshot)
-        {
-            decoratedSnapshot = snapshot;
-            long startPosition = reader.BaseStream.Position;
-            try
-            {
                 decoratedSnapshot = snapshot with
                 {
                     OpaquePreMapTransferFlags = opaquePreMapTransferFlags,
@@ -1486,25 +1440,7 @@ namespace HaCreator.MapSimulator.Interaction
                     };
                 }
 
-                if (!TryDecodeCharacterDataLeadingTailSections(
-                        reader,
-                        characterDataFlags,
-                        leadingLayout,
-                        out int miniGameRecordCount,
-                        out int coupleRecordCount,
-                        out int friendRecordCount,
-                        out int marriageRecordCount))
-                {
-                    return false;
-                }
-
-                decoratedSnapshot = decoratedSnapshot with
-                {
-                    MiniGameRecordCount = miniGameRecordCount,
-                    CoupleRecordCount = coupleRecordCount,
-                    FriendRecordCount = friendRecordCount,
-                    MarriageRecordCount = marriageRecordCount
-                };
+                decoratedSnapshot = DecodeCharacterDataLeadingTailSections(reader, characterDataFlags, decoratedSnapshot);
 
                 if ((characterDataFlags & CharacterDataMapTransferFlag) != 0)
                 {
@@ -1527,56 +1463,45 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if ((characterDataFlags & 0x80000UL) != 0)
                 {
-                    ushort questExCount = reader.ReadUInt16();
-                    for (int i = 0; i < questExCount; i++)
-                    {
-                        _ = reader.ReadUInt16();
-                        _ = ReadMapleString(reader);
-                    }
+                    IReadOnlyDictionary<int, string> questExRecords = ReadCharacterDataQuestStringRecords(reader);
 
                     decoratedSnapshot = decoratedSnapshot with
                     {
-                        QuestExRecordCount = questExCount
+                        QuestExRecordCount = questExRecords.Count,
+                        QuestExRecordValues = questExRecords
                     };
                 }
 
                 if ((characterDataFlags & 0x200000UL) != 0 &&
                     decoratedSnapshot.JobId / 100 == 33)
                 {
-                    SkipCharacterDataWildHunterInfo(reader);
+                    PacketCharacterDataWildHunterInfo wildHunterInfo = ReadCharacterDataWildHunterInfo(reader);
                     decoratedSnapshot = decoratedSnapshot with
                     {
-                        HasWildHunterInfo = true
+                        HasWildHunterInfo = true,
+                        WildHunterInfo = wildHunterInfo
                     };
                 }
 
                 if ((characterDataFlags & 0x400000UL) != 0)
                 {
-                    ushort questCompleteCount = reader.ReadUInt16();
-                    for (int i = 0; i < questCompleteCount; i++)
-                    {
-                        _ = reader.ReadUInt16();
-                        _ = reader.ReadInt64();
-                    }
+                    IReadOnlyDictionary<int, long> questCompleteRecords = ReadCharacterDataQuestCompleteRecords(reader);
 
                     decoratedSnapshot = decoratedSnapshot with
                     {
-                        QuestCompleteRecordCount = questCompleteCount
+                        QuestCompleteRecordCount = questCompleteRecords.Count,
+                        QuestCompleteRecords = questCompleteRecords
                     };
                 }
 
                 if ((characterDataFlags & 0x800000UL) != 0)
                 {
-                    ushort visitorQuestCount = reader.ReadUInt16();
-                    for (int i = 0; i < visitorQuestCount; i++)
-                    {
-                        _ = reader.ReadUInt16();
-                        _ = reader.ReadUInt16();
-                    }
+                    IReadOnlyDictionary<int, int> visitorQuestRecords = ReadCharacterDataUInt16ValueRecords(reader);
 
                     decoratedSnapshot = decoratedSnapshot with
                     {
-                        VisitorQuestRecordCount = visitorQuestCount
+                        VisitorQuestRecordCount = visitorQuestRecords.Count,
+                        VisitorQuestRecords = visitorQuestRecords
                     };
                 }
 
@@ -1588,6 +1513,19 @@ namespace HaCreator.MapSimulator.Interaction
                 decoratedSnapshot = snapshot;
                 return false;
             }
+        }
+
+        private static int GetKnownCharacterDataTailCandidateScore(long trailingBytes)
+        {
+            const int likelyLogoutGiftConfigByteLength = 3 * sizeof(int);
+            if (trailingBytes == 0 || trailingBytes == likelyLogoutGiftConfigByteLength)
+            {
+                return int.MaxValue - (int)trailingBytes;
+            }
+
+            return trailingBytes < 0
+                ? int.MinValue
+                : -checked((int)trailingBytes);
         }
 
         private static bool TryDecodeCharacterDataPreMapTransferSections(
@@ -1748,66 +1686,86 @@ namespace HaCreator.MapSimulator.Interaction
             return records;
         }
 
-        private static bool TryDecodeCharacterDataLeadingTailSections(
+        private static IReadOnlyDictionary<int, long> ReadCharacterDataQuestCompleteRecords(BinaryReader reader)
+        {
+            ushort count = reader.ReadUInt16();
+            Dictionary<int, long> records = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                int key = reader.ReadUInt16();
+                long value = reader.ReadInt64();
+                if (key > 0)
+                {
+                    records[key] = value;
+                }
+            }
+
+            return records;
+        }
+
+        private static IReadOnlyDictionary<int, int> ReadCharacterDataUInt16ValueRecords(BinaryReader reader)
+        {
+            ushort count = reader.ReadUInt16();
+            Dictionary<int, int> records = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                int key = reader.ReadUInt16();
+                int value = reader.ReadUInt16();
+                if (key > 0)
+                {
+                    records[key] = value;
+                }
+            }
+
+            return records;
+        }
+
+        private static PacketCharacterDataWildHunterInfo ReadCharacterDataWildHunterInfo(BinaryReader reader)
+        {
+            int[] values = new int[5];
+            byte mode = reader.ReadByte();
+            for (int i = 0; i < values.Length; i++)
+            {
+                values[i] = reader.ReadInt32();
+            }
+
+            return new PacketCharacterDataWildHunterInfo(mode, values);
+        }
+
+        private static PacketCharacterDataSnapshot DecodeCharacterDataLeadingTailSections(
             BinaryReader reader,
             ulong characterDataFlags,
-            CharacterDataLeadingTailLayout leadingLayout,
-            out int miniGameRecordCount,
-            out int coupleRecordCount,
-            out int friendRecordCount,
-            out int marriageRecordCount)
+            PacketCharacterDataSnapshot snapshot)
         {
-            miniGameRecordCount = 0;
-            coupleRecordCount = 0;
-            friendRecordCount = 0;
-            marriageRecordCount = 0;
-
-            long startPosition = reader.BaseStream.Position;
-            try
+            int miniGameRecordCount = 0;
+            int coupleRecordCount = 0;
+            int friendRecordCount = 0;
+            int marriageRecordCount = 0;
+            if ((characterDataFlags & CharacterDataMiniGameRecordFlag) != 0)
             {
-                if ((characterDataFlags & CharacterDataMiniGameRecordFlag) != 0 &&
-                    (leadingLayout is CharacterDataLeadingTailLayout.MiniGameOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
-                {
-                    miniGameRecordCount = reader.ReadUInt16();
-                    SkipCharacterDataFixedRecordGroup(reader, miniGameRecordCount, CharacterDataMiniGameRecordByteLength);
-                }
-
-                if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0 &&
-                    (leadingLayout is CharacterDataLeadingTailLayout.RelationshipsOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
-                {
-                    coupleRecordCount = reader.ReadUInt16();
-                    SkipCharacterDataFixedRecordGroup(reader, coupleRecordCount, CharacterDataCoupleRecordByteLength);
-
-                    friendRecordCount = reader.ReadUInt16();
-                    SkipCharacterDataFixedRecordGroup(reader, friendRecordCount, CharacterDataFriendRecordByteLength);
-
-                    marriageRecordCount = reader.ReadUInt16();
-                    SkipCharacterDataFixedRecordGroup(reader, marriageRecordCount, CharacterDataMarriageRecordByteLength);
-                }
-
-                if ((characterDataFlags & CharacterDataMiniGameRecordFlag) == 0 &&
-                    (leadingLayout is CharacterDataLeadingTailLayout.MiniGameOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
-                {
-                    return false;
-                }
-
-                if ((characterDataFlags & CharacterDataRelationshipRecordFlag) == 0 &&
-                    (leadingLayout is CharacterDataLeadingTailLayout.RelationshipsOnly or CharacterDataLeadingTailLayout.MiniGameAndRelationships))
-                {
-                    return false;
-                }
-
-                return true;
+                miniGameRecordCount = reader.ReadUInt16();
+                SkipCharacterDataFixedRecordGroup(reader, miniGameRecordCount, CharacterDataMiniGameRecordByteLength);
             }
-            catch (Exception) when (reader.BaseStream.CanSeek)
+
+            if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0)
             {
-                reader.BaseStream.Position = startPosition;
-                miniGameRecordCount = 0;
-                coupleRecordCount = 0;
-                friendRecordCount = 0;
-                marriageRecordCount = 0;
-                return false;
+                coupleRecordCount = reader.ReadUInt16();
+                SkipCharacterDataFixedRecordGroup(reader, coupleRecordCount, CharacterDataCoupleRecordByteLength);
+
+                friendRecordCount = reader.ReadUInt16();
+                SkipCharacterDataFixedRecordGroup(reader, friendRecordCount, CharacterDataFriendRecordByteLength);
+
+                marriageRecordCount = reader.ReadUInt16();
+                SkipCharacterDataFixedRecordGroup(reader, marriageRecordCount, CharacterDataMarriageRecordByteLength);
             }
+
+            return snapshot with
+            {
+                MiniGameRecordCount = miniGameRecordCount,
+                CoupleRecordCount = coupleRecordCount,
+                FriendRecordCount = friendRecordCount,
+                MarriageRecordCount = marriageRecordCount
+            };
         }
 
         private static int[] ReadCharacterDataMapTransferFields(BinaryReader reader, int count)
@@ -2105,6 +2063,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct PacketCharacterDataSkillRecord(int SkillId, int SkillLevel, long ExpirationFileTime);
 
+    internal readonly record struct PacketCharacterDataWildHunterInfo(byte Mode, IReadOnlyList<int> Values);
+
     internal sealed record PacketCharacterDataSnapshot(
         int CharacterId,
         string CharacterName,
@@ -2165,9 +2125,13 @@ namespace HaCreator.MapSimulator.Interaction
         int MarriageRecordCount = 0,
         int NewYearCardRecordCount = 0,
         int QuestExRecordCount = 0,
+        IReadOnlyDictionary<int, string> QuestExRecordValues = null,
         bool HasWildHunterInfo = false,
+        PacketCharacterDataWildHunterInfo? WildHunterInfo = null,
         int QuestCompleteRecordCount = 0,
-        int VisitorQuestRecordCount = 0);
+        IReadOnlyDictionary<int, long> QuestCompleteRecords = null,
+        int VisitorQuestRecordCount = 0,
+        IReadOnlyDictionary<int, int> VisitorQuestRecords = null);
 
     internal readonly record struct PacketCharacterDataItemSlot(
         InventoryType InventoryType,

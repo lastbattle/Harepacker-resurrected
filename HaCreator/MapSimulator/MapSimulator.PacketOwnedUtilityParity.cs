@@ -34,7 +34,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private const int FollowRequestClientOptionId = 1014;
-        private const int FollowRequestPromptStringPoolId = 0x1599;
+        private const int FollowRequestPromptStringPoolId = 0x16E6;
         private const int PacketOwnedBattleshipCooldownSentinel = 0x004FAE6F;
         private const int PacketOwnedBattleshipSkillId = 5221006;
         private const int PacketOwnedBattleshipMountItemId = 1932000;
@@ -55,6 +55,10 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedClassCompetitionSyntheticAuthResponseDelayMs = 250;
         private const int PacketOwnedClassCompetitionAuthRequestOpcode = 291;
         private const int PacketOwnedClassCompetitionUrlTemplateStringPoolId = 0x11DC;
+        private const int PacketOwnedSkillLearnSuccessSoundStringPoolId = 0x0507;
+        private const int PacketOwnedSkillLearnFailureSoundStringPoolId = 0x0508;
+        private const string PacketOwnedSkillLearnSuccessSoundFallback = "Sound/Game.img/EnchantSuccess";
+        private const string PacketOwnedSkillLearnFailureSoundFallback = "Sound/Game.img/EnchantFailure";
         private const string PacketOwnedClassCompetitionServerHost = "gamerank.maplestory";
         private const int PacketOwnedApspFollowUpOpcode = 195;
         private const int PacketOwnedApspFollowUpResponseCode = 6;
@@ -76,14 +80,15 @@ namespace HaCreator.MapSimulator
         private const string PacketOwnedApspPromptPrimaryLabel = "OK";
         private const string PacketOwnedApspPromptSecondaryLabel = "Cancel";
         private const int PacketOwnedTutorBalloonScreenMargin = 6;
-        private const int PacketOwnedTutorBalloonArrowOverlap = 5;
         private const int PacketOwnedTutorBalloonClientLeftInset = 19;
         private const int PacketOwnedTutorBalloonClientRightInset = 19;
         private const int PacketOwnedTutorBalloonClientTopInset = 21;
         private const int PacketOwnedTutorBalloonClientBottomInset = 19;
         private const int PacketOwnedTutorBalloonClientArrowLeftOffset = 10;
+        private const int PacketOwnedTutorBalloonClientLayerHeightPadding = 92;
+        private const int PacketOwnedTutorBalloonClientArrowTopOffset = 35;
+        private const int PacketOwnedTutorBalloonClientVerticalAnchorOffset = 90;
         private PacketOwnedSocialUtilityDialogDispatcher _packetOwnedSocialUtilityDialogDispatcher;
-        private const int PacketOwnedTutorBalloonAnchorOffsetY = 8;
         private const string PacketOwnedApspPromptExactBody =
             "Congratulations! You have reached Lv.30/50/70 during the event period and have been selected as a winner of an AP/SP reset item!\r\n"
             + "Click the 'OK' button and the AP/SP reset item will be sent to your character's cash locker.\r\n"
@@ -104,12 +109,25 @@ namespace HaCreator.MapSimulator
             public string DisplayName { get; init; }
         }
 
+        private readonly record struct PacketOwnedSkillLearnItemResult(
+            bool OnExclusiveRequest,
+            int CharacterId,
+            bool IsMasteryBook,
+            int ItemId,
+            int SkillId,
+            bool Used,
+            bool Succeeded);
+
         private readonly record struct PacketOwnedTutorDisplayOwner(
             int CharacterId,
             Vector2 Position,
             bool FacingRight,
             int Level,
             bool IsLocalOwner);
+
+        private readonly record struct PacketOwnedTutorDisplayState(
+            TutorVariantSnapshot Variant,
+            PacketOwnedTutorDisplayOwner Owner);
 
         internal readonly record struct PacketOwnedTimeBombInvincibilityOptionLevelData(int DurationMs, int ProbabilityPercent);
 
@@ -148,7 +166,8 @@ namespace HaCreator.MapSimulator
         private static readonly Lazy<IReadOnlyDictionary<int, int[]>> PacketOwnedSkillIdAliasCandidates = new(CreatePacketOwnedSkillIdAliasCandidates);
         private LocalOverlayBalloonSkin _packetOwnedTutorBalloonSkin;
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedTutorCueFramesByIndex = new();
-        private int _packetOwnedTutorLastSummonMessageSequenceId;
+        private readonly HashSet<int> _packetOwnedTutorTrackedSummonObjectIds = new();
+        private readonly Dictionary<int, int> _packetOwnedTutorSummonMessageSequenceIdsByObjectId = new();
         private PacketOwnedBattleshipDurabilityOverrideState _packetOwnedBattleshipDurabilityOverride;
         private int _packetQuestGuideQuestId;
         private int _packetOwnedUtilityRequestTick = int.MinValue;
@@ -1982,6 +2001,11 @@ namespace HaCreator.MapSimulator
                     return TryApplyRepairDurabilityResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.QuestRewardRaiseOwnerSyncPacketType:
+                    if (ShouldHandlePacketOwned1026AsPetConsumeResult(_pendingFieldHazardPetAutoConsumeRequest.HasValue, payload))
+                    {
+                        return TryApplyPacketOwnedPetConsumeResultPayload(payload, out message);
+                    }
+
                     return TryApplyPacketOwnedQuestRewardRaisePayload(QuestRewardRaiseInboundPacketKind.OwnerSync, payload, out message);
 
                 case LocalUtilityPacketInboxManager.QuestRewardRaisePutItemAddResultPacketType:
@@ -2004,6 +2028,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.SkillCooltimeSetPacketType:
                     return TryApplyPacketOwnedSkillCooltimePayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.SkillLearnItemResultClientPacketType:
+                    return TryApplyPacketOwnedSkillLearnItemResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.MarriageResultPacketType:
                     return TryApplyPacketOwnedMarriageResultPayload(payload, out message);
@@ -2194,33 +2221,23 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (payload == null || payload.Length < 8)
+            if (!TryDecodePacketOwnedEmotionPayload(
+                    payload,
+                    out int emotionId,
+                    out int durationMs,
+                    out bool byItemOption,
+                    out message))
             {
-                message = "Emotion payload must contain emotionId Int32 and durationMs Int32 values.";
                 return false;
             }
 
-            try
-            {
-                using MemoryStream stream = new(payload, writable: false);
-                using BinaryReader reader = new(stream);
-                int emotionId = reader.ReadInt32();
-                int durationMs = reader.ReadInt32();
-                bool byItemOption = reader.BaseStream.Position < reader.BaseStream.Length && reader.ReadByte() != 0;
-
-                StampPacketOwnedUtilityRequestState();
-                return player.TryApplyPacketOwnedEmotion(
-                    emotionId,
-                    durationMs,
-                    byItemOption,
-                    Environment.TickCount,
-                    out message);
-            }
-            catch (Exception ex)
-            {
-                message = $"Emotion payload could not be decoded: {ex.Message}";
-                return false;
-            }
+            StampPacketOwnedUtilityRequestState();
+            return player.TryApplyPacketOwnedEmotion(
+                emotionId,
+                durationMs,
+                byItemOption,
+                Environment.TickCount,
+                out message);
         }
 
         private bool TryApplyPacketOwnedRandomEmotionPayload(byte[] payload, out string message)
@@ -2269,7 +2286,84 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (payload == null || payload.Length < 4)
+            if (!TryDecodePacketOwnedRandomEmotionPayload(payload, out int areaBuffItemId, out message))
+            {
+                return false;
+            }
+
+            if (!PacketOwnedAvatarEmotionResolver.TryResolveRandomEmotion(
+                    areaBuffItemId,
+                    currentTick,
+                    out selection,
+                    out string error))
+            {
+                message = error ?? $"Area-buff item {areaBuffItemId} did not resolve a packet-owned random emotion.";
+                return false;
+            }
+
+            if (!contextState.TryEmitEmotionChangeRequest(
+                    currentTick,
+                    selection.EmotionId,
+                    byItemOption: false,
+                    durationMs: -1,
+                    out request))
+            {
+                request = new PacketOwnedLocalUtilityOutboundRequest(-1, 0, Array.Empty<byte>());
+            }
+
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedEmotionPayload(
+            byte[] payload,
+            out int emotionId,
+            out int durationMs,
+            out bool byItemOption,
+            out string message)
+        {
+            emotionId = 0;
+            durationMs = 0;
+            byItemOption = false;
+            message = null;
+
+            if (payload == null || payload.Length < sizeof(int) + sizeof(int) + sizeof(byte))
+            {
+                message = "Emotion payload must contain emotionId Int32, durationMs Int32, and byItemOption Byte values.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                emotionId = reader.ReadInt32();
+                durationMs = reader.ReadInt32();
+                byItemOption = reader.ReadByte() != 0;
+
+                if (stream.Position != stream.Length)
+                {
+                    message = $"Emotion payload has {stream.Length - stream.Position} trailing byte(s).";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                message = $"Emotion payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        internal static bool TryDecodePacketOwnedRandomEmotionPayload(
+            byte[] payload,
+            out int areaBuffItemId,
+            out string message)
+        {
+            areaBuffItemId = 0;
+            message = null;
+
+            if (payload == null || payload.Length < sizeof(int))
             {
                 message = "Random-emotion payload must contain an area-buff item id Int32 value.";
                 return false;
@@ -2279,26 +2373,12 @@ namespace HaCreator.MapSimulator
             {
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream);
-                int areaBuffItemId = reader.ReadInt32();
+                areaBuffItemId = reader.ReadInt32();
 
-                if (!PacketOwnedAvatarEmotionResolver.TryResolveRandomEmotion(
-                        areaBuffItemId,
-                        currentTick,
-                        out selection,
-                        out string error))
+                if (stream.Position != stream.Length)
                 {
-                    message = error ?? $"Area-buff item {areaBuffItemId} did not resolve a packet-owned random emotion.";
+                    message = $"Random-emotion payload has {stream.Length - stream.Position} trailing byte(s).";
                     return false;
-                }
-
-                if (!contextState.TryEmitEmotionChangeRequest(
-                        currentTick,
-                        selection.EmotionId,
-                        byItemOption: false,
-                        durationMs: -1,
-                        out request))
-                {
-                    request = new PacketOwnedLocalUtilityOutboundRequest(-1, 0, Array.Empty<byte>());
                 }
 
                 return true;
@@ -2489,6 +2569,70 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private bool TryApplyPacketOwnedSkillLearnItemResultPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (!TryDecodePacketOwnedSkillLearnItemResult(payload, out PacketOwnedSkillLearnItemResult result, out string decodeError))
+            {
+                message = decodeError ?? "Skill-learn-item payload could not be decoded.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            bool isLocalOwner = result.CharacterId > 0 && result.CharacterId == localCharacterId;
+            string ownerName = isLocalOwner
+                ? ResolvePacketOwnedLocalSkillLearnOwnerName()
+                : ResolvePacketOwnedRemoteCharacterName(result.CharacterId);
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                ownerName = result.CharacterId > 0
+                    ? $"Character {result.CharacterId.ToString(CultureInfo.InvariantCulture)}"
+                    : "Unknown character";
+            }
+
+            string itemCategoryLabel = result.IsMasteryBook ? "mastery book" : "skill book";
+            string itemName = ResolvePacketOwnedSkillLearnItemName(result.ItemId, itemCategoryLabel);
+            int? targetMasterLevel = null;
+
+            if (isLocalOwner && result.Used)
+            {
+                TryConsumePacketOwnedSkillLearnItem(result.ItemId);
+
+                if (result.Succeeded
+                    && result.IsMasteryBook
+                    && TryResolvePacketOwnedSkillLearnMasterLevel(result.ItemId, result.SkillId, out int resolvedMasterLevel))
+                {
+                    targetMasterLevel = resolvedMasterLevel;
+                    ApplyQuestSkillMasterLevelReward(result.SkillId, resolvedMasterLevel);
+                }
+
+                uiWindowManager?.ProductionEnhancementAnimationDisplayer?.PlaySkillBookResult(result.Succeeded, currTickCount);
+                TryPlaySharedProductionEnhancementSound(
+                    result.Succeeded ? PacketOwnedSkillLearnSuccessSoundStringPoolId : PacketOwnedSkillLearnFailureSoundStringPoolId,
+                    result.Succeeded ? PacketOwnedSkillLearnSuccessSoundFallback : PacketOwnedSkillLearnFailureSoundFallback);
+            }
+
+            string chatLine = BuildPacketOwnedSkillLearnChatLine(
+                ownerName,
+                itemName,
+                itemCategoryLabel,
+                result,
+                targetMasterLevel);
+            _chat?.AddClientChatMessage(chatLine, currTickCount, 12);
+            ShowUtilityFeedbackMessage(chatLine);
+
+            string ownershipLabel = isLocalOwner ? "local" : "remote";
+            string outcomeLabel = !result.Used
+                ? "rejected"
+                : result.Succeeded
+                    ? "success"
+                    : "failure";
+            message = $"Applied packet-owned skill-learn-item {outcomeLabel} for {ownershipLabel} owner {ownerName} ({result.CharacterId}).";
+            return true;
+        }
+
         private bool TryApplyPacketOwnedMakerHiddenUnlockPayload(byte[] payload, out string message)
         {
             message = null;
@@ -2546,6 +2690,119 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             return true;
+        }
+
+        private static bool TryDecodePacketOwnedSkillLearnItemResult(
+            byte[] payload,
+            out PacketOwnedSkillLearnItemResult result,
+            out string error)
+        {
+            result = default;
+            error = null;
+
+            if (payload == null || payload.Length < 16)
+            {
+                error = "Skill-learn-item payload must include the exclusive-request flag, owner id, item metadata, and result bytes.";
+                return false;
+            }
+
+            using var stream = new MemoryStream(payload, writable: false);
+            using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
+            result = new PacketOwnedSkillLearnItemResult(
+                OnExclusiveRequest: reader.ReadByte() != 0,
+                CharacterId: reader.ReadInt32(),
+                IsMasteryBook: reader.ReadByte() != 0,
+                ItemId: reader.ReadInt32(),
+                SkillId: reader.ReadInt32(),
+                Used: reader.ReadByte() != 0,
+                Succeeded: reader.ReadByte() != 0);
+            return true;
+        }
+
+        private string ResolvePacketOwnedLocalSkillLearnOwnerName()
+        {
+            string playerName = _playerManager?.Player?.Name;
+            if (!string.IsNullOrWhiteSpace(playerName))
+            {
+                return playerName;
+            }
+
+            string buildName = _playerManager?.Player?.Build?.Name;
+            return string.IsNullOrWhiteSpace(buildName) ? "You" : buildName;
+        }
+
+        private string ResolvePacketOwnedSkillLearnItemName(int itemId, string fallbackCategoryLabel)
+        {
+            if (itemId > 0
+                && InventoryItemMetadataResolver.TryResolveItemName(itemId, out string itemName)
+                && !string.IsNullOrWhiteSpace(itemName))
+            {
+                return itemName;
+            }
+
+            return string.IsNullOrWhiteSpace(fallbackCategoryLabel)
+                ? $"item #{itemId.ToString(CultureInfo.InvariantCulture)}"
+                : fallbackCategoryLabel;
+        }
+
+        private void TryConsumePacketOwnedSkillLearnItem(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                return;
+            }
+
+            TryConsumeInventoryWindowItem(itemId, 1);
+        }
+
+        private static bool TryResolvePacketOwnedSkillLearnMasterLevel(int itemId, int skillId, out int masterLevel)
+        {
+            masterLevel = 0;
+            if (!InventoryItemMetadataResolver.TryResolveSkillBookUseMetadata(itemId, out SkillBookUseMetadata metadata)
+                || !metadata.IsValid)
+            {
+                return false;
+            }
+
+            if (skillId > 0 && metadata.SkillIds.Count > 0 && !metadata.SkillIds.Contains(skillId))
+            {
+                return false;
+            }
+
+            masterLevel = metadata.MasterLevel;
+            return masterLevel > 0;
+        }
+
+        private string BuildPacketOwnedSkillLearnChatLine(
+            string ownerName,
+            string itemName,
+            string itemCategoryLabel,
+            PacketOwnedSkillLearnItemResult result,
+            int? targetMasterLevel)
+        {
+            if (!result.Used)
+            {
+                return $"{ownerName} could not use {itemName}.";
+            }
+
+            if (result.Succeeded)
+            {
+                if (targetMasterLevel.HasValue && result.SkillId > 0)
+                {
+                    string skillName = ResolveSkillBookTargetName(result.SkillId);
+                    return $"{ownerName} used {itemName} successfully. {skillName} reached Master Lv. {targetMasterLevel.Value.ToString(CultureInfo.InvariantCulture)}.";
+                }
+
+                return $"{ownerName} used {itemName} successfully.";
+            }
+
+            return $"{ownerName} failed to use {itemName} ({itemCategoryLabel}).";
         }
 
         private static bool TryReadPacketOwnedAsciiString(BinaryReader reader, out string value)
@@ -4559,7 +4816,8 @@ namespace HaCreator.MapSimulator
                 "Notice",
                 message,
                 LoginUtilityDialogButtonLayout.Ok,
-                LoginUtilityDialogAction.DismissOnly);
+                LoginUtilityDialogAction.DismissOnly,
+                trackDirectionModeOwner: true);
         }
 
         private void ShowPacketOwnedSkillCooldownNotification(
@@ -5436,8 +5694,17 @@ namespace HaCreator.MapSimulator
                     : null;
             }
 
+            return EnsurePacketOwnedTutorSummon(displayVariant, displayOwner, currentTickCount);
+        }
+
+        private string EnsurePacketOwnedTutorSummon(
+            TutorVariantSnapshot displayVariant,
+            PacketOwnedTutorDisplayOwner displayOwner,
+            int currentTickCount)
+        {
             if (TryGetPacketOwnedTutorSummon(displayVariant, displayOwner.CharacterId, out ActiveSummon summon))
             {
+                _packetOwnedTutorTrackedSummonObjectIds.Add(summon.ObjectId);
                 SyncPacketOwnedTutorSummonPose(summon, displayVariant, displayOwner, currentTickCount);
                 return null;
             }
@@ -5468,6 +5735,7 @@ namespace HaCreator.MapSimulator
 
             if (TryGetPacketOwnedTutorSummon(displayVariant, displayOwner.CharacterId, out summon))
             {
+                _packetOwnedTutorTrackedSummonObjectIds.Add(summon.ObjectId);
                 SyncPacketOwnedTutorSummonPose(summon, displayVariant, displayOwner, currentTickCount);
             }
 
@@ -5476,24 +5744,26 @@ namespace HaCreator.MapSimulator
 
         private void SyncPacketOwnedTutorSummonState(int currentTickCount)
         {
-            if (!TryResolvePacketOwnedTutorDisplayState(out TutorVariantSnapshot displayVariant, out PacketOwnedTutorDisplayOwner displayOwner))
+            List<PacketOwnedTutorDisplayState> displayStates = ResolvePacketOwnedTutorDisplayStates();
+            if (displayStates.Count == 0)
             {
                 RemovePacketOwnedTutorSummon();
                 return;
             }
 
-            string summonDetail = EnsurePacketOwnedTutorSummon(currentTickCount);
-            if (!string.IsNullOrWhiteSpace(summonDetail))
+            HashSet<int> activeSummonObjectIds = new();
+            for (int i = 0; i < displayStates.Count; i++)
             {
-                return;
+                PacketOwnedTutorDisplayState displayState = displayStates[i];
+                if (displayState.Variant.SummonObjectId > 0)
+                {
+                    activeSummonObjectIds.Add(displayState.Variant.SummonObjectId);
+                }
+
+                EnsurePacketOwnedTutorSummon(displayState.Variant, displayState.Owner, currentTickCount);
             }
 
-            if (!TryGetPacketOwnedTutorSummon(displayVariant, displayOwner.CharacterId, out ActiveSummon summon))
-            {
-                return;
-            }
-
-            SyncPacketOwnedTutorSummonPose(summon, displayVariant, displayOwner, currentTickCount);
+            PrunePacketOwnedTutorSummons(activeSummonObjectIds);
         }
 
         private void SyncPacketOwnedTutorSummonPose(
@@ -5519,8 +5789,9 @@ namespace HaCreator.MapSimulator
                 displayVariant,
                 currentTickCount,
                 out TutorMessageSnapshot displayMessage);
+            _packetOwnedTutorSummonMessageSequenceIdsByObjectId.TryGetValue(summon.ObjectId, out int lastMessageSequenceId);
             bool shouldTriggerSayPlayback = hasVisibleMessage
-                && _packetOwnedTutorLastSummonMessageSequenceId != displayMessage.MessageSequenceId
+                && lastMessageSequenceId != displayMessage.MessageSequenceId
                 && (displayMessage.MessageKind == TutorMessageKind.Text
                     || displayVariant.SkillId != TutorRuntime.AranTutorSkillId);
 
@@ -5530,12 +5801,13 @@ namespace HaCreator.MapSimulator
                     ? currentTickCount
                     : displayMessage.MessageStartedAt;
                 summon.CurrentAnimationBranchName = "say";
-                _packetOwnedTutorLastSummonMessageSequenceId = displayMessage.MessageSequenceId;
+                _packetOwnedTutorSummonMessageSequenceIdsByObjectId[summon.ObjectId] = displayMessage.MessageSequenceId;
             }
             else if (!hasVisibleMessage)
             {
                 summon.LastAttackAnimationStartTime = int.MinValue;
                 summon.CurrentAnimationBranchName = null;
+                _packetOwnedTutorSummonMessageSequenceIdsByObjectId.Remove(summon.ObjectId);
             }
 
             summon.ActorState = SummonActorState.Idle;
@@ -5543,7 +5815,22 @@ namespace HaCreator.MapSimulator
 
         private void RemovePacketOwnedTutorSummon()
         {
-            _packetOwnedTutorLastSummonMessageSequenceId = 0;
+            foreach (int objectId in _packetOwnedTutorTrackedSummonObjectIds.ToArray())
+            {
+                _summonedPool.TryConsumeSummonByObjectId(objectId);
+            }
+
+            _packetOwnedTutorTrackedSummonObjectIds.Clear();
+            _packetOwnedTutorSummonMessageSequenceIdsByObjectId.Clear();
+            IReadOnlyList<TutorVariantSnapshot> activeVariants = _packetOwnedTutorRuntime.SnapshotActiveDisplayTutorVariants();
+            for (int i = 0; i < activeVariants.Count; i++)
+            {
+                if (activeVariants[i].SummonObjectId > 0)
+                {
+                    _summonedPool.TryConsumeSummonByObjectId(activeVariants[i].SummonObjectId);
+                }
+            }
+
             _summonedPool.TryConsumeSummonByObjectId(_packetOwnedTutorRuntime.ActiveSummonObjectId);
             _summonedPool.TryConsumeSummonByObjectId(TutorRuntime.CygnusTutorObjectId);
             _summonedPool.TryConsumeSummonByObjectId(TutorRuntime.AranTutorObjectId);
@@ -5583,32 +5870,56 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!TryResolvePacketOwnedTutorDisplayVariant(out TutorVariantSnapshot displayVariant)
-                || !_packetOwnedTutorRuntime.TryResolveDisplayMessageSnapshot(displayVariant, currentTickCount, out TutorMessageSnapshot displayMessage))
+            List<PacketOwnedTutorDisplayState> displayStates = ResolvePacketOwnedTutorDisplayStates();
+            if (displayStates.Count == 0)
             {
                 return;
             }
 
-            DrawPacketOwnedTutorIndexedCue(displayVariant, displayMessage, currentTickCount, mapCenterX, mapCenterY);
-
-            if (displayMessage.MessageKind != TutorMessageKind.Text
-                || string.IsNullOrWhiteSpace(displayMessage.MessageText)
-                || _fontChat == null
-                || _packetOwnedTutorBalloonSkin?.IsLoaded != true)
+            for (int i = 0; i < displayStates.Count; i++)
             {
-                return;
-            }
+                PacketOwnedTutorDisplayState displayState = displayStates[i];
+                if (!_packetOwnedTutorRuntime.TryResolveDisplayMessageSnapshot(
+                    displayState.Variant,
+                    currentTickCount,
+                    out TutorMessageSnapshot displayMessage))
+                {
+                    continue;
+                }
 
-            if (!TryResolvePacketOwnedTutorBalloonAnchorScreenPoint(displayVariant, mapCenterX, mapCenterY, out Point anchor))
-            {
-                return;
-            }
+                DrawPacketOwnedTutorIndexedCue(
+                    displayState.Variant,
+                    displayState.Owner,
+                    displayMessage,
+                    currentTickCount,
+                    mapCenterX,
+                    mapCenterY);
 
-            DrawPacketOwnedTutorBalloon(displayMessage, anchor);
+                if (displayMessage.MessageKind != TutorMessageKind.Text
+                    || string.IsNullOrWhiteSpace(displayMessage.MessageText)
+                    || _fontChat == null
+                    || _packetOwnedTutorBalloonSkin?.IsLoaded != true)
+                {
+                    continue;
+                }
+
+                if (!TryResolvePacketOwnedTutorBalloonAnchorScreenPoint(
+                    displayState.Variant,
+                    displayState.Owner,
+                    mapCenterX,
+                    mapCenterY,
+                    out Point anchor))
+                {
+                    continue;
+                }
+
+                DrawPacketOwnedTutorBalloon(displayState.Variant, displayMessage, anchor);
+            }
         }
 
         private void DrawPacketOwnedTutorIndexedCue(
             TutorVariantSnapshot displayVariant,
+            PacketOwnedTutorDisplayOwner displayOwner,
             TutorMessageSnapshot displayMessage,
             int currentTickCount,
             int mapCenterX,
@@ -5627,7 +5938,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!TryResolvePacketOwnedTutorActorScreenPoint(mapCenterX, mapCenterY, out Point anchor))
+            if (!TryResolvePacketOwnedTutorActorScreenPoint(displayVariant, displayOwner, mapCenterX, mapCenterY, out Point anchor))
             {
                 return;
             }
@@ -5681,7 +5992,10 @@ namespace HaCreator.MapSimulator
             return frames;
         }
 
-        private void DrawPacketOwnedTutorBalloon(TutorMessageSnapshot displayMessage, Point anchor)
+        private void DrawPacketOwnedTutorBalloon(
+            TutorVariantSnapshot displayVariant,
+            TutorMessageSnapshot displayMessage,
+            Point anchor)
         {
             int requestedWidth = Math.Clamp(
                 displayMessage.MessageWidth <= 0 ? TutorRuntime.DefaultTextWidth : displayMessage.MessageWidth,
@@ -5725,14 +6039,21 @@ namespace HaCreator.MapSimulator
             int arrowWidth = arrowTexture?.Width ?? 0;
             int arrowHeight = arrowTexture?.Height ?? 0;
 
-            Rectangle bodyBounds = new(
-                anchor.X - (bodyWidth / 2),
-                anchor.Y - bodyHeight - Math.Max(0, arrowHeight - PacketOwnedTutorBalloonArrowOverlap),
-                bodyWidth,
-                bodyHeight);
+            int actorHeight = Math.Max(
+                0,
+                displayVariant.ActorHeight > 0
+                    ? displayVariant.ActorHeight
+                    : ResolvePacketOwnedTutorActorHeight(displayVariant.SkillId));
+
+            Point layerOrigin = ResolvePacketOwnedTutorBalloonLayerOrigin(
+                anchor,
+                requestedWidth,
+                lineHeight * lines.Length,
+                actorHeight);
+            Rectangle bodyBounds = new(layerOrigin.X, layerOrigin.Y, bodyWidth, bodyHeight);
             Rectangle arrowBounds = ResolvePacketOwnedTutorBalloonArrowBounds(
                 bodyBounds,
-                requestedWidth,
+                lineHeight * lines.Length,
                 arrowWidth,
                 arrowHeight);
             Rectangle canvasBounds = Rectangle.Union(bodyBounds, arrowBounds == Rectangle.Empty ? bodyBounds : arrowBounds);
@@ -5783,21 +6104,30 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        internal static Point ResolvePacketOwnedTutorBalloonLayerOrigin(
+            Point actorScreenPoint,
+            int requestedWidth,
+            int contentHeight,
+            int actorHeight)
+        {
+            return new Point(
+                actorScreenPoint.X - Math.Max(0, requestedWidth / 2),
+                actorScreenPoint.Y - Math.Max(0, contentHeight) - Math.Max(0, actorHeight) - PacketOwnedTutorBalloonClientVerticalAnchorOffset);
+        }
+
         internal static int ResolvePacketOwnedTutorBalloonArrowLeft(Rectangle bodyBounds, int requestedWidth)
         {
             return bodyBounds.X + Math.Max(0, requestedWidth / 2) + PacketOwnedTutorBalloonClientArrowLeftOffset;
         }
 
-        internal static int ResolvePacketOwnedTutorBalloonArrowTop(Rectangle bodyBounds, int arrowHeight)
+        internal static int ResolvePacketOwnedTutorBalloonArrowTop(Rectangle bodyBounds, int contentHeight)
         {
-            return arrowHeight <= 0
-                ? bodyBounds.Bottom
-                : bodyBounds.Bottom - PacketOwnedTutorBalloonArrowOverlap;
+            return bodyBounds.Y + Math.Max(0, contentHeight) + PacketOwnedTutorBalloonClientArrowTopOffset;
         }
 
         internal static Rectangle ResolvePacketOwnedTutorBalloonArrowBounds(
             Rectangle bodyBounds,
-            int requestedWidth,
+            int contentHeight,
             int arrowWidth,
             int arrowHeight)
         {
@@ -5807,40 +6137,34 @@ namespace HaCreator.MapSimulator
             }
 
             return new Rectangle(
-                ResolvePacketOwnedTutorBalloonArrowLeft(bodyBounds, requestedWidth),
-                ResolvePacketOwnedTutorBalloonArrowTop(bodyBounds, arrowHeight),
+                ResolvePacketOwnedTutorBalloonArrowLeft(bodyBounds, bodyBounds.Width - PacketOwnedTutorBalloonClientLeftInset - PacketOwnedTutorBalloonClientRightInset),
+                ResolvePacketOwnedTutorBalloonArrowTop(bodyBounds, contentHeight),
                 arrowWidth,
                 arrowHeight);
         }
 
         private bool TryResolvePacketOwnedTutorBalloonAnchorScreenPoint(
             TutorVariantSnapshot displayVariant,
+            PacketOwnedTutorDisplayOwner displayOwner,
             int mapCenterX,
             int mapCenterY,
             out Point anchor)
         {
-            if (!TryResolvePacketOwnedTutorActorScreenPoint(mapCenterX, mapCenterY, out anchor))
-            {
-                return false;
-            }
-
-            anchor = new Point(
-                anchor.X,
-                anchor.Y - Math.Max(
-                    0,
-                    displayVariant.ActorHeight > 0
-                        ? displayVariant.ActorHeight
-                        : ResolvePacketOwnedTutorActorHeight(displayVariant.SkillId)) - PacketOwnedTutorBalloonAnchorOffsetY);
-            return true;
+            return TryResolvePacketOwnedTutorActorScreenPoint(displayVariant, displayOwner, mapCenterX, mapCenterY, out anchor);
         }
 
-        private bool TryResolvePacketOwnedTutorActorScreenPoint(int mapCenterX, int mapCenterY, out Point anchor)
+        private bool TryResolvePacketOwnedTutorActorScreenPoint(
+            TutorVariantSnapshot displayVariant,
+            PacketOwnedTutorDisplayOwner displayOwner,
+            int mapCenterX,
+            int mapCenterY,
+            out Point anchor)
         {
             anchor = Point.Zero;
 
-            if (!TryGetPacketOwnedTutorSummon(out ActiveSummon summon))
+            if (!TryGetPacketOwnedTutorSummon(displayVariant, displayOwner.CharacterId, out ActiveSummon summon))
             {
-                if (!TryResolvePacketOwnedTutorDisplayState(out _, out PacketOwnedTutorDisplayOwner displayOwner))
+                if (displayOwner.CharacterId <= 0)
                 {
                     return false;
                 }
@@ -5855,6 +6179,45 @@ namespace HaCreator.MapSimulator
                 (int)Math.Round(summon.PositionX - mapShiftX + mapCenterX),
                 (int)Math.Round(summon.PositionY - mapShiftY + mapCenterY));
             return true;
+        }
+
+        private List<PacketOwnedTutorDisplayState> ResolvePacketOwnedTutorDisplayStates()
+        {
+            IReadOnlyList<TutorVariantSnapshot> variants = _packetOwnedTutorRuntime.SnapshotActiveDisplayTutorVariants();
+            List<PacketOwnedTutorDisplayState> states = new(variants.Count);
+            HashSet<long> emittedVariantKeys = new();
+            for (int i = 0; i < variants.Count; i++)
+            {
+                TutorVariantSnapshot variant = variants[i];
+                if (variant.SkillId <= 0
+                    || !emittedVariantKeys.Add(BuildPacketOwnedTutorDisplayVariantKey(variant))
+                    || !TryResolvePacketOwnedTutorDisplayOwner(variant, out PacketOwnedTutorDisplayOwner owner))
+                {
+                    continue;
+                }
+
+                states.Add(new PacketOwnedTutorDisplayState(variant, owner));
+            }
+
+            return states;
+        }
+
+        private void PrunePacketOwnedTutorSummons(HashSet<int> activeSummonObjectIds)
+        {
+            foreach (int objectId in _packetOwnedTutorTrackedSummonObjectIds.ToArray())
+            {
+                if (!activeSummonObjectIds.Contains(objectId))
+                {
+                    _summonedPool.TryConsumeSummonByObjectId(objectId);
+                    _packetOwnedTutorTrackedSummonObjectIds.Remove(objectId);
+                    _packetOwnedTutorSummonMessageSequenceIdsByObjectId.Remove(objectId);
+                }
+            }
+        }
+
+        private static long BuildPacketOwnedTutorDisplayVariantKey(TutorVariantSnapshot variant)
+        {
+            return ((long)Math.Max(0, variant.SkillId) << 32) | (uint)Math.Max(0, variant.BoundCharacterId);
         }
 
         private Point ResolvePacketOwnedTutorCanvasShift(Rectangle canvasBounds)
@@ -5959,13 +6322,11 @@ namespace HaCreator.MapSimulator
         {
             string promptText = MapleStoryStringPool.GetOrFallback(
                 FollowRequestPromptStringPoolId,
-                "You have been sent a follow request.");
+                "%s has requested to follow you.\r\nWould you like to accept?");
             string displayName = string.IsNullOrWhiteSpace(requesterName)
                 ? requesterId > 0 ? $"Character {requesterId}" : "Unknown character"
                 : requesterName.Trim();
-            return string.Equals(displayName, "Unknown character", StringComparison.Ordinal)
-                ? promptText
-                : $"{promptText}\r\nRequester: {displayName}";
+            return promptText.Replace("%s", displayName, StringComparison.Ordinal);
         }
 
         private bool TryMirrorPacketOwnedFollowRequestToOfficialSession(int driverId, bool autoRequest, bool keyInput, out string status)
@@ -6603,6 +6964,12 @@ namespace HaCreator.MapSimulator
             NotifyEventAlarmOwnerActivity(minigame ? "packet-owned minigame sound" : "packet-owned event sound");
             ShowUtilityFeedbackMessage(message);
             return message;
+        }
+
+        private bool TryPlaySharedProductionEnhancementSound(int stringPoolId, string fallbackDescriptor)
+        {
+            string descriptor = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackDescriptor);
+            return TryPlayPacketOwnedWzSound(descriptor, "UI.img", out _, out _);
         }
 
         private bool TryPlayPacketOwnedWzSound(string descriptor, string defaultImageName, out string resolvedDescriptor, out string error)
@@ -8750,6 +9117,11 @@ namespace HaCreator.MapSimulator
                     break;
                 case "hpdec":
                     applied = TryApplyPacketOwnedFieldHazardPayload(payload, out message);
+                    break;
+                case "hazardresult":
+                case "petconsumeresult":
+                case "petitemuseresult":
+                    applied = TryApplyPacketOwnedPetConsumeResultPayload(payload, out message);
                     break;
                 case "notice":
                     applied = TryApplyPacketOwnedNoticePayload(payload, out message);

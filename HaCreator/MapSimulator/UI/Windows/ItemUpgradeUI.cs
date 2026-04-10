@@ -4106,6 +4106,11 @@ namespace HaCreator.MapSimulator.UI
                 : Array.Empty<int>();
         }
 
+        internal static IReadOnlyCollection<int> GetStarterEnhancementEquipItemIds()
+        {
+            return GetRequiredEquipItemIdsForTests(MapleMiracleCubeId);
+        }
+
         internal static string ResolveRequiredEquipFamilyLabelForTests(int consumableItemId)
         {
             return TryGetConsumableDefinition(consumableItemId, out EnhancementConsumableDefinition definition)

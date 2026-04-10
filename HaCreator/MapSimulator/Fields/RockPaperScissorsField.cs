@@ -87,7 +87,9 @@ namespace HaCreator.MapSimulator.Fields
         private int _lastSwitchTick;
         private int _switchCadenceMs;
         private int _roundDeadlineTick;
+        private int _resultRevealTick;
         private int _resultExpireTick;
+        private bool _resultLayerVisible;
         private RockPaperScissorsChoice _playerChoice = RockPaperScissorsChoice.None;
         private RockPaperScissorsChoice _npcChoice = RockPaperScissorsChoice.None;
         private RockPaperScissorsMainButtonType _mainButtonType = RockPaperScissorsMainButtonType.Start;
@@ -110,6 +112,7 @@ namespace HaCreator.MapSimulator.Fields
         public RockPaperScissorsChoice NpcChoice => _npcChoice;
         public RockPaperScissorsResultType ResultType => _resultType;
         public RockPaperScissorsMainButtonType MainButtonType => _mainButtonType;
+        internal bool IsResultLayerVisible => _resultLayerVisible;
 
         public void Initialize(GraphicsDevice graphicsDevice)
         {
@@ -161,8 +164,18 @@ namespace HaCreator.MapSimulator.Fields
                 LastPacketSummary = "local timeout -> ShowResult(timeover)";
             }
 
+            if (_resultRevealTick > 0 && currentTick >= _resultRevealTick && _resultType != RockPaperScissorsResultType.None)
+            {
+                _resultRevealTick = 0;
+                _resultLayerVisible = true;
+                CurrentStatusMessage = $"RPS result layer became visible after the client-owned {ResultFadeDelayMs} ms reveal delay.";
+                LastPacketSummary = $"result-reveal -> {DescribeResultType(_resultType)}";
+            }
+
             if (_resultExpireTick > 0 && currentTick >= _resultExpireTick && _resultType != RockPaperScissorsResultType.None)
             {
+                _resultRevealTick = 0;
+                _resultLayerVisible = false;
                 _resultExpireTick = 0;
                 if (_resultType == RockPaperScissorsResultType.Draw)
                 {
@@ -234,7 +247,7 @@ namespace HaCreator.MapSimulator.Fields
                 spriteBatch.Draw(npcTexture, npcRect, Color.White);
             }
 
-            Texture2D resultTexture = ResolveResultTexture();
+            Texture2D resultTexture = _resultLayerVisible ? ResolveResultTexture() : null;
             if (resultTexture != null)
             {
                 Rectangle resultRect = new Rectangle(
@@ -536,7 +549,9 @@ namespace HaCreator.MapSimulator.Fields
             _lastSwitchTick = 0;
             _switchCadenceMs = 0;
             _roundDeadlineTick = 0;
+            _resultRevealTick = 0;
             _resultExpireTick = 0;
+            _resultLayerVisible = false;
             _playerChoice = RockPaperScissorsChoice.None;
             _npcChoice = RockPaperScissorsChoice.None;
             _resultType = RockPaperScissorsResultType.None;
@@ -588,8 +603,10 @@ namespace HaCreator.MapSimulator.Fields
             LastPacketSummary = $"open (8) notice -> {ClientDialogOwnerName} entry={_entryDialogValue}";
             QueuePacketOwnedNotice(OpenNoticeStringPoolId, ResolveOpenNoticeText());
             _roundDeadlineTick = 0;
+            _resultRevealTick = 0;
             _switchCadenceMs = 0;
             _resultExpireTick = 0;
+            _resultLayerVisible = false;
             return true;
         }
 
@@ -627,7 +644,10 @@ namespace HaCreator.MapSimulator.Fields
                     _playerChoice = RockPaperScissorsChoice.None;
                     StraightVictoryCount = 0;
                     _roundDeadlineTick = 0;
+                    _resultRevealTick = 0;
                     _switchCadenceMs = 0;
+                    _resultExpireTick = 0;
+                    _resultLayerVisible = false;
                     _resultType = RockPaperScissorsResultType.None;
                     _mainButtonType = RockPaperScissorsMainButtonType.Start;
                     CurrentStatusMessage = packetType switch
@@ -723,6 +743,8 @@ namespace HaCreator.MapSimulator.Fields
             _roundDeadlineTick = 0;
             _mainButtonEnabled = false;
             _exitButtonEnabled = false;
+            _resultLayerVisible = false;
+            _resultRevealTick = currentTimeMs + ResultFadeDelayMs;
             _resultExpireTick = currentTimeMs + ResultExpireDelayMs;
         }
 
@@ -744,7 +766,9 @@ namespace HaCreator.MapSimulator.Fields
             _switchCadenceMs = ChoiceSwitchCadenceMs;
             _lastSwitchTick = currentTimeMs;
             _roundDeadlineTick = currentTimeMs + RoundLimitMs;
+            _resultRevealTick = 0;
             _resultExpireTick = 0;
+            _resultLayerVisible = false;
         }
 
         private RockPaperScissorsMainButtonType ResolvePostResultMainButtonType()

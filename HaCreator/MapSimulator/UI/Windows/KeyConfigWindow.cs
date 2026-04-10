@@ -57,7 +57,8 @@ namespace HaCreator.MapSimulator.UI
                 Keys clientKey,
                 byte packetEntryType = 0,
                 int packetEntryId = 0,
-                int packetScanCode = -1)
+                int packetScanCode = -1,
+                int packetBindableSlotIndex = -1)
             {
                 HasClientOwner = hasClientOwner;
                 ClientFunctionId = clientFunctionId;
@@ -65,6 +66,7 @@ namespace HaCreator.MapSimulator.UI
                 PacketEntryType = packetEntryType;
                 PacketEntryId = packetEntryId;
                 PacketScanCode = packetScanCode;
+                PacketBindableSlotIndex = packetBindableSlotIndex;
             }
 
             public bool HasClientOwner { get; }
@@ -73,6 +75,7 @@ namespace HaCreator.MapSimulator.UI
             public byte PacketEntryType { get; }
             public int PacketEntryId { get; }
             public int PacketScanCode { get; }
+            public int PacketBindableSlotIndex { get; }
             public bool HasPacketShortcutEntry => PacketEntryType != 0 && PacketEntryId > 0;
         }
 
@@ -185,6 +188,8 @@ namespace HaCreator.MapSimulator.UI
         private bool _captureArmed;
         private string _launchSource = string.Empty;
         private string _statusMessage = "Select a row to inspect or clear a local binding.";
+        private KeyboardState _previousNavigationKeyboardState;
+        private GamePadState _previousNavigationGamepadState;
 
         public KeyConfigWindow(
             IDXObject frame,
@@ -310,6 +315,7 @@ namespace HaCreator.MapSimulator.UI
         {
             BeginSession();
             SetPage(KeyConfigPage.Main, resetSelection: true, preserveStatusMessage: true);
+            SelectDefaultRow();
             _statusMessage = BuildDefaultStatusMessage();
             base.Show();
         }
@@ -317,6 +323,13 @@ namespace HaCreator.MapSimulator.UI
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
+
+            HandleOwnerInput();
+
+            if (!IsVisible)
+            {
+                return;
+            }
 
             if (!IsVisible || !_captureArmed || _selectedAction == null)
             {
@@ -508,6 +521,12 @@ namespace HaCreator.MapSimulator.UI
                     : "Showing the client-owned key palette and binding page.";
             }
 
+            if (_selectedAction.HasValue && !GetActiveRows().Any(row => row.Action == _selectedAction.Value))
+            {
+                _selectedAction = null;
+            }
+
+            SelectDefaultRow();
             UpdateButtonVisibility();
         }
 
@@ -717,7 +736,7 @@ namespace HaCreator.MapSimulator.UI
                 string paletteSlotText = selectedPaletteSlotId >= 0
                     ? $"Palette slot {selectedPaletteSlotId}: {GetPaletteSlotLabel(selectedPaletteSlotId)}"
                     : selectedShortcutVisual.HasDetails
-                        ? selectedShortcutVisual.Title
+                        ? $"Live shortcut visual: {selectedShortcutVisual.Title}"
                         : "No recovered palette slot for this staged row.";
                 sprite.DrawString(_font, paletteSlotText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 4), new Color(220, 220, 220), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
 
@@ -902,7 +921,12 @@ namespace HaCreator.MapSimulator.UI
 
             if (ownerState.HasPacketShortcutEntry)
             {
-                return $"Packet-owned {DescribePacketEntry(ownerState.PacketEntryType, ownerState.PacketEntryId)} currently resolves to {FormatKey(ownerState.ClientKey)}.";
+                string ownerLocation = ownerState.PacketBindableSlotIndex >= 0
+                    ? $"bindable slot {ownerState.PacketBindableSlotIndex + 1}"
+                    : ownerState.PacketScanCode >= 0
+                        ? $"scan {ownerState.PacketScanCode}"
+                        : "an unresolved shortcut slot";
+                return $"Packet-owned {DescribePacketEntry(ownerState.PacketEntryType, ownerState.PacketEntryId)} currently resolves to {FormatKey(ownerState.ClientKey)} through {ownerLocation}.";
             }
 
             return "This staged row is explicit in the simulator, but the packet-owned function map does not currently own it.";
@@ -927,7 +951,10 @@ namespace HaCreator.MapSimulator.UI
                 string scanText = ownerState.PacketScanCode >= 0
                     ? $"scan {ownerState.PacketScanCode}"
                     : "scan unresolved";
-                return $"Client shortcut: {DescribePacketEntry(ownerState.PacketEntryType, ownerState.PacketEntryId)} on {FormatKey(ownerState.ClientKey)} ({scanText}); palette slot remains explicit.";
+                string slotText = ownerState.PacketBindableSlotIndex >= 0
+                    ? $", slot {ownerState.PacketBindableSlotIndex + 1}"
+                    : string.Empty;
+                return $"Client shortcut: {DescribePacketEntry(ownerState.PacketEntryType, ownerState.PacketEntryId)} on {FormatKey(ownerState.ClientKey)} ({scanText}{slotText}); footer uses the live shortcut owner visual.";
             }
 
             if (selectedRow is { ClientFunctionId: >= 0 })
@@ -1082,6 +1109,8 @@ namespace HaCreator.MapSimulator.UI
                 _stagedBindings.Clear();
                 _originalBindings.Clear();
                 _captureArmed = false;
+                _previousNavigationKeyboardState = Keyboard.GetState();
+                _previousNavigationGamepadState = default;
                 return;
             }
 
@@ -1089,6 +1118,8 @@ namespace HaCreator.MapSimulator.UI
             CaptureBindings(input, _stagedBindings);
             _captureArmed = false;
             _statusMessage = "Showing the client-owned key palette and binding page.";
+            _previousNavigationKeyboardState = Keyboard.GetState();
+            _previousNavigationGamepadState = GamePad.GetState(input.GetGamepadIndex());
         }
 
         private void CommitAndHide()
@@ -1246,6 +1277,204 @@ namespace HaCreator.MapSimulator.UI
                 Buttons.DPadRight => "D-Right",
                 _ => button.ToString(),
             };
+        }
+
+        private void HandleOwnerInput()
+        {
+            if (!IsVisible)
+            {
+                return;
+            }
+
+            PlayerInput input = _bindingSource?.Invoke();
+            KeyboardState keyboard = Keyboard.GetState();
+            GamePadState gamepad = input != null
+                ? GamePad.GetState(input.GetGamepadIndex())
+                : default;
+
+            bool moveUp = IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.Up)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.DPadUp)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.LeftThumbstickUp);
+            bool moveDown = IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.Down)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.DPadDown)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.LeftThumbstickDown);
+            bool pageLeft = IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.Left)
+                || IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.PageUp)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.LeftShoulder);
+            bool pageRight = IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.Right)
+                || IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.PageDown)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.RightShoulder);
+            bool activate = IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.Enter)
+                || IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.Space)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.A);
+            bool clear = IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.Delete)
+                || IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.Back)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.X);
+            bool discard = IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.Escape)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.B)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.Back);
+            bool commit = IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.Start);
+            bool restoreDefaults = IsNewKeyPress(keyboard, _previousNavigationKeyboardState, Keys.Home)
+                || IsNewButtonPress(gamepad, _previousNavigationGamepadState, Buttons.Y);
+
+            _previousNavigationKeyboardState = keyboard;
+            _previousNavigationGamepadState = gamepad;
+
+            if (_captureArmed)
+            {
+                if (discard)
+                {
+                    _captureArmed = false;
+                    _statusMessage = $"{GetSelectedLabel()} capture cancelled. Press Enter, Space, or A to arm the row again.";
+                }
+
+                return;
+            }
+
+            if (moveUp)
+            {
+                MoveSelection(-1);
+                return;
+            }
+
+            if (moveDown)
+            {
+                MoveSelection(1);
+                return;
+            }
+
+            if (pageLeft)
+            {
+                SwitchPage(-1);
+                return;
+            }
+
+            if (pageRight)
+            {
+                SwitchPage(1);
+                return;
+            }
+
+            if (restoreDefaults)
+            {
+                RestoreDefaults();
+                SelectDefaultRow();
+                return;
+            }
+
+            if (clear)
+            {
+                ClearSelectedBinding();
+                return;
+            }
+
+            if (activate)
+            {
+                if (!_selectedAction.HasValue)
+                {
+                    SelectDefaultRow();
+                }
+
+                if (_selectedAction.HasValue)
+                {
+                    _captureArmed = true;
+                    _statusMessage = $"{GetSelectedLabel()} selected. Press a keyboard key or gamepad button to stage a new binding.";
+                }
+
+                return;
+            }
+
+            if (commit)
+            {
+                CommitAndHide();
+                return;
+            }
+
+            if (discard)
+            {
+                DiscardAndHide();
+            }
+        }
+
+        private void SelectDefaultRow()
+        {
+            if (_selectedAction.HasValue)
+            {
+                return;
+            }
+
+            IReadOnlyList<BindingRow> rows = GetActiveRows();
+            if (rows.Count > 0)
+            {
+                _selectedAction = rows[0].Action;
+            }
+        }
+
+        private void MoveSelection(int direction)
+        {
+            IReadOnlyList<BindingRow> rows = GetActiveRows();
+            if (rows.Count == 0)
+            {
+                _selectedAction = null;
+                return;
+            }
+
+            int currentIndex = 0;
+            if (_selectedAction.HasValue)
+            {
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    if (rows[i].Action == _selectedAction.Value)
+                    {
+                        currentIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            int nextIndex = (currentIndex + direction) % rows.Count;
+            if (nextIndex < 0)
+            {
+                nextIndex += rows.Count;
+            }
+
+            _selectedAction = rows[nextIndex].Action;
+            _statusMessage = $"{rows[nextIndex].Label} selected. {BuildClientOwnerSummary()}";
+        }
+
+        private void SwitchPage(int direction)
+        {
+            if (_quickSlotFrame == null)
+            {
+                return;
+            }
+
+            KeyConfigPage nextPage = _page switch
+            {
+                KeyConfigPage.Main when direction > 0 => KeyConfigPage.QuickSlot,
+                KeyConfigPage.QuickSlot when direction < 0 => KeyConfigPage.Main,
+                _ => _page
+            };
+
+            if (nextPage == _page)
+            {
+                return;
+            }
+
+            SetPage(nextPage, resetSelection: true);
+            SelectDefaultRow();
+        }
+
+        private static bool IsNewKeyPress(KeyboardState current, KeyboardState previous, Keys key)
+        {
+            return current.IsKeyDown(key) && previous.IsKeyUp(key);
+        }
+
+        private static bool IsNewButtonPress(GamePadState current, GamePadState previous, Buttons button)
+        {
+            return current.IsConnected
+                && current.IsButtonDown(button)
+                && !previous.IsButtonDown(button);
         }
     }
 }

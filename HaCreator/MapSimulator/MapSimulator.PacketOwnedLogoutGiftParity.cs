@@ -21,6 +21,8 @@ namespace HaCreator.MapSimulator
             "UIWindow2.img"
         };
 
+        private const int PacketOwnedLogoutGiftDialogFrameStringPoolId = 0x16AA;
+        private const string PacketOwnedLogoutGiftDialogFrameFallbackPath = "UI/UIWindow.img/LogoutGift/backgrnd";
         private const string PacketOwnedLogoutGiftUiPath = "LogoutGift/backgrnd";
         private const int PacketOwnedLogoutGiftCompletionStringPoolId = 0x16AB;
         private const string PacketOwnedLogoutGiftCompletionFallbackText = "Congratulations! Please come back in 3 days. Thank you!";
@@ -420,11 +422,20 @@ namespace HaCreator.MapSimulator
                 return _packetOwnedLogoutGiftFrameTexture;
             }
 
+            string resourcePath = ResolvePacketOwnedLogoutGiftDialogFrameResourcePath();
+            if (TryDecodePacketOwnedLogoutGiftDialogFrameResourcePath(resourcePath, out string preferredImageName, out string preferredPropertyPath))
+            {
+                _packetOwnedLogoutGiftFrameTexture = TryLoadPacketOwnedLogoutGiftFrameTexture(preferredImageName, preferredPropertyPath);
+                if (_packetOwnedLogoutGiftFrameTexture != null
+                    || Array.Exists(PacketOwnedLogoutGiftUiImageNames, imageName => string.Equals(imageName, preferredImageName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return _packetOwnedLogoutGiftFrameTexture;
+                }
+            }
+
             foreach (string imageName in PacketOwnedLogoutGiftUiImageNames)
             {
-                WzImage uiWindowImage = global::HaCreator.Program.FindImage("UI", imageName);
-                WzCanvasProperty backgroundCanvas = uiWindowImage?[PacketOwnedLogoutGiftUiPath] as WzCanvasProperty;
-                _packetOwnedLogoutGiftFrameTexture = LoadUiCanvasTexture(backgroundCanvas);
+                _packetOwnedLogoutGiftFrameTexture = TryLoadPacketOwnedLogoutGiftFrameTexture(imageName, PacketOwnedLogoutGiftUiPath);
                 if (_packetOwnedLogoutGiftFrameTexture != null)
                 {
                     break;
@@ -432,6 +443,18 @@ namespace HaCreator.MapSimulator
             }
 
             return _packetOwnedLogoutGiftFrameTexture;
+        }
+
+        private Texture2D TryLoadPacketOwnedLogoutGiftFrameTexture(string imageName, string propertyPath)
+        {
+            if (GraphicsDevice == null || string.IsNullOrWhiteSpace(imageName) || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return null;
+            }
+
+            WzImage uiWindowImage = global::HaCreator.Program.FindImage("UI", imageName.Trim());
+            WzCanvasProperty backgroundCanvas = uiWindowImage?[propertyPath.Trim()] as WzCanvasProperty;
+            return LoadUiCanvasTexture(backgroundCanvas);
         }
 
         private string DescribePacketOwnedLogoutGiftLeadingTail()
@@ -475,7 +498,44 @@ namespace HaCreator.MapSimulator
             return !_packetOwnedLogoutGiftHasPredictQuitFlag || _packetOwnedLogoutGiftPredictQuitRawValue != 0;
         }
 
-        private static string BuildPacketOwnedLogoutGiftCompletionMessage()
+        internal static string ResolvePacketOwnedLogoutGiftDialogFrameResourcePath()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                PacketOwnedLogoutGiftDialogFrameStringPoolId,
+                PacketOwnedLogoutGiftDialogFrameFallbackPath);
+        }
+
+        internal static bool TryDecodePacketOwnedLogoutGiftDialogFrameResourcePath(
+            string resourcePath,
+            out string imageName,
+            out string propertyPath)
+        {
+            imageName = null;
+            propertyPath = null;
+            if (string.IsNullOrWhiteSpace(resourcePath))
+            {
+                return false;
+            }
+
+            string normalized = resourcePath.Trim().Replace('\\', '/');
+            const string categoryPrefix = "UI/";
+            if (normalized.StartsWith(categoryPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[categoryPrefix.Length..];
+            }
+
+            int separatorIndex = normalized.IndexOf('/');
+            if (separatorIndex <= 0 || separatorIndex >= normalized.Length - 1)
+            {
+                return false;
+            }
+
+            imageName = normalized[..separatorIndex];
+            propertyPath = normalized[(separatorIndex + 1)..];
+            return !string.IsNullOrWhiteSpace(imageName) && !string.IsNullOrWhiteSpace(propertyPath);
+        }
+
+        internal static string BuildPacketOwnedLogoutGiftCompletionMessage()
         {
             return MapleStoryStringPool.GetOrFallback(
                 PacketOwnedLogoutGiftCompletionStringPoolId,
@@ -493,7 +553,8 @@ namespace HaCreator.MapSimulator
                     "Logout Gift",
                     completionMessage,
                     LoginUtilityDialogButtonLayout.Ok,
-                    LoginUtilityDialogAction.LogoutGiftCompletion);
+                    LoginUtilityDialogAction.LogoutGiftCompletion,
+                    trackDirectionModeOwner: true);
                 return
                     $"Surfaced the client follow-up util dialog through the shared LoginUtilityDialog owner (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}): {completionMessage}";
             }

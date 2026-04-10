@@ -19,7 +19,7 @@ namespace HaCreator.MapSimulator
                         _initialQuizTimerRuntime.Clear();
                         ClearInitialQuizOwnerInputState();
                         SyncUtilityChannelSelectorAvailability();
-                        return "Cleared packet-authored initial quiz owner.";
+                        return "Cleared context-owned initial quiz owner.";
                     }
 
                     string initialQuizMessage = _initialQuizTimerRuntime.ApplyClientOwnerState(
@@ -29,7 +29,8 @@ namespace HaCreator.MapSimulator
                         sync.CorrectAnswer,
                         sync.QuestionNumber,
                         sync.RemainingSeconds,
-                        currTickCount);
+                        currTickCount,
+                        ResolveInitialQuizOwnerRuntimeCharacterId());
                     ResetInitialQuizOwnerInputState(currTickCount);
                     SyncUtilityChannelSelectorAvailability();
                     return initialQuizMessage;

@@ -129,20 +129,6 @@ namespace HaCreator.MapSimulator
                 return blockedMessage;
             }
 
-            int currentHp = Math.Max(0, _playerManager?.Player?.Build?.HP ?? 0);
-            if (currentHp <= 0)
-            {
-                string blockedMessage = MapleStoryStringPool.GetOrFallback(
-                    PacketOwnedDragonBoxBlockedNoticeStringPoolId,
-                    PacketOwnedDragonBoxBlockedNoticeFallbackText,
-                    appendFallbackSuffix: true,
-                    minimumHexWidth: 4);
-                _lastPacketOwnedDragonBoxSummary =
-                    $"CUIDragonBox::OnButtonClicked suppressed opcode {PacketOwnedDragonBoxSummonRequestOpcode} because the local player is not in a valid HP state.";
-                ShowUtilityFeedbackMessage(blockedMessage);
-                return blockedMessage;
-            }
-
             PacketOwnedLocalUtilityOutboundRequest request =
                 new(PacketOwnedDragonBoxSummonRequestOpcode, 0, Array.AsReadOnly(Array.Empty<byte>()));
             _packetOwnedDragonBoxLastSummonRequestTick = currentTick;
@@ -196,6 +182,7 @@ namespace HaCreator.MapSimulator
             StampPacketOwnedUtilityRequestState();
             int currentTick = Environment.TickCount;
             _packetOwnedDragonBoxLastPacketTick = currentTick;
+            DragonBoxWindow dragonBoxWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.DragonBox) as DragonBoxWindow;
 
             if (state.CloseRequested)
             {
@@ -210,13 +197,6 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            _packetOwnedDragonBoxRemainingTimeMs = state.RemainingTimeMs;
-            _packetOwnedDragonBoxLastUpdateTick = currentTick;
-            _packetOwnedDragonBoxCanSummon = state.CanSummon;
-            _packetOwnedDragonBoxOrbMask = NormalizePacketOwnedDragonBoxOrbMask(state.OrbMask);
-
-            int orbCount = BitOperations.PopCount((uint)_packetOwnedDragonBoxOrbMask);
-            DragonBoxWindow dragonBoxWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.DragonBox) as DragonBoxWindow;
             bool windowAvailable = dragonBoxWindow != null;
             bool wasVisible = dragonBoxWindow?.IsVisible == true;
             if (state.ShowRequested && windowAvailable)
@@ -224,6 +204,23 @@ namespace HaCreator.MapSimulator
                 ShowWindow(MapSimulatorWindowNames.DragonBox, dragonBoxWindow, trackDirectionModeOwner: true);
                 uiWindowManager?.BringToFront(dragonBoxWindow);
             }
+
+            bool ownerActive = dragonBoxWindow?.IsVisible == true;
+            int normalizedOrbMask = NormalizePacketOwnedDragonBoxOrbMask(state.OrbMask);
+            int orbCount = BitOperations.PopCount((uint)normalizedOrbMask);
+            if (!ownerActive)
+            {
+                message = state.ShowRequested
+                    ? $"CWvsContext::OnDragonBallBox requested UI type {PacketOwnedDragonBoxUiType}, but the dedicated Dragon Box owner is unavailable, so the packet-authored remain/orb state was not applied."
+                    : $"CWvsContext::OnDragonBallBox decoded remainMs={state.RemainingTimeMs.ToString(CultureInfo.InvariantCulture)}, orbMask=0x{normalizedOrbMask:X3} ({orbCount}/{PacketOwnedDragonBoxOrbMaskBits}), and bAbleToSummon={(state.CanSummon ? 1 : 0)}, but skipped CUIDragonBox::SetOrb because bShowUI=0 left the owner closed.";
+                _lastPacketOwnedDragonBoxSummary = message;
+                return true;
+            }
+
+            _packetOwnedDragonBoxRemainingTimeMs = state.RemainingTimeMs;
+            _packetOwnedDragonBoxLastUpdateTick = currentTick;
+            _packetOwnedDragonBoxCanSummon = state.CanSummon;
+            _packetOwnedDragonBoxOrbMask = normalizedOrbMask;
 
             string visibilityText = state.ShowRequested
                 ? wasVisible

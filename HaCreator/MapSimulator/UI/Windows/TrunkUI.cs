@@ -103,6 +103,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _scrollNextPressedTexture;
         private readonly Texture2D _scrollNextDisabledTexture;
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
+        private readonly Point[] _tooltipFrameOrigins = new Point[3];
         private readonly Texture2D _debugTooltipTexture;
 
         private InventoryUI _inventory;
@@ -336,6 +337,19 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < Math.Min(_tooltipFrames.Length, tooltipFrames.Length); i++)
             {
                 _tooltipFrames[i] = tooltipFrames[i];
+            }
+        }
+
+        public void SetTooltipOrigins(Point[] tooltipOrigins)
+        {
+            if (tooltipOrigins == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < Math.Min(_tooltipFrameOrigins.Length, tooltipOrigins.Length); i++)
+            {
+                _tooltipFrameOrigins[i] = tooltipOrigins[i];
             }
         }
 

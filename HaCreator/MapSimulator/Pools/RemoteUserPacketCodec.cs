@@ -140,7 +140,8 @@ namespace HaCreator.MapSimulator.Pools
         bool HasDarkAura,
         bool HasBlueAura,
         bool HasYellowAura,
-        bool HasBlessingArmor)
+        bool HasBlessingArmor,
+        RemoteUserTemporaryStatExtendedState ExtendedState = default)
     {
         public const int DarkAuraSkillId = 32001003;
         public const int BlueAuraSkillId = 32101002;
@@ -166,7 +167,8 @@ namespace HaCreator.MapSimulator.Pools
             || HasDarkAura
             || HasBlueAura
             || HasYellowAura
-            || HasBlessingArmor;
+            || HasBlessingArmor
+            || ExtendedState.HasAnyKnownState;
 
         public bool IsHiddenLikeClient => HasDarkSight || HasWindWalk || GhostId.HasValue;
 
@@ -185,6 +187,55 @@ namespace HaCreator.MapSimulator.Pools
                     >= 2310 and <= 2312 => BishopBlessingArmorSkillId,
                     _ => BishopBlessingArmorSkillId
                 };
+    }
+
+    public readonly record struct RemoteUserTemporaryStatExtendedState(
+        int? AttractValue,
+        int? SpiritJavelinValue,
+        int? BanMapValue,
+        int? DojangShieldValue,
+        int? ReverseInputValue,
+        int? RespectPImmuneValue,
+        int? RespectMImmuneValue,
+        int? DefenseAttValue,
+        int? DefenseStateValue,
+        bool HasDojangBerserk,
+        bool HasDojangInvincible,
+        int? StopPortionValue,
+        int? StopMotionValue,
+        int? FearValue,
+        bool HasFlying,
+        int? FrozenValue,
+        int? SuddenDeathValue,
+        byte? CycloneValue,
+        bool HasSneak,
+        bool HasMorewildDamageUp,
+        byte? TrailingDefenseAttByte,
+        byte? TrailingDefenseStateByte)
+    {
+        public bool HasAnyKnownState =>
+            AttractValue.HasValue
+            || SpiritJavelinValue.HasValue
+            || BanMapValue.HasValue
+            || DojangShieldValue.HasValue
+            || ReverseInputValue.HasValue
+            || RespectPImmuneValue.HasValue
+            || RespectMImmuneValue.HasValue
+            || DefenseAttValue.HasValue
+            || DefenseStateValue.HasValue
+            || HasDojangBerserk
+            || HasDojangInvincible
+            || StopPortionValue.HasValue
+            || StopMotionValue.HasValue
+            || FearValue.HasValue
+            || HasFlying
+            || FrozenValue.HasValue
+            || SuddenDeathValue.HasValue
+            || CycloneValue.HasValue
+            || HasSneak
+            || HasMorewildDamageUp
+            || TrailingDefenseAttByte.HasValue
+            || TrailingDefenseStateByte.HasValue;
     }
 
     public readonly record struct RemoteUserLeaveFieldPacket(int CharacterId);

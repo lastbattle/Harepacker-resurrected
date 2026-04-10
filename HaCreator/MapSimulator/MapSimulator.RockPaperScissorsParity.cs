@@ -190,6 +190,11 @@ namespace HaCreator.MapSimulator
                 }
 
                 bool applied = field.TryApplyRawPacket(message.PacketType, message.Payload, currentTickCount, out string resultMessage);
+                if (applied)
+                {
+                    DrainRockPaperScissorsPendingNotice(field);
+                }
+
                 _rockPaperScissorsPacketInbox.RecordDispatchResult(
                     message.Source,
                     message.PacketType,
@@ -207,22 +212,17 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string notice = packetType switch
-            {
-                8 => MapleStoryStringPool.GetOrFallback(
-                    RockPaperScissorsField.OpenNoticeStringPoolId,
-                    "Rock-Paper-Scissors challenge opened."),
-                6 => MapleStoryStringPool.GetOrFallback(
-                    RockPaperScissorsField.WinNoticeStringPoolId,
-                    "Rock-Paper-Scissors round complete: win notice."),
-                7 => MapleStoryStringPool.GetOrFallback(
-                    RockPaperScissorsField.LoseNoticeStringPoolId,
-                    "Rock-Paper-Scissors round complete: lose notice."),
-                _ => null
-            };
-            ShowPacketOwnedNoticeDialog(notice);
+            DrainRockPaperScissorsPendingNotice(field);
             message = field.DescribeStatus();
             return true;
+        }
+
+        private void DrainRockPaperScissorsPendingNotice(RockPaperScissorsField field)
+        {
+            while (field.TryConsumePendingNotice(out _, out string notice))
+            {
+                ShowPacketOwnedNoticeDialog(notice);
+            }
         }
 
         private bool HasRockPaperScissorsUniqueModelessConflict()

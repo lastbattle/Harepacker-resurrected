@@ -23,6 +23,11 @@ namespace HaCreator.MapSimulator.Interaction
                 appendFallbackSuffix: true);
         }
 
+        internal static bool HandlesResultSubtype(byte subtype)
+        {
+            return subtype == 4;
+        }
+
         internal static bool TryGetResultNotice(byte resultCode, out string notice, out bool reopensDialog)
         {
             reopensDialog = false;
@@ -54,7 +59,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static string BuildUnsupportedResultMessage(byte subtype, byte resultCode)
         {
-            return subtype != 4
+            return !HandlesResultSubtype(subtype)
                 ? $"CAdminShopDlg::OnPacket ignored subtype {subtype}; the v95 client only handles subtype 4 in packet 366."
                 : $"CAdminShopDlg::OnPacket received unmodeled result code {resultCode}.";
         }

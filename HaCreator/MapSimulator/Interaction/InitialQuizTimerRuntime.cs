@@ -10,12 +10,17 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte RequestMode = 0;
         private const byte FailMode = 1;
 
+        private int _boundCharacterId;
+        private int _lastObservedRuntimeCharacterId;
         private int _expiresAtTick;
         private string _title = string.Empty;
         private string _problemText = string.Empty;
         private string _hintText = string.Empty;
         private int _answer;
         private int _questionNumber;
+
+        internal int BoundCharacterId => _boundCharacterId;
+        internal int LastObservedRuntimeCharacterId => _lastObservedRuntimeCharacterId;
 
         internal bool IsActive(int currentTickCount)
         {
@@ -39,16 +44,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (!IsActive(currentTickCount))
             {
-                return "Packet-owned initial quiz idle.";
+                return DescribeIdleStatus();
             }
 
             int remainingSeconds = GetDisplayRemainingSeconds(currentTickCount);
-            return $"Packet-owned initial quiz active: question {_questionNumber}, {remainingSeconds}s remaining, title={FormatQuotedValue(_title)}.";
+            return $"Context-owned initial quiz active: question {_questionNumber}, {remainingSeconds}s remaining, title={FormatQuotedValue(_title)}, {DescribeCharacterBinding()}";
         }
 
         internal bool TryBuildOwnerSnapshot(int currentTickCount, out InitialQuizOwnerSnapshot snapshot)
         {
-            if (!IsActive(currentTickCount))
+            if (_expiresAtTick <= 0)
             {
                 snapshot = null;
                 return false;
@@ -73,6 +78,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void Clear()
         {
+            _boundCharacterId = 0;
+            _lastObservedRuntimeCharacterId = 0;
             _expiresAtTick = 0;
             _title = string.Empty;
             _problemText = string.Empty;
@@ -88,8 +95,10 @@ namespace HaCreator.MapSimulator.Interaction
             int answer,
             int questionNumber,
             int remainingSeconds,
-            int currentTickCount)
+            int currentTickCount,
+            int runtimeCharacterId)
         {
+            BindRuntimeCharacter(runtimeCharacterId);
             _title = title ?? string.Empty;
             _problemText = problemText ?? string.Empty;
             _hintText = hintText ?? string.Empty;
@@ -97,10 +106,10 @@ namespace HaCreator.MapSimulator.Interaction
             _questionNumber = Math.Max(0, questionNumber);
             _expiresAtTick = currentTickCount + (Math.Max(0, remainingSeconds) * 1000);
             return
-                $"Synced packet-authored initial quiz owner: question {_questionNumber}, {Math.Max(0, remainingSeconds)}s remaining, title={FormatQuotedValue(_title)}.";
+                $"Synced context-owned initial quiz owner: question {_questionNumber}, {Math.Max(0, remainingSeconds)}s remaining, title={FormatQuotedValue(_title)}, {DescribeCharacterBinding()}";
         }
 
-        internal bool TryApplyPayload(byte[] payload, int currentTickCount, out string message)
+        internal bool TryApplyPayload(byte[] payload, int currentTickCount, int runtimeCharacterId, out string message)
         {
             payload ??= Array.Empty<byte>();
             if (payload.Length == 0)
@@ -117,7 +126,7 @@ namespace HaCreator.MapSimulator.Interaction
                 if (mode == FailMode)
                 {
                     Clear();
-                    message = "Cleared the packet-owned initial quiz timer.";
+                    message = "Cleared the context-owned initial quiz owner.";
                     return true;
                 }
 
@@ -134,7 +143,8 @@ namespace HaCreator.MapSimulator.Interaction
                     reader.ReadInt32(),
                     reader.ReadInt32(),
                     reader.ReadInt32(),
-                    currentTickCount)
+                    currentTickCount,
+                    runtimeCharacterId)
                     .Replace("Synced", "Started", StringComparison.Ordinal);
                 return true;
             }
@@ -162,6 +172,57 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(value)
                 ? "\"\""
                 : $"\"{value.Trim()}\"";
+        }
+
+        internal void ObserveRuntimeCharacterId(int runtimeCharacterId)
+        {
+            _lastObservedRuntimeCharacterId = NormalizeCharacterId(runtimeCharacterId);
+        }
+
+        internal bool RequiresCharacterReset(int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeCharacterId(runtimeCharacterId);
+            return _boundCharacterId > 0
+                && resolvedCharacterId > 0
+                && _boundCharacterId != resolvedCharacterId;
+        }
+
+        internal string ResetForRuntimeCharacterChange(int runtimeCharacterId)
+        {
+            int previousCharacterId = _boundCharacterId;
+            int resolvedCharacterId = NormalizeCharacterId(runtimeCharacterId);
+            Clear();
+            _lastObservedRuntimeCharacterId = resolvedCharacterId;
+            return $"Cleared context-owned initial quiz owner after runtime character changed from {previousCharacterId} to {resolvedCharacterId}.";
+        }
+
+        private void BindRuntimeCharacter(int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeCharacterId(runtimeCharacterId);
+            _lastObservedRuntimeCharacterId = resolvedCharacterId;
+            if (resolvedCharacterId > 0)
+            {
+                _boundCharacterId = resolvedCharacterId;
+            }
+        }
+
+        private string DescribeIdleStatus()
+        {
+            return _lastObservedRuntimeCharacterId > 0
+                ? $"Context-owned initial quiz idle. lastRuntimeCharacter={_lastObservedRuntimeCharacterId}."
+                : "Context-owned initial quiz idle.";
+        }
+
+        private string DescribeCharacterBinding()
+        {
+            string boundCharacter = _boundCharacterId > 0 ? _boundCharacterId.ToString() : "unset";
+            string runtimeCharacter = _lastObservedRuntimeCharacterId > 0 ? _lastObservedRuntimeCharacterId.ToString() : "unset";
+            return $"boundCharacter={boundCharacter}, runtimeCharacter={runtimeCharacter}.";
+        }
+
+        private static int NormalizeCharacterId(int runtimeCharacterId)
+        {
+            return Math.Max(0, runtimeCharacterId);
         }
     }
 

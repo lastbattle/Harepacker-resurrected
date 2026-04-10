@@ -57,22 +57,88 @@ namespace HaCreator.MapSimulator.Companions
                 return Array.Empty<byte>();
             }
 
+            return EncodePayload(new MechanicEquipPacketPayload(
+                MechanicEquipPacketPayloadMode.AuthorityRequest,
+                null,
+                request.ItemId,
+                null,
+                request.RequestId,
+                request.RequestedAtTick,
+                request.Kind,
+                request.OwnerKind,
+                request.OwnerSessionId,
+                request.ExpectedCharacterId,
+                request.ExpectedBuildStateToken,
+                request.ExpectedMechanicStateToken,
+                request.SourceInventoryType,
+                request.SourceInventoryIndex,
+                request.TargetMechanicSlot,
+                request.SourceMechanicSlot));
+        }
+
+        internal static byte[] EncodePayload(MechanicEquipPacketPayload payload)
+        {
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream);
-            writer.Write((byte)MechanicEquipPacketPayloadMode.AuthorityRequest);
-            writer.Write(request.RequestId);
-            writer.Write(request.RequestedAtTick);
-            writer.Write((byte)request.Kind);
-            writer.Write((byte)request.OwnerKind);
-            writer.Write(request.OwnerSessionId);
-            writer.Write(request.ExpectedCharacterId);
-            writer.Write(request.ExpectedBuildStateToken);
-            writer.Write(request.ExpectedMechanicStateToken);
-            writer.Write(request.ItemId);
-            writer.Write((byte)request.SourceInventoryType);
-            writer.Write(request.SourceInventoryIndex);
-            writer.Write(request.TargetMechanicSlot.HasValue ? (byte)request.TargetMechanicSlot.Value : byte.MaxValue);
-            writer.Write(request.SourceMechanicSlot.HasValue ? (byte)request.SourceMechanicSlot.Value : byte.MaxValue);
+            writer.Write((byte)payload.Mode);
+            switch (payload.Mode)
+            {
+                case MechanicEquipPacketPayloadMode.Snapshot:
+                    WriteSnapshotItems(writer, payload.SnapshotItems);
+                    break;
+                case MechanicEquipPacketPayloadMode.SlotMutation:
+                    WriteMechanicSlot(writer, payload.Slot);
+                    writer.Write(payload.ItemId);
+                    break;
+                case MechanicEquipPacketPayloadMode.ClearAll:
+                case MechanicEquipPacketPayloadMode.ResetDefaults:
+                    break;
+                case MechanicEquipPacketPayloadMode.AuthorityRequest:
+                    writer.Write(payload.RequestId);
+                    writer.Write(payload.RequestedAtTick);
+                    writer.Write((byte)payload.RequestKind);
+                    writer.Write((byte)payload.OwnerKind);
+                    writer.Write(payload.OwnerSessionId);
+                    writer.Write(payload.ExpectedCharacterId);
+                    writer.Write(payload.ExpectedBuildStateToken);
+                    writer.Write(payload.ExpectedMechanicStateToken);
+                    writer.Write(payload.ItemId);
+                    writer.Write((byte)payload.SourceInventoryType);
+                    writer.Write(payload.SourceInventoryIndex);
+                    WriteOptionalMechanicSlot(writer, payload.TargetMechanicSlot);
+                    WriteOptionalMechanicSlot(writer, payload.SourceMechanicSlot);
+                    break;
+                case MechanicEquipPacketPayloadMode.AuthorityResult:
+                    writer.Write(payload.RequestId);
+                    writer.Write(payload.RequestedAtTick);
+                    writer.Write((byte)payload.AuthorityResultKind);
+                    writer.Write(payload.ResolvedBuildStateToken);
+                    writer.Write(payload.ResolvedMechanicStateToken);
+                    switch (payload.AuthorityResultKind)
+                    {
+                        case MechanicEquipAuthorityResultKind.Reject:
+                            writer.Write(payload.RejectReason ?? string.Empty);
+                            break;
+                        case MechanicEquipAuthorityResultKind.LocalRequestAccept:
+                        case MechanicEquipAuthorityResultKind.ClearAllAccept:
+                        case MechanicEquipAuthorityResultKind.ResetDefaultsAccept:
+                            break;
+                        case MechanicEquipAuthorityResultKind.SnapshotAccept:
+                            WriteSnapshotItems(writer, payload.SnapshotItems);
+                            break;
+                        case MechanicEquipAuthorityResultKind.SlotMutationAccept:
+                            WriteMechanicSlot(writer, payload.Slot);
+                            writer.Write(payload.ItemId);
+                            break;
+                        default:
+                            throw new InvalidOperationException($"Unsupported mechanic authority result kind '{payload.AuthorityResultKind}'.");
+                    }
+
+                    break;
+                default:
+                    throw new InvalidOperationException($"Unsupported mechanic payload mode '{payload.Mode}'.");
+            }
+
             return stream.ToArray();
         }
 
@@ -418,6 +484,37 @@ namespace HaCreator.MapSimulator.Companions
                 [MechanicEquipSlot.Arm] = reader.ReadInt32(),
                 [MechanicEquipSlot.Leg] = reader.ReadInt32()
             };
+        }
+
+        private static void WriteSnapshotItems(BinaryWriter writer, IReadOnlyDictionary<MechanicEquipSlot, int> snapshotItems)
+        {
+            writer.Write(TryGetSnapshotItem(snapshotItems, MechanicEquipSlot.Engine));
+            writer.Write(TryGetSnapshotItem(snapshotItems, MechanicEquipSlot.Frame));
+            writer.Write(TryGetSnapshotItem(snapshotItems, MechanicEquipSlot.Transistor));
+            writer.Write(TryGetSnapshotItem(snapshotItems, MechanicEquipSlot.Arm));
+            writer.Write(TryGetSnapshotItem(snapshotItems, MechanicEquipSlot.Leg));
+        }
+
+        private static int TryGetSnapshotItem(IReadOnlyDictionary<MechanicEquipSlot, int> snapshotItems, MechanicEquipSlot slot)
+        {
+            return snapshotItems != null && snapshotItems.TryGetValue(slot, out int itemId)
+                ? itemId
+                : 0;
+        }
+
+        private static void WriteMechanicSlot(BinaryWriter writer, MechanicEquipSlot? slot)
+        {
+            if (!slot.HasValue)
+            {
+                throw new InvalidOperationException("Mechanic payload requires a concrete mechanic slot.");
+            }
+
+            writer.Write((byte)slot.Value);
+        }
+
+        private static void WriteOptionalMechanicSlot(BinaryWriter writer, MechanicEquipSlot? slot)
+        {
+            writer.Write(slot.HasValue ? (byte)slot.Value : byte.MaxValue);
         }
 
         private static bool TryReadMechanicSlot(BinaryReader reader, out MechanicEquipSlot slot, out string errorMessage)

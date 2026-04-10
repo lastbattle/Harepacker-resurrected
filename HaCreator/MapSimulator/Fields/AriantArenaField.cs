@@ -714,19 +714,12 @@ namespace HaCreator.MapSimulator.Fields
                 spawn.FacingRight,
                 spawn.ActionName,
                 spawn.CharacterId);
-            if (spawn.PortableChairItemId.HasValue)
-            {
-                _remoteUserPool?.TrySetPortableChair(spawn.CharacterId, spawn.PortableChairItemId, out _);
-            }
-
-            if (spawn.TemporaryStats.HasPayload)
-            {
-                _remoteUserPool?.TryApplyTemporaryStatSnapshot(
-                    spawn.CharacterId,
-                    spawn.TemporaryStats,
-                    delay: 0,
-                    out _);
-            }
+            RemoteUserEnterFieldStateApplicator.TryApply(
+                _remoteUserPool,
+                spawn,
+                Environment.TickCount,
+                syncAnimationDisplayerRemoteUserState: null,
+                out _);
 
             return true;
         }

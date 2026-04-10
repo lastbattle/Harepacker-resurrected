@@ -100,6 +100,12 @@ namespace HaCreator.MapSimulator.UI
             set;
         }
 
+        public Action ResultPreludeStarted
+        {
+            get;
+            set;
+        }
+
         public override void SetFont(SpriteFont font)
         {
             _font = font;
@@ -781,6 +787,7 @@ namespace HaCreator.MapSimulator.UI
             if (!_sharedResultPreludeStarted)
             {
                 _sharedResultPreludeStarted = true;
+                ResultPreludeStarted?.Invoke();
                 _productionEnhancementAnimationDisplayer?.PlayVegaResultPrelude(Environment.TickCount);
             }
 

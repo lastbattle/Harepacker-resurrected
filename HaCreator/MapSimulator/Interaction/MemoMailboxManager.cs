@@ -14,6 +14,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int StringPoolDeleteSuccess = 0xF64;
         private const int StringPoolClaimSuccess = 0xF65;
         private const int StringPoolSendSuccess = 0xF66;
+        private const int StringPoolQuickDeliveryDefaultMemo = 0xF57;
+        private const int MaxPacketOwnedReceiveRows = 10;
 
         private enum MemoAttachmentKind
         {
@@ -161,9 +163,9 @@ namespace HaCreator.MapSimulator.Interaction
                 StatusText = BuildStatusText(memo),
                 AttachmentSummary = BuildAttachmentSummary(memo.Attachment),
                 AttachmentDescription = BuildAttachmentDescription(memo),
-                AttachmentItemId = memo.Attachment?.Kind == MemoAttachmentKind.Item ? memo.Attachment.ItemId : 0,
-                AttachmentQuantity = memo.Attachment?.Kind == MemoAttachmentKind.Item ? memo.Attachment.Quantity : 0,
-                AttachmentMeso = memo.Attachment?.Kind == MemoAttachmentKind.Meso ? memo.Attachment.Meso : 0,
+                AttachmentItemId = GetAttachmentItemId(memo.Attachment),
+                AttachmentQuantity = GetAttachmentQuantity(memo.Attachment),
+                AttachmentMeso = GetAttachmentMeso(memo.Attachment),
                 CanClaim = CanClaimAttachment(memo),
                 IsClaimed = memo.Attachment?.IsClaimed == true,
                 IsExpired = IsExpired(memo)
@@ -600,6 +602,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (_memos.Count >= MaxPacketOwnedReceiveRows)
+            {
+                message = $"Ignored packet-owned parcel '{(string.IsNullOrWhiteSpace(subject) ? BuildFallbackParcelLabel(body) : subject.Trim())}' because the receive owner already has the client-shaped 10-row backlog filled.";
+                _lastActionSummary = message;
+                return true;
+            }
+
             string resolvedSubject = string.IsNullOrWhiteSpace(subject)
                 ? BuildFallbackParcelLabel(body)
                 : subject.Trim();
@@ -718,9 +727,9 @@ namespace HaCreator.MapSimulator.Interaction
             claimResult = new MemoMailboxClaimResult
             {
                 MemoId = memo.MemoId,
-                AttachmentItemId = memo.Attachment.Kind == MemoAttachmentKind.Item ? memo.Attachment.ItemId : 0,
-                AttachmentQuantity = memo.Attachment.Kind == MemoAttachmentKind.Item ? memo.Attachment.Quantity : 0,
-                AttachmentMeso = memo.Attachment.Kind == MemoAttachmentKind.Meso ? memo.Attachment.Meso : 0,
+                AttachmentItemId = GetAttachmentItemId(memo.Attachment),
+                AttachmentQuantity = GetAttachmentQuantity(memo.Attachment),
+                AttachmentMeso = GetAttachmentMeso(memo.Attachment),
                 AttachmentSummary = BuildAttachmentSummary(memo.Attachment)
             };
             memo.Attachment.IsClaimed = true;
@@ -1009,21 +1018,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static MemoAttachmentState BuildAttachment(int attachmentItemId, int attachmentQuantity, int attachmentMeso)
         {
-            if (attachmentItemId > 0)
+            if (attachmentItemId > 0 || attachmentMeso > 0)
             {
                 return new MemoAttachmentState
                 {
-                    Kind = MemoAttachmentKind.Item,
-                    ItemId = attachmentItemId,
-                    Quantity = Math.Max(1, attachmentQuantity)
-                };
-            }
-
-            if (attachmentMeso > 0)
-            {
-                return new MemoAttachmentState
-                {
-                    Kind = MemoAttachmentKind.Meso,
+                    Kind = attachmentItemId > 0 ? MemoAttachmentKind.Item : MemoAttachmentKind.Meso,
+                    ItemId = Math.Max(0, attachmentItemId),
+                    Quantity = attachmentItemId > 0 ? Math.Max(1, attachmentQuantity) : 0,
                     Meso = attachmentMeso
                 };
             }
@@ -1050,6 +1051,13 @@ namespace HaCreator.MapSimulator.Interaction
             if (attachment == null || attachment.Kind == MemoAttachmentKind.None)
             {
                 return "No attachment";
+            }
+
+            bool hasItem = HasItemAttachment(attachment);
+            bool hasMeso = HasMesoAttachment(attachment);
+            if (hasItem && hasMeso)
+            {
+                return $"{ResolveItemName(attachment.ItemId)} x{Math.Max(1, attachment.Quantity)}, {attachment.Meso:N0} meso";
             }
 
             return attachment.Kind switch
@@ -1083,7 +1091,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string memoText = string.IsNullOrWhiteSpace(entry.MemoText)
-                ? "Packet-owned parcel payload did not include memo text."
+                ? entry.IsQuickDelivery
+                    ? MapleStoryStringPool.GetOrFallback(
+                        StringPoolQuickDeliveryDefaultMemo,
+                        "The received package can be obtained through the Quick Delivery NPC.")
+                    : "Packet-owned parcel payload did not include memo text."
                 : entry.MemoText.Trim();
             if (entry.HasUndecodedItemAttachment)
             {
@@ -1118,9 +1130,32 @@ namespace HaCreator.MapSimulator.Interaction
                 return 0;
             }
 
-            return entry.AttachmentItemId > 0 && entry.AttachmentMeso > 0
-                ? 0
-                : Math.Max(0, entry.AttachmentMeso);
+            return Math.Max(0, entry.AttachmentMeso);
+        }
+
+        private static bool HasItemAttachment(MemoAttachmentState attachment)
+        {
+            return attachment?.ItemId > 0 && attachment.Quantity > 0;
+        }
+
+        private static bool HasMesoAttachment(MemoAttachmentState attachment)
+        {
+            return attachment?.Meso > 0;
+        }
+
+        private static int GetAttachmentItemId(MemoAttachmentState attachment)
+        {
+            return HasItemAttachment(attachment) ? attachment.ItemId : 0;
+        }
+
+        private static int GetAttachmentQuantity(MemoAttachmentState attachment)
+        {
+            return HasItemAttachment(attachment) ? attachment.Quantity : 0;
+        }
+
+        private static int GetAttachmentMeso(MemoAttachmentState attachment)
+        {
+            return HasMesoAttachment(attachment) ? attachment.Meso : 0;
         }
 
         private int ResolveMemoId(int? requestedMemoId)
@@ -1142,12 +1177,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return "No package is attached to this memo.";
             }
 
-            string description = attachment.Kind switch
-            {
-                MemoAttachmentKind.Item => $"Item package: {ResolveItemName(attachment.ItemId)} x{Math.Max(1, attachment.Quantity)}.",
-                MemoAttachmentKind.Meso => $"Meso package: {attachment.Meso:N0} meso.",
-                _ => "No package is attached to this memo."
-            };
+            bool hasItem = HasItemAttachment(attachment);
+            bool hasMeso = HasMesoAttachment(attachment);
+            string description = hasItem && hasMeso
+                ? $"Item package: {ResolveItemName(attachment.ItemId)} x{Math.Max(1, attachment.Quantity)} with {attachment.Meso:N0} meso."
+                : attachment.Kind switch
+                {
+                    MemoAttachmentKind.Item => $"Item package: {ResolveItemName(attachment.ItemId)} x{Math.Max(1, attachment.Quantity)}.",
+                    MemoAttachmentKind.Meso => $"Meso package: {attachment.Meso:N0} meso.",
+                    _ => "No package is attached to this memo."
+                };
 
             if (memo?.ExpirationTimestampUtc.HasValue == true)
             {

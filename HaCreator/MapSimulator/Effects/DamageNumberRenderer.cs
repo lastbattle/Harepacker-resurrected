@@ -181,7 +181,8 @@ namespace HaCreator.MapSimulator.Effects
             CompositeCanvasPlacement Placement,
             DamageNumberAnimationTimeline Timeline,
             Point CriticalBannerOffset,
-            bool HasCriticalBanner);
+            bool HasCriticalBanner,
+            CanvasLayerRecoveredLayerSettings RecoveredLayerSettings);
         internal sealed record PreparedDamageNumberLayer(
             int CanvasWidth,
             int CanvasHeight,
@@ -657,7 +658,17 @@ namespace HaCreator.MapSimulator.Effects
                 criticalBanner is PreparedSpriteDrawInfo banner
                     ? new Point(banner.DrawOffsetX, banner.DrawOffsetY)
                     : Point.Zero,
-                criticalBanner.HasValue);
+                criticalBanner.HasValue,
+                ResolveRecoveredLayerSettings());
+        }
+
+        internal static CanvasLayerRecoveredLayerSettings ResolveRecoveredLayerSettings()
+        {
+            return new CanvasLayerRecoveredLayerSettings(
+                CreateLayerCanvasValue: 0,
+                InitialLayerOptionValue: unchecked((int)0xC0050004),
+                LayerPriorityValue: -1,
+                FinalizeLayerOptionValue: 0);
         }
 
         internal static CompositeCanvasPlacement ResolveCompositeCanvasPlacement(
@@ -826,7 +837,8 @@ namespace HaCreator.MapSimulator.Effects
                 registration.HasCriticalBanner ? registration.CriticalBannerOffset : Point.Zero,
                 registration.Timeline.CriticalDelayMs,
                 ownsCanvasTexture: true,
-                owner: AnimationCanvasLayerOwner.DamageNumber);
+                owner: AnimationCanvasLayerOwner.DamageNumber,
+                recoveredLayerSettings: registration.RecoveredLayerSettings);
 
             dmgNumber.CompositeCanvasTexture = null;
             dmgNumber.PreparedVisual = null;

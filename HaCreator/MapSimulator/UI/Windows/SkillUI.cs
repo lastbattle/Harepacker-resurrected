@@ -1914,6 +1914,8 @@ namespace HaCreator.MapSimulator.UI
         public int CurrentLevel { get; set; }
         public int BonusLevel { get; set; }
         public int MaxLevel { get; set; }
+        public bool IsInvisible { get; set; }
+        public bool IsTimeLimited { get; set; }
         public int RequiredCharacterLevel { get; set; }
         public int RequiredSkillId { get; set; }
         public int RequiredSkillLevel { get; set; }
@@ -2017,6 +2019,38 @@ namespace HaCreator.MapSimulator.UI
                 return Math.Max(0, pair.Value);
 
             return 0;
+        }
+    }
+
+    internal static class SkillBookVisibilityResolver
+    {
+        private const int HiddenMechanicSiegeSkillId = 4321001;
+        private const int HiddenBeginnerSkillId = 1014;
+        private const int DualBladeHiddenRogueSkillId = 4000001;
+        private const int DualBladeHiddenMasterySkillId = 4001344;
+
+        public static bool IsVisible(SkillDisplayData skill, bool useDualBladeRules)
+        {
+            if (skill == null)
+                return false;
+
+            if (skill.SkillId == HiddenMechanicSiegeSkillId || skill.SkillId == HiddenBeginnerSkillId)
+                return false;
+
+            if (useDualBladeRules &&
+                (skill.SkillId == DualBladeHiddenRogueSkillId || skill.SkillId == DualBladeHiddenMasterySkillId))
+            {
+                return false;
+            }
+
+            int currentLevel = Math.Max(0, skill.CurrentLevel);
+            if (skill.IsInvisible && currentLevel <= 0)
+                return false;
+
+            if (skill.IsTimeLimited && currentLevel <= 0)
+                return false;
+
+            return true;
         }
     }
 

@@ -161,52 +161,26 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
         {
-            if (historyIndexFromNewest <= 0)
+            if (!TryResolveRecentOutboundPacket(historyIndexFromNewest, "replay", out byte[] rawPacket, out string resolveStatus))
             {
-                status = "Transport replay index must be 1 or greater.";
+                status = resolveStatus;
                 LastStatus = status;
                 return false;
             }
 
-            OutboundPacketTrace[] entries;
-            lock (_sync)
+            return TrySendRawPacket(rawPacket, out status);
+        }
+
+        public bool TryQueueRecentOutboundPacket(int historyIndexFromNewest, out string status)
+        {
+            if (!TryResolveRecentOutboundPacket(historyIndexFromNewest, "queue", out byte[] rawPacket, out string resolveStatus))
             {
-                if (_recentOutboundPackets.Count == 0)
-                {
-                    status = "No captured transport outbound client packets are available to replay.";
-                    LastStatus = status;
-                    return false;
-                }
-
-                if (historyIndexFromNewest > _recentOutboundPackets.Count)
-                {
-                    status = $"Transport replay index {historyIndexFromNewest} exceeds the {_recentOutboundPackets.Count} captured outbound packet(s).";
-                    LastStatus = status;
-                    return false;
-                }
-
-                entries = _recentOutboundPackets.ToArray();
-            }
-
-            OutboundPacketTrace trace = entries[^historyIndexFromNewest];
-            if (string.IsNullOrWhiteSpace(trace.RawPacketHex))
-            {
-                status = $"Captured transport outbound packet {historyIndexFromNewest} has no raw payload to replay.";
+                status = resolveStatus;
                 LastStatus = status;
                 return false;
             }
 
-            try
-            {
-                byte[] rawPacket = Convert.FromHexString(trace.RawPacketHex);
-                return TrySendRawPacket(rawPacket, out status);
-            }
-            catch (FormatException ex)
-            {
-                status = $"Captured transport outbound packet {historyIndexFromNewest} could not be replayed: {ex.Message}";
-                LastStatus = status;
-                return false;
-            }
+            return TryQueueRawPacket(rawPacket, out status);
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -439,11 +413,29 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] rawPacket = TransportationFieldInitRequestCodec.BuildRawFieldInitPacket(fieldId, shipKind);
-            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(TransportationFieldInitRequestCodec.OutboundFieldInitOpcode, rawPacket));
+            return TryQueueRawPacket(rawPacket, out status);
+        }
+
+        public bool TrySendRawPacket(byte[] rawPacket, out string status)
+        {
+            return TrySendRawPacket(rawPacket, out status, countAsTypedSend: true);
+        }
+
+        public bool TryQueueRawPacket(byte[] rawPacket, out string status)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out _))
+            {
+                status = "Transport outbound packet must include a 2-byte opcode.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedPacket = (byte[])rawPacket.Clone();
+            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(opcode, clonedPacket));
             QueuedCount++;
-            LastQueuedOpcode = TransportationFieldInitRequestCodec.OutboundFieldInitOpcode;
-            LastQueuedRawPacket = rawPacket;
-            status = $"Queued {TransportationFieldInitRequestCodec.DescribeFieldInitRequest(fieldId, shipKind)} for deferred live-session injection.";
+            LastQueuedOpcode = opcode;
+            LastQueuedRawPacket = clonedPacket;
+            status = $"Queued outbound {DescribeOutboundPacket(opcode, clonedPacket)} for deferred live-session injection.";
             LastStatus = status;
             return true;
         }
@@ -591,7 +583,8 @@ namespace HaCreator.MapSimulator.Managers
                 if (TryDecodeOpcode(raw, out int opcode, out byte[] payload))
                 {
                     bool isTransportOpcode = opcode == TransportationPacketInboxManager.PacketTypeContiMove
-                        || opcode == TransportationPacketInboxManager.PacketTypeContiState;
+                        || opcode == TransportationPacketInboxManager.PacketTypeContiState
+                        || opcode == TransportationFieldInitRequestCodec.OutboundFieldInitOpcode;
                     if (isTransportOpcode)
                     {
                         ForwardedOutboundTransportCount++;
@@ -670,6 +663,59 @@ namespace HaCreator.MapSimulator.Managers
             {
                 status = $"Transport outbound replay failed: {ex.Message}";
                 LastStatus = status;
+                return false;
+            }
+        }
+
+        private bool TryResolveRecentOutboundPacket(
+            int historyIndexFromNewest,
+            string actionName,
+            out byte[] rawPacket,
+            out string status)
+        {
+            rawPacket = Array.Empty<byte>();
+            status = null;
+
+            if (historyIndexFromNewest <= 0)
+            {
+                status = $"Transport {actionName} index must be 1 or greater.";
+                return false;
+            }
+
+            OutboundPacketTrace[] entries;
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    status = $"No captured transport outbound client packets are available to {actionName}.";
+                    return false;
+                }
+
+                if (historyIndexFromNewest > _recentOutboundPackets.Count)
+                {
+                    status = $"Transport {actionName} index {historyIndexFromNewest} exceeds the {_recentOutboundPackets.Count} captured outbound packet(s).";
+                    return false;
+                }
+
+                entries = _recentOutboundPackets.ToArray();
+            }
+
+            OutboundPacketTrace trace = entries[^historyIndexFromNewest];
+            if (string.IsNullOrWhiteSpace(trace.RawPacketHex))
+            {
+                status = $"Captured transport outbound packet {historyIndexFromNewest} has no raw payload to {actionName}.";
+                return false;
+            }
+
+            try
+            {
+                rawPacket = Convert.FromHexString(trace.RawPacketHex);
+                return true;
+            }
+            catch (FormatException ex)
+            {
+                status = $"Captured transport outbound packet {historyIndexFromNewest} could not be used for {actionName}: {ex.Message}";
+                rawPacket = Array.Empty<byte>();
                 return false;
             }
         }

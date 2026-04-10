@@ -224,6 +224,34 @@ namespace HaCreator.MapSimulator.Pools
                 branchName);
         }
 
+        internal static IEnumerable<Point> EnumerateClientOwnedTileOverlayOrigins(
+            Rectangle area,
+            int tileWidth,
+            int tileHeight,
+            int effectDistance)
+        {
+            if (area.Width <= 0
+                || area.Height <= 0
+                || tileWidth <= 0
+                || tileHeight <= 0)
+            {
+                yield break;
+            }
+
+            int horizontalStep = effectDistance > 0
+                ? Math.Max(1, effectDistance)
+                : tileWidth;
+            int verticalStep = tileHeight;
+
+            for (int worldY = area.Top; worldY < area.Bottom; worldY += verticalStep)
+            {
+                for (int worldX = area.Left; worldX < area.Right; worldX += horizontalStep)
+                {
+                    yield return new Point(worldX, worldY);
+                }
+            }
+        }
+
         internal static Vector2 ResolvePacketOwnedMobAttackHitAnchor(
             Rectangle hitbox,
             Vector2 summonPosition,

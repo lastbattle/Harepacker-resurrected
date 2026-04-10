@@ -5,6 +5,12 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal static class MessengerRuntimeRemoteUserParity
     {
+        internal static bool HasReusableProfileMetadata(this MessengerRemoteParticipantSnapshot snapshot)
+        {
+            return snapshot.Level > 0
+                || !string.IsNullOrWhiteSpace(snapshot.JobName);
+        }
+
         internal static LoginAvatarLook ResolveRemoteAvatarLook(this MessengerRemoteParticipantSnapshot snapshot)
         {
             return snapshot.AvatarLook != null
@@ -17,7 +23,17 @@ namespace HaCreator.MapSimulator.Interaction
             Character.CharacterBuild localTemplate,
             Character.CharacterBuild existingBuild)
         {
-            Character.CharacterBuild build = existingBuild?.Clone();
+            Character.CharacterBuild build = null;
+            if (existingBuild != null)
+            {
+                if (snapshot.AvatarLook == null && !snapshot.HasReusableProfileMetadata())
+                {
+                    return null;
+                }
+
+                build = existingBuild.Clone();
+            }
+
             if (build == null)
             {
                 if (snapshot.AvatarLook == null)

@@ -34,7 +34,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly FamilyChartTextResources _textResources = FamilyChartTextResources.CreateDefault();
         private readonly List<FamilyTrackedMemberSnapshot> _trackedMembersBuffer = new();
         private int _trackedMembersCount;
-        private readonly List<string> _precepts = new()
+        private readonly List<string> _preceptSuggestions = new()
         {
             "Travel as one family and always answer a summon.",
             "Train juniors before chasing new privileges.",
@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Interaction
         private FamilyEntitlementType _entitlementType = FamilyEntitlementType.DropAndExpBuff;
         private readonly Dictionary<FamilyEntitlementType, int> _entitlementUseCounts = new();
         private string _familyName = string.Empty;
+        private string _familyPrecept = string.Empty;
         private string _locationSummary = "Maple Island";
         private string _remotePreviewRequestSummary;
         private FamilyPrivilegeState _activePrivilege;
@@ -145,7 +146,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SpecialReputationCost = specialCost,
                 SpecialUseCount = specialUseCount,
                 SpecialUseLimit = specialUseLimit,
-                Precept = _precepts[_preceptIndex],
+                Precept = _familyPrecept,
                 EntitlementLabel = GetEntitlementLabel(_entitlementType),
                 EntitlementIndex = (int)_entitlementType,
                 EntitlementDescription = BuildEntitlementDescription(localPlayer, activePrivilege),
@@ -331,8 +332,25 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string CyclePrecept()
         {
-            _preceptIndex = (_preceptIndex + 1) % _precepts.Count;
-            return $"Family precept updated to: {_precepts[_preceptIndex]}";
+            _preceptIndex = (_preceptIndex + 1) % _preceptSuggestions.Count;
+            _familyPrecept = _preceptSuggestions[_preceptIndex];
+            return $"Family precept updated to: {_familyPrecept}";
+        }
+
+        internal string SetPrecept(string precept)
+        {
+            string resolvedPrecept = string.IsNullOrWhiteSpace(precept)
+                ? string.Empty
+                : precept.Trim();
+            if (resolvedPrecept.Length > 200)
+            {
+                resolvedPrecept = resolvedPrecept[..200].TrimEnd();
+            }
+
+            _familyPrecept = resolvedPrecept;
+            return string.IsNullOrWhiteSpace(_familyPrecept)
+                ? "Cleared the simulator family precept."
+                : $"Set the simulator family precept to: {_familyPrecept}";
         }
 
         internal string CycleEntitlement()
@@ -441,7 +459,8 @@ namespace HaCreator.MapSimulator.Interaction
             string familyName = string.IsNullOrWhiteSpace(_familyName) ? "(unset)" : _familyName;
             int useCount = GetEntitlementUseCount(_entitlementType);
             int useLimit = GetEntitlementDailyLimit(_entitlementType);
-            return $"Family roster: {_members.Count} members, family {familyName}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}.";
+            string precept = string.IsNullOrWhiteSpace(_familyPrecept) ? "(unset)" : _familyPrecept;
+            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}.";
         }
 
         internal string ResetToSeedFamily()
@@ -575,6 +594,7 @@ namespace HaCreator.MapSimulator.Interaction
             _entitlementType = FamilyEntitlementType.DropAndExpBuff;
             _entitlementUseCounts.Clear();
             _familyName = string.Empty;
+            _familyPrecept = string.Empty;
             _activePrivilege = null;
             _selectedEmptyTreeSlot = -1;
         }
@@ -582,6 +602,7 @@ namespace HaCreator.MapSimulator.Interaction
         private void SeedDefaultFamily()
         {
             _familyName = SeedFamilyName;
+            _familyPrecept = _preceptSuggestions[0];
             AddMember(new FamilyMemberState(100, "Ephenia", "Bishop", 126, "Orbis  CH 8", null, 540, 42, true, new Vector2(260f, -20f)));
             AddMember(new FamilyMemberState(110, "Cassia", "Paladin", 94, "Leafre  CH 6", 100, 360, 21, true, new Vector2(180f, 10f)));
             AddMember(new FamilyMemberState(111, "Rowan", "Ranger", 90, "Mu Lung  CH 4", 100, 288, 16, false, new Vector2(340f, 10f)));
@@ -840,6 +861,11 @@ namespace HaCreator.MapSimulator.Interaction
                 $"{selectedMember.Level} {selectedMember.JobName} at {selectedMember.LocationSummary}.",
                 $"{GetStatisticValue(selectedMember)} direct juniors, {CountDescendants(selectedMember.Id)} total descendants."
             };
+
+            if (!string.IsNullOrWhiteSpace(_familyPrecept))
+            {
+                lines.Add($"Precept: {_familyPrecept}");
+            }
 
             if (activePrivilege != null)
             {

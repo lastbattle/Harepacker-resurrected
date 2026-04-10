@@ -20,9 +20,10 @@ namespace HaCreator.MapSimulator
         private const string RemoteUserCommandUsage =
             "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...";
         private const string RemoteUserPacketTokenUsage =
-            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|179|180|181|182|183|184|210|211|212|213|214|215|223|225|226|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|pickup|melee|effect|avatarmodified|tempset|tempreset>";
+            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|179|180|181|182|183|184|210|211|212|213|214|215|223|225|226|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|pickup|melee|effect|avatarmodified|tempset|tempreset>";
         private readonly RemoteUserPacketInboxManager _remoteUserPacketInbox = new();
         private readonly PacketOwnedRelationshipRecordRuntime _packetOwnedRelationshipRecordRuntime = new();
+        private readonly PacketOwnedPortableChairRecordRuntime _packetOwnedPortableChairRecordRuntime = new();
 
         private void RememberRemoteTownPortalOwnerFieldObservation(
             uint ownerCharacterId,
@@ -131,6 +132,7 @@ namespace HaCreator.MapSimulator
 
             _remoteUserPool.Clear();
             _packetOwnedRelationshipRecordRuntime.Clear();
+            _packetOwnedPortableChairRecordRuntime.Clear();
             _animationEffects.ClearUserStates();
             return ChatCommandHandler.CommandResult.Ok("Remote user pool cleared.");
         }
@@ -759,6 +761,16 @@ namespace HaCreator.MapSimulator
                     out result);
             }
 
+            if (_packetOwnedPortableChairRecordRuntime.IsPortableChairRecordPacket(packetType))
+            {
+                return _packetOwnedPortableChairRecordRuntime.TryApplyPacket(
+                    packetType,
+                    payload,
+                    _remoteUserPool,
+                    sourceTag,
+                    out result);
+            }
+
             switch ((RemoteUserPacketType)packetType)
             {
                 case RemoteUserPacketType.UserEnterField:
@@ -790,26 +802,13 @@ namespace HaCreator.MapSimulator
                             out _);
                     }
 
-                    if (applied && enterPacket.PortableChairItemId.HasValue)
-                    {
-                        _remoteUserPool.TrySetPortableChair(enterPacket.CharacterId, enterPacket.PortableChairItemId, out _);
-                    }
-
-                    if (applied && enterPacket.TemporaryStats.HasPayload)
-                    {
-                        _remoteUserPool.TryApplyTemporaryStatSnapshot(
-                            enterPacket.CharacterId,
-                            enterPacket.TemporaryStats,
-                            delay: 0,
-                            out _);
-                        SyncAnimationDisplayerRemoteUserState(enterPacket.CharacterId);
-                    }
-
                     if (applied)
                     {
-                        _remoteUserPool.TryApplyEnterFieldAvatarPresentation(
+                        RemoteUserEnterFieldStateApplicator.TryApply(
+                            _remoteUserPool,
                             enterPacket,
                             currentTime,
+                            SyncAnimationDisplayerRemoteUserState,
                             out _);
                     }
 
@@ -1434,6 +1433,8 @@ namespace HaCreator.MapSimulator
                 "marriageremove" => (int)RemoteUserPacketType.UserMarriageRecordRemove,
                 "newyearadd" => (int)RemoteUserPacketType.UserNewYearCardRecordAdd,
                 "newyearremove" => (int)RemoteUserPacketType.UserNewYearCardRecordRemove,
+                "couplechairadd" => (int)RemoteUserPacketType.UserCoupleChairRecordAdd,
+                "couplechairremove" => (int)RemoteUserPacketType.UserCoupleChairRecordRemove,
                 "enter" => (int)RemoteUserPacketType.UserEnterField,
                 "leave" => (int)RemoteUserPacketType.UserLeaveField,
                 "move" => (int)RemoteUserPacketType.UserMove,
@@ -1449,6 +1450,8 @@ namespace HaCreator.MapSimulator
                 "marriagerecordremove" or "marriageremove" => (int)RemoteUserPacketType.UserMarriageRecordRemove,
                 "newyearcardrecordadd" or "newyearadd" => (int)RemoteUserPacketType.UserNewYearCardRecordAdd,
                 "newyearcardrecordremove" or "newyearremove" => (int)RemoteUserPacketType.UserNewYearCardRecordRemove,
+                "couplechairrecordadd" or "couplechairadd" => (int)RemoteUserPacketType.UserCoupleChairRecordAdd,
+                "couplechairrecordremove" or "couplechairremove" => (int)RemoteUserPacketType.UserCoupleChairRecordRemove,
                 "chair" => (int)RemoteUserPacketType.UserPortableChair,
                 "mount" => (int)RemoteUserPacketType.UserMount,
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,

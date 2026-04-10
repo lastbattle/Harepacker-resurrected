@@ -20,11 +20,13 @@ namespace HaCreator.MapSimulator.Interaction
         int Quantity,
         InventoryType InventoryType,
         bool HasCashSerialNumber,
+        long ItemSerialNumber,
         long CashSerialNumber,
         long BaseExpirationTime,
         string ClientDisplayName,
         string Title,
         string MetadataSummary,
+        string DetailSummary,
         int EncodedByteLength);
 
     internal readonly record struct StoreBankOwnerRowSnapshot(
@@ -1035,6 +1037,8 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastPromptContextValue;
         private int _lastPromptTokenValue;
         private int _lastPromptChannelId = -1;
+        private bool _hasAcceptedGetAllRequestInFlight;
+        private int _ownerRowRevision;
 
         internal bool IsOpen { get; private set; }
         internal int NpcTemplateId => _npcTemplateId;
@@ -1042,14 +1046,20 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool HasPendingFeeCalculationRequest { get; private set; }
         internal bool GetAllRequestWasAccepted { get; private set; }
         internal bool HasDecodedItems => _decodedItems.Count > 0;
-        internal bool IsOwnerGetButtonEnabled => IsOpen && !HasPendingFeeCalculationRequest && (HasPendingGetAllRequest || HasDecodedItems);
+        internal bool HasAcceptedGetAllRequestInFlight => _hasAcceptedGetAllRequestInFlight;
+        internal int OwnerRowRevision => _ownerRowRevision;
+        internal bool IsOwnerGetButtonEnabled =>
+            IsOpen
+            && !HasPendingFeeCalculationRequest
+            && !_hasAcceptedGetAllRequestInFlight
+            && (HasPendingGetAllRequest || HasDecodedItems);
         internal int OwnerMoney => _money;
         internal string StatusMessage { get; private set; } = "CStoreBankDlg::OnPacket idle.";
 
         internal void Close()
         {
             IsOpen = false;
-            ResetPendingFeeCalculationRequest();
+            ResetTransientRequestState();
             StatusMessage = "CStoreBankDlg owner closed locally.";
         }
 
@@ -1062,9 +1072,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             HasPendingGetAllRequest = false;
             GetAllRequestWasAccepted = true;
+            _hasAcceptedGetAllRequestInFlight = true;
             StatusMessage = _pendingGetAllFee > 0
-                ? $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}."
-                : $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with the zero-fee StringPool 0xDC5 branch.";
+                ? $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}; BtGet stays request-owned until the next store-bank packet."
+                : $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with the zero-fee StringPool 0xDC5 branch; BtGet stays request-owned until the next store-bank packet.";
             AppendNote(StatusMessage);
             return StatusMessage;
         }
@@ -1121,6 +1132,9 @@ namespace HaCreator.MapSimulator.Interaction
                 HasPendingFeeCalculationRequest
                     ? $"Pending BtGet fee request: owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)}, packet row {_pendingFeeCalculationPacketRowIndex.ToString(CultureInfo.InvariantCulture)} (opcode 69, mode 26; selected row stays owner-local state)."
                     : "No BtGet fee request is currently staged.",
+                _hasAcceptedGetAllRequestInFlight
+                    ? "Accepted get-all request is still in flight (opcode 69, mode 27), so BtGet remains disabled until the next packet-owned dialog update."
+                    : "No accepted get-all request is currently in flight.",
                 HasPendingGetAllRequest
                     ? (_pendingGetAllFee > 0
                         ? $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} (StringPool 0xDC4)."
@@ -1298,7 +1312,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             IsOpen = true;
-            ResetPendingFeeCalculationRequest();
+            ResetTransientRequestState();
             _lastSubtype = payload[0];
             StatusMessage = _lastSubtype switch
             {
@@ -1317,6 +1331,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _decodedItems.Clear();
                 _decodedCountsByType.Clear();
                 _retainedCountsByType.Clear();
+                _ownerRowRevision++;
             }
 
             AppendNote(StatusMessage);
@@ -1332,7 +1347,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            ResetPendingFeeCalculationRequest();
+            ResetTransientRequestState();
             _lastSubtype = payload[0];
             switch (_lastSubtype)
             {
@@ -1398,12 +1413,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (payload.Length <= 1 || !TryParseOpenPayload(payload, 1))
             {
+                _ownerRowRevision++;
                 StatusMessage = $"CStoreBankDlg::SetStoreBankDlg opened the packet-owned store-bank owner from packet 370 subtype 35 with {payload.Length.ToString(CultureInfo.InvariantCulture)} byte(s), but only the owner lifecycle could be confirmed.";
                 AppendNote(StatusMessage);
                 message = StatusMessage;
                 return true;
             }
 
+            _ownerRowRevision++;
             StatusMessage = $"CStoreBankDlg::SetStoreBankDlg decoded NPC {_npcTemplateId.ToString(CultureInfo.InvariantCulture)} with slotCount={_slotCount.ToString(CultureInfo.InvariantCulture)}, money={_money.ToString(CultureInfo.InvariantCulture)}, and {BuildDecodedInventorySummaryCore()}.";
             AppendNote(StatusMessage);
             message = StatusMessage;
@@ -1417,8 +1434,9 @@ namespace HaCreator.MapSimulator.Interaction
             _lastPromptChannelId = -1;
         }
 
-        private void ResetPendingFeeCalculationRequest()
+        private void ResetTransientRequestState()
         {
+            _hasAcceptedGetAllRequestInFlight = false;
             HasPendingFeeCalculationRequest = false;
             _pendingFeeCalculationOwnerRowIndex = -1;
             _pendingFeeCalculationPacketRowIndex = -1;
@@ -1637,7 +1655,9 @@ namespace HaCreator.MapSimulator.Interaction
             List<string> parts = new()
             {
                 $"packet row {item.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)}",
-                item.InventoryType.ToString()
+                item.InventoryType.ToString(),
+                $"slot {ResolveSlotTypeLabel(item)}",
+                $"client stock {item.ClientStock.ToString(CultureInfo.InvariantCulture)}"
             };
 
             if (item.Quantity > 1)
@@ -1655,12 +1675,54 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add("recharge");
             }
 
+            if (item.ItemSerialNumber > 0)
+            {
+                parts.Add($"itemSN {item.ItemSerialNumber.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (item.CashSerialNumber > 0)
+            {
+                parts.Add($"cashSN {item.CashSerialNumber.ToString(CultureInfo.InvariantCulture)}");
+            }
+
             if (!string.IsNullOrWhiteSpace(item.Title))
             {
                 parts.Add($"title {item.Title}");
             }
 
+            if (item.EncodedByteLength > 0)
+            {
+                parts.Add($"decodeBytes {item.EncodedByteLength.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (item.WasRetainedFromPreviousSnapshot)
+            {
+                parts.Add("retained");
+            }
+
+            string bodyDetails = BuildDecodedItemBodyDetails(item);
+            if (!string.IsNullOrWhiteSpace(bodyDetails))
+            {
+                parts.Add(bodyDetails);
+            }
+
             return string.Join(" | ", parts);
+        }
+
+        private static string ResolveSlotTypeLabel(StoreBankItemEntry item)
+        {
+            if (item == null)
+            {
+                return "item";
+            }
+
+            return item.SlotType switch
+            {
+                1 => "equip",
+                2 => item.IsRechargeBundle ? "recharge" : "bundle",
+                3 => "pet",
+                _ => "item"
+            };
         }
 
         private static string BuildDecodedItemMarker(StoreBankItemEntry item)
@@ -1728,6 +1790,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string BuildDecodedItemBodySuffix(StoreBankItemEntry item)
         {
+            string bodyDetails = BuildDecodedItemBodyDetails(item);
+            return string.IsNullOrWhiteSpace(bodyDetails)
+                ? string.Empty
+                : $" | {bodyDetails}";
+        }
+
+        private static string BuildDecodedItemBodyDetails(StoreBankItemEntry item)
+        {
+            if (item == null)
+            {
+                return string.Empty;
+            }
+
             List<string> parts = new();
             if (!string.IsNullOrWhiteSpace(item.Title))
             {
@@ -1741,12 +1816,6 @@ namespace HaCreator.MapSimulator.Interaction
                     parts.Add($"EquipSN {item.EquipData.NonCashSerialNumber.Value.ToString(CultureInfo.InvariantCulture)}");
                 }
 
-                string expiration = FormatFileTime(item.EquipData.ExpirationTime);
-                if (!string.IsNullOrEmpty(expiration))
-                {
-                    parts.Add($"Expire {expiration}");
-                }
-
                 if (item.EquipData.IucOrExp > 0)
                 {
                     parts.Add($"IUC/EXP {item.EquipData.IucOrExp.ToString(CultureInfo.InvariantCulture)}");
@@ -1758,18 +1827,13 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add($"RechargeSN {item.BundleData.RechargeableSerialNumber.ToString(CultureInfo.InvariantCulture)}");
             }
 
-            if (item.PetData != null)
+            string expiration = FormatFileTime(item.BaseExpirationTime);
+            if (!string.IsNullOrWhiteSpace(expiration))
             {
-                string expiration = FormatFileTime(item.PetData.ExpirationTime);
-                if (!string.IsNullOrEmpty(expiration))
-                {
-                    parts.Add($"Expire {expiration}");
-                }
+                parts.Add($"Expire {expiration}");
             }
 
-            return parts.Count > 0
-                ? $" | {string.Join(", ", parts)}"
-                : string.Empty;
+            return string.Join(", ", parts);
         }
 
         private static bool ShowsClientStock(StoreBankItemEntry item)
@@ -1933,6 +1997,7 @@ namespace HaCreator.MapSimulator.Interaction
                 HasCashSerialNumber = hasCashSerialNumber,
                 ItemSerialNumber = itemSerialNumber,
                 CashSerialNumber = cashSerialNumber,
+                BaseExpirationTime = ResolveBaseExpirationTime(equipData, petData),
                 IsRechargeBundle = slotType == 2 && itemId / 10000 is 207 or 233,
                 MetadataSummary = metadataSummary,
                 EquipData = equipData,
@@ -1969,9 +2034,11 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.HasCashSerialNumber,
                 entry.ItemSerialNumber,
                 entry.CashSerialNumber,
+                entry.BaseExpirationTime,
                 entry.ClientDisplayName,
                 entry.Title,
                 entry.MetadataSummary,
+                BuildDecodedItemBodyDetails(entry),
                 entry.EncodedByteLength);
             return true;
         }
@@ -2001,12 +2068,28 @@ namespace HaCreator.MapSimulator.Interaction
                 HasCashSerialNumber = item.HasCashSerialNumber,
                 ItemSerialNumber = item.ItemSerialNumber,
                 CashSerialNumber = item.CashSerialNumber,
+                BaseExpirationTime = item.BaseExpirationTime,
                 IsRechargeBundle = item.IsRechargeBundle,
                 MetadataSummary = item.MetadataSummary,
                 EquipData = item.EquipData,
                 BundleData = item.BundleData,
                 PetData = item.PetData
             };
+        }
+
+        private static long ResolveBaseExpirationTime(StoreBankEquipData equipData, StoreBankPetData petData)
+        {
+            if (equipData != null && equipData.ExpirationTime > 0)
+            {
+                return equipData.ExpirationTime;
+            }
+
+            if (petData != null && petData.ExpirationTime > 0)
+            {
+                return petData.ExpirationTime;
+            }
+
+            return 0;
         }
 
         private static int ResolveClientStock(byte slotType, int quantity)
@@ -2513,7 +2596,7 @@ namespace HaCreator.MapSimulator.Interaction
                     }
                     else
                     {
-                        StatusMessage = "CBattleRecordMan accepted the server-on-calc request result. The client decompile only flips m_bServerOnCalc here; it does not open the window or arm m_bOnCalc in packet 422.";
+                        StatusMessage = "CBattleRecordMan accepted the server-on-calc request result. The client decompile only flips m_bServerOnCalc here; packet 422 does not open the window, arm m_bOnCalc, or enable the m_bDot branch by itself.";
                     }
                     break;
 
@@ -2538,7 +2621,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 "Packet-owned owner: CBattleRecordMan::OnPacket (420-423).",
                 $"Page: {ResolvePageName()} | Window: {(IsOpen ? "open" : "closed")}",
-                $"Calc flags: onCalc={OnCalc}, serverOnCalc={ServerOnCalc}, dot={DotTrackingEnabled}, ready421={OnCalc && ServerOnCalc}",
+                $"Calc flags: onCalc={OnCalc}, serverOnCalc={ServerOnCalc}, dot={DotTrackingEnabled}, ready421={IsDotDamageReady}",
                 $"Packets: 420={_packetCount420.ToString(CultureInfo.InvariantCulture)}, 421={_packetCount421.ToString(CultureInfo.InvariantCulture)}, 422={_packetCount422.ToString(CultureInfo.InvariantCulture)}, 423={_packetCount423.ToString(CultureInfo.InvariantCulture)}"
             };
 
@@ -2577,9 +2660,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyDotDamageInfo(byte[] payload, out string message)
         {
-            if (!OnCalc || !ServerOnCalc)
+            if (!IsDotDamageReady)
             {
-                StatusMessage = "CBattleRecordMan ignored DOT damage info because m_bOnCalc and m_bServerOnCalc were not both armed yet.";
+                StatusMessage = "CBattleRecordMan ignored DOT damage info because m_bOnCalc, m_bServerOnCalc, and m_bDot were not all armed yet.";
                 message = StatusMessage;
                 return true;
             }
@@ -2639,6 +2722,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _recentNotes.Clear();
             }
         }
+
+        private bool IsDotDamageReady => OnCalc && ServerOnCalc && DotTrackingEnabled;
 
         private string ResolvePageName()
         {

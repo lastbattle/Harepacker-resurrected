@@ -153,6 +153,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly HashSet<int> _packetOwnedAuthoritativeHiddenRecipeIds = new();
         private readonly Random _random = new();
         private readonly Texture2D _pixel;
+        private PacketOwnedItemMakerSessionState _packetOwnedSessionState = new();
 
         private Texture2D _gaugeBarTexture;
         private Texture2D _gaugeFillTexture;
@@ -202,6 +203,7 @@ namespace HaCreator.MapSimulator.UI
         public event Action<ItemMakerCraftResult> CraftCompleted;
         public event Action<IReadOnlyCollection<ItemMakerRecipeProgressionEntry>> RecipesDiscovered;
         public event Action<IReadOnlyCollection<ItemMakerRecipeProgressionEntry>> HiddenRecipesUnlocked;
+        internal PacketOwnedItemMakerSessionState PacketOwnedSessionState => _packetOwnedSessionState;
 
         internal void SetProductionEnhancementAnimationDisplayer(ProductionEnhancementAnimationDisplayer animationDisplayer)
         {
@@ -307,7 +309,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal bool TryApplyPacketOwnedSession(PacketOwnedItemMakerSession packetSession, out string message)
         {
-            PacketOwnedItemMakerSessionState appliedState = PacketOwnedItemMakerSessionStateRuntime.Apply(currentState: null, packetSession);
+            PacketOwnedItemMakerSessionState appliedState = PacketOwnedItemMakerSessionStateRuntime.Apply(_packetOwnedSessionState, packetSession);
             return TryApplyPacketOwnedSessionState(appliedState, out message);
         }
 
@@ -319,6 +321,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            _packetOwnedSessionState = sessionState;
             ClearPacketOwnedSessionState();
             _packetOwnedServerOwnsCraftExecution = sessionState.ServerOwnsCraftExecution;
             _packetOwnedHasAuthoritativeDisassemblyTargets = sessionState.HasAuthoritativeDisassemblyTargets;
@@ -1588,6 +1591,7 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedHasAuthoritativeDisassemblyTargets = false;
             _packetOwnedHasAuthoritativeHiddenRecipeList = false;
             _packetOwnedServerOwnsCraftExecution = false;
+            _packetOwnedSessionState = new PacketOwnedItemMakerSessionState();
         }
 
         private void ResetPacketOwnedLaunchSessionState()

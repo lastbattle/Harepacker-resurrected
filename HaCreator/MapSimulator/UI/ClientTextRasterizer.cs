@@ -1192,11 +1192,6 @@ namespace HaCreator.MapSimulator.UI
         {
             yield return rootDirectory;
 
-            if (!ShouldRecurseCandidateFontContainerDirectories(rootDirectory))
-            {
-                yield break;
-            }
-
             Queue<(string Directory, int Depth)> pendingDirectories = new();
             HashSet<string> seenDirectories = new(StringComparer.OrdinalIgnoreCase)
             {
@@ -1230,13 +1225,22 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
+                    bool shouldInspectChildDirectory = depth == 0 || ShouldSearchCandidateFontContainerDirectory(childDirectory);
+                    if (!shouldInspectChildDirectory)
+                    {
+                        continue;
+                    }
+
                     pendingDirectories.Enqueue((childDirectory, depth + 1));
-                    yield return childDirectory;
+                    if (ShouldYieldCandidateFontContainerDirectory(childDirectory))
+                    {
+                        yield return childDirectory;
+                    }
                 }
             }
         }
 
-        private static bool ShouldRecurseCandidateFontContainerDirectories(string rootDirectory)
+        private static bool ShouldSearchCandidateFontContainerDirectory(string rootDirectory)
         {
             string normalizedPath = NormalizeCandidateFontContainerPath(rootDirectory);
             if (string.IsNullOrWhiteSpace(normalizedPath))
@@ -1245,7 +1249,53 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return PreferredFontContainerDirectoryNameFragments.Any(
-                fragment => normalizedPath.Contains(fragment, StringComparison.Ordinal));
+                       fragment => normalizedPath.Contains(fragment, StringComparison.Ordinal))
+                || DirectoryContainsPreferredFontContainerFiles(rootDirectory);
+        }
+
+        private static bool ShouldYieldCandidateFontContainerDirectory(string rootDirectory)
+        {
+            return ShouldSearchCandidateFontContainerDirectory(rootDirectory);
+        }
+
+        private static bool DirectoryContainsPreferredFontContainerFiles(string rootDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(rootDirectory) || !Directory.Exists(rootDirectory))
+            {
+                return false;
+            }
+
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(rootDirectory, "*", SearchOption.TopDirectoryOnly);
+            }
+            catch
+            {
+                return false;
+            }
+
+            foreach (string candidatePath in files)
+            {
+                if (!IsFontContainerExtension(Path.GetExtension(candidatePath)))
+                {
+                    continue;
+                }
+
+                string fileName = Path.GetFileName(candidatePath);
+                if (PreferredFontContainerFileNames.Any(
+                        preferredFileName => string.Equals(preferredFileName, fileName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+
+                if (fileName.IndexOf("Maple", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string NormalizeCandidateFontContainerPath(string path)

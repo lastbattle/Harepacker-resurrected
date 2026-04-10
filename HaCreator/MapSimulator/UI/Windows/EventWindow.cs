@@ -11,6 +11,8 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class EventWindow : UIWindowBase
     {
+        internal readonly record struct CalendarSelectionState(DateTime Month, DateTime SelectedDate);
+
         private readonly struct PageLayer
         {
             public PageLayer(IDXObject layer, Point offset)
@@ -57,6 +59,7 @@ namespace HaCreator.MapSimulator.UI
         private DateTime _calendarMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
         private DateTime? _selectedCalendarDate;
         private int _autoDismissTick = int.MinValue;
+        private KeyboardState _previousKeyboardState;
 
         public EventWindow(
             IDXObject frame,
@@ -108,6 +111,7 @@ namespace HaCreator.MapSimulator.UI
             _autoDismissTick = snapshot.AutoDismissDelayMs > 0
                 ? unchecked(Environment.TickCount + snapshot.AutoDismissDelayMs)
                 : int.MinValue;
+            _previousKeyboardState = Keyboard.GetState();
             base.Show();
         }
 
@@ -212,6 +216,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            if (!IsVisible)
+            {
+                return;
+            }
+
+            HandleKeyboardInput();
         }
 
         protected override void DrawContents(
@@ -411,6 +427,132 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void HandleKeyboardInput()
+        {
+            KeyboardState keyboard = Keyboard.GetState();
+
+            bool moveUp = IsNewKeyPress(keyboard, Keys.Up);
+            bool moveDown = IsNewKeyPress(keyboard, Keys.Down);
+            bool moveLeft = IsNewKeyPress(keyboard, Keys.Left);
+            bool moveRight = IsNewKeyPress(keyboard, Keys.Right);
+            bool pageLeft = IsNewKeyPress(keyboard, Keys.PageUp);
+            bool pageRight = IsNewKeyPress(keyboard, Keys.PageDown);
+            bool toggleCalendar = IsNewKeyPress(keyboard, Keys.Tab) || IsNewKeyPress(keyboard, Keys.C);
+            bool filterAll = IsNewKeyPress(keyboard, Keys.D1) || IsNewKeyPress(keyboard, Keys.NumPad1);
+            bool filterStart = IsNewKeyPress(keyboard, Keys.D2) || IsNewKeyPress(keyboard, Keys.NumPad2);
+            bool filterRunning = IsNewKeyPress(keyboard, Keys.D3) || IsNewKeyPress(keyboard, Keys.NumPad3);
+            bool filterClear = IsNewKeyPress(keyboard, Keys.D4) || IsNewKeyPress(keyboard, Keys.NumPad4);
+            bool filterUpcoming = IsNewKeyPress(keyboard, Keys.D5) || IsNewKeyPress(keyboard, Keys.NumPad5);
+            bool close = IsNewKeyPress(keyboard, Keys.Escape) || IsNewKeyPress(keyboard, Keys.Back);
+
+            _previousKeyboardState = keyboard;
+
+            if (close)
+            {
+                Hide();
+                return;
+            }
+
+            if (filterAll)
+            {
+                SetFilter(null, showCalendar: false);
+                return;
+            }
+
+            if (filterStart)
+            {
+                SetFilter(EventEntryStatus.Start, showCalendar: false);
+                return;
+            }
+
+            if (filterRunning)
+            {
+                SetFilter(EventEntryStatus.InProgress, showCalendar: false);
+                return;
+            }
+
+            if (filterClear)
+            {
+                SetFilter(EventEntryStatus.Clear, showCalendar: false);
+                return;
+            }
+
+            if (filterUpcoming)
+            {
+                SetFilter(EventEntryStatus.Upcoming, showCalendar: false);
+                return;
+            }
+
+            if (toggleCalendar)
+            {
+                ToggleCalendarView();
+                return;
+            }
+
+            if (_showCalendar)
+            {
+                if (pageLeft)
+                {
+                    MovePreviousPage();
+                    return;
+                }
+
+                if (pageRight)
+                {
+                    MoveNextPage();
+                    return;
+                }
+
+                if (moveUp)
+                {
+                    MoveCalendarSelection(-7);
+                    return;
+                }
+
+                if (moveDown)
+                {
+                    MoveCalendarSelection(7);
+                    return;
+                }
+
+                if (moveLeft)
+                {
+                    MoveCalendarSelection(-1);
+                    return;
+                }
+
+                if (moveRight)
+                {
+                    MoveCalendarSelection(1);
+                }
+
+                return;
+            }
+
+            if (moveUp)
+            {
+                MoveRowSelection(-1);
+                return;
+            }
+
+            if (moveDown)
+            {
+                MoveRowSelection(1);
+                return;
+            }
+
+            if (moveLeft || pageLeft)
+            {
+                MovePreviousPage();
+                return;
+            }
+
+            if (moveRight || pageRight)
+            {
+                MoveNextPage();
+            }
+        }
+
         private IReadOnlyList<EventEntrySnapshot> GetVisibleEntries(EventWindowSnapshot snapshot)
         {
             IReadOnlyList<EventEntrySnapshot> filtered = GetFilteredEntries(snapshot);
@@ -498,6 +640,26 @@ namespace HaCreator.MapSimulator.UI
             return left.SortOrder.CompareTo(right.SortOrder);
         }
 
+        private void MoveRowSelection(int direction)
+        {
+            IReadOnlyList<EventEntrySnapshot> filteredEntries = GetFilteredEntries(_currentSnapshot ?? RefreshSnapshot());
+            if (filteredEntries.Count == 0)
+            {
+                _selectedIndex = 0;
+                _pageIndex = 0;
+                return;
+            }
+
+            int rowsPerPage = GetRowsPerPage();
+            _selectedIndex = (_selectedIndex + direction) % filteredEntries.Count;
+            if (_selectedIndex < 0)
+            {
+                _selectedIndex += filteredEntries.Count;
+            }
+
+            _pageIndex = Math.Clamp(_selectedIndex / rowsPerPage, 0, Math.Max(0, (filteredEntries.Count - 1) / rowsPerPage));
+        }
+
         private void MovePreviousPage()
         {
             if (_showCalendar)
@@ -508,6 +670,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _pageIndex = Math.Max(0, _pageIndex - 1);
+            _selectedIndex = Math.Min(_selectedIndex, ((_pageIndex + 1) * GetRowsPerPage()) - 1);
         }
 
         private void MoveNextPage()
@@ -519,7 +682,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _pageIndex++;
+            IReadOnlyList<EventEntrySnapshot> filteredEntries = GetFilteredEntries(_currentSnapshot ?? RefreshSnapshot());
+            int rowsPerPage = GetRowsPerPage();
+            int maxPage = filteredEntries.Count == 0 ? 0 : Math.Max(0, (filteredEntries.Count - 1) / rowsPerPage);
+            _pageIndex = Math.Min(maxPage, _pageIndex + 1);
+            _selectedIndex = Math.Min(Math.Max(0, filteredEntries.Count - 1), Math.Max(_selectedIndex, _pageIndex * rowsPerPage));
         }
 
         private void ToggleCalendarView()
@@ -530,6 +697,26 @@ namespace HaCreator.MapSimulator.UI
             {
                 InitializeCalendarSelection(_currentSnapshot ?? RefreshSnapshot());
             }
+        }
+
+        private void MoveCalendarSelection(int dayDelta)
+        {
+            DateTime current = _selectedCalendarDate?.Date ?? _calendarMonth.Date;
+            DateTime candidate = current.AddDays(dayDelta);
+            DateTime monthStart = new(_calendarMonth.Year, _calendarMonth.Month, 1);
+            int daysInMonth = DateTime.DaysInMonth(monthStart.Year, monthStart.Month);
+            DateTime monthEnd = new(monthStart.Year, monthStart.Month, daysInMonth);
+            if (candidate < monthStart)
+            {
+                candidate = monthStart;
+            }
+            else if (candidate > monthEnd)
+            {
+                candidate = monthEnd;
+            }
+
+            _selectedCalendarDate = candidate;
+            KeepEventAlarmVisible(EventAlarmInteractionKind.CalendarDateSelection);
         }
 
         private Rectangle GetCalendarBounds(EventWindowSnapshot snapshot)
@@ -551,6 +738,11 @@ namespace HaCreator.MapSimulator.UI
         private int GetRowsPerPage()
         {
             return 3;
+        }
+
+        private bool IsNewKeyPress(KeyboardState current, Keys key)
+        {
+            return current.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
         }
 
         private void BindActionButton(UIObject button, Action action)
@@ -993,7 +1185,78 @@ namespace HaCreator.MapSimulator.UI
         private EventWindowSnapshot RefreshSnapshot()
         {
             _currentSnapshot = _snapshotProvider?.Invoke() ?? new EventWindowSnapshot();
+            if (_showCalendar)
+            {
+                SyncCalendarSelection(_currentSnapshot);
+            }
+
             return _currentSnapshot;
+        }
+
+        private void SyncCalendarSelection(EventWindowSnapshot snapshot)
+        {
+            CalendarSelectionState selection = ResolveLiveCalendarSelection(
+                snapshot?.Entries ?? Array.Empty<EventEntrySnapshot>(),
+                _calendarMonth,
+                _selectedCalendarDate);
+            _calendarMonth = selection.Month;
+            _selectedCalendarDate = selection.SelectedDate;
+        }
+
+        internal static CalendarSelectionState ResolveLiveCalendarSelectionForTesting(
+            IReadOnlyList<EventEntrySnapshot> entries,
+            DateTime currentMonth,
+            DateTime? selectedDate)
+        {
+            return ResolveLiveCalendarSelection(entries, currentMonth, selectedDate);
+        }
+
+        private static CalendarSelectionState ResolveLiveCalendarSelection(
+            IReadOnlyList<EventEntrySnapshot> entries,
+            DateTime currentMonth,
+            DateTime? selectedDate)
+        {
+            DateTime normalizedMonth = currentMonth.Year > 1
+                ? new DateTime(currentMonth.Year, currentMonth.Month, 1)
+                : new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            DateTime normalizedSelectedDate = selectedDate?.Date ?? normalizedMonth;
+
+            if (entries == null || entries.Count == 0)
+            {
+                if (normalizedSelectedDate.Year != normalizedMonth.Year
+                    || normalizedSelectedDate.Month != normalizedMonth.Month)
+                {
+                    normalizedSelectedDate = normalizedMonth;
+                }
+
+                return new CalendarSelectionState(normalizedMonth, normalizedSelectedDate);
+            }
+
+            EventWindowSnapshot snapshot = new()
+            {
+                Entries = entries
+            };
+            DateTime minimumMonth = ResolveMinimumCalendarMonth(snapshot);
+            DateTime maximumMonth = ResolveMaximumCalendarMonth(snapshot);
+            if (normalizedMonth < minimumMonth)
+            {
+                normalizedMonth = minimumMonth;
+            }
+            else if (normalizedMonth > maximumMonth)
+            {
+                normalizedMonth = maximumMonth;
+            }
+
+            if (normalizedSelectedDate.Year <= 1)
+            {
+                normalizedSelectedDate = normalizedMonth;
+            }
+
+            DateTime resolvedSelectedDate = ResolveCalendarSelectionForMonth(
+                entries,
+                normalizedMonth,
+                normalizedSelectedDate);
+            return new CalendarSelectionState(normalizedMonth, resolvedSelectedDate);
         }
 
         private void BuildCalendarEntryCounts(IReadOnlyList<EventEntrySnapshot> entries)

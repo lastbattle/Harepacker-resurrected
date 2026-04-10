@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private int _pendingPacketOwnedQuestResultContinuationQuestId;
         private int? _pendingPacketOwnedQuestResultFollowUpQuestId;
         private int _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId;
         private string _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
@@ -147,7 +148,6 @@ namespace HaCreator.MapSimulator
         {
             int questId = reader.ReadUInt16();
             int speakerNpcId = reader.ReadInt32();
-            bool clearedQuestFadeWindow = _packetQuestResultFadeWindowRuntime.ApplyQuestResultDeleteFadeWindow(questId);
             if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(ushort))
             {
                 throw new InvalidDataException("Quest-result subtype 10 requires a trailing follow-up quest id.");
@@ -193,11 +193,6 @@ namespace HaCreator.MapSimulator
 
             string followUpStatus = string.Empty;
             string resultSummary = $"Applied packet-owned quest result for {presentation.QuestName}.";
-            if (clearedQuestFadeWindow)
-            {
-                resultSummary = $"{resultSummary} Cleared the packet-owned quest fade window owner before reading the follow-up quest id.";
-            }
-
             if (showedNotice && openedModal)
             {
                 resultSummary = deferredNoticeUntilDialogClose
@@ -220,12 +215,29 @@ namespace HaCreator.MapSimulator
                     : $"Quest #{followUpQuestId}";
                 if (openedModal)
                 {
-                    QueuePendingPacketOwnedQuestResultFollowUp(followUpQuestId, speakerNpcId, followUpQuestName);
-                    followUpStatus = $"Queued packet-owned StartQuest for {followUpQuestName} after the quest-result dialog closes.";
+                    QueuePendingPacketOwnedQuestResultContinuation(questId, followUpQuestId, speakerNpcId, followUpQuestName);
+                    followUpStatus =
+                        $"Queued packet-owned DeleteFadeWnd/StartQuest continuation for {followUpQuestName} after the quest-result dialog returns through Next or OK.";
                 }
                 else
                 {
+                    bool clearedQuestFadeWindow = ApplyPendingPacketOwnedQuestResultFadeCleanup(questId);
+                    if (clearedQuestFadeWindow)
+                    {
+                        resultSummary =
+                            $"{resultSummary} Cleared the packet-owned quest fade window owner before consuming the trailing follow-up quest id.";
+                    }
+
                     followUpStatus = ApplyPacketOwnedQuestResultFollowUpQuest(followUpQuestId, speakerNpcId, followUpQuestName);
+                }
+            }
+            else if (!openedModal)
+            {
+                bool clearedQuestFadeWindow = ApplyPendingPacketOwnedQuestResultFadeCleanup(questId);
+                if (clearedQuestFadeWindow)
+                {
+                    resultSummary =
+                        $"{resultSummary} Cleared the packet-owned quest fade window owner before consuming the trailing follow-up quest id.";
                 }
             }
 
@@ -381,6 +393,16 @@ namespace HaCreator.MapSimulator
             _pendingPacketOwnedQuestResultFollowUpReady = false;
         }
 
+        private void QueuePendingPacketOwnedQuestResultContinuation(
+            int questId,
+            int followUpQuestId,
+            int speakerNpcId,
+            string followUpQuestName)
+        {
+            _pendingPacketOwnedQuestResultContinuationQuestId = Math.Max(0, questId);
+            QueuePendingPacketOwnedQuestResultFollowUp(followUpQuestId, speakerNpcId, followUpQuestName);
+        }
+
         private void QueuePendingPacketOwnedQuestResultNotice(
             string noticeText,
             PacketQuestResultNoticeSurface surface)
@@ -426,22 +448,19 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            DispatchPendingPacketOwnedQuestResultNotice();
-
-            if (!_pendingPacketOwnedQuestResultFollowUpQuestId.HasValue ||
-                _pendingPacketOwnedQuestResultFollowUpQuestId.Value <= 0)
+            PacketQuestResultSubtype10ContinuationDisposition continuationDisposition =
+                PacketQuestResultClientSemantics.ResolveSubtype10ContinuationDisposition(closeKind);
+            if (continuationDisposition == PacketQuestResultSubtype10ContinuationDisposition.Continue)
             {
+                DispatchPendingPacketOwnedQuestResultNotice();
+                ApplyPendingPacketOwnedQuestResultFadeCleanup(_pendingPacketOwnedQuestResultContinuationQuestId);
+                _pendingPacketOwnedQuestResultFollowUpReady = _pendingPacketOwnedQuestResultFollowUpQuestId.HasValue
+                                                             && _pendingPacketOwnedQuestResultFollowUpQuestId.Value > 0;
+                _pendingPacketOwnedQuestResultContinuationQuestId = 0;
                 return;
             }
 
-            // Client CUserLocal::OnQuestResult still consumes the trailing StartQuest
-            // after the util dialog returns, even when the dialog does not end through
-            // the simulator's "Completed" close kind.
-            if (PacketQuestResultCloseBehavior.ShouldStartFollowUpQuest(closeKind))
-            {
-                _pendingPacketOwnedQuestResultFollowUpReady = true;
-                return;
-            }
+            ClearPendingPacketOwnedQuestResultContinuation();
         }
 
         private void UpdatePendingPacketOwnedQuestResultFollowUp()
@@ -468,6 +487,23 @@ namespace HaCreator.MapSimulator
             {
                 _chat?.AddSystemMessage(followUpStatus, currTickCount);
             }
+        }
+
+        private bool ApplyPendingPacketOwnedQuestResultFadeCleanup(int questId)
+        {
+            _pendingPacketOwnedQuestResultContinuationQuestId = 0;
+            return _packetQuestResultFadeWindowRuntime.ApplyQuestResultDeleteFadeWindow(questId);
+        }
+
+        private void ClearPendingPacketOwnedQuestResultContinuation()
+        {
+            _pendingPacketOwnedQuestResultContinuationQuestId = 0;
+            _pendingPacketOwnedQuestResultFollowUpQuestId = null;
+            _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = 0;
+            _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
+            _pendingPacketOwnedQuestResultFollowUpReady = false;
+            _pendingPacketOwnedQuestResultDeferredNoticeText = string.Empty;
+            _pendingPacketOwnedQuestResultDeferredNoticeSurface = PacketQuestResultNoticeSurface.Chat;
         }
 
         private string ApplyPacketOwnedQuestResultFollowUpQuest(int followUpQuestId, int speakerNpcId, string followUpQuestName)

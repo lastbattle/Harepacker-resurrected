@@ -804,6 +804,7 @@ namespace HaCreator.MapSimulator
         private bool _activeConnectionNoticeShowProgress;
         private float _activeConnectionNoticeProgress;
         private int _activeConnectionNoticeExpiresAt = int.MinValue;
+        private bool _activeConnectionNoticeTracksDirectionModeOwner;
 
 
         // Seamless map transition support (state managed by _gameState)
@@ -1518,6 +1519,32 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            IReadOnlyList<MapTransferDestinationRecord> currentDestinations = GetCurrentMapTransferDestinations();
+            int targetSlotIndex = _mapTransferEditDestination?.SavedSlotIndex ?? selectedEntry?.SavedSlotIndex ?? -1;
+            if (targetSlotIndex < 0 && currentDestinations.Count >= GetMapTransferSavedSlotCapacity())
+            {
+                _chat.AddMessage(MapTransferClientParityText.ResolveRegisterListFullNotice(), new Color(255, 228, 151), Environment.TickCount);
+                RefreshMapTransferWindow();
+                return;
+            }
+
+            int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
+            if (targetMapId == currentMapId)
+            {
+                MapTransferDestinationRecord existingCurrentMapRecord = currentDestinations.FirstOrDefault(destination => destination.MapId == targetMapId);
+                if (existingCurrentMapRecord != null)
+                {
+                    _chat.AddMessage(MapTransferClientParityText.ResolveCurrentMapAlreadyRegisteredNotice(), new Color(255, 228, 151), Environment.TickCount);
+                    RefreshMapTransferWindow();
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MapTransfer) is MapTransferUI focusWindow)
+                    {
+                        focusWindow.SetSelectedMapId(targetMapId);
+                    }
+
+                    return;
+                }
+            }
+
 
             MapleLib.WzLib.WzStructure.MapInfo targetMapInfo = ResolveMapTransferDestinationMapInfo(targetMapId);
             string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
@@ -1542,7 +1569,7 @@ namespace HaCreator.MapSimulator
                 Type = MapTransferRuntimeRequestType.Register,
                 Book = GetCurrentMapTransferDestinationBook(),
                 MapId = targetMapId,
-                SlotIndex = _mapTransferEditDestination?.SavedSlotIndex ?? selectedEntry?.SavedSlotIndex ?? -1
+                SlotIndex = targetSlotIndex
             };
             bool requestDispatched = TryDispatchMapTransferRequest(
                 activeBuild,
@@ -3345,6 +3372,7 @@ namespace HaCreator.MapSimulator
                 value => _guildBbsRuntime.SetComposeBody(value),
                 value => _guildBbsRuntime.SetReplyDraft(value),
                 delta => _guildBbsRuntime.MoveThreadPage(delta),
+                pageIndex => _guildBbsRuntime.SetThreadPage(pageIndex),
                 delta => _guildBbsRuntime.MoveCommentPage(delta),
                 pageIndex => _guildBbsRuntime.SetCommentPage(pageIndex),
                 delta => _guildBbsRuntime.MoveComposeCashEmoticonPage(delta),
@@ -3979,7 +4007,7 @@ namespace HaCreator.MapSimulator
                 return unavailableMessage;
             }
 
-            return UserInfoPopularityPreviewService.HandleRequest(context, direction, _remoteUserPool);
+            return new UserInfoPopularityPreviewService().HandleRequest(context, direction, Environment.TickCount);
         }
 
         private bool TryResolveRemoteCharacterInfoTargetPresence(
@@ -4135,7 +4163,7 @@ namespace HaCreator.MapSimulator
                 Math.Max(1, _simulatorChannelIndex + 1));
         }
 
-        private CollectionBookSnapshot BuildActiveCollectionBookSnapshot()
+        private CollectionBookSnapshot BuildActiveCollectionBookSnapshot(Func<string, int, float> measureTextWidth = null)
         {
             UserInfoUI.UserInfoActionContext context = ResolveBookCollectionActionContext();
             CharacterBuild build = context.Build ?? _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
@@ -4149,7 +4177,8 @@ namespace HaCreator.MapSimulator
                     CharacterName = context.CharacterName,
                     LocationSummary = context.LocationSummary,
                     Channel = context.Channel
-                });
+                },
+                measureTextWidth);
         }
 
         private void HandleBookCollectionOpened()
@@ -4887,7 +4916,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (!used && TryShowUnhandledCashItemRestriction(itemId, inventoryType))
+            if (!used && TryShowUnhandledFieldRestrictedItemUse(itemId, inventoryType))
             {
                 return false;
             }
@@ -4947,7 +4976,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (!used && TryShowUnhandledCashItemRestriction(itemId, inventoryType))
+            if (!used && TryShowUnhandledFieldRestrictedItemUse(itemId, inventoryType))
             {
                 return false;
             }
@@ -5039,16 +5068,17 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryShowUnhandledCashItemRestriction(int itemId, InventoryType inventoryType)
+        private bool TryShowUnhandledFieldRestrictedItemUse(int itemId, InventoryType inventoryType)
         {
-            if (inventoryType != InventoryType.CASH || itemId <= 0 || !HasInventoryItem(itemId))
+            if (inventoryType is not (InventoryType.USE or InventoryType.CASH) || itemId <= 0 || !HasInventoryItem(itemId))
             {
                 return false;
             }
 
             InventoryItemMetadataResolver.TryResolveItemName(itemId, out string itemName);
             InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string itemDescription);
-            if (TeleportItemUsageEvaluator.IsTeleportItem(itemId, inventoryType, itemName, itemDescription))
+            if (inventoryType == InventoryType.CASH
+                && TeleportItemUsageEvaluator.IsTeleportItem(itemId, inventoryType, itemName, itemDescription))
             {
                 return false;
             }
@@ -5971,10 +6001,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!RepairDurabilityClientParity.MatchesPendingResultOperation(request.OperationCode, result.OperationCode))
+            {
+                message = $"Repair-result payload for opcode {result.OperationCode.Value} was ignored because opcode {request.OperationCode} is still pending.";
+                return false;
+            }
+
             _pendingRepairDurabilityRequest = null;
             message = result.Success
-                ? ApplyPendingRepairDurabilitySuccess(request)
-                : ApplyPendingRepairDurabilityFailure(request, result.ReasonCode);
+                ? AppendRepairDurabilityStatusText(ApplyPendingRepairDurabilitySuccess(request), result.StatusText)
+                : ApplyPendingRepairDurabilityFailure(request, result.ReasonCode, result.StatusText);
             return true;
         }
 
@@ -6078,15 +6114,31 @@ namespace HaCreator.MapSimulator
             return $"Repair-all response restored {repairedCount} item(s) for {liveRepairAllCost.ToString("N0", CultureInfo.InvariantCulture)} meso.";
         }
 
-        private string ApplyPendingRepairDurabilityFailure(PendingRepairDurabilityRequest request, int? reasonCode)
+        private static string AppendRepairDurabilityStatusText(string message, string statusText)
+        {
+            if (string.IsNullOrWhiteSpace(statusText))
+            {
+                return message ?? string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return statusText.Trim();
+            }
+
+            return $"{message} Server text: {statusText.Trim()}";
+        }
+
+        private string ApplyPendingRepairDurabilityFailure(PendingRepairDurabilityRequest request, int? reasonCode, string statusText)
         {
             RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
             string requestTarget = request.RepairAll
                 ? "repair-all request"
                 : $"repair request for {request.Entry?.ItemName ?? "the selected equipment"}";
-            return reasonCode.HasValue
+            string message = reasonCode.HasValue
                 ? $"Repair-result payload rejected the pending {requestTarget} with reason {reasonCode.Value}."
                 : $"Repair-result payload rejected the pending {requestTarget}.";
+            return AppendRepairDurabilityStatusText(message, statusText);
         }
         private static string ResolveNpcDisplayName(int npcTemplateId)
         {
@@ -12755,6 +12807,15 @@ namespace HaCreator.MapSimulator
 
 
             noticeWindow.Configure(title, body, showProgress, progress, variant, noticeTextIndex);
+            if (_activeConnectionNoticeTracksDirectionModeOwner)
+            {
+                ShowWindow(
+                    MapSimulatorWindowNames.ConnectionNotice,
+                    noticeWindow,
+                    trackDirectionModeOwner: true);
+                return;
+            }
+
             uiWindowManager.ShowWindow(noticeWindow);
         }
 
@@ -13031,6 +13092,7 @@ namespace HaCreator.MapSimulator
             _activeConnectionNoticeShowProgress = _activeConnectionNoticeVariant is ConnectionNoticeWindowVariant.Loading or ConnectionNoticeWindowVariant.LoadingSingleGauge;
             _activeConnectionNoticeProgress = _activeConnectionNoticeShowProgress ? 1f : 0f;
             _activeConnectionNoticeExpiresAt = currTickCount + Math.Max(0, prompt.DurationMs);
+            _activeConnectionNoticeTracksDirectionModeOwner = prompt.TrackDirectionModeOwner;
             SyncLoginEntryDialogs();
         }
 
@@ -13044,6 +13106,7 @@ namespace HaCreator.MapSimulator
             _activeConnectionNoticeShowProgress = false;
             _activeConnectionNoticeProgress = 0f;
             _activeConnectionNoticeExpiresAt = int.MinValue;
+            _activeConnectionNoticeTracksDirectionModeOwner = false;
         }
 
 
@@ -16276,6 +16339,7 @@ namespace HaCreator.MapSimulator
             _localUtilityPacketInbox.Dispose();
             _localUtilityPacketOutbox.Dispose();
             _localUtilityOfficialSessionBridge.Dispose();
+            _reactorTouchPacketOutbox.Dispose();
             _socialListOfficialSessionBridge.Dispose();
             _mapTransferOfficialSessionBridge.Dispose();
             _summonedPacketInbox.Dispose();
@@ -20663,44 +20727,15 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            var frames = new List<IDXObject>();
-            LoadItemDropFrames(dropProperty, frames);
+            ConcurrentBag<WzObject> usedProps = new();
+            List<IDXObject> frames = MapSimulatorLoader.LoadFrames(
+                _texturePool,
+                dropProperty,
+                0,
+                0,
+                GraphicsDevice,
+                usedProps);
             return frames.Count > 0 ? frames : null;
-        }
-
-        private void LoadItemDropFrames(WzImageProperty property, List<IDXObject> frames)
-        {
-            if (property == null || frames == null)
-            {
-                return;
-            }
-
-            if (property is WzCanvasProperty canvas)
-            {
-                LoadSingleFrame(canvas, frames);
-                return;
-            }
-
-            if (property is not WzSubProperty subProperty)
-            {
-                return;
-            }
-
-            foreach (WzImageProperty child in subProperty.WzProperties.OrderBy(current =>
-                         int.TryParse(current.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
-                             ? index
-                             : int.MaxValue))
-            {
-                switch (child)
-                {
-                    case WzCanvasProperty childCanvas:
-                        LoadSingleFrame(childCanvas, frames);
-                        break;
-                    case WzSubProperty nestedProperty:
-                        LoadItemDropFrames(nestedProperty, frames);
-                        break;
-                }
-            }
         }
 
 
@@ -24323,12 +24358,6 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            bool canInjectLiveTouchRequests = _reactorPoolOfficialSessionBridge?.HasConnectedSession == true;
-            if (!canInjectLiveTouchRequests)
-            {
-                return;
-            }
-
             foreach (ReactorTouchStateChange change in touchStateChanges)
             {
                 if (!change.UsesPacketObjectId || change.ObjectId <= 0)
@@ -24336,8 +24365,35 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                _reactorPoolOfficialSessionBridge.TrySendTouchRequest(change.ObjectId, change.IsTouching, out _);
+                DispatchReactorTouchStateChange(change);
             }
+        }
+
+        private void DispatchReactorTouchStateChange(ReactorTouchStateChange change)
+        {
+            if (!change.UsesPacketObjectId || change.ObjectId <= 0)
+            {
+                return;
+            }
+
+            if (_reactorPoolOfficialSessionBridge?.HasConnectedSession == true
+                && _reactorPoolOfficialSessionBridge.TrySendTouchRequest(change.ObjectId, change.IsTouching, out _))
+            {
+                return;
+            }
+
+            if (_reactorTouchPacketOutbox.TrySendTouchRequest(change.ObjectId, change.IsTouching, out _))
+            {
+                return;
+            }
+
+            if (_reactorPoolOfficialSessionBridgeEnabled
+                && _reactorPoolOfficialSessionBridge.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _))
+            {
+                return;
+            }
+
+            _reactorTouchPacketOutbox.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _);
         }
 
 
@@ -24996,6 +25052,8 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void HandlePortalUpInteract(int currentTime)
         {
+            SyncPassiveTransferFieldReadyState();
+
             if (!CanAttemptPortalInteract(currentTime))
             {
                 ClearPassiveTransferRequest();
@@ -25078,6 +25136,17 @@ namespace HaCreator.MapSimulator
             _passiveTransferRequestExpiresAt = int.MinValue;
         }
 
+        private void SyncPassiveTransferFieldReadyState()
+        {
+            _playerManager?.Player?.Physics?.SetPassiveTransferFieldReady(ResolvePassiveTransferFieldReadyState());
+        }
+
+        private bool ResolvePassiveTransferFieldReadyState()
+        {
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+            return FieldInteractionRestrictionEvaluator.CanTransferField(fieldLimit);
+        }
+
         private bool CanProcessPassiveTransferFieldRequest(int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
@@ -25086,8 +25155,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
-            return FieldInteractionRestrictionEvaluator.CanTransferField(fieldLimit);
+            return player.Physics?.IsPassiveTransferFieldReady == true;
         }
 
         private bool CanReplayPassiveTransferFieldUpKeyPath(int currentTime)
@@ -27363,6 +27431,7 @@ namespace HaCreator.MapSimulator
 
             skillWindow.SetSkillManager(_playerManager.Skills);
             skillWindow.SetCharacterLevel(_playerManager.Player?.Level ?? 1);
+            skillWindow.SetCharacterJob(_playerManager.Player?.Build?.Job ?? 0, _playerManager.Player?.Build?.SubJob ?? 0);
             skillWindow.OnSkillInvoked = skillId =>
             {
                 _playerManager.Skills.TryCastSkill(skillId, currTickCount);
@@ -27973,6 +28042,39 @@ namespace HaCreator.MapSimulator
             }
 
 
+            return OpenQuestWorldMapTargetFromDetailWindow(questId, target, preferPacketGuideMapsForMobs: false);
+        }
+
+
+        private QuestWindowActionResult LocateQuestMobFromDetailWindow(int questId)
+        {
+            if (!_questRuntime.TryGetQuestWorldMapTarget(questId, _playerManager?.Player?.Build, out QuestWorldMapTarget target)
+                || target == null)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { "This quest does not expose a quest-guide target in the loaded data." }
+                };
+            }
+
+            return OpenQuestWorldMapTargetFromDetailWindow(questId, target, preferPacketGuideMapsForMobs: true);
+        }
+
+        private QuestWindowActionResult OpenQuestWorldMapTargetFromDetailWindow(
+            int questId,
+            QuestWorldMapTarget target,
+            bool preferPacketGuideMapsForMobs)
+        {
+            if (target == null)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = questId,
+                    Messages = new[] { "This quest does not expose a world-map target in the loaded data." }
+                };
+            }
+
             RefreshWorldMapWindow(_mapBoard?.MapInfo?.id ?? 0);
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldMap) is not WorldMapUI worldMapWindow)
             {
@@ -27984,18 +28086,31 @@ namespace HaCreator.MapSimulator
             }
 
 
+            int targetMapId = target.MapId > 0 ? target.MapId : (_mapBoard?.MapInfo?.id ?? 0);
             bool focused = false;
             string successMessage;
             string failureMessage;
-            int targetMapId = target.MapId > 0 ? target.MapId : (_mapBoard?.MapInfo?.id ?? 0);
-
 
             switch (target.Kind)
             {
                 case QuestWorldMapTargetKind.Mob:
+                    IReadOnlyList<int> packetGuideMapIds = Array.Empty<int>();
+                    bool hasPacketGuideMaps = preferPacketGuideMapsForMobs &&
+                                              target.EntityId is int targetMobId &&
+                                              TryGetPacketQuestGuideMapIds(targetMobId, out packetGuideMapIds) &&
+                                              packetGuideMapIds.Count > 0;
+                    if (hasPacketGuideMaps)
+                    {
+                        targetMapId = packetGuideMapIds[0];
+                    }
+
                     focused = worldMapWindow.FocusSearchResult(WorldMapUI.SearchResultKind.Mob, target.Label, targetMapId);
-                    successMessage = $"Opened the world map search for quest mob {target.Label}.";
-                    failureMessage = $"Opened the world map, but {target.Label} is not in the current field search results.";
+                    successMessage = hasPacketGuideMaps
+                        ? $"Opened the world map search for {target.Label} using packet-authored quest-guide maps."
+                        : $"Opened the world map search for quest mob {target.Label}.";
+                    failureMessage = hasPacketGuideMaps
+                        ? $"Opened the world map, but {target.Label} could not be focused even with packet-authored quest-guide maps."
+                        : $"Opened the world map, but {target.Label} is not in the current field search results.";
                     break;
                 case QuestWorldMapTargetKind.Item:
                     if (_questRuntime.TryBuildQuestDemandItemQuery(questId, out QuestDemandItemQueryState itemQueryState)
@@ -28013,9 +28128,7 @@ namespace HaCreator.MapSimulator
                         focused = worldMapWindow.FocusSearchResult(WorldMapUI.SearchResultKind.Npc, target.FallbackNpcName, targetMapId);
                         successMessage = $"Opened the world map for {target.FallbackNpcName}; {target.Label} still needs to be delivered.";
                         failureMessage = $"Opened the world map, but neither {target.FallbackNpcName} nor {target.Label} could be resolved in the current field search results.";
-
                     }
-
                     else
                     {
                         string deliveryMessage = ApplyDeliveryQuestLaunch(questId, target.EntityId ?? 0, Array.Empty<int>());
@@ -28026,7 +28139,6 @@ namespace HaCreator.MapSimulator
                         };
                     }
 
-
                     break;
                 default:
                     focused = worldMapWindow.FocusSearchResult(WorldMapUI.SearchResultKind.Npc, target.Label, targetMapId);
@@ -28035,12 +28147,8 @@ namespace HaCreator.MapSimulator
                     break;
             }
 
-
             uiWindowManager.ShowWindow(MapSimulatorWindowNames.WorldMap);
-
             uiWindowManager.BringToFront(worldMapWindow);
-
-
 
             return new QuestWindowActionResult
             {
@@ -28048,59 +28156,6 @@ namespace HaCreator.MapSimulator
                 Messages = focused
                     ? new[] { successMessage }
                     : new[] { failureMessage }
-            };
-        }
-
-
-        private QuestWindowActionResult LocateQuestMobFromDetailWindow(int questId)
-        {
-            QuestWindowDetailState state = GetQuestWindowDetailStateWithPacketState(questId);
-            if (state?.TargetMobId is not int || string.IsNullOrWhiteSpace(state.TargetMobName))
-            {
-                return new QuestWindowActionResult
-                {
-                    QuestId = questId,
-                    Messages = new[] { "This quest does not expose an incomplete mob demand in the loaded data." }
-                };
-            }
-
-
-            RefreshWorldMapWindow(_mapBoard?.MapInfo?.id ?? 0);
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldMap) is not WorldMapUI worldMapWindow)
-            {
-                return new QuestWindowActionResult
-                {
-                    QuestId = questId,
-                    Messages = new[] { "World map window is not available in this UI build." }
-                };
-            }
-
-
-            int targetMapId = _mapBoard?.MapInfo?.id ?? 0;
-            IReadOnlyList<int> packetGuideMapIds = Array.Empty<int>();
-            bool hasPacketGuideMaps = state.TargetMobId is int targetMobId
-                && TryGetPacketQuestGuideMapIds(targetMobId, out packetGuideMapIds)
-                && packetGuideMapIds.Count > 0;
-            if (hasPacketGuideMaps)
-            {
-                targetMapId = packetGuideMapIds[0];
-            }
-
-
-            bool focused = worldMapWindow.FocusSearchResult(WorldMapUI.SearchResultKind.Mob, state.TargetMobName, targetMapId);
-
-            uiWindowManager.ShowWindow(MapSimulatorWindowNames.WorldMap);
-
-            uiWindowManager.BringToFront(worldMapWindow);
-
-
-
-            return new QuestWindowActionResult
-            {
-                QuestId = questId,
-                Messages = focused
-                    ? new[] { hasPacketGuideMaps ? $"Opened the world map search for {state.TargetMobName} using packet-authored quest-guide maps." : $"Opened the world map search for {state.TargetMobName}." }
-                    : new[] { hasPacketGuideMaps ? $"Opened the world map, but {state.TargetMobName} could not be focused even with packet-authored quest-guide maps." : $"Opened the world map, but {state.TargetMobName} is not in the current field search results." }
             };
         }
 
@@ -32893,8 +32948,10 @@ namespace HaCreator.MapSimulator
                     message,
                     applied,
                     applied ? field.DescribeStatus() : resultMessage);
+                _dojoOfficialSessionBridge.UpdateInferenceContext(field);
             }
 
+            _dojoOfficialSessionBridge.UpdateInferenceContext(field);
             while (_dojoOfficialSessionBridge.TryDequeue(out DojoPacketInboxMessage bridgeMessage))
             {
                 if (!field.IsActive)
@@ -32913,6 +32970,7 @@ namespace HaCreator.MapSimulator
                     bridgeMessage,
                     applied,
                     applied ? field.DescribeStatus() : bridgeResultMessage);
+                _dojoOfficialSessionBridge.UpdateInferenceContext(field);
             }
         }
         private void DrainTransportPacketInbox()

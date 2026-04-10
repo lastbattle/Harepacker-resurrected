@@ -141,11 +141,9 @@ namespace HaCreator.MapSimulator.Loaders
             if (recommendSkillImage[jobId.ToString(CultureInfo.InvariantCulture)] is not WzSubProperty recommendProperty)
                 return Array.Empty<RecommendedSkillEntry>();
 
-            var validSkillIdSet = validSkillIds != null
+            HashSet<int> validSkillIdSet = validSkillIds != null
                 ? new HashSet<int>(validSkillIds)
-                : new HashSet<int>();
-            if (validSkillIdSet.Count == 0)
-                return Array.Empty<RecommendedSkillEntry>();
+                : null;
 
             if (!TryBuildRecommendedSkillEntries(recommendProperty, validSkillIdSet, out List<RecommendedSkillEntry> entries))
                 return Array.Empty<RecommendedSkillEntry>();
@@ -326,6 +324,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty infoProperty = (WzSubProperty)skillEntry["info"];
             int maxLevel = 0;
             bool invisible = false;
+            bool timeLimited = false;
 
             if (infoProperty != null)
             {
@@ -333,10 +332,12 @@ namespace HaCreator.MapSimulator.Loaders
                 if (maxLevelProp != null)
                     maxLevel = maxLevelProp.Value;
 
-                WzIntProperty invisibleProp = (WzIntProperty)infoProperty["invisible"];
-                if (invisibleProp != null)
-                    invisible = invisibleProp.Value == 1;
+                invisible = ResolveBooleanProperty(infoProperty, "invisible");
+                timeLimited = ResolveBooleanProperty(infoProperty, "timeLimited");
             }
+
+            invisible |= ResolveBooleanProperty(skillEntry, "invisible");
+            timeLimited |= ResolveBooleanProperty(skillEntry, "timeLimited");
 
             // Get level info for max level determination
             WzSubProperty levelProperty = (WzSubProperty)skillEntry["level"];
@@ -344,10 +345,6 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 maxLevel = levelProperty.WzProperties.Count;
             }
-
-            // Skip invisible skills
-            if (invisible)
-                return null;
 
             // Get skill name and description from String.wz
             string skillName = $"Skill {skillId}";
@@ -393,6 +390,8 @@ namespace HaCreator.MapSimulator.Loaders
                 SkillName = skillName,
                 Description = description,
                 FormattedDescription = formattedDescription,
+                IsInvisible = invisible,
+                IsTimeLimited = timeLimited,
                 CurrentLevel = 0,
                 MaxLevel = Math.Max(1, maxLevel),
                 RequiredCharacterLevel = requiredCharacterLevel,
@@ -1740,27 +1739,28 @@ namespace HaCreator.MapSimulator.Loaders
             out List<RecommendedSkillEntry> entries)
         {
             entries = null;
-            if (property?.WzProperties == null || property.WzProperties.Count < 2)
+            if (property?.WzProperties == null || property.WzProperties.Count == 0)
                 return false;
 
             entries = new List<RecommendedSkillEntry>();
             foreach (WzImageProperty child in property.WzProperties)
             {
                 if (child == null)
-                    return false;
+                    continue;
 
                 if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int spentSpThreshold) ||
                     spentSpThreshold < 0 ||
                     !TryGetIntValue(child, out int skillId) ||
-                    !validSkillIds.Contains(skillId))
+                    skillId <= 0 ||
+                    (validSkillIds != null && validSkillIds.Count > 0 && !validSkillIds.Contains(skillId)))
                 {
-                    return false;
+                    continue;
                 }
 
                 entries.Add(new RecommendedSkillEntry(spentSpThreshold, skillId));
             }
 
-            if (entries.Count < 2)
+            if (entries.Count == 0)
                 return false;
 
             entries.Sort((left, right) =>
@@ -1797,6 +1797,14 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return false;
+        }
+
+        private static bool ResolveBooleanProperty(WzImageProperty node, string name)
+        {
+            if (node == null || string.IsNullOrWhiteSpace(name))
+                return false;
+
+            return TryGetNumericPropertyValue(node, name, 1, out int value) && value != 0;
         }
 
         private sealed class FormulaParser

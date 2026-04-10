@@ -56,12 +56,20 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<string, bool> IsBlockedFriendName { get; init; }
         internal Func<int, int, int, bool> QueueMapTransfer { get; init; }
         internal Func<IReadOnlyList<PacketFieldSwindleWarningEntry>> ResolveSwindleWarnings { get; init; }
+        internal Action<PacketFieldBossTimerVisualState> ShowBossTimerClock { get; init; }
+        internal Action ClearBossTimerClock { get; init; }
     }
 
     internal sealed record PacketFieldSwindleWarningEntry(
         int GroupId,
         IReadOnlyList<string> Keywords,
         IReadOnlyList<string> WarningTexts);
+
+    internal sealed record PacketFieldBossTimerVisualState(
+        string TimerKey,
+        string Label,
+        int DurationSeconds,
+        int StartedAtTick);
 
     internal sealed class PacketFieldFeedbackRuntime
     {
@@ -121,6 +129,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _lastWhisperTarget = string.Empty;
         private string _lastJukeboxSummary = string.Empty;
         private string _lastBossTimerSummary = string.Empty;
+        private PacketFieldBossTimerVisualState _bossTimerVisualState;
         private int _nextSwindleWarningTick;
         private BossHpState _bossHpState;
         internal void Initialize(GraphicsDevice graphicsDevice)
@@ -145,6 +154,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastWhisperTarget = string.Empty;
             _lastJukeboxSummary = string.Empty;
             _lastBossTimerSummary = string.Empty;
+            _bossTimerVisualState = null;
             _nextSwindleWarningTick = 0;
         }
 
@@ -153,6 +163,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (_bossHpState != null && currentTick >= _bossHpState.ExpiresAtTick)
             {
                 _bossHpState = null;
+            }
+
+            if (_bossTimerVisualState != null
+                && GetBossTimerRemainingSeconds(_bossTimerVisualState, currentTick) <= 0)
+            {
+                _bossTimerVisualState = null;
             }
         }
 
@@ -283,10 +299,11 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketFieldFeedbackPacketKind.TransferFieldReqIgnored => TryApplyTransferFieldIgnored(payload, currentTick, callbacks, out message),
                     PacketFieldFeedbackPacketKind.TransferChannelReqIgnored => TryApplyTransferChannelIgnored(payload, currentTick, callbacks, out message),
                     PacketFieldFeedbackPacketKind.SummonItemUnavailable => TryApplySummonItemUnavailable(payload, currentTick, callbacks, out message),
-                    PacketFieldFeedbackPacketKind.DestroyClock => ApplyDestroyClock(out message),
+                    PacketFieldFeedbackPacketKind.DestroyClock => ApplyDestroyClock(callbacks, out message),
                     PacketFieldFeedbackPacketKind.ZakumTimer => TryApplyBossTimer(
                         "Zakum",
                         payload,
+                        currentTick,
                         callbacks,
                         ZakumTimerBeforeStringPoolId,
                         ZakumTimerWarningStringPoolId,
@@ -298,6 +315,7 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketFieldFeedbackPacketKind.HontailTimer => TryApplyBossTimer(
                         "Horntail",
                         payload,
+                        currentTick,
                         callbacks,
                         HorntailTimerBeforeStringPoolId,
                         HorntailTimerWarningStringPoolId,
@@ -309,6 +327,7 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketFieldFeedbackPacketKind.ChaosZakumTimer => TryApplyBossTimer(
                         "Chaos Zakum",
                         payload,
+                        currentTick,
                         callbacks,
                         ZakumTimerBeforeStringPoolId,
                         ZakumTimerWarningStringPoolId,
@@ -317,7 +336,7 @@ namespace HaCreator.MapSimulator.Interaction
                         ZakumTimerWarningFallback,
                         ZakumTimerExpiredFallback,
                         out message),
-                    PacketFieldFeedbackPacketKind.HontaleTimer => TryApplyHontaleTimer(payload, callbacks, out message),
+                    PacketFieldFeedbackPacketKind.HontaleTimer => TryApplyHontaleTimer(payload, currentTick, callbacks, out message),
                     PacketFieldFeedbackPacketKind.FieldFadeOutForce => TryApplyFieldFadeOutForce(payload, callbacks, out message),
                     _ => Unsupported(kind, out message),
                 };
@@ -955,9 +974,11 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private bool ApplyDestroyClock(out string message)
+        private bool ApplyDestroyClock(PacketFieldFeedbackCallbacks callbacks, out string message)
         {
             _lastBossTimerSummary = "destroyed";
+            _bossTimerVisualState = null;
+            callbacks?.ClearBossTimerClock?.Invoke();
             _statusMessage = "Applied packet-owned destroy-clock teardown.";
             message = _statusMessage;
             return true;
@@ -966,6 +987,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryApplyBossTimer(
             string bossName,
             byte[] payload,
+            int currentTick,
             PacketFieldFeedbackCallbacks callbacks,
             int normalStringPoolId,
             int warningStringPoolId,
@@ -990,12 +1012,18 @@ namespace HaCreator.MapSimulator.Interaction
                 expiredFallbackText);
             callbacks?.AddClientChatMessage?.Invoke($"[System] {text}", 12, null);
             _lastBossTimerSummary = text;
+            TryShowBossTimerClock(
+                bossName,
+                value,
+                mode == 0 ? "before" : "warning",
+                currentTick,
+                callbacks);
             _statusMessage = $"Applied packet-owned {bossName} timer feedback.";
             message = _statusMessage;
             return true;
         }
 
-        private bool TryApplyHontaleTimer(byte[] payload, PacketFieldFeedbackCallbacks callbacks, out string message)
+        private bool TryApplyHontaleTimer(byte[] payload, int currentTick, PacketFieldFeedbackCallbacks callbacks, out string message)
         {
             using MemoryStream stream = new(payload, writable: false);
             using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
@@ -1015,9 +1043,49 @@ namespace HaCreator.MapSimulator.Interaction
 
             callbacks?.AddClientChatMessage?.Invoke($"[System] {text}", 12, null);
             _lastBossTimerSummary = text;
+            TryShowBossTimerClock(
+                "Hontale",
+                value,
+                mode switch
+                {
+                    0 => "entry",
+                    1 => "warning",
+                    _ => "expired"
+                },
+                currentTick,
+                callbacks);
             _statusMessage = "Applied packet-owned Hontale timer feedback.";
             message = _statusMessage;
             return true;
+        }
+
+        private void TryShowBossTimerClock(
+            string bossName,
+            int value,
+            string phase,
+            int currentTick,
+            PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (value <= 0)
+            {
+                _bossTimerVisualState = null;
+                callbacks?.ClearBossTimerClock?.Invoke();
+                return;
+            }
+
+            string normalizedBossName = string.IsNullOrWhiteSpace(bossName)
+                ? "Boss"
+                : bossName.Trim();
+            string normalizedPhase = string.IsNullOrWhiteSpace(phase)
+                ? "timer"
+                : phase.Trim();
+            PacketFieldBossTimerVisualState state = new(
+                $"{normalizedBossName}:{normalizedPhase}",
+                normalizedBossName,
+                checked(value * 60),
+                currentTick);
+            _bossTimerVisualState = state;
+            callbacks?.ShowBossTimerClock?.Invoke(state);
         }
 
         private bool TryApplyFieldFadeOutForce(byte[] payload, PacketFieldFeedbackCallbacks callbacks, out string message)
@@ -1620,6 +1688,45 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool TryResolveHontaleTimerChatTextForTest(byte mode, byte value, out string text)
         {
             return TryResolveHontaleTimerChatText(mode, value, out text);
+        }
+
+        internal static PacketFieldBossTimerVisualState CreateBossTimerVisualStateForTest(
+            string bossName,
+            int value,
+            string phase)
+        {
+            if (value <= 0)
+            {
+                return null;
+            }
+
+            string normalizedBossName = string.IsNullOrWhiteSpace(bossName)
+                ? "Boss"
+                : bossName.Trim();
+            string normalizedPhase = string.IsNullOrWhiteSpace(phase)
+                ? "timer"
+                : phase.Trim();
+            return new PacketFieldBossTimerVisualState(
+                $"{normalizedBossName}:{normalizedPhase}",
+                normalizedBossName,
+                checked(value * 60),
+                0);
+        }
+
+        internal static int GetBossTimerRemainingSecondsForTest(PacketFieldBossTimerVisualState state, int currentTick)
+        {
+            return GetBossTimerRemainingSeconds(state, currentTick);
+        }
+
+        private static int GetBossTimerRemainingSeconds(PacketFieldBossTimerVisualState state, int currentTick)
+        {
+            if (state == null)
+            {
+                return 0;
+            }
+
+            int elapsedSeconds = Math.Max(0, currentTick - state.StartedAtTick) / 1000;
+            return Math.Max(0, state.DurationSeconds - elapsedSeconds);
         }
 
         private void DrawBossHp(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)

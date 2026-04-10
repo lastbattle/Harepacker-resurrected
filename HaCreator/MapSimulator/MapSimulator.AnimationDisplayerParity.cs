@@ -4,9 +4,11 @@ using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -57,6 +59,7 @@ namespace HaCreator.MapSimulator
 
         private readonly Dictionary<string, List<IDXObject>> _animationDisplayerEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<List<IDXObject>>> _animationDisplayerSkillUseEffectCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<AnimationDisplayerSkillUseAvatarEffectVariant>> _animationDisplayerSkillUseAvatarEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, int> _animationDisplayerFollowAnimationIds = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
@@ -66,6 +69,14 @@ namespace HaCreator.MapSimulator
             None = 0,
             NewYear = 1,
             FireCracker = 2
+        }
+
+        private sealed class AnimationDisplayerSkillUseAvatarEffectVariant
+        {
+            public SkillAnimation OverlayAnimation { get; init; }
+            public SkillAnimation UnderFaceAnimation { get; init; }
+
+            public bool HasAvatarAnimations => OverlayAnimation != null || UnderFaceAnimation != null;
         }
 
         private void RegisterAnimationDisplayerChatCommand()
@@ -601,6 +612,7 @@ namespace HaCreator.MapSimulator
             foreach (string branchName in EnumerateAnimationDisplayerSkillUseBranchNames(castInfo))
             {
                 if (!TryRegisterAnimationDisplayerSkillUseBranch(
+                        castInfo.CasterId,
                         skillId,
                         branchName,
                         castInfo.CasterX,
@@ -651,6 +663,7 @@ namespace HaCreator.MapSimulator
             foreach (string branchName in EnumerateAnimationDisplayerSkillUseBranchNames(presentation.SkillId))
             {
                 TryRegisterAnimationDisplayerSkillUseBranch(
+                    presentation.CharacterId,
                     presentation.SkillId,
                     branchName,
                     fallbackPosition.X,
@@ -664,6 +677,7 @@ namespace HaCreator.MapSimulator
         }
 
         private bool TryRegisterAnimationDisplayerSkillUseBranch(
+            int ownerCharacterId,
             int skillId,
             string branchName,
             float casterX,
@@ -680,6 +694,30 @@ namespace HaCreator.MapSimulator
             }
 
             string effectUol = BuildAnimationDisplayerSkillUseBranchUol(skillId, branchName);
+            if (TryGetAnimationDisplayerSkillUseAvatarEffectVariants(effectUol, out List<AnimationDisplayerSkillUseAvatarEffectVariant> avatarVariants))
+            {
+                bool registeredAvatarEffects = false;
+                for (int i = 0; i < avatarVariants.Count; i++)
+                {
+                    if (TryRegisterAnimationDisplayerSkillUseAvatarEffectVariant(
+                            ownerCharacterId,
+                            skillId,
+                            branchName,
+                            i,
+                            avatarVariants[i],
+                            delayRate,
+                            currentTime))
+                    {
+                        registeredAvatarEffects = true;
+                    }
+                }
+
+                if (registeredAvatarEffects)
+                {
+                    return true;
+                }
+            }
+
             if (!TryGetAnimationDisplayerSkillUseFrameVariants(effectUol, out List<List<IDXObject>> variants))
             {
                 return false;
@@ -714,6 +752,300 @@ namespace HaCreator.MapSimulator
             }
 
             return registered;
+        }
+
+        private bool TryRegisterAnimationDisplayerSkillUseAvatarEffectVariant(
+            int ownerCharacterId,
+            int skillId,
+            string branchName,
+            int variantIndex,
+            AnimationDisplayerSkillUseAvatarEffectVariant variant,
+            int delayRate,
+            int currentTime)
+        {
+            if (variant?.HasAvatarAnimations != true)
+            {
+                return false;
+            }
+
+            SkillAnimation overlayAnimation = ApplyAnimationDisplayerDelayRate(variant.OverlayAnimation, delayRate);
+            SkillAnimation underFaceAnimation = ApplyAnimationDisplayerDelayRate(variant.UnderFaceAnimation, delayRate);
+            if (overlayAnimation == null && underFaceAnimation == null)
+            {
+                return false;
+            }
+
+            int registrationKey = BuildAnimationDisplayerSkillUseAvatarEffectRegistrationKey(
+                skillId,
+                branchName,
+                variantIndex);
+            PlayerCharacter localPlayer = _playerManager?.Player;
+            int localCharacterId = localPlayer?.Build?.Id ?? 0;
+            if (localPlayer != null
+                && (ownerCharacterId <= 0 || ownerCharacterId == localCharacterId))
+            {
+                return localPlayer.ApplyTransientSkillAvatarEffect(
+                    registrationKey,
+                    overlayAnimation,
+                    underFaceAnimation,
+                    currentTime);
+            }
+
+            return _remoteUserPool?.TryApplyTransientSkillUseAvatarEffect(
+                ownerCharacterId,
+                registrationKey,
+                overlayAnimation,
+                underFaceAnimation,
+                currentTime,
+                out _) == true;
+        }
+
+        private bool TryGetAnimationDisplayerSkillUseAvatarEffectVariants(
+            string effectUol,
+            out List<AnimationDisplayerSkillUseAvatarEffectVariant> variants)
+        {
+            if (_animationDisplayerSkillUseAvatarEffectCache.TryGetValue(effectUol, out variants)
+                && variants?.Count > 0)
+            {
+                return true;
+            }
+
+            variants = LoadAnimationDisplayerSkillUseAvatarEffectVariants(effectUol);
+            if (variants == null || variants.Count == 0)
+            {
+                variants = null;
+                return false;
+            }
+
+            _animationDisplayerSkillUseAvatarEffectCache[effectUol] = variants;
+            return true;
+        }
+
+        private List<AnimationDisplayerSkillUseAvatarEffectVariant> LoadAnimationDisplayerSkillUseAvatarEffectVariants(string effectUol)
+        {
+            WzImageProperty property = ResolveAnimationDisplayerProperty(effectUol)?.GetLinkedWzImageProperty();
+            if (property == null)
+            {
+                return null;
+            }
+
+            var variants = new List<AnimationDisplayerSkillUseAvatarEffectVariant>();
+            string defaultChildUol = $"{effectUol}/default";
+            string indexedChildUol = $"{effectUol}/0";
+            bool hasCompositeChildren = ResolveAnimationDisplayerProperty(defaultChildUol) != null
+                || ResolveAnimationDisplayerProperty(indexedChildUol) != null;
+
+            if (hasCompositeChildren)
+            {
+                TryAddAnimationDisplayerSkillUseAvatarEffectVariant(variants, defaultChildUol);
+                for (int i = 0; ; i++)
+                {
+                    string candidateUol = $"{effectUol}/{i.ToString(CultureInfo.InvariantCulture)}";
+                    if (ResolveAnimationDisplayerProperty(candidateUol) == null)
+                    {
+                        break;
+                    }
+
+                    TryAddAnimationDisplayerSkillUseAvatarEffectVariant(variants, candidateUol);
+                }
+            }
+            else
+            {
+                TryAddAnimationDisplayerSkillUseAvatarEffectVariant(variants, effectUol);
+            }
+
+            return variants.Count > 0 ? variants : null;
+        }
+
+        private void TryAddAnimationDisplayerSkillUseAvatarEffectVariant(
+            List<AnimationDisplayerSkillUseAvatarEffectVariant> variants,
+            string effectUol)
+        {
+            if (TryLoadAnimationDisplayerSkillUseAvatarEffectVariant(effectUol, out AnimationDisplayerSkillUseAvatarEffectVariant variant))
+            {
+                variants.Add(variant);
+            }
+        }
+
+        private bool TryLoadAnimationDisplayerSkillUseAvatarEffectVariant(
+            string effectUol,
+            out AnimationDisplayerSkillUseAvatarEffectVariant variant)
+        {
+            variant = null;
+            WzImageProperty property = ResolveAnimationDisplayerProperty(effectUol)?.GetLinkedWzImageProperty();
+            if (property == null || property is WzCanvasProperty)
+            {
+                return false;
+            }
+
+            SkillAnimation animation = LoadAnimationDisplayerSkillUseAnimation(property, effectUol);
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            variant = animation.ZOrder < 0
+                ? new AnimationDisplayerSkillUseAvatarEffectVariant { UnderFaceAnimation = animation }
+                : new AnimationDisplayerSkillUseAvatarEffectVariant { OverlayAnimation = animation };
+            return true;
+        }
+
+        private SkillAnimation LoadAnimationDisplayerSkillUseAnimation(WzImageProperty sourceProperty, string animationName)
+        {
+            sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
+            if (sourceProperty == null || sourceProperty is WzCanvasProperty || GraphicsDevice == null)
+            {
+                return null;
+            }
+
+            int sharedDelay = sourceProperty["delay"]?.GetInt() ?? 90;
+            int zOrder = sourceProperty["z"]?.GetInt() ?? 0;
+            int? positionCode = TryResolveAnimationDisplayerSkillUsePositionCode(sourceProperty["pos"]);
+            var frames = new List<SkillFrame>();
+
+            for (int i = 0; ; i++)
+            {
+                if (sourceProperty[i.ToString(CultureInfo.InvariantCulture)] is not WzCanvasProperty frameCanvas)
+                {
+                    break;
+                }
+
+                System.Drawing.Bitmap frameBitmap = frameCanvas.GetLinkedWzCanvasBitmap();
+                if (frameBitmap == null)
+                {
+                    continue;
+                }
+
+                int delay = frameCanvas[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt()
+                    ?? frameCanvas["delay"]?.GetInt()
+                    ?? sharedDelay;
+                System.Drawing.PointF originPoint = frameCanvas.GetCanvasOriginPosition();
+                var origin = new System.Drawing.Point((int)originPoint.X, (int)originPoint.Y);
+                using (frameBitmap)
+                {
+                    Texture2D texture = frameBitmap.ToTexture2D(GraphicsDevice);
+                    frames.Add(new SkillFrame
+                    {
+                        Texture = new DXObject(-origin.X, -origin.Y, texture, delay),
+                        Origin = new Point(origin.X, origin.Y),
+                        Delay = delay,
+                        Bounds = new Rectangle(-origin.X, -origin.Y, texture.Width, texture.Height),
+                        Flip = false,
+                        Z = zOrder
+                    });
+                }
+            }
+
+            if (frames.Count == 0)
+            {
+                return null;
+            }
+
+            SkillAnimation animation = new()
+            {
+                Name = animationName,
+                Frames = frames,
+                Loop = false,
+                Origin = Point.Zero,
+                ZOrder = zOrder,
+                PositionCode = positionCode
+            };
+            animation.CalculateDuration();
+            return animation;
+        }
+
+        private static int? TryResolveAnimationDisplayerSkillUsePositionCode(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            if (property is WzStringProperty stringProperty
+                && int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedString))
+            {
+                return parsedString;
+            }
+
+            try
+            {
+                return property.GetInt();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static SkillAnimation ApplyAnimationDisplayerDelayRate(SkillAnimation animation, int delayRate)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            if (delayRate <= 0 || delayRate == 1000)
+            {
+                return animation;
+            }
+
+            var scaledFrames = new List<SkillFrame>(animation.Frames.Count);
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                SkillFrame frame = animation.Frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                int scaledDelay = Math.Max(1, (int)Math.Round(frame.Delay * (delayRate / 1000d)));
+                scaledFrames.Add(new SkillFrame
+                {
+                    Texture = frame.Texture,
+                    Origin = frame.Origin,
+                    Delay = scaledDelay,
+                    Bounds = frame.Bounds,
+                    Flip = frame.Flip,
+                    Z = frame.Z,
+                    AlphaStart = frame.AlphaStart,
+                    AlphaEnd = frame.AlphaEnd
+                });
+            }
+
+            if (scaledFrames.Count == 0)
+            {
+                return null;
+            }
+
+            SkillAnimation scaledAnimation = new()
+            {
+                Name = animation.Name,
+                Frames = scaledFrames,
+                Loop = animation.Loop,
+                Origin = animation.Origin,
+                ZOrder = animation.ZOrder,
+                PositionCode = animation.PositionCode
+            };
+            scaledAnimation.CalculateDuration();
+            return scaledAnimation;
+        }
+
+        private static int BuildAnimationDisplayerSkillUseAvatarEffectRegistrationKey(
+            int skillId,
+            string branchName,
+            int variantIndex)
+        {
+            int hash = HashCode.Combine(
+                skillId,
+                StringComparer.OrdinalIgnoreCase.GetHashCode(branchName ?? string.Empty),
+                variantIndex);
+            if (hash == int.MinValue)
+            {
+                hash = int.MaxValue;
+            }
+
+            hash = Math.Abs(hash);
+            return hash == 0 ? Math.Max(1, skillId) : hash;
         }
 
         private bool TryGetAnimationDisplayerSkillUseFrameVariants(string effectUol, out List<List<IDXObject>> variants)

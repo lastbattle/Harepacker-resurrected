@@ -18,6 +18,11 @@ namespace HaCreator.MapSimulator.UI
         private const int NoticeTop = 103;
         private const int NoticeWidth = 344;
         private const int NoticeHeight = 31;
+        private const int ThreadPageSelectorLeft = 450;
+        private const int ThreadPageSelectorTop = 320;
+        private const int ThreadPageSelectorWidth = 40;
+        private const int ThreadPageSelectorHeight = 14;
+        private const int ThreadPageSelectorVisibleCount = 4;
         private const int ThreadListLeft = 22;
         private const int ThreadListTop = 134;
         private const int ThreadListWidth = 344;
@@ -91,6 +96,7 @@ namespace HaCreator.MapSimulator.UI
         private Action<string> _setComposeBodyHandler;
         private Action<string> _setReplyDraftHandler;
         private Func<int, string> _moveThreadPageHandler;
+        private Func<int, string> _setThreadPageHandler;
         private Func<int, string> _moveCommentPageHandler;
         private Func<int, string> _setCommentPageHandler;
         private Func<int, string> _moveComposeCashPageHandler;
@@ -225,6 +231,7 @@ namespace HaCreator.MapSimulator.UI
             Action<string> setComposeBodyHandler,
             Action<string> setReplyDraftHandler,
             Func<int, string> moveThreadPageHandler,
+            Func<int, string> setThreadPageHandler,
             Func<int, string> moveCommentPageHandler,
             Func<int, string> setCommentPageHandler,
             Func<int, string> moveComposeCashPageHandler,
@@ -247,6 +254,7 @@ namespace HaCreator.MapSimulator.UI
             _setComposeBodyHandler = setComposeBodyHandler;
             _setReplyDraftHandler = setReplyDraftHandler;
             _moveThreadPageHandler = moveThreadPageHandler;
+            _setThreadPageHandler = setThreadPageHandler;
             _moveCommentPageHandler = moveCommentPageHandler;
             _setCommentPageHandler = setCommentPageHandler;
             _moveComposeCashPageHandler = moveComposeCashPageHandler;
@@ -482,6 +490,11 @@ namespace HaCreator.MapSimulator.UI
         private void HandleMouseClick(GuildBbsSnapshot snapshot, Point mousePosition)
         {
             if (TryHandleNoticeSelection(snapshot, mousePosition))
+            {
+                return;
+            }
+
+            if (TryHandleThreadPageSelectorClick(snapshot, mousePosition))
             {
                 return;
             }
@@ -1170,11 +1183,12 @@ namespace HaCreator.MapSimulator.UI
 
             DrawString(
                 sprite,
-                $"Page {snapshot.ThreadPageIndex + 1}/{Math.Max(1, snapshot.ThreadPageCount)}  Scroll to page threads",
+                $"Scroll to page threads",
                 bounds.X + 6,
                 bounds.Bottom + 4,
                 new Color(96, 103, 114),
                 0.32f);
+            DrawThreadPageSelector(sprite, snapshot);
         }
 
         private void DrawComposePane(SpriteBatch sprite, GuildBbsComposeSnapshot compose, int tickCount)
@@ -1306,6 +1320,30 @@ namespace HaCreator.MapSimulator.UI
                 canMovePrev: (thread?.CommentPageIndex ?? 0) > 0,
                 canMoveNext: thread != null && thread.CommentPageIndex < Math.Max(0, thread.CommentPageCount - 1),
                 draggingThumb: _isDraggingCommentScrollBar);
+        }
+
+        private void DrawThreadPageSelector(SpriteBatch sprite, GuildBbsSnapshot snapshot)
+        {
+            Rectangle bounds = GetThreadPageSelectorBounds();
+            sprite.Draw(_pixel, bounds, new Color(255, 255, 255, 28));
+
+            int visiblePageCount = Math.Min(ThreadPageSelectorVisibleCount, Math.Max(1, snapshot.ThreadPageCount));
+            int startPageIndex = ResolveThreadPageSelectorStart(snapshot.ThreadPageIndex, snapshot.ThreadPageCount, visiblePageCount);
+            int slotWidth = Math.Max(1, bounds.Width / ThreadPageSelectorVisibleCount);
+            for (int slotIndex = 0; slotIndex < visiblePageCount; slotIndex++)
+            {
+                int pageIndex = startPageIndex + slotIndex;
+                Rectangle slotBounds = new Rectangle(bounds.X + (slotIndex * slotWidth), bounds.Y, slotWidth, bounds.Height);
+                bool selected = pageIndex == snapshot.ThreadPageIndex;
+                sprite.Draw(_pixel, slotBounds, selected ? new Color(93, 117, 154, 120) : new Color(255, 255, 255, 10));
+                DrawString(
+                    sprite,
+                    (pageIndex + 1).ToString(),
+                    slotBounds.X + 2,
+                    slotBounds.Y + 1,
+                    selected ? new Color(52, 57, 67) : new Color(96, 103, 114),
+                    0.29f);
+            }
         }
 
         private void DrawScrollbar(
@@ -1532,7 +1570,12 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private Rectangle GetNoticeBounds() => new(Position.X + NoticeLeft, Position.Y + NoticeTop, NoticeWidth, NoticeHeight);
-        private Rectangle GetThreadListBounds() => new(Position.X + ThreadListLeft, Position.Y + ThreadListTop, ThreadListWidth, ThreadRowHeight * 8);
+        private Rectangle GetThreadListBounds()
+        {
+            int visibleRowCount = Math.Max(0, _currentSnapshot?.Threads?.Count ?? 0);
+            return new Rectangle(Position.X + ThreadListLeft, Position.Y + ThreadListTop, ThreadListWidth, ThreadRowHeight * visibleRowCount);
+        }
+        private Rectangle GetThreadPageSelectorBounds() => new(Position.X + ThreadPageSelectorLeft, Position.Y + ThreadPageSelectorTop, ThreadPageSelectorWidth, ThreadPageSelectorHeight);
         private Rectangle GetDetailBounds() => new(Position.X + DetailLeft, Position.Y + DetailTop, DetailWidth, DetailHeight);
         private Rectangle GetComposeTitleBounds() => new(Position.X + 449, Position.Y + 30, 256, TitleInputHeight);
         private Rectangle GetComposeBodyBounds() => new(Position.X + 449, Position.Y + 56, 250, 180);
@@ -1542,8 +1585,8 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetCommentPaneBounds() => new(Position.X + 424, Position.Y + 326, 258, 124);
         private Rectangle GetCommentScrollBarBounds() => new(Position.X + 710, Position.Y + 326, _scrollbarSkin?.Width ?? CommentScrollBarWidth, 125);
         private Rectangle GetReplyInputBounds() => new(Position.X + 424, Position.Y + 459, 256, 16);
-        private Rectangle GetBasicEmoticonBounds(int index) => new(Position.X + 426 + (index * BasicEmoticonSpacing), Position.Y + 246, BasicEmoticonSize, BasicEmoticonSize);
-        private Rectangle GetCashEmoticonBounds(int index) => new(Position.X + 495 + (index * CashEmoticonSpacing), Position.Y + 246, CashEmoticonSize, CashEmoticonSize);
+        private Rectangle GetBasicEmoticonBounds(int index) => new(Position.X + 426 + (index * BasicEmoticonSpacing), Position.Y + 246, 20, 20);
+        private Rectangle GetCashEmoticonBounds(int index) => new(Position.X + 495 + (index * CashEmoticonSpacing), Position.Y + 246, 20, 20);
         private Rectangle GetCashEmoticonRowBounds() => new(Position.X + 495, Position.Y + 246, (VisibleCashEmoticonCount * CashEmoticonSpacing), CashEmoticonSize);
         private Rectangle GetComposeScrollBarPrevBounds() => BuildScrollBarPrevBounds(GetComposeScrollBarBounds());
         private Rectangle GetComposeScrollBarNextBounds() => BuildScrollBarNextBounds(GetComposeScrollBarBounds());
@@ -1726,6 +1769,28 @@ namespace HaCreator.MapSimulator.UI
 
             _selectThreadHandler?.Invoke(noticeThread.ThreadId);
             DeactivateInput(clearText: true);
+            return true;
+        }
+
+        private bool TryHandleThreadPageSelectorClick(GuildBbsSnapshot snapshot, Point mousePosition)
+        {
+            Rectangle bounds = GetThreadPageSelectorBounds();
+            if (!bounds.Contains(mousePosition) || snapshot.ThreadPageCount <= 1)
+            {
+                return false;
+            }
+
+            int visiblePageCount = Math.Min(ThreadPageSelectorVisibleCount, snapshot.ThreadPageCount);
+            int startPageIndex = ResolveThreadPageSelectorStart(snapshot.ThreadPageIndex, snapshot.ThreadPageCount, visiblePageCount);
+            int slotWidth = Math.Max(1, bounds.Width / ThreadPageSelectorVisibleCount);
+            int clickedSlot = Math.Clamp((mousePosition.X - bounds.X) / slotWidth, 0, ThreadPageSelectorVisibleCount - 1);
+            int pageIndex = startPageIndex + clickedSlot;
+            if (pageIndex >= snapshot.ThreadPageCount)
+            {
+                return false;
+            }
+
+            ShowFeedback(_setThreadPageHandler?.Invoke(pageIndex));
             return true;
         }
 
@@ -2129,6 +2194,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return (Math.Max(0, cashPageIndex) * VisibleCashEmoticonCount) + displayIndex;
+        }
+
+        private static int ResolveThreadPageSelectorStart(int currentPageIndex, int totalPageCount, int visiblePageCount)
+        {
+            if (totalPageCount <= 0 || visiblePageCount <= 0)
+            {
+                return 0;
+            }
+
+            int maxStart = Math.Max(0, totalPageCount - visiblePageCount);
+            int centeredStart = currentPageIndex - (visiblePageCount / 2);
+            return Math.Clamp(centeredStart, 0, maxStart);
         }
 
         private Rectangle BuildScrollBarPrevBounds(Rectangle scrollBounds)

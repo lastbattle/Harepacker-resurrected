@@ -153,6 +153,22 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            PacketCharacterDataSnapshot snapshot = packet.CharacterDataSnapshot;
+            if (snapshot?.RegularMapTransferFields?.Count == MapTransferRuntimeManager.RegularCapacity &&
+                snapshot.ContinentMapTransferFields?.Count == MapTransferRuntimeManager.ContinentCapacity)
+            {
+                int[] regularSnapshotFields = snapshot.RegularMapTransferFields.ToArray();
+                int[] continentSnapshotFields = snapshot.ContinentMapTransferFields.ToArray();
+                _mapTransferRuntime.ApplyAuthoritativeBootstrap(build, regularSnapshotFields, continentSnapshotFields);
+                RefreshMapTransferWindow();
+                string snapshotLogoutGiftSuffix = (packet.TrailingPayload?.Length ?? 0) == (3 * sizeof(int))
+                    ? " while preserving the client 12-byte logout-gift cache that follows CharacterData::Decode in CStage::OnSetField"
+                    : string.Empty;
+                _lastAuthoritativeMapTransferBootstrapSummary =
+                    $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} directly from the decoded CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} stage-transition snapshot{snapshotLogoutGiftSuffix}.";
+                return;
+            }
+
             byte[] trailingPayload = packet.TrailingPayload ?? Array.Empty<byte>();
             if (!MapTransferAuthoritativeBootstrapDecoder.TryFindBootstrapBooks(
                     trailingPayload,

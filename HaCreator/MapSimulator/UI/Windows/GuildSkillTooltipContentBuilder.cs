@@ -27,7 +27,11 @@ namespace HaCreator.MapSimulator.UI
                 lines.Add($"Pending: {entry.PendingActionLabel} approval.");
             }
 
-            if (!string.IsNullOrWhiteSpace(entry.CurrentEffectDescription))
+            if (!entry.InGuild)
+            {
+                lines.Add("Current: Join a guild.");
+            }
+            else if (!string.IsNullOrWhiteSpace(entry.CurrentEffectDescription))
             {
                 lines.Add($"Current: {entry.CurrentEffectDescription}");
             }
@@ -40,7 +44,11 @@ namespace HaCreator.MapSimulator.UI
                 lines.Add("Current: Not learned.");
             }
 
-            if (entry.CurrentLevel >= entry.MaxLevel)
+            if (!entry.InGuild)
+            {
+                lines.Add("Next: Requires guild membership.");
+            }
+            else if (entry.CurrentLevel >= entry.MaxLevel)
             {
                 lines.Add("Next: Max level reached.");
             }

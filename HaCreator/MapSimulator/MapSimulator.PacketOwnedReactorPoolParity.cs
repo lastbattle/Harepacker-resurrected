@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator
         private readonly PacketReactorPoolRuntime _packetReactorPoolRuntime = new();
         private readonly ReactorPoolPacketInboxManager _reactorPoolPacketInbox = new();
         private readonly ReactorPoolOfficialSessionBridgeManager _reactorPoolOfficialSessionBridge = new();
+        private readonly ReactorTouchPacketTransportManager _reactorTouchPacketOutbox = new();
         private bool _reactorPoolPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _reactorPoolPacketInboxConfiguredPort = ReactorPoolPacketInboxManager.DefaultPort;
         private bool _reactorPoolOfficialSessionBridgeEnabled;
@@ -29,7 +30,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "reactorpacket",
                 "Inspect or drive packet-owned CReactorPool lifecycle packets",
-                "/reactorpacket [status|clear|enter <objectId> <templateId> <state> <x> <y> [flip] [name...]|changestate <objectId> <state> <x> <y> [hitStartDelayMs] [properEventIndex] [stateEndDelayTicks]|move <objectId> <x> <y>|leave <objectId> <state> <x> <y>|packet <changestate|move|enter|leave|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                "/reactorpacket [status|clear|enter <objectId> <templateId> <state> <x> <y> [flip] [name...]|changestate <objectId> <state> <x> <y> [hitStartDelayMs] [properEventIndex] [stateEndDelayTicks]|move <objectId> <x> <y>|leave <objectId> <state> <x> <y>|packet <changestate|move|enter|leave|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>|inbox [status|start [port]|stop]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 HandlePacketOwnedReactorPoolCommand);
         }
 
@@ -219,6 +220,11 @@ namespace HaCreator.MapSimulator
             return $"Reactor packet inbox {enabledText}, {listeningText}, received {_reactorPoolPacketInbox.ReceivedCount} packet(s).";
         }
 
+        private string DescribeReactorTouchOutboxStatus()
+        {
+            return _reactorTouchPacketOutbox.DescribeStatus();
+        }
+
         private void DrainReactorPoolOfficialSessionBridge()
         {
             while (_reactorPoolOfficialSessionBridge.TryDequeue(out ReactorPoolPacketInboxMessage message))
@@ -248,7 +254,7 @@ namespace HaCreator.MapSimulator
 
         private string DescribeReactorPoolOfficialSessionBridgeStatus()
         {
-            return $"{DescribePacketFieldOfficialSessionBridgeStatus()} /reactorpacket session is an alias for /fieldstate session.";
+            return $"{_reactorPoolOfficialSessionBridge.DescribeStatus()} {DescribePacketFieldOfficialSessionBridgeStatus()} /reactorpacket session is an alias for /fieldstate session.";
         }
 
         private void EnsureReactorPoolOfficialSessionBridgeState(bool shouldRun)
@@ -355,13 +361,13 @@ namespace HaCreator.MapSimulator
         {
             if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Info($"{_packetReactorPoolRuntime.DescribeStatus()} {DescribeReactorPoolPacketInboxStatus()} {DescribeReactorPoolOfficialSessionBridgeStatus()} {_reactorPoolPacketInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info($"{_packetReactorPoolRuntime.DescribeStatus()} {DescribeReactorPoolPacketInboxStatus()} {DescribeReactorTouchOutboxStatus()} {DescribeReactorPoolOfficialSessionBridgeStatus()} {_reactorPoolPacketInbox.LastStatus}");
             }
 
             if (string.Equals(args[0], "clear", StringComparison.OrdinalIgnoreCase))
             {
                 _packetReactorPoolRuntime.Clear();
-                return ChatCommandHandler.CommandResult.Ok($"{_packetReactorPoolRuntime.DescribeStatus()} {DescribeReactorPoolPacketInboxStatus()} {DescribeReactorPoolOfficialSessionBridgeStatus()}");
+                return ChatCommandHandler.CommandResult.Ok($"{_packetReactorPoolRuntime.DescribeStatus()} {DescribeReactorPoolPacketInboxStatus()} {DescribeReactorTouchOutboxStatus()} {DescribeReactorPoolOfficialSessionBridgeStatus()}");
             }
 
             if (string.Equals(args[0], "inbox", StringComparison.OrdinalIgnoreCase))
@@ -393,6 +399,34 @@ namespace HaCreator.MapSimulator
                 }
 
                 return ChatCommandHandler.CommandResult.Error("Usage: /reactorpacket inbox [status|start [port]|stop]");
+            }
+
+            if (string.Equals(args[0], "outbox", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                {
+                    return ChatCommandHandler.CommandResult.Info(DescribeReactorTouchOutboxStatus());
+                }
+
+                if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                {
+                    int port = ReactorTouchPacketTransportManager.DefaultPort;
+                    if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /reactorpacket outbox start [port]");
+                    }
+
+                    _reactorTouchPacketOutbox.Start(port);
+                    return ChatCommandHandler.CommandResult.Ok(_reactorTouchPacketOutbox.LastStatus);
+                }
+
+                if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                {
+                    _reactorTouchPacketOutbox.Stop();
+                    return ChatCommandHandler.CommandResult.Ok(_reactorTouchPacketOutbox.LastStatus);
+                }
+
+                return ChatCommandHandler.CommandResult.Error("Usage: /reactorpacket outbox [status|start [port]|stop]");
             }
 
             if (string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
@@ -511,7 +545,7 @@ namespace HaCreator.MapSimulator
 
             if (!rawHex && !string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /reactorpacket [status|clear|enter ...|changestate ...|move ...|leave ...|packet <type> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /reactorpacket [status|clear|enter ...|changestate ...|move ...|leave ...|packet <type> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>|inbox [status|start [port]|stop]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
             }
 
             if (args.Length < 2 || !TryParsePacketReactorPoolKind(args[1], out PacketReactorPoolPacketKind kind))

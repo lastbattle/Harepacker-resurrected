@@ -124,7 +124,7 @@ namespace HaCreator.MapSimulator.UI
         private IReadOnlyList<TabVisual> _rightTabs = Array.Empty<TabVisual>();
         private IReadOnlyList<MonsterBookDetailTab> _rightTabOrder = new[] { MonsterBookDetailTab.BasicInfo, MonsterBookDetailTab.Episode, MonsterBookDetailTab.Rewards, MonsterBookDetailTab.Habitat };
         private SpriteFont _font;
-        private Func<CollectionBookSnapshot> _collectionSnapshotProvider;
+        private Func<Func<string, int, float>, CollectionBookSnapshot> _collectionSnapshotProvider;
         private Func<MonsterBookSnapshot> _snapshotProvider;
         private Func<int, bool, MonsterBookSnapshot> _registrationHandler;
         private CollectionBookSnapshot _collectionSnapshot;
@@ -232,7 +232,7 @@ namespace HaCreator.MapSimulator.UI
             _compositionCursorPosition = -1;
             ClearImeCandidateList();
         }
-        public void SetCollectionSnapshotProvider(Func<CollectionBookSnapshot> snapshotProvider) => _collectionSnapshotProvider = snapshotProvider;
+        public void SetCollectionSnapshotProvider(Func<Func<string, int, float>, CollectionBookSnapshot> snapshotProvider) => _collectionSnapshotProvider = snapshotProvider;
 
         public override void HandleCommittedText(string text)
         {
@@ -426,7 +426,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void RefreshCollectionSnapshot()
         {
-            _collectionSnapshot = _collectionSnapshotProvider?.Invoke() ?? new CollectionBookSnapshot();
+            _collectionSnapshot = _collectionSnapshotProvider?.Invoke(MeasureCollectionSnapshotTextWidth) ?? new CollectionBookSnapshot();
             _currentPageIndex = Math.Clamp(_currentPageIndex, 0, Math.Max(0, (_collectionSnapshot.Pages?.Count ?? 1) - 1));
         }
 
@@ -1576,6 +1576,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return null;
+        }
+
+        private float MeasureCollectionSnapshotTextWidth(string text, int styleIndex)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0f;
+            }
+
+            return MeasureRenderedText(text, GetBookStyle(styleIndex)).X;
         }
 
         private static Color ConvertArgbToColor(int argb)

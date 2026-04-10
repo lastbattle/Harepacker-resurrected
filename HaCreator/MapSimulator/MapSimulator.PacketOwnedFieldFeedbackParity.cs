@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
@@ -23,6 +24,12 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<string, List<IDXObject>> _packetFieldFeedbackAnimationCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<PacketOwnedUiAnimation> _packetFieldFeedbackUiAnimations = new();
         private IReadOnlyList<PacketFieldSwindleWarningEntry> _packetFieldSwindleWarnings;
+        private readonly Texture2D[] _packetFieldBossTimerDigits = new Texture2D[10];
+        private PacketFieldBossTimerVisualState _packetFieldBossTimerClockState;
+        private Texture2D _packetFieldBossTimerBackgroundTexture;
+        private Texture2D _packetFieldBossTimerHourBackgroundTexture;
+        private Texture2D _packetFieldBossTimerSeparatorTexture;
+        private bool _packetFieldBossTimerAssetsLoaded;
         private const int PacketOwnedSummonEffectStringPoolId = 0x663;
         private const int PacketOwnedScreenEffectStringPoolId = 0x9ED;
         private const int PacketOwnedRewardRoulettePathJoinStringPoolId = 0x3DA;
@@ -31,6 +38,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedScreenEffectYOffset = -40;
         private const int PacketOwnedRewardRouletteOffsetX = 400;
         private const int PacketOwnedRewardRouletteOffsetY = 260;
+        private const int PacketOwnedBossTimerOffsetY = 25;
+        private const int PacketOwnedBossTimerDigitSpacing = 2;
         private const byte PacketOwnedUiClientAlpha = 255;
         private static readonly int[] PacketOwnedRewardRouletteLayerStringPoolIds =
         {
@@ -94,12 +103,14 @@ namespace HaCreator.MapSimulator
         {
             _packetFieldFeedbackRuntime.Initialize(GraphicsDevice);
             _packetFieldFeedbackRuntime.Update(currentTickCount);
+            UpdatePacketOwnedBossTimerClockState(currentTickCount);
             UpdatePacketOwnedFieldFeedbackUiAnimations(currentTickCount);
         }
 
         private void DrawPacketOwnedFieldFeedbackState(int currentTickCount)
         {
             _packetFieldFeedbackRuntime.Draw(_spriteBatch, _fontChat, _renderParams.RenderWidth, currentTickCount);
+            DrawPacketOwnedBossTimerClock(currentTickCount);
             DrawPacketOwnedFieldFeedbackUiAnimations(currentTickCount);
         }
 
@@ -141,7 +152,9 @@ namespace HaCreator.MapSimulator
                 IsBlacklistedName = name => _socialListRuntime.IsBlacklisted(name),
                 IsBlockedFriendName = name => _socialListRuntime.IsBlockedFriend(name),
                 QueueMapTransfer = TryQueuePacketOwnedWhisperFindTransfer,
-                ResolveSwindleWarnings = GetPacketOwnedSwindleWarningEntries
+                ResolveSwindleWarnings = GetPacketOwnedSwindleWarningEntries,
+                ShowBossTimerClock = ShowPacketOwnedBossTimerClock,
+                ClearBossTimerClock = ClearPacketOwnedBossTimerClock
             };
         }
 
@@ -159,6 +172,7 @@ namespace HaCreator.MapSimulator
                 Title = "Warning",
                 Body = message.Trim(),
                 NoticeVariant = ConnectionNoticeWindowVariant.Notice,
+                TrackDirectionModeOwner = true,
                 DurationMs = 5000
             });
         }
@@ -328,6 +342,163 @@ namespace HaCreator.MapSimulator
             }
 
             return queued;
+        }
+
+        private void ShowPacketOwnedBossTimerClock(PacketFieldBossTimerVisualState state)
+        {
+            _packetFieldBossTimerClockState = state;
+            EnsurePacketOwnedBossTimerAssetsLoaded();
+        }
+
+        private void ClearPacketOwnedBossTimerClock()
+        {
+            _packetFieldBossTimerClockState = null;
+        }
+
+        private void UpdatePacketOwnedBossTimerClockState(int currentTickCount)
+        {
+            if (_packetFieldBossTimerClockState == null)
+            {
+                return;
+            }
+
+            if (PacketFieldFeedbackRuntime.GetBossTimerRemainingSecondsForTest(_packetFieldBossTimerClockState, currentTickCount) <= 0)
+            {
+                _packetFieldBossTimerClockState = null;
+            }
+        }
+
+        private void EnsurePacketOwnedBossTimerAssetsLoaded()
+        {
+            if (_packetFieldBossTimerAssetsLoaded || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            WzImage mapEtcImage = Program.FindImage("Map", "Obj/etc.img")
+                ?? Program.FindImage("Map", "etc.img");
+            mapEtcImage?.ParseImage();
+
+            WzImageProperty timerProperty = mapEtcImage?["timer"];
+            WzImageProperty clockFontProperty = mapEtcImage?["clock"]?["fontTime"];
+            _packetFieldBossTimerBackgroundTexture = LoadPacketOwnedBossTimerTexture(timerProperty?["backgrnd"]);
+            _packetFieldBossTimerHourBackgroundTexture = LoadPacketOwnedBossTimerTexture(timerProperty?["backgrndhour"]);
+            _packetFieldBossTimerSeparatorTexture = LoadPacketOwnedBossTimerTexture(clockFontProperty?["comma"]);
+            for (int digit = 0; digit < _packetFieldBossTimerDigits.Length; digit++)
+            {
+                _packetFieldBossTimerDigits[digit] = LoadPacketOwnedBossTimerTexture(clockFontProperty?[digit.ToString(CultureInfo.InvariantCulture)]);
+            }
+
+            _packetFieldBossTimerAssetsLoaded = true;
+        }
+
+        private Texture2D LoadPacketOwnedBossTimerTexture(WzImageProperty property)
+        {
+            if (GraphicsDevice == null || property == null)
+            {
+                return null;
+            }
+
+            if (WzInfoTools.GetRealProperty(property) is not WzCanvasProperty canvas)
+            {
+                return null;
+            }
+
+            using System.Drawing.Bitmap bitmap = canvas.GetLinkedWzCanvasBitmap();
+            return bitmap?.ToTexture2D(GraphicsDevice);
+        }
+
+        private void DrawPacketOwnedBossTimerClock(int currentTickCount)
+        {
+            if (_spriteBatch == null || _packetFieldBossTimerClockState == null)
+            {
+                return;
+            }
+
+            EnsurePacketOwnedBossTimerAssetsLoaded();
+            int remainingSeconds = PacketFieldFeedbackRuntime.GetBossTimerRemainingSecondsForTest(_packetFieldBossTimerClockState, currentTickCount);
+            if (remainingSeconds <= 0)
+            {
+                _packetFieldBossTimerClockState = null;
+                return;
+            }
+
+            bool showHours = remainingSeconds >= 3600;
+            Texture2D background = showHours
+                ? _packetFieldBossTimerHourBackgroundTexture ?? _packetFieldBossTimerBackgroundTexture
+                : _packetFieldBossTimerBackgroundTexture ?? _packetFieldBossTimerHourBackgroundTexture;
+            if (background == null)
+            {
+                return;
+            }
+
+            Vector2 boardPosition = new(
+                Math.Max(0f, (_renderParams.RenderWidth - background.Width) / 2f),
+                PacketOwnedBossTimerOffsetY);
+            _spriteBatch.Draw(background, boardPosition, Color.White);
+
+            string timerText = FormatPacketOwnedBossTimerText(remainingSeconds, showHours);
+            if (!TryDrawPacketOwnedBossTimerDigits(timerText, boardPosition, background))
+            {
+                if (_fontChat == null)
+                {
+                    return;
+                }
+
+                Vector2 fallbackPosition = boardPosition + new Vector2(32f, 15f);
+                _spriteBatch.DrawString(_fontChat, timerText, fallbackPosition, Color.White, 0f, Vector2.Zero, 0.65f, SpriteEffects.None, 0f);
+            }
+        }
+
+        private bool TryDrawPacketOwnedBossTimerDigits(string timerText, Vector2 boardPosition, Texture2D background)
+        {
+            if (string.IsNullOrWhiteSpace(timerText)
+                || _packetFieldBossTimerSeparatorTexture == null
+                || _packetFieldBossTimerDigits.Any(static texture => texture == null))
+            {
+                return false;
+            }
+
+            List<Texture2D> glyphs = new(timerText.Length);
+            int totalWidth = 0;
+            foreach (char character in timerText)
+            {
+                Texture2D glyph = character switch
+                {
+                    ':' => _packetFieldBossTimerSeparatorTexture,
+                    >= '0' and <= '9' => _packetFieldBossTimerDigits[character - '0'],
+                    _ => null
+                };
+                if (glyph == null)
+                {
+                    return false;
+                }
+
+                glyphs.Add(glyph);
+                totalWidth += glyph.Width;
+            }
+
+            totalWidth += PacketOwnedBossTimerDigitSpacing * Math.Max(0, glyphs.Count - 1);
+            float drawX = boardPosition.X + Math.Max(0f, (background.Width - totalWidth) / 2f);
+            float drawY = boardPosition.Y + Math.Max(0f, (background.Height - glyphs.Max(static texture => texture.Height)) / 2f);
+            foreach (Texture2D glyph in glyphs)
+            {
+                _spriteBatch.Draw(glyph, new Vector2(drawX, drawY), Color.White);
+                drawX += glyph.Width + PacketOwnedBossTimerDigitSpacing;
+            }
+
+            return true;
+        }
+
+        private static string FormatPacketOwnedBossTimerText(int remainingSeconds, bool showHours)
+        {
+            remainingSeconds = Math.Max(0, remainingSeconds);
+            int hours = remainingSeconds / 3600;
+            int minutes = (remainingSeconds / 60) % 60;
+            int seconds = remainingSeconds % 60;
+            return showHours
+                ? string.Format(CultureInfo.InvariantCulture, "{0}:{1:00}:{2:00}", hours, minutes, seconds)
+                : string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}", minutes, seconds);
         }
 
         private void UpdatePacketOwnedFieldFeedbackUiAnimations(int currentTickCount)
@@ -1588,6 +1759,11 @@ namespace HaCreator.MapSimulator
             return TryApplyPacketOwnedFieldFeedbackPacket(kind, payload, out string message)
                 ? ChatCommandHandler.CommandResult.Ok(message)
                 : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        internal static string FormatPacketOwnedBossTimerTextForTest(int remainingSeconds, bool showHours)
+        {
+            return FormatPacketOwnedBossTimerText(remainingSeconds, showHours);
         }
 
         private static bool TryParsePacketFieldFeedbackKind(string value, out PacketFieldFeedbackPacketKind kind)

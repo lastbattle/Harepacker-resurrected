@@ -5243,12 +5243,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                 PlaceholderMatchesHintLabel(normalizedSurface, "#v", "accuracy"));
             levelData.ACC = ApplyDescriptionBackedAliasValue(
                 levelData.ACC,
+                xValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "accuracy"));
+            levelData.ACC = ApplyDescriptionBackedAliasValue(
+                levelData.ACC,
+                yValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "accuracy"));
+            levelData.ACC = ApplyDescriptionBackedAliasValue(
+                levelData.ACC,
                 zValue,
                 PlaceholderMatchesHintLabel(normalizedSurface, "#z", "accuracy"));
             levelData.EVA = ApplyDescriptionBackedAliasValue(
                 levelData.EVA,
                 wValue,
                 PlaceholderMatchesHintLabel(normalizedSurface, "#w", "avoidability"));
+            levelData.EVA = ApplyDescriptionBackedAliasValue(
+                levelData.EVA,
+                xValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "avoidability"));
+            levelData.EVA = ApplyDescriptionBackedAliasValue(
+                levelData.EVA,
+                yValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "avoidability"));
             levelData.EVA = ApplyDescriptionBackedAliasValue(
                 levelData.EVA,
                 zValue,

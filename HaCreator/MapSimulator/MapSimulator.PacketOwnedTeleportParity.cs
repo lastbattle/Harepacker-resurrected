@@ -48,6 +48,24 @@ namespace HaCreator.MapSimulator
             int currentTime = Environment.TickCount;
             _packetOwnedTeleportRequestCompletedAt = currentTime;
 
+            if (TryResolvePacketOwnedTeleportLivePortalTarget(
+                targetPortalName,
+                targetPortalNameCandidates,
+                targetX,
+                targetY,
+                out int livePortalIndex,
+                out PortalInstance livePortalInstance))
+            {
+                _lastPacketOwnedTeleportPortalIndex = livePortalIndex;
+                RegisterPacketOwnedTeleportHandoff(livePortalInstance);
+                string liveRegistrationMessage = ApplyPacketOwnedTeleportRegistrationSideEffects(livePortalInstance, currentTime);
+                ApplySameMapTeleportPosition(livePortalInstance.X, livePortalInstance.Y);
+                message = string.IsNullOrWhiteSpace(liveRegistrationMessage)
+                    ? $"Applied packet-owned teleport result through live portal metadata index {livePortalIndex} ({livePortalInstance.pn} -> {livePortalInstance.tn})."
+                    : $"Applied packet-owned teleport result through live portal metadata index {livePortalIndex} ({livePortalInstance.pn} -> {livePortalInstance.tn}). {liveRegistrationMessage}";
+                return true;
+            }
+
             if (TryResolvePacketOwnedTeleportPortalByPosition(targetX, targetY, out int portalIndex, out PortalInstance portalInstance))
             {
                 _lastPacketOwnedTeleportPortalIndex = portalIndex;
@@ -170,6 +188,34 @@ namespace HaCreator.MapSimulator
                 ? $"Packet-owned cross-map teleport could not resolve a landing point in map {target.MapId}."
                 : $"Packet-owned cross-map teleport could not resolve portal '{target.TargetPortalName}' in map {target.MapId}.";
             return false;
+        }
+
+        private bool TryResolvePacketOwnedTeleportLivePortalTarget(
+            string targetPortalName,
+            IEnumerable<string> targetPortalNameCandidates,
+            float targetX,
+            float targetY,
+            out int portalIndex,
+            out PortalInstance portalInstance)
+        {
+            portalIndex = -1;
+            portalInstance = null;
+
+            if (_portalPool == null
+                || !TryResolvePacketOwnedTeleportPortalNameByLiveMetadata(
+                    _mapBoard?.BoardItems?.Portals,
+                    targetPortalName,
+                    targetPortalNameCandidates,
+                    targetX,
+                    targetY,
+                    out string resolvedPortalName))
+            {
+                return false;
+            }
+
+            portalIndex = _portalPool.GetPortalIndexByName(resolvedPortalName);
+            portalInstance = _portalPool.GetPortal(portalIndex)?.PortalInstance;
+            return portalInstance != null;
         }
 
         private void RegisterPacketOwnedTeleportHandoff(PortalInstance portalInstance)
@@ -1366,6 +1412,102 @@ namespace HaCreator.MapSimulator
             }
 
             candidates.Add(portalName);
+        }
+
+        internal static bool TryResolvePacketOwnedTeleportPortalNameByLiveMetadata(
+            IEnumerable<PortalInstance> portals,
+            string targetPortalName,
+            IEnumerable<string> targetPortalNameCandidates,
+            float targetX,
+            float targetY,
+            out string resolvedPortalName)
+        {
+            resolvedPortalName = null;
+            if (portals == null)
+            {
+                return false;
+            }
+
+            PortalInstance[] livePortals = portals
+                .Where(portal => portal != null && !string.IsNullOrWhiteSpace(portal.pn))
+                .ToArray();
+            if (livePortals.Length == 0)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(targetPortalName))
+            {
+                PortalInstance namedPortal = livePortals.FirstOrDefault(
+                    portal => string.Equals(portal.pn, targetPortalName, StringComparison.OrdinalIgnoreCase));
+                if (namedPortal != null)
+                {
+                    resolvedPortalName = namedPortal.pn;
+                    return true;
+                }
+            }
+
+            if (!TryCollectPacketOwnedTeleportLiveCandidatePortalNames(
+                livePortals,
+                targetPortalNameCandidates,
+                out string[] liveCandidatePortalNames))
+            {
+                return false;
+            }
+
+            if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(
+                liveCandidatePortalNames,
+                out string uniqueCandidatePortalName))
+            {
+                resolvedPortalName = uniqueCandidatePortalName;
+                return true;
+            }
+
+            var liveCandidateSet = new HashSet<string>(liveCandidatePortalNames, StringComparer.OrdinalIgnoreCase);
+            if (TryResolvePacketOwnedTeleportPortalByPosition(
+                livePortals.Where(portal => liveCandidateSet.Contains(portal.pn)),
+                targetX,
+                targetY,
+                out PortalInstance positionedPortal))
+            {
+                resolvedPortalName = positionedPortal.pn;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryCollectPacketOwnedTeleportLiveCandidatePortalNames(
+            IEnumerable<PortalInstance> portals,
+            IEnumerable<string> candidatePortalNames,
+            out string[] livePortalNames)
+        {
+            livePortalNames = Array.Empty<string>();
+            if (portals == null || candidatePortalNames == null)
+            {
+                return false;
+            }
+
+            var liveNames = new List<string>();
+            foreach (string candidatePortalName in candidatePortalNames)
+            {
+                if (string.IsNullOrWhiteSpace(candidatePortalName))
+                {
+                    continue;
+                }
+
+                PortalInstance matchingPortal = portals.FirstOrDefault(
+                    portal => string.Equals(portal?.pn, candidatePortalName, StringComparison.OrdinalIgnoreCase));
+                if (matchingPortal == null)
+                {
+                    continue;
+                }
+
+                AddPacketOwnedTeleportCandidateName(liveNames, matchingPortal.pn);
+            }
+
+            livePortalNames = liveNames.ToArray();
+            return livePortalNames.Length > 0;
         }
 
         internal static bool TryResolvePacketOwnedTeleportUniqueCandidatePortalName(

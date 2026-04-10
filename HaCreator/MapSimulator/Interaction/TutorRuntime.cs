@@ -452,23 +452,25 @@ namespace HaCreator.MapSimulator.Interaction
         {
             IReadOnlyList<TutorVariantSnapshot> registeredVariants = SnapshotSharedRegisteredTutorVariants();
             List<TutorVariantSnapshot> variants = new();
-            HashSet<long> emittedSkillIds = new();
+            HashSet<long> emittedVariantKeys = new();
             IReadOnlyList<int> clientTutorSkillIds = SnapshotSharedClientTutorSkillSlots();
             for (int i = 0; i < clientTutorSkillIds.Count; i++)
             {
                 int slotSkillId = clientTutorSkillIds[i];
-                if (!emittedSkillIds.Add(slotSkillId))
+                TutorVariantSnapshot displayVariant = ResolveDisplayTutorVariant(slotSkillId, registeredVariants);
+                if (displayVariant.SkillId <= 0
+                    || !emittedVariantKeys.Add(BuildTutorVariantKey(displayVariant)))
                 {
                     continue;
                 }
 
-                variants.Add(ResolveDisplayTutorVariant(slotSkillId, registeredVariants));
+                variants.Add(displayVariant);
             }
 
             for (int i = 0; i < registeredVariants.Count; i++)
             {
                 TutorVariantSnapshot variant = registeredVariants[i];
-                if (emittedSkillIds.Add(variant.SkillId))
+                if (variant.SkillId > 0 && emittedVariantKeys.Add(BuildTutorVariantKey(variant)))
                 {
                     variants.Add(variant);
                 }

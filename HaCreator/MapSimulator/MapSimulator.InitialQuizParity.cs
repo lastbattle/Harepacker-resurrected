@@ -53,7 +53,11 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedInitialQuizPayload(byte[] payload, out string message)
         {
-            bool applied = _initialQuizTimerRuntime.TryApplyPayload(payload, currTickCount, out message);
+            bool applied = _initialQuizTimerRuntime.TryApplyPayload(
+                payload,
+                currTickCount,
+                ResolveInitialQuizOwnerRuntimeCharacterId(),
+                out message);
             if (applied)
             {
                 if (_initialQuizTimerRuntime.IsActive(currTickCount))
@@ -69,6 +73,23 @@ namespace HaCreator.MapSimulator
             }
 
             return applied;
+        }
+
+        private int ResolveInitialQuizOwnerRuntimeCharacterId()
+        {
+            return Math.Max(0, _playerManager?.Player?.Build?.Id ?? 0);
+        }
+
+        private void SyncInitialQuizOwnerContextLifecycle()
+        {
+            int runtimeCharacterId = ResolveInitialQuizOwnerRuntimeCharacterId();
+            _initialQuizTimerRuntime.ObserveRuntimeCharacterId(runtimeCharacterId);
+            if (_initialQuizTimerRuntime.RequiresCharacterReset(runtimeCharacterId))
+            {
+                _initialQuizTimerRuntime.ResetForRuntimeCharacterChange(runtimeCharacterId);
+                ClearInitialQuizOwnerInputState();
+                SyncUtilityChannelSelectorAvailability();
+            }
         }
 
         private void ResetInitialQuizOwnerInputState(int currentTickCount)

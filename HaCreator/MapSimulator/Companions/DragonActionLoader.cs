@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
@@ -27,9 +28,24 @@ namespace HaCreator.MapSimulator.Companions
         }
 
         private const int FirstClientDragonActionCode = 147;
+        private const int DragonImagePathStringPoolId = 0x1330;
         // IDA: CDragon::PrepareActionLayer allocates 0x1D action slots, which
         // resolves to stand + move + raw-action codes 147..173.
         private const int LastClientDragonActionCode = 173;
+        private static readonly string[] SupportedDragonImagePathTokens =
+        {
+            "%d",
+            "%i",
+            "%u",
+            "%ld",
+            "%li",
+            "%lu",
+            "%hd",
+            "%hi",
+            "%hu",
+            "{0}",
+            "%s"
+        };
 
         private static readonly Dictionary<string, string> ClientActionAliases = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -70,7 +86,7 @@ namespace HaCreator.MapSimulator.Companions
                 ? mappedActionName
                 : requestedActionName;
 
-            return ClientActionNames.Contains(resolvedActionName)
+            return IsClientTableActionName(resolvedActionName)
                 ? resolvedActionName
                 : requestedActionName;
         }
@@ -112,7 +128,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return ClientActionTable
-                .Concat(EnumerateImageActionNames(image))
+                .Concat(EnumerateRenderableImageActionNames(image))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
         }
@@ -120,6 +136,12 @@ namespace HaCreator.MapSimulator.Companions
         internal static IEnumerable<string> EnumerateClientActionNames()
         {
             return ClientActionTable;
+        }
+
+        internal static bool IsClientTableActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                && ClientActionNames.Contains(actionName);
         }
 
         internal static bool IsClientHeldActionName(string actionName)
@@ -190,8 +212,67 @@ namespace HaCreator.MapSimulator.Companions
 
         private static WzImage FindDragonImage(int dragonJob)
         {
-            return global::HaCreator.Program.FindImage("Skill", $"Dragon/{dragonJob}.img")
+            string resolvedImagePath = ResolveDragonImagePath(dragonJob);
+            return TryFindImageByResolvedPath(resolvedImagePath)
+                   ?? global::HaCreator.Program.FindImage("Skill", $"Dragon/{dragonJob}.img")
                    ?? global::HaCreator.Program.FindImage("Skill", $"{dragonJob}.img");
+        }
+
+        internal static string ResolveDragonImagePath(int dragonJob)
+        {
+            string rawFormat = MapleStoryStringPool.GetOrFallback(DragonImagePathStringPoolId, "Skill/Dragon/%d.img");
+            if (TryFormatDragonImagePath(rawFormat, dragonJob, out string formattedPath))
+            {
+                return formattedPath;
+            }
+
+            return $"Skill/Dragon/{dragonJob}.img";
+        }
+
+        internal static bool TryFormatDragonImagePath(string rawFormat, int dragonJob, out string formattedPath)
+        {
+            formattedPath = null;
+            if (dragonJob <= 0 || string.IsNullOrWhiteSpace(rawFormat))
+            {
+                return false;
+            }
+
+            string normalized = rawFormat.Trim().Replace('\\', '/');
+            foreach (string token in SupportedDragonImagePathTokens)
+            {
+                int tokenIndex = normalized.IndexOf(token, StringComparison.Ordinal);
+                if (tokenIndex < 0)
+                {
+                    continue;
+                }
+
+                formattedPath = normalized.Remove(tokenIndex, token.Length)
+                    .Insert(tokenIndex, dragonJob.ToString());
+                return formattedPath.EndsWith(".img", StringComparison.OrdinalIgnoreCase);
+            }
+
+            return false;
+        }
+
+        private static WzImage TryFindImageByResolvedPath(string resolvedImagePath)
+        {
+            if (string.IsNullOrWhiteSpace(resolvedImagePath))
+            {
+                return null;
+            }
+
+            string normalized = resolvedImagePath.Trim().Replace('\\', '/');
+            string categoryPrefix = "Skill/";
+            if (!normalized.StartsWith(categoryPrefix, StringComparison.OrdinalIgnoreCase)
+                || !normalized.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            string relativeImagePath = normalized.Substring(categoryPrefix.Length);
+            return string.IsNullOrWhiteSpace(relativeImagePath)
+                ? null
+                : global::HaCreator.Program.FindImage("Skill", relativeImagePath);
         }
 
         internal static IEnumerable<string> EnumerateImageActionNames(WzImage image)
@@ -222,6 +303,14 @@ namespace HaCreator.MapSimulator.Companions
                     yield return actionName;
                 }
             }
+        }
+
+        internal static IEnumerable<string> EnumerateRenderableImageActionNames(WzImage image)
+        {
+            return EnumerateImageActionNames(image)
+                .Where(actionName => HasRenderableActionNode(image, actionName))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
 
         internal static WzSubProperty FindActionNode(WzImage image, string actionName)
@@ -260,6 +349,11 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return null;
+        }
+
+        private static bool HasRenderableActionNode(WzImage image, string actionName)
+        {
+            return ResolveActionNode(image, actionName)?.FrameSourceNode != null;
         }
 
         internal static WzSubProperty FindSkillActionFrameSource(WzSubProperty skillNode)

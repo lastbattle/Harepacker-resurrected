@@ -402,8 +402,14 @@ namespace HaCreator.MapSimulator.Fields
                 TournamentClientMessage message = new(
                     0x3AA,
                     $"Tournament prize notice awarded {FormatItemLabel(firstItemId, firstItemName)} and {FormatItemLabel(secondItemId, secondItemName)}.");
+                string firstItemNoticeLabel = string.IsNullOrWhiteSpace(firstItemName)
+                    ? $"item {firstItemId}"
+                    : firstItemName;
+                string secondItemNoticeLabel = string.IsNullOrWhiteSpace(secondItemName)
+                    ? $"item {secondItemId}"
+                    : secondItemName;
                 SetStatus(
-                    FormatStringPoolMessage(message),
+                    FormatStringPoolMessage(message, firstItemNoticeLabel, secondItemNoticeLabel),
                     currentTimeMs,
                     new[] { message.StringPoolId },
                     $"set-prize (376) code={prizeCode} items={FormatSummaryItemList(_lastPrizeItemIds)}",
@@ -582,21 +588,43 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string FormatStringPoolMessage(TournamentClientMessage definition, params object[] args)
         {
-            string format = GetTournamentCompositeFormat(definition.StringPoolId, definition.FallbackText);
+            string format = GetTournamentCompositeFormat(definition.StringPoolId, definition.FallbackText, args?.Length ?? 0);
             string text = args == null || args.Length == 0
                 ? format
                 : string.Format(CultureInfo.InvariantCulture, format, args);
             return $"{text} [StringPool 0x{definition.StringPoolId:X}]";
         }
 
-        private static string GetTournamentCompositeFormat(int stringPoolId, string fallbackText)
+        private static string GetTournamentCompositeFormat(int stringPoolId, string fallbackText, int maxPlaceholderCount)
         {
             if (!MapleStoryStringPool.TryGet(stringPoolId, out string text))
             {
                 return fallbackText;
             }
 
-            return text.Replace("%n", "{0}", StringComparison.Ordinal);
+            for (int tokenIndex = 0; tokenIndex < maxPlaceholderCount; tokenIndex++)
+            {
+                int markerIndex = text.IndexOf("%s", StringComparison.Ordinal);
+                if (markerIndex < 0)
+                {
+                    markerIndex = text.IndexOf("%d", StringComparison.Ordinal);
+                }
+
+                if (markerIndex < 0)
+                {
+                    markerIndex = text.IndexOf("%n", StringComparison.Ordinal);
+                }
+
+                if (markerIndex < 0)
+                {
+                    break;
+                }
+
+                string replacement = $"{{{tokenIndex}}}";
+                text = text.Remove(markerIndex, 2).Insert(markerIndex, replacement);
+            }
+
+            return text;
         }
 
         private static void EnsurePacketConsumed(Stream stream, string packetLabel)
@@ -635,7 +663,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int RawTableByteCount = 0x300;
         private const int EntrantCount = 8;
         private const int EntryValueCount = 6;
-        private const int MinPayloadLength = RawTableByteCount + 1;
+        private const int ExactPayloadLength = RawTableByteCount + 1;
         private const int DialogWidth = 758;
         private const int DialogHeight = 470;
         private const int MatchTableWidth = 714;
@@ -702,6 +730,7 @@ namespace HaCreator.MapSimulator.Fields
         public int RawTableLength => _rawTable.Length;
         public string Summary { get; private set; }
         public IReadOnlyList<string> SlotNames => _slotNames;
+        public bool HasExactCtorPayloadShape => PayloadLength == ExactPayloadLength && _rawTable.Length == RawTableByteCount;
 
         public void Reset()
         {
@@ -724,9 +753,9 @@ namespace HaCreator.MapSimulator.Fields
             summary = null;
             errorMessage = null;
 
-            if (payload == null || payload.Length < MinPayloadLength)
+            if (payload == null || payload.Length != ExactPayloadLength)
             {
-                errorMessage = $"Tournament match-table payload must be at least {MinPayloadLength} byte(s); received {payload?.Length ?? 0}.";
+                errorMessage = $"Tournament match-table payload must be exactly {ExactPayloadLength} byte(s) (0x300-byte match buffer + state byte); received {payload?.Length ?? 0}.";
                 return false;
             }
 
@@ -745,7 +774,7 @@ namespace HaCreator.MapSimulator.Fields
                 firstNames = "no printable entrant names recovered";
             }
 
-            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), stage={Stage}, scroll={Scroll}, preview={firstNames}).";
+            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), state-byte={Stage} [{ResolveStateLabel()}], scroll={Scroll}, preview={firstNames}).";
             summary = Summary;
             return true;
         }
@@ -783,7 +812,7 @@ namespace HaCreator.MapSimulator.Fields
                 names = "none recovered";
             }
 
-            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | state-byte={Stage} | scroll={Scroll} | entrants={names}";
+            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | exactCtorShape={HasExactCtorPayloadShape} | state-byte={Stage} [{ResolveStateLabel()}] | scroll={Scroll} | entrants={names}";
         }
 
         public int GetMatchValue(int slotIndex, int valueIndex)
@@ -1240,6 +1269,18 @@ namespace HaCreator.MapSimulator.Fields
             };
         }
 
+        private string ResolveStateLabel()
+        {
+            return Stage switch
+            {
+                2 => "round-of-8",
+                3 => "final-4",
+                4 => "semi-final",
+                5 => "champion",
+                _ => "raw"
+            };
+        }
+
         private static string TrimLabel(string text, int maxLength)
         {
             if (string.IsNullOrWhiteSpace(text) || text.Length <= maxLength)
@@ -1247,7 +1288,7 @@ namespace HaCreator.MapSimulator.Fields
                 return text;
             }
 
-            return text[..Math.Max(1, maxLength - 1)] + "…";
+            return text[..Math.Max(1, maxLength - 3)] + "...";
         }
 
         private static void DrawBracketPair(SpriteBatch spriteBatch, Texture2D pixelTexture, Point left, Point right, Point target, Color color, float scale)

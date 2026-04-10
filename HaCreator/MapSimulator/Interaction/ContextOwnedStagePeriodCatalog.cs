@@ -46,7 +46,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach ((int fieldId, IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries) in _affectedMapsByFieldId)
             {
-                if (entries != null && entries.Any(candidate => entry.Keywords.Contains(candidate.StageKeyword)))
+                if (entries != null && entries.Any(candidate => candidate.Matches(entry)))
                 {
                     affectedMaps.Add(fieldId);
                 }
@@ -418,12 +418,46 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                HashSet<string> extraKeywords = ParseStringSet(themeProperty["stageKeyword"] ?? themeProperty);
+                Dictionary<byte, HashSet<string>> periodKeywords = BuildPeriodKeywordAugmentations(themeProperty);
+                if (periodKeywords.Count > 0)
+                {
+                    foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
+                    {
+                        if (periodKeywords.TryGetValue(period.Mode, out HashSet<string> extraKeywords))
+                        {
+                            period.Keywords.UnionWith(extraKeywords);
+                        }
+                    }
+
+                    continue;
+                }
+
+                HashSet<string> themeWideKeywords = ParseStringSet(themeProperty["stageKeyword"] ?? themeProperty);
                 foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
                 {
-                    period.Keywords.UnionWith(extraKeywords);
+                    period.Keywords.UnionWith(themeWideKeywords);
                 }
             }
+        }
+
+        private static Dictionary<byte, HashSet<string>> BuildPeriodKeywordAugmentations(WzImageProperty themeProperty)
+        {
+            Dictionary<byte, HashSet<string>> periodKeywords = new();
+            foreach (WzImageProperty periodProperty in EnumeratePeriodNodes(themeProperty))
+            {
+                if (!byte.TryParse(periodProperty.Name, NumberStyles.None, CultureInfo.InvariantCulture, out byte mode))
+                {
+                    continue;
+                }
+
+                HashSet<string> extraKeywords = ParseStringSet(periodProperty["stageKeyword"] ?? periodProperty);
+                if (extraKeywords.Count > 0)
+                {
+                    periodKeywords[mode] = extraKeywords;
+                }
+            }
+
+            return periodKeywords;
         }
 
         private static void ApplyAffectedMapAugmentations(
@@ -525,6 +559,16 @@ namespace HaCreator.MapSimulator.Interaction
         internal HashSet<string> Keywords { get; }
         internal HashSet<int> EnabledQuestIds { get; }
         internal HashSet<int> AffectedMapIds { get; }
+
+        internal uint? ResolveActiveBackColorArgb()
+        {
+            return Mode > 0 ? BackColorArgb : null;
+        }
+
+        internal IReadOnlyList<ContextOwnedStageBackImageEntry> ResolveActiveBackImages()
+        {
+            return Mode > 0 ? BackImages : Array.Empty<ContextOwnedStageBackImageEntry>();
+        }
     }
 
     internal sealed record ContextOwnedStageBackImageEntry(
@@ -553,7 +597,18 @@ namespace HaCreator.MapSimulator.Interaction
         int Priority,
         int QuestId,
         int QuestState,
-        int RandomTimeSeconds);
+        int RandomTimeSeconds)
+    {
+        internal bool Matches(ContextOwnedStagePeriodCatalogEntry period)
+        {
+            if (period == null || string.IsNullOrWhiteSpace(StageKeyword) || !period.Keywords.Contains(StageKeyword))
+            {
+                return false;
+            }
+
+            return QuestId <= 0 || period.EnabledQuestIds.Contains(QuestId);
+        }
+    }
 
     internal static class ContextOwnedStagePeriodColorHelper
     {

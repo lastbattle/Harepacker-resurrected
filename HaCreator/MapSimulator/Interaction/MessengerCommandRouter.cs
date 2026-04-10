@@ -5,6 +5,8 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal delegate bool BinaryPayloadArgumentParser(string argument, out byte[] payload, out string error);
     internal delegate bool HexByteDecoder(string hexBytes, out byte[] payload);
+    internal delegate ChatCommandHandler.CommandResult MessengerPacketCommandApplier(MessengerPacketType packetType, byte[] payload);
+    internal delegate ChatCommandHandler.CommandResult MessengerDispatchCommandApplier(byte[] payload);
 
     internal static class MessengerCommandRouter
     {
@@ -21,7 +23,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal static ChatCommandHandler.CommandResult HandlePacketCommand(
             string[] args,
             MessengerRuntime runtime,
-            BinaryPayloadArgumentParser parseBinaryPayloadArgument)
+            BinaryPayloadArgumentParser parseBinaryPayloadArgument,
+            MessengerPacketCommandApplier applyPacket,
+            MessengerDispatchCommandApplier applyDispatch)
         {
             if (args.Length < 2)
             {
@@ -88,7 +92,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return ChatCommandHandler.CommandResult.Error(memberError);
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ApplyPacketPayload(MessengerPacketType.MemberInfo, memberPayload));
+                    return applyPacket(MessengerPacketType.MemberInfo, memberPayload);
                 case "dispatch":
                 case "onpacket":
                     string dispatchUsage = $"Usage: /messenger packet {args[1]} <payloadhex=..|payloadb64=..>";
@@ -97,7 +101,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return ChatCommandHandler.CommandResult.Error(dispatchError);
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ApplyPacketDispatchPayload(dispatchPayload));
+                    return applyDispatch(dispatchPayload);
                 default:
                     if (!TryParseMessengerPacketType(args[1], out MessengerPacketType packetType))
                     {
@@ -110,14 +114,16 @@ namespace HaCreator.MapSimulator.Interaction
                         return ChatCommandHandler.CommandResult.Error(payloadError);
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(runtime.ApplyPacketPayload(packetType, payload));
+                    return applyPacket(packetType, payload);
             }
         }
 
         internal static ChatCommandHandler.CommandResult HandlePacketRawCommand(
             string[] args,
             MessengerRuntime runtime,
-            HexByteDecoder tryDecodeHexBytes)
+            HexByteDecoder tryDecodeHexBytes,
+            MessengerPacketCommandApplier applyPacket,
+            MessengerDispatchCommandApplier applyDispatch)
         {
             if (args.Length < 3)
             {
@@ -132,7 +138,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return ChatCommandHandler.CommandResult.Error(PacketRawUsage);
                 }
 
-                return ChatCommandHandler.CommandResult.Ok(runtime.ApplyPacketDispatchPayload(dispatchPayload));
+                return applyDispatch(dispatchPayload);
             }
 
             if (!TryParseMessengerPacketType(args[1], out MessengerPacketType packetType))
@@ -145,7 +151,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return ChatCommandHandler.CommandResult.Error(PacketRawUsage);
             }
 
-            return ChatCommandHandler.CommandResult.Ok(runtime.ApplyPacketPayload(packetType, payload));
+            return applyPacket(packetType, payload);
         }
 
         internal static ChatCommandHandler.CommandResult HandleRemoteCommand(string[] args, MessengerRuntime runtime)

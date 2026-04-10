@@ -96,6 +96,14 @@ namespace HaCreator.MapSimulator.Pools
             public int ExpireTime { get; init; }
         }
 
+        public sealed class RemoteTransientSkillUseAvatarEffectState
+        {
+            public int RegistrationKey { get; init; }
+            public SkillAnimation OverlayAnimation { get; init; }
+            public SkillAnimation UnderFaceAnimation { get; init; }
+            public int AnimationStartTime { get; init; }
+        }
+
         internal readonly record struct PortableChairPairParticipant(
             int CharacterId,
             PortableChair Chair,
@@ -401,10 +409,6 @@ namespace HaCreator.MapSimulator.Pools
                 SetActorAction(actor, actionName, actor.Build.ActivePortableChair != null, Environment.TickCount);
                 actor.SourceTag = string.IsNullOrWhiteSpace(sourceTag) ? actor.SourceTag : sourceTag.Trim();
                 actor.IsVisibleInWorld = isVisibleInWorld;
-                SyncPortableChairPairRecord(
-                    characterId,
-                    actor.Build.ActivePortableChair,
-                    actor.PreferredPortableChairPairCharacterId);
                 SyncTemporaryStatPresentation(actor);
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
                 UpdateNameLookup(previousName, actor.Name, characterId);
@@ -425,10 +429,6 @@ namespace HaCreator.MapSimulator.Pools
             RegisterMeleeAfterImage(created, 0, created.ActionName, Environment.TickCount, 10, 0);
             _actorsById[characterId] = created;
             _actorIdsByName[created.Name] = characterId;
-            SyncPortableChairPairRecord(
-                characterId,
-                created.Build?.ActivePortableChair,
-                created.PreferredPortableChairPairCharacterId);
             SyncTemporaryStatPresentation(created);
             SyncRelationshipOverlaysFromRecords(created.CharacterId, Environment.TickCount);
             return true;
@@ -833,6 +833,38 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TryApplyTransientSkillUseAvatarEffect(
+            int characterId,
+            int registrationKey,
+            SkillAnimation overlayAnimation,
+            SkillAnimation underFaceAnimation,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (registrationKey <= 0 || (overlayAnimation == null && underFaceAnimation == null))
+            {
+                message = "Transient skill-use avatar effect data is incomplete.";
+                return false;
+            }
+
+            if (!_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
+            {
+                message = $"Remote character {characterId} does not exist.";
+                return false;
+            }
+
+            actor.TransientSkillUseAvatarEffects.RemoveAll(effect => effect?.RegistrationKey == registrationKey);
+            actor.TransientSkillUseAvatarEffects.Add(new RemoteTransientSkillUseAvatarEffectState
+            {
+                RegistrationKey = registrationKey,
+                OverlayAnimation = overlayAnimation,
+                UnderFaceAnimation = underFaceAnimation,
+                AnimationStartTime = currentTime
+            });
+            return true;
+        }
+
         public bool TryApplyMoveAction(int characterId, byte moveAction, out string message)
         {
             message = null;
@@ -933,7 +965,6 @@ namespace HaCreator.MapSimulator.Pools
             {
                 actor.Build.ActivePortableChair = null;
                 actor.PreferredPortableChairPairCharacterId = null;
-                ClearPortableChairPairRecord(characterId);
                 SetActorAction(actor, CharacterPart.GetActionString(CharacterAction.Stand1), allowSitFallback: false, Environment.TickCount);
                 SyncTemporaryStatPresentation(actor);
                 actor.ClearMeleeAfterImage();
@@ -949,11 +980,68 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.Build.ActivePortableChair = chair;
             actor.PreferredPortableChairPairCharacterId = pairCharacterId;
-            SyncPortableChairPairRecord(characterId, chair, pairCharacterId);
             ApplyPortableChairMount(actor, chair);
             SetActorAction(actor, "sit", allowSitFallback: true, Environment.TickCount);
             SyncTemporaryStatPresentation(actor);
             actor.ClearMeleeAfterImage();
+            return true;
+        }
+
+        public bool TryApplyPortableChairRecordAdd(
+            RemoteUserPortableChairRecordAddPacket packet,
+            out string message)
+        {
+            message = null;
+            if (packet.CharacterId <= 0)
+            {
+                message = "Portable-chair record add requires a positive character ID.";
+                return false;
+            }
+
+            if (packet.ChairItemId <= 0)
+            {
+                message = "Portable-chair record add requires a positive chair item ID.";
+                return false;
+            }
+
+            TryApplyPortableChairRecordRemove(
+                new RemoteUserPortableChairRecordRemovePacket(packet.CharacterId),
+                out _);
+            SyncPortableChairPairRecord(
+                packet.CharacterId,
+                packet.ChairItemId,
+                ResolvePortableChairPairPreference(packet.CharacterId));
+
+            message = _actorsById.ContainsKey(packet.CharacterId)
+                ? $"Remote user {packet.CharacterId} couple-chair record applied."
+                : $"Stored remote couple-chair record for inactive owner {packet.CharacterId}.";
+            return true;
+        }
+
+        public bool TryApplyPortableChairRecordRemove(
+            RemoteUserPortableChairRecordRemovePacket packet,
+            out string message)
+        {
+            message = null;
+            if (!_portableChairPairRecordsByCharacterId.TryGetValue(packet.CharacterId, out PortableChairPairRecord existingRecord))
+            {
+                message = $"No remote couple-chair record matched character {packet.CharacterId}.";
+                return false;
+            }
+
+            if (existingRecord.PairCharacterId.HasValue
+                && existingRecord.PairCharacterId.Value > 0
+                && _portableChairPairRecordsByCharacterId.TryGetValue(existingRecord.PairCharacterId.Value, out PortableChairPairRecord partnerRecord))
+            {
+                _portableChairPairRecordsByCharacterId[existingRecord.PairCharacterId.Value] = partnerRecord with
+                {
+                    PairCharacterId = null,
+                    Status = 0
+                };
+            }
+
+            ClearPortableChairPairRecord(packet.CharacterId);
+            message = $"Removed remote couple-chair record for {packet.CharacterId}.";
             return true;
         }
 
@@ -1177,10 +1265,6 @@ namespace HaCreator.MapSimulator.Pools
                 actor.BaseActionName = NormalizeActionName(actor.BaseActionName, actor.Build.ActivePortableChair != null);
                 if (actor.Build.ActivePortableChair != null)
                 {
-                    SyncPortableChairPairRecord(
-                        actor.CharacterId,
-                        actor.Build.ActivePortableChair,
-                        actor.PreferredPortableChairPairCharacterId);
                     ApplyPortableChairMount(actor, actor.Build.ActivePortableChair);
                 }
                 else
@@ -1612,6 +1696,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 UpdatePacketOwnedEmotionState(actor, currentTime);
+                UpdateTransientSkillUseAvatarEffects(actor, currentTime);
                 actor.UpdateMeleeAfterImage(currentTime);
             }
         }
@@ -1795,9 +1880,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int elapsed = Math.Max(0, currentTime - prepared.StartTime);
-            if (prepared.AutoEnterHold && prepared.PrepareDurationMs > 0)
+            if (prepared.AutoEnterHold)
             {
-                if (elapsed < prepared.PrepareDurationMs)
+                if (prepared.PrepareDurationMs > 0 && elapsed < prepared.PrepareDurationMs)
                 {
                     durationMs = prepared.PrepareDurationMs;
                     remainingMs = Math.Max(0, prepared.PrepareDurationMs - elapsed);
@@ -2307,6 +2392,14 @@ namespace HaCreator.MapSimulator.Pools
                     screenY,
                     tickCount,
                     drawFrontLayers: true);
+                DrawRemoteTransientSkillUseAvatarEffects(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: true);
                 DrawRemotePacketOwnedEmotionEffect(
                     spriteBatch,
                     skeletonMeshRenderer,
@@ -2320,10 +2413,31 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                Vector2 textSize = font.MeasureString(actor.Name);
+                IReadOnlyList<string> labelLines = BuildWorldActorLabelLines(actor);
+                if (labelLines.Count == 0)
+                {
+                    continue;
+                }
+
                 float topY = screenY - frame.FeetOffset + frame.Bounds.Top;
-                Vector2 textPosition = new(screenX - (textSize.X / 2f), topY - textSize.Y - 10f);
-                DrawOutlinedText(spriteBatch, font, actor.Name, textPosition, Color.Black, ResolveNameColor(actor));
+                float labelTopY = topY - ((labelLines.Count * font.LineSpacing) + ((labelLines.Count - 1) * 2f)) - 10f;
+                for (int lineIndex = 0; lineIndex < labelLines.Count; lineIndex++)
+                {
+                    string line = labelLines[lineIndex];
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        continue;
+                    }
+
+                    Vector2 textSize = font.MeasureString(line);
+                    Vector2 textPosition = new(
+                        screenX - (textSize.X / 2f),
+                        labelTopY + (lineIndex * (font.LineSpacing + 2f)));
+                    Color textColor = lineIndex == labelLines.Count - 1
+                        ? ResolveNameColor(actor)
+                        : new Color(176, 226, 255);
+                    DrawOutlinedText(spriteBatch, font, line, textPosition, Color.Black, textColor);
+                }
             }
         }
 
@@ -3744,6 +3858,29 @@ namespace HaCreator.MapSimulator.Pools
             };
         }
 
+        internal static IReadOnlyList<string> BuildWorldActorLabelLines(RemoteUserActor actor)
+        {
+            List<string> lines = new();
+            if (actor == null)
+            {
+                return lines;
+            }
+
+            string guildName = actor.Build?.GuildName?.Trim();
+            if (!string.IsNullOrWhiteSpace(guildName))
+            {
+                lines.Add(guildName);
+            }
+
+            string name = actor.Name?.Trim();
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                lines.Add(name);
+            }
+
+            return lines;
+        }
+
         internal static IReadOnlyDictionary<int, int> ResolvePortableChairPairings(
             IEnumerable<PortableChairPairParticipant> participants,
             bool preferVisibleOnly)
@@ -3938,7 +4075,10 @@ namespace HaCreator.MapSimulator.Pools
         {
             foreach (PortableChairPairRecord record in _portableChairPairRecordsByCharacterId.Values)
             {
-                yield return record;
+                yield return record with
+                {
+                    PreferredPairCharacterId = ResolvePortableChairPairPreference(record.CharacterId) ?? record.PreferredPairCharacterId
+                };
             }
 
             PortableChair localChair = localPlayer?.Build?.ActivePortableChair;
@@ -3952,9 +4092,24 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private void SyncPortableChairPairRecord(int characterId, PortableChair chair, int? preferredPairCharacterId)
+        private int? ResolvePortableChairPairPreference(int characterId)
         {
-            if (characterId <= 0 || chair?.IsCoupleChair != true || chair.ItemId <= 0)
+            if (characterId <= 0)
+            {
+                return null;
+            }
+
+            if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
+            {
+                return actor.PreferredPortableChairPairCharacterId;
+            }
+
+            return null;
+        }
+
+        private void SyncPortableChairPairRecord(int characterId, int chairItemId, int? preferredPairCharacterId)
+        {
+            if (characterId <= 0 || chairItemId <= 0)
             {
                 ClearPortableChairPairRecord(characterId);
                 return;
@@ -3962,7 +4117,7 @@ namespace HaCreator.MapSimulator.Pools
 
             _portableChairPairRecordsByCharacterId[characterId] = new PortableChairPairRecord(
                 characterId,
-                chair.ItemId,
+                chairItemId,
                 preferredPairCharacterId);
         }
 
@@ -4544,12 +4699,8 @@ namespace HaCreator.MapSimulator.Pools
                 "stand1" or "stand2" or "alert" or "sit" => presentation.StandActionName,
                 "walk1" or "walk2" => presentation.WalkActionName,
                 "jump" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "jump") ?? presentation.StandActionName,
-                "ladder" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "ladder")
-                            ?? ResolveMechanicActionFamilyVariant(presentation.StandActionName, "rope")
-                            ?? presentation.StandActionName,
-                "rope" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "rope")
-                          ?? ResolveMechanicActionFamilyVariant(presentation.StandActionName, "ladder")
-                          ?? presentation.StandActionName,
+                "ladder" => "ladder2",
+                "rope" => "rope2",
                 "swim" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "swim")
                           ?? ResolveMechanicActionFamilyVariant(presentation.StandActionName, "fly")
                           ?? presentation.StandActionName,
@@ -4560,6 +4711,23 @@ namespace HaCreator.MapSimulator.Pools
                 "hit" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "hit") ?? presentation.StandActionName,
                 _ when IsHiddenLikeAttackAction(normalized) => presentation.AttackActionName,
                 _ => normalized
+            };
+
+            if (string.Equals(normalized, "ladder", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "rope", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            actionName = normalized switch
+            {
+                "ladder" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "ladder")
+                            ?? ResolveMechanicActionFamilyVariant(presentation.StandActionName, "rope")
+                            ?? presentation.StandActionName,
+                "rope" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "rope")
+                          ?? ResolveMechanicActionFamilyVariant(presentation.StandActionName, "ladder")
+                          ?? presentation.StandActionName,
+                _ => actionName
             };
 
             return true;
@@ -5351,6 +5519,43 @@ namespace HaCreator.MapSimulator.Pools
                 drawFrontLayers);
         }
 
+        private static void DrawRemoteTransientSkillUseAvatarEffects(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            RemoteUserActor actor,
+            int screenX,
+            int screenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            if (actor?.TransientSkillUseAvatarEffects == null || actor.HiddenLikeClient)
+            {
+                return;
+            }
+
+            for (int i = 0; i < actor.TransientSkillUseAvatarEffects.Count; i++)
+            {
+                RemoteTransientSkillUseAvatarEffectState state = actor.TransientSkillUseAvatarEffects[i];
+                if (state == null)
+                {
+                    continue;
+                }
+
+                int elapsedTime = Math.Max(0, currentTime - state.AnimationStartTime);
+                SkillAnimation animation = drawFrontLayers
+                    ? state.OverlayAnimation
+                    : state.UnderFaceAnimation;
+                DrawRemoteTemporaryStatAvatarEffectAnimation(
+                    spriteBatch,
+                    skeletonRenderer,
+                    actor,
+                    animation,
+                    screenX,
+                    screenY,
+                    elapsedTime);
+            }
+        }
+
         private static void DrawRemoteTemporaryStatAvatarEffectState(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,
@@ -5461,6 +5666,14 @@ namespace HaCreator.MapSimulator.Pools
                         screenY,
                         currentTime,
                         drawFrontLayers: false);
+                    DrawRemoteTransientSkillUseAvatarEffects(
+                        spriteBatch,
+                        skeletonRenderer,
+                        actor,
+                        screenX,
+                        screenY,
+                        currentTime,
+                        drawFrontLayers: false);
                     DrawRemoteShadowPartner(
                         spriteBatch,
                         skeletonRenderer,
@@ -5477,6 +5690,14 @@ namespace HaCreator.MapSimulator.Pools
             if (!underFaceDrawn)
             {
                 DrawRemoteTemporaryStatAvatarEffects(
+                    spriteBatch,
+                    skeletonRenderer,
+                    actor,
+                    screenX,
+                    screenY,
+                    currentTime,
+                    drawFrontLayers: false);
+                DrawRemoteTransientSkillUseAvatarEffects(
                     spriteBatch,
                     skeletonRenderer,
                     actor,
@@ -5580,8 +5801,16 @@ namespace HaCreator.MapSimulator.Pools
 
             bool facingRight = actor.ShadowPartnerPresentation.CurrentFacingRight;
             bool flip = facingRight ^ frame.Flip;
-            Point clientOffset = ResolveRemoteShadowPartnerCurrentClientOffset(actor, baseActionName, state, actor.FacingRight, currentTime);
-            int horizontalOffsetPx = Math.Max(0, actor.TemporaryStatShadowPartnerSkill.ShadowPartnerHorizontalOffsetPx);
+            Point clientOffset = ResolveRemoteShadowPartnerCurrentClientOffset(
+                actor,
+                baseActionName,
+                state,
+                actor.FacingRight,
+                actor.ShadowPartnerPresentation.ObservedRawActionCode,
+                currentTime);
+            int horizontalOffsetPx = ShadowPartnerClientActionResolver.ResolveHorizontalOffsetPx(
+                actor.ShadowPartnerPresentation.CurrentPlaybackAnimation,
+                actor.TemporaryStatShadowPartnerSkill.ShadowPartnerHorizontalOffsetPx);
             int drawX = screenX + clientOffset.X + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
             drawX = flip
                 ? drawX - (frame.Texture.Width - frame.Origin.X)
@@ -5590,6 +5819,31 @@ namespace HaCreator.MapSimulator.Pools
             int drawY = screenY + clientOffset.Y - frame.Origin.Y;
             Color frameTint = RemoteShadowPartnerTint * ResolveRemoteShadowPartnerFrameAlpha(frame, frameElapsedMs);
             frame.Texture.DrawBackground(spriteBatch, skeletonMeshRenderer, null, drawX, drawY, frameTint, flip, null);
+        }
+
+        private static void UpdateTransientSkillUseAvatarEffects(RemoteUserActor actor, int currentTime)
+        {
+            if (actor?.TransientSkillUseAvatarEffects == null || actor.TransientSkillUseAvatarEffects.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = actor.TransientSkillUseAvatarEffects.Count - 1; i >= 0; i--)
+            {
+                RemoteTransientSkillUseAvatarEffectState state = actor.TransientSkillUseAvatarEffects[i];
+                if (state == null || IsTransientSkillUseAvatarEffectExpired(state, currentTime))
+                {
+                    actor.TransientSkillUseAvatarEffects.RemoveAt(i);
+                }
+            }
+        }
+
+        private static bool IsTransientSkillUseAvatarEffectExpired(RemoteTransientSkillUseAvatarEffectState state, int currentTime)
+        {
+            int elapsedTime = Math.Max(0, currentTime - state.AnimationStartTime);
+            bool overlayComplete = state.OverlayAnimation == null || state.OverlayAnimation.IsComplete(elapsedTime);
+            bool underFaceComplete = state.UnderFaceAnimation == null || state.UnderFaceAnimation.IsComplete(elapsedTime);
+            return overlayComplete && underFaceComplete;
         }
 
         internal static void UpdateRemoteShadowPartnerPresentation(
@@ -5781,6 +6035,7 @@ namespace HaCreator.MapSimulator.Pools
             string observedPlayerActionName,
             PlayerState state,
             bool facingRight,
+            int? rawActionCode,
             int currentTime)
         {
             if (actor == null)
@@ -5793,7 +6048,9 @@ namespace HaCreator.MapSimulator.Pools
                 state,
                 facingRight,
                 RemoteShadowPartnerClientSideOffsetPx,
-                RemoteShadowPartnerClientBackActionOffsetYPx);
+                RemoteShadowPartnerClientBackActionOffsetYPx,
+                rawActionCode,
+                actor.HasMorphTemplate);
             actor.ShadowPartnerPresentation ??= new RemoteShadowPartnerPresentationState();
             if (!actor.ShadowPartnerPresentation.IsInitialized)
             {
@@ -6874,6 +7131,7 @@ namespace HaCreator.MapSimulator.Pools
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatMagicShieldEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatFinalCutEffect { get; set; }
         public RemoteUserActorPool.RemotePacketOwnedEmotionState PacketOwnedEmotion { get; set; }
+        public List<RemoteUserActorPool.RemoteTransientSkillUseAvatarEffectState> TransientSkillUseAvatarEffects { get; } = new();
         public int? CarryItemEffectId { get; set; }
         public int CompletedSetItemId { get; set; }
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }

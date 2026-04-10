@@ -64,6 +64,11 @@ namespace HaCreator.MapSimulator.Character
                 // Morph/*.img publishes `arrowRain` as the authored archer branch.
                 ["rain"] = new[] { "arrowRain" },
                 ["arrowEruption"] = new[] { "arrowRain" },
+                // Client raw piercing-family requests still include `piercing` and
+                // `crossPiercing`, while the published archer morph surface uses
+                // `windspear` rather than verbatim `*Piercing` nodes.
+                ["piercing"] = new[] { "windspear" },
+                ["crossPiercing"] = new[] { "windspear" },
                 // Character action codes 305-311 name the modern ice-family branches, while
                 // older Morph/2001.img still only publishes `icemanAttack` / `icemandoubleJump`.
                 ["iceAttack1"] = new[] { "icemanAttack" },
@@ -488,6 +493,8 @@ namespace HaCreator.MapSimulator.Character
             return actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("spear", StringComparison.OrdinalIgnoreCase) >= 0
+                   || string.Equals(actionName, "piercing", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "crossPiercing", StringComparison.OrdinalIgnoreCase)
                    || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("eruption", StringComparison.OrdinalIgnoreCase) >= 0;

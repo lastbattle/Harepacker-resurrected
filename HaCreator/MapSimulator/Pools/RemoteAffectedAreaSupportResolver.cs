@@ -137,6 +137,35 @@ namespace HaCreator.MapSimulator.Pools
             "monsters"
         };
 
+        internal static IEnumerable<int> EnumerateRemoteAffectedAreaLinkedSkillIds(SkillData skill)
+        {
+            if (skill == null)
+            {
+                yield break;
+            }
+
+            foreach (int linkedSkillId in skill.GetAffectedSkillIds())
+            {
+                if (linkedSkillId > 0)
+                {
+                    yield return linkedSkillId;
+                }
+            }
+
+            if (skill.DummySkillParents == null)
+            {
+                yield break;
+            }
+
+            foreach (int linkedSkillId in skill.DummySkillParents)
+            {
+                if (linkedSkillId > 0)
+                {
+                    yield return linkedSkillId;
+                }
+            }
+        }
+
         public static bool IsAreaBuffItemType(int areaType)
         {
             return areaType == 3;

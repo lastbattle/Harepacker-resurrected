@@ -52,14 +52,12 @@ namespace HaCreator.MapSimulator
                     out _,
                     snapshot.PortableChairPairCharacterId);
 
-                if (snapshot.TemporaryStats.HasPayload)
-                {
-                    _remoteUserPool.TryApplyTemporaryStatSnapshot(
-                        characterId,
-                        snapshot.TemporaryStats,
-                        delay: 0,
-                        out _);
-                }
+                _remoteUserPool.TryApplyTemporaryStatSnapshot(
+                    characterId,
+                    snapshot.TemporaryStats,
+                    delay: 0,
+                    out _);
+                SyncAnimationDisplayerRemoteUserState(characterId);
 
                 if (snapshot.AvatarModifiedState is RemoteUserAvatarModifiedPacket avatarModifiedState
                     && (!_weddingRemoteAvatarModifiedRevisionByCharacterId.TryGetValue(characterId, out int syncedAvatarRevision)

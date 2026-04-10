@@ -479,7 +479,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _draftCounter++;
             }
 
-            NotifySocialChatObserved(resolvedBody);
+            NotifySocialChatObserved(resolvedTitle, resolvedBody);
             IsWriteMode = false;
             _compose = new GuildBbsComposeState();
             SelectThread(_selectedThreadId);
@@ -1331,14 +1331,31 @@ namespace HaCreator.MapSimulator.Interaction
             return thread;
         }
 
-        private void NotifySocialChatObserved(string message)
+        private void NotifySocialChatObserved(params string[] messages)
         {
-            if (string.IsNullOrWhiteSpace(message))
+            if (messages == null || messages.Length == 0)
             {
                 return;
             }
 
-            SocialChatObserved?.Invoke(message, Environment.TickCount);
+            HashSet<string> observed = null;
+            int tickCount = Environment.TickCount;
+            foreach (string message in messages)
+            {
+                string normalized = message?.Trim();
+                if (string.IsNullOrWhiteSpace(normalized))
+                {
+                    continue;
+                }
+
+                observed ??= new HashSet<string>(StringComparer.Ordinal);
+                if (!observed.Add(normalized))
+                {
+                    continue;
+                }
+
+                SocialChatObserved?.Invoke(normalized, tickCount);
+            }
         }
     }
 

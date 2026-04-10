@@ -92,7 +92,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : null;
             _guildName = inGuild ? (context.GuildName?.Trim() ?? string.Empty) : "No Guild";
             _guildLevel = inGuild ? ResolveGuildLevel(context.GuildLevel, savedState?.GuildLevel ?? 0) : 0;
-            _guildPoints = inGuild ? Math.Max(0, context.GuildPoints) : 0;
+            _guildPoints = inGuild ? ResolveGuildPoints(context.GuildPoints, savedState?.GuildPoints ?? 0) : 0;
             _guildRoleLabel = inGuild
                 ? NormalizeGuildRoleLabel(context.GuildRoleLabel)
                 : "No Guild";
@@ -1120,6 +1120,7 @@ namespace HaCreator.MapSimulator.Interaction
             _savedGuildStates[guildStateKey] = new GuildSkillSavedState(
                 Math.Max(1, _guildLevel),
                 Math.Max(0, _availablePoints),
+                Math.Max(0, _guildPoints),
                 Math.Max(0, _guildFundMeso),
                 savedSkillLevels,
                 savedActiveGuildSkillExpirations);
@@ -1143,6 +1144,16 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return ResolveLocalFallbackGuildLevel(savedGuildLevel);
+        }
+
+        private static int ResolveGuildPoints(int requestedGuildPoints, int savedGuildPoints)
+        {
+            if (requestedGuildPoints > 0)
+            {
+                return Math.Max(0, requestedGuildPoints);
+            }
+
+            return Math.Max(0, savedGuildPoints);
         }
 
         private int ResolveLocalFallbackGuildLevel(int savedGuildLevel = 0)
@@ -1234,12 +1245,14 @@ namespace HaCreator.MapSimulator.Interaction
         internal GuildSkillSavedState(
             int guildLevel,
             int availablePoints,
+            int guildPoints,
             int guildFundMeso,
             IReadOnlyDictionary<int, int> skillLevels,
             IReadOnlyDictionary<int, DateTimeOffset> activeExpirations)
         {
             GuildLevel = guildLevel;
             AvailablePoints = availablePoints;
+            GuildPoints = guildPoints;
             GuildFundMeso = guildFundMeso;
             SkillLevels = skillLevels ?? new Dictionary<int, int>();
             ActiveExpirations = activeExpirations ?? new Dictionary<int, DateTimeOffset>();
@@ -1247,6 +1260,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal int GuildLevel { get; }
         internal int AvailablePoints { get; }
+        internal int GuildPoints { get; }
         internal int GuildFundMeso { get; }
         internal IReadOnlyDictionary<int, int> SkillLevels { get; }
         internal IReadOnlyDictionary<int, DateTimeOffset> ActiveExpirations { get; }

@@ -46,7 +46,7 @@ namespace HaCreator.MapSimulator.UI
         private Action<int> _selectSlotHandler;
         private Func<string> _addJuniorHandler;
         private Func<string> _removeSelectedHandler;
-        private Action<int> _pageMoveHandler;
+        private Func<int, string> _pageMoveHandler;
         private Action<string> _feedbackHandler;
         private UIObject _juniorButton;
         private UIObject _byeButton;
@@ -89,7 +89,7 @@ namespace HaCreator.MapSimulator.UI
             Action<int> selectSlotHandler,
             Func<string> addJuniorHandler,
             Func<string> removeSelectedHandler,
-            Action<int> pageMoveHandler,
+            Func<int, string> pageMoveHandler,
             Action<string> feedbackHandler)
         {
             _selectSlotHandler = selectSlotHandler;
@@ -118,8 +118,8 @@ namespace HaCreator.MapSimulator.UI
 
             ConfigureButton(_juniorButton, () => ShowFeedback(_addJuniorHandler?.Invoke()));
             ConfigureButton(_byeButton, () => ShowFeedback(_removeSelectedHandler?.Invoke()));
-            ConfigureButton(_leftButton, () => _pageMoveHandler?.Invoke(-1));
-            ConfigureButton(_rightButton, () => _pageMoveHandler?.Invoke(1));
+            ConfigureButton(_leftButton, () => ShowFeedback(_pageMoveHandler?.Invoke(-1)));
+            ConfigureButton(_rightButton, () => ShowFeedback(_pageMoveHandler?.Invoke(1)));
         }
 
         public override void SetFont(SpriteFont font)
@@ -286,8 +286,10 @@ namespace HaCreator.MapSimulator.UI
                 sprite,
                 node.PlaceholderText,
                 new Rectangle(bounds.X, GetClientTextTop(bounds.Y, node.SlotIndex, 11), 133, 12),
-                new Color(165, 165, 165),
-                0.30f,
+                node.SlotIndex is 5 or 6
+                    ? new Color(188, 188, 188)
+                    : new Color(165, 165, 165),
+                node.SlotIndex is 5 or 6 ? 0.32f : 0.30f,
                 0);
         }
 
@@ -384,7 +386,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, text, new Vector2(Position.X + x, Position.Y + y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, text, new Vector2(Position.X + x, Position.Y + y), color, scale, _font);
         }
 
         private void DrawCenteredText(SpriteBatch sprite, string text, Rectangle bounds, Color color, float scale, int yOffset)
@@ -394,11 +396,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 size = _font.MeasureString(text) * scale;
+            Vector2 size = ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
             Vector2 origin = new(
                 bounds.X + Math.Max(0f, (bounds.Width - size.X) * 0.5f),
                 bounds.Y + Math.Max(0f, (bounds.Height - size.Y) * 0.5f) + yOffset);
-            sprite.DrawString(_font, text, origin, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, text, origin, color, scale, _font);
         }
 
         private void DrawRightAlignedText(SpriteBatch sprite, string text, int x, int y, int width, Color color, float scale)
@@ -408,9 +410,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 size = _font.MeasureString(text) * scale;
+            Vector2 size = ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
             float drawX = Position.X + x + Math.Max(0f, width - size.X);
-            sprite.DrawString(_font, text, new Vector2(drawX, Position.Y + y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, text, new Vector2(drawX, Position.Y + y), color, scale, _font);
         }
     }
 }

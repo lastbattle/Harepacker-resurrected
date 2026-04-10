@@ -140,6 +140,8 @@ namespace HaCreator.MapSimulator.UI
         #region Fields
         private int _currentTab = TAB_BEGINNER;
         private int _characterLevel = 1;
+        private int _currentJobId;
+        private int _currentSubJob;
         private int _scrollOffset = 0;
         private int _hoveredSkillIndex = -1;
         private int _hoveredSpUpSkillIndex = -1;
@@ -276,7 +278,7 @@ namespace HaCreator.MapSimulator.UI
             get
             {
                 if (skillsByTab.TryGetValue(_currentTab, out var skills))
-                    return skills;
+                    return GetVisibleSkills(skills);
                 return new List<SkillDisplayData>();
             }
         }
@@ -2340,6 +2342,12 @@ namespace HaCreator.MapSimulator.UI
             _characterLevel = Math.Max(1, level);
         }
 
+        public void SetCharacterJob(int jobId, int subJob = 0)
+        {
+            _currentJobId = Math.Max(0, jobId);
+            _currentSubJob = Math.Max(0, subJob);
+        }
+
         public void RecalculateSkillPointsFromCurrentLevels()
         {
             Dictionary<int, int> resolvedPoints = SkillPointParityCalculator.CalculateRemainingPointsByTab(
@@ -2537,12 +2545,29 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
 
             int spentSp = 0;
-            for (int i = 0; i < skills.Count; i++)
+            List<SkillDisplayData> visibleSkills = GetVisibleSkills(skills);
+            for (int i = 0; i < visibleSkills.Count; i++)
             {
-                spentSp += Math.Max(0, skills[i]?.CurrentLevel ?? 0);
+                spentSp += Math.Max(0, visibleSkills[i]?.CurrentLevel ?? 0);
             }
 
             return spentSp;
+        }
+
+        private List<SkillDisplayData> GetVisibleSkills(List<SkillDisplayData> skills)
+        {
+            if (skills == null || skills.Count == 0)
+                return new List<SkillDisplayData>();
+
+            var visibleSkills = new List<SkillDisplayData>(skills.Count);
+            for (int i = 0; i < skills.Count; i++)
+            {
+                SkillDisplayData skill = skills[i];
+                if (SkillRootVisibilityResolver.IsSkillVisible(skill, _currentJobId, _currentSubJob))
+                    visibleSkills.Add(skill);
+            }
+
+            return visibleSkills;
         }
 
         private bool CanScrollSkills()

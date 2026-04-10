@@ -306,6 +306,7 @@ namespace HaCreator.MapSimulator
             DrainComboCounterPacketInbox();
             UpdatePacketOwnedComboState(currTickCount);
             SyncPacketOwnedApspContextLifecycle();
+            SyncInitialQuizOwnerContextLifecycle();
             EnsureLocalUtilityPacketInboxState(shouldRun: true);
             EnsurePacketScriptOfficialSessionBridgeState(shouldRun: true);
             RefreshPacketScriptOfficialSessionBridgeDiscovery(currTickCount);

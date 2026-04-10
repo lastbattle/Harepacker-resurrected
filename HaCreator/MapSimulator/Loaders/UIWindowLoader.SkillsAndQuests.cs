@@ -435,9 +435,7 @@ namespace HaCreator.MapSimulator.Loaders
                     skillWindow.AddSkills(tabIndex, mergedSkills);
                     skillWindow.SetRecommendedSkillEntries(
                         pathJobId,
-                        SkillDataLoader.LoadRecommendedSkillEntries(
-                            pathJobId,
-                            mergedSkills.Select(skill => skill.SkillId)));
+                        SkillDataLoader.LoadRecommendedSkillEntries(pathJobId));
                     System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab {tabIndex}: Loaded {mergedSkills.Count} skills for display job {pathJobId}");
 
 
@@ -2113,6 +2111,12 @@ namespace HaCreator.MapSimulator.Loaders
                 tooltipFrames[1] = LoadCanvasTexture(mainProperty, "tip1", device);
                 tooltipFrames[2] = LoadCanvasTexture(mainProperty, "tip2", device);
                 quickSlot.SetTooltipTextures(tooltipFrames);
+                quickSlot.SetTooltipOrigins(new[]
+                {
+                    ResolveTooltipOrigin(mainProperty["tip0"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(mainProperty["tip1"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(mainProperty["tip2"] as WzCanvasProperty)
+                });
             }
 
             WzSubProperty equipTooltipProperty = uiWindow2Image?["ToolTip"]?["Equip"] as WzSubProperty;
@@ -2515,6 +2519,12 @@ namespace HaCreator.MapSimulator.Loaders
                 tooltipFrames[1] = LoadCanvasTexture(skillMainProperty, "tip1", device);
                 tooltipFrames[2] = LoadCanvasTexture(skillMainProperty, "tip2", device);
                 window.SetTooltipTextures(tooltipFrames);
+                window.SetTooltipOrigins(new[]
+                {
+                    ResolveTooltipOrigin(skillMainProperty["tip0"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(skillMainProperty["tip1"] as WzCanvasProperty),
+                    ResolveTooltipOrigin(skillMainProperty["tip2"] as WzCanvasProperty)
+                });
             }
 
             WzSubProperty equipTooltipProperty = uiWindow2Image?["ToolTip"]?["Equip"] as WzSubProperty;

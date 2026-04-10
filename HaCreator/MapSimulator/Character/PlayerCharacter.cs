@@ -4946,17 +4946,9 @@ namespace HaCreator.MapSimulator.Character
 
         private int ResolveShadowPartnerHorizontalOffsetPx(SkillAnimation currentAnimation)
         {
-            int baselineOffsetPx = Math.Max(0, _activeShadowPartner?.HorizontalOffsetPx ?? 26);
-            if (currentAnimation?.Frames == null || currentAnimation.Frames.Count == 0)
-            {
-                return baselineOffsetPx;
-            }
-
-            // Shadow Partner special actions author slightly different first-frame origins per branch.
-            // Preserve that authored horizontal cadence instead of pinning every action to the idle spacing.
-            int baselineOriginX = baselineOffsetPx + 2;
-            int actionOriginX = currentAnimation.Frames[0]?.Origin.X ?? baselineOriginX;
-            return Math.Max(0, baselineOffsetPx + (actionOriginX - baselineOriginX));
+            return ShadowPartnerClientActionResolver.ResolveHorizontalOffsetPx(
+                currentAnimation,
+                _activeShadowPartner?.HorizontalOffsetPx ?? 26);
         }
 
         private void DrawAvatarEffectPlane(
@@ -5195,17 +5187,17 @@ namespace HaCreator.MapSimulator.Character
             }
 
             string observedActionName = CurrentActionName;
-            if (!_activeMirrorImage.Visible
-                || !string.Equals(_activeMirrorImage.ObservedPlayerActionName, observedActionName, StringComparison.OrdinalIgnoreCase)
-                || _activeMirrorImage.ObservedPlayerFacingRight != FacingRight
-                || _activeMirrorImage.ObservedPlayerState != State)
+            if (ShouldRestartMirrorImageStartTime(
+                    _activeMirrorImage.Visible,
+                    _activeMirrorImage.ObservedPlayerActionName,
+                    observedActionName))
             {
                 _activeMirrorImage.StartTime = currentTime;
-                _activeMirrorImage.ObservedPlayerActionName = observedActionName;
-                _activeMirrorImage.ObservedPlayerFacingRight = FacingRight;
-                _activeMirrorImage.ObservedPlayerState = State;
             }
 
+            _activeMirrorImage.ObservedPlayerActionName = observedActionName;
+            _activeMirrorImage.ObservedPlayerFacingRight = FacingRight;
+            _activeMirrorImage.ObservedPlayerState = State;
             _activeMirrorImage.Visible = true;
             _activeMirrorImage.CurrentOffsetPx = ResolveMirrorImageCurrentOffset(currentTime);
 
@@ -5213,6 +5205,22 @@ namespace HaCreator.MapSimulator.Character
             AssembledFrame currentFrame = Assembler?.GetFrameAtTime(CurrentActionName, animationTime);
             int currentFrameIndex = Assembler?.GetFrameIndexAtTime(CurrentActionName, animationTime) ?? -1;
             PrepareMirrorImageSourceLayers(currentFrame, currentFrameIndex, currentTime);
+        }
+
+        internal static bool ShouldRestartMirrorImageStartTime(
+            bool mirrorVisible,
+            string observedActionName,
+            string currentActionName)
+        {
+            if (!mirrorVisible)
+            {
+                return true;
+            }
+
+            return !string.Equals(
+                observedActionName ?? string.Empty,
+                currentActionName ?? string.Empty,
+                StringComparison.OrdinalIgnoreCase);
         }
 
         private int ResolveShadowPartnerAttackDelayMs(string actionName)
@@ -5617,7 +5625,15 @@ namespace HaCreator.MapSimulator.Character
                 return Point.Zero;
             }
 
-            return ResolveShadowPartnerClientOffset(_activeShadowPartner.ObservedPlayerActionName, State, facingRight);
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            return ResolveShadowPartnerClientOffset(
+                _activeShadowPartner.ObservedPlayerActionName,
+                State,
+                facingRight,
+                rawActionCode,
+                HasActiveMorphTransform);
         }
 
         private void RefreshShadowPartnerClientOffsetTarget(int currentTime, bool facingRight)
@@ -5662,14 +5678,21 @@ namespace HaCreator.MapSimulator.Character
                 ShadowPartnerTransitionDurationMs);
         }
 
-        private static Point ResolveShadowPartnerClientOffset(string observedPlayerActionName, PlayerState state, bool facingRight)
+        private static Point ResolveShadowPartnerClientOffset(
+            string observedPlayerActionName,
+            PlayerState state,
+            bool facingRight,
+            int? rawActionCode = null,
+            bool hasMorphTransform = false)
         {
             return ShadowPartnerClientActionResolver.ResolveClientTargetOffset(
                 observedPlayerActionName,
                 state,
                 facingRight,
                 ShadowPartnerClientSideOffsetPx,
-                ShadowPartnerClientBackActionOffsetYPx);
+                ShadowPartnerClientBackActionOffsetYPx,
+                rawActionCode,
+                hasMorphTransform);
         }
 
         private static bool IsShadowPartnerBackAction(string observedPlayerActionName, PlayerState state)

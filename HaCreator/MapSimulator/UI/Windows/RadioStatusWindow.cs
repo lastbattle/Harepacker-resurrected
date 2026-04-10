@@ -290,15 +290,24 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateAnchoredPosition(RenderParameters renderParameters)
         {
+            Position = ResolveAnchoredPosition(
+                renderParameters.RenderWidth,
+                _inactiveTexture.Width,
+                _clientLeftInsetProvider?.Invoke() == true);
+        }
+
+        internal static Point ResolveAnchoredPosition(int renderWidth, int frameWidth, bool useClientLeftInset)
+        {
             // CUIRadio::CreateLayer anchors the widget to Origin_RT, then applies
             // x = -3 - width - (bLeft ? 40 : 0), y = +3. IDA also recovers
             // nMargin = (CWvsContext slot 3562 != 0) ? 40 : 0 in the ctor path.
             // The client positions from the Off-layer canvas width, not the
             // current animated On frame width.
-            int frameWidth = _inactiveTexture.Width;
-            int rightInset = ClientRightInset + ((_clientLeftInsetProvider?.Invoke() == true) ? ClientLeftModeExtraRightInset : 0);
-            Position = new Point(
-                renderParameters.RenderWidth - frameWidth - rightInset,
+            int normalizedRenderWidth = Math.Max(0, renderWidth);
+            int normalizedFrameWidth = Math.Max(0, frameWidth);
+            int rightInset = ClientRightInset + (useClientLeftInset ? ClientLeftModeExtraRightInset : 0);
+            return new Point(
+                normalizedRenderWidth - normalizedFrameWidth - rightInset,
                 ClientTopInset);
         }
 

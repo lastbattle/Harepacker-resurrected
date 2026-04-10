@@ -214,7 +214,10 @@ namespace HaCreator.MapSimulator
                 });
                 statusWindow.SetExternalAction("BtCharge", () => "CCSWnd_Status kept the dedicated charge button armed; live billing flow remains outside the simulator.");
                 statusWindow.SetExternalAction("BtCheck", () => BuildCashShopStatusOwnerLines()[0]);
-                statusWindow.SetExternalAction("BtCoupon", () => "CCSWnd_Status routed into the coupon-registration seam; packet-backed coupon redemption still remains unimplemented.");
+                statusWindow.SetExternalAction("BtCoupon", () =>
+                    uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow cashStageWindow
+                        ? cashStageWindow.CashCouponLastSummary
+                        : "CCSWnd_Status is waiting for the parent CCashShop stage.");
                 statusWindow.SetExternalAction("BtExit", () =>
                 {
                     HideCashShopOwnerFamilyWindows();
@@ -471,6 +474,11 @@ namespace HaCreator.MapSimulator
                     lines.Add(stageWindow.CashPurchaseRecordSummary);
                 }
 
+                foreach (CashServiceStageWindow.PacketCatalogEntry entry in stageWindow.CashPacketCatalogEntries.Take(2))
+                {
+                    lines.Add(entry.Detail);
+                }
+
                 foreach (string recentPacket in stageWindow.GetRecentPacketSummaries())
                 {
                     lines.Add(recentPacket);
@@ -491,14 +499,14 @@ namespace HaCreator.MapSimulator
                 List<CashShopStageChildWindow.ListOwnerEntryState> packetEntries = BuildPacketEntryStates(stageWindow.CashPacketCatalogEntries);
                 return new CashShopStageChildWindow.ListOwnerState
                 {
-                    PaneLabel = "Packet wishlist",
-                    BrowseModeLabel = "Wish",
+                    PaneLabel = stageWindow.CashPacketPaneLabel,
+                    BrowseModeLabel = stageWindow.CashPacketBrowseModeLabel,
                     CategoryLabel = "CCashShop",
-                    FooterMessage = stageWindow.CashItemLastSummary,
+                    FooterMessage = stageWindow.StatusMessage,
                     SelectedEntryDetail = packetEntries.FirstOrDefault()?.Detail ?? string.Empty,
                     SelectedIndex = packetEntries.Count > 0 ? 0 : -1,
                     ScrollOffset = 0,
-                    TotalCount = Math.Max(stageWindow.WishlistCount, packetEntries.Count),
+                    TotalCount = Math.Max(packetEntries.Count, stageWindow.WishlistCount),
                     PlateFocusIndex = packetEntries.Count > 0 ? 0 : -1,
                     HasKeyFocusCanvas = true,
                     VisibleEntries = packetEntries,
@@ -573,11 +581,32 @@ namespace HaCreator.MapSimulator
                 balanceLine += $"  Charge {stageWindow.ChargeParam.ToString(CultureInfo.InvariantCulture)}";
             }
 
-            return new[]
+            List<string> lines = new()
             {
                 balanceLine,
                 stageWindow.StatusMessage
             };
+
+            AppendCashShopStatusLine(lines, stageWindow.CashCouponLastSummary);
+            AppendCashShopStatusLine(lines, stageWindow.CashNameChangeLastSummary);
+            AppendCashShopStatusLine(lines, stageWindow.CashTransferWorldLastSummary);
+            AppendCashShopStatusLine(lines, stageWindow.CashGachaponLastSummary);
+            return lines;
+        }
+
+        private static void AppendCashShopStatusLine(List<string> lines, string summary)
+        {
+            if (lines == null || string.IsNullOrWhiteSpace(summary) || lines.Contains(summary, StringComparer.Ordinal))
+            {
+                return;
+            }
+
+            if (summary.StartsWith("No packet-authored", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            lines.Add(summary);
         }
 
         private IReadOnlyList<string> BuildCashShopOneADayOwnerLines()

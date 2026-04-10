@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.Managers
         private const string DefaultProcessName = "MapleStory";
 
         private readonly ConcurrentQueue<ReactorPoolPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<PendingTouchRequest> _pendingTouchRequests = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -70,6 +71,20 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private sealed class PendingTouchRequest
+        {
+            public PendingTouchRequest(int objectId, bool isTouching, byte[] packet)
+            {
+                ObjectId = objectId;
+                IsTouching = isTouching;
+                Packet = packet ?? Array.Empty<byte>();
+            }
+
+            public int ObjectId { get; }
+            public bool IsTouching { get; }
+            public byte[] Packet { get; }
+        }
+
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
@@ -77,6 +92,14 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
+        public int InjectedTouchRequestCount { get; private set; }
+        public int QueuedTouchRequestCount => _pendingTouchRequests.Count;
+        public int? LastInjectedTouchObjectId { get; private set; }
+        public bool? LastInjectedTouchFlag { get; private set; }
+        public byte[] LastInjectedTouchPacket { get; private set; } = Array.Empty<byte>();
+        public int? LastQueuedTouchObjectId { get; private set; }
+        public bool? LastQueuedTouchFlag { get; private set; }
+        public byte[] LastQueuedTouchPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Reactor official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -87,7 +110,13 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Reactor official-session bridge {lifecycle}; {session}; received={ReceivedCount}; inbound opcodes=334,335,336,337. {LastStatus}";
+            string lastInjected = LastInjectedTouchPacket.Length > 0 && LastInjectedTouchObjectId.HasValue && LastInjectedTouchFlag.HasValue
+                ? $" Last injected={LastInjectedTouchObjectId.Value}:{(LastInjectedTouchFlag.Value ? "enter" : "leave")} [{Convert.ToHexString(LastInjectedTouchPacket)}]."
+                : string.Empty;
+            string lastQueued = LastQueuedTouchPacket.Length > 0 && LastQueuedTouchObjectId.HasValue && LastQueuedTouchFlag.HasValue
+                ? $" Last queued={LastQueuedTouchObjectId.Value}:{(LastQueuedTouchFlag.Value ? "enter" : "leave")} [{Convert.ToHexString(LastQueuedTouchPacket)}]."
+                : string.Empty;
+            return $"Reactor official-session bridge {lifecycle}; {session}; received={ReceivedCount}; touch injected={InjectedTouchRequestCount}; touch queued={QueuedTouchRequestCount}; inbound opcodes=334,335,336,337.{lastInjected}{lastQueued} {LastStatus}";
         }
 
         public bool TrySendTouchRequest(int objectId, bool isTouching, out string status)
@@ -107,14 +136,49 @@ namespace HaCreator.MapSimulator.Managers
             if (pair?.InitCompleted != true)
             {
                 status = "Reactor official-session bridge has no connected Maple session for touch injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            FlushQueuedTouchRequests(pair);
+            byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
+            pair.ServerSession.SendPacket(packet);
+            InjectedTouchRequestCount++;
+            LastInjectedTouchObjectId = objectId;
+            LastInjectedTouchFlag = isTouching;
+            LastInjectedTouchPacket = packet;
+            LastStatus = $"Injected reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) into live session {pair.RemoteEndpoint}.";
+            status = LastStatus;
+            return true;
+        }
+
+        public bool TryQueueTouchRequest(int objectId, bool isTouching, out string status)
+        {
+            if (objectId <= 0)
+            {
+                status = "Reactor touch queue requires a positive reactor object id.";
+                LastStatus = status;
                 return false;
             }
 
             byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
-            pair.ServerSession.SendPacket(packet);
-            LastStatus = $"Injected reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) into live session {pair.RemoteEndpoint}.";
-            status = LastStatus;
+            _pendingTouchRequests.Enqueue(new PendingTouchRequest(objectId, isTouching, packet));
+            LastQueuedTouchObjectId = objectId;
+            LastQueuedTouchFlag = isTouching;
+            LastQueuedTouchPacket = packet;
+            status = $"Queued reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) until a live Maple session is attached.";
+            LastStatus = status;
             return true;
+        }
+
+        public bool HasQueuedTouchRequest(int objectId, bool isTouching)
+        {
+            return _pendingTouchRequests.Any(packet => packet.ObjectId == objectId && packet.IsTouching == isTouching);
+        }
+
+        public bool WasLastInjectedTouchRequest(int objectId, bool isTouching)
+        {
+            return LastInjectedTouchObjectId == objectId && LastInjectedTouchFlag == isTouching;
         }
 
         internal static byte[] BuildTouchRequestPacket(int objectId, bool isTouching)
@@ -354,6 +418,7 @@ namespace HaCreator.MapSimulator.Managers
                     pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
                     pair.InitCompleted = true;
                     LastStatus = $"Reactor official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
+                    FlushQueuedTouchRequests(pair);
                     pair.ClientSession.WaitForData();
                     return;
                 }
@@ -455,6 +520,43 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 ReceivedCount = 0;
+            }
+        }
+
+        private void FlushQueuedTouchRequests(BridgePair pair)
+        {
+            if (pair?.InitCompleted != true)
+            {
+                return;
+            }
+
+            int flushed = 0;
+            while (_pendingTouchRequests.TryPeek(out PendingTouchRequest pending))
+            {
+                try
+                {
+                    pair.ServerSession.SendPacket(pending.Packet);
+                    if (!_pendingTouchRequests.TryDequeue(out PendingTouchRequest dequeued))
+                    {
+                        break;
+                    }
+
+                    InjectedTouchRequestCount++;
+                    flushed++;
+                    LastInjectedTouchObjectId = dequeued.ObjectId;
+                    LastInjectedTouchFlag = dequeued.IsTouching;
+                    LastInjectedTouchPacket = dequeued.Packet;
+                }
+                catch (Exception ex)
+                {
+                    ClearActivePair(pair, $"Reactor official-session touch flush failed: {ex.Message}");
+                    break;
+                }
+            }
+
+            if (flushed > 0)
+            {
+                LastStatus = $"Flushed {flushed} queued reactor touch request(s) into live session {pair.RemoteEndpoint}.";
             }
         }
 

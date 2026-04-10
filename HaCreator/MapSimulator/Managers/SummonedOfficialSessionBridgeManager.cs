@@ -1406,8 +1406,7 @@ namespace HaCreator.MapSimulator.Managers
             Sg88ManualAttackCapture selectedCapture = null;
             bool selectedCaptureIsPending = false;
             int selectedObservedAt = int.MinValue;
-            int selectedLaneScore = int.MinValue;
-            int selectedOrderMatchScore = int.MinValue;
+            Sg88ManualAttackTemplateLanePreference selectedLanePreference = default;
             Sg88ManualAttackRequestPacketTemplate selectedTemplate = default;
 
             bool TryConsiderCapture(Sg88ManualAttackCapture capture, bool isPendingCapture)
@@ -1439,7 +1438,7 @@ namespace HaCreator.MapSimulator.Managers
                     && !ShouldPreferSg88TemplateLanePreference(
                         lanePreference,
                         requestPacket.ObservedAt,
-                        new Sg88ManualAttackTemplateLanePreference(selectedLaneScore, selectedOrderMatchScore, 0, 0),
+                        selectedLanePreference,
                         selectedObservedAt))
                 {
                     return false;
@@ -1449,8 +1448,7 @@ namespace HaCreator.MapSimulator.Managers
                 selectedCapture = capture;
                 selectedCaptureIsPending = isPendingCapture;
                 selectedObservedAt = requestPacket.ObservedAt;
-                selectedLaneScore = lanePreference.LaneScore;
-                selectedOrderMatchScore = lanePreference.OrderedMatchScore;
+                selectedLanePreference = lanePreference;
                 return true;
             }
 
@@ -1471,35 +1469,44 @@ namespace HaCreator.MapSimulator.Managers
                     ? "live official capture"
                     : $"archived official capture ({selectedCapture.ResolutionSource ?? "resolved"})";
                 status =
-                    $"Using learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {selectedCapture.RequestedAt} via {captureState} laneScore={selectedLaneScore}.";
+                    $"Using learned SG-88 request template from opcode 0x{template.Opcode:X} captured at tick {selectedCapture.RequestedAt} via {captureState} laneScore={selectedLanePreference.LaneScore}.";
                 return true;
             }
 
             if (_learnedSg88ManualAttackTemplates.TryGetValue(targetCount, out List<LearnedSg88ManualAttackTemplate> learnedTemplates)
                 && learnedTemplates.Count > 0)
             {
-                LearnedSg88ManualAttackTemplate learnedTemplate = learnedTemplates
-                    .OrderByDescending(candidate => EvaluateSg88TemplateLanePreference(
+                LearnedSg88ManualAttackTemplate learnedTemplate = null;
+                Sg88ManualAttackTemplateLanePreference lanePreference = default;
+                int learnedObservedAt = int.MinValue;
+                foreach (LearnedSg88ManualAttackTemplate candidate in learnedTemplates)
+                {
+                    Sg88ManualAttackTemplateLanePreference candidatePreference = EvaluateSg88TemplateLanePreference(
                         primaryTargetMobId,
                         resolvedTargetMobIds,
                         candidate.PrimaryTargetMobId,
-                        candidate.TargetMobIds).LaneScore)
-                    .ThenByDescending(candidate =>
+                        candidate.TargetMobIds);
+                    if (learnedTemplate != null
+                        && !ShouldPreferSg88TemplateLanePreference(
+                            candidatePreference,
+                            candidate.ObservedAt,
+                            lanePreference,
+                            learnedObservedAt))
                     {
-                        Sg88ManualAttackTemplateLanePreference preference = EvaluateSg88TemplateLanePreference(
-                            primaryTargetMobId,
-                            resolvedTargetMobIds,
-                            candidate.PrimaryTargetMobId,
-                            candidate.TargetMobIds);
-                        return preference.LaneScore > 0 ? preference.OrderedMatchScore : int.MinValue;
-                    })
-                    .ThenByDescending(candidate => candidate.ObservedAt)
-                    .First();
-                Sg88ManualAttackTemplateLanePreference lanePreference = EvaluateSg88TemplateLanePreference(
-                    primaryTargetMobId,
-                    resolvedTargetMobIds,
-                    learnedTemplate.PrimaryTargetMobId,
-                    learnedTemplate.TargetMobIds);
+                        continue;
+                    }
+
+                    learnedTemplate = candidate;
+                    lanePreference = candidatePreference;
+                    learnedObservedAt = candidate.ObservedAt;
+                }
+
+                if (learnedTemplate == null)
+                {
+                    status = $"No learned SG-88 request packet template matched targetCount={targetCount}.";
+                    return false;
+                }
+
                 template = learnedTemplate.Template;
                 string resolution = string.IsNullOrWhiteSpace(learnedTemplate.ResolutionSource)
                     ? "cached official capture"
@@ -1687,7 +1694,20 @@ namespace HaCreator.MapSimulator.Managers
                 return candidate.LaneScore > selected.LaneScore;
             }
 
-            if (candidate.LaneScore > 0 && candidate.OrderedMatchScore != selected.OrderedMatchScore)
+            if (candidate.LaneScore > 0
+                && candidate.LeadingOrderedMatchCount != selected.LeadingOrderedMatchCount)
+            {
+                return candidate.LeadingOrderedMatchCount > selected.LeadingOrderedMatchCount;
+            }
+
+            if (candidate.LaneScore > 0
+                && candidate.ExactOrderedMatchCount != selected.ExactOrderedMatchCount)
+            {
+                return candidate.ExactOrderedMatchCount > selected.ExactOrderedMatchCount;
+            }
+
+            if (candidate.LaneScore > 0
+                && candidate.OrderedMatchScore != selected.OrderedMatchScore)
             {
                 return candidate.OrderedMatchScore > selected.OrderedMatchScore;
             }

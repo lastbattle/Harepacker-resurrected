@@ -80,8 +80,8 @@ namespace HaCreator.MapSimulator
                 return $"CWvsContext::OnStageChange decoded '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)}, but the simulator could not resolve the validated period entry.";
             }
 
-            _contextOwnedStageCurrentBackColorArgb = period.BackColorArgb;
-            _contextOwnedStageCurrentBackImages = period.BackImages;
+            _contextOwnedStageCurrentBackColorArgb = period.ResolveActiveBackColorArgb();
+            _contextOwnedStageCurrentBackImages = period.ResolveActiveBackImages();
             _contextOwnedStageActiveKeywords = new HashSet<string>(period.Keywords, StringComparer.Ordinal);
             _contextOwnedStageActiveQuestIds = new HashSet<int>(period.EnabledQuestIds);
             _contextOwnedStageAffectedMapIds = catalog.ResolveAffectedMaps(period);

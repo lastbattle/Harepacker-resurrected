@@ -837,7 +837,7 @@ namespace HaCreator.MapSimulator.UI
                 position,
                 maxWidth,
                 scale,
-                (token, drawPosition, drawColor) =>
+                (token, drawPosition, drawStyle) =>
                 {
                     if (token.Texture != null)
                     {
@@ -854,7 +854,7 @@ namespace HaCreator.MapSimulator.UI
                     }
                     else if (!string.IsNullOrEmpty(token.Text))
                     {
-                        DrawTextLineClipped(sprite, token.Text, drawPosition, drawColor, clipRect, scale);
+                        DrawTextLineClipped(sprite, token.Text, drawPosition, drawStyle.Color, clipRect, scale, drawStyle.Emphasized);
                     }
                 },
                 color);
@@ -908,7 +908,7 @@ namespace HaCreator.MapSimulator.UI
             Vector2 position,
             float maxWidth,
             float scale,
-            Action<RichTextToken, Vector2, Color> drawToken,
+            Action<RichTextToken, Vector2, RichTextStyleState> drawToken,
             Color defaultColor)
         {
             float baselineHeight = Math.Max(1f, GetLineHeight(scale));
@@ -916,7 +916,7 @@ namespace HaCreator.MapSimulator.UI
             float currentY = position.Y;
             float lineStartX = position.X;
             float lineHeight = baselineHeight;
-            Color currentColor = defaultColor;
+            RichTextStyleState currentStyle = new(defaultColor, false);
             bool lineHasContent = false;
 
             foreach (RichTextToken token in EnumerateRichTextTokens(text, scale))
@@ -932,7 +932,7 @@ namespace HaCreator.MapSimulator.UI
 
                 if (token.Kind == RichTextTokenKind.Style)
                 {
-                    currentColor = ResolveQuestDetailStyleColor(token.StyleTag, defaultColor);
+                    currentStyle = ApplyQuestDetailStyle(token.StyleTag, currentStyle, defaultColor);
                     continue;
                 }
 
@@ -965,7 +965,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                drawToken?.Invoke(token, new Vector2(currentX, currentY), currentColor);
+                drawToken?.Invoke(token, new Vector2(currentX, currentY), currentStyle);
                 currentX += token.Width;
                 lineHeight = Math.Max(lineHeight, token.Height > 0 ? token.Height : baselineHeight);
                 if (token.Kind != RichTextTokenKind.Space)
@@ -1105,6 +1105,22 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private static RichTextStyleState ApplyQuestDetailStyle(string styleTag, RichTextStyleState currentStyle, Color defaultColor)
+        {
+            string normalizedTag = styleTag?.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(normalizedTag))
+            {
+                return currentStyle;
+            }
+
+            return normalizedTag switch
+            {
+                "e" => currentStyle with { Emphasized = true },
+                "n" => currentStyle with { Emphasized = false },
+                _ => currentStyle with { Color = ResolveQuestDetailStyleColor(normalizedTag, defaultColor) }
+            };
         }
 
         private static Color ResolveQuestDetailStyleColor(string styleTag, Color defaultColor)
@@ -1528,7 +1544,7 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(texture, intersected, sourceRect, color);
         }
 
-        private void DrawTextLineClipped(SpriteBatch sprite, string text, Vector2 position, Color color, Rectangle clipRect, float scale)
+        private void DrawTextLineClipped(SpriteBatch sprite, string text, Vector2 position, Color color, Rectangle clipRect, float scale, bool emphasized = false)
         {
             if (string.IsNullOrEmpty(text))
             {
@@ -1539,21 +1555,26 @@ namespace HaCreator.MapSimulator.UI
             Rectangle lineRect = new(
                 (int)position.X,
                 (int)position.Y,
-                Math.Max(1, (int)Math.Ceiling(textSize.X)),
+                Math.Max(1, (int)Math.Ceiling(textSize.X) + (emphasized ? 1 : 0)),
                 Math.Max(1, (int)Math.Ceiling(GetLineHeight(scale))));
             if (!lineRect.Intersects(clipRect))
             {
                 return;
             }
 
-            DrawTextLine(sprite, text, position, color, scale);
+            DrawTextLine(sprite, text, position, color, scale, emphasized);
         }
 
-        private void DrawTextLine(SpriteBatch sprite, string text, Vector2 position, Color color, float scale)
+        private void DrawTextLine(SpriteBatch sprite, string text, Vector2 position, Color color, float scale, bool emphasized = false)
         {
             if (string.IsNullOrEmpty(text))
             {
                 return;
+            }
+
+            if (emphasized)
+            {
+                ClientTextDrawing.Draw(sprite, text, position + new Vector2(1f, 0f), color, scale, _font);
             }
 
             ClientTextDrawing.Draw(sprite, text, position, color, scale, _font);
@@ -2193,5 +2214,7 @@ namespace HaCreator.MapSimulator.UI
                 return new RichTextToken(RichTextTokenKind.Style, null, null, styleTag, 0, 0);
             }
         }
+
+        private readonly record struct RichTextStyleState(Color Color, bool Emphasized);
     }
 }

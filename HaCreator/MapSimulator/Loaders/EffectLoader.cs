@@ -50,15 +50,19 @@ namespace HaCreator.MapSimulator.Loaders
                 reactorInstance,
                 device,
                 usedProps);
+            Dictionary<int, WzImageProperty> stateLayerProperties = GetReactorStateLayerProperties(linkedReactorImage);
+            Dictionary<int, WzImageProperty> stateHitProperties = GetReactorStateHitProperties(linkedReactorImage);
             Dictionary<(int State, int ProperEventIndex), List<IDXObject>> stateIndexedHitFrames = LoadReactorIndexedHitFrames(
                 texturePool,
                 linkedReactorImage,
                 reactorInstance,
                 device,
                 usedProps);
+            Dictionary<(int State, int ProperEventIndex), WzImageProperty> stateIndexedHitProperties = GetReactorIndexedHitProperties(linkedReactorImage);
+            WzImageProperty rootHitProperty = ResolveReactorFrameSourceProperty(linkedReactorImage?["hit"]);
             List<IDXObject> rootHitFrames = LoadReactorFramesForProperty(
                 texturePool,
-                WzInfoTools.GetRealProperty(linkedReactorImage?["hit"]),
+                rootHitProperty,
                 reactorInstance.X,
                 reactorInstance.Y,
                 device,
@@ -71,7 +75,11 @@ namespace HaCreator.MapSimulator.Loaders
                 stateFrames,
                 stateHitFrames,
                 stateIndexedHitFrames,
-                rootHitFrames);
+                rootHitFrames,
+                stateLayerProperties,
+                stateHitProperties,
+                stateIndexedHitProperties,
+                rootHitProperty);
         }
 
         internal static WzImageProperty ResolveReactorFrameSourceProperty(WzImageProperty property)

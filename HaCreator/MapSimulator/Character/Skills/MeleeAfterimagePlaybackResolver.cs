@@ -25,17 +25,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            SkillFrame frame = ResolveFrame(action, frameIndex, frameElapsedMs);
-            if (frame == null)
-            {
-                return false;
-            }
-
-            snapshot = new Snapshot(
-                frameIndex,
-                frame,
-                ResolveFrameAlpha(frame, frameElapsedMs));
-            return true;
+            return TryResolveFrameSnapshot(action, frameIndex, frameElapsedMs, out snapshot);
         }
 
         internal static bool TryCaptureFadeSnapshot(
@@ -45,20 +35,45 @@ namespace HaCreator.MapSimulator.Character.Skills
             int animationTime,
             out Snapshot snapshot)
         {
-            if (TryResolveSnapshot(assembler, actionName, action, animationTime, out snapshot))
+            if (assembler != null
+                && !string.IsNullOrWhiteSpace(actionName)
+                && assembler.TryGetFrameTimingAtTime(actionName, Math.Max(0, animationTime), out int frameIndex, out int frameElapsedMs))
             {
+                TryResolveFrameSnapshot(action, frameIndex, frameElapsedMs, out snapshot);
                 return true;
             }
 
             snapshot = default;
-            int frameIndex = assembler?.GetFrameIndexAtTime(actionName, Math.Max(0, animationTime)) ?? -1;
-            if (frameIndex < 0)
+            int fallbackFrameIndex = assembler?.GetFrameIndexAtTime(actionName, Math.Max(0, animationTime)) ?? -1;
+            if (fallbackFrameIndex < 0)
             {
                 return false;
             }
 
-            snapshot = new Snapshot(frameIndex, null, 1f);
+            snapshot = new Snapshot(fallbackFrameIndex, null, 0f);
             return true;
+        }
+
+        internal static bool TryResolveFrameSnapshot(
+            MeleeAfterImageAction action,
+            int frameIndex,
+            int frameElapsedMs,
+            out Snapshot snapshot)
+        {
+            snapshot = default;
+            if (action == null || frameIndex < 0)
+            {
+                return false;
+            }
+
+            SkillFrame frame = ResolveFrame(action, frameIndex, frameElapsedMs);
+            snapshot = new Snapshot(
+                frameIndex,
+                frame,
+                frame != null
+                    ? ResolveFrameAlpha(frame, frameElapsedMs)
+                    : 0f);
+            return frame != null;
         }
 
         public static SkillFrame ResolveFrame(

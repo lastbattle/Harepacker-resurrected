@@ -14,6 +14,20 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class QuestDeliveryWindow : UIWindowBase
     {
+        internal readonly struct IconFrame
+        {
+            public IconFrame(Texture2D texture, Point origin, int delayMs)
+            {
+                Texture = texture;
+                Origin = origin;
+                DelayMs = Math.Max(1, delayMs);
+            }
+
+            public Texture2D Texture { get; }
+            public Point Origin { get; }
+            public int DelayMs { get; }
+        }
+
         internal sealed class DeliveryEntry
         {
             public int QuestId { get; init; }
@@ -35,7 +49,7 @@ namespace HaCreator.MapSimulator.UI
 
         private const int VisibleRowCount = 4;
         private const int RowHeight = 17;
-        private const int IconLeft = 18;
+        private static readonly Point IconAnchor = new(41, 50);
         private const int HeaderTop = 12;
         private const int ListLeft = 14;
         private const int ListTop = 68;
@@ -46,7 +60,7 @@ namespace HaCreator.MapSimulator.UI
         private const int DetailLeft = 170;
         private const int DetailTop = 14;
 
-        private readonly Texture2D[] _iconFrames;
+        private readonly IconFrame[] _iconFrames;
         private readonly Texture2D _rowTexture;
         private readonly Texture2D _selectedRowTexture;
         private readonly Texture2D _scrollThumbTexture;
@@ -67,7 +81,7 @@ namespace HaCreator.MapSimulator.UI
 
         public QuestDeliveryWindow(
             IDXObject frame,
-            Texture2D[] iconFrames,
+            IconFrame[] iconFrames,
             Texture2D rowTexture,
             Texture2D selectedRowTexture,
             Texture2D scrollThumbTexture,
@@ -75,7 +89,7 @@ namespace HaCreator.MapSimulator.UI
             GraphicsDevice device)
             : base(frame)
         {
-            _iconFrames = iconFrames ?? Array.Empty<Texture2D>();
+            _iconFrames = iconFrames ?? Array.Empty<IconFrame>();
             _rowTexture = rowTexture;
             _selectedRowTexture = selectedRowTexture;
             _scrollThumbTexture = scrollThumbTexture;
@@ -210,12 +224,46 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int frameIndex = Math.Abs(tickCount / 90) % _iconFrames.Length;
-            Texture2D frame = _iconFrames[Math.Clamp(frameIndex, 0, _iconFrames.Length - 1)];
-            if (frame != null)
+            IconFrame frame = ResolveIconFrame(tickCount);
+            if (frame.Texture != null)
             {
-                sprite.Draw(frame, new Vector2(Position.X + IconLeft, Position.Y + 16), Color.White);
+                Vector2 drawPosition = new(
+                    Position.X + IconAnchor.X - frame.Origin.X,
+                    Position.Y + IconAnchor.Y - frame.Origin.Y);
+                sprite.Draw(frame.Texture, drawPosition, Color.White);
             }
+        }
+
+        private IconFrame ResolveIconFrame(int tickCount)
+        {
+            if (_iconFrames.Length == 1)
+            {
+                return _iconFrames[0];
+            }
+
+            int totalDelay = 0;
+            for (int i = 0; i < _iconFrames.Length; i++)
+            {
+                totalDelay += _iconFrames[i].DelayMs;
+            }
+
+            if (totalDelay <= 0)
+            {
+                return _iconFrames[0];
+            }
+
+            int time = Math.Abs(tickCount % totalDelay);
+            for (int i = 0; i < _iconFrames.Length; i++)
+            {
+                if (time < _iconFrames[i].DelayMs)
+                {
+                    return _iconFrames[i];
+                }
+
+                time -= _iconFrames[i].DelayMs;
+            }
+
+            return _iconFrames[_iconFrames.Length - 1];
         }
 
         private void DrawHeader(SpriteBatch sprite)

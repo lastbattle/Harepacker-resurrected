@@ -961,6 +961,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 Animation = zoneAnimation,
                 Area = area,
+                EffectDistance = state.Summon.SkillData?.ZoneEffect?.EffectDistance ?? 0,
                 StartTime = currentTime + attackDelayMs + tileDelayMs,
                 EndTime = currentTime + attackDelayMs + tileDelayMs + tileDurationMs,
                 StartAlpha = 128,
@@ -2606,6 +2607,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             public SkillAnimation Animation { get; init; }
             public Rectangle Area { get; init; }
+            public int EffectDistance { get; init; }
             public int StartTime { get; init; }
             public int EndTime { get; init; }
             public byte StartAlpha { get; init; }
@@ -3023,20 +3025,55 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ArmPacketOwnedSupportSuspend(state, currentTime);
-
-            if (state.Summon.SkillData.HitEffect != null)
-            {
-                SpawnHitEffect(
-                    state.Summon.SkillId,
-                    state.Summon.SkillData.HitEffect,
-                    state.Summon.PositionX,
-                    state.Summon.PositionY - 20f,
-                    state.Summon.FacingRight,
-                    currentTime);
-            }
+            ScheduleLocalExpirySelfDestructSupportHitEffect(state.Summon, currentTime);
 
             state.Summon.LastAttackTime = currentTime;
             return true;
+        }
+
+        private void ScheduleLocalExpirySelfDestructSupportHitEffect(ActiveSummon summon, int currentTime)
+        {
+            SkillData skill = summon?.SkillData;
+            if (skill == null)
+            {
+                return;
+            }
+
+            SkillAnimation impactAnimation = ResolvePacketAttackImpactAnimation(
+                skill,
+                0,
+                summon.CurrentAnimationBranchName);
+            if (impactAnimation == null)
+            {
+                return;
+            }
+
+            int executeTime = currentTime + ResolvePacketAttackImpactAuthoredDelayMs(
+                skill,
+                0,
+                summon.CurrentAnimationBranchName);
+            ActiveHitEffect hitEffect = new()
+            {
+                SkillId = summon.SkillId,
+                X = summon.PositionX,
+                Y = summon.PositionY - 20f,
+                StartTime = executeTime,
+                Animation = impactAnimation,
+                FacingRight = summon.FacingRight
+            };
+
+            if (executeTime > currentTime)
+            {
+                _scheduledHitEffects.Add(new ScheduledPacketOwnedHitEffect
+                {
+                    SequenceId = _nextScheduledHitEffectSequenceId++,
+                    ExecuteTime = executeTime,
+                    HitEffect = hitEffect
+                });
+                return;
+            }
+
+            _hitEffects.Add(hitEffect);
         }
 
         private List<MobItem> ResolveLocalExpirySelfDestructTargets(PacketOwnedSummonState state, int currentTime)
@@ -4087,22 +4124,23 @@ namespace HaCreator.MapSimulator.Pools
             int tileHeight = Math.Max(1, frame.Texture.Height);
             Color tint = Color.White * tileEffect.GetAlpha(currentTime);
 
-            for (int worldY = tileEffect.Area.Top; worldY < tileEffect.Area.Bottom; worldY += tileHeight)
+            foreach (Point worldOrigin in PacketOwnedSummonUpdateRules.EnumerateClientOwnedTileOverlayOrigins(
+                         tileEffect.Area,
+                         tileWidth,
+                         tileHeight,
+                         tileEffect.EffectDistance))
             {
-                for (int worldX = tileEffect.Area.Left; worldX < tileEffect.Area.Right; worldX += tileWidth)
-                {
-                    int screenX = worldX - mapShiftX + centerX;
-                    int screenY = worldY - mapShiftY + centerY;
-                    frame.Texture.DrawBackground(
-                        spriteBatch,
-                        null,
-                        null,
-                        screenX - frame.Origin.X,
-                        screenY - frame.Origin.Y,
-                        tint,
-                        false,
-                        null);
-                }
+                int screenX = worldOrigin.X - mapShiftX + centerX;
+                int screenY = worldOrigin.Y - mapShiftY + centerY;
+                frame.Texture.DrawBackground(
+                    spriteBatch,
+                    null,
+                    null,
+                    screenX - frame.Origin.X,
+                    screenY - frame.Origin.Y,
+                    tint,
+                    false,
+                    null);
             }
         }
 

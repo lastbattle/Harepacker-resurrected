@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using HaCreator.MapSimulator.Character.Skills;
 using Microsoft.Xna.Framework;
 
@@ -7,6 +8,8 @@ namespace HaCreator.MapSimulator.Character
 {
     internal static class ShadowPartnerClientActionResolver
     {
+        internal readonly record struct ShadowPartnerActionPiece(int SlotIndex, string PieceActionName);
+
         private static readonly string[] SwingHeuristicFragments =
         {
             "swing",
@@ -120,6 +123,7 @@ namespace HaCreator.MapSimulator.Character
                 ["savage"] = new[] { "stabO1", "stabO2", "stabOF" },
                 ["showdown"] = new[] { "stabO1", "stabO2", "stabOF" },
                 ["assassination"] = new[] { "stabO1", "stabO2", "stabOF" },
+                ["assassinationS"] = new[] { "stabO1", "stabO2", "stabOF" },
                 ["assassinations"] = new[] { "stabO1", "stabO2", "stabOF" },
                 ["ninjastorm"] = new[] { "shoot1", "shoot2", "shootF" },
                 ["vampire"] = new[] { "shoot1", "shoot2", "shootF" },
@@ -137,24 +141,29 @@ namespace HaCreator.MapSimulator.Character
                 ["shotC1"] = new[] { "shoot1", "shoot2", "shootF" }
             };
 
-        private static readonly string[] PiecedShadowPartnerActionNames =
-        {
-            "avenger",
-            "assaulter",
-            "flyingAssaulter",
-            "savage",
-            "showdown",
-            "assassination",
-            "assassinations",
-            "ninjastorm",
-            "vampire",
-            "stabD1",
-            "swingD1",
-            "swingD2",
-            "doubleSwing",
-            "tripleSwing",
-            "shotC1"
-        };
+        private static readonly IReadOnlyDictionary<string, ShadowPartnerActionPiece[]> PiecedShadowPartnerActionPlans =
+            new Dictionary<string, ShadowPartnerActionPiece[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["avenger"] = CreateIndexedPieces("shoot1", "shoot2", "shootF"),
+                ["assaulter"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
+                ["flyingAssaulter"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
+                ["savage"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
+                ["showdown"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
+                ["assassination"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
+                // `get_action_name_from_code(62)` resolves to `assassinationS` in the client
+                // action table; keep the earlier compatibility alias too until the simulator
+                // no longer carries call sites or saved state that can surface the older name.
+                ["assassinationS"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
+                ["assassinations"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
+                ["ninjastorm"] = CreateIndexedPieces("shoot1", "shoot2", "shootF"),
+                ["vampire"] = CreateIndexedPieces("shoot1", "shoot2", "shootF"),
+                ["stabD1"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
+                ["swingD1"] = CreateIndexedPieces("swingO1", "swingO2", "swingO3", "swingOF"),
+                ["swingD2"] = CreateIndexedPieces("swingO1", "swingO2", "swingO3", "swingOF"),
+                ["doubleSwing"] = CreateIndexedPieces("swingP1", "swingP2", "swingPF"),
+                ["tripleSwing"] = CreateIndexedPieces("swingP1", "swingP2", "swingPF"),
+                ["shotC1"] = CreateIndexedPieces("shoot1", "shoot2", "shootF")
+            };
 
         public static IEnumerable<string> EnumerateClientMappedCandidates(
             string playerActionName,
@@ -463,7 +472,7 @@ namespace HaCreator.MapSimulator.Character
 
         internal static IEnumerable<string> EnumeratePiecedShadowPartnerActionNames()
         {
-            foreach (string actionName in PiecedShadowPartnerActionNames)
+            foreach (string actionName in PiecedShadowPartnerActionPlans.Keys)
             {
                 yield return actionName;
             }
@@ -476,19 +485,19 @@ namespace HaCreator.MapSimulator.Character
             if (actionAnimations == null
                 || actionAnimations.Count == 0
                 || string.IsNullOrWhiteSpace(actionName)
-                || !SharedAliasMap.TryGetValue(actionName, out string[] pieceActionNames)
-                || pieceActionNames == null
-                || pieceActionNames.Length == 0)
+                || !PiecedShadowPartnerActionPlans.TryGetValue(actionName, out ShadowPartnerActionPiece[] piecePlan)
+                || piecePlan == null
+                || piecePlan.Length == 0)
             {
                 return null;
             }
 
             var frames = new List<SkillFrame>();
             SkillAnimation firstPieceAnimation = null;
-            foreach (string pieceActionName in pieceActionNames)
+            foreach (ShadowPartnerActionPiece piece in piecePlan.OrderBy(static entry => entry.SlotIndex))
             {
-                if (string.IsNullOrWhiteSpace(pieceActionName)
-                    || !actionAnimations.TryGetValue(pieceActionName, out SkillAnimation pieceAnimation)
+                if (string.IsNullOrWhiteSpace(piece.PieceActionName)
+                    || !actionAnimations.TryGetValue(piece.PieceActionName, out SkillAnimation pieceAnimation)
                     || pieceAnimation?.Frames == null
                     || pieceAnimation.Frames.Count == 0)
                 {
@@ -522,6 +531,19 @@ namespace HaCreator.MapSimulator.Character
             return piecedAnimation;
         }
 
+        internal static IReadOnlyList<ShadowPartnerActionPiece> GetPiecedShadowPartnerActionPlan(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName)
+                || !PiecedShadowPartnerActionPlans.TryGetValue(actionName, out ShadowPartnerActionPiece[] plan)
+                || plan == null
+                || plan.Length == 0)
+            {
+                return Array.Empty<ShadowPartnerActionPiece>();
+            }
+
+            return Array.AsReadOnly(plan);
+        }
+
         public static Point ResolveClientTargetOffset(
             string observedPlayerActionName,
             PlayerState state,
@@ -529,12 +551,46 @@ namespace HaCreator.MapSimulator.Character
             int sideOffsetPx,
             int backActionOffsetYPx)
         {
-            if (IsClientBackAction(observedPlayerActionName, state))
+            return ResolveClientTargetOffset(
+                observedPlayerActionName,
+                state,
+                facingRight,
+                sideOffsetPx,
+                backActionOffsetYPx,
+                rawActionCode: null,
+                hasMorphTransform: false);
+        }
+
+        public static Point ResolveClientTargetOffset(
+            string observedPlayerActionName,
+            PlayerState state,
+            bool facingRight,
+            int sideOffsetPx,
+            int backActionOffsetYPx,
+            int? rawActionCode,
+            bool hasMorphTransform)
+        {
+            if (IsClientBackAction(observedPlayerActionName, state, rawActionCode, hasMorphTransform))
             {
                 return new Point(0, backActionOffsetYPx);
             }
 
             return new Point(facingRight ? -sideOffsetPx : sideOffsetPx, 0);
+        }
+
+        public static int ResolveHorizontalOffsetPx(SkillAnimation currentAnimation, int baselineOffsetPx)
+        {
+            int normalizedBaselineOffsetPx = Math.Max(0, baselineOffsetPx);
+            if (currentAnimation?.Frames == null || currentAnimation.Frames.Count == 0)
+            {
+                return normalizedBaselineOffsetPx;
+            }
+
+            // Shadow Partner special actions author slightly different first-frame origins per branch.
+            // Preserve that authored horizontal cadence instead of pinning every action to the idle spacing.
+            int baselineOriginX = normalizedBaselineOffsetPx + 2;
+            int actionOriginX = currentAnimation.Frames[0]?.Origin.X ?? baselineOriginX;
+            return Math.Max(0, normalizedBaselineOffsetPx + (actionOriginX - baselineOriginX));
         }
 
         public static Point InterpolateClientOffset(
@@ -652,7 +708,25 @@ namespace HaCreator.MapSimulator.Character
 
         public static bool IsClientBackAction(string observedPlayerActionName, PlayerState state)
         {
+            return IsClientBackAction(
+                observedPlayerActionName,
+                state,
+                rawActionCode: null,
+                hasMorphTransform: false);
+        }
+
+        public static bool IsClientBackAction(
+            string observedPlayerActionName,
+            PlayerState state,
+            int? rawActionCode,
+            bool hasMorphTransform)
+        {
             if (state is PlayerState.Ladder or PlayerState.Rope)
+            {
+                return true;
+            }
+
+            if (rawActionCode.HasValue && IsClientBackRawAction(rawActionCode.Value, hasMorphTransform))
             {
                 return true;
             }
@@ -663,6 +737,16 @@ namespace HaCreator.MapSimulator.Character
                 "rope" or "rope2" or "ghostrope" => true,
                 _ => false
             };
+        }
+
+        internal static bool IsClientBackRawAction(int rawActionCode, bool hasMorphTransform)
+        {
+            if (hasMorphTransform)
+            {
+                return rawActionCode is 9 or 10;
+            }
+
+            return rawActionCode is 45 or 46 or 129 or 130;
         }
 
         private static bool ShouldPreferActionSpecificAliasCandidates(string playerActionName)
@@ -929,6 +1013,22 @@ namespace HaCreator.MapSimulator.Character
                     yield return candidate;
                 }
             }
+        }
+
+        private static ShadowPartnerActionPiece[] CreateIndexedPieces(params string[] pieceActionNames)
+        {
+            if (pieceActionNames == null || pieceActionNames.Length == 0)
+            {
+                return Array.Empty<ShadowPartnerActionPiece>();
+            }
+
+            var pieces = new ShadowPartnerActionPiece[pieceActionNames.Length];
+            for (int i = 0; i < pieceActionNames.Length; i++)
+            {
+                pieces[i] = new ShadowPartnerActionPiece(i, pieceActionNames[i]);
+            }
+
+            return pieces;
         }
 
         private static IEnumerable<string> EnumerateRangedAttackCandidates(string playerActionName, bool floating)

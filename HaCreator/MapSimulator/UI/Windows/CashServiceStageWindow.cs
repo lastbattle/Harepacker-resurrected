@@ -143,6 +143,8 @@ namespace HaCreator.MapSimulator.UI
         private int _cashOneADayItemDate;
         private int _cashOneADayItemSerialNumber;
         private readonly int[] _cashWishlistSerialNumbers = new int[10];
+        private string _cashPacketPaneLabel = "Packet wishlist";
+        private string _cashPacketBrowseModeLabel = "Wish";
         private string _cashItemLastSummary = "No cash-item result routed yet.";
         private string _cashGiftLastSummary = "No packet-authored gift result routed yet.";
         private string _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
@@ -200,6 +202,8 @@ namespace HaCreator.MapSimulator.UI
         public int CashBuyCharacterCount => _cashBuyCharacterCount;
         public int CashCharacterCount => _cashCharacterCount;
         public IReadOnlyList<int> CashWishlistSerialNumbers => _cashWishlistSerialNumbers;
+        public string CashPacketPaneLabel => _cashPacketPaneLabel;
+        public string CashPacketBrowseModeLabel => _cashPacketBrowseModeLabel;
         public string CashItemLastSummary => _cashItemLastSummary;
         public string CashGiftLastSummary => _cashGiftLastSummary;
         public string CashPurchaseRecordSummary => _cashPurchaseRecordSummary;
@@ -325,6 +329,8 @@ namespace HaCreator.MapSimulator.UI
             _cashPacketCatalogEntries.Clear();
             _cashInventoryPacketEntries.Clear();
             _cashPurchaseRecordStates.Clear();
+            _cashPacketPaneLabel = "Packet wishlist";
+            _cashPacketBrowseModeLabel = "Wish";
             _cashGiftLastSummary = "No packet-authored gift result routed yet.";
             _cashPurchaseRecordSummary = "No packet-authored purchase record routed yet.";
             _cashCouponLastSummary = "No packet-authored coupon result routed yet.";
@@ -1106,6 +1112,22 @@ namespace HaCreator.MapSimulator.UI
             }
 
             short giftCount = BitConverter.ToInt16(payload, 1);
+            List<PacketCatalogEntry> entries = new();
+            for (int i = 0; i < Math.Max(0, (int)giftCount); i++)
+            {
+                int rowNumber = i + 1;
+                entries.Add(new PacketCatalogEntry
+                {
+                    Title = $"Gift row {rowNumber.ToString(CultureInfo.InvariantCulture)}",
+                    Detail = $"GW_GiftList row {rowNumber.ToString(CultureInfo.InvariantCulture)} is waiting inside the packet-owned Cash Shop gift inbox.",
+                    Seller = "CCashShop gift inbox",
+                    PriceLabel = "Gift",
+                    StateLabel = "Pending receive",
+                    ListingId = rowNumber
+                });
+            }
+
+            ReplaceCashPacketCatalogEntries("Packet gifts", "Gift", entries);
             _noticeState = $"Gift inbox refreshed with {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} gift row(s).";
             message = $"CCashShop::OnCashItemResLoadGiftDone loaded {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} gift row(s) into the dedicated receive-gift flow.";
             return true;
@@ -1142,6 +1164,8 @@ namespace HaCreator.MapSimulator.UI
                 });
             }
 
+            _cashPacketPaneLabel = "Packet wishlist";
+            _cashPacketBrowseModeLabel = "Wish";
             _searchState = $"{ownerName} refreshed {_wishlistCount.ToString(CultureInfo.InvariantCulture)} wishlist slot(s).";
             _noticeState = _wishlistCount > 0
                 ? $"Wishlist SNs: {string.Join(", ", _cashWishlistSerialNumbers.Where(value => value > 0).Take(5))}."
@@ -1159,6 +1183,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _cashLockerItemCount = Math.Max(0, _cashLockerItemCount + 1);
+            AppendCashPacketCatalogEntry("Packet purchase", "Buy", new PacketCatalogEntry
+            {
+                Title = "Locker purchase",
+                Detail = "A packet-authored cash-item body was appended to the dedicated locker owner.",
+                Seller = "CCSWnd_Locker",
+                PriceLabel = "Locker",
+                StateLabel = "Bought"
+            });
             _noticeState = $"A purchased cash item was appended to the locker (now {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} item(s)).";
             message = "CCashShop::OnCashItemResBuyDone appended one 55-byte cash-item body to the locker and invalidated CCSWnd_Locker.";
             return true;
@@ -1186,6 +1218,16 @@ namespace HaCreator.MapSimulator.UI
             int prepaidCost = Math.Max(0, reader.ReadInt32());
             _cashGiftLastSummary =
                 $"Gifted item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} x{quantity.ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} for {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
+            AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
+            {
+                Title = $"Gifted item {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)}",
+                Detail = _cashGiftLastSummary,
+                Seller = SanitizePacketString(recipient, "gift recipient"),
+                PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
+                StateLabel = "Gift sent",
+                ItemId = Math.Max(0, itemId),
+                Quantity = quantity
+            });
             _noticeState = _cashGiftLastSummary;
             message = $"CCashShop::OnCashItemResGiftDone confirmed {_cashGiftLastSummary}";
             return true;
@@ -1216,6 +1258,14 @@ namespace HaCreator.MapSimulator.UI
                     ? "Coupon registration completed inside the dedicated Cash Shop status owner."
                     : $"Coupon registration completed for {firstString}.")
                     + (value > 0 ? $" Packet value {value.ToString(CultureInfo.InvariantCulture)} was acknowledged." : string.Empty);
+            AppendCashPacketCatalogEntry("Packet coupons", "Coupon", new PacketCatalogEntry
+            {
+                Title = isGiftCoupon ? "Gift coupon" : "Coupon",
+                Detail = _cashCouponLastSummary,
+                Seller = string.IsNullOrWhiteSpace(firstString) ? "CCSWnd_Status" : firstString,
+                PriceLabel = value > 0 ? value.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                StateLabel = isGiftCoupon ? "Gift coupon" : "Coupon"
+            });
             _noticeState = _cashCouponLastSummary;
             message = isGiftCoupon
                 ? $"CCashShop::OnCashItemResGiftCouponDone confirmed {_cashCouponLastSummary}"
@@ -1244,6 +1294,14 @@ namespace HaCreator.MapSimulator.UI
             stream.Position += itemBlockLength;
             int bonusCount = Math.Max(0, (int)reader.ReadUInt16());
             _cashLockerItemCount = Math.Max(0, _cashLockerItemCount + itemCount);
+            AppendCashPacketCatalogEntry("Packet package", "Package", new PacketCatalogEntry
+            {
+                Title = "Package purchase",
+                Detail = $"Package purchase appended {itemCount.ToString(CultureInfo.InvariantCulture)} locker item(s){(bonusCount > 0 ? $" and reported {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count" : string.Empty)}.",
+                Seller = "CCSWnd_Locker",
+                PriceLabel = itemCount.ToString(CultureInfo.InvariantCulture),
+                StateLabel = "Package"
+            });
             _noticeState = $"Package purchase appended {itemCount.ToString(CultureInfo.InvariantCulture)} locker item(s){(bonusCount > 0 ? $" and reported {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count." : ".")}";
             message =
                 $"CCashShop::OnCashItemResBuyPackageDone appended {itemCount.ToString(CultureInfo.InvariantCulture)} 55-byte cash-item bodies to CCSWnd_Locker{(bonusCount > 0 ? $" and surfaced bonus count {bonusCount.ToString(CultureInfo.InvariantCulture)}" : string.Empty)}.";
@@ -1273,6 +1331,16 @@ namespace HaCreator.MapSimulator.UI
             int prepaidCost = Math.Max(0, reader.ReadInt32());
             _cashGiftLastSummary =
                 $"Gifted package {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)} to {SanitizePacketString(recipient, "gift recipient")} with {itemCount.ToString(CultureInfo.InvariantCulture)} item(s), {bonusCount.ToString(CultureInfo.InvariantCulture)} bonus count, and {prepaidCost.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
+            AppendCashPacketCatalogEntry("Packet package", "Package", new PacketCatalogEntry
+            {
+                Title = $"Gifted package {Math.Max(0, itemId).ToString(CultureInfo.InvariantCulture)}",
+                Detail = _cashGiftLastSummary,
+                Seller = SanitizePacketString(recipient, "gift recipient"),
+                PriceLabel = prepaidCost.ToString("N0", CultureInfo.InvariantCulture),
+                StateLabel = "Gift package",
+                ItemId = Math.Max(0, itemId),
+                Quantity = Math.Max(1, itemCount)
+            });
             _noticeState = _cashGiftLastSummary;
             message = $"CCashShop::OnCashItemResGiftPackageDone confirmed {_cashGiftLastSummary}";
             return true;
@@ -1296,13 +1364,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _cashInventoryPacketEntries.Clear();
+            _cashPacketCatalogEntries.Clear();
+            _cashPacketPaneLabel = "Packet inventory";
+            _cashPacketBrowseModeLabel = "Inventory";
             for (int i = 0; i < itemCount; i++)
             {
                 int slotIndex = Math.Max(0, (int)reader.ReadUInt16());
                 int itemId = Math.Max(0, reader.ReadInt32());
                 int inventoryTab = Math.Max(0, (itemId / 1_000_000) - 1);
                 _ = reader.ReadUInt16();
-                _cashInventoryPacketEntries.Add(new PacketCatalogEntry
+                PacketCatalogEntry entry = new()
                 {
                     Title = $"Inventory tab {inventoryTab.ToString(CultureInfo.InvariantCulture)} slot {slotIndex.ToString(CultureInfo.InvariantCulture)}",
                     Detail = $"CCSWnd_Inventory focused tab {inventoryTab.ToString(CultureInfo.InvariantCulture)} for item {itemId.ToString(CultureInfo.InvariantCulture)} at slot {slotIndex.ToString(CultureInfo.InvariantCulture)}.",
@@ -1311,7 +1382,9 @@ namespace HaCreator.MapSimulator.UI
                     StateLabel = "Bought",
                     ListingId = slotIndex,
                     ItemId = itemId
-                });
+                };
+                _cashInventoryPacketEntries.Add(entry);
+                _cashPacketCatalogEntries.Add(ClonePacketCatalogEntry(entry, "Inventory"));
             }
 
             _noticeState = _cashInventoryPacketEntries.Count > 0
@@ -1348,6 +1421,17 @@ namespace HaCreator.MapSimulator.UI
                 ApplyCashPurchaseRecordStateToCatalogEntries(0, purchaseRecorded);
             }
 
+            AppendCashPacketCatalogEntry("Packet purchase", "Buy", new PacketCatalogEntry
+            {
+                Title = commoditySerialNumber > 0
+                    ? $"Purchase record {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                    : "Purchase record",
+                Detail = _cashPurchaseRecordSummary,
+                Seller = "CCashShop",
+                PriceLabel = commoditySerialNumber > 0 ? $"SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = purchaseRecorded ? "Purchased" : "Wish",
+                ListingId = commoditySerialNumber
+            });
             _noticeState = _cashPurchaseRecordSummary;
             message = $"CCashShop::OnCashItemResPurchaseRecord updated {_cashPurchaseRecordSummary}";
             return true;
@@ -1370,6 +1454,14 @@ namespace HaCreator.MapSimulator.UI
             _cashNameChangeLastSummary = string.IsNullOrWhiteSpace(requestedName)
                 ? "Name-change purchase completed inside the dedicated Cash Shop stage."
                 : $"Name-change purchase completed for {requestedName}.";
+            AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
+            {
+                Title = "Name change",
+                Detail = _cashNameChangeLastSummary,
+                Seller = string.IsNullOrWhiteSpace(requestedName) ? "CCashShop" : requestedName,
+                PriceLabel = requestedName,
+                StateLabel = "Renamed"
+            });
             _noticeState = _cashNameChangeLastSummary;
             message = $"CCashShop::OnCashItemNameChangeResBuyDone confirmed {_cashNameChangeLastSummary}";
             return true;
@@ -1395,6 +1487,14 @@ namespace HaCreator.MapSimulator.UI
             _cashTransferWorldLastSummary = worldId > 0 || !string.IsNullOrWhiteSpace(targetName)
                 ? $"Transfer-world purchase completed{(worldId > 0 ? $" for world {worldId.ToString(CultureInfo.InvariantCulture)}" : string.Empty)}{(!string.IsNullOrWhiteSpace(targetName) ? $" on {targetName}" : string.Empty)}."
                 : "Transfer-world purchase completed inside the dedicated Cash Shop stage.";
+            AppendCashPacketCatalogEntry("Packet transfer", "Transfer", new PacketCatalogEntry
+            {
+                Title = "Transfer world",
+                Detail = _cashTransferWorldLastSummary,
+                Seller = string.IsNullOrWhiteSpace(targetName) ? "CCashShop" : targetName,
+                PriceLabel = worldId > 0 ? $"World {worldId.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = "Transferred"
+            });
             _noticeState = _cashTransferWorldLastSummary;
             message = $"CCashShop::OnCashItemResTransferWorldDone confirmed {_cashTransferWorldLastSummary}";
             return true;
@@ -1420,6 +1520,16 @@ namespace HaCreator.MapSimulator.UI
             _cashGachaponLastSummary = itemId > 0
                 ? $"{(isCopyResult ? "Cash gachapon copy" : "Cash gachapon open")} yielded item {itemId.ToString(CultureInfo.InvariantCulture)} x{count.ToString(CultureInfo.InvariantCulture)}."
                 : $"{(isCopyResult ? "Cash gachapon copy" : "Cash gachapon open")} completed inside the dedicated stage.";
+            AppendCashPacketCatalogEntry("Packet gachapon", "Gachapon", new PacketCatalogEntry
+            {
+                Title = isCopyResult ? "Gachapon copy" : "Gachapon open",
+                Detail = _cashGachaponLastSummary,
+                Seller = "CCashShop gachapon",
+                PriceLabel = itemId > 0 ? $"Item {itemId.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = isCopyResult ? "Copied" : "Opened",
+                ItemId = itemId,
+                Quantity = count
+            });
             _noticeState = _cashGachaponLastSummary;
             message = isCopyResult
                 ? $"CCashShop::OnCashItemResCashGachaponCopyDone confirmed {_cashGachaponLastSummary}"
@@ -1524,6 +1634,14 @@ namespace HaCreator.MapSimulator.UI
             _noticeState = value > 0
                 ? $"Purchase-exp packet updated the dedicated Cash Shop stage with value {value.ToString(CultureInfo.InvariantCulture)}."
                 : "Purchase-exp update routed through Cash Shop packet ownership.";
+            AppendCashPacketCatalogEntry("Packet purchase", "Buy", new PacketCatalogEntry
+            {
+                Title = "Purchase EXP",
+                Detail = _noticeState,
+                Seller = "CCashShop",
+                PriceLabel = value > 0 ? value.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                StateLabel = "Purchase EXP"
+            });
             return _noticeState;
         }
 
@@ -1535,6 +1653,14 @@ namespace HaCreator.MapSimulator.UI
             _noticeState = string.IsNullOrWhiteSpace(accountName)
                 ? "Gift-mate result stayed inside Cash Shop packet ownership."
                 : $"Gift-mate result refreshed the packet-owned recipient state for {accountName}.";
+            AppendCashPacketCatalogEntry("Packet gifts", "Gift", new PacketCatalogEntry
+            {
+                Title = "Gift mate",
+                Detail = _noticeState,
+                Seller = string.IsNullOrWhiteSpace(accountName) ? "CCashShop" : accountName,
+                PriceLabel = accountName,
+                StateLabel = "Recipient"
+            });
             return _noticeState;
         }
 
@@ -1546,6 +1672,14 @@ namespace HaCreator.MapSimulator.UI
             _noticeState = string.IsNullOrWhiteSpace(duplicateId)
                 ? "Duplicate-id result stayed inside Cash Shop packet ownership."
                 : $"Duplicate-id result checked {duplicateId} inside the dedicated Cash Shop stage.";
+            AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
+            {
+                Title = "Duplicate ID check",
+                Detail = _noticeState,
+                Seller = string.IsNullOrWhiteSpace(duplicateId) ? "CCashShop" : duplicateId,
+                PriceLabel = duplicateId,
+                StateLabel = "Checked"
+            });
             return _noticeState;
         }
 
@@ -1557,6 +1691,14 @@ namespace HaCreator.MapSimulator.UI
             _cashNameChangeLastSummary = string.IsNullOrWhiteSpace(requestedName)
                 ? "Name-change result stayed inside Cash Shop packet ownership."
                 : $"Name-change packet refreshed the dedicated owner for {requestedName}.";
+            AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
+            {
+                Title = "Name change",
+                Detail = _cashNameChangeLastSummary,
+                Seller = string.IsNullOrWhiteSpace(requestedName) ? "CCashShop" : requestedName,
+                PriceLabel = requestedName,
+                StateLabel = "Pending"
+            });
             _noticeState = _cashNameChangeLastSummary;
             return _cashNameChangeLastSummary;
         }
@@ -1569,6 +1711,14 @@ namespace HaCreator.MapSimulator.UI
             _cashTransferWorldLastSummary = worldId > 0
                 ? $"Transfer-world packet refreshed world target {worldId.ToString(CultureInfo.InvariantCulture)} inside the dedicated stage."
                 : "Transfer-world result stayed inside Cash Shop packet ownership.";
+            AppendCashPacketCatalogEntry("Packet transfer", "Transfer", new PacketCatalogEntry
+            {
+                Title = "Transfer world",
+                Detail = _cashTransferWorldLastSummary,
+                Seller = "CCashShop",
+                PriceLabel = worldId > 0 ? $"World {worldId.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = "Pending"
+            });
             _noticeState = _cashTransferWorldLastSummary;
             return _cashTransferWorldLastSummary;
         }
@@ -1581,6 +1731,14 @@ namespace HaCreator.MapSimulator.UI
             _cashGachaponLastSummary = stampCount > 0
                 ? $"CashShop gachapon stamp result reported {stampCount.ToString(CultureInfo.InvariantCulture)} stamp(s) on the dedicated stage."
                 : "CashShop gachapon stamp result reached the dedicated stage.";
+            AppendCashPacketCatalogEntry("Packet gachapon", "Gachapon", new PacketCatalogEntry
+            {
+                Title = "Gachapon stamp",
+                Detail = _cashGachaponLastSummary,
+                Seller = "CCashShop gachapon",
+                PriceLabel = stampCount > 0 ? stampCount.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                StateLabel = "Stamp"
+            });
             _noticeState = _cashGachaponLastSummary;
             return _cashGachaponLastSummary;
         }
@@ -1593,6 +1751,15 @@ namespace HaCreator.MapSimulator.UI
             _cashGachaponLastSummary = itemId > 0
                 ? $"CashShop gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)} staged item {itemId.ToString(CultureInfo.InvariantCulture)}."
                 : "CashShop gachapon result reached the dedicated stage.";
+            AppendCashPacketCatalogEntry("Packet gachapon", "Gachapon", new PacketCatalogEntry
+            {
+                Title = $"Gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)}",
+                Detail = _cashGachaponLastSummary,
+                Seller = "CCashShop gachapon",
+                PriceLabel = itemId > 0 ? $"Item {itemId.ToString(CultureInfo.InvariantCulture)}" : string.Empty,
+                StateLabel = "Pending",
+                ItemId = itemId
+            });
             _noticeState = _cashGachaponLastSummary;
             return _cashGachaponLastSummary;
         }
@@ -2194,6 +2361,11 @@ namespace HaCreator.MapSimulator.UI
         {
             foreach (PacketCatalogEntry entry in _cashPacketCatalogEntries)
             {
+                if (commoditySerialNumber <= 0 && entry.ListingId <= 0)
+                {
+                    continue;
+                }
+
                 if (commoditySerialNumber > 0 && entry.ListingId != commoditySerialNumber)
                 {
                     continue;
@@ -2201,6 +2373,36 @@ namespace HaCreator.MapSimulator.UI
 
                 entry.StateLabel = purchased ? "Purchased" : "Wish";
             }
+        }
+
+        private void ReplaceCashPacketCatalogEntries(string paneLabel, string browseModeLabel, IReadOnlyList<PacketCatalogEntry> entries)
+        {
+            _cashPacketCatalogEntries.Clear();
+            if (entries != null && entries.Count > 0)
+            {
+                _cashPacketCatalogEntries.AddRange(entries);
+            }
+
+            _cashPacketPaneLabel = string.IsNullOrWhiteSpace(paneLabel) ? "Packet wishlist" : paneLabel;
+            _cashPacketBrowseModeLabel = string.IsNullOrWhiteSpace(browseModeLabel) ? "Wish" : browseModeLabel;
+        }
+
+        private void AppendCashPacketCatalogEntry(string paneLabel, string browseModeLabel, PacketCatalogEntry entry)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            if (!string.Equals(_cashPacketPaneLabel, paneLabel, StringComparison.Ordinal)
+                || !string.Equals(_cashPacketBrowseModeLabel, browseModeLabel, StringComparison.Ordinal))
+            {
+                _cashPacketCatalogEntries.Clear();
+            }
+
+            _cashPacketPaneLabel = string.IsNullOrWhiteSpace(paneLabel) ? "Packet wishlist" : paneLabel;
+            _cashPacketBrowseModeLabel = string.IsNullOrWhiteSpace(browseModeLabel) ? "Wish" : browseModeLabel;
+            _cashPacketCatalogEntries.Insert(0, entry);
         }
 
         private static PacketCatalogEntry ClonePacketCatalogEntry(PacketCatalogEntry source, string appendedStateLabel)

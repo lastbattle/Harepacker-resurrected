@@ -119,7 +119,7 @@ namespace HaCreator.MapSimulator.Animation
             _oneTimeAnimations.Add(anim);
         }
 
-        public void RegisterOneTimeCanvasLayer(
+        internal void RegisterOneTimeCanvasLayer(
             Texture2D canvasTexture,
             float left,
             float top,
@@ -131,20 +131,22 @@ namespace HaCreator.MapSimulator.Animation
             Point? overlayOffset = null,
             int overlayDelayMs = 0,
             bool ownsCanvasTexture = false,
-            AnimationCanvasLayerOwner owner = AnimationCanvasLayerOwner.Generic)
+            AnimationCanvasLayerOwner owner = AnimationCanvasLayerOwner.Generic,
+            CanvasLayerRecoveredLayerSettings? recoveredLayerSettings = null)
         {
             if (canvasTexture == null)
             {
                 return;
             }
 
-            CanvasLayerInsertDescriptor[] insertDescriptors = OneTimeCanvasLayerAnimation.BuildInsertDescriptors(
+            CanvasLayerRegistration registration = OneTimeCanvasLayerAnimation.BuildRegistration(
                 holdDurationMs,
                 fadeDurationMs,
                 riseDistancePx,
                 overlayTexture != null,
                 overlayOffset ?? Point.Zero,
-                overlayDelayMs);
+                overlayDelayMs,
+                recoveredLayerSettings);
 
             OneTimeCanvasLayerAnimation anim = _oneTimeCanvasLayerPool.Count > 0
                 ? _oneTimeCanvasLayerPool.Dequeue()
@@ -155,9 +157,10 @@ namespace HaCreator.MapSimulator.Animation
                 left,
                 top,
                 currentTimeMs,
-                insertDescriptors,
+                registration.InsertDescriptors,
                 ownsCanvasTexture,
-                owner);
+                owner,
+                registration.RecoveredLayerSettings);
             _oneTimeCanvasLayers.Add(anim);
         }
 
@@ -861,6 +864,20 @@ namespace HaCreator.MapSimulator.Animation
             return NormalizeFollowAngleDegrees(angleDegrees);
         }
 
+        internal static int ResolveFollowSpawnAngleDegrees(
+            bool hasGenerationPoints,
+            int currentAngleDegrees,
+            int thetaDegrees,
+            Random random)
+        {
+            if (hasGenerationPoints || thetaDegrees != 0)
+            {
+                return NormalizeFollowAngleDegrees(currentAngleDegrees);
+            }
+
+            return random?.Next(0, 360) ?? 0;
+        }
+
         internal static int ResolveFollowRandomOffsetComponent(int startInclusive, int endExclusive, Random random)
         {
             int resolvedMin = Math.Min(startInclusive, endExclusive);
@@ -1008,6 +1025,20 @@ namespace HaCreator.MapSimulator.Animation
         AnimationCanvasLayerBlendMode BlendMode);
 
     /// <summary>
+    /// Recovered native layer values from CAnimationDisplayer::Effect_HP.
+    /// The simulator preserves these as parity metadata even though it does not instantiate the client COM graph.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredLayerSettings(
+        int CreateLayerCanvasValue,
+        int InitialLayerOptionValue,
+        int LayerPriorityValue,
+        int FinalizeLayerOptionValue);
+
+    internal readonly record struct CanvasLayerRegistration(
+        CanvasLayerInsertDescriptor[] InsertDescriptors,
+        CanvasLayerRecoveredLayerSettings RecoveredLayerSettings);
+
+    /// <summary>
     /// One-shot canvas-backed animation that mirrors RegisterOneTimeAnimation ownership.
     /// </summary>
     internal class OneTimeCanvasLayerAnimation
@@ -1031,6 +1062,7 @@ namespace HaCreator.MapSimulator.Animation
         internal IReadOnlyList<CanvasLayerInsertDescriptor> InsertDescriptors => Array.ConvertAll(
             _insertOperations,
             static operation => operation.Descriptor);
+        internal CanvasLayerRecoveredLayerSettings RecoveredLayerSettings { get; private set; }
 
         internal static CanvasLayerInsertDescriptor[] BuildInsertDescriptors(
             int holdDurationMs,
@@ -1085,6 +1117,26 @@ namespace HaCreator.MapSimulator.Animation
             return descriptors.ToArray();
         }
 
+        internal static CanvasLayerRegistration BuildRegistration(
+            int holdDurationMs,
+            int fadeDurationMs,
+            int riseDistancePx,
+            bool hasOverlay,
+            Point overlayOffset,
+            int overlayDelayMs,
+            CanvasLayerRecoveredLayerSettings? recoveredLayerSettings = null)
+        {
+            return new CanvasLayerRegistration(
+                BuildInsertDescriptors(
+                    holdDurationMs,
+                    fadeDurationMs,
+                    riseDistancePx,
+                    hasOverlay,
+                    overlayOffset,
+                    overlayDelayMs),
+                recoveredLayerSettings ?? default);
+        }
+
         public void Initialize(
             Texture2D canvasTexture,
             Texture2D overlayTexture,
@@ -1093,7 +1145,8 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors,
             bool ownsCanvasTexture,
-            AnimationCanvasLayerOwner owner)
+            AnimationCanvasLayerOwner owner,
+            CanvasLayerRecoveredLayerSettings recoveredLayerSettings)
         {
             _canvasTexture = canvasTexture;
             _overlayTexture = overlayTexture;
@@ -1104,6 +1157,7 @@ namespace HaCreator.MapSimulator.Animation
             _ownsCanvasTexture = ownsCanvasTexture;
             _insertOperations = BuildInsertOperations(insertDescriptors);
             Owner = owner;
+            RecoveredLayerSettings = recoveredLayerSettings;
         }
 
         public bool Update(int currentTimeMs)
@@ -1152,6 +1206,7 @@ namespace HaCreator.MapSimulator.Animation
             _ownsCanvasTexture = false;
             _insertOperations = Array.Empty<CanvasLayerInsertOperation>();
             Owner = AnimationCanvasLayerOwner.Generic;
+            RecoveredLayerSettings = default;
         }
 
         private CanvasLayerInsertOperation[] BuildInsertOperations(IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors)
@@ -1675,16 +1730,25 @@ namespace HaCreator.MapSimulator.Animation
 
             while (_nextSpawnTime <= currentTimeMs)
             {
+                bool hasGenerationPoints = _generationPoints != null && _generationPoints.Count > 0;
+                int spawnAngleDegrees = AnimationEffects.ResolveFollowSpawnAngleDegrees(
+                    hasGenerationPoints,
+                    _currentAngleDegrees,
+                    _thetaDegrees,
+                    random);
                 _followOffset = AnimationEffects.ResolveFollowGenerationPointOffset(
                     _generationPoints,
                     _currentGenerationPointIndex,
                     _radius,
-                    _currentAngleDegrees,
+                    spawnAngleDegrees,
                     out _currentGenerationPointIndex,
                     out _currentAngleDegrees);
-                if ((_generationPoints == null || _generationPoints.Count == 0) && _thetaDegrees != 0)
+
+                if (!hasGenerationPoints)
                 {
-                    _currentAngleDegrees = AnimationEffects.NormalizeFollowAngleDegrees(_currentAngleDegrees + _thetaDegrees);
+                    _currentAngleDegrees = _thetaDegrees != 0
+                        ? AnimationEffects.NormalizeFollowAngleDegrees(spawnAngleDegrees + _thetaDegrees)
+                        : AnimationEffects.NormalizeFollowAngleDegrees(spawnAngleDegrees);
                 }
 
                 if (effects != null && AnimationEffects.HasFrameVariants(_spawnFrameVariants))
@@ -1697,8 +1761,7 @@ namespace HaCreator.MapSimulator.Animation
                         int resolvedDurationMs = AnimationEffects.ResolveFollowSpawnDurationMs(variantFrames, _spawnDurationMs);
                         if (resolvedDurationMs > 0)
                         {
-                            bool hasGenerationPoints = _generationPoints != null && _generationPoints.Count > 0;
-                            int particleAngleDegrees = AnimationEffects.ResolveFollowParticleAngleDegrees(_followOffset, _currentAngleDegrees);
+                            int particleAngleDegrees = AnimationEffects.ResolveFollowParticleAngleDegrees(_followOffset, spawnAngleDegrees);
                             Vector2 randomOffset = AnimationEffects.ResolveFollowRandomOffset(
                                 _spawnOffsetMin,
                                 _spawnOffsetMax,

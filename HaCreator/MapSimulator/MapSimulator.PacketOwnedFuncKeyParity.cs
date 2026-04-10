@@ -1024,7 +1024,7 @@ namespace HaCreator.MapSimulator
             return !keyboardState.IsKeyDown(key) && previousKeyboardState.IsKeyDown(key);
         }
 
-        private static bool ShouldHandlePacketOwnedCastEntryViaRawRuntime(
+        internal static bool ShouldHandlePacketOwnedCastEntryViaRawRuntime(
             PlayerInput input,
             Keys key,
             bool handledByLiveHotkeyBinding)
@@ -1278,8 +1278,13 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private static bool IsPacketOwnedHotkeyKeyProtected(PlayerInput input, Keys key)
+        internal static bool IsPacketOwnedHotkeyKeyProtected(PlayerInput input, Keys key)
         {
+            if (IsPacketOwnedReservedPhysicalKey(key))
+            {
+                return true;
+            }
+
             if (input == null || key == Keys.None)
             {
                 return false;
@@ -1301,6 +1306,12 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        internal static bool IsPacketOwnedReservedPhysicalKey(Keys key)
+        {
+            // The client keeps Escape ownership outside the packet-owned cast remap, even if local bindings move.
+            return key == Keys.Escape;
         }
 
         private static Keys ResolvePacketOwnedScanCodeKey(int scanCode)

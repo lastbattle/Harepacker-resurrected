@@ -6,6 +6,7 @@ namespace HaCreator.MapSimulator.UI
 {
     internal static class SkillCooldownTooltipText
     {
+        private const string CooldownLabelText = "Cooldown:";
         private readonly record struct TooltipCostFragment(string Text, char? ColorMarker);
 
         public static string FormatCooldownState(int remainingMs)
@@ -179,10 +180,12 @@ namespace HaCreator.MapSimulator.UI
                 return fragments;
             }
 
+            AppendFragment(CooldownLabelText, 'c');
+            AppendFragment(" ");
             if (TrySplitRemainingCooldownText(cooldownText, out string secondsText, out string suffixText))
             {
                 AppendFragment(secondsText, 'c');
-                AppendFragment(suffixText);
+                AppendFragment(suffixText, 'c');
                 return fragments;
             }
 
@@ -214,7 +217,7 @@ namespace HaCreator.MapSimulator.UI
                 return fragments;
             }
 
-            AppendFragment("Cooldown:", 'c');
+            AppendFragment(CooldownLabelText, 'c');
             AppendFragment(" ");
             if (remainingMs <= 0)
             {
@@ -225,7 +228,7 @@ namespace HaCreator.MapSimulator.UI
             if (TrySplitRemainingCooldownText(cooldownText, out string secondsText, out string suffixText))
             {
                 AppendFragment(secondsText, 'c');
-                AppendFragment(suffixText);
+                AppendFragment(suffixText, 'c');
                 return fragments;
             }
 

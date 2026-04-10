@@ -703,7 +703,7 @@ namespace HaCreator.MapSimulator.Interaction
             (QuestWindowActionKind tertiaryAction, bool tertiaryEnabled, string tertiaryLabel, int? targetNpcId, string targetNpcName, QuestDetailNpcButtonStyle npcButtonStyle) =
                 GetTertiaryAction(definition, state);
             (QuestWindowActionKind quaternaryAction, bool quaternaryEnabled, string quaternaryLabel, int? targetMobId, string targetMobName) =
-                GetQuaternaryAction(definition, state);
+                GetQuaternaryAction(definition, state, build);
 
             return new QuestWindowDetailState
             {
@@ -6657,6 +6657,7 @@ namespace HaCreator.MapSimulator.Interaction
                 numberedPages.Add(child);
             }
 
+            SortConversationPagesByIndex(numberedPages);
             return numberedPages;
         }
 
@@ -6701,7 +6702,27 @@ namespace HaCreator.MapSimulator.Interaction
                 siblingPages.Add(sibling);
             }
 
+            SortConversationPagesByIndex(siblingPages);
             return siblingPages;
+        }
+
+        private static void SortConversationPagesByIndex(List<WzImageProperty> pages)
+        {
+            if (pages == null || pages.Count < 2)
+            {
+                return;
+            }
+
+            pages.Sort(static (left, right) =>
+            {
+                int leftIndex = int.TryParse(left?.Name, out int parsedLeftIndex)
+                    ? parsedLeftIndex
+                    : int.MaxValue;
+                int rightIndex = int.TryParse(right?.Name, out int parsedRightIndex)
+                    ? parsedRightIndex
+                    : int.MaxValue;
+                return leftIndex.CompareTo(rightIndex);
+            });
         }
 
         private static bool HasRenderableConversationContent(WzImageProperty property)
@@ -9236,6 +9257,16 @@ namespace HaCreator.MapSimulator.Interaction
         private (QuestWindowActionKind action, bool enabled, string label, int? targetNpcId, string targetNpcName, QuestDetailNpcButtonStyle buttonStyle)
             GetTertiaryAction(QuestDefinition definition, QuestStateType state)
         {
+            if (definition == null)
+            {
+                return (QuestWindowActionKind.None, false, string.Empty, null, string.Empty, QuestDetailNpcButtonStyle.None);
+            }
+
+            if (state == QuestStateType.Started)
+            {
+                return (QuestWindowActionKind.None, false, string.Empty, null, string.Empty, QuestDetailNpcButtonStyle.None);
+            }
+
             int? targetNpcId = state switch
             {
                 QuestStateType.Not_Started => definition.StartNpcId,
@@ -9256,21 +9287,10 @@ namespace HaCreator.MapSimulator.Interaction
                 buttonStyle = QuestDetailNpcButtonStyle.GotoNpc;
                 label = "Go to NPC";
             }
-            else if (definition.EndMobRequirements.Any(requirement => requirement != null &&
-                                                                     GetCurrentMobCount(GetOrCreateProgress(definition.QuestId), requirement.MobId) < requirement.RequiredCount))
-            {
-                buttonStyle = QuestDetailNpcButtonStyle.GenericNpc;
-                label = "Locate Mob";
-            }
-            else if (GetPreferredOutstandingItemRequirement(definition.EndItemRequirements, preferVisibleRequirements: false) != null)
-            {
-                buttonStyle = QuestDetailNpcButtonStyle.GenericNpc;
-                label = "Locate Item";
-            }
             else
             {
-                buttonStyle = QuestDetailNpcButtonStyle.MarkNpc;
-                label = "Mark NPC";
+                buttonStyle = QuestDetailNpcButtonStyle.None;
+                label = string.Empty;
             }
 
             string targetNpcName = ResolveNpcName(targetNpcId.Value);
@@ -9278,32 +9298,38 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private (QuestWindowActionKind action, bool enabled, string label, int? targetMobId, string targetMobName)
-            GetQuaternaryAction(QuestDefinition definition, QuestStateType state)
+            GetQuaternaryAction(QuestDefinition definition, QuestStateType state, CharacterBuild build)
         {
-            if (definition == null || state != QuestStateType.Started)
+            if (definition == null ||
+                state != QuestStateType.Started ||
+                !TryGetQuestWorldMapTarget(definition.QuestId, build, out QuestWorldMapTarget target) ||
+                target == null)
             {
                 return (QuestWindowActionKind.None, false, string.Empty, null, string.Empty);
             }
 
-            QuestProgress progress = GetOrCreateProgress(definition.QuestId);
-            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            return target.Kind switch
             {
-                QuestMobRequirement requirement = definition.EndMobRequirements[i];
-                progress.MobKills.TryGetValue(requirement.MobId, out int currentCount);
-                if (currentCount >= requirement.RequiredCount)
-                {
-                    continue;
-                }
-
-                return (
+                QuestWorldMapTargetKind.Mob => (
                     QuestWindowActionKind.LocateMob,
                     true,
                     "Locate Mob",
-                    requirement.MobId,
-                    GetMobName(requirement.MobId));
-            }
-
-            return (QuestWindowActionKind.None, false, string.Empty, null, string.Empty);
+                    target.EntityId,
+                    target.Label),
+                QuestWorldMapTargetKind.Item => (
+                    QuestWindowActionKind.LocateMob,
+                    true,
+                    "Locate Item",
+                    null,
+                    string.Empty),
+                QuestWorldMapTargetKind.Npc => (
+                    QuestWindowActionKind.LocateMob,
+                    true,
+                    "Mark NPC",
+                    null,
+                    string.Empty),
+                _ => (QuestWindowActionKind.None, false, string.Empty, null, string.Empty)
+            };
         }
 
         private QuestDeliveryMetadata ResolveDeliveryMetadata(

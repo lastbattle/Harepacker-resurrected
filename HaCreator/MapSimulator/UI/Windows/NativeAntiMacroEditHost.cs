@@ -43,11 +43,15 @@ namespace HaCreator.MapSimulator.UI
         private const int EmReplaceSel = 0x00C2;
         private const int EmLimitText = 0x00C5;
         private const int EmSetMargins = 0x00D3;
+        private const int EmPosFromChar = 0x00D6;
         private const int EcLeftMargin = 0x0001;
         private const int EcRightMargin = 0x0002;
         private const int VkReturn = 0x0D;
         private const int VkF1 = 0x70;
         private const int VkF12 = 0x7B;
+        private const int WmLButtonDown = 0x0201;
+        private const int WmLButtonUp = 0x0202;
+        private const int WmMouseMove = 0x0200;
         private const uint WsChild = 0x40000000;
         private const uint WsVisible = 0x10000000;
         private const uint WsTabStop = 0x00010000;
@@ -199,6 +203,7 @@ namespace HaCreator.MapSimulator.UI
             SetWindowText(_editHandle, string.Empty);
             SendMessage(_editHandle, EmSetSel, IntPtr.Zero, IntPtr.Zero);
             SynchronizeState();
+            UpdateImePlacement();
         }
 
         public void Focus()
@@ -262,6 +267,7 @@ namespace HaCreator.MapSimulator.UI
 
             SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart - 1), new IntPtr(selectionStart));
             ReplaceSelection(character.ToString());
+            UpdateImePlacement();
             return true;
         }
 
@@ -285,6 +291,7 @@ namespace HaCreator.MapSimulator.UI
 
             SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
             ReplaceSelection(string.Empty);
+            UpdateImePlacement();
             return true;
         }
 
@@ -418,11 +425,12 @@ namespace HaCreator.MapSimulator.UI
 
             try
             {
+                ResolveImePlacement(out POINT compositionPoint, out RECT compositionArea, out POINT candidatePoint, out RECT candidateArea);
                 COMPOSITIONFORM compositionForm = new()
                 {
                     dwStyle = ImeExcludeStyle,
-                    ptCurrentPos = new POINT { x = 1, y = 1 },
-                    rcArea = new RECT { left = 0, top = 0, right = Math.Max(1, _currentBounds.Width), bottom = Math.Max(1, _currentBounds.Height) }
+                    ptCurrentPos = compositionPoint,
+                    rcArea = compositionArea
                 };
 
                 ImmSetCompositionWindow(inputContext, ref compositionForm);
@@ -432,8 +440,8 @@ namespace HaCreator.MapSimulator.UI
                     {
                         dwIndex = index,
                         dwStyle = ImeExcludeStyle,
-                        ptCurrentPos = new POINT { x = 0, y = Math.Max(1, _currentBounds.Height) },
-                        rcArea = new RECT { left = 0, top = 0, right = Math.Max(1, _currentBounds.Width), bottom = Math.Max(1, _currentBounds.Height) }
+                        ptCurrentPos = candidatePoint,
+                        rcArea = candidateArea
                     };
 
                     ImmSetCandidateWindow(inputContext, ref candidateForm);
@@ -443,6 +451,64 @@ namespace HaCreator.MapSimulator.UI
             {
                 ImmReleaseContext(_editHandle, inputContext);
             }
+        }
+
+        private void ResolveImePlacement(out POINT compositionPoint, out RECT compositionArea, out POINT candidatePoint, out RECT candidateArea)
+        {
+            int width = Math.Max(1, _currentBounds.Width);
+            int height = Math.Max(1, _currentBounds.Height);
+            Point caretPoint = ResolveCaretClientPoint(width, height);
+            int compositionX = Math.Clamp(caretPoint.X, 0, width - 1);
+            int compositionY = Math.Clamp(caretPoint.Y, 0, height - 1);
+            int candidateY = Math.Max(compositionY + 1, height);
+
+            compositionPoint = new POINT
+            {
+                x = compositionX,
+                y = compositionY
+            };
+            compositionArea = new RECT
+            {
+                left = compositionX,
+                top = 0,
+                right = width,
+                bottom = height
+            };
+            candidatePoint = new POINT
+            {
+                x = compositionX,
+                y = candidateY
+            };
+            candidateArea = new RECT
+            {
+                left = compositionX,
+                top = 0,
+                right = width,
+                bottom = height
+            };
+        }
+
+        private Point ResolveCaretClientPoint(int width, int height)
+        {
+            int caretIndex = GetCaretIndex();
+            IntPtr packedPosition = SendMessage(_editHandle, EmPosFromChar, IntPtr.Zero, new IntPtr(caretIndex));
+            int packed = packedPosition.ToInt32();
+            int x = (short)(packed & 0xFFFF);
+            int y = (short)((packed >> 16) & 0xFFFF);
+            if (x < 0 || y < 0)
+            {
+                return new Point(0, Math.Max(0, height - 1));
+            }
+
+            return new Point(
+                Math.Clamp(x, 0, width - 1),
+                Math.Clamp(y + Math.Max(0, height - 1), 0, height - 1));
+        }
+
+        private int GetCaretIndex()
+        {
+            GetSelection(out _, out int selectionEnd);
+            return Math.Max(0, selectionEnd);
         }
 
         private IntPtr SubclassWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -479,6 +545,16 @@ namespace HaCreator.MapSimulator.UI
             else if (msg == WmKillFocus)
             {
                 FocusChanged?.Invoke(false);
+            }
+
+            if (msg == WmKeyDown
+                || msg == WmKeyUp
+                || msg == WmChar
+                || msg == WmLButtonDown
+                || msg == WmLButtonUp
+                || msg == WmMouseMove)
+            {
+                UpdateImePlacement();
             }
 
             if (msg == WmSetText || msg == WmPaste || msg == WmCut || msg == WmClear || msg == WmUndo || msg == WmChar)

@@ -646,16 +646,10 @@ namespace HaCreator.MapSimulator.Managers
 
                 ReceivedCount = 0;
                 _recentInferencePackets.Clear();
-                foreach (int opcode in _inferredInboundPointOpcodes)
-                {
-                    _mappedInboundPointOpcodes.Remove(opcode);
-                }
-
-                _inferredInboundPointOpcodes.Clear();
             }
         }
 
-        private static bool TryBuildInboundPointMessageFromRawPacket(
+        internal static bool TryBuildInboundPointMessageFromRawPacket(
             byte[] rawPacket,
             ISet<int> mappedOpcodes,
             string source,

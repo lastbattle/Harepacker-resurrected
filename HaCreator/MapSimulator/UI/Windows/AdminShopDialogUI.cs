@@ -448,6 +448,8 @@ namespace HaCreator.MapSimulator.UI
         private AdminShopEntry _pendingModalEntry;
         private AdminShopEntry _pendingRequestEntry;
         private int _pendingRequestQuantity = 1;
+        private AdminShopEntryState _pendingRequestPreviousState;
+        private string _pendingRequestPreviousStateLabel = string.Empty;
         private bool _pendingStorageExpansionAwaitingPacketResult;
         private int _pendingStorageExpansionCommoditySerialNumber;
         private string _lastClickedEntryKey = string.Empty;
@@ -472,6 +474,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _packetOwnedAdminShopWouldDisconnect;
         private int _packetOwnedAdminShopNpcTemplateId;
         private int _packetOwnedAdminShopDecodedItemCount;
+        private int _packetOwnedAdminShopTrailingByteCount;
         private int _packetOwnedAdminShopOpenCount;
         private int _packetOwnedAdminShopResultCount;
         private int _packetOwnedAdminShopLastSubtype = -1;
@@ -668,46 +671,18 @@ namespace HaCreator.MapSimulator.UI
         public bool TryBeginPacketOwnedAdminShopSession(byte[] payload, out string message)
         {
             message = "Packet-owned admin-shop payload could not be decoded.";
-            payload ??= Array.Empty<byte>();
-            if (payload.Length < sizeof(int) + sizeof(ushort))
+            if (!AdminShopPacketOwnedOpenCodec.TryDecode(payload, out AdminShopPacketOwnedOpenPayloadSnapshot snapshot))
             {
                 return false;
             }
 
-            int npcTemplateId = BitConverter.ToInt32(payload, 0);
-            int itemCount = BitConverter.ToUInt16(payload, sizeof(int));
-            int offset = sizeof(int) + sizeof(ushort);
-            List<PacketOwnedAdminShopCommoditySnapshot> decodedRows = new(itemCount);
-            for (int i = 0; i < itemCount; i++)
-            {
-                const int packetOwnedAdminShopRowSize = sizeof(int) + sizeof(int) + sizeof(int) + sizeof(byte) + sizeof(ushort);
-                if (payload.Length - offset < packetOwnedAdminShopRowSize)
-                {
-                    return false;
-                }
-
-                decodedRows.Add(new PacketOwnedAdminShopCommoditySnapshot
-                {
-                    SerialNumber = BitConverter.ToInt32(payload, offset),
-                    ItemId = BitConverter.ToInt32(payload, offset + sizeof(int)),
-                    Price = BitConverter.ToInt32(payload, offset + (sizeof(int) * 2)),
-                    SaleState = payload[offset + (sizeof(int) * 3)],
-                    MaxPerSlot = BitConverter.ToUInt16(payload, offset + (sizeof(int) * 3) + sizeof(byte))
-                });
-                offset += packetOwnedAdminShopRowSize;
-            }
-
-            if (payload.Length - offset < sizeof(byte))
-            {
-                return false;
-            }
-
-            _packetOwnedAdminShopAskItemWishlist = payload[offset] != 0;
+            _packetOwnedAdminShopAskItemWishlist = snapshot.AskItemWishlist;
             _packetOwnedAdminShopSessionActive = true;
-            _packetOwnedAdminShopNpcTemplateId = Math.Max(0, npcTemplateId);
-            _packetOwnedAdminShopDecodedItemCount = Math.Max(0, itemCount);
+            _packetOwnedAdminShopNpcTemplateId = snapshot.NpcTemplateId;
+            _packetOwnedAdminShopDecodedItemCount = snapshot.CommodityCount;
+            _packetOwnedAdminShopTrailingByteCount = snapshot.TrailingByteCount;
             _packetOwnedAdminShopRows.Clear();
-            _packetOwnedAdminShopRows.AddRange(decodedRows);
+            _packetOwnedAdminShopRows.AddRange(snapshot.Rows);
             _packetOwnedAdminShopOpenCount++;
             _packetOwnedAdminShopLastSubtype = -1;
             _packetOwnedAdminShopLastResultCode = -1;
@@ -716,6 +691,7 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopWouldDisconnect = false;
             ClearPendingPacketOwnedUserSellSnapshot();
             ResetMode(AdminShopServiceMode.CashShop);
+            ResetPacketOwnedAdminShopSelectionState();
             _footerMessage = _packetOwnedAdminShopNpcTemplateId > 0
                 ? $"CAdminShopDlg::SetAdminShopDlg opened the packet-owned admin-shop owner for NPC {_packetOwnedAdminShopNpcTemplateId} with {_packetOwnedAdminShopDecodedItemCount} decoded row(s); wishlist prompt={(_packetOwnedAdminShopAskItemWishlist ? "on" : "off")}."
                 : $"CAdminShopDlg::SetAdminShopDlg opened the packet-owned admin-shop owner with {_packetOwnedAdminShopDecodedItemCount} decoded row(s); wishlist prompt={(_packetOwnedAdminShopAskItemWishlist ? "on" : "off")}.";
@@ -729,6 +705,8 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopSessionActive = false;
             _pendingPacketOwnedAdminShopResult = false;
             _packetOwnedAdminShopDecodedItemCount = 0;
+            _packetOwnedAdminShopNpcTemplateId = 0;
+            _packetOwnedAdminShopTrailingByteCount = 0;
             _packetOwnedAdminShopAskItemWishlist = false;
             _packetOwnedAdminShopRows.Clear();
             _packetOwnedAdminShopSellTemplates.Clear();
@@ -776,18 +754,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _pendingPacketOwnedAdminShopResult = false;
+            AdminShopEntry entry = _pendingRequestEntry;
 
-            if (subtype != 4)
+            if (!AdminShopDialogClientParityText.HandlesResultSubtype(subtype))
             {
+                RestorePendingRequestState(entry);
                 message = AdminShopDialogClientParityText.BuildUnsupportedResultMessage(subtype, resultCode);
                 ResetPendingRequestState();
                 ClearPendingPacketOwnedUserSellSnapshot();
                 _footerMessage = message;
                 UpdateActionButtonStates();
-                return false;
+                return true;
             }
 
-            AdminShopEntry entry = _pendingRequestEntry;
             if (resultCode == 0)
             {
                 TryReselectPacketOwnedPendingEntry(entry);
@@ -3117,6 +3096,8 @@ namespace HaCreator.MapSimulator.UI
             _pendingModalEntry = null;
             _pendingRequestEntry = entry;
             _pendingRequestQuantity = Math.Max(1, requestQuantity);
+            _pendingRequestPreviousState = entry?.State ?? default;
+            _pendingRequestPreviousStateLabel = entry?.StateLabel ?? string.Empty;
             CapturePendingPacketOwnedUserSellSnapshot(entry);
             _pendingStorageExpansionCommoditySerialNumber = entry?.IsStorageExpansion == true
                 ? ResolveStorageExpansionCommoditySerialNumberForEntry(entry)
@@ -4566,10 +4547,23 @@ namespace HaCreator.MapSimulator.UI
         {
             _pendingRequestEntry = null;
             _pendingRequestQuantity = 1;
+            _pendingRequestPreviousState = default;
+            _pendingRequestPreviousStateLabel = string.Empty;
             _pendingStorageExpansionAwaitingPacketResult = false;
             _pendingStorageExpansionCommoditySerialNumber = 0;
             _pendingPacketOwnedAdminShopResult = false;
             _requestResolveTick = 0;
+        }
+
+        private void RestorePendingRequestState(AdminShopEntry entry)
+        {
+            if (entry?.State != AdminShopEntryState.PendingResponse)
+            {
+                return;
+            }
+
+            entry.State = _pendingRequestPreviousState;
+            entry.StateLabel = _pendingRequestPreviousStateLabel ?? string.Empty;
         }
 
         private void CapturePendingPacketOwnedUserSellSnapshot(AdminShopEntry entry)
@@ -4686,6 +4680,19 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void ResetPacketOwnedAdminShopSelectionState()
+        {
+            foreach (AdminShopPane pane in Enum.GetValues(typeof(AdminShopPane)))
+            {
+                AdminShopPaneState paneState = _paneStates[pane];
+                paneState.SelectedIndex = -1;
+                paneState.ScrollOffset = 0;
+                PersistBrowseSurfaceState(pane);
+            }
+
+            UpdateRowButtons();
+        }
+
         private static string BuildPacketOwnedAdminShopOutboundSummary(int mode, int npcTemplateId)
         {
             return mode == PacketOwnedAdminShopCloseMode
@@ -4711,7 +4718,11 @@ namespace HaCreator.MapSimulator.UI
             string disconnectText = _packetOwnedAdminShopWouldDisconnect
                 ? "client-disconnect parity hazard recorded"
                 : "no disconnect hazard recorded";
-            return $"Packet-owned admin shop: {npcText}, open rows {_packetOwnedAdminShopDecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}), packets open={_packetOwnedAdminShopOpenCount}/result={_packetOwnedAdminShopResultCount}, {resultText}, {outboundText}, {disconnectText}";
+            string wishlistText = _packetOwnedAdminShopAskItemWishlist ? "wishlist prompt on" : "wishlist prompt off";
+            string trailingText = _packetOwnedAdminShopTrailingByteCount > 0
+                ? $", opaque tail {_packetOwnedAdminShopTrailingByteCount} byte(s)"
+                : string.Empty;
+            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {_packetOwnedAdminShopDecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}), packets open={_packetOwnedAdminShopOpenCount}/result={_packetOwnedAdminShopResultCount}, {resultText}, {outboundText}, {disconnectText}";
         }
 
         private string GetEntryStateText(AdminShopEntry entry)

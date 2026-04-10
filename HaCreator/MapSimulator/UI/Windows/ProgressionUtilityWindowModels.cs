@@ -228,7 +228,12 @@ namespace HaCreator.MapSimulator.UI
             ("Android Heart", EquipSlot.AndroidHeart),
         };
 
-        public static CollectionBookSnapshot Create(CharacterBuild build, ItemMakerProgressionSnapshot progression, MonsterBookSnapshot monsterBook, CollectionBookOwnerContextSnapshot ownerContext = null)
+        public static CollectionBookSnapshot Create(
+            CharacterBuild build,
+            ItemMakerProgressionSnapshot progression,
+            MonsterBookSnapshot monsterBook,
+            CollectionBookOwnerContextSnapshot ownerContext = null,
+            Func<string, int, float> measureTextWidth = null)
         {
             progression ??= ItemMakerProgressionSnapshot.Default;
             monsterBook ??= new MonsterBookSnapshot();
@@ -241,8 +246,8 @@ namespace HaCreator.MapSimulator.UI
                 CreateTraitsPage(build),
             };
 
-            pages.AddRange(CreateEquipmentPages(build));
-            pages.AddRange(CreateRecipePages(progression));
+            pages.AddRange(CreateEquipmentPages(build, measureTextWidth));
+            pages.AddRange(CreateRecipePages(progression, measureTextWidth));
 
             for (int i = 0; i < pages.Count; i++)
             {
@@ -253,7 +258,7 @@ namespace HaCreator.MapSimulator.UI
                     Subtitle = pages[i].Subtitle,
                     Footer = pages[i].Footer,
                     Entries = pages[i].Entries,
-                    Records = BuildPageRecords(pages[i])
+                    Records = BuildPageRecords(pages[i], measureTextWidth)
                 };
             }
 
@@ -347,13 +352,13 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private static IEnumerable<CollectionBookPageSnapshot> CreateEquipmentPages(CharacterBuild build)
+        private static IEnumerable<CollectionBookPageSnapshot> CreateEquipmentPages(CharacterBuild build, Func<string, int, float> measureTextWidth = null)
         {
             CollectionBookEntrySnapshot[] entries = EquipmentLedgerRows
                 .Select(row => CreateEquipmentEntry(build, row.Label, row.Slot))
                 .ToArray();
 
-            foreach ((IReadOnlyList<CollectionBookEntrySnapshot> chunk, int pageIndex) in PaginateStandardEntries(entries).Select((chunk, index) => (chunk, index)))
+            foreach ((IReadOnlyList<CollectionBookEntrySnapshot> chunk, int pageIndex) in PaginateStandardEntries(entries, measureTextWidth).Select((chunk, index) => (chunk, index)))
             {
                 yield return new CollectionBookPageSnapshot
                 {
@@ -400,7 +405,7 @@ namespace HaCreator.MapSimulator.UI
                 ResolveEquipmentTone(displayedPart, visualState));
         }
 
-        private static IEnumerable<CollectionBookPageSnapshot> CreateRecipePages(ItemMakerProgressionSnapshot progression)
+        private static IEnumerable<CollectionBookPageSnapshot> CreateRecipePages(ItemMakerProgressionSnapshot progression, Func<string, int, float> measureTextWidth = null)
         {
             List<CollectionBookEntrySnapshot> recipeEntries = new();
             recipeEntries.AddRange(
@@ -429,7 +434,7 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
-            foreach ((IReadOnlyList<CollectionBookEntrySnapshot> chunk, int pageIndex) in PaginateStandardEntries(recipeEntries).Select((chunk, index) => (chunk, index)))
+            foreach ((IReadOnlyList<CollectionBookEntrySnapshot> chunk, int pageIndex) in PaginateStandardEntries(recipeEntries, measureTextWidth).Select((chunk, index) => (chunk, index)))
             {
                 yield return new CollectionBookPageSnapshot
                 {
@@ -482,11 +487,11 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private static IReadOnlyList<CollectionBookRecordSnapshot> BuildPageRecords(CollectionBookPageSnapshot page)
+        private static IReadOnlyList<CollectionBookRecordSnapshot> BuildPageRecords(CollectionBookPageSnapshot page, Func<string, int, float> measureTextWidth = null)
         {
             if (string.Equals(page?.Title, "Overview", StringComparison.Ordinal))
             {
-                return BuildOverviewPageRecords(page);
+                return BuildOverviewPageRecords(page, measureTextWidth);
             }
 
             List<CollectionBookRecordSnapshot> records = new()
@@ -501,11 +506,11 @@ namespace HaCreator.MapSimulator.UI
             for (int row = 0; row < entries.Count; row++)
             {
                 CollectionBookEntrySnapshot entry = entries[row];
-                AddStandardEntryRecords(records, entry, currentTop);
+                AddStandardEntryRecords(records, entry, currentTop, measureTextWidth);
 
                 if (row < entries.Count - 1)
                 {
-                    int ruleTop = GetStandardEntryRuleTop(currentTop, entry);
+                    int ruleTop = GetStandardEntryRuleTop(currentTop, entry, measureTextWidth);
                     records.Add(CreateRuleRecord(15, ruleTop, 166));
                     currentTop = ruleTop + ClientCollectionEntryRuleGap;
                 }
@@ -516,7 +521,7 @@ namespace HaCreator.MapSimulator.UI
             return records;
         }
 
-        private static IReadOnlyList<CollectionBookRecordSnapshot> BuildOverviewPageRecords(CollectionBookPageSnapshot page)
+        private static IReadOnlyList<CollectionBookRecordSnapshot> BuildOverviewPageRecords(CollectionBookPageSnapshot page, Func<string, int, float> measureTextWidth = null)
         {
             List<CollectionBookRecordSnapshot> records = new()
             {
@@ -529,13 +534,13 @@ namespace HaCreator.MapSimulator.UI
             CollectionBookEntrySnapshot characterEntry = entries.Count > 0 ? entries[0] : null;
             CollectionBookEntrySnapshot targetEntry = entries.Count > 1 ? entries[1] : null;
             int currentTop = 66;
-            currentTop = AddOverviewIdentityEntryRecords(records, characterEntry, currentTop);
-            currentTop = AddOverviewIdentityEntryRecords(records, targetEntry, currentTop);
+            currentTop = AddOverviewIdentityEntryRecords(records, characterEntry, currentTop, measureTextWidth);
+            currentTop = AddOverviewIdentityEntryRecords(records, targetEntry, currentTop, measureTextWidth);
 
             int metricRowCount = Math.Min(5, Math.Max(0, entries.Count - 2));
             for (int row = 0; row < metricRowCount; row++)
             {
-                currentTop = AddOverviewMetricEntryRecords(records, entries[row + 2], currentTop);
+                currentTop = AddOverviewMetricEntryRecords(records, entries[row + 2], currentTop, measureTextWidth);
             }
 
             records.Add(CreateRuleRecord(15, 221, 166));
@@ -543,7 +548,7 @@ namespace HaCreator.MapSimulator.UI
             return records;
         }
 
-        private static int AddOverviewIdentityEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
+        private static int AddOverviewIdentityEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top, Func<string, int, float> measureTextWidth = null)
         {
             if (entry == null)
             {
@@ -552,14 +557,14 @@ namespace HaCreator.MapSimulator.UI
 
             records.Add(CreateTextRecord(entry.Label, 16, top, 44, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
             records.Add(CreateTextRecord(entry.Value, 60, top, 120, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left, CollectionBookRecordRole.Value));
-            AddWrappedTextRecords(records, entry.Detail, 22, top + 10, 158, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail);
-            int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, 158);
+            AddWrappedTextRecords(records, entry.Detail, 22, top + 10, 158, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
+            int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, 158, 10, measureTextWidth);
             int ruleTop = top + 23 + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
             records.Add(CreateRuleRecord(15, ruleTop, 166));
             return ruleTop + 5;
         }
 
-        private static int AddOverviewMetricEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
+        private static int AddOverviewMetricEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top, Func<string, int, float> measureTextWidth = null)
         {
             if (entry == null)
             {
@@ -568,14 +573,14 @@ namespace HaCreator.MapSimulator.UI
 
             records.Add(CreateTextRecord(entry.Label, 16, top, 98, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
             records.Add(CreateTextRecord(entry.Value, 106, top, 76, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right, CollectionBookRecordRole.Value));
-            AddWrappedTextRecords(records, entry.Detail, 22, top + 9, 160, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail);
-            int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, 160);
+            AddWrappedTextRecords(records, entry.Detail, 22, top + 9, 160, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
+            int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, 160, 10, measureTextWidth);
             int ruleTop = top + 16 + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
             records.Add(CreateRuleRecord(15, ruleTop, 166));
             return ruleTop + 3;
         }
 
-        private static void AddStandardEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top)
+        private static void AddStandardEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top, Func<string, int, float> measureTextWidth = null)
         {
             if (entry == null)
             {
@@ -584,10 +589,10 @@ namespace HaCreator.MapSimulator.UI
 
             records.Add(CreateTextRecord(entry.Label, 16, top, 96, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
             records.Add(CreateTextRecord(entry.Value, 104, top, 78, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right, CollectionBookRecordRole.Value));
-            AddWrappedTextRecords(records, entry.Detail, 22, top + 10, 156, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail);
+            AddWrappedTextRecords(records, entry.Detail, 22, top + 10, 156, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
         }
 
-        private static IReadOnlyList<IReadOnlyList<CollectionBookEntrySnapshot>> PaginateStandardEntries(IReadOnlyList<CollectionBookEntrySnapshot> entries)
+        private static IReadOnlyList<IReadOnlyList<CollectionBookEntrySnapshot>> PaginateStandardEntries(IReadOnlyList<CollectionBookEntrySnapshot> entries, Func<string, int, float> measureTextWidth = null)
         {
             if (entries == null || entries.Count == 0)
             {
@@ -600,7 +605,7 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (CollectionBookEntrySnapshot entry in entries)
             {
-                bool exceedsPageBudget = currentPage.Count > 0 && GetStandardEntryRuleTop(currentTop, entry) > ClientCollectionFooterRuleTop;
+                bool exceedsPageBudget = currentPage.Count > 0 && GetStandardEntryRuleTop(currentTop, entry, measureTextWidth) > ClientCollectionFooterRuleTop;
                 if (currentPage.Count >= EntriesPerPage || exceedsPageBudget)
                 {
                     pages.Add(currentPage.ToArray());
@@ -609,7 +614,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 currentPage.Add(entry);
-                currentTop = GetStandardEntryNextTop(currentTop, entry);
+                currentTop = GetStandardEntryNextTop(currentTop, entry, measureTextWidth);
             }
 
             if (currentPage.Count > 0)
@@ -620,15 +625,15 @@ namespace HaCreator.MapSimulator.UI
             return pages;
         }
 
-        private static int GetStandardEntryRuleTop(int top, CollectionBookEntrySnapshot entry)
+        private static int GetStandardEntryRuleTop(int top, CollectionBookEntrySnapshot entry, Func<string, int, float> measureTextWidth = null)
         {
-            int detailLineCount = GetWrappedCollectionLineCount(entry?.Detail, 156);
+            int detailLineCount = GetWrappedCollectionLineCount(entry?.Detail, 156, 10, measureTextWidth);
             return top + ClientCollectionStandardRuleBaseOffset + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
         }
 
-        private static int GetStandardEntryNextTop(int top, CollectionBookEntrySnapshot entry)
+        private static int GetStandardEntryNextTop(int top, CollectionBookEntrySnapshot entry, Func<string, int, float> measureTextWidth = null)
         {
-            return GetStandardEntryRuleTop(top, entry) + ClientCollectionEntryRuleGap;
+            return GetStandardEntryRuleTop(top, entry, measureTextWidth) + ClientCollectionEntryRuleGap;
         }
 
         private static void AddWrappedTextRecords(
@@ -639,9 +644,10 @@ namespace HaCreator.MapSimulator.UI
             int width,
             int styleIndex,
             CollectionBookTextAlignment alignment,
-            CollectionBookRecordRole role)
+            CollectionBookRecordRole role,
+            Func<string, int, float> measureTextWidth = null)
         {
-            IReadOnlyList<string> lines = WrapCollectionText(text, width);
+            IReadOnlyList<string> lines = WrapCollectionText(text, width, styleIndex, measureTextWidth);
             if (lines.Count == 0)
             {
                 return;
@@ -653,13 +659,13 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static int GetWrappedCollectionLineCount(string text, int width)
+        private static int GetWrappedCollectionLineCount(string text, int width, int styleIndex, Func<string, int, float> measureTextWidth = null)
         {
-            int count = WrapCollectionText(text, width).Count;
+            int count = WrapCollectionText(text, width, styleIndex, measureTextWidth).Count;
             return Math.Max(1, count);
         }
 
-        private static IReadOnlyList<string> WrapCollectionText(string text, int width)
+        private static IReadOnlyList<string> WrapCollectionText(string text, int width, int styleIndex, Func<string, int, float> measureTextWidth = null)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -669,7 +675,7 @@ namespace HaCreator.MapSimulator.UI
             return QuestAlarmTextLayout.WrapText(
                 text,
                 Math.Min(width, ClientCollectionTextLaneWidth),
-                MeasureApproximateCollectionTextWidth);
+                segment => measureTextWidth?.Invoke(segment, styleIndex) ?? MeasureApproximateCollectionTextWidth(segment));
         }
 
         private static float MeasureApproximateCollectionTextWidth(string text)
@@ -732,9 +738,10 @@ namespace HaCreator.MapSimulator.UI
             string title,
             string subtitle,
             string footer,
-            IReadOnlyList<CollectionBookEntrySnapshot> entries)
+            IReadOnlyList<CollectionBookEntrySnapshot> entries,
+            Func<string, int, float> measureTextWidth = null)
         {
-            return PaginateStandardEntries(entries)
+            return PaginateStandardEntries(entries, measureTextWidth)
                 .Select((pageEntries, index) => new CollectionBookPageSnapshot
                 {
                     PageIndex = index,
@@ -748,7 +755,7 @@ namespace HaCreator.MapSimulator.UI
                         Subtitle = subtitle,
                         Footer = footer,
                         Entries = pageEntries
-                    })
+                    }, measureTextWidth)
                 })
                 .ToArray();
         }

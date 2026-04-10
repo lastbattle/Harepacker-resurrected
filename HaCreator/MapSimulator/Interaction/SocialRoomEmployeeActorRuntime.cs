@@ -30,8 +30,13 @@ namespace HaCreator.MapSimulator.Interaction
         private const int SignVerticalOffset = 34;
         private const int MiniRoomBalloonVerticalOffset = 10;
         private const int ShopMiniRoomBalloonRaisedOffset = 7;
+        private const int NameTagVerticalOffset = 8;
+        private const int NameTagMinimumWidth = 58;
+        private const int NameTagHorizontalPadding = 18;
+        private const int NameTagTextInsetY = 2;
         private const float HeadlineScale = 0.48f;
         private const float DetailScale = 0.42f;
+        private const float NameTagScale = 0.5f;
 
         private static readonly Color SignHeadlineColor = new(255, 242, 176);
         private static readonly Color SignDetailColor = new(244, 244, 244);
@@ -45,6 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
         private MiniRoomBalloonAssets _miniRoomBalloonAssets;
+        private NameTagAssets _nameTagAssets;
 
         private NpcItem _activeActor;
         private SocialRoomFieldActorSnapshot _activeSnapshot;
@@ -109,6 +115,7 @@ namespace HaCreator.MapSimulator.Interaction
             int elapsedMs = (int)Math.Max(0d, gameTime.ElapsedGameTime.TotalMilliseconds);
 
             EnsureMiniRoomBalloonAssets(device);
+            EnsureEmployeeNameTagAssets(device);
             AdvanceActionState(_activeActorKey, actor, snapshot, profile, elapsedMs);
             SyncActorPosition(player, actor, snapshot);
 
@@ -150,6 +157,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return;
             }
+
+            DrawEmployeeNameTag(spriteBatch, font, mapShiftX, mapShiftY, mapCenterX, mapCenterY);
 
             if (_activeSnapshot.HasMiniRoomBalloon && DrawMiniRoomBalloon(spriteBatch, font, mapShiftX, mapShiftY, mapCenterX, mapCenterY))
             {
@@ -863,6 +872,36 @@ namespace HaCreator.MapSimulator.Interaction
             return canvasProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
         }
 
+        private void EnsureEmployeeNameTagAssets(GraphicsDevice device)
+        {
+            if (_nameTagAssets?.IsLoaded == true || device == null || device.IsDisposed)
+            {
+                return;
+            }
+
+            WzImage nameTagImage = global::HaCreator.Program.FindImage("UI", "NameTag.img");
+            if (nameTagImage == null)
+            {
+                return;
+            }
+
+            nameTagImage.ParseImage();
+            WzSubProperty styleSource = nameTagImage["11"] as WzSubProperty;
+            if (styleSource == null)
+            {
+                return;
+            }
+
+            int textColorArgb = GetIntValue(styleSource["clr"]) ?? unchecked((int)0xFFFFFF00);
+            _nameTagAssets = new NameTagAssets
+            {
+                Left = LoadUiCanvasTexture(styleSource["w"] as WzCanvasProperty, device),
+                Middle = LoadUiCanvasTexture(styleSource["c"] as WzCanvasProperty, device),
+                Right = LoadUiCanvasTexture(styleSource["e"] as WzCanvasProperty, device),
+                TextColor = new Color(unchecked((uint)textColorArgb))
+            };
+        }
+
         private static Texture2D[] LoadIndexedTextures(WzSubProperty source, GraphicsDevice device, int count)
         {
             Texture2D[] textures = new Texture2D[count];
@@ -1093,6 +1132,87 @@ namespace HaCreator.MapSimulator.Interaction
             return separatorIndex >= 0
                 ? detail[..separatorIndex].Trim()
                 : detail.Trim();
+        }
+
+        private void DrawEmployeeNameTag(
+            SpriteBatch spriteBatch,
+            SpriteFont font,
+            int mapShiftX,
+            int mapShiftY,
+            int mapCenterX,
+            int mapCenterY)
+        {
+            if (_activeActor == null || _activeSnapshot == null || font == null)
+            {
+                return;
+            }
+
+            string ownerName = ExtractOwnerName(_activeSnapshot.Detail);
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return;
+            }
+
+            int actorScreenX = _activeActor.CurrentX - mapShiftX + mapCenterX;
+            int actorScreenY = _activeActor.CurrentY - mapShiftY + mapCenterY;
+            NameTagAssets assets = _nameTagAssets;
+            Vector2 textSize = font.MeasureString(ownerName) * NameTagScale;
+
+            if (assets?.IsLoaded == true)
+            {
+                int textWidth = Math.Max(1, (int)Math.Ceiling(textSize.X));
+                int totalWidth = Math.Max(
+                    NameTagMinimumWidth,
+                    Math.Max(assets.Left.Width + assets.Right.Width, textWidth + NameTagHorizontalPadding));
+                int left = actorScreenX - (totalWidth / 2);
+                int y = actorScreenY - _activeActor.NpcInstance.Height - assets.Left.Height - NameTagVerticalOffset;
+                int middleStartX = left + assets.Left.Width;
+                int middleEndX = left + totalWidth - assets.Right.Width;
+
+                spriteBatch.Draw(assets.Left, new Vector2(left, y), Color.White);
+
+                for (int offsetX = middleStartX; offsetX < middleEndX; offsetX += assets.Middle.Width)
+                {
+                    int remainingWidth = middleEndX - offsetX;
+                    if (remainingWidth <= 0)
+                    {
+                        break;
+                    }
+
+                    int drawWidth = Math.Min(assets.Middle.Width, remainingWidth);
+                    spriteBatch.Draw(
+                        assets.Middle,
+                        new Rectangle(offsetX, y, drawWidth, assets.Middle.Height),
+                        new Rectangle(0, 0, drawWidth, assets.Middle.Height),
+                        Color.White);
+                }
+
+                spriteBatch.Draw(assets.Right, new Vector2(left + totalWidth - assets.Right.Width, y), Color.White);
+
+                Vector2 textPosition = new(
+                    left + ((totalWidth - textSize.X) * 0.5f),
+                    y + NameTagTextInsetY);
+                DrawOutlinedScaledText(spriteBatch, font, ownerName, textPosition, assets.TextColor, NameTagScale);
+                return;
+            }
+
+            Vector2 fallbackPosition = new(
+                actorScreenX - (textSize.X * 0.5f),
+                actorScreenY - _activeActor.NpcInstance.Height - textSize.Y - NameTagVerticalOffset);
+            DrawOutlinedScaledText(spriteBatch, font, ownerName, fallbackPosition, Color.White, NameTagScale);
+        }
+
+        private static void DrawOutlinedScaledText(
+            SpriteBatch spriteBatch,
+            SpriteFont font,
+            string text,
+            Vector2 position,
+            Color color,
+            float scale)
+        {
+            Vector2 shadowOffset = Vector2.One;
+            spriteBatch.DrawString(font, text, position + shadowOffset, Color.Black, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            spriteBatch.DrawString(font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 
         private sealed class EmployeeTemplateProfile
@@ -1432,6 +1552,16 @@ namespace HaCreator.MapSimulator.Interaction
                 && Progress != null
                 && CurrentCountDigits.Length >= 5
                 && MaxCountDigits.Length >= 5;
+        }
+
+        private sealed class NameTagAssets
+        {
+            public Texture2D Left { get; init; }
+            public Texture2D Middle { get; init; }
+            public Texture2D Right { get; init; }
+            public Color TextColor { get; init; }
+
+            public bool IsLoaded => Left != null && Middle != null && Right != null;
         }
 
         private void DrawSign(

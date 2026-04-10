@@ -783,6 +783,7 @@ namespace HaCreator.MapSimulator.Interaction
                     out List<Texture2D> textures,
                     out List<Point> origins,
                     out List<int> delays,
+                    out _,
                     out MessageBoxTextLayout textLayout))
             {
                 visual = new MessageBoxVisual(textures, origins, delays, null, textLayout);
@@ -814,6 +815,7 @@ namespace HaCreator.MapSimulator.Interaction
                         out List<Texture2D> nestedTextures,
                         out List<Point> nestedOrigins,
                         out List<int> nestedDelays,
+                        out _,
                         out MessageBoxTextLayout nestedLayout))
                 {
                     visual = new MessageBoxVisual(nestedTextures, nestedOrigins, nestedDelays, null, nestedLayout);
@@ -926,14 +928,16 @@ namespace HaCreator.MapSimulator.Interaction
             out List<Texture2D> textures,
             out List<Point> origins,
             out List<int> delays,
+            out List<MessageBoxTextLayout> textLayouts,
             out MessageBoxTextLayout textLayout)
         {
             textures = new List<Texture2D>();
             origins = new List<Point>();
             delays = new List<int>();
+            textLayouts = new List<MessageBoxTextLayout>();
             textLayout = MessageBoxTextLayout.Default;
 
-            List<(int Index, WzCanvasProperty Canvas)> orderedCanvases = new();
+            List<(int Index, string PropertyName, WzCanvasProperty Canvas)> orderedCanvases = new();
             int fallbackIndex = 0;
             foreach (WzImageProperty child in property.WzProperties)
             {
@@ -951,7 +955,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int frameIndex = int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedIndex)
                     ? parsedIndex
                     : fallbackIndex++;
-                orderedCanvases.Add((frameIndex, canvas));
+                orderedCanvases.Add((frameIndex, child.Name, canvas));
             }
 
             if (orderedCanvases.Count == 0)
@@ -959,7 +963,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            foreach ((int _, WzCanvasProperty canvas) in orderedCanvases.OrderBy(frame => frame.Index))
+            foreach ((int _, string propertyName, WzCanvasProperty canvas) in orderedCanvases.OrderBy(frame => frame.Index))
             {
                 Texture2D texture = LoadCanvasTexture(canvas);
                 if (texture == null)
@@ -969,9 +973,14 @@ namespace HaCreator.MapSimulator.Interaction
 
                 Point origin = ResolveCanvasOrigin(canvas, texture);
                 int delay = ResolveCanvasDelay(canvas, property);
+                string frameLayoutKey = string.IsNullOrWhiteSpace(layoutKey)
+                    ? propertyName
+                    : $"{layoutKey}/{propertyName}";
+                MessageBoxTextLayout frameTextLayout = ResolveTextLayout(frameLayoutKey, texture, canvas, property, metadataFallbackProperty);
                 textures.Add(texture);
                 origins.Add(origin);
                 delays.Add(delay);
+                textLayouts.Add(frameTextLayout);
             }
 
             if (textures.Count == 0)
@@ -979,13 +988,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            string resolvedLayoutKey = string.IsNullOrWhiteSpace(layoutKey) ? property.Name : layoutKey;
-            if (orderedCanvases.Count == 1)
-            {
-                resolvedLayoutKey = orderedCanvases[0].Canvas.Name;
-            }
-
-            textLayout = ResolveTextLayout(resolvedLayoutKey, textures[0], property, metadataFallbackProperty);
+            textLayout = textLayouts.Count > 0
+                ? textLayouts[0]
+                : ResolveTextLayout(string.IsNullOrWhiteSpace(layoutKey) ? property.Name : layoutKey, textures[0], property, metadataFallbackProperty);
 
             return textures.Count > 0;
         }

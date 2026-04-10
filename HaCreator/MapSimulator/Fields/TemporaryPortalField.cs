@@ -501,6 +501,7 @@ namespace HaCreator.MapSimulator.Fields
             int currentTime,
             RemoteTownPortalResolvedDestination? destination)
         {
+            destination = NormalizeRemoteTownPortalIncomingDestination(currentMapId, destination);
             RemoteTownPortalState? existingState = _remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState existingStateValue)
                 ? existingStateValue
                 : null;
@@ -1198,6 +1199,7 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalFieldMetadata? metadata,
             RemoteTownPortalOwnerFieldObservation? ownerObservation)
         {
+            incomingDestination = NormalizeRemoteTownPortalIncomingDestination(currentMapId, incomingDestination);
             RemoteTownPortalResolvedDestination? metadataDestination = metadata.HasValue
                 ? ResolveRemoteTownPortalObservedFieldDestination(
                     currentMapId,
@@ -1245,6 +1247,20 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return null;
+        }
+
+        private static RemoteTownPortalResolvedDestination? NormalizeRemoteTownPortalIncomingDestination(
+            int currentMapId,
+            RemoteTownPortalResolvedDestination? incomingDestination)
+        {
+            if (!incomingDestination.HasValue)
+            {
+                return null;
+            }
+
+            return incomingDestination.Value.MapId > 0 && incomingDestination.Value.MapId != currentMapId
+                ? incomingDestination
+                : null;
         }
 
         private static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalObservedFieldDestination(
@@ -2190,7 +2206,7 @@ namespace HaCreator.MapSimulator.Fields
                 return new RemoteTownPortalResolvedDestination(sourceMapId, sourceX, sourceY);
             }
 
-            return incomingDestination;
+            return NormalizeRemoteTownPortalIncomingDestination(currentMapId, incomingDestination);
         }
 
         internal static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalObservedFieldDestinationForTesting(

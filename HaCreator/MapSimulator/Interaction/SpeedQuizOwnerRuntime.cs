@@ -35,7 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryBuildOwnerSnapshot(int currentTickCount, out SpeedQuizOwnerSnapshot snapshot)
         {
-            if (!IsActive(currentTickCount))
+            if (_expiresAtTick <= 0)
             {
                 snapshot = null;
                 return false;

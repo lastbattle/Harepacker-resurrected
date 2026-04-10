@@ -883,7 +883,7 @@ namespace HaCreator.MapSimulator
             {
                 bookCollectionWindow.CharacterBuild = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
                 bookCollectionWindow.SetFont(_fontDebugValues);
-                bookCollectionWindow.SetCollectionSnapshotProvider(BuildActiveCollectionBookSnapshot);
+                bookCollectionWindow.SetCollectionSnapshotProvider(null);
                 bookCollectionWindow.SetMonsterBookSnapshotProvider(BuildActiveMonsterBookSnapshot);
                 bookCollectionWindow.SetMonsterBookRegistrationHandler(ApplyActiveMonsterBookRegistration);
                 bookCollectionWindow.ClientCloseRequested = HandleBookCollectionCloseRequested;
@@ -891,6 +891,7 @@ namespace HaCreator.MapSimulator
                 bookCollectionWindow.ClosingRequested = HandleBookCollectionClosing;
                 bookCollectionWindow.CloseRequested = HandleBookCollectionClosed;
                 bookCollectionWindow.OnImeCandidateSelected = TrySelectBookCollectionImeCandidate;
+                bookCollectionWindow.ResolveImeWindowHandle = () => Window?.Handle ?? IntPtr.Zero;
 
             }
 
@@ -1237,6 +1238,7 @@ namespace HaCreator.MapSimulator
                 _pendingMapSpawnTarget = null;
             }
             ClearPassiveTransferRequest();
+            _playerManager?.Player?.Physics?.SetPassiveTransferFieldReady(false);
 
 
             // Deactivate chat input (but preserve message history)

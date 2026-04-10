@@ -390,36 +390,6 @@ public static class ClientShootAmmoResolver
             return;
         }
 
-        if (TryResolveActiveCashAmmoSelection(
-                cashSlots,
-                weaponCode,
-                weaponItemId,
-                out int activeSlotIndex,
-                out int activeCashItemId))
-        {
-            slotIndex = activeSlotIndex;
-            itemId = activeCashItemId;
-            return;
-        }
-
-        int fallbackActiveCashItemId = ResolveActiveBulletItemId(cashSlots);
-        if (fallbackActiveCashItemId > 0)
-        {
-            itemId = fallbackActiveCashItemId;
-            if (TryResolveCashAmmoSlotByItemId(
-                    cashSlots,
-                    weaponCode,
-                    weaponItemId,
-                    fallbackActiveCashItemId,
-                    out int fallbackSlotIndex))
-            {
-                slotIndex = fallbackSlotIndex;
-                itemId = fallbackActiveCashItemId;
-            }
-
-            return;
-        }
-
         for (int i = 0; i < cashSlots.Count; i++)
         {
             InventorySlotData slot = cashSlots[i];
@@ -436,40 +406,6 @@ public static class ClientShootAmmoResolver
             itemId = slot.ItemId;
             return;
         }
-    }
-
-    private static bool TryResolveActiveCashAmmoSelection(
-        IReadOnlyList<InventorySlotData> cashSlots,
-        int weaponCode,
-        int weaponItemId,
-        out int slotIndex,
-        out int itemId)
-    {
-        slotIndex = -1;
-        itemId = 0;
-        if (cashSlots == null)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < cashSlots.Count; i++)
-        {
-            InventorySlotData slot = cashSlots[i];
-            if (slot?.IsActiveBullet != true
-                || slot.IsDisabled
-                || slot.ItemId <= 0
-                || slot.Quantity <= 0
-                || !IsCompatibleCashBulletItem(weaponCode, weaponItemId, slot.ItemId))
-            {
-                continue;
-            }
-
-            slotIndex = i;
-            itemId = slot.ItemId;
-            return true;
-        }
-
-        return false;
     }
 
     private static bool TryResolveCashAmmoSlotByItemId(

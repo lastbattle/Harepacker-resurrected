@@ -99,6 +99,7 @@ namespace HaCreator.MapSimulator.Pools
         public ReactorActivationType ActivationType { get; set; }
         public int ActivationValue { get; set; }
         public ReactorType ReactorType { get; set; } = ReactorType.UNKNOWN;
+        public int HitOption { get; set; } = -1;
         public int ActivatingPlayerId { get; set; }
         public bool CanRespawn { get; set; } = true;
         public bool IsPacketOwned { get; set; }
@@ -132,6 +133,7 @@ namespace HaCreator.MapSimulator.Pools
     internal sealed class ReactorInteractionMetadata
     {
         public ReactorType ReactorType { get; init; } = ReactorType.UNKNOWN;
+        public int HitOption { get; init; } = -1;
         public ReactorActivationType ActivationType { get; init; } = ReactorActivationType.Touch;
         public ReactorActivationTypeMask SupportedActivationTypes { get; init; } = ReactorActivationTypeMask.Touch;
         public int? RequiredItemId { get; init; }
@@ -268,6 +270,7 @@ namespace HaCreator.MapSimulator.Pools
                     Alpha = 1f,
                     PrimaryActivationType = interactionMetadata.ActivationType,
                     ReactorType = interactionMetadata.ReactorType,
+                    HitOption = interactionMetadata.HitOption,
                     ActivationType = interactionMetadata.ActivationType,
                     ActivationValue = 0,
                     SupportedActivationTypes = interactionMetadata.SupportedActivationTypes,
@@ -1106,6 +1109,9 @@ namespace HaCreator.MapSimulator.Pools
             ReactorType reactorType = TryGetOptionalReactorType(infoProperty?["reactorType"])
                 ?? TryGetOptionalReactorType(infoProperty?["type"])
                 ?? ReactorType.UNKNOWN;
+            int hitOption = TryGetOptionalInt(infoProperty?["reactorType"])
+                ?? TryGetOptionalInt(infoProperty?["type"])
+                ?? -1;
 
             bool activateByTouch = TryGetOptionalInt(infoProperty?["activateByTouch"]).GetValueOrDefault() != 0;
 
@@ -1138,6 +1144,7 @@ namespace HaCreator.MapSimulator.Pools
             return new ReactorInteractionMetadata
             {
                 ReactorType = reactorType,
+                HitOption = hitOption,
                 ActivationType = activationType,
                 SupportedActivationTypes = supportedActivationTypes,
                 RequiredItemId = requiredItemId,
@@ -1498,6 +1505,21 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            ReactorRuntimeData runtimeData = GetReactorData(spawnPoint.SpawnId);
+            if (runtimeData != null)
+            {
+                ReactorInteractionMetadata interactionMetadata = ResolveInteractionMetadata(reactor.ReactorInstance);
+                runtimeData.PrimaryActivationType = interactionMetadata.ActivationType;
+                runtimeData.ReactorType = interactionMetadata.ReactorType;
+                runtimeData.HitOption = interactionMetadata.HitOption;
+                runtimeData.ActivationType = interactionMetadata.ActivationType;
+                runtimeData.SupportedActivationTypes = interactionMetadata.SupportedActivationTypes;
+                runtimeData.RequiredItemId = interactionMetadata.RequiredItemId;
+                runtimeData.RequiredQuestId = interactionMetadata.RequiredQuestId;
+                runtimeData.RequiredQuestState = interactionMetadata.RequiredQuestState;
+                runtimeData.ScriptNames = interactionMetadata.ScriptNames;
+            }
+
             ApplyPacketReactorState(spawnPoint.SpawnId, initialState, x, y, flip, currentTick);
             BeginPacketEnterFade(GetReactorData(spawnPoint.SpawnId), currentTick);
             SyncPacketScriptPublication(reactor, GetReactorData(spawnPoint.SpawnId), currentTick);
@@ -1728,7 +1750,7 @@ namespace HaCreator.MapSimulator.Pools
 
                     if (data.State == ReactorState.Activated
                         && data.PacketHitStartTime > 0
-                        && currentTick >= data.PacketHitStartTime)
+                        && currentTick > data.PacketHitStartTime)
                     {
                         data.PacketHitStartTime = 0;
                         data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
@@ -2639,7 +2661,7 @@ namespace HaCreator.MapSimulator.Pools
             int sourceState = ResolvePacketHitAnimationState(data);
             int properEventIndex = data.PacketProperEventIndex;
             if (properEventIndex < 0
-                && reactor.TryResolveAutoHitEventIndex(sourceState, data.ReactorType, out int autoEventIndex))
+                && reactor.TryResolveAutoHitEventIndex(sourceState, data.HitOption, data.ReactorType, out int autoEventIndex))
             {
                 properEventIndex = autoEventIndex;
                 data.PacketProperEventIndex = autoEventIndex;

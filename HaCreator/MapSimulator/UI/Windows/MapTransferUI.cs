@@ -1,5 +1,6 @@
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -854,13 +855,8 @@ namespace HaCreator.MapSimulator.UI
         private void RequestRegisterConfirmation(DestinationEntry selectedEntry)
         {
             string targetLabel = ResolveRegisterTargetLabel(selectedEntry);
-            if (string.IsNullOrWhiteSpace(targetLabel))
-            {
-                targetLabel = "this destination";
-            }
-
             RequestConfirmation(
-                $"Register {targetLabel}?",
+                MapTransferClientParityText.BuildRegisterConfirmationPrompt(targetLabel),
                 () => RegisterCurrentMapRequested?.Invoke(selectedEntry));
         }
 
@@ -878,7 +874,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             RequestConfirmation(
-                $"Delete {targetLabel}?",
+                MapTransferClientParityText.BuildDeleteConfirmationPrompt(targetLabel),
                 () => DeleteDestinationRequested?.Invoke(entry));
         }
 
@@ -902,7 +898,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            RequestConfirmation($"Move to {targetLabel}?", confirmationAction);
+            RequestConfirmation(MapTransferClientParityText.BuildMoveConfirmationPrompt(targetLabel), confirmationAction);
         }
 
         private void RequestConfirmation(string message, Action confirmationAction)
@@ -1028,27 +1024,42 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
-            string[] words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            if (words.Length == 0)
+            string[] paragraphs = text.Replace("\r\n", "\n").Split('\n');
+            for (int paragraphIndex = 0; paragraphIndex < paragraphs.Length; paragraphIndex++)
             {
-                yield break;
-            }
-
-            string currentLine = words[0];
-            for (int i = 1; i < words.Length; i++)
-            {
-                string candidate = $"{currentLine} {words[i]}";
-                if (_font.MeasureString(candidate).X <= maxWidth)
+                string paragraph = paragraphs[paragraphIndex];
+                if (string.IsNullOrWhiteSpace(paragraph))
                 {
-                    currentLine = candidate;
+                    yield return string.Empty;
                     continue;
                 }
 
-                yield return currentLine;
-                currentLine = words[i];
-            }
+                string[] words = paragraph.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (words.Length == 0)
+                {
+                    continue;
+                }
 
-            yield return currentLine;
+                string currentLine = words[0];
+                for (int i = 1; i < words.Length; i++)
+                {
+                    string candidate = $"{currentLine} {words[i]}";
+                    if (_font.MeasureString(candidate).X <= maxWidth)
+                    {
+                        currentLine = candidate;
+                        continue;
+                    }
+
+                    yield return currentLine;
+                    currentLine = words[i];
+                }
+
+                yield return currentLine;
+                if (paragraphIndex < paragraphs.Length - 1)
+                {
+                    yield return string.Empty;
+                }
+            }
         }
 
         private Rectangle GetEditTargetBounds()

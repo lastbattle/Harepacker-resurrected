@@ -56,6 +56,15 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0C99] = "You have succesfully passed the Lie Detector Test. Thank you for participating!",
             [0x0C9A] = "You will be sanctioned for using a macro-assisted program.",
             [0x1A65] = "Thank you for your cooperation.",
+            // Recovered from MapleStory.exe v95 `CUIMapTransfer::OnRegister` and
+            // `CUIMapTransfer::OnDelete`. The generated table drifts around this block
+            // in the current workspace, so pin the client-owned map-transfer prompts
+            // and notices here before the simulator formats register/delete/move UI.
+            [0x0BB4] = "Your teleport list is full.\r\nPlease delete an entry before trying again.",
+            [0x0BB5] = "You have already entered this map.",
+            [0x0BB8] = "Will you enter this map\r\nin your teleport list?\r\n[%s]",
+            [0x0BB9] = "Will you delete this map from the\r\nteleport list?\r\n[%s]",
+            [0x0BBA] = "Will you teleport to this map?\r\n[%s]",
             // Recovered from MapleStory.exe v95 StringPool::ms_aString via StringPool::GetString
             // using ms_aKey (0xB98830). These ids are radio-owner literals that were still null
             // in the generated table for this workspace, but the simulator now needs the exact
@@ -73,6 +82,13 @@ namespace HaCreator.MapSimulator.Interaction
             // resolves these ids through StringPool before loading the layer from Effect/BasicEff.
             [0x0B6B] = "Effect/BasicEff.img/dragonBlink",
             [0x15DA] = "Effect/BasicEff.img/dragonFury",
+            // Recovered from MapleStory.exe v95 `CWvsContext::OnSkillLearnItemResult` and
+            // `CUIVega::OnVegaResult`. The generated table drifts for these production and
+            // enhancement sound ids, so pin the verified sound paths here before the shared
+            // production/enhancement owners resolve them.
+            [0x0507] = "Sound/Game.img/EnchantSuccess",
+            [0x0508] = "Sound/Game.img/EnchantFailure",
+            [0x1534] = "Sound/UI.img/EnchantDelay",
             // Recovered from MapleStory.exe v95 `CDragon::UpdateQuestInfo`. The generated table
             // resolves 0x19BC to an unrelated UI list frame in this workspace, but the client
             // formats the dragon quest-info layer path from this string-pool slot with the raw

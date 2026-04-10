@@ -384,25 +384,19 @@ namespace HaCreator.MapSimulator.Managers
                 candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipShortFileTimeRecordGroup));
             }
 
+            if ((characterDataFlags & CharacterDataMiniGameRecordFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipMiniGameRecordGroup));
+            }
+
+            if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipRelationshipRecordGroups));
+            }
+
             foreach (int candidateOffset in candidateStarts)
             {
-                if ((characterDataFlags & CharacterDataMiniGameRecordFlag) != 0 &&
-                    TrySkipMiniGameRecordGroup(payload, candidateOffset, out int miniGameOffset))
-                {
-                    offsets.Add(miniGameOffset);
-
-                    if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0 &&
-                        TrySkipRelationshipRecordGroups(payload, miniGameOffset, out int miniGameRelationshipOffset))
-                    {
-                        offsets.Add(miniGameRelationshipOffset);
-                    }
-                }
-
-                if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0 &&
-                    TrySkipRelationshipRecordGroups(payload, candidateOffset, out int relationshipOffset))
-                {
-                    offsets.Add(relationshipOffset);
-                }
+                offsets.Add(candidateOffset);
             }
         }
 

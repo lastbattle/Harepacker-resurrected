@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BubbleLifetimeMs = 4200;
         private const int BlinkDurationMs = 3000;
         private const int BlinkPulseIntervalMs = 180;
+        private const int DeleteRequestGraceDelayMs = 550;
         private static readonly MessengerContactDefinition[] ContactDefinitions =
         {
             new("Rondo", "Lith Harbor", 4, "Ready to board.", "Boarding soon. Meet me at the dock.", "Pirate", 34),
@@ -40,6 +41,8 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _deleteRequested;
         private bool _windowCloseReady;
         private bool _exitPromptActive;
+        private int _deleteRequestedTick = int.MinValue;
+        private int _deleteDestroyReadyTick = int.MinValue;
         private string _lastActionSummary = "Messenger opened.";
         private string _lastPacketSummary = "Messenger packet trace idle.";
 
@@ -625,14 +628,18 @@ namespace HaCreator.MapSimulator.Interaction
         public MessengerDeleteResult TryDeleteMessenger()
         {
             _exitPromptActive = false;
+            int currentTick = Environment.TickCount;
 
             if (_incomingInvite != null)
             {
                 _deleteRequested = true;
+                _deleteRequestedTick = currentTick;
+                _deleteDestroyReadyTick = currentTick + DeleteRequestGraceDelayMs;
                 string message = RejectIncomingInvite();
                 return new MessengerDeleteResult(message, _windowCloseReady);
             }
 
+            TryCompleteDeferredDelete(currentTick);
             if (_windowCloseReady)
             {
                 return new MessengerDeleteResult(_lastActionSummary, true);
@@ -642,24 +649,24 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 if (!_deleteRequested)
                 {
-                    _deleteRequested = true;
-                    _lastActionSummary = _pendingInvite != null
-                        ? $"Messenger close requested while invite {_pendingInvite.InviteId} is still owned by the server seam."
-                        : "Messenger close requested while the server-owned room state is still active.";
-                    AddSystemLog(_lastActionSummary);
-                    RecordPacketSummary(_pendingInvite != null
-                        ? $"Sent simulated Messenger delete request while invite {_pendingInvite.InviteId} is pending."
-                        : "Sent simulated Messenger delete request while remote participants are still bound to the room. Waiting for packet-owned room state to clear.");
+                    ArmDeleteRequest(
+                        currentTick,
+                        _pendingInvite != null
+                            ? $"Messenger close requested while invite {_pendingInvite.InviteId} is still owned by the server seam."
+                            : "Messenger close requested while the server-owned room state is still active.",
+                        _pendingInvite != null
+                            ? $"Sent simulated Messenger delete request while invite {_pendingInvite.InviteId} is pending."
+                            : "Sent simulated Messenger delete request while remote participants are still bound to the room. Waiting for packet-owned room state to clear.");
                 }
 
                 return new MessengerDeleteResult(_lastActionSummary, false);
             }
 
-            _deleteRequested = false;
-            _windowCloseReady = true;
-            _lastActionSummary = "Messenger close gate passed with only the local profile present.";
-            RecordPacketSummary("Simulated Messenger TryDelete destroy after the local-only gate passed.");
-            return new MessengerDeleteResult(_lastActionSummary, true);
+            CompleteDeleteRequest(
+                currentTick,
+                "Messenger close gate passed with only the local profile present.",
+                "Simulated Messenger TryDelete destroy after the local-only gate passed.");
+            return new MessengerDeleteResult(_lastActionSummary, _windowCloseReady);
         }
 
         public string RequestExitPrompt()
@@ -685,6 +692,8 @@ namespace HaCreator.MapSimulator.Interaction
             _windowCloseReady = false;
             _deleteRequested = false;
             _exitPromptActive = false;
+            _deleteRequestedTick = int.MinValue;
+            _deleteDestroyReadyTick = int.MinValue;
         }
 
         public string RemoveParticipant(string name, bool rejectedInvite)
@@ -1050,6 +1059,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _participants.Add(participant);
             _selectedSlot = participant.SlotIndex;
+            CancelDeleteRequest();
             _lastActionSummary = joinedViaIncomingInvite
                 ? $"Joined {contact.Name}'s Messenger room."
                 : packetDriven
@@ -1069,6 +1079,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void Tick(int tickCount)
         {
+            TryCompleteDeferredDelete(tickCount);
+
             if (_pendingInvite != null && tickCount >= _pendingInvite.ResolveAtTick)
             {
                 ResolvePendingInvite(_pendingInvite.WillAccept, packetDriven: true);
@@ -1385,11 +1397,101 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            _deleteRequested = false;
-            _windowCloseReady = true;
+            if (_deleteDestroyReadyTick != int.MinValue && Environment.TickCount < _deleteDestroyReadyTick)
+            {
+                _lastActionSummary = summary;
+                AddSystemLog(summary);
+                RecordPacketSummary("Messenger room state cleared before the deferred TryDelete destroy gate elapsed.");
+                return;
+            }
+
+            CompleteDeleteRequest(
+                Environment.TickCount,
+                summary,
+                "Simulated Messenger TryDelete destroy after packet-owned room state cleared.");
+        }
+
+        private void ArmDeleteRequest(int currentTick, string summary, string packetSummary)
+        {
+            _deleteRequested = true;
+            _deleteRequestedTick = currentTick;
+            _deleteDestroyReadyTick = currentTick + DeleteRequestGraceDelayMs;
+            _windowCloseReady = false;
             _lastActionSummary = summary;
             AddSystemLog(summary);
-            RecordPacketSummary("Simulated Messenger TryDelete destroy after packet-owned room state cleared.");
+            RecordPacketSummary(packetSummary);
+        }
+
+        private void CancelDeleteRequest()
+        {
+            _deleteRequested = false;
+            _windowCloseReady = false;
+            _deleteRequestedTick = int.MinValue;
+            _deleteDestroyReadyTick = int.MinValue;
+        }
+
+        private void CompleteDeleteRequest(int currentTick, string summary, string packetSummary)
+        {
+            _deleteRequested = false;
+            _windowCloseReady = true;
+            _deleteRequestedTick = currentTick;
+            _deleteDestroyReadyTick = currentTick;
+            _lastActionSummary = summary;
+            RecordPacketSummary(packetSummary);
+        }
+
+        private void TryCompleteDeferredDelete(int tickCount)
+        {
+            if (!_deleteRequested
+                || _windowCloseReady
+                || _deleteDestroyReadyTick == int.MinValue
+                || tickCount < _deleteDestroyReadyTick)
+            {
+                return;
+            }
+
+            if (!CanDestroyMessengerWindow())
+            {
+                CollapseSessionToLocalProfileAfterDeleteRequest();
+                CompleteDeleteRequest(
+                    tickCount,
+                    "Messenger close gate completed after the deferred CWvsContext-owned session state cleared.",
+                    "Simulated Messenger TryDelete destroy after the deferred session gate expired without a live socket ack.");
+                return;
+            }
+
+            CompleteDeleteRequest(
+                tickCount,
+                "Messenger close gate passed after the deferred room-state timer elapsed.",
+                "Simulated Messenger TryDelete destroy after the deferred local-only gate elapsed.");
+        }
+
+        private void CollapseSessionToLocalProfileAfterDeleteRequest()
+        {
+            MessengerParticipantState localPlayer = GetLocalParticipant();
+            if (localPlayer == null)
+            {
+                UpdateLocalContext("Player", "Field", 1);
+                localPlayer = GetLocalParticipant();
+            }
+
+            _participants.Clear();
+            if (localPlayer != null)
+            {
+                _participants.Add(localPlayer with
+                {
+                    SlotIndex = 0,
+                    IsLocalPlayer = true,
+                    BubbleText = string.Empty,
+                    BubbleStartTick = 0,
+                    BubbleExpireTick = 0
+                });
+            }
+
+            _pendingInvite = null;
+            _incomingInvite = null;
+            _selectedSlot = 0;
+            NotifyIncomingInvitePromptChanged();
         }
 
         private void ApplyPacketProfile(string name, bool isOnline, int channel, int level, string jobName, string locationSummary, string statusText)

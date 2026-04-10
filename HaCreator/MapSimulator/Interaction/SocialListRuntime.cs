@@ -1824,6 +1824,7 @@ namespace HaCreator.MapSimulator.Interaction
             public bool IsOnline { get; }
             public bool IsLeader { get; }
             public bool IsBlocked { get; }
+            public int? MemberId { get; init; }
             public bool IsLocalPlayer { get; init; }
         }
     }

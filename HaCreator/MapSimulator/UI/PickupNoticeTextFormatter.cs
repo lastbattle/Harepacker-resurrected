@@ -129,11 +129,11 @@ namespace HaCreator.MapSimulator.UI
                         FormatClientString(InventoryFullScreenStringPoolId, "Your inventory is full."),
                         string.Empty);
                 case DropPickupFailureReason.OwnershipRestricted:
-                    return FormatGenericFailure();
+                    return FormatCantPickupGeneric();
                 case DropPickupFailureReason.PetPickupBlocked:
                     return FormatPetPickupBlocked(itemName, sourceName, pickedByPet);
                 case DropPickupFailureReason.FieldRestricted:
-                    return FormatGenericFailure();
+                    return FormatCantPickupGeneric();
                 case DropPickupFailureReason.Unavailable:
                     return FormatUnavailable(dropType, itemName, quantity, mesoAmount, recentPickup, recentActorName);
                 default:

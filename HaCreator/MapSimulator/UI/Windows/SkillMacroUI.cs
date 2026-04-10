@@ -2374,6 +2374,12 @@ namespace HaCreator.MapSimulator.UI
                 return Rectangle.Empty;
             }
 
+            Rectangle ownerBounds = GetNameFieldBounds();
+            if (ownerBounds.IsEmpty)
+            {
+                return Rectangle.Empty;
+            }
+
             int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
             int count = Math.Min(visibleCount, _candidateListState.Candidates.Count - start);
             int viewportWidth = Math.Max(1, Math.Min(viewport.Width, SkillMacroImeCandidateWindowLayout.ClientViewportWidth));
@@ -2421,7 +2427,7 @@ namespace HaCreator.MapSimulator.UI
                 width,
                 height,
                 origin,
-                origin.Y - height - 1);
+                Math.Max(0, ownerBounds.Y - height - 1));
         }
 
         private Viewport GetActiveViewport()

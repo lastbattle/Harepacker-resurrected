@@ -2,6 +2,12 @@ namespace HaCreator.MapSimulator.Interaction
 {
     using System.Collections.Generic;
 
+    internal enum PacketQuestResultSubtype10ContinuationDisposition
+    {
+        Abandon = 0,
+        Continue = 1
+    }
+
     internal enum PacketQuestResultNoticeDispatchStage
     {
         Immediate = 0,
@@ -49,6 +55,14 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketQuestResultNoticeSurface.Chat,
                     PacketQuestResultNoticeDispatchStage.Immediate)
             };
+        }
+
+        internal static PacketQuestResultSubtype10ContinuationDisposition ResolveSubtype10ContinuationDisposition(
+            NpcInteractionOverlayCloseKind closeKind)
+        {
+            return closeKind == NpcInteractionOverlayCloseKind.Completed
+                ? PacketQuestResultSubtype10ContinuationDisposition.Continue
+                : PacketQuestResultSubtype10ContinuationDisposition.Abandon;
         }
 
         internal static IReadOnlyList<int> GetNewlyAvailableQuestIds(

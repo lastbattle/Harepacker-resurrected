@@ -13,7 +13,6 @@ namespace HaCreator.MapSimulator.Character
             return TryResolveAuthoredAuraOwnerSkills(
                 sourceSkill,
                 supportSkills,
-                out _,
                 out _);
         }
 
@@ -24,11 +23,11 @@ namespace HaCreator.MapSimulator.Character
             out int signature)
         {
             effectSkill = null;
+            signature = 0;
             if (!TryResolveAuthoredAuraOwnerSkills(
                     sourceSkill,
                     supportSkills,
-                    out IReadOnlyList<SkillData> ownerSkills,
-                    out signature))
+                    out IReadOnlyList<SkillData> ownerSkills))
             {
                 return false;
             }
@@ -62,17 +61,16 @@ namespace HaCreator.MapSimulator.Character
                 AvatarUnderFaceEffect = underFaceAnimation,
                 AvatarUnderFaceSecondaryEffect = underFaceSecondaryAnimation
             };
+            signature = SkillManager.ComputePersistentAvatarEffectSignature(effectSkill);
             return true;
         }
 
         private static bool TryResolveAuthoredAuraOwnerSkills(
             SkillData sourceSkill,
             IReadOnlyCollection<SkillData> supportSkills,
-            out IReadOnlyList<SkillData> ownerSkills,
-            out int signature)
+            out IReadOnlyList<SkillData> ownerSkills)
         {
             var resolvedOwnerSkills = new List<SkillData>();
-            var hash = new HashCode();
 
             foreach (SkillData skill in EnumerateEffectSourceSkills(sourceSkill, supportSkills))
             {
@@ -80,16 +78,10 @@ namespace HaCreator.MapSimulator.Character
                     || skill?.AffectedSecondaryEffect?.Frames?.Count > 0)
                 {
                     resolvedOwnerSkills.Add(skill);
-                    hash.Add(skill.SkillId);
-                    hash.Add(skill.AffectedEffect?.Frames?.Count ?? 0);
-                    hash.Add(skill.AffectedSecondaryEffect?.Frames?.Count ?? 0);
                 }
             }
 
             ownerSkills = resolvedOwnerSkills;
-            signature = resolvedOwnerSkills.Count > 0
-                ? hash.ToHashCode()
-                : 0;
             return resolvedOwnerSkills.Count > 0;
         }
 
