@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string Text { get; init; } = string.Empty;
         public IReadOnlyList<NpcInteractionChoice> Choices { get; init; } = Array.Empty<NpcInteractionChoice>();
         public NpcInteractionInputRequest InputRequest { get; init; }
+        public bool FlipSpeaker { get; init; }
     }
 
     internal sealed class NpcInteractionChoice

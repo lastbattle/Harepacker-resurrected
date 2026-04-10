@@ -980,10 +980,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            int transferMapId = 0;
-            string portalName = null;
-            if (!DojoField.TryInferFieldSpecificPacketType(payload, out _, out _)
-                && !TryParseTransferPayloadCompat(payload, out transferMapId, out portalName))
+            if (!TryParseTransferPayloadCompat(payload, out int transferMapId, out string portalName))
             {
                 return false;
             }

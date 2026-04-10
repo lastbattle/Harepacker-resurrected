@@ -19,6 +19,11 @@ namespace HaCreator.MapSimulator.UI
         private const int RowY = 93;
         private const int RowWidth = 178;
         private const int RowHeight = 35;
+        private const int RowClientStockX = 10;
+        private const int RowCashIconRightX = 42;
+        private const int RowPrimaryTextX = 53;
+        private const int RowPrimaryTextY = 3;
+        private const int RowSecondaryTextY = 20;
         private const int ScrollBarX = 190;
         private const int ScrollBarY = 93;
         private const int ScrollBarHeight = 203;
@@ -46,6 +51,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<UIObject> _rowButtons = new();
         private readonly UIObject _getButton;
         private readonly Texture2D _rowTexture;
+        private readonly Texture2D[] _itemNumberDigits;
+        private readonly Texture2D _cashIconTexture;
         private readonly VerticalScrollbarSkin _scrollbarSkin;
         private readonly Texture2D _selectionTexture;
 
@@ -66,12 +73,16 @@ namespace HaCreator.MapSimulator.UI
             UIObject getButton,
             UIObject exitButton,
             Texture2D rowTexture,
+            Texture2D[] itemNumberDigits,
+            Texture2D cashIconTexture,
             VerticalScrollbarSkin scrollbarSkin,
             GraphicsDevice device)
             : base(frame)
         {
             _getButton = getButton;
             _rowTexture = rowTexture;
+            _itemNumberDigits = itemNumberDigits ?? Array.Empty<Texture2D>();
+            _cashIconTexture = cashIconTexture;
             _scrollbarSkin = scrollbarSkin;
 
             _selectionTexture = new Texture2D(device, 1, 1);
@@ -286,24 +297,69 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                string primary = TrimToWidth(row.PrimaryText, RowWidth - 14f, 0.62f);
+                string primary = TrimToWidth(row.PrimaryText, RowWidth - RowPrimaryTextX - 8f, 0.62f);
                 InventoryRenderUtil.DrawOutlinedText(
                     sprite,
                     _font,
                     primary,
-                    new Vector2(drawX + 6, drawY + 6),
+                    new Vector2(drawX + RowPrimaryTextX, drawY + RowPrimaryTextY),
                     Color.White,
                     0.62f);
 
-                string secondary = TrimToWidth(row.SecondaryText, RowWidth - 14f, 0.52f);
+                DrawClientStock(sprite, row, drawX, drawY);
+                DrawCashIcon(sprite, row, drawX, drawY);
+
+                string secondary = TrimToWidth(row.SecondaryText, RowWidth - RowPrimaryTextX - 8f, 0.52f);
                 InventoryRenderUtil.DrawOutlinedText(
                     sprite,
                     _font,
                     secondary,
-                    new Vector2(drawX + 6, drawY + 20),
+                    new Vector2(drawX + RowPrimaryTextX, drawY + RowSecondaryTextY),
                     new Color(198, 214, 233),
                     0.52f);
             }
+        }
+
+        private void DrawClientStock(SpriteBatch sprite, StoreBankOwnerRowSnapshot row, int rowX, int rowY)
+        {
+            if (!row.ShowsClientStock || row.ClientStock <= 0 || _itemNumberDigits.Length < 10)
+            {
+                return;
+            }
+
+            string text = row.ClientStock.ToString(CultureInfo.InvariantCulture);
+            int x = rowX + RowClientStockX;
+            int y = rowY + RowSecondaryTextY;
+            for (int i = 0; i < text.Length; i++)
+            {
+                int digit = text[i] - '0';
+                if (digit < 0 || digit > 9)
+                {
+                    continue;
+                }
+
+                Texture2D texture = _itemNumberDigits[digit];
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                sprite.Draw(texture, new Vector2(x, y), Color.White);
+                x += texture.Width;
+            }
+        }
+
+        private void DrawCashIcon(SpriteBatch sprite, StoreBankOwnerRowSnapshot row, int rowX, int rowY)
+        {
+            if (!row.IsCashItem || _cashIconTexture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                _cashIconTexture,
+                new Vector2(rowX + RowCashIconRightX - _cashIconTexture.Width, rowY + RowSecondaryTextY),
+                Color.White);
         }
 
         private void DrawMoney(SpriteBatch sprite)

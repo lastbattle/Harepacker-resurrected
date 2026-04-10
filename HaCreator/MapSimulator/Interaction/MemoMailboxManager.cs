@@ -11,8 +11,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int StringPoolRecipientRequired = 0xF60;
         private const int StringPoolQuickSendFeePrompt = 0xF61;
         private const int StringPoolSendFeePrompt = 0xF62;
-        private const int StringPoolDeleteSuccess = 0xF64;
-        private const int StringPoolClaimSuccess = 0xF65;
+        private const int StringPoolClaimSuccess = 0xF64;
+        private const int StringPoolDiscardResult = 0xF65;
         private const int StringPoolSendSuccess = 0xF66;
         private const int StringPoolQuickDeliveryDefaultMemo = 0xF57;
         private const int MaxPacketOwnedReceiveRows = 10;

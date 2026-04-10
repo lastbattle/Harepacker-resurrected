@@ -334,6 +334,7 @@ namespace HaCreator.MapSimulator.Effects
         internal int KeyAnimationStage => _keyAnimationStage;
         internal char ResultRank => _resultRank;
         internal int ResultScore => _resultScore;
+        internal bool IsDangerOverlayActive => ShouldDrawDangerOverlay();
         public bool TryApplyPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
@@ -1779,7 +1780,7 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
             int depletion = Math.Clamp(_gaugeDepletion, 0, _maxGauge);
-            return (100 * depletion / _maxGauge) < (int)(DangerDepletionThreshold * 100f);
+            return (100 * depletion / _maxGauge) >= (int)(DangerDepletionThreshold * 100f);
         }
         private Rectangle GetGaugeMaskBounds(int viewportCenterX)
         {

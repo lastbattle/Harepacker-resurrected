@@ -63,6 +63,21 @@ namespace HaCreator.MapSimulator.Companions
         private readonly record struct PetActionFrame(string Name, IDXObject Frame);
         private readonly record struct PetAnimationCacheKey(int PetItemId, int PetWearItemId);
         private readonly record struct PetActionCacheKey(int PetItemId, int PetWearItemId, string ActionName);
+        private sealed class PetImageEntry
+        {
+            internal PetImageEntry(WzImage imageRoot, WzImageProperty propertyRoot)
+            {
+                ImageRoot = imageRoot;
+                PropertyRoot = propertyRoot;
+            }
+
+            internal WzImage ImageRoot { get; }
+            internal WzImageProperty PropertyRoot { get; }
+
+            internal IEnumerable<WzImageProperty> Children => ImageRoot?.WzProperties ?? PropertyRoot?.WzProperties ?? Enumerable.Empty<WzImageProperty>();
+
+            internal WzImageProperty this[string name] => ImageRoot != null ? ImageRoot[name] : PropertyRoot?[name];
+        }
 
         private static readonly string[] RandomIdleActionCandidates =
         {
@@ -91,6 +106,7 @@ namespace HaCreator.MapSimulator.Companions
 
         private readonly GraphicsDevice _device;
         private readonly Dictionary<int, PetDefinition> _cache = new();
+        private readonly Dictionary<int, PetImageEntry> _petImgEntryCache = new();
         private readonly Dictionary<PetAnimationCacheKey, PetAnimationSet> _animationSetCache = new();
         private readonly Dictionary<PetActionCacheKey, List<IDXObject>> _actionCache = new();
         private List<IDXObject> _clientMultiPetHangFrames;
@@ -154,17 +170,16 @@ namespace HaCreator.MapSimulator.Companions
                 return cached;
             }
 
-            WzImage petImage = global::HaCreator.Program.FindImage("Item", $"Pet/{petItemId}.img");
-            if (petImage == null)
+            PetImageEntry petImgEntry = ResolvePetImgEntry(petItemId);
+            if (petImgEntry == null)
             {
                 return new PetAnimationSet();
             }
 
-            petImage.ParseImage();
             var animations = new PetAnimationSet();
-            foreach (string action in EnumerateActionLoadOrder(petImage, petItemId, cacheKey.PetWearItemId))
+            foreach (string action in EnumerateActionLoadOrder(petImgEntry, petItemId, cacheKey.PetWearItemId))
             {
-                List<IDXObject> frames = LoadActionFrames(petImage, petItemId, action, cacheKey.PetWearItemId);
+                List<IDXObject> frames = LoadActionFrames(petImgEntry, petItemId, action, cacheKey.PetWearItemId);
                 if (frames.Count > 0)
                 {
                     animations.AddAnimation(action, frames);
@@ -180,6 +195,51 @@ namespace HaCreator.MapSimulator.Companions
             animations.AddMissingAliasAnimations();
             _animationSetCache[cacheKey] = animations;
             return animations;
+        }
+
+        private PetImageEntry ResolvePetImgEntry(int petItemId)
+        {
+            int cacheKey = Math.Max(0, petItemId);
+            if (_petImgEntryCache.TryGetValue(cacheKey, out PetImageEntry cachedEntry))
+            {
+                return cachedEntry;
+            }
+
+            PetImageEntry entry = petItemId > 0
+                ? ResolvePetTemplateImgEntry(petItemId)
+                : ResolveBasicPetEffectImgEntry();
+            if (entry != null)
+            {
+                _petImgEntryCache[cacheKey] = entry;
+            }
+
+            return entry;
+        }
+
+        private static PetImageEntry ResolvePetTemplateImgEntry(int petItemId)
+        {
+            WzImage petImage = global::HaCreator.Program.FindImage("Item", $"Pet/{petItemId}.img");
+            if (petImage == null)
+            {
+                return null;
+            }
+
+            petImage.ParseImage();
+            return new PetImageEntry(petImage, null);
+        }
+
+        private static PetImageEntry ResolveBasicPetEffectImgEntry()
+        {
+            WzImage effectImage = global::HaCreator.Program.FindImage("Effect", "PetEff.img");
+            if (effectImage == null)
+            {
+                return null;
+            }
+
+            effectImage.ParseImage();
+            return effectImage["Basic"] is WzImageProperty basicRoot
+                ? new PetImageEntry(null, basicRoot)
+                : null;
         }
 
         private string LoadPetName(int petItemId)
@@ -543,7 +603,7 @@ namespace HaCreator.MapSimulator.Companions
             return true;
         }
 
-        private List<IDXObject> LoadActionFrames(WzImage petImage, int petItemId, string actionName, int petWearItemId)
+        private List<IDXObject> LoadActionFrames(PetImageEntry petImgEntry, int petItemId, string actionName, int petWearItemId)
         {
             PetActionCacheKey cacheKey = new(petItemId, petWearItemId, actionName ?? string.Empty);
             if (_actionCache.TryGetValue(cacheKey, out List<IDXObject> cachedFrames))
@@ -551,7 +611,7 @@ namespace HaCreator.MapSimulator.Companions
                 return cachedFrames;
             }
 
-            WzImageProperty actionNode = ResolvePetActionNode(petImage, actionName);
+            WzImageProperty actionNode = ResolvePetActionNode(petImgEntry, actionName);
             if (actionNode == null)
             {
                 List<IDXObject> emptyFrames = new();
@@ -627,16 +687,16 @@ namespace HaCreator.MapSimulator.Companions
             return composedFrames;
         }
 
-        private WzImageProperty ResolvePetActionNode(WzImage petImage, string requestedAction)
+        private WzImageProperty ResolvePetActionNode(PetImageEntry petImgEntry, string requestedAction)
         {
-            if (petImage == null || string.IsNullOrWhiteSpace(requestedAction))
+            if (petImgEntry == null || string.IsNullOrWhiteSpace(requestedAction))
             {
                 return null;
             }
 
             foreach (string candidate in EnumerateActionCandidates(requestedAction))
             {
-                WzImageProperty property = ResolveActionProperty(petImage[candidate]);
+                WzImageProperty property = ResolveActionProperty(petImgEntry[candidate]);
                 if (property != null)
                 {
                     return property;
@@ -666,7 +726,7 @@ namespace HaCreator.MapSimulator.Companions
             }
         }
 
-        private IEnumerable<string> EnumerateActionLoadOrder(WzImage petImage, int petItemId, int petWearItemId)
+        private IEnumerable<string> EnumerateActionLoadOrder(PetImageEntry petImgEntry, int petItemId, int petWearItemId)
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -678,7 +738,7 @@ namespace HaCreator.MapSimulator.Companions
                 }
             }
 
-            foreach (string action in EnumerateRenderableActionNames(petImage))
+            foreach (string action in EnumerateRenderableActionNames(petImgEntry))
             {
                 if (seen.Add(action))
                 {
@@ -695,14 +755,14 @@ namespace HaCreator.MapSimulator.Companions
             }
         }
 
-        private static IEnumerable<string> EnumerateRenderableActionNames(WzImage image)
+        private static IEnumerable<string> EnumerateRenderableActionNames(PetImageEntry imageEntry)
         {
-            if (image == null)
+            if (imageEntry == null)
             {
                 yield break;
             }
 
-            foreach (WzImageProperty child in image.WzProperties)
+            foreach (WzImageProperty child in imageEntry.Children)
             {
                 if (child == null ||
                     string.IsNullOrWhiteSpace(child.Name) ||

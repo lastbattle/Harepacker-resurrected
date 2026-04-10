@@ -2737,6 +2737,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (variants.Count > 0)
                 {
                     zoneEffect.CharacterLevelVariantAnimations[requiredLevel] = variants;
+                    zoneEffect.CharacterLevelEffectDistances[requiredLevel] = GetInt(tileVariantNode, "effectDistance");
                 }
             }
         }
@@ -2767,6 +2768,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (variants.Count > 0)
                 {
                     zoneEffect.LevelVariantAnimations[skillLevel] = variants;
+                    zoneEffect.LevelEffectDistances[skillLevel] = GetInt(tileVariantNode, "effectDistance");
                 }
             }
         }
@@ -4558,13 +4560,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Where(static skill => skill != null)
                 .GroupBy(static skill => skill.SkillId)
                 .ToDictionary(static group => group.Key, static group => group.First());
-            Queue<SkillData> pending = new(skillsById.Values.Where(IsExplicitSwallowFamilyRoot));
-            HashSet<int> swallowSkillIds = new(pending.Select(static skill => skill.SkillId));
+            SkillData[] swallowRoots = skillsById.Values
+                .Where(IsExplicitSwallowFamilyRoot)
+                .ToArray();
+            HashSet<int> swallowSkillIds = new(swallowRoots.Select(static skill => skill.SkillId));
 
-            while (pending.Count > 0)
+            foreach (SkillData root in swallowRoots)
             {
-                SkillData parent = pending.Dequeue();
-                int[] linkedDummySkillIds = parent.DummySkillParents;
+                int[] linkedDummySkillIds = root.DummySkillParents;
                 if (linkedDummySkillIds == null || linkedDummySkillIds.Length == 0)
                 {
                     continue;
@@ -4572,16 +4575,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 foreach (int linkedSkillId in linkedDummySkillIds)
                 {
-                    if (linkedSkillId <= 0
-                        || swallowSkillIds.Contains(linkedSkillId)
-                        || !skillsById.TryGetValue(linkedSkillId, out SkillData linkedSkill)
-                        || linkedSkill == null)
+                    if (linkedSkillId > 0 && skillsById.ContainsKey(linkedSkillId))
                     {
-                        continue;
+                        swallowSkillIds.Add(linkedSkillId);
                     }
-
-                    swallowSkillIds.Add(linkedSkillId);
-                    pending.Enqueue(linkedSkill);
                 }
             }
 
@@ -5129,6 +5126,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.EnhancedMaxMP = GetInt(node, "emmp", 0, level);
             levelData.IndieMaxHP = GetInt(node, "indieMhp", 0, level);
             levelData.IndieMaxMP = GetInt(node, "indieMmp", 0, level);
+            levelData.IndieMaxHP = PreferPrimaryStat(levelData.IndieMaxHP, GetInt(node, "mhpX", 0, level));
+            levelData.IndieMaxMP = PreferPrimaryStat(levelData.IndieMaxMP, GetInt(node, "mmpX", 0, level));
             levelData.MaxHPPercent = PreferPrimaryStat(GetInt(node, "mhpR", 0, level), GetInt(node, "indieMhpR", 0, level));
             levelData.MaxMPPercent = PreferPrimaryStat(GetInt(node, "mmpR", 0, level), GetInt(node, "indieMmpR", 0, level));
             levelData.DefensePercent = GetInt(node, "pddR", 0, level);

@@ -715,6 +715,15 @@ namespace HaCreator.MapSimulator.Loaders
             int width = 312,
             int height = 132)
         {
+            Texture2D topTexture = LoadCanvasTexture(utilDialogProperty, "t", device);
+            Texture2D centerTexture = LoadCanvasTexture(utilDialogProperty, "c", device);
+            Texture2D bottomTexture = LoadCanvasTexture(utilDialogProperty, "s", device);
+
+            if (topTexture != null && centerTexture != null && bottomTexture != null)
+            {
+                return CreateStitchedUtilDlgFrameTexture(topTexture, centerTexture, bottomTexture, width, height, device);
+            }
+
             Texture2D noticeTexture = LoadCanvasTexture(utilDialogProperty, "notice", device);
             if (noticeTexture != null
                 && width == noticeTexture.Width
@@ -723,15 +732,17 @@ namespace HaCreator.MapSimulator.Loaders
                 return CreateExtendedUtilDlgNoticeFrameTexture(noticeTexture, height, device);
             }
 
-            Texture2D topTexture = LoadCanvasTexture(utilDialogProperty, "t", device);
-            Texture2D centerTexture = LoadCanvasTexture(utilDialogProperty, "c", device);
-            Texture2D bottomTexture = LoadCanvasTexture(utilDialogProperty, "s", device);
+            return noticeTexture;
+        }
 
-            if (topTexture == null || centerTexture == null || bottomTexture == null)
-            {
-                return noticeTexture;
-            }
-
+        private static Texture2D CreateStitchedUtilDlgFrameTexture(
+            Texture2D topTexture,
+            Texture2D centerTexture,
+            Texture2D bottomTexture,
+            int width,
+            int height,
+            GraphicsDevice device)
+        {
             int frameWidth = Math.Max(1, width);
             int frameHeight = Math.Max(1, height);
             int topHeight = Math.Min(topTexture.Height, frameHeight);
@@ -2340,6 +2351,8 @@ namespace HaCreator.MapSimulator.Loaders
                 new Point(x + (cascade * 6), y + (cascade * 4)));
             RegisterDragonBoxWindow(manager, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 8), y + (cascade * 3)));
+            RegisterAccountMoreInfoWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 7), y + (cascade * 4)));
         }
 
 
@@ -3106,6 +3119,27 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             UIWindowBase window = CreateDragonBoxWindow(basicImage, soundUIImage, device, position);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
+            }
+        }
+
+        private static void RegisterAccountMoreInfoWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.AccountMoreInfo) != null)
+            {
+                return;
+            }
+
+            UIWindowBase window = CreateAccountMoreInfoWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, position);
             if (window != null)
             {
                 manager.RegisterCustomWindow(window);
@@ -8267,6 +8301,52 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 window.InitializeCloseButton(closeButton);
             }
+
+            return window;
+        }
+
+        private static UIWindowBase CreateAccountMoreInfoWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            const int clientOwnerWidth = 398;
+            const int clientOwnerHeight = 364;
+            Texture2D frameTexture = CreateFilledTexture(
+                device,
+                clientOwnerWidth,
+                clientOwnerHeight,
+                new Color(28, 34, 45, 230),
+                new Color(86, 100, 130, 255));
+            if (frameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.AccountMoreInfo,
+                    "Account More Info",
+                    "Fallback owner because the account-more-info frame could not be created.",
+                    position);
+            }
+
+            AccountMoreInfoWindow window = new AccountMoreInfoWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                MapSimulatorWindowNames.AccountMoreInfo)
+            {
+                Position = position
+            };
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            WzSubProperty utilDlgProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty
+                ?? uiWindow1Image?["UtilDlgEx"] as WzSubProperty;
+            UIObject okButton = LoadButton(utilDlgProperty, "BtOK", btClickSound, btOverSound, device);
+            UIObject cancelButton = LoadButton(utilDlgProperty, "BtCancel", btClickSound, btOverSound, device);
+            window.InitializeActionButtons(okButton, cancelButton);
 
             return window;
         }

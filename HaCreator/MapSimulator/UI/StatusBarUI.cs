@@ -368,10 +368,14 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            float availableJobWidth = Math.Max(1f, leftClusterWidth - JOB_TEXT_POS.X - 4f);
-            float availableNameWidth = Math.Max(1f, leftClusterWidth - NAME_TEXT_POS.X - 4f);
-            _jobTextMaxWidth = Math.Min(JOB_TEXT_MAX_WIDTH, availableJobWidth);
-            _nameTextMaxWidth = availableNameWidth;
+            _jobTextMaxWidth = StatusBarLayoutRules.ResolveLeftClusterJobTextMaxWidth(
+                leftClusterWidth,
+                JOB_TEXT_POS.X,
+                JOB_TEXT_MAX_WIDTH);
+            _nameTextMaxWidth = StatusBarLayoutRules.ResolveLeftClusterNameTextMaxWidth(
+                leftClusterWidth,
+                NAME_TEXT_POS.X,
+                DEFAULT_NAME_TEXT_MAX_WIDTH);
         }
 
         public Action<int> BuffCancelRequested { get; set; }

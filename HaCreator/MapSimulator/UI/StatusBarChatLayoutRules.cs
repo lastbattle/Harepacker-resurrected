@@ -272,6 +272,16 @@ namespace HaCreator.MapSimulator.UI
                 resolvedHeight);
         }
 
+        public static int ResolveWhisperPickerButtonSlotLeft(
+            int clientNormalLeft,
+            int normalWidth,
+            int slotWidth)
+        {
+            int safeSlotWidth = Math.Max(1, slotWidth);
+            int safeNormalWidth = Math.Max(1, normalWidth);
+            return clientNormalLeft - Math.Max(0, (safeSlotWidth - safeNormalWidth) / 2);
+        }
+
         private static int ResolveLongestFittingPrefixLength(
             string text,
             float maxWidth,

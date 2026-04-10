@@ -501,6 +501,7 @@ namespace HaCreator.MapSimulator.Interaction
         private Action<string, SocialRoomRuntimeSnapshot> _persistStateHandler;
         private readonly ShopDialogPacketOwner _shopDialogPacketOwner;
         private IInventoryRuntime _inventoryRuntime;
+        public Func<LoginAvatarLook, CharacterBuild> AvatarBuildResolver { get; set; }
         public Action<string, int> SocialChatObserved { get; set; }
 
         private SocialRoomRuntime(
@@ -3139,13 +3140,13 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryApplyMiniRoomBaseAvatarPacket(PacketReader reader, out string message)
         {
             int seatIndex = reader.ReadByte();
-            if (!TryReadPacketOwnedAvatarLook(reader, out _, out string error))
+            if (!TryReadPacketOwnedAvatarLook(reader, out LoginAvatarLook avatarLook, out string error))
             {
                 message = error;
                 return false;
             }
 
-            ApplyMiniRoomBaseAvatarPacket(seatIndex);
+            ApplyMiniRoomBaseAvatarPacket(seatIndex, avatarLook);
             message = StatusMessage;
             return true;
         }
@@ -3181,7 +3182,8 @@ namespace HaCreator.MapSimulator.Interaction
                 OwnerName = occupantName;
             }
 
-            EnsureOccupantSlot(normalizedSeatIndex, occupantName, role, detail, isReady: false, avatarBuild: GetExistingAvatarBuild(normalizedSeatIndex));
+            CharacterBuild avatarBuild = ResolvePacketOwnedAvatarBuild(avatarLook, normalizedSeatIndex);
+            EnsureOccupantSlot(normalizedSeatIndex, occupantName, role, detail, isReady: false, avatarBuild: avatarBuild);
             RoomState = Kind == SocialRoomKind.MiniRoom ? "Seat update" : "Visitor update";
             StatusMessage = $"{occupantName} entered {seatLabel.ToLowerInvariant()} through CMiniRoomBaseDlg::OnEnterBase.";
             if (Kind == SocialRoomKind.MiniRoom)
@@ -3197,10 +3199,22 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
         }
 
-        private void ApplyMiniRoomBaseAvatarPacket(int seatIndex)
+        private void ApplyMiniRoomBaseAvatarPacket(int seatIndex, LoginAvatarLook avatarLook)
         {
             int normalizedSeatIndex = Math.Max(0, seatIndex);
             string occupantName = ResolveMiniRoomSeatName(normalizedSeatIndex);
+            if (normalizedSeatIndex < _occupants.Count)
+            {
+                SocialRoomOccupant occupant = _occupants[normalizedSeatIndex];
+                CharacterBuild avatarBuild = ResolvePacketOwnedAvatarBuild(avatarLook, normalizedSeatIndex);
+                occupant.Update(
+                    occupant.Name,
+                    occupant.Role,
+                    $"{occupant.Detail} | AvatarLook refreshed through CMiniRoomBaseDlg::OnAvatar.",
+                    occupant.IsReady,
+                    avatarBuild);
+            }
+
             RoomState = Kind == SocialRoomKind.MiniRoom ? "Avatar refresh" : "Visitor avatar refresh";
             StatusMessage = $"{occupantName} refreshed seat {normalizedSeatIndex} through CMiniRoomBaseDlg::OnAvatar.";
             PersistState();
@@ -3236,7 +3250,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _savedVisitors.Add(occupantName);
             }
 
-            EnsureOccupantSlot(normalizedSeatIndex, occupantName, role, detail, isReady: false, avatarBuild: GetExistingAvatarBuild(normalizedSeatIndex));
+            CharacterBuild avatarBuild = ResolvePacketOwnedAvatarBuild(avatarLook, normalizedSeatIndex);
+            EnsureOccupantSlot(normalizedSeatIndex, occupantName, role, detail, isReady: false, avatarBuild: avatarBuild);
         }
 
         private bool RequiresMerchantSeatEnterResultStub(int seatIndex)
@@ -3347,6 +3362,24 @@ namespace HaCreator.MapSimulator.Interaction
             return seatIndex >= 0 && seatIndex < _occupants.Count
                 ? _occupants[seatIndex].AvatarBuild
                 : null;
+        }
+
+        private CharacterBuild ResolvePacketOwnedAvatarBuild(LoginAvatarLook avatarLook, int seatIndex)
+        {
+            CharacterBuild existingBuild = GetExistingAvatarBuild(seatIndex);
+            if (avatarLook == null || AvatarBuildResolver == null)
+            {
+                return existingBuild;
+            }
+
+            try
+            {
+                return AvatarBuildResolver(LoginAvatarLookCodec.CloneLook(avatarLook)) ?? existingBuild;
+            }
+            catch
+            {
+                return existingBuild;
+            }
         }
 
         private void EnsureOccupantSlot(int index, string name, SocialRoomOccupantRole role, string detail, bool isReady, CharacterBuild avatarBuild)

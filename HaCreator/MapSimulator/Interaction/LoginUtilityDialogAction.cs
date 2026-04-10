@@ -26,5 +26,6 @@ namespace HaCreator.MapSimulator
         RetryTrunkPic = 21,
         RetryTrunkSpw = 22,
         LogoutGiftCompletion = 23,
+        SetFamilyPrecept = 24,
     }
 }

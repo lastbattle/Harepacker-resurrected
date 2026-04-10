@@ -603,7 +603,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return i;
                 }
 
-                if (fallbackIndex < 0)
+                if (boundCharacterId <= 0 && fallbackIndex < 0)
                 {
                     fallbackIndex = i;
                 }
@@ -944,7 +944,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return i;
                 }
 
-                if (fallbackIndex < 0)
+                if (boundCharacterId <= 0 && fallbackIndex < 0)
                 {
                     fallbackIndex = i;
                 }

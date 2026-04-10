@@ -179,11 +179,13 @@ namespace HaCreator.MapSimulator.UI
         private const int WhisperPickerRowPadding = 4;
         private const int WhisperPickerFramePadding = 3;
         private const int WhisperPickerModalContentPadding = 16;
-        private const int WhisperPickerModalButtonGap = 6;
         private const int WhisperPickerModalHeaderGap = 10;
         private const int WhisperPickerModalFooterGap = 12;
         private const int WhisperPickerModalMinimumWidth = 360;
         private const int WhisperPickerModalMinimumHeight = 170;
+        private const int WhisperPickerModalOkButtonLeft = 157;
+        private const int WhisperPickerModalCloseButtonLeft = 198;
+        private const int WhisperPickerModalButtonBottomOffset = 31;
         private Point _pointNotificationAnchor = new Point(512, 60);
         private Vector2 _chatTargetLabelPos = new Vector2(17, 7);
         private Vector2 _chatEnterPos = new Vector2(4, 2);
@@ -1025,18 +1027,14 @@ namespace HaCreator.MapSimulator.UI
                     registerHitRegion: true);
             }
 
-            int buttonY = modalY + modalHeight - bottomHeight - buttonRowHeight - 6;
+            int buttonY = modalY + modalHeight - WhisperPickerModalButtonBottomOffset;
             DrawWhisperPickerButtonRow(
                 sprite,
                 modalX,
                 buttonY,
                 modalWidth,
                 buttonRowHeight,
-                StatusBarChatLayoutRules.CanPageWhisperPickerBackward(firstVisibleIndex),
-                StatusBarChatLayoutRules.CanPageWhisperPickerForward(
-                    firstVisibleIndex,
-                    candidates.Count,
-                    WhisperPickerVisibleRows));
+                chatState.WhisperTargetPickerModalButtonFocus);
         }
 
         private void DrawWhisperPickerRow(
@@ -1159,56 +1157,43 @@ namespace HaCreator.MapSimulator.UI
             int buttonY,
             int modalWidth,
             int buttonRowHeight,
-            bool canPageBackward,
-            bool canPageForward)
+            MapSimulatorChat.WhisperTargetPickerModalButtonFocus focusedButton)
         {
             WhisperPickerButtonVisuals[] visuals =
             {
-                _whisperPickerPrevButtonVisuals,
-                _whisperPickerNextButtonVisuals,
                 _whisperPickerOkButtonVisuals,
                 _whisperPickerCloseButtonVisuals
             };
             WhisperPickerButtonAction[] actions =
             {
-                WhisperPickerButtonAction.Previous,
-                WhisperPickerButtonAction.Next,
                 WhisperPickerButtonAction.Confirm,
                 WhisperPickerButtonAction.Close
             };
-            bool[] isEnabled =
+            int[] clientLefts =
             {
-                canPageBackward,
-                canPageForward,
-                true,
-                true
+                WhisperPickerModalOkButtonLeft,
+                WhisperPickerModalCloseButtonLeft
             };
 
             MouseState mouseState = Mouse.GetState();
-            WhisperPickerButtonAction focusedAction = WhisperPickerButtonAction.Confirm;
-            int[] slotWidths = new int[visuals.Length];
-            int totalButtonWidth = 0;
             for (int i = 0; i < visuals.Length; i++)
             {
-                slotWidths[i] = visuals[i].ResolveSlotWidth(40);
-                totalButtonWidth += slotWidths[i];
-            }
-
-            totalButtonWidth += WhisperPickerModalButtonGap * (visuals.Length - 1);
-            int buttonX = modalX + Math.Max(0, (modalWidth - totalButtonWidth) / 2);
-            for (int i = 0; i < visuals.Length; i++)
-            {
-                Rectangle slotBounds = new Rectangle(buttonX, buttonY, slotWidths[i], buttonRowHeight);
+                int normalWidth = visuals[i].Normal?.Width ?? 0;
+                int slotWidth = visuals[i].ResolveSlotWidth(Math.Max(1, normalWidth));
+                int slotLeft = StatusBarChatLayoutRules.ResolveWhisperPickerButtonSlotLeft(
+                    modalX + clientLefts[i],
+                    normalWidth,
+                    slotWidth);
+                Rectangle slotBounds = new Rectangle(slotLeft, buttonY, slotWidth, buttonRowHeight);
                 bool hovered = slotBounds.Contains(mouseState.X, mouseState.Y);
                 bool pressed = hovered && mouseState.LeftButton == ButtonState.Pressed;
                 PacketScriptOwnerButtonVisualState state = PacketScriptOwnerVisualStateResolver.ResolveButtonState(
-                    isEnabled[i],
+                    true,
                     hovered,
                     pressed);
-                bool keyFocused = isEnabled[i]
-                    && !hovered
+                bool keyFocused = !hovered
                     && !pressed
-                    && actions[i] == focusedAction;
+                    && IsWhisperPickerModalButtonFocused(actions[i], focusedButton);
                 Texture2D texture = visuals[i].ResolveTexture(state, keyFocused);
                 Rectangle buttonBounds = slotBounds;
                 if (texture != null)
@@ -1224,17 +1209,22 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(_pixelTexture, slotBounds, new Color(154, 120, 68, 240));
                 }
 
-                if (isEnabled[i])
+                _whisperPickerButtonHitRegions.Add(new WhisperPickerButtonHitRegion
                 {
-                    _whisperPickerButtonHitRegions.Add(new WhisperPickerButtonHitRegion
-                    {
-                        Bounds = slotBounds,
-                        Action = actions[i]
-                    });
-                }
-
-                buttonX += slotBounds.Width + WhisperPickerModalButtonGap;
+                    Bounds = slotBounds,
+                    Action = actions[i]
+                });
             }
+        }
+
+        private static bool IsWhisperPickerModalButtonFocused(
+            WhisperPickerButtonAction action,
+            MapSimulatorChat.WhisperTargetPickerModalButtonFocus focusedButton)
+        {
+            return (action == WhisperPickerButtonAction.Confirm
+                    && focusedButton == MapSimulatorChat.WhisperTargetPickerModalButtonFocus.Confirm)
+                || (action == WhisperPickerButtonAction.Close
+                    && focusedButton == MapSimulatorChat.WhisperTargetPickerModalButtonFocus.Close);
         }
 
         private int ResolveWhisperPickerButtonRowHeight()
@@ -1242,12 +1232,8 @@ namespace HaCreator.MapSimulator.UI
             return Math.Max(
                 18,
                 Math.Max(
-                    Math.Max(
-                        _whisperPickerPrevButtonVisuals.ResolveSlotHeight(0),
-                        _whisperPickerNextButtonVisuals.ResolveSlotHeight(0)),
-                    Math.Max(
-                        _whisperPickerOkButtonVisuals.ResolveSlotHeight(0),
-                        _whisperPickerCloseButtonVisuals.ResolveSlotHeight(0))));
+                    _whisperPickerOkButtonVisuals.ResolveSlotHeight(0),
+                    _whisperPickerCloseButtonVisuals.ResolveSlotHeight(0)));
         }
 
         private void RefreshTextMetrics()

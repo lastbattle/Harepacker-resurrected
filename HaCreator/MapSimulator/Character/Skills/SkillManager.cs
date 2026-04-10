@@ -643,10 +643,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ["lukX"] = new[] { LuckBuffLabel },
                 ["emhp"] = new[] { MaxHpBuffLabel },
                 ["indieMhp"] = new[] { MaxHpBuffLabel },
+                ["mhpX"] = new[] { MaxHpBuffLabel },
                 ["mhpR"] = new[] { MaxHpBuffLabel },
                 ["indieMhpR"] = new[] { MaxHpBuffLabel },
                 ["emmp"] = new[] { MaxMpBuffLabel },
                 ["indieMmp"] = new[] { MaxMpBuffLabel },
+                ["mmpX"] = new[] { MaxMpBuffLabel },
                 ["mmpR"] = new[] { MaxMpBuffLabel },
                 ["indieMmpR"] = new[] { MaxMpBuffLabel },
                 ["cr"] = new[] { CriticalRateBuffLabel },
@@ -675,7 +677,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["mhpR"] = "Max HP",
+                ["mhpX"] = "Max HP",
                 ["mmpR"] = "Max MP",
+                ["mmpX"] = "Max MP",
                 ["pddR"] = "Physical Defense",
                 ["mddR"] = "Magic Defense",
                 ["accR"] = "Accuracy",
@@ -714,16 +718,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         // quick-slot items whose live family is allowed on the status-bar surface.
         private static readonly HashSet<int> QuickSlotVisibleUseItemFamilies = new()
         {
-            200, 201, 202, 205, 210, 212, 221, 226, 227, 236, 238, 245
+            200, 201, 202, 205, 212, 221, 226, 227, 236, 238, 245
         };
 
-        // The client resolves these through cash-slot helper enums. The simulator
-        // keeps the restriction on the same quick-slot seam by mirroring the
-        // currently verified cash families already used by the surrounding UI.
-        private static readonly HashSet<int> QuickSlotVisibleCashItemFamilies = new()
-        {
-            506, 553, 557, 561
-        };
+        private const int QuickSlotCashSlotItemType = 9;
+        private const int QuickSlotEtcCashItemType = 6;
 
         #endregion
 
@@ -1574,9 +1573,108 @@ namespace HaCreator.MapSimulator.Character.Skills
             int itemFamily = itemId / 10000;
             return inventoryType switch
             {
-                InventoryType.USE => QuickSlotVisibleUseItemFamilies.Contains(itemFamily),
-                InventoryType.CASH => QuickSlotVisibleCashItemFamilies.Contains(itemFamily),
+                InventoryType.USE => QuickSlotVisibleUseItemFamilies.Contains(itemFamily) || IsImmediateMobSummonItem(itemId),
+                InventoryType.CASH => GetClientCashSlotItemType(itemId) == QuickSlotCashSlotItemType ||
+                                      GetClientEtcCashItemType(itemId) == QuickSlotEtcCashItemType,
                 _ => false
+            };
+        }
+
+        private static bool IsImmediateMobSummonItem(int itemId)
+        {
+            return itemId / 1000 == 2109 || itemId == 2100067;
+        }
+
+        private static int GetClientEtcCashItemType(int itemId)
+        {
+            int cashSlotItemType = GetClientCashSlotItemType(itemId);
+            return cashSlotItemType is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 36 or 37 or 40 or 42 or 46 or 55 or 58 or 59 or 60 or 63 or 77
+                ? cashSlotItemType
+                : 0;
+        }
+
+        private static int GetClientCashSlotItemType(int itemId)
+        {
+            return itemId / 10000 switch
+            {
+                500 => 8,
+                501 => 9,
+                502 => 10,
+                503 => 11,
+                504 => 22,
+                505 => itemId % 10 == 0 ? 23 : (uint)(itemId % 10 - 1) <= 8 ? 24 : 0,
+                506 => itemId / 1000 == 5061 ? 65 : itemId / 1000 == 5062 ? 74 : (itemId % 10) switch
+                {
+                    0 => 25,
+                    1 => 26,
+                    2 or 3 => 27,
+                    _ => 0
+                },
+                507 => (itemId % 10000 / 1000) switch
+                {
+                    1 => 12,
+                    2 => 13,
+                    4 => 45,
+                    5 => (itemId % 10) switch
+                    {
+                        0 => 47,
+                        1 => 48,
+                        2 => 49,
+                        3 => 50,
+                        4 => 51,
+                        5 => 52,
+                        _ => 14
+                    },
+                    6 => 14,
+                    7 => 61,
+                    8 => 15,
+                    _ => 0
+                },
+                508 => 18,
+                509 => 21,
+                510 => 20,
+                512 => 16,
+                513 => 7,
+                514 => 4,
+                515 => (itemId / 1000) switch
+                {
+                    5150 or 5151 or 5154 => 1,
+                    5152 => itemId / 100 == 51520 ? 2 : itemId / 100 == 51521 ? 35 : 0,
+                    5153 => 3,
+                    _ => 0
+                },
+                516 => 6,
+                517 => 10000 * (itemId / 10000) != itemId ? 0 : 17,
+                518 => 5,
+                519 => 28,
+                520 => 19,
+                522 => 40,
+                523 => 29,
+                524 => 30,
+                525 => 37 - (itemId % 5251000 != 100 ? 1 : 0),
+                528 => itemId / 1000 == 5280 ? 33 : itemId / 1000 == 5281 ? 34 : 0,
+                530 => 41,
+                533 => 31,
+                537 => 32,
+                538 => 42,
+                539 => 43,
+                540 => itemId / 1000 == 5400 ? 53 : itemId / 1000 == 5401 ? 54 : 0,
+                542 => itemId / 1000 == 5420 ? 55 : 0,
+                543 => (uint)(itemId / 1000 - 5431) <= 1 ? 66 : 0,
+                545 => itemId / 1000 != 5451 ? 38 : 60,
+                546 => 58,
+                547 => 39,
+                549 => 59,
+                550 => 62,
+                551 => 63,
+                552 => 64,
+                553 => 72,
+                557 => 67,
+                561 => 71,
+                562 => 73,
+                564 => 77,
+                566 => 78,
+                _ => 0
             };
         }
 
@@ -5574,6 +5672,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             return playerPosition;
         }
 
+        internal static Vector2 ResolveProjectileAttackOrigin(
+            Vector2 playerPosition,
+            bool playerFacingRight,
+            bool desiredFacingRight,
+            Point? handMovePoint,
+            Point? handPoint,
+            Point? bodyOrigin,
+            Vector2? attackOriginOverride,
+            out bool usesAuthoredShootPoint)
+        {
+            if (attackOriginOverride.HasValue)
+            {
+                usesAuthoredShootPoint = true;
+                return attackOriginOverride.Value;
+            }
+
+            usesAuthoredShootPoint = handMovePoint.HasValue || handPoint.HasValue || bodyOrigin.HasValue;
+            return ResolveCurrentShootAttackOrigin(
+                playerPosition,
+                playerFacingRight,
+                desiredFacingRight,
+                handMovePoint,
+                handPoint,
+                bodyOrigin);
+        }
+
         private Vector2 ResolveCurrentShootAttackOrigin(int currentTime, bool facingRight)
         {
             if (_player == null)
@@ -5588,6 +5712,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _player.TryGetCurrentBodyMapPoint("handMove", currentTime),
                 _player.TryGetCurrentBodyMapPoint("hand", currentTime),
                 _player.TryGetCurrentBodyOrigin(currentTime));
+        }
+
+        private Vector2 ResolveProjectileAttackOrigin(int currentTime, bool facingRight, Vector2? attackOriginOverride, out bool usesAuthoredShootPoint)
+        {
+            if (_player == null)
+            {
+                usesAuthoredShootPoint = attackOriginOverride.HasValue;
+                return attackOriginOverride ?? Vector2.Zero;
+            }
+
+            return ResolveProjectileAttackOrigin(
+                new Vector2(_player.X, _player.Y),
+                _player.FacingRight,
+                facingRight,
+                _player.TryGetCurrentBodyMapPoint("handMove", currentTime),
+                _player.TryGetCurrentBodyMapPoint("hand", currentTime),
+                _player.TryGetCurrentBodyOrigin(currentTime),
+                attackOriginOverride,
+                out usesAuthoredShootPoint);
         }
 
         private Vector2 ResolveDeferredMovingShootOrigin(int currentTime, bool facingRight)
@@ -5972,21 +6115,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return (null, null);
             }
 
-            string fallbackActionName = currentActionName;
-            int? fallbackRawActionCode = currentRawActionCode;
-
-            foreach (string candidate in EnumerateQueuedMovingShootEntryActionCandidates(skill, currentActionName, currentRawActionCode))
+            string fallbackActionName = null;
+            if (skill?.ActionNames != null)
             {
-                if (string.IsNullOrWhiteSpace(candidate))
+                foreach (string candidate in skill.ActionNames)
                 {
-                    continue;
+                    if (string.IsNullOrWhiteSpace(candidate))
+                    {
+                        continue;
+                    }
+
+                    fallbackActionName ??= candidate;
+                    if (CharacterPart.TryGetClientRawActionCode(candidate, out int rawActionCode))
+                    {
+                        return (candidate, rawActionCode);
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(fallbackActionName))
+            {
+                return (fallbackActionName, null);
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.ActionName))
+            {
+                if (CharacterPart.TryGetClientRawActionCode(skill.ActionName, out int rawActionCode))
+                {
+                    return (skill.ActionName, rawActionCode);
                 }
 
-                fallbackActionName ??= candidate;
-                if (CharacterPart.TryGetClientRawActionCode(candidate, out int rawActionCode))
-                {
-                    return (candidate, rawActionCode);
-                }
+                return (skill.ActionName, null);
             }
 
             if (currentRawActionCode.HasValue
@@ -5995,7 +6154,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return (queuedActionName, currentRawActionCode);
             }
 
-            return (fallbackActionName, fallbackRawActionCode);
+            return (currentActionName, currentRawActionCode);
         }
 
         private static int ResolveQueuedMovingShootEntryCandidateIndex(int candidateCount, Func<int, int> nextCandidateIndex)
@@ -10545,9 +10704,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             var levelData = skill.GetLevel(level);
             int bulletCount = levelData?.BulletCount ?? 1;
             float speed = GetProjectileSpeed(skill.Projectile, levelData);
-            Vector2 attackOrigin = attackOriginOverride ?? new Vector2(_player.X, _player.Y);
-            bool usesStoredShootPoint = attackOriginOverride.HasValue;
-            float projectileSpawnY = usesStoredShootPoint ? attackOrigin.Y : attackOrigin.Y - 20f;
+            Vector2 attackOrigin = ResolveProjectileAttackOrigin(
+                currentTime,
+                facingRight,
+                attackOriginOverride,
+                out bool usesAuthoredShootPoint);
+            float projectileSpawnY = usesAuthoredShootPoint ? attackOrigin.Y : attackOrigin.Y - 20f;
             ShootAmmoSelection resolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot();
             int resolvedShootWeaponCode = GetEquippedWeaponCode();
             int resolvedShootWeaponItemId = _player?.Build?.GetWeapon()?.ItemId ?? 0;
@@ -12439,6 +12601,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             UpdateSummonFacingTowardMob(summon, resolvedTargets[0], currentTime);
             summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveLocalAttackBranch(summon.SkillData);
             summon.LastAttackAnimationStartTime = currentTime;
+            ArmLocalSummonOneTimeActionFallback(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             SpawnSummonAttackProjectiles(summon, resolvedTargets, currentTime);
 
@@ -13584,6 +13747,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             summon.LastAttackAnimationStartTime = currentTime;
             summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveBeholderHealBranch(summon.SkillData);
             ArmSupportSummonSuspend(summon, currentTime);
+            ArmLocalSummonOneTimeActionFallback(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             return true;
         }
@@ -13619,6 +13783,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             summon.LastAttackAnimationStartTime = currentTime;
             summon.CurrentAnimationBranchName = candidate.AnimationBranchName;
             ArmSupportSummonSuspend(summon, currentTime);
+            ArmLocalSummonOneTimeActionFallback(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             return true;
         }
@@ -13686,6 +13851,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             summon.LastAttackAnimationStartTime = currentTime;
+            ArmLocalSummonOneTimeActionFallback(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             return true;
         }
@@ -13759,6 +13925,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 teslaCoil.TeslaTrianglePoints = trianglePoints.ToArray();
                 teslaCoil.LastAttackTime = currentTime;
                 teslaCoil.LastAttackAnimationStartTime = currentTime;
+                ArmLocalSummonOneTimeActionFallback(teslaCoil, currentTime);
                 SetSummonActorState(teslaCoil, SummonActorState.Attack, currentTime);
             }
 
@@ -13875,6 +14042,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 preferHealFirst: false);
             ArmSupportSummonSuspend(summon, currentTime);
             summon.LastAttackAnimationStartTime = currentTime;
+            ArmLocalSummonOneTimeActionFallback(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             if (summon.SkillData.HitEffect != null)
             {
@@ -13900,6 +14068,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveLocalSummonActionBranch(summon.SkillData);
             summon.LastAttackAnimationStartTime = currentTime;
+            ArmLocalSummonOneTimeActionFallback(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             if (summon.SkillData.HitEffect != null)
             {
@@ -14016,6 +14185,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill.SummonAttackAnimation;
         }
 
+        private void ArmLocalSummonOneTimeActionFallback(ActiveSummon summon, int currentTime)
+        {
+            if (summon?.SkillData == null)
+            {
+                return;
+            }
+
+            int actionCode = SummonRuntimeRules.ResolveLocalAttackActionCode(
+                summon.SkillData,
+                summon.AssistType,
+                summon.CurrentAnimationBranchName);
+            if (actionCode <= 0)
+            {
+                return;
+            }
+
+            SkillAnimation actionAnimation = _loader.ResolveSummonActionAnimation(
+                summon.SkillData,
+                summon.Level,
+                summon.CurrentAnimationBranchName);
+            int duration = GetSkillAnimationDuration(actionAnimation) ?? 0;
+            if (actionAnimation?.Frames.Count <= 0 || duration <= 0)
+            {
+                return;
+            }
+
+            summon.OneTimeActionFallbackAnimation = actionAnimation;
+            summon.OneTimeActionFallbackStartTime = currentTime;
+            summon.OneTimeActionFallbackAnimationTime = 0;
+            summon.OneTimeActionFallbackEndTime = currentTime + duration;
+        }
+
         private SkillAnimation ResolveSummonHitPlaybackAnimation(ActiveSummon summon)
         {
             SkillData skill = summon?.SkillData;
@@ -14089,6 +14290,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 preferHealFirst: false);
             ArmSupportSummonSuspend(summon, currentTime);
             summon.LastAttackAnimationStartTime = currentTime;
+            ArmLocalSummonOneTimeActionFallback(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             if (summon.SkillData.HitEffect != null)
             {
@@ -14697,11 +14899,6 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static SummonAssistType ResolveSummonAssistType(SkillData skill)
         {
-            if (skill?.SkillId == BEHOLDER_SUMMON_SKILL_ID)
-            {
-                return SummonAssistType.Support;
-            }
-
             return SummonRuntimeRules.ResolveAssistType(skill);
         }
 
@@ -18978,12 +19175,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            SkillData skill = GetSkillData(skillId);
-            if (skill?.IsSwallowFamilySkill == true)
-            {
-                return true;
-            }
-
             SkillData swallowSkill = GetSkillData(WildHunterSwallowSkillId);
             return IsVisibleSwallowFamilyRequest(skillId, swallowSkill);
         }
@@ -19234,23 +19425,39 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<SkillData>();
             }
 
-            int[] affectedSkillIds = skill.GetAffectedSkillIds();
-            if (affectedSkillIds.Length == 0)
-            {
-                return Array.Empty<SkillData>();
-            }
-
-            var supportSkills = new List<SkillData>(affectedSkillIds.Length);
-            foreach (int affectedSkillId in affectedSkillIds)
-            {
-                SkillData supportSkill = GetSkillData(affectedSkillId);
-                if (supportSkill != null)
-                {
-                    supportSkills.Add(supportSkill);
-                }
-            }
+            var supportSkills = new List<SkillData>();
+            var visitedSkillIds = new HashSet<int>();
+            CollectAffectedSkillPassiveSupportSkills(skill, supportSkills, visitedSkillIds);
 
             return supportSkills.ToArray();
+        }
+
+        private void CollectAffectedSkillPassiveSupportSkills(
+            SkillData skill,
+            ICollection<SkillData> supportSkills,
+            ISet<int> visitedSkillIds)
+        {
+            if (skill == null)
+            {
+                return;
+            }
+
+            foreach (int linkedSkillId in RemoteAffectedAreaSupportResolver.EnumerateRemoteAffectedAreaLinkedSkillIds(skill))
+            {
+                if (linkedSkillId <= 0 || visitedSkillIds?.Add(linkedSkillId) != true)
+                {
+                    continue;
+                }
+
+                SkillData supportSkill = GetSkillData(linkedSkillId);
+                if (supportSkill == null)
+                {
+                    continue;
+                }
+
+                supportSkills?.Add(supportSkill);
+                CollectAffectedSkillPassiveSupportSkills(supportSkill, supportSkills, visitedSkillIds);
+            }
         }
 
         private SkillLevelData ResolveAffectedSkillPassiveSupportLevelData(
@@ -20734,6 +20941,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     animationTime = hitElapsed;
                     return hitAnimation;
                 }
+            }
+
+            if (summon?.OneTimeActionFallbackAnimation?.Frames.Count > 0
+                && SummonedPool.TryResolveOneTimeActionFallbackPlayback(summon, currentTime, out int fallbackAnimationTime))
+            {
+                animationTime = fallbackAnimationTime;
+                return summon.OneTimeActionFallbackAnimation;
             }
 
             string prepareBranchName = SummonRuntimeRules.ResolvePreparePlaybackBranch(skill);

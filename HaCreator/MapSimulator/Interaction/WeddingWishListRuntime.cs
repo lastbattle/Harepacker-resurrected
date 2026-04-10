@@ -91,6 +91,8 @@ namespace HaCreator.MapSimulator.Interaction
         private string _statusMessage = "Wedding wish-list dialog is idle.";
         private bool _seeded;
 
+        internal Action<string, int> SocialChatObserved { get; set; }
+
         internal void UpdateLocalContext(CharacterBuild build)
         {
             if (!string.IsNullOrWhiteSpace(build?.Name))
@@ -421,6 +423,7 @@ namespace HaCreator.MapSimulator.Interaction
             ClampSelections();
             EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
             _statusMessage = $"Inserted \"{ResolveItemLabel(enteredWish)}\" into the wedding wish list.";
+            NotifySocialChatObserved(ResolveItemLabel(enteredWish));
             return _statusMessage;
         }
 
@@ -1378,6 +1381,16 @@ namespace HaCreator.MapSimulator.Interaction
             _pendingPutSourceItem = null;
             _pendingPutQuantity = 1;
             _inputConfirmationArmed = false;
+        }
+
+        private void NotifySocialChatObserved(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message.Trim(), Environment.TickCount);
         }
 
         private void ApplyInputPaneFocusBehavior()

@@ -7,8 +7,14 @@ namespace HaCreator.MapSimulator.Interaction
     {
         internal static bool HasReusableProfileMetadata(this MessengerRemoteParticipantSnapshot snapshot)
         {
-            return snapshot.Level > 0
-                || !string.IsNullOrWhiteSpace(snapshot.JobName);
+            return string.Equals(snapshot.DataSourceLabel, "packet", System.StringComparison.OrdinalIgnoreCase)
+                && (snapshot.Level > 0
+                    || !string.IsNullOrWhiteSpace(snapshot.JobName));
+        }
+
+        internal static bool HasPacketOwnedRemoteUserSurface(this MessengerRemoteParticipantSnapshot snapshot)
+        {
+            return snapshot.AvatarLook != null || snapshot.HasReusableProfileMetadata();
         }
 
         internal static LoginAvatarLook ResolveRemoteAvatarLook(this MessengerRemoteParticipantSnapshot snapshot)
@@ -68,6 +74,11 @@ namespace HaCreator.MapSimulator.Interaction
             foreach (MessengerRemoteParticipantSnapshot snapshot in snapshots)
             {
                 if (string.IsNullOrWhiteSpace(snapshot.Name))
+                {
+                    continue;
+                }
+
+                if (!snapshot.HasPacketOwnedRemoteUserSurface())
                 {
                     continue;
                 }

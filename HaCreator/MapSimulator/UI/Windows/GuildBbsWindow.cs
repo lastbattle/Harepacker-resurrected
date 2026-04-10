@@ -990,8 +990,8 @@ namespace HaCreator.MapSimulator.UI
             _retouchButton?.SetVisible(!writeMode);
             _deleteButton?.SetVisible(!writeMode);
             _replyButton?.SetVisible(!writeMode);
-            _replyDeleteButton?.SetVisible(!writeMode);
-            _noticeButton?.SetVisible(true);
+            _replyDeleteButton?.SetVisible(false);
+            _noticeButton?.SetVisible(!writeMode);
             _quitButton?.SetVisible(true);
             _emoticonLeftButton?.SetVisible(writeMode || hasSelectedThread);
             _emoticonRightButton?.SetVisible(writeMode || hasSelectedThread);
@@ -1038,6 +1038,22 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateDynamicButtonLayout(GuildBbsSnapshot snapshot)
         {
+            bool writeMode = snapshot?.IsWriteMode == true;
+
+            PositionButton(_quitButton, 680, 501);
+            PositionButton(_registerButton, 602, 275);
+            PositionButton(_cancelButton, 664, 275);
+            PositionButton(_noticeButton, 404, 275);
+            PositionButton(_writeButton, 540, 275);
+            PositionButton(_retouchButton, 602, 275);
+            PositionButton(_deleteButton, 664, 275);
+            PositionButton(_replyButton, 704, 457);
+
+            if (!writeMode)
+            {
+                PositionButton(_replyDeleteButton, 690, 331);
+            }
+
             if (_emoticonLeftButton != null)
             {
                 _emoticonLeftButton.X = Position.X + 404;
@@ -1062,6 +1078,17 @@ namespace HaCreator.MapSimulator.UI
                 button.X = Position.X + 690;
                 button.Y = Position.Y + commentDeleteYs[index];
             }
+        }
+
+        private void PositionButton(UIObject button, int x, int y)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.X = Position.X + x;
+            button.Y = Position.Y + y;
         }
 
         private void MoveCashEmoticonPage(int delta)

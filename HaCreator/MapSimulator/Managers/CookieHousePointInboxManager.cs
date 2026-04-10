@@ -45,6 +45,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int ClientContextPointByteLength = 4;
         public const int ClientOpcodeFramedPointByteLength = ClientPacketOpcodeByteLength + ClientContextPointByteLength;
         public const int ClientContextPointOffset = 0x4148;
+        public const int ClientBitmapNumberDigitCount = 3;
+        public const int ClientMaximumDisplayPoint = 999;
 
         private readonly ConcurrentQueue<CookieHousePointInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -172,7 +174,8 @@ namespace HaCreator.MapSimulator.Managers
         {
             return string.Equals(token, "packetraw", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(token, "packet", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(token, "packetrecv", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(token, "packetrecv", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(token, "packetclientraw", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryParseRawContextPoint(

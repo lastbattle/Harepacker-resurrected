@@ -305,8 +305,8 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            _chat?.AddSystemMessage(noticeText, currTickCount);
-            message = $"Displayed the packet-owned fixed quest-result notice for subtype {resultType} (StringPool 0x{stringPoolId:X}).";
+            ShowPacketOwnedRewardResultNotice(noticeText);
+            message = $"Displayed the packet-owned fixed quest-result CUtilDlg::Notice for subtype {resultType} (StringPool 0x{stringPoolId:X}, bAutoSeparated = 0).";
             return true;
         }
 

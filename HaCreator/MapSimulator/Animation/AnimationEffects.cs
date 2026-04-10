@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.Animation
             public IReadOnlyList<List<IDXObject>> SpawnFrameVariants { get; init; }
             public bool SpawnRelativeToTarget { get; init; } = true;
             public bool SpawnUsesEmissionBox { get; init; }
+            public bool SpawnAppliesEmissionBias { get; init; }
             public int SpawnDurationMs { get; init; }
             public float SpawnTravelDistanceMin { get; init; }
             public float SpawnTravelDistanceMax { get; init; }
@@ -912,22 +913,29 @@ namespace HaCreator.MapSimulator.Animation
             Vector2 randomOffset,
             Rectangle emissionArea,
             bool useEmissionBox,
+            bool applyEmissionBias,
             float verticalEmissionBias,
             Random random)
         {
+            Vector2 startOffset;
             if (useEmissionBox)
             {
                 Vector2 emissionStart = ResolveFollowEmissionStartOffset(emissionArea, random);
-                return new Vector2(emissionStart.X, emissionStart.Y + verticalEmissionBias);
+                startOffset = emissionStart;
             }
-
-            if (hasGenerationPoints)
+            else if (hasGenerationPoints)
             {
-                return generationPointOffset;
+                startOffset = generationPointOffset;
+            }
+            else
+            {
+                float radialDistance = Math.Abs(randomOffset.X);
+                startOffset = ResolvePolarFollowOffset(radialDistance, angleDegrees);
             }
 
-            float radialDistance = Math.Abs(randomOffset.X);
-            return ResolvePolarFollowOffset(radialDistance, angleDegrees);
+            return applyEmissionBias
+                ? new Vector2(startOffset.X, startOffset.Y + verticalEmissionBias)
+                : startOffset;
         }
 
         internal static Vector2 ResolveFollowParticleEndOffset(
@@ -1022,7 +1030,24 @@ namespace HaCreator.MapSimulator.Animation
         float StartAlpha,
         float EndAlpha,
         int RiseDistancePx,
-        AnimationCanvasLayerBlendMode BlendMode);
+        AnimationCanvasLayerBlendMode BlendMode,
+        CanvasLayerRecoveredInsertCanvasSettings RecoveredInsertCanvasSettings,
+        CanvasLayerRecoveredMoveSettings RecoveredMoveSettings);
+
+    /// <summary>
+    /// Native InsertCanvas parameters recovered from CAnimationDisplayer::Effect_HP.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredInsertCanvasSettings(
+        int DurationMs,
+        int StartAlphaValue,
+        int EndAlphaValue);
+
+    /// <summary>
+    /// Native layer movement target recovered from CAnimationDisplayer::Effect_HP.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredMoveSettings(
+        Point StartOffset,
+        Point EndOffset);
 
     /// <summary>
     /// Recovered native layer values from CAnimationDisplayer::Effect_HP.
@@ -1082,12 +1107,14 @@ namespace HaCreator.MapSimulator.Animation
                     AnimationCanvasLayerContent.PrimaryCanvas,
                     Point.Zero,
                     0,
-                    holdDurationMs,
-                    0,
-                    1f,
-                    1f,
-                    0,
-                    AnimationCanvasLayerBlendMode.AlphaBlend),
+                holdDurationMs,
+                0,
+                1f,
+                1f,
+                0,
+                AnimationCanvasLayerBlendMode.AlphaBlend,
+                new CanvasLayerRecoveredInsertCanvasSettings(holdDurationMs, 255, 255),
+                new CanvasLayerRecoveredMoveSettings(Point.Zero, Point.Zero)),
                 new(
                     AnimationCanvasLayerContent.PrimaryCanvas,
                     Point.Zero,
@@ -1097,21 +1124,31 @@ namespace HaCreator.MapSimulator.Animation
                     1f,
                     0f,
                     riseDistancePx,
-                    AnimationCanvasLayerBlendMode.AlphaBlend),
+                    AnimationCanvasLayerBlendMode.AlphaBlend,
+                    new CanvasLayerRecoveredInsertCanvasSettings(fadeDurationMs, 255, 0),
+                    new CanvasLayerRecoveredMoveSettings(Point.Zero, new Point(0, -riseDistancePx))),
             };
 
             if (hasOverlay)
             {
+                int overlayHoldDurationMs = Math.Max(0, holdDurationMs - overlayDelayMs);
                 descriptors.Add(new CanvasLayerInsertDescriptor(
                     AnimationCanvasLayerContent.OverlayCanvas,
                     overlayOffset,
                     overlayDelayMs,
-                    Math.Max(0, holdDurationMs - overlayDelayMs),
+                    overlayHoldDurationMs,
                     fadeDurationMs,
                     1f,
                     0f,
                     riseDistancePx,
-                    AnimationCanvasLayerBlendMode.AlphaBlend));
+                    AnimationCanvasLayerBlendMode.AlphaBlend,
+                    new CanvasLayerRecoveredInsertCanvasSettings(
+                        overlayHoldDurationMs + fadeDurationMs,
+                        255,
+                        0),
+                    new CanvasLayerRecoveredMoveSettings(
+                        overlayOffset,
+                        new Point(overlayOffset.X, overlayOffset.Y - riseDistancePx))));
             }
 
             return descriptors.ToArray();
@@ -1663,6 +1700,7 @@ namespace HaCreator.MapSimulator.Animation
         private float _spawnTravelDistanceMin;
         private float _spawnTravelDistanceMax;
         private bool _spawnUsesEmissionBox;
+        private bool _spawnAppliesEmissionBias;
         private float _spawnVerticalEmissionBias;
         private Point _spawnOffsetMin;
         private Point _spawnOffsetMax;
@@ -1694,6 +1732,7 @@ namespace HaCreator.MapSimulator.Animation
             _spawnTravelDistanceMin = Math.Max(0f, options?.SpawnTravelDistanceMin ?? 0f);
             _spawnTravelDistanceMax = Math.Max(_spawnTravelDistanceMin, options?.SpawnTravelDistanceMax ?? _spawnTravelDistanceMin);
             _spawnUsesEmissionBox = options?.SpawnUsesEmissionBox ?? false;
+            _spawnAppliesEmissionBias = options?.SpawnAppliesEmissionBias ?? false;
             _spawnVerticalEmissionBias = options?.SpawnVerticalEmissionBias ?? 0f;
             _spawnOffsetMin = options?.SpawnOffsetMin ?? Point.Zero;
             _spawnOffsetMax = options?.SpawnOffsetMax ?? Point.Zero;
@@ -1774,11 +1813,12 @@ namespace HaCreator.MapSimulator.Animation
                                     _followOffset,
                                     hasGenerationPoints,
                                     particleAngleDegrees,
-                                    randomOffset,
-                                    _spawnArea,
-                                    _spawnUsesEmissionBox,
-                                    _spawnVerticalEmissionBias,
-                                    random)
+                                     randomOffset,
+                                     _spawnArea,
+                                     _spawnUsesEmissionBox,
+                                     _spawnAppliesEmissionBias,
+                                     _spawnVerticalEmissionBias,
+                                     random)
                                 : _followOffset;
                             Vector2 particleEndOffset;
                             if (useClientOffsetPath)

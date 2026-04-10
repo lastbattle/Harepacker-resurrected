@@ -9,6 +9,12 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private readonly WeddingWishListRuntime _runtime = new();
 
+        internal Action<string, int> SocialChatObserved
+        {
+            get => _runtime.SocialChatObserved;
+            set => _runtime.SocialChatObserved = value;
+        }
+
         internal void UpdateLocalContext(CharacterBuild build)
         {
             _runtime.UpdateLocalContext(build);

@@ -251,6 +251,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && normalizedIsKeydownSkill
                 && supportsAutoHold
                 && (normalizedDurationMs > 0
+                    || (hasHoldWindow && UsesReleaseTriggeredExecution(skillId))
                     || (hasHoldWindow && explicitAutoEnterHold));
 
             if (autoEnterHold)

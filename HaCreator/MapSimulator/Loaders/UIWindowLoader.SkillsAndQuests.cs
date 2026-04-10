@@ -366,7 +366,11 @@ namespace HaCreator.MapSimulator.Loaders
         /// <param name="skillWindow">The skill window to populate</param>
         /// <param name="jobId">The character's current job ID (e.g., 212 for Bishop)</param>
         /// <param name="device">Graphics device for texture creation</param>
-        public static void LoadSkillsForJob(SkillUIBigBang skillWindow, int jobId, GraphicsDevice device)
+        public static void LoadSkillsForJob(
+            SkillUIBigBang skillWindow,
+            int jobId,
+            GraphicsDevice device,
+            IEnumerable<int> learnedSkillIds = null)
         {
             if (skillWindow == null)
                 return;
@@ -379,7 +383,7 @@ namespace HaCreator.MapSimulator.Loaders
                 skillWindow.SetUseDualTabStrip(IsDualBladeJob(jobId));
 
 
-                var pathJobIds = GetDisplayedSkillBookJobIdsForJob(jobId);
+                var pathJobIds = GetVisibleSkillRootIdsForJob(jobId, learnedSkillIds);
                 var visibleTabs = new HashSet<int>();
                 foreach (int pathJobId in pathJobIds)
                 {
@@ -387,9 +391,8 @@ namespace HaCreator.MapSimulator.Loaders
                 }
 
 
-                // `CUISkill::GetSkillRootVisible` refreshes the visible skill roots from
-                // the current job path. Mirror that at the tab layer so the simulator only
-                // exposes books the active job can actually browse.
+                // `CSkillInfo::GetSkillRootVisible` starts from client-owned root objects
+                // and keeps roots visible for the active lineage or learned skill records.
                 skillWindow.SetVisibleTabs(visibleTabs);
                 skillWindow.ConfigureAranGuideButtons(GetAranGuideUnlockedGrade(jobId));
 
@@ -626,6 +629,26 @@ namespace HaCreator.MapSimulator.Loaders
                 910 => new[] { 910, 900 },
                 _ => new[] { jobId }
             };
+        }
+
+
+        private static IReadOnlyList<int> GetVisibleSkillRootIdsForJob(int jobId, IEnumerable<int> learnedSkillIds)
+        {
+            if (ShouldLoadFocusedJobOnly(jobId))
+                return new[] { jobId };
+
+            var availableRootIds = SkillDataLoader.GetAvailableSkillBookJobIds(null);
+            if (availableRootIds.Count == 0)
+                return GetDisplayedSkillBookJobIdsForJob(jobId);
+
+            var visibleRootIds = SkillRootVisibilityResolver.ResolveVisibleSkillRootIds(
+                jobId,
+                availableRootIds,
+                learnedSkillIds,
+                SkillDataLoader.SkillRootContainsSkill);
+            return visibleRootIds.Count > 0
+                ? visibleRootIds
+                : GetDisplayedSkillBookJobIdsForJob(jobId);
         }
 
 

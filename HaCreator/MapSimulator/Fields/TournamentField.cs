@@ -679,6 +679,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int MatchTableStatusMin = 2;
         private const int MatchTableStatusMax = 5;
         private const int MaxScroll = 2;
+        private const int MatchTableDialogTitleStringPoolId = 0x752;
+        private const string DialogTitleFallback = "Tournament Match Table";
 
         private static readonly Point[] RoundOneNamePoints =
         {
@@ -729,6 +731,8 @@ namespace HaCreator.MapSimulator.Fields
         public int PayloadLength { get; private set; }
         public int RawTableLength => _rawTable.Length;
         public string Summary { get; private set; }
+        public string DialogTitle { get; private set; }
+        public int DialogTitleStringPoolId => IsVisible ? MatchTableDialogTitleStringPoolId : 0;
         public IReadOnlyList<string> SlotNames => _slotNames;
         public bool HasExactCtorPayloadShape => PayloadLength == ExactPayloadLength && _rawTable.Length == RawTableByteCount;
 
@@ -739,6 +743,7 @@ namespace HaCreator.MapSimulator.Fields
             Scroll = MaxScroll;
             PayloadLength = 0;
             Summary = null;
+            DialogTitle = null;
             _rawTable = Array.Empty<byte>();
             Array.Clear(_matchValues, 0, _matchValues.Length);
             Array.Fill(_slotNames, string.Empty);
@@ -767,6 +772,7 @@ namespace HaCreator.MapSimulator.Fields
 
             DecodeMatchValues();
             DecodeSlotNames();
+            DialogTitle = ResolveDialogTitle();
 
             string firstNames = string.Join(", ", _slotNames.Where(name => !string.IsNullOrWhiteSpace(name)).Take(4));
             if (string.IsNullOrWhiteSpace(firstNames))
@@ -774,7 +780,7 @@ namespace HaCreator.MapSimulator.Fields
                 firstNames = "no printable entrant names recovered";
             }
 
-            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), state-byte={Stage} [{ResolveStateLabel()}], scroll={Scroll}, preview={firstNames}).";
+            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), state-byte={Stage} [{ResolveStateLabel()}], title StringPool=0x{DialogTitleStringPoolId:X}, title=\"{DialogTitle}\", scroll={Scroll}, preview={firstNames}).";
             summary = Summary;
             return true;
         }
@@ -812,7 +818,7 @@ namespace HaCreator.MapSimulator.Fields
                 names = "none recovered";
             }
 
-            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | exactCtorShape={HasExactCtorPayloadShape} | state-byte={Stage} [{ResolveStateLabel()}] | scroll={Scroll} | entrants={names}";
+            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | exactCtorShape={HasExactCtorPayloadShape} | state-byte={Stage} [{ResolveStateLabel()}] | title=0x{DialogTitleStringPoolId:X} \"{DialogTitle}\" | scroll={Scroll} | entrants={names}";
         }
 
         public int GetMatchValue(int slotIndex, int valueIndex)
@@ -921,7 +927,7 @@ namespace HaCreator.MapSimulator.Fields
             TournamentField.DrawShadowedText(
                 spriteBatch,
                 font,
-                $"stage={Stage} | scroll={Scroll} | client owner={MatchTableDialogOwnerText}",
+                $"stage={Stage} | scroll={Scroll} | title=0x{DialogTitleStringPoolId:X} | client owner={MatchTableDialogOwnerText}",
                 new Vector2(tableRect.X + Scale(10, scale), tableRect.Y + Scale(6, scale)),
                 Color.White,
                 Math.Max(0.7f, 0.82f * scale));
@@ -1279,6 +1285,14 @@ namespace HaCreator.MapSimulator.Fields
                 5 => "champion",
                 _ => "raw"
             };
+        }
+
+        private static string ResolveDialogTitle()
+        {
+            return MapleStoryStringPool.TryGet(MatchTableDialogTitleStringPoolId, out string title)
+                && !string.IsNullOrWhiteSpace(title)
+                ? title.Trim()
+                : DialogTitleFallback;
         }
 
         private static string TrimLabel(string text, int maxLength)

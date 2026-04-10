@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
+using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using MapleLib.WzLib;
@@ -26,6 +27,7 @@ namespace HaCreator.MapSimulator
         private const string PacketOwnedLogoutGiftUiPath = "LogoutGift/backgrnd";
         private const int PacketOwnedLogoutGiftCompletionStringPoolId = 0x16AB;
         private const string PacketOwnedLogoutGiftCompletionFallbackText = "Congratulations! Please come back in 3 days. Thank you!";
+        private const int PacketOwnedLogoutGiftSpecialItemFamily = 91;
         private const int PacketOwnedLogoutGiftPredictQuitContextDwordIndex = 4137;
         private const int PacketOwnedLogoutGiftCommodityContextDwordIndex = 4138;
 
@@ -65,7 +67,7 @@ namespace HaCreator.MapSimulator
             window.ConfigureVisualAssets(LoadPacketOwnedLogoutGiftFrameTexture());
             window.Position = ResolvePacketOwnedLogoutGiftWindowPosition(window);
             window.SetSnapshotProvider(BuildPacketOwnedLogoutGiftSnapshot);
-            window.SetItemIconProvider(LoadInventoryItemIcon);
+            window.SetItemIconProvider(LoadPacketOwnedLogoutGiftItemIcon);
             window.SetActionHandlers(HandlePacketOwnedLogoutGiftSelection, ClosePacketOwnedLogoutGiftWindow, ShowUtilityFeedbackMessage);
             if (_fontChat != null)
             {
@@ -95,7 +97,14 @@ namespace HaCreator.MapSimulator
                 if (commoditySerialNumber > 0
                     && AdminShopDialogUI.TryResolveCommodityBySerialNumber(commoditySerialNumber, out itemId, out price, out count, out onSale))
                 {
-                    InventoryItemMetadataResolver.TryResolveItemName(itemId, out itemName);
+                    if (IsPacketOwnedLogoutGiftSpecialItem(itemId))
+                    {
+                        TryResolvePacketOwnedLogoutGiftSpecialItemName(itemId, out itemName);
+                    }
+                    else
+                    {
+                        InventoryItemMetadataResolver.TryResolveItemName(itemId, out itemName);
+                    }
                 }
 
                 entries.Add(new LogoutGiftEntrySnapshot
@@ -455,6 +464,60 @@ namespace HaCreator.MapSimulator
             WzImage uiWindowImage = global::HaCreator.Program.FindImage("UI", imageName.Trim());
             WzCanvasProperty backgroundCanvas = uiWindowImage?[propertyPath.Trim()] as WzCanvasProperty;
             return LoadUiCanvasTexture(backgroundCanvas);
+        }
+
+        private Texture2D LoadPacketOwnedLogoutGiftItemIcon(int itemId)
+        {
+            return IsPacketOwnedLogoutGiftSpecialItem(itemId)
+                ? LoadPacketOwnedLogoutGiftSpecialItemIcon(itemId)
+                : LoadInventoryItemIcon(itemId);
+        }
+
+        private Texture2D LoadPacketOwnedLogoutGiftSpecialItemIcon(int itemId)
+        {
+            if (GraphicsDevice == null || !TryResolvePacketOwnedLogoutGiftSpecialItemProperty(itemId, out WzSubProperty itemProperty))
+            {
+                return null;
+            }
+
+            WzCanvasProperty iconCanvas = itemProperty?["icon"] as WzCanvasProperty;
+            return iconCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(GraphicsDevice);
+        }
+
+        private static bool TryResolvePacketOwnedLogoutGiftSpecialItemName(int itemId, out string itemName)
+        {
+            itemName = null;
+            if (!TryResolvePacketOwnedLogoutGiftSpecialItemProperty(itemId, out WzSubProperty itemProperty))
+            {
+                return false;
+            }
+
+            itemName = (itemProperty?["name"] as WzStringProperty)?.Value;
+            return !string.IsNullOrWhiteSpace(itemName);
+        }
+
+        private static bool TryResolvePacketOwnedLogoutGiftSpecialItemProperty(int itemId, out WzSubProperty itemProperty)
+        {
+            itemProperty = null;
+            if (!IsPacketOwnedLogoutGiftSpecialItem(itemId))
+            {
+                return false;
+            }
+
+            WzImage specialImage = global::HaCreator.Program.FindImage("Item", $"Special/{itemId / 10000:D4}");
+            if (specialImage == null)
+            {
+                return false;
+            }
+
+            specialImage.ParseImage();
+            itemProperty = specialImage[itemId.ToString("D7", CultureInfo.InvariantCulture)] as WzSubProperty;
+            return itemProperty != null;
+        }
+
+        private static bool IsPacketOwnedLogoutGiftSpecialItem(int itemId)
+        {
+            return itemId / 100000 == PacketOwnedLogoutGiftSpecialItemFamily;
         }
 
         private string DescribePacketOwnedLogoutGiftLeadingTail()

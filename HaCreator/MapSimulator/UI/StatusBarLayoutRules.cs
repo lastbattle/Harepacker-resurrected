@@ -14,6 +14,22 @@ namespace HaCreator.MapSimulator.UI
             return BaseLevelSlotX - ((digitCount - 1) * LevelDigitSlotStep);
         }
 
+        public static float ResolveLeftClusterJobTextMaxWidth(int leftClusterWidth, float jobTextX, float defaultMaxWidth)
+        {
+            float availableWidth = ResolveLeftClusterTextMaxWidth(leftClusterWidth, jobTextX);
+            return availableWidth <= 0f
+                ? defaultMaxWidth
+                : Math.Min(defaultMaxWidth, availableWidth);
+        }
+
+        public static float ResolveLeftClusterNameTextMaxWidth(int leftClusterWidth, float nameTextX, float defaultMaxWidth)
+        {
+            float availableWidth = ResolveLeftClusterTextMaxWidth(leftClusterWidth, nameTextX);
+            return availableWidth <= 0f
+                ? defaultMaxWidth
+                : availableWidth;
+        }
+
         public static string FormatJobLabel(string jobName)
         {
             string resolvedName = SanitizeSingleLineText(jobName);
@@ -36,6 +52,16 @@ namespace HaCreator.MapSimulator.UI
         {
             string resolvedName = SanitizeSingleLineText(name);
             return string.IsNullOrWhiteSpace(resolvedName) ? "Player" : resolvedName;
+        }
+
+        private static float ResolveLeftClusterTextMaxWidth(int leftClusterWidth, float textX)
+        {
+            if (leftClusterWidth <= textX + 8f)
+            {
+                return 0f;
+            }
+
+            return Math.Max(1f, leftClusterWidth - textX - 4f);
         }
 
         private static string SanitizeSingleLineText(string text)

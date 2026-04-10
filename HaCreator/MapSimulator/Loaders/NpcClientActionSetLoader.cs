@@ -18,17 +18,14 @@ namespace HaCreator.MapSimulator.Loaders
 {
     internal static class NpcClientActionSetLoader
     {
-        private static readonly string[] StandClientActionCandidates =
+        private static readonly string[] ActionZeroClientActionCandidates =
         {
             Animation.AnimationKeys.Stand,
             "default"
         };
 
-        private static readonly string[] DialogClientActionCandidates =
+        private static readonly string[] ActionOneClientActionCandidates =
         {
-            "say",
-            "shop",
-            Animation.AnimationKeys.Speak,
             Animation.AnimationKeys.Stand
         };
 
@@ -50,7 +47,7 @@ namespace HaCreator.MapSimulator.Loaders
             Func<int, string> questRecordValueProvider = null,
             int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
         {
-            WzImage source = npcInstance?.NpcInfo?.LinkedWzImage;
+            WzImage source = NpcImgEntryResolver.Resolve(npcInstance?.NpcInfo);
             int templateId = ResolveTemplateId(source);
             List<NpcClientActionSetDefinition> actionSets = GetClientActionSets(source);
 
@@ -200,8 +197,10 @@ namespace HaCreator.MapSimulator.Loaders
         {
             IEnumerable<string> fixedCandidates = clientActionId switch
             {
-                0 => StandClientActionCandidates,
-                1 => DialogClientActionCandidates,
+                0 => ActionZeroClientActionCandidates,
+                // CActionMan::LoadNpcAction indexes the static NPC action-name table before WZ lookup.
+                // Shop-style UI owners default to action 1, and WZ shop NPCs publish only `stand` for that path.
+                1 => ActionOneClientActionCandidates,
                 _ => Array.Empty<string>()
             };
 

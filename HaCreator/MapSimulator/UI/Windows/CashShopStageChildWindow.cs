@@ -171,6 +171,7 @@ namespace HaCreator.MapSimulator.UI
         private int _listButtonFocusIndex = -1;
         private string _listActionState = "List selector idle.";
         private string _statusActionState = "Status strip idle.";
+        private int _statusButtonFocusIndex;
         private int _oneADaySelectorIndex;
         private int _oneADayPlateFocusIndex;
         private bool _oneADayShortcutHelpActive;
@@ -608,6 +609,15 @@ namespace HaCreator.MapSimulator.UI
                 sprite.DrawString(_font, $"Charge param {state.ChargeParam.ToString(CultureInfo.InvariantCulture)}", new Vector2(Position.X + contentBounds.X + 12, lineY), detailColor);
                 lineY += _font.LineSpacing;
             }
+
+            string[] buttonNames = GetStatusButtonKeys();
+            int focusIndex = Math.Clamp(_statusButtonFocusIndex, 0, buttonNames.Length - 1);
+            sprite.DrawString(
+                _font,
+                string.Join("  ", buttonNames.Select((name, index) => index == focusIndex ? $">{name}" : $" {name}")),
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                accentColor);
+            lineY += _font.LineSpacing;
 
             DrawWrapped(sprite, _statusActionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
             DrawWrapped(sprite, state.StatusMessage, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
@@ -1051,6 +1061,12 @@ namespace HaCreator.MapSimulator.UI
                 "BtExit" => "CCSWnd_Status armed the parent-stage exit path.",
                 _ => _statusActionState
             };
+
+            int focusIndex = Array.IndexOf(GetStatusButtonKeys(), actionKey);
+            if (focusIndex >= 0)
+            {
+                _statusButtonFocusIndex = focusIndex;
+            }
         }
 
         private void ApplyOneADayButtonState(string actionKey)
@@ -1119,6 +1135,10 @@ namespace HaCreator.MapSimulator.UI
                 case MapSimulatorWindowNames.CashShopList:
                 case MapSimulatorWindowNames.ItcList:
                     HandleListKeyboard(keyboardState);
+                    break;
+                case MapSimulatorWindowNames.CashShopStatus:
+                case MapSimulatorWindowNames.ItcStatus:
+                    HandleStatusKeyboard(keyboardState);
                     break;
                 case MapSimulatorWindowNames.CashShopOneADay:
                     HandleOneADayKeyboard(keyboardState);
@@ -1254,6 +1274,70 @@ namespace HaCreator.MapSimulator.UI
             {
                 ApplyStatusMessage(InvokeExternalAction("BtReserve"));
             }
+        }
+
+        private void HandleStatusKeyboard(KeyboardState keyboardState)
+        {
+            string[] buttonKeys = GetStatusButtonKeys();
+            if (buttonKeys.Length == 0)
+            {
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Left))
+            {
+                StepStatusButtonFocus(-1, buttonKeys);
+            }
+            else if (WasPressed(keyboardState, Keys.Right) || WasPressed(keyboardState, Keys.Tab))
+            {
+                StepStatusButtonFocus(1, buttonKeys);
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                _statusButtonFocusIndex = 0;
+                _statusActionState = $"CCSWnd_Status moved key focus to {buttonKeys[_statusButtonFocusIndex]}.";
+                _statusMessage = _statusActionState;
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                _statusButtonFocusIndex = buttonKeys.Length - 1;
+                _statusActionState = $"CCSWnd_Status moved key focus to {buttonKeys[_statusButtonFocusIndex]}.";
+                _statusMessage = _statusActionState;
+            }
+            else if (WasPressed(keyboardState, Keys.C))
+            {
+                ActivateStatusButton("BtCharge");
+            }
+            else if (WasPressed(keyboardState, Keys.B))
+            {
+                ActivateStatusButton("BtCheck");
+            }
+            else if (!IsItcStatusOwnerWindow() && WasPressed(keyboardState, Keys.O))
+            {
+                ActivateStatusButton("BtCoupon");
+            }
+            else if (WasPressed(keyboardState, Keys.Escape))
+            {
+                ActivateStatusButton("BtExit");
+            }
+            else if (WasPressed(keyboardState, Keys.Enter) || WasPressed(keyboardState, Keys.Space))
+            {
+                _statusButtonFocusIndex = Math.Clamp(_statusButtonFocusIndex, 0, buttonKeys.Length - 1);
+                ActivateStatusButton(buttonKeys[_statusButtonFocusIndex]);
+            }
+        }
+
+        private void StepStatusButtonFocus(int delta, string[] buttonKeys)
+        {
+            _statusButtonFocusIndex = (_statusButtonFocusIndex + buttonKeys.Length + delta) % buttonKeys.Length;
+            _statusActionState = $"CCSWnd_Status moved key focus to {buttonKeys[_statusButtonFocusIndex]}.";
+            _statusMessage = _statusActionState;
+        }
+
+        private void ActivateStatusButton(string actionKey)
+        {
+            ApplyStatusButtonState(actionKey);
+            ApplyStatusMessage(InvokeExternalAction(actionKey));
         }
 
         private void HandleOneADayKeyboard(KeyboardState keyboardState)
@@ -1608,6 +1692,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string baseName = string.IsNullOrWhiteSpace(state?.PlateCanvasBaseName) ? "NoItem" : state.PlateCanvasBaseName;
+            if (string.Equals(baseName, "NoItem", StringComparison.Ordinal))
+            {
+                return Math.Clamp(_oneADayPlateFocusIndex, 0, 2) switch
+                {
+                    0 => "NoItem",
+                    1 => "NoItem0",
+                    _ => "NoItem1"
+                };
+            }
+
             return _oneADayPlateFocusIndex == 0
                 ? baseName
                 : $"{baseName}{_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}";
@@ -1717,7 +1811,21 @@ namespace HaCreator.MapSimulator.UI
                 || _windowName == MapSimulatorWindowNames.ItcInventory
                 || _windowName == MapSimulatorWindowNames.CashShopList
                 || _windowName == MapSimulatorWindowNames.ItcList
+                || _windowName == MapSimulatorWindowNames.CashShopStatus
+                || _windowName == MapSimulatorWindowNames.ItcStatus
                 || _windowName == MapSimulatorWindowNames.CashShopOneADay;
+        }
+
+        private string[] GetStatusButtonKeys()
+        {
+            return IsItcStatusOwnerWindow()
+                ? new[] { "BtCharge", "BtCheck", "BtExit" }
+                : new[] { "BtCharge", "BtCheck", "BtCoupon", "BtExit" };
+        }
+
+        private bool IsItcStatusOwnerWindow()
+        {
+            return string.Equals(_windowName, MapSimulatorWindowNames.ItcStatus, StringComparison.Ordinal);
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

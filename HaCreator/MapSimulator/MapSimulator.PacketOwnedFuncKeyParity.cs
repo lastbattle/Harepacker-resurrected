@@ -168,6 +168,12 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            if (CountConfiguredPacketOwnedFuncKeyEntries(_packetOwnedFuncKeyMapped) == 0)
+            {
+                LoadPacketOwnedFuncKeyMappedEntriesFromSimulatorBindings(_playerManager?.Input);
+                CopyPacketOwnedFuncKeyMap(_packetOwnedFuncKeyMapped, _packetOwnedFuncKeyMappedOld);
+            }
+
             int translatedBindings = ApplyPacketOwnedFuncKeyMappingsToLiveInput(_playerManager?.Input);
 
             _lastPacketOwnedFuncKeyInitMessage = string.Format(
@@ -234,7 +240,7 @@ namespace HaCreator.MapSimulator
                 }
                 else
                 {
-                    Array.Clear(_packetOwnedFuncKeyMapped, 0, _packetOwnedFuncKeyMapped.Length);
+                    LoadPacketOwnedFuncKeyMappedEntriesFromSimulatorBindings(_playerManager?.Input);
                 }
             }
             else
@@ -592,6 +598,47 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private void LoadPacketOwnedFuncKeyMappedEntriesFromSimulatorBindings(PlayerInput input)
+        {
+            Array.Clear(_packetOwnedFuncKeyMapped, 0, _packetOwnedFuncKeyMapped.Length);
+            if (input == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
+            {
+                (int clientFunctionId, InputAction action) = PacketOwnedKnownFunctionBindings[i];
+                KeyBinding binding = input.GetBinding(action);
+                if (binding == null)
+                {
+                    continue;
+                }
+
+                if (TrySetPacketOwnedFuncKeyMappedEntryFromSimulatorBinding(binding.PrimaryKey, clientFunctionId))
+                {
+                    continue;
+                }
+
+                TrySetPacketOwnedFuncKeyMappedEntryFromSimulatorBinding(binding.SecondaryKey, clientFunctionId);
+            }
+        }
+
+        private bool TrySetPacketOwnedFuncKeyMappedEntryFromSimulatorBinding(Keys key, int clientFunctionId)
+        {
+            if (!TryResolvePacketOwnedKeyScanCode(key, out int scanCode)
+                || scanCode < 0
+                || scanCode >= _packetOwnedFuncKeyMapped.Length)
+            {
+                return false;
+            }
+
+            _packetOwnedFuncKeyMapped[scanCode] = new PacketOwnedFuncKeyMappedEntry(
+                PacketOwnedFuncKeyFunctionType,
+                clientFunctionId);
+            return true;
+        }
+
         private KeyConfigWindow.ClientOwnerState ResolvePacketOwnedKeyConfigClientOwnerState(InputAction action)
         {
             for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
@@ -633,7 +680,8 @@ namespace HaCreator.MapSimulator
                 clientKey: key,
                 packetEntryType: entry.Type,
                 packetEntryId: entry.Id,
-                packetScanCode: scanCode);
+                packetScanCode: scanCode,
+                packetBindableSlotIndex: slotIndex);
         }
 
         private KeyConfigWindow.ShortcutVisualState ResolvePacketOwnedKeyConfigShortcutVisualState(InputAction action)
@@ -656,7 +704,11 @@ namespace HaCreator.MapSimulator
             {
                 InventoryType inventoryType = _playerManager.Skills.GetHotkeyItemInventoryType(slotIndex);
                 int itemCount = _playerManager.Skills.GetHotkeyItemCount(slotIndex);
-                return BuildPacketOwnedKeyConfigItemShortcutVisualState(itemId, inventoryType, itemCount);
+                byte packetEntryType = TryResolvePacketOwnedCastEntryForBindableHotkeyAction(action, out PacketOwnedFuncKeyMappedEntry entry, out _)
+                    && entry.Id == itemId
+                        ? entry.Type
+                        : PacketOwnedFuncKeyItemType;
+                return BuildPacketOwnedKeyConfigItemShortcutVisualState(itemId, inventoryType, itemCount, packetEntryType);
             }
 
             int macroIndex = _playerManager.Skills.GetHotkeyMacroIndex(slotIndex);
@@ -691,7 +743,8 @@ namespace HaCreator.MapSimulator
         private KeyConfigWindow.ShortcutVisualState BuildPacketOwnedKeyConfigItemShortcutVisualState(
             int itemId,
             InventoryType inventoryType,
-            int itemCount)
+            int itemCount,
+            byte packetEntryType)
         {
             string title = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string itemName)
                 && !string.IsNullOrWhiteSpace(itemName)
@@ -700,14 +753,23 @@ namespace HaCreator.MapSimulator
             string inventoryLabel = inventoryType != InventoryType.NONE
                 ? inventoryType.ToString()
                 : "Unknown";
-            bool unavailable = itemCount <= 0;
-            string detail = unavailable
-                ? $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is mapped, but the live inventory count is empty."
-                : $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is staged through the live hotkey map.";
-            string badgeText = inventoryType == InventoryType.CASH
+            bool drawsStackNumber = packetEntryType == PacketOwnedFuncKeyItemType;
+            bool drawsUnavailableOverlay = packetEntryType == PacketOwnedFuncKeyItemTypeAlt && itemCount <= 0;
+            bool isCashItemEntry = packetEntryType == PacketOwnedFuncKeyItemTypeCash;
+            string clientLayer = packetEntryType switch
+            {
+                PacketOwnedFuncKeyItemType => "client item stack-number layer",
+                PacketOwnedFuncKeyItemTypeAlt => "client item availability overlay layer",
+                PacketOwnedFuncKeyItemTypeCash => "client cash-item icon layer",
+                _ => "client item icon layer",
+            };
+            string detail = drawsUnavailableOverlay
+                ? $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is mapped through the {clientLayer}, but the live inventory count is empty."
+                : $"Packet-owned {inventoryLabel.ToLowerInvariant()} item entry {itemId} is staged through the {clientLayer}.";
+            string badgeText = isCashItemEntry || inventoryType == InventoryType.CASH
                 ? "CASH"
                 : "ITEM";
-            string quantityText = itemCount > 1
+            string quantityText = drawsStackNumber && itemCount > 1
                 ? itemCount.ToString(CultureInfo.InvariantCulture)
                 : string.Empty;
             return new KeyConfigWindow.ShortcutVisualState(
@@ -716,7 +778,7 @@ namespace HaCreator.MapSimulator
                 detail,
                 badgeText: badgeText,
                 quantityText: quantityText,
-                unavailable: unavailable);
+                unavailable: drawsUnavailableOverlay);
         }
 
         private Texture2D ResolvePacketOwnedKeyConfigItemIcon(int itemId, InventoryType inventoryType)
@@ -746,11 +808,36 @@ namespace HaCreator.MapSimulator
                 : $"Packet-owned macro entry {macroIndex + 1} is staged through the live hotkey map, but the macro is still empty.";
             bool unavailable = macro == null || !macro.IsEnabled || configuredSkillCount <= 0;
             return new KeyConfigWindow.ShortcutVisualState(
-                displaySkill?.IconTexture,
+                uiWindowManager?.SkillMacroWindow?.GetMacroIconTexture(macroIndex, enabled: macro?.IsEnabled == true)
+                    ?? displaySkill?.IconTexture,
                 title,
                 detail,
                 badgeText: $"M{macroIndex + 1}",
                 unavailable: unavailable);
+        }
+
+        private bool TryResolvePacketOwnedCastEntryForBindableHotkeyAction(
+            InputAction action,
+            out PacketOwnedFuncKeyMappedEntry entry,
+            out int scanCode)
+        {
+            entry = default;
+            scanCode = -1;
+            if (!TryResolvePacketOwnedBindableHotkeySlotIndex(action, out int slotIndex)
+                || slotIndex < 0
+                || slotIndex >= _packetOwnedBindableHotkeyAssignedScanCodes.Length)
+            {
+                return false;
+            }
+
+            scanCode = _packetOwnedBindableHotkeyAssignedScanCodes[slotIndex];
+            if (scanCode < 0)
+            {
+                return false;
+            }
+
+            entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
+            return IsPacketOwnedCastEntryType(entry.Type) && entry.Id > 0;
         }
 
         private static int ResolvePacketOwnedMacroDisplaySkillId(SkillMacro macro)
@@ -1032,6 +1119,22 @@ namespace HaCreator.MapSimulator
             return !handledByLiveHotkeyBinding
                 && key != Keys.None
                 && !IsPacketOwnedHotkeyKeyProtected(input, key);
+        }
+
+        internal static bool TryResolvePacketOwnedKnownFunctionBinding(InputAction action, out int clientFunctionId)
+        {
+            for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
+            {
+                (int candidateClientFunctionId, InputAction candidateAction) = PacketOwnedKnownFunctionBindings[i];
+                if (candidateAction == action)
+                {
+                    clientFunctionId = candidateClientFunctionId;
+                    return true;
+                }
+            }
+
+            clientFunctionId = -1;
+            return false;
         }
 
         private static int ComposePacketOwnedFuncKeyInputToken(int scanCode)
@@ -1336,6 +1439,24 @@ namespace HaCreator.MapSimulator
                 0u => Keys.None,
                 _ => (Keys)virtualKey,
             };
+        }
+
+        private static bool TryResolvePacketOwnedKeyScanCode(Keys key, out int scanCode)
+        {
+            scanCode = -1;
+            if (key == Keys.None)
+            {
+                return false;
+            }
+
+            uint mappedScanCode = MapVirtualKey((uint)key, 0);
+            if (mappedScanCode == 0 || mappedScanCode >= PacketOwnedFuncKeyEntryCount)
+            {
+                return false;
+            }
+
+            scanCode = (int)mappedScanCode;
+            return true;
         }
 
         private static void CopyPacketOwnedFuncKeyMap(PacketOwnedFuncKeyMappedEntry[] source, PacketOwnedFuncKeyMappedEntry[] destination)

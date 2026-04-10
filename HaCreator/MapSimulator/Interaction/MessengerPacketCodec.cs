@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Managers;
+using MapleLib.PacketLib;
 using System;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -86,7 +87,42 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class MessengerPacketCodec
     {
+        internal const ushort ClientMessengerResultOpcode = 372;
+        internal const ushort ClientMessengerRequestOpcode = 143;
         private const string ChatSeparator = " : ";
+
+        public static bool TryParseClientOpcodePacket(ReadOnlySpan<byte> packet, out byte[] dispatchPayload, out string error)
+        {
+            dispatchPayload = Array.Empty<byte>();
+            error = null;
+
+            if (packet.Length < 3)
+            {
+                error = "Messenger client opcode packet must include a 2-byte opcode and subtype byte.";
+                return false;
+            }
+
+            ushort opcode = (ushort)(packet[0] | (packet[1] << 8));
+            if (opcode != ClientMessengerResultOpcode)
+            {
+                error = $"Unsupported Messenger client opcode {opcode}. Expected {ClientMessengerResultOpcode} for CUIMessenger::OnPacket.";
+                return false;
+            }
+
+            dispatchPayload = packet[2..].ToArray();
+            return true;
+        }
+
+        public static byte[] BuildBlockedAutoRejectOutPacket(string inviterName, string localCharacterName)
+        {
+            PacketWriter writer = new();
+            writer.WriteShort(ClientMessengerRequestOpcode);
+            writer.WriteByte(5);
+            writer.WriteMapleString(inviterName ?? string.Empty);
+            writer.WriteMapleString(localCharacterName ?? string.Empty);
+            writer.WriteByte(1);
+            return writer.ToArray();
+        }
 
         public static bool TryParseClientDispatch(ReadOnlySpan<byte> payload, out byte packetType, out byte[] body, out string error)
         {

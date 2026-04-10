@@ -781,6 +781,7 @@ namespace HaCreator.MapSimulator
         private int _loginUtilityDialogInputMaxLength;
         private Rectangle? _loginUtilityDialogInputBoundsOverride;
         private string _loginUtilityDialogReturnWindowName = string.Empty;
+        private bool _loginUtilityDialogAllowedOutsideLogin;
         private int? _loginAccountId;
         private bool _loginAccountAcceptedEula;
         private string _loginAccountPicCode = string.Empty;
@@ -3241,12 +3242,12 @@ namespace HaCreator.MapSimulator
             {
                 familyChartWindow.SetSnapshotProvider(_familyChartRuntime.BuildChartSnapshot);
                 familyChartWindow.SetActionHandlers(
-                    () =>
-                    {
-                        ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyTree);
-                        return "Opened the dedicated family tree.";
-                    },
-                    () => _familyChartRuntime.CyclePrecept(),
+                () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyTree);
+                    return "Opened the dedicated family tree.";
+                },
+                    ShowFamilyPreceptInputDialog,
                     () => _familyChartRuntime.AddJunior(),
                     delta => ShowUtilityFeedbackMessage(_familyChartRuntime.MoveEntitlementSelection(delta)),
                     () =>
@@ -3529,6 +3530,8 @@ namespace HaCreator.MapSimulator
                 eventWindow.SetFont(_fontChat);
                 eventWindow.SetSnapshotProvider(BuildUtilityEventSnapshot);
             }
+
+            WireAccountMoreInfoWindow();
 
             ApplyUtilityAudioSettings();
         }
@@ -4607,6 +4610,7 @@ namespace HaCreator.MapSimulator
 
 
             roomWindow.Runtime.BindInventory(inventoryWindow);
+            roomWindow.Runtime.AvatarBuildResolver = CreateMiniRoomAvatarBuild;
             roomWindow.Runtime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
 
             roomWindow.SetFont(_fontChat);
@@ -5956,7 +5960,7 @@ namespace HaCreator.MapSimulator
             }
 
             NpcInfo npcInfo = NpcInfo.Get(npcTemplateId.ToString(CultureInfo.InvariantCulture));
-            WzImage source = npcInfo?.LinkedWzImage;
+            WzImage source = NpcImgEntryResolver.Resolve(npcInfo);
             int? shopActionId = (source?["info"]?["shop"] as WzIntProperty)?.Value;
             return RepairDurabilityClientParity.ResolvePreferredNpcAction(
                 shopActionId,
@@ -12711,8 +12715,15 @@ namespace HaCreator.MapSimulator
             if (!IsLoginRuntimeSceneActive)
             {
                 uiWindowManager.HideWindow(MapSimulatorWindowNames.ConnectionNotice);
-                uiWindowManager.HideWindow(MapSimulatorWindowNames.LoginUtilityDialog);
-                _loginUtilityDialogReturnWindowName = string.Empty;
+                if (!_loginUtilityDialogAllowedOutsideLogin)
+                {
+                    uiWindowManager.HideWindow(MapSimulatorWindowNames.LoginUtilityDialog);
+                    _loginUtilityDialogReturnWindowName = string.Empty;
+                }
+                else
+                {
+                    SyncLoginUtilityDialogWindow();
+                }
                 return;
             }
 
@@ -12924,8 +12935,52 @@ namespace HaCreator.MapSimulator
                 visualStyle);
             _loginUtilityDialogTracksDirectionModeOwner = trackDirectionModeOwner;
             _loginUtilityDialogInputBoundsOverride = inputBoundsOverride;
+            _loginUtilityDialogAllowedOutsideLogin = IsLoginUtilityDialogActionAllowedOutsideLogin(action);
             ClearActiveConnectionNotice();
             SyncLoginEntryDialogs();
+        }
+
+        private string ShowFamilyPreceptInputDialog()
+        {
+            const int ClientFamilyPreceptPromptStringPoolId = 0x11FC;
+            const int ClientFamilyPreceptInputMinLength = 1;
+            const int ClientFamilyPreceptInputMaxLength = 200;
+
+            string prompt = MapleStoryStringPool.GetOrFallback(
+                ClientFamilyPreceptPromptStringPoolId,
+                "Enter the family precepts.");
+            string currentPrecept = _familyChartRuntime.BuildChartSnapshot().Precept ?? string.Empty;
+
+            ShowLoginUtilityDialog(
+                "Family Precept",
+                prompt,
+                LoginUtilityDialogButtonLayout.YesNo,
+                LoginUtilityDialogAction.SetFamilyPrecept,
+                primaryLabel: "OK",
+                secondaryLabel: "Cancel",
+                inputLabel: "Precept",
+                inputPlaceholder: prompt,
+                inputMaxLength: ClientFamilyPreceptInputMaxLength,
+                inputValue: currentPrecept,
+                softKeyboardType: SoftKeyboardKeyboardType.FreeText,
+                inputBoundsOverride: CreateLoginUtilityInputBoundsOverride(),
+                returnWindowName: MapSimulatorWindowNames.FamilyChart,
+                trackDirectionModeOwner: true);
+
+            return $"Opened CUtilDlgEx family-precept input (StringPool 0x{ClientFamilyPreceptPromptStringPoolId:X}, min {ClientFamilyPreceptInputMinLength}, max {ClientFamilyPreceptInputMaxLength}).";
+        }
+
+        private static bool IsLoginUtilityDialogActionAllowedOutsideLogin(LoginUtilityDialogAction action)
+        {
+            return action is LoginUtilityDialogAction.ConfirmApspEvent
+                or LoginUtilityDialogAction.ConfirmFollowCharacterRequest
+                or LoginUtilityDialogAction.ConfirmUtilityQuit
+                or LoginUtilityDialogAction.VerifyTrunkPic
+                or LoginUtilityDialogAction.VerifyTrunkSpw
+                or LoginUtilityDialogAction.RetryTrunkPic
+                or LoginUtilityDialogAction.RetryTrunkSpw
+                or LoginUtilityDialogAction.LogoutGiftCompletion
+                or LoginUtilityDialogAction.SetFamilyPrecept;
         }
 
         private LoginUtilityDialogFrameVariant ResolveLoginUtilityDialogFrameVariant(
@@ -13841,6 +13896,17 @@ namespace HaCreator.MapSimulator
                     HideLoginUtilityDialog();
                     HandlePacketOwnedLogoutGiftCompletionDialogDismissed();
                     return;
+                case LoginUtilityDialogAction.SetFamilyPrecept:
+                    if (!TryGetLoginUtilityDialogInput(out string familyPreceptInput))
+                    {
+                        ShowUtilityFeedbackMessage("Enter at least one character for the family precept.");
+                        break;
+                    }
+
+                    string preceptMessage = _familyChartRuntime.SetPrecept(familyPreceptInput);
+                    HideLoginUtilityDialog();
+                    ShowUtilityFeedbackMessage($"{preceptMessage} Sent through the simulator CUIFamily::OnButtonClicked -> CUtilDlgEx input seam.");
+                    break;
 
 
                 case LoginUtilityDialogAction.AccountMigrationDecision:
@@ -14161,6 +14227,9 @@ namespace HaCreator.MapSimulator
                     HideLoginUtilityDialog();
                     HandlePacketOwnedLogoutGiftCompletionDialogDismissed();
                     return;
+                case LoginUtilityDialogAction.SetFamilyPrecept:
+                    ShowUtilityFeedbackMessage("Family precept edit cancelled.");
+                    break;
             }
 
 
@@ -20204,7 +20273,7 @@ namespace HaCreator.MapSimulator
                 InventoryType inventoryType = itemId > 0
                     ? InventoryItemMetadataResolver.ResolveInventoryType(itemId)
                     : InventoryType.NONE;
-                string itemName = itemId > 0 ? ResolvePickupItemName(itemId) : null;
+                string itemName = itemId > 0 ? ResolvePickupNoticeItemName(itemId) : null;
                 string itemTypeName = itemId > 0 ? ResolvePickupItemTypeName(itemId, inventoryType) : null;
                 if (PickupNoticeTextFormatter.TryFormatItemPickup(itemName, itemTypeName, drop.Quantity, out string screenMessage))
                 {
@@ -20230,7 +20299,7 @@ namespace HaCreator.MapSimulator
                 InventoryType inventoryType = itemId > 0
                     ? InventoryItemMetadataResolver.ResolveInventoryType(itemId)
                     : InventoryType.NONE;
-                string itemName = itemId > 0 ? ResolvePickupItemName(itemId) : null;
+                string itemName = itemId > 0 ? ResolvePickupNoticeItemName(itemId) : null;
                 string itemTypeName = itemId > 0 ? ResolvePickupItemTypeName(itemId, inventoryType) : null;
                 if (PickupNoticeTextFormatter.TryFormatQuestItemPickup(itemName, itemTypeName, out string screenMessage))
                 {
@@ -20611,7 +20680,7 @@ namespace HaCreator.MapSimulator
             return drop.Type == Pools.DropType.Meso
                 ? null
                 : int.TryParse(drop.ItemId, out int itemId)
-                    ? ResolvePickupItemName(itemId)
+                    ? ResolvePickupNoticeItemName(itemId)
                     : null;
         }
 
@@ -22108,6 +22177,15 @@ namespace HaCreator.MapSimulator
                    && !string.IsNullOrWhiteSpace(itemInfo.Item2)
                 ? itemInfo.Item2
                 : $"Item #{itemId}";
+        }
+
+        internal static string ResolvePickupNoticeItemName(int itemId)
+        {
+            return Program.InfoManager?.ItemNameCache != null
+                   && Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo.Item2)
+                ? itemInfo.Item2
+                : null;
         }
 
 
@@ -25144,7 +25222,16 @@ namespace HaCreator.MapSimulator
         private bool ResolvePassiveTransferFieldReadyState()
         {
             long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
-            return FieldInteractionRestrictionEvaluator.CanTransferField(fieldLimit);
+            return PassiveTransferFieldReadinessEvaluator.CanRetryFromLiveFieldInterface(
+                fieldLimit,
+                HasPassiveTransferFieldInterface());
+        }
+
+        private bool HasPassiveTransferFieldInterface()
+        {
+            return _mapBoard?.MapInfo != null
+                   && _playerManager?.Player?.Physics != null
+                   && !_gameState.PendingMapChange;
         }
 
         private bool CanProcessPassiveTransferFieldRequest(int currentTime)
@@ -25964,6 +26051,14 @@ namespace HaCreator.MapSimulator
                 }
 
                 AwardMobKillExperience(mob);
+
+                string dropSpawnRestrictionMessage = FieldInteractionRestrictionEvaluator.GetDropSpawnRestrictionMessage(
+                    _mapBoard?.MapInfo?.fieldLimit ?? 0);
+                if (!string.IsNullOrWhiteSpace(dropSpawnRestrictionMessage))
+                {
+                    ShowFieldRestrictionMessage(dropSpawnRestrictionMessage);
+                    return;
+                }
 
 
                 // Play drop item sound
@@ -27428,6 +27523,12 @@ namespace HaCreator.MapSimulator
                 return;
 
 
+
+            UIWindowLoader.LoadSkillsForJob(
+                skillWindow,
+                _playerManager.Player?.Build?.Job ?? 0,
+                GraphicsDevice,
+                _playerManager.Skills.GetLearnedSkills().Select(skill => skill.SkillId));
 
             skillWindow.SetSkillManager(_playerManager.Skills);
             skillWindow.SetCharacterLevel(_playerManager.Player?.Level ?? 1);
@@ -29530,7 +29631,11 @@ namespace HaCreator.MapSimulator
                 return;
 
 
-            UIWindowLoader.LoadSkillsForJob(skillWindow, jobId, GraphicsDevice);
+            UIWindowLoader.LoadSkillsForJob(
+                skillWindow,
+                jobId,
+                GraphicsDevice,
+                _playerManager?.Skills?.GetLearnedSkills().Select(skill => skill.SkillId));
 
             ConfigureSkillUIBindings();
 
@@ -32080,7 +32185,7 @@ namespace HaCreator.MapSimulator
         {
             while (_coconutPacketInbox.TryDequeue(out CoconutPacketInboxMessage message))
             {
-                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                bool applied = TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _coconutPacketInbox.RecordDispatchResult(
                     message.Source,
                     message.PacketType,
@@ -32089,7 +32194,7 @@ namespace HaCreator.MapSimulator
             }
             while (_coconutOfficialSessionBridge.TryDequeue(out CoconutPacketInboxMessage bridgeMessage))
             {
-                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool applied = TryDispatchCurrentWrapperPacketIngress(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _coconutOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
@@ -32103,7 +32208,7 @@ namespace HaCreator.MapSimulator
         {
             while (_snowBallPacketInbox.TryDequeue(out SnowBallPacketInboxMessage message))
             {
-                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                bool applied = TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _snowBallPacketInbox.RecordDispatchResult(
                     message.Source,
                     message.PacketType,
@@ -32113,7 +32218,7 @@ namespace HaCreator.MapSimulator
 
             while (_snowBallOfficialSessionBridge.TryDequeue(out SnowBallPacketInboxMessage bridgeMessage))
             {
-                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool applied = TryDispatchCurrentWrapperPacketIngress(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _snowBallOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
@@ -32453,7 +32558,7 @@ namespace HaCreator.MapSimulator
             switch (message.Kind)
             {
                 case WeddingInboxMessageKind.Packet:
-                    return _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, Environment.TickCount, out errorMessage);
+                    return TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, Environment.TickCount, out errorMessage);
                 case WeddingInboxMessageKind.CoupleMove:
                 case WeddingInboxMessageKind.CoupleAvatar:
                     if (!TryResolveWeddingParticipantId(field, message.ActorKey, out int participantId, out errorMessage))
@@ -32571,7 +32676,7 @@ namespace HaCreator.MapSimulator
             switch (message.Kind)
             {
                 case AriantArenaInboxMessageKind.Packet:
-                    return _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out errorMessage);
+                    return TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out errorMessage);
 
 
                 case AriantArenaInboxMessageKind.ActorAddClone:
@@ -32821,7 +32926,7 @@ namespace HaCreator.MapSimulator
         {
             while (_monsterCarnivalPacketInbox.TryDequeue(out MonsterCarnivalPacketInboxMessage message))
             {
-                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                bool applied = TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _monsterCarnivalPacketInbox.RecordDispatchResult(
                     message.Source,
                     message.PacketType,
@@ -32830,7 +32935,7 @@ namespace HaCreator.MapSimulator
             }
             while (_monsterCarnivalOfficialSessionBridge.TryDequeue(out MonsterCarnivalPacketInboxMessage bridgeMessage))
             {
-                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool applied = TryDispatchCurrentWrapperPacketIngress(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _monsterCarnivalOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
@@ -32921,7 +33026,7 @@ namespace HaCreator.MapSimulator
                         message.HasRankOverride ? message.Rank : null);
                     return true;
                 case MassacrePacketInboxMessageKind.Packet:
-                    return _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out resultMessage);
+                    return TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out resultMessage);
                 default:
                     resultMessage = $"Unsupported Massacre inbox message kind: {message.Kind}";
                     return false;
@@ -33130,7 +33235,7 @@ namespace HaCreator.MapSimulator
 
 
                 case DojoPacketMessageKind.RawPacket:
-                    return _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out resultMessage);
+                    return TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out resultMessage);
 
 
 
@@ -33203,6 +33308,11 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPartyRaidWrapperPacket(int packetType, byte[] payload, int currentTickCount, out string message)
         {
+            return TryDispatchCurrentWrapperPacketIngress(packetType, payload, currentTickCount, out message);
+        }
+
+        private bool TryDispatchCurrentWrapperPacketIngress(int packetType, byte[] payload, int currentTickCount, out string message)
+        {
             return packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode
                 ? _specialFieldRuntime.TryDispatchCurrentWrapperRelayPayload(payload, currentTickCount, out message)
                 : _specialFieldRuntime.TryDispatchCurrentWrapperPacket(packetType, payload, currentTickCount, out message);
@@ -33212,7 +33322,7 @@ namespace HaCreator.MapSimulator
         {
             while (_tournamentPacketInbox.TryDequeue(out TournamentPacketInboxMessage message))
             {
-                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                bool applied = TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _tournamentPacketInbox.RecordDispatchResult(
                     message.Source,
                     message.PacketType,
@@ -33222,7 +33332,7 @@ namespace HaCreator.MapSimulator
 
             while (_tournamentOfficialSessionBridge.TryDequeue(out TournamentPacketInboxMessage bridgeMessage))
             {
-                bool bridgeApplied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool bridgeApplied = TryDispatchCurrentWrapperPacketIngress(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _tournamentOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
@@ -33268,7 +33378,7 @@ namespace HaCreator.MapSimulator
         {
             while (_guildBossOfficialSessionBridge.TryDequeue(out GuildBossPacketInboxMessage bridgeMessage))
             {
-                bool bridgeApplied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
+                bool bridgeApplied = TryDispatchCurrentWrapperPacketIngress(bridgeMessage.PacketType, bridgeMessage.Payload, currentTickCount, out string bridgeErrorMessage);
                 _guildBossOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     bridgeMessage.PacketType,
@@ -33277,7 +33387,7 @@ namespace HaCreator.MapSimulator
             }
             while (_guildBossTransport.TryDequeue(out GuildBossPacketInboxMessage message))
             {
-                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                bool applied = TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
                 _guildBossTransport.RecordDispatchResult(
                     message.Source,
                     message.PacketType,

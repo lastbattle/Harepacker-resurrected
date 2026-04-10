@@ -14,7 +14,8 @@ namespace HaCreator.MapSimulator.UI
         AlphaNumeric = 0,
         AlphaNumericWithAlphaEdges = 1,
         NumericOnly = 2,
-        NumericOnlyAlt = 3
+        NumericOnlyAlt = 3,
+        FreeText = 4
     }
 
     internal enum SoftKeyboardKeyMode
@@ -1039,6 +1040,11 @@ namespace HaCreator.MapSimulator.UI
             int maxLength,
             char character)
         {
+            if (keyboardType == SoftKeyboardKeyboardType.FreeText)
+            {
+                return !char.IsControl(character) && (maxLength <= 0 || textLength < maxLength);
+            }
+
             if (!char.IsLetterOrDigit(character))
             {
                 return false;
@@ -1074,6 +1080,9 @@ namespace HaCreator.MapSimulator.UI
                 SoftKeyboardKeyboardType.AlphaNumericWithAlphaEdges => ResolveAlphaEdgeKeyMode(textLength, maxLength),
                 SoftKeyboardKeyboardType.NumericOnly or SoftKeyboardKeyboardType.NumericOnlyAlt => textLength < maxLength
                     ? SoftKeyboardKeyMode.NumericOnly
+                    : SoftKeyboardKeyMode.Disabled,
+                SoftKeyboardKeyboardType.FreeText => maxLength <= 0 || textLength < maxLength
+                    ? SoftKeyboardKeyMode.AlphaNumeric
                     : SoftKeyboardKeyMode.Disabled,
                 _ => SoftKeyboardKeyMode.Disabled,
             };

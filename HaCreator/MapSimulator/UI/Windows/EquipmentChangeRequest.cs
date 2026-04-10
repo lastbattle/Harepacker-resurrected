@@ -189,6 +189,37 @@ namespace HaCreator.MapSimulator.UI
             return hasPendingRequest || IsExclusiveRequestThrottled(currentTick, lastRequestTick, cooldownMs);
         }
 
+        public static bool IsSupportedCharacterEquipmentSourceInventory(InventoryType inventoryType)
+        {
+            return inventoryType is InventoryType.EQUIP or InventoryType.CASH;
+        }
+
+        public static InventoryType ResolveCharacterEquipmentInventoryType(CharacterPart part)
+        {
+            return part?.IsCash == true ? InventoryType.CASH : InventoryType.EQUIP;
+        }
+
+        public static bool TryGetCharacterEquipmentSourceRejectReason(
+            InventoryType sourceInventoryType,
+            CharacterPart part,
+            out string rejectReason)
+        {
+            if (!IsSupportedCharacterEquipmentSourceInventory(sourceInventoryType))
+            {
+                rejectReason = "Only equip or cash inventory entries can be equipped here.";
+                return true;
+            }
+
+            if (sourceInventoryType == InventoryType.CASH && part?.IsCash != true)
+            {
+                rejectReason = "Only cash equipment entries can be equipped from the cash inventory.";
+                return true;
+            }
+
+            rejectReason = string.Empty;
+            return false;
+        }
+
         public static bool IsResolvedResultStale(
             CharacterBuild build,
             EquipmentChangeResult result,

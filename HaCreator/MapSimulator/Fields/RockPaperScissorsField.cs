@@ -5,6 +5,7 @@ using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 
@@ -34,13 +35,54 @@ namespace HaCreator.MapSimulator.Fields
         TimeOver
     }
 
+    public enum RockPaperScissorsClientRequestType
+    {
+        Start = 0,
+        Select = 1,
+        Timeout = 2,
+        Continue = 3,
+        Exit = 4,
+        Retry = 5
+    }
+
+    public sealed class RockPaperScissorsClientPacket
+    {
+        public RockPaperScissorsClientPacket(int opcode, RockPaperScissorsClientRequestType requestType, RockPaperScissorsChoice choice, byte[] payload, string summary)
+        {
+            Opcode = opcode;
+            RequestType = requestType;
+            Choice = choice;
+            Payload = payload != null ? (byte[])payload.Clone() : Array.Empty<byte>();
+            Summary = summary ?? string.Empty;
+        }
+
+        public int Opcode { get; }
+        public RockPaperScissorsClientRequestType RequestType { get; }
+        public RockPaperScissorsChoice Choice { get; }
+        public byte[] Payload { get; }
+        public string Summary { get; }
+    }
+
     public sealed class RockPaperScissorsField
     {
         public const int OwnerOpcode = 371;
+        public const int ClientOpcode = 160;
         public const string ClientDialogOwnerName = "CRPSGameDlg";
         public const int OpenNoticeStringPoolId = 0xE83;
         public const int WinNoticeStringPoolId = 3724;
         public const int LoseNoticeStringPoolId = 3723;
+        public const int DrawSoundStringPoolId = 0x645;
+        public const int WinSoundStringPoolId = 0x646;
+        public const int LoseSoundStringPoolId = 0x647;
+        public const int TimerSoundStringPoolId = 0x648;
+        public const int SwitchSoundStringPoolId = 0x64D;
+        public const int StartTipStringPoolId = 0xE84;
+        public const int TimeLeftTipStringPoolId = 0xE85;
+        public const int ContinueTipStringPoolId = 0xE86;
+        public const int ClearTipStringPoolId = 0xE87;
+        public const int RetryTipStringPoolId = 0xE88;
+        public const int CompensationRetryTipStringPoolId = 0xE89;
+        public const int LoseRetryTipStringPoolId = 0xE8A;
         public const int DialogWidth = 310;
         public const int DialogHeight = 358;
         public const int MainButtonX = 108;
@@ -59,6 +101,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Texture2D[] _choiceTextures = new Texture2D[ChoiceCount];
         private readonly Texture2D[] _choiceFlashTextures = new Texture2D[ChoiceCount];
         private readonly Rectangle[] _choiceButtonRects = new Rectangle[ChoiceCount];
+        private readonly Queue<RockPaperScissorsClientPacket> _pendingClientPackets = new();
         private GraphicsDevice _graphicsDevice;
         private bool _assetsLoaded;
         private Texture2D _backgroundTexture;
@@ -95,6 +138,11 @@ namespace HaCreator.MapSimulator.Fields
         private RockPaperScissorsMainButtonType _mainButtonType = RockPaperScissorsMainButtonType.Start;
         private RockPaperScissorsResultType _resultType = RockPaperScissorsResultType.None;
         private string _pendingNoticeMessage;
+        private string _tipText = string.Empty;
+        private int _tipTextLength;
+        private int _tipPosition;
+        private uint _lastTipOption = uint.MaxValue;
+        private string _lastMinigameSound = string.Empty;
 
         public bool IsVisible => _isVisible;
         public bool ChoiceButtonsEnabled => _choiceButtonsEnabled;
@@ -112,6 +160,9 @@ namespace HaCreator.MapSimulator.Fields
         public RockPaperScissorsChoice NpcChoice => _npcChoice;
         public RockPaperScissorsResultType ResultType => _resultType;
         public RockPaperScissorsMainButtonType MainButtonType => _mainButtonType;
+        public string CurrentTipText => _tipText;
+        public int CurrentTipPosition => _tipPosition;
+        public string LastMinigameSound => _lastMinigameSound;
         internal bool IsResultLayerVisible => _resultLayerVisible;
 
         public void Initialize(GraphicsDevice graphicsDevice)
@@ -135,6 +186,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _currentNpcDisplayIndex = (_currentNpcDisplayIndex + 1) % ChoiceCount;
                 _lastSwitchTick = currentTick;
+                PlayMinigameSound(SwitchSoundStringPoolId);
             }
 
             if (_switchCadenceMs > 0 && _npcChoice != RockPaperScissorsChoice.None && currentTick >= _lastSwitchTick + _switchCadenceMs)
@@ -153,21 +205,20 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_choiceButtonsEnabled && _roundDeadlineTick > 0 && currentTick >= _roundDeadlineTick)
             {
+                QueueClientPacket(RockPaperScissorsClientRequestType.Timeout, RockPaperScissorsChoice.None);
                 _choiceButtonsEnabled = false;
-                _requestSent = false;
-                _npcChoice = RockPaperScissorsChoice.None;
-                StraightVictoryCount = -1;
                 _roundDeadlineTick = 0;
                 _switchCadenceMs = 0;
-                ShowResult(currentTick);
-                CurrentStatusMessage = "RPS round reached the 30000 ms limit and fell into the time-over result branch.";
-                LastPacketSummary = "local timeout -> ShowResult(timeover)";
+                _requestSent = true;
+                CurrentStatusMessage = "RPS round reached the 30000 ms limit, sent client opcode 160 subtype 2, and is waiting for a server-owned follow-up.";
+                LastPacketSummary = "client timeout -> opcode=160 subtype=2";
             }
 
             if (_resultRevealTick > 0 && currentTick >= _resultRevealTick && _resultType != RockPaperScissorsResultType.None)
             {
                 _resultRevealTick = 0;
                 _resultLayerVisible = true;
+                PlayMinigameSound(ResolveResultSoundStringPoolId());
                 CurrentStatusMessage = $"RPS result layer became visible after the client-owned {ResultFadeDelayMs} ms reveal delay.";
                 LastPacketSummary = $"result-reveal -> {DescribeResultType(_resultType)}";
             }
@@ -188,9 +239,12 @@ namespace HaCreator.MapSimulator.Fields
                 _mainButtonType = ResolvePostResultMainButtonType();
                 _mainButtonEnabled = true;
                 _exitButtonEnabled = true;
+                UpdateTipText(currentTick);
                 CurrentStatusMessage = $"{DescribeResultType(_resultType)} result expired and restored the client-owned main/exit button state.";
                 _resultExpireTick = 0;
             }
+
+            UpdateTipText(currentTick);
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
@@ -290,6 +344,7 @@ namespace HaCreator.MapSimulator.Fields
 
             string stateText = $"main={_mainButtonType} | streak={StraightVictoryCount} | choice={DescribeChoice(_playerChoice)} | npc={DescribeChoice(_npcChoice)}";
             DrawShadowedText(spriteBatch, font, stateText, new Vector2(panelX + 12, panelY + 82), Color.Silver, 0.78f);
+            DrawShadowedText(spriteBatch, font, TrimForDisplay(_tipText, 46), new Vector2(panelX + 20 + Math.Max(0, Math.Min(_tipPosition, 270)), panelY + 294), Color.Black, 0.76f);
         }
 
         public static bool TryParsePacketType(string token, out int packetType)
@@ -407,8 +462,8 @@ namespace HaCreator.MapSimulator.Fields
                     return true;
                 }
 
-                Reset();
-                message = "Closed the local Rock-Paper-Scissors dialog preview.";
+                SendMainClientRequest(RockPaperScissorsClientRequestType.Exit);
+                message = "Sent client RPS exit request opcode 160 subtype 4 and disabled main/exit until the server follow-up.";
                 return true;
             }
 
@@ -420,14 +475,9 @@ namespace HaCreator.MapSimulator.Fields
                     return true;
                 }
 
-                int nextSubtype = _mainButtonType == RockPaperScissorsMainButtonType.Continue ? 12 : 9;
-                if (!TryApplyRawPacket(nextSubtype, Array.Empty<byte>(), Environment.TickCount, out string error))
-                {
-                    message = error;
-                    return true;
-                }
-
-                message = $"Applied local main-button preview via RPS subtype {nextSubtype}.";
+                RockPaperScissorsClientRequestType requestType = ResolveMainButtonClientRequestType();
+                SendMainClientRequest(requestType);
+                message = $"Sent client RPS {DescribeClientRequestType(requestType)} request opcode 160 subtype {(int)requestType} and disabled main/exit until the server follow-up.";
                 return true;
             }
 
@@ -440,11 +490,7 @@ namespace HaCreator.MapSimulator.Fields
                         continue;
                     }
 
-                    _playerChoice = (RockPaperScissorsChoice)i;
-                    _requestSent = true;
-                    _choiceButtonsEnabled = false;
-                    CurrentStatusMessage = $"Queued local {DescribeChoice(_playerChoice)} selection and disabled the three RPS buttons until the next packet-owned result.";
-                    LastPacketSummary = $"local selection -> {DescribeChoice(_playerChoice)}";
+                    SendSelection((RockPaperScissorsChoice)i);
                     message = CurrentStatusMessage;
                     return true;
                 }
@@ -474,11 +520,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            _playerChoice = choice;
-            _requestSent = true;
-            _choiceButtonsEnabled = false;
-            CurrentStatusMessage = $"Queued local {DescribeChoice(_playerChoice)} selection and disabled the three RPS buttons until the next packet-owned result.";
-            LastPacketSummary = $"local selection -> {DescribeChoice(_playerChoice)}";
+            SendSelection(choice);
             message = CurrentStatusMessage;
             return true;
         }
@@ -498,14 +540,9 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            int nextSubtype = _mainButtonType == RockPaperScissorsMainButtonType.Continue ? 12 : 9;
-            if (!TryApplyRawPacket(nextSubtype, Array.Empty<byte>(), currentTimeMs, out string error))
-            {
-                message = error;
-                return false;
-            }
-
-            message = $"Applied local main-button preview via RPS subtype {nextSubtype}.";
+            RockPaperScissorsClientRequestType requestType = ResolveMainButtonClientRequestType();
+            SendMainClientRequest(requestType);
+            message = $"Sent client RPS {DescribeClientRequestType(requestType)} request opcode 160 subtype {(int)requestType} and disabled main/exit until the server follow-up.";
             return true;
         }
 
@@ -516,7 +553,19 @@ namespace HaCreator.MapSimulator.Fields
                 return $"RPS: hidden | opcode={OwnerOpcode} | owner={LastDialogOwner} | last={LastPacketSummary}";
             }
 
-            return $"RPS: visible | opcode={OwnerOpcode} | owner={ClientDialogOwnerName} | entry={_entryDialogValue} | main={_mainButtonType} | buttons={(_choiceButtonsEnabled ? "enabled" : "disabled")} | requestSent={_requestSent} | player={DescribeChoice(_playerChoice)} | npc={DescribeChoice(_npcChoice)} | streak={StraightVictoryCount} | result={DescribeResultType(_resultType)} | compensation={_receiveCompensation} | summary={LastPacketSummary}";
+            return $"RPS: visible | opcode={OwnerOpcode} | clientOpcode={ClientOpcode} | owner={ClientDialogOwnerName} | entry={_entryDialogValue} | main={_mainButtonType} | buttons={(_choiceButtonsEnabled ? "enabled" : "disabled")} | requestSent={_requestSent} | player={DescribeChoice(_playerChoice)} | npc={DescribeChoice(_npcChoice)} | streak={StraightVictoryCount} | result={DescribeResultType(_resultType)} | compensation={_receiveCompensation} | sound={_lastMinigameSound} | tip={TrimForDisplay(_tipText, 40)} | summary={LastPacketSummary}";
+        }
+
+        public bool TryConsumePendingClientPacket(out RockPaperScissorsClientPacket packet)
+        {
+            if (_pendingClientPackets.Count > 0)
+            {
+                packet = _pendingClientPackets.Dequeue();
+                return true;
+            }
+
+            packet = null;
+            return false;
         }
 
         public bool TryConsumePendingNotice(out int stringPoolId, out string message)
@@ -562,6 +611,12 @@ namespace HaCreator.MapSimulator.Fields
             LastPacketSummary = "No Rock-Paper-Scissors packet applied yet.";
             LastPacketType = 0;
             ClearPendingNotice();
+            _pendingClientPackets.Clear();
+            _tipText = string.Empty;
+            _tipTextLength = 0;
+            _tipPosition = 0;
+            _lastTipOption = uint.MaxValue;
+            _lastMinigameSound = string.Empty;
         }
 
         private bool TryApplyOpenPacket(byte[] payload, int currentTimeMs, out string errorMessage)
@@ -607,6 +662,7 @@ namespace HaCreator.MapSimulator.Fields
             _switchCadenceMs = 0;
             _resultExpireTick = 0;
             _resultLayerVisible = false;
+            UpdateTipText(currentTimeMs);
             return true;
         }
 
@@ -650,6 +706,7 @@ namespace HaCreator.MapSimulator.Fields
                     _resultLayerVisible = false;
                     _resultType = RockPaperScissorsResultType.None;
                     _mainButtonType = RockPaperScissorsMainButtonType.Start;
+                    UpdateTipText(currentTimeMs);
                     CurrentStatusMessage = packetType switch
                     {
                         6 => $"{ResolveWinNoticeText()} [StringPool 0x{WinNoticeStringPoolId:X}]",
@@ -676,6 +733,7 @@ namespace HaCreator.MapSimulator.Fields
                 case 12:
                     ClearPendingNotice();
                     BeginRound(currentTimeMs);
+                    UpdateTipText(currentTimeMs);
                     CurrentStatusMessage = $"RPS subtype {packetType} started a live round, cleared the NPC choice, armed the 30000 ms limit, and enabled the three RPS buttons.";
                     LastPacketSummary = $"round-start ({packetType}) -> switching=120 limit=30000";
                     break;
@@ -689,6 +747,7 @@ namespace HaCreator.MapSimulator.Fields
                     _npcChoice = RockPaperScissorsChoice.None;
                     StraightVictoryCount = -1;
                     ShowResult(currentTimeMs);
+                    UpdateTipText(currentTimeMs);
                     CurrentStatusMessage = "RPS subtype 10 forced immediate result presentation by clearing switching and routing into ShowResult.";
                     LastPacketSummary = "force-result (10) -> streak=-1 + ShowResult";
                     break;
@@ -746,6 +805,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultLayerVisible = false;
             _resultRevealTick = currentTimeMs + ResultFadeDelayMs;
             _resultExpireTick = currentTimeMs + ResultExpireDelayMs;
+            UpdateTipText(currentTimeMs);
         }
 
         private static bool IsSupportedPacketType(int packetType)
@@ -769,6 +829,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultRevealTick = 0;
             _resultExpireTick = 0;
             _resultLayerVisible = false;
+            UpdateTipText(currentTimeMs);
         }
 
         private RockPaperScissorsMainButtonType ResolvePostResultMainButtonType()
@@ -988,6 +1049,146 @@ namespace HaCreator.MapSimulator.Fields
                 RockPaperScissorsResultType.TimeOver => "time-over",
                 _ => "none"
             };
+        }
+
+        private static int ResolveResultSoundStringPoolId(RockPaperScissorsResultType resultType)
+        {
+            return resultType switch
+            {
+                RockPaperScissorsResultType.Win => WinSoundStringPoolId,
+                RockPaperScissorsResultType.Lose => LoseSoundStringPoolId,
+                RockPaperScissorsResultType.Draw => DrawSoundStringPoolId,
+                RockPaperScissorsResultType.TimeOver => TimerSoundStringPoolId,
+                _ => 0
+            };
+        }
+
+        private int ResolveResultSoundStringPoolId()
+        {
+            return ResolveResultSoundStringPoolId(_resultType);
+        }
+
+        private void PlayMinigameSound(int stringPoolId)
+        {
+            _lastMinigameSound = stringPoolId > 0
+                ? MapleStoryStringPool.GetOrFallback(stringPoolId, $"StringPool 0x{stringPoolId:X}")
+                : string.Empty;
+        }
+
+        private void QueueClientPacket(RockPaperScissorsClientRequestType requestType, RockPaperScissorsChoice choice)
+        {
+            byte[] payload = requestType == RockPaperScissorsClientRequestType.Select
+                ? new[] { (byte)choice }
+                : Array.Empty<byte>();
+            string summary = requestType == RockPaperScissorsClientRequestType.Select
+                ? $"opcode={ClientOpcode} subtype={(int)requestType} choice={DescribeChoice(choice)}"
+                : $"opcode={ClientOpcode} subtype={(int)requestType}";
+            _pendingClientPackets.Enqueue(new RockPaperScissorsClientPacket(ClientOpcode, requestType, choice, payload, summary));
+        }
+
+        private void SendMainClientRequest(RockPaperScissorsClientRequestType requestType)
+        {
+            QueueClientPacket(requestType, RockPaperScissorsChoice.None);
+            _requestSent = true;
+            _choiceButtonsEnabled = false;
+            _mainButtonEnabled = false;
+            _exitButtonEnabled = false;
+            _roundDeadlineTick = 0;
+            UpdateTipText(Environment.TickCount);
+            CurrentStatusMessage = $"Queued client-owned RPS request {DescribeClientRequestType(requestType)}.";
+            LastPacketSummary = $"client-request -> subtype={(int)requestType}";
+        }
+
+        private void SendSelection(RockPaperScissorsChoice choice)
+        {
+            _playerChoice = choice;
+            _choiceButtonsEnabled = false;
+            _mainButtonEnabled = false;
+            _exitButtonEnabled = false;
+            _requestSent = true;
+            QueueClientPacket(RockPaperScissorsClientRequestType.Select, choice);
+            PlayMinigameSound(SwitchSoundStringPoolId);
+            UpdateTipText(Environment.TickCount);
+            CurrentStatusMessage = $"Queued client-owned RPS selection {DescribeChoice(choice)} and disabled the owner buttons until the server follow-up.";
+            LastPacketSummary = $"client-select -> {DescribeChoice(choice)}";
+        }
+
+        private RockPaperScissorsClientRequestType ResolveMainButtonClientRequestType()
+        {
+            return _mainButtonType switch
+            {
+                RockPaperScissorsMainButtonType.Continue => RockPaperScissorsClientRequestType.Continue,
+                RockPaperScissorsMainButtonType.Retry => RockPaperScissorsClientRequestType.Retry,
+                _ => RockPaperScissorsClientRequestType.Start
+            };
+        }
+
+        private static string DescribeClientRequestType(RockPaperScissorsClientRequestType requestType)
+        {
+            return requestType switch
+            {
+                RockPaperScissorsClientRequestType.Start => "start",
+                RockPaperScissorsClientRequestType.Select => "select",
+                RockPaperScissorsClientRequestType.Timeout => "timeout",
+                RockPaperScissorsClientRequestType.Continue => "continue",
+                RockPaperScissorsClientRequestType.Exit => "exit",
+                RockPaperScissorsClientRequestType.Retry => "retry",
+                _ => requestType.ToString()
+            };
+        }
+
+        private void UpdateTipText(int currentTick)
+        {
+            string nextTip;
+            uint optionKey;
+
+            if (!_isVisible)
+            {
+                nextTip = string.Empty;
+                optionKey = uint.MaxValue;
+            }
+            else if (_choiceButtonsEnabled && _roundDeadlineTick > currentTick)
+            {
+                int remainingSeconds = Math.Max(0, (_roundDeadlineTick - currentTick + 999) / 1000);
+                string baseTip = MapleStoryStringPool.GetOrFallback(TimeLeftTipStringPoolId, "Time left");
+                nextTip = $"{baseTip}: {remainingSeconds}s";
+                optionKey = 1;
+            }
+            else if (_resultType == RockPaperScissorsResultType.Win)
+            {
+                nextTip = MapleStoryStringPool.GetOrFallback(ClearTipStringPoolId, "Round cleared.");
+                optionKey = 2;
+            }
+            else if (_resultType == RockPaperScissorsResultType.Lose || _resultType == RockPaperScissorsResultType.TimeOver)
+            {
+                int stringPoolId = _receiveCompensation ? CompensationRetryTipStringPoolId : LoseRetryTipStringPoolId;
+                nextTip = MapleStoryStringPool.GetOrFallback(stringPoolId, "Try again.");
+                optionKey = _receiveCompensation ? 3u : 4u;
+            }
+            else if (_mainButtonType == RockPaperScissorsMainButtonType.Continue)
+            {
+                nextTip = MapleStoryStringPool.GetOrFallback(ContinueTipStringPoolId, "Continue.");
+                optionKey = 5;
+            }
+            else if (_mainButtonType == RockPaperScissorsMainButtonType.Retry)
+            {
+                nextTip = MapleStoryStringPool.GetOrFallback(RetryTipStringPoolId, "Retry.");
+                optionKey = 6;
+            }
+            else
+            {
+                nextTip = MapleStoryStringPool.GetOrFallback(StartTipStringPoolId, "Start.");
+                optionKey = 0;
+            }
+
+            if (_lastTipOption != optionKey)
+            {
+                _tipPosition = 0;
+                _lastTipOption = optionKey;
+            }
+
+            _tipText = nextTip ?? string.Empty;
+            _tipTextLength = _tipText.Length;
         }
     }
 }

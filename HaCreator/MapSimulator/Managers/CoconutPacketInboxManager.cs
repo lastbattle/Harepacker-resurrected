@@ -25,6 +25,16 @@ namespace HaCreator.MapSimulator.Managers
         public byte[] Payload { get; }
         public string Source { get; }
         public string RawText { get; }
+        public int? LocalTeam { get; init; }
+        public bool IsLocalTeamUpdate => LocalTeam.HasValue;
+
+        public static CoconutPacketInboxMessage CreateLocalTeamUpdate(int localTeam, string source, string rawText)
+        {
+            return new CoconutPacketInboxMessage(0, Array.Empty<byte>(), source, rawText)
+            {
+                LocalTeam = localTeam == 1 ? 1 : 0
+            };
+        }
     }
 
     /// <summary>
@@ -332,6 +342,70 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public static bool TryParseTransportLine(string text, string source, out CoconutPacketInboxMessage message, out bool ignored, out string error)
+        {
+            message = null;
+            ignored = false;
+            error = null;
+
+            if (TryParseTeamLine(text, out int localTeam, out error))
+            {
+                message = CoconutPacketInboxMessage.CreateLocalTeamUpdate(localTeam, source, text);
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
+            if (!TryParsePacketLine(text, out int packetType, out byte[] payload, out ignored, out error))
+            {
+                return false;
+            }
+
+            message = new CoconutPacketInboxMessage(packetType, payload, source, text);
+            return true;
+        }
+
+        private static bool TryParseTeamLine(string text, out int localTeam, out string error)
+        {
+            localTeam = 0;
+            error = null;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string[] tokens = text.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (tokens.Length == 0 || !string.Equals(tokens[0], "team", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (tokens.Length != 2)
+            {
+                error = "Coconut team line usage: team <maple|story|0|1>.";
+                return false;
+            }
+
+            string teamToken = tokens[1].Trim().ToLowerInvariant();
+            if (teamToken == "maple" || teamToken == "0")
+            {
+                localTeam = 0;
+                return true;
+            }
+
+            if (teamToken == "story" || teamToken == "1")
+            {
+                localTeam = 1;
+                return true;
+            }
+
+            error = "Coconut team line usage: team <maple|story|0|1>.";
+            return false;
+        }
+
         private async Task ListenLoopAsync(CancellationToken cancellationToken)
         {
             try
@@ -381,17 +455,19 @@ namespace HaCreator.MapSimulator.Managers
                             continue;
                         }
 
-                        if (!TryParsePacketLine(line, out int packetType, out byte[] payload, out bool ignored, out string message))
+                        if (!TryParseTransportLine(line, client.Endpoint, out CoconutPacketInboxMessage message, out bool ignored, out string parseMessage))
                         {
                             LastStatus = ignored
-                                ? $"Ignored outbound echo from {client.Endpoint}: {message}"
-                                : $"Ignored Coconut transport line from {client.Endpoint}: {message}";
+                                ? $"Ignored outbound echo from {client.Endpoint}: {parseMessage}"
+                                : $"Ignored Coconut transport line from {client.Endpoint}: {parseMessage}";
                             continue;
                         }
 
-                        _pendingMessages.Enqueue(new CoconutPacketInboxMessage(packetType, payload, client.Endpoint, line));
+                        _pendingMessages.Enqueue(message);
                         ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(packetType)} from {client.Endpoint}.";
+                        LastStatus = message.IsLocalTeamUpdate
+                            ? $"Queued Coconut local team {(message.LocalTeam == 1 ? "Story" : "Maple")} from {client.Endpoint}."
+                            : $"Queued {DescribePacketType(message.PacketType)} from {client.Endpoint}.";
                     }
                 }
             }

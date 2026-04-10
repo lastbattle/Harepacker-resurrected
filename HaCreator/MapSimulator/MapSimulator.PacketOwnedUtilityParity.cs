@@ -57,6 +57,12 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedClassCompetitionUrlTemplateStringPoolId = 0x11DC;
         private const int PacketOwnedSkillLearnSuccessSoundStringPoolId = 0x0507;
         private const int PacketOwnedSkillLearnFailureSoundStringPoolId = 0x0508;
+        private const int PacketOwnedSkillLearnMasteryBookLabelStringPoolId = 0x0F2F;
+        private const int PacketOwnedSkillLearnSkillBookLabelStringPoolId = 0x0F30;
+        private const int PacketOwnedSkillLearnCannotUseStringPoolId = 0x0F31;
+        private const int PacketOwnedSkillLearnFailureNoticeStringPoolId = 0x0F32;
+        private const int PacketOwnedSkillLearnMasterySuccessNoticeStringPoolId = 0x0F33;
+        private const int PacketOwnedSkillLearnSkillSuccessNoticeStringPoolId = 0x0F34;
         private const string PacketOwnedSkillLearnSuccessSoundFallback = "Sound/Game.img/EnchantSuccess";
         private const string PacketOwnedSkillLearnFailureSoundFallback = "Sound/Game.img/EnchantFailure";
         private const string PacketOwnedClassCompetitionServerHost = "gamerank.maplestory";
@@ -290,6 +296,7 @@ namespace HaCreator.MapSimulator
             MapSimulatorWindowNames.QuestDelivery,
             MapSimulatorWindowNames.QuestRewardRaise,
             MapSimulatorWindowNames.ClassCompetition,
+            MapSimulatorWindowNames.AccountMoreInfo,
             MapSimulatorWindowNames.NpcShop,
             MapSimulatorWindowNames.StoreBank,
             MapSimulatorWindowNames.BattleRecord,
@@ -1884,8 +1891,10 @@ namespace HaCreator.MapSimulator
                     return TryApplyPacketOwnedStringPayload(payload, descriptor => ApplyPacketOwnedEventSound(descriptor, minigame: true), "Minigame-sound payload is missing.", out message);
 
                 case LocalUtilityPacketInboxManager.RadioSchedulePacketType:
+                    return TryApplyPacketOwnedRadioSchedulePayload(payload, requireExactClientPayload: false, out message);
+
                 case LocalUtilityPacketInboxManager.RadioScheduleClientPacketType:
-                    return TryApplyPacketOwnedRadioSchedulePayload(payload, out message);
+                    return TryApplyPacketOwnedRadioSchedulePayload(payload, requireExactClientPayload: true, out message);
 
                   case LocalUtilityPacketInboxManager.LogoutGiftClientPacketType:
                       return TryApplyPacketOwnedLogoutGiftPayload(payload, out message);
@@ -1908,8 +1917,10 @@ namespace HaCreator.MapSimulator
                     return TryApplyPacketOwnedAskApspEventPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.FollowCharacterPacketType:
+                    return TryApplyPacketOwnedFollowCharacterPayload(payload, clientOpcodePayload: false, out message);
+
                 case LocalUtilityPacketInboxManager.FollowCharacterClientPacketType:
-                    return TryApplyPacketOwnedFollowCharacterPayload(payload, out message);
+                    return TryApplyPacketOwnedFollowCharacterPayload(payload, clientOpcodePayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.FollowCharacterPromptPacketType:
                     return TryApplyPacketOwnedFollowCharacterPromptPayload(payload, out message);
@@ -1934,6 +1945,15 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.RandomEmotionPacketType:
                     return TryApplyPacketOwnedRandomEmotionPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.DragonBoxClientPacketType:
+                    return TryApplyPacketOwnedDragonBoxPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.AccountMoreInfoPacketType:
+                    return TryApplyPacketOwnedAccountMoreInfoPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.SetGenderPacketType:
+                    return TryApplyPacketOwnedSetGenderPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.QuestResultPacketType:
                     return TryApplyPacketOwnedQuestResultPayload(payload, out message);
@@ -2001,7 +2021,7 @@ namespace HaCreator.MapSimulator
                     return TryApplyRepairDurabilityResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.QuestRewardRaiseOwnerSyncPacketType:
-                    if (ShouldHandlePacketOwned1026AsPetConsumeResult(_pendingFieldHazardPetAutoConsumeRequest.HasValue, payload))
+                    if (ShouldHandlePacketOwned1026AsPetConsumeResult(payload))
                     {
                         return TryApplyPacketOwnedPetConsumeResultPayload(payload, out message);
                     }
@@ -2596,19 +2616,32 @@ namespace HaCreator.MapSimulator
             string itemName = ResolvePacketOwnedSkillLearnItemName(result.ItemId, itemCategoryLabel);
             int? targetMasterLevel = null;
 
-            if (isLocalOwner && result.Used)
+            if (result.Used)
             {
-                TryConsumePacketOwnedSkillLearnItem(result.ItemId);
-
-                if (result.Succeeded
-                    && result.IsMasteryBook
-                    && TryResolvePacketOwnedSkillLearnMasterLevel(result.ItemId, result.SkillId, out int resolvedMasterLevel))
+                if (isLocalOwner)
                 {
-                    targetMasterLevel = resolvedMasterLevel;
-                    ApplyQuestSkillMasterLevelReward(result.SkillId, resolvedMasterLevel);
+                    TryConsumePacketOwnedSkillLearnItem(result.ItemId);
+
+                    if (result.Succeeded
+                        && result.IsMasteryBook
+                        && TryResolvePacketOwnedSkillLearnMasterLevel(result.ItemId, result.SkillId, out int resolvedMasterLevel))
+                    {
+                        targetMasterLevel = resolvedMasterLevel;
+                        ApplyQuestSkillMasterLevelReward(result.SkillId, resolvedMasterLevel);
+                    }
+
+                    uiWindowManager?.ProductionEnhancementAnimationDisplayer?.PlaySkillBookResult(result.Succeeded, currTickCount);
+                }
+                else if (!TryRegisterPacketOwnedRemoteSkillBookResultAvatarEffect(
+                             result.CharacterId,
+                             result.Succeeded,
+                             currTickCount,
+                             out string remoteEffectMessage)
+                         && !string.IsNullOrWhiteSpace(remoteEffectMessage))
+                {
+                    ShowUtilityFeedbackMessage(remoteEffectMessage);
                 }
 
-                uiWindowManager?.ProductionEnhancementAnimationDisplayer?.PlaySkillBookResult(result.Succeeded, currTickCount);
                 TryPlaySharedProductionEnhancementSound(
                     result.Succeeded ? PacketOwnedSkillLearnSuccessSoundStringPoolId : PacketOwnedSkillLearnFailureSoundStringPoolId,
                     result.Succeeded ? PacketOwnedSkillLearnSuccessSoundFallback : PacketOwnedSkillLearnFailureSoundFallback);
@@ -2786,23 +2819,52 @@ namespace HaCreator.MapSimulator
             PacketOwnedSkillLearnItemResult result,
             int? targetMasterLevel)
         {
+            string stringPoolItemLabel = ResolvePacketOwnedSkillLearnItemLabel(result.IsMasteryBook, itemCategoryLabel);
             if (!result.Used)
             {
-                return $"{ownerName} could not use {itemName}.";
+                return FormatPacketOwnedSkillLearnNotice(
+                    PacketOwnedSkillLearnCannotUseStringPoolId,
+                    "You cannot use {0}.",
+                    stringPoolItemLabel);
             }
 
             if (result.Succeeded)
             {
-                if (targetMasterLevel.HasValue && result.SkillId > 0)
-                {
-                    string skillName = ResolveSkillBookTargetName(result.SkillId);
-                    return $"{ownerName} used {itemName} successfully. {skillName} reached Master Lv. {targetMasterLevel.Value.ToString(CultureInfo.InvariantCulture)}.";
-                }
-
-                return $"{ownerName} used {itemName} successfully.";
+                return MapleStoryStringPool.GetOrFallback(
+                    result.IsMasteryBook
+                        ? PacketOwnedSkillLearnMasterySuccessNoticeStringPoolId
+                        : PacketOwnedSkillLearnSkillSuccessNoticeStringPoolId,
+                    result.IsMasteryBook
+                        ? "The Book of Mastery glows brightly, and the current skills have gone through an upgrade."
+                        : "The Skill Book glows brightly, and new skills have now been added.");
             }
 
-            return $"{ownerName} failed to use {itemName} ({itemCategoryLabel}).";
+            return FormatPacketOwnedSkillLearnNotice(
+                PacketOwnedSkillLearnFailureNoticeStringPoolId,
+                "Despite using {0}, the effect was nowhere to be found.",
+                stringPoolItemLabel);
+        }
+
+        private static string ResolvePacketOwnedSkillLearnItemLabel(bool isMasteryBook, string fallbackCategoryLabel)
+        {
+            int stringPoolId = isMasteryBook
+                ? PacketOwnedSkillLearnMasteryBookLabelStringPoolId
+                : PacketOwnedSkillLearnSkillBookLabelStringPoolId;
+            return MapleStoryStringPool.GetOrFallback(
+                stringPoolId,
+                string.IsNullOrWhiteSpace(fallbackCategoryLabel)
+                    ? isMasteryBook ? "Mastery Book" : "Skill Book"
+                    : CultureInfo.InvariantCulture.TextInfo.ToTitleCase(fallbackCategoryLabel));
+        }
+
+        private static string FormatPacketOwnedSkillLearnNotice(int stringPoolId, string fallbackFormat, string itemLabel)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                maxPlaceholderCount: 1,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, itemLabel);
         }
 
         private static bool TryReadPacketOwnedAsciiString(BinaryReader reader, out string value)
@@ -3596,8 +3658,37 @@ namespace HaCreator.MapSimulator
             return message;
         }
 
-        private bool TryApplyPacketOwnedRadioSchedulePayload(byte[] payload, out string message)
+        private bool TryApplyPacketOwnedRadioSchedulePayload(byte[] payload, bool requireExactClientPayload, out string message)
         {
+            if (TryDecodePacketOwnedRadioSchedulePayload(
+                    payload,
+                    requireExactClientPayload,
+                    out string trackDescriptor,
+                    out int timeValue,
+                    out message))
+            {
+                message = ApplyPacketOwnedRadioSchedule(trackDescriptor, timeValue);
+                return true;
+            }
+
+            if (!requireExactClientPayload && TryDecodePacketOwnedStringPayload(payload, out string descriptor))
+            {
+                message = ApplyPacketOwnedRadioSchedule(descriptor, 0);
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool TryDecodePacketOwnedRadioSchedulePayload(
+            byte[] payload,
+            bool requireExactClientPayload,
+            out string trackDescriptor,
+            out int timeValue,
+            out string message)
+        {
+            trackDescriptor = null;
+            timeValue = 0;
             message = "Radio-schedule payload is missing.";
             if (payload == null || payload.Length == 0)
             {
@@ -3608,28 +3699,30 @@ namespace HaCreator.MapSimulator
             {
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
-                string trackDescriptor = ReadPacketOwnedMapleString(reader);
-                int timeValue = reader.BaseStream.Position <= reader.BaseStream.Length - sizeof(int)
+                trackDescriptor = ReadPacketOwnedMapleString(reader);
+                if (requireExactClientPayload && reader.BaseStream.Length - reader.BaseStream.Position < sizeof(int))
+                {
+                    message = "Radio-schedule client payload must match CUserLocal::OnRadioSchedule: DecodeStr followed by Decode4 timeValue.";
+                    return false;
+                }
+
+                timeValue = reader.BaseStream.Position <= reader.BaseStream.Length - sizeof(int)
                     ? reader.ReadInt32()
                     : 0;
-                message = ApplyPacketOwnedRadioSchedule(trackDescriptor, timeValue);
+                if (requireExactClientPayload && reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    message = "Radio-schedule client payload contained trailing bytes after DecodeStr and Decode4 timeValue.";
+                    return false;
+                }
+
+                message = "Decoded packet-owned radio schedule payload.";
                 return true;
             }
-            catch (EndOfStreamException)
+            catch (Exception ex) when (ex is EndOfStreamException or IOException)
             {
+                message = "Radio-schedule payload could not be decoded.";
+                return false;
             }
-            catch (IOException)
-            {
-            }
-
-            if (TryDecodePacketOwnedStringPayload(payload, out string descriptor))
-            {
-                message = ApplyPacketOwnedRadioSchedule(descriptor, 0);
-                return true;
-            }
-
-            message = "Radio-schedule payload could not be decoded.";
-            return false;
         }
 
         private string ApplyPacketOwnedRadioSchedule(string trackDescriptor, int timeValue)
@@ -6648,7 +6741,7 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryApplyPacketOwnedFollowCharacterPayload(byte[] payload, out string message)
+        private bool TryApplyPacketOwnedFollowCharacterPayload(byte[] payload, bool clientOpcodePayload, out string message)
         {
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
             if (localCharacterId <= 0)
@@ -6657,7 +6750,10 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!RemoteUserPacketCodec.TryParseFollowCharacter(payload, out RemoteUserFollowCharacterPacket packet, out string error, localCharacterId))
+            bool parsed = clientOpcodePayload
+                ? RemoteUserPacketCodec.TryParseClientFollowCharacter(payload, localCharacterId, out RemoteUserFollowCharacterPacket packet, out string error)
+                : RemoteUserPacketCodec.TryParseFollowCharacter(payload, out packet, out error, localCharacterId);
+            if (!parsed)
             {
                 message = error;
                 return false;
@@ -8407,7 +8503,7 @@ namespace HaCreator.MapSimulator
                 using BinaryReader reader = new(stream);
                 int questId = reader.ReadInt32();
                 int itemId = reader.ReadInt32();
-                List<int> disallowedQuestIds = DecodePacketOwnedDisallowedDeliveryQuestIds(reader);
+                List<int> disallowedQuestIds = DecodePacketOwnedDeliveryQuestIdsWithOptionalCount(reader);
                 QuestDetailDeliveryType packetOwnedDeliveryType = DecodePacketOwnedDeliveryType(reader);
                 message = ApplyDeliveryQuestLaunch(questId, itemId, disallowedQuestIds, packetOwnedDeliveryType);
                 return true;
@@ -9155,6 +9251,13 @@ namespace HaCreator.MapSimulator
                 case "delivery":
                     applied = TryApplyPacketOwnedDeliveryPayload(payload, out message);
                     break;
+                case "accountmoreinfo":
+                case "moreinfo":
+                    applied = TryApplyPacketOwnedAccountMoreInfoPayload(payload, out message);
+                    break;
+                case "setgender":
+                    applied = TryApplyPacketOwnedSetGenderPayload(payload, out message);
+                    break;
                 case "classcompetition":
                     message = ApplyClassCompetitionPageLaunch();
                     applied = true;
@@ -9196,7 +9299,7 @@ namespace HaCreator.MapSimulator
                     break;
                 case "follow":
                 case "followcharacter":
-                    applied = TryApplyPacketOwnedFollowCharacterPayload(payload, out message);
+                    applied = TryApplyPacketOwnedFollowCharacterPayload(payload, clientOpcodePayload: false, out message);
                     break;
                 case "followask":
                 case "followprompt":

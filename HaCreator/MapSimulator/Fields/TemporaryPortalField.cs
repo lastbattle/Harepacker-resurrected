@@ -1298,6 +1298,12 @@ namespace HaCreator.MapSimulator.Fields
                         : observationDestination.Value;
                 }
 
+                if (metadata.ObservationSource == RemoteTownPortalObservationSource.InferredSourceField
+                    && ownerObservation.ObservationSource != RemoteTownPortalObservationSource.PacketCast)
+                {
+                    return metadataDestination.Value;
+                }
+
                 int comparison = CompareRemoteTownPortalObservationQuality(
                     metadata.ObservationSource,
                     metadata.RecordedAt,

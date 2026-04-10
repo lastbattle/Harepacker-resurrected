@@ -179,6 +179,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCollectionStandardEntryFirstTop = 66;
         private const int ClientCollectionFooterRuleTop = 221;
         private const int ClientCollectionStandardRuleBaseOffset = 19;
+        private const int ClientCollectionTextLaneLeft = 0;
+        private const int ClientCollectionTextLaneWidthInt = 190;
         private const int BookFontObjectStringPoolId = 0x5AF;
         private const int BookFontFamilyStringPoolId = 0x1A25;
         private const int BookFontStyleStringPoolId = 0x5B0;
@@ -496,8 +498,8 @@ namespace HaCreator.MapSimulator.UI
 
             List<CollectionBookRecordSnapshot> records = new()
             {
-                CreateTextRecord(page?.Title, 16, 14, 164, 0, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Title),
-                CreateTextRecord(page?.Subtitle, 16, 34, 164, 10, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Subtitle),
+                CreateTextRecord(page?.Title, ClientCollectionTextLaneLeft, 14, ClientCollectionTextLaneWidthInt, 0, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Title),
+                CreateTextRecord(page?.Subtitle, ClientCollectionTextLaneLeft, 34, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Subtitle),
                 CreateRuleRecord(15, 56, 166),
             };
 
@@ -517,7 +519,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             records.Add(CreateRuleRecord(15, ClientCollectionFooterRuleTop, 166));
-            records.Add(CreateTextRecord(page?.Footer, 16, 227, 164, 11, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Footer));
+            records.Add(CreateTextRecord(page?.Footer, ClientCollectionTextLaneLeft, 227, ClientCollectionTextLaneWidthInt, 11, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Footer));
             return records;
         }
 
@@ -525,8 +527,8 @@ namespace HaCreator.MapSimulator.UI
         {
             List<CollectionBookRecordSnapshot> records = new()
             {
-                CreateTextRecord(page?.Title, 16, 14, 164, 0, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Title),
-                CreateTextRecord(page?.Subtitle, 16, 34, 164, 10, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Subtitle),
+                CreateTextRecord(page?.Title, ClientCollectionTextLaneLeft, 14, ClientCollectionTextLaneWidthInt, 0, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Title),
+                CreateTextRecord(page?.Subtitle, ClientCollectionTextLaneLeft, 34, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Subtitle),
                 CreateRuleRecord(15, 56, 166),
             };
 
@@ -544,7 +546,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             records.Add(CreateRuleRecord(15, 221, 166));
-            records.Add(CreateTextRecord(page?.Footer, 16, 227, 164, 11, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Footer));
+            records.Add(CreateTextRecord(page?.Footer, ClientCollectionTextLaneLeft, 227, ClientCollectionTextLaneWidthInt, 11, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Footer));
             return records;
         }
 
@@ -555,10 +557,9 @@ namespace HaCreator.MapSimulator.UI
                 return top + ClientCollectionOverviewIdentityEntryBaseHeight;
             }
 
-            records.Add(CreateTextRecord(entry.Label, 16, top, 44, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
-            records.Add(CreateTextRecord(entry.Value, 60, top, 120, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left, CollectionBookRecordRole.Value));
-            AddWrappedTextRecords(records, entry.Detail, 22, top + 10, 158, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
-            int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, 158, 10, measureTextWidth);
+            records.Add(CreateTextRecord(BuildEntryHeadline(entry), ClientCollectionTextLaneLeft, top, ClientCollectionTextLaneWidthInt, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+            AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, top + 10, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
+            int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, ClientCollectionTextLaneWidthInt, 10, measureTextWidth);
             int ruleTop = top + 23 + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
             records.Add(CreateRuleRecord(15, ruleTop, 166));
             return ruleTop + 5;
@@ -571,10 +572,9 @@ namespace HaCreator.MapSimulator.UI
                 return top + ClientCollectionOverviewMetricEntryBaseHeight;
             }
 
-            records.Add(CreateTextRecord(entry.Label, 16, top, 98, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
-            records.Add(CreateTextRecord(entry.Value, 106, top, 76, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right, CollectionBookRecordRole.Value));
-            AddWrappedTextRecords(records, entry.Detail, 22, top + 9, 160, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
-            int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, 160, 10, measureTextWidth);
+            records.Add(CreateTextRecord(BuildEntryHeadline(entry), ClientCollectionTextLaneLeft, top, ClientCollectionTextLaneWidthInt, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+            AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, top + 9, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
+            int detailLineCount = GetWrappedCollectionLineCount(entry.Detail, ClientCollectionTextLaneWidthInt, 10, measureTextWidth);
             int ruleTop = top + 16 + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
             records.Add(CreateRuleRecord(15, ruleTop, 166));
             return ruleTop + 3;
@@ -587,9 +587,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            records.Add(CreateTextRecord(entry.Label, 16, top, 96, 2, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
-            records.Add(CreateTextRecord(entry.Value, 104, top, 78, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right, CollectionBookRecordRole.Value));
-            AddWrappedTextRecords(records, entry.Detail, 22, top + 10, 156, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
+            records.Add(CreateTextRecord(BuildEntryHeadline(entry), ClientCollectionTextLaneLeft, top, ClientCollectionTextLaneWidthInt, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Left, CollectionBookRecordRole.Label));
+            AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, top + 10, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
         }
 
         private static IReadOnlyList<IReadOnlyList<CollectionBookEntrySnapshot>> PaginateStandardEntries(IReadOnlyList<CollectionBookEntrySnapshot> entries, Func<string, int, float> measureTextWidth = null)
@@ -627,7 +626,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static int GetStandardEntryRuleTop(int top, CollectionBookEntrySnapshot entry, Func<string, int, float> measureTextWidth = null)
         {
-            int detailLineCount = GetWrappedCollectionLineCount(entry?.Detail, 156, 10, measureTextWidth);
+            int detailLineCount = GetWrappedCollectionLineCount(entry?.Detail, ClientCollectionTextLaneWidthInt, 10, measureTextWidth);
             return top + ClientCollectionStandardRuleBaseOffset + ((detailLineCount - 1) * ClientCollectionDetailLineStep);
         }
 
@@ -719,6 +718,23 @@ namespace HaCreator.MapSimulator.UI
                 StyleIndex = styleIndex,
                 Alignment = alignment
             };
+        }
+
+        private static string BuildEntryHeadline(CollectionBookEntrySnapshot entry)
+        {
+            if (entry == null)
+            {
+                return string.Empty;
+            }
+
+            bool hasLabel = !string.IsNullOrWhiteSpace(entry.Label);
+            bool hasValue = !string.IsNullOrWhiteSpace(entry.Value);
+            if (hasLabel && hasValue)
+            {
+                return $"{entry.Label.Trim()}  {entry.Value.Trim()}";
+            }
+
+            return hasLabel ? entry.Label.Trim() : entry.Value?.Trim() ?? string.Empty;
         }
 
         private static CollectionBookRecordSnapshot CreateRuleRecord(int left, int top, int width)

@@ -165,6 +165,29 @@ namespace HaCreator.MapSimulator.Character
                 ["shotC1"] = CreateIndexedPieces("shoot1", "shoot2", "shootF")
             };
 
+        private static readonly HashSet<string> ClientAttackAliasActionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // These raw-action names are not authored as Shadow Partner `special/*`
+            // branches, but the client loader maps them onto attack helper rows.
+            "avenger",
+            "assaulter",
+            "flyingAssaulter",
+            "prone2",
+            "savage",
+            "showdown",
+            "assassination",
+            "assassinationS",
+            "assassinations",
+            "ninjastorm",
+            "vampire",
+            "stabD1",
+            "swingD1",
+            "swingD2",
+            "doubleSwing",
+            "tripleSwing",
+            "shotC1"
+        };
+
         public static IEnumerable<string> EnumerateClientMappedCandidates(
             string playerActionName,
             PlayerState state,
@@ -464,7 +487,8 @@ namespace HaCreator.MapSimulator.Character
                 Frames = remappedFrames,
                 Loop = baseAnimation.Loop,
                 Origin = baseAnimation.Origin,
-                ZOrder = baseAnimation.ZOrder
+                ZOrder = baseAnimation.ZOrder,
+                PositionCode = baseAnimation.PositionCode
             };
             remappedAnimation.CalculateDuration();
             return remappedAnimation;
@@ -525,7 +549,8 @@ namespace HaCreator.MapSimulator.Character
                 Frames = frames,
                 Loop = false,
                 Origin = firstPieceAnimation?.Origin ?? Point.Zero,
-                ZOrder = firstPieceAnimation?.ZOrder ?? 0
+                ZOrder = firstPieceAnimation?.ZOrder ?? 0,
+                PositionCode = firstPieceAnimation?.PositionCode
             };
             piecedAnimation.CalculateDuration();
             return piecedAnimation;
@@ -693,6 +718,17 @@ namespace HaCreator.MapSimulator.Character
         }
 
         public static bool IsAttackAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return IsAuthoredAttackAction(actionName)
+                   || ClientAttackAliasActionNames.Contains(actionName);
+        }
+
+        private static bool IsAuthoredAttackAction(string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
             {

@@ -1910,8 +1910,6 @@ namespace HaCreator.MapSimulator.Effects
             DismissCurrentDialog();
             SetCeremonyTextOverlay(active: false);
             SetBlessEffect(true, currentTimeMs);
-            SetCeremonyCardOverlay(active: true);
-            SetCeremonyCelebration(active: true);
         }
 
 
@@ -1966,9 +1964,17 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void SetBlessEffect(bool active, int currentTimeMs)
         {
-            _blessEffectActive = active;
             if (active)
             {
+                if (!TryGetBlessEffectWorldCenter().HasValue)
+                {
+                    _blessEffectActive = false;
+                    _blessEffectAlpha = 0f;
+                    _sparkles.Clear();
+                    return;
+                }
+
+                _blessEffectActive = true;
                 _blessEffectStartTime = currentTimeMs;
                 _blessEffectAlpha = 1f;
 
@@ -1998,6 +2004,7 @@ namespace HaCreator.MapSimulator.Effects
             }
             else
             {
+                _blessEffectActive = false;
                 _blessEffectAlpha = 0f;
                 _sparkles.Clear();
             }
@@ -2393,31 +2400,15 @@ namespace HaCreator.MapSimulator.Effects
 
         private Vector2? TryGetBlessEffectWorldCenter()
         {
-            Vector2? groom = _groomPosition;
-            Vector2? bride = _bridePosition;
-
-
-            if (!groom.HasValue && !bride.HasValue)
+            if (!_groomPosition.HasValue || !_bridePosition.HasValue)
             {
                 return null;
             }
 
 
-            if (!groom.HasValue && bride.HasValue)
-            {
-                groom = new Vector2(bride.Value.X - 40f, bride.Value.Y);
-            }
-
-
-            if (!bride.HasValue && groom.HasValue)
-            {
-                bride = new Vector2(groom.Value.X + 40f, groom.Value.Y);
-            }
-
-
             return new Vector2(
-                (groom!.Value.X + bride!.Value.X) * 0.5f,
-                ((groom.Value.Y + bride.Value.Y) * 0.5f) - 20f);
+                (_groomPosition.Value.X + _bridePosition.Value.X) * 0.5f,
+                ((_groomPosition.Value.Y + _bridePosition.Value.Y) * 0.5f) - 20f);
         }
 
 

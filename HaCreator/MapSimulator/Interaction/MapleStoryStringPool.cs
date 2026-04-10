@@ -89,6 +89,19 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0507] = "Sound/Game.img/EnchantSuccess",
             [0x0508] = "Sound/Game.img/EnchantFailure",
             [0x1534] = "Sound/UI.img/EnchantDelay",
+            // Recovered from MapleStory.exe v95 `CWvsContext::OnSkillLearnItemResult`.
+            // The packet-owned skill-book result branch formats these exact notices
+            // through StringPool before writing to the status-bar chat log.
+            [0x0F2F] = "Mastery Book",
+            [0x0F30] = "Skill Book",
+            [0x0F31] = "You cannot use %s.",
+            [0x0F32] = "Despite using %s, the effect was nowhere to be found.",
+            [0x0F33] = "The Book of Mastery glows brightly, and the current skills have gone through an upgrade.",
+            [0x0F34] = "The Skill Book glows brightly, and new skills have now been added.",
+            [0x0FF1] = "Effect/BasicEff.img/SkillBook/Success/0",
+            [0x0FF2] = "Effect/BasicEff.img/SkillBook/Success/1",
+            [0x0FF3] = "Effect/BasicEff.img/SkillBook/Failure/0",
+            [0x0FF4] = "Effect/BasicEff.img/SkillBook/Failure/1",
             // Recovered from MapleStory.exe v95 `CDragon::UpdateQuestInfo`. The generated table
             // resolves 0x19BC to an unrelated UI list frame in this workspace, but the client
             // formats the dragon quest-info layer path from this string-pool slot with the raw

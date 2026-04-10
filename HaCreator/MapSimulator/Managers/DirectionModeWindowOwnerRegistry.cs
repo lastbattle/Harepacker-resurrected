@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         private static readonly HashSet<string> ImplicitOwnerEligibleWindowNames = new(StringComparer.Ordinal)
         {
+            MapSimulatorWindowNames.Inventory,
             MapSimulatorWindowNames.AntiMacro,
             MapSimulatorWindowNames.AdminAntiMacro,
             MapSimulatorWindowNames.AntiMacroNotice,
@@ -58,6 +59,7 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.Event,
             MapSimulatorWindowNames.Radio,
             MapSimulatorWindowNames.DragonBox,
+            MapSimulatorWindowNames.AccountMoreInfo,
             MapSimulatorWindowNames.SocialList,
             MapSimulatorWindowNames.SocialSearch,
             MapSimulatorWindowNames.GuildSearch,
@@ -77,6 +79,7 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.QuestDelivery,
             MapSimulatorWindowNames.ClassCompetition,
             MapSimulatorWindowNames.AranSkillGuide,
+            MapSimulatorWindowNames.Revive,
             MapSimulatorWindowNames.NpcShop,
             MapSimulatorWindowNames.StoreBank,
             MapSimulatorWindowNames.BattleRecord,

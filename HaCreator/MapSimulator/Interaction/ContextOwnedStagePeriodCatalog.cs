@@ -470,7 +470,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     foreach ((int fieldId, IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries) in affectedMapsByFieldId)
                     {
-                        if (entries.Any(entry => period.Keywords.Contains(entry.StageKeyword)))
+                        if (entries.Any(entry => entry.Matches(period)))
                         {
                             period.AffectedMapIds.Add(fieldId);
                         }

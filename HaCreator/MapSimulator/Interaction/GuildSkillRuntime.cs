@@ -734,7 +734,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanLevelUp(SkillDisplayData skill)
         {
-            if (_pendingRequest != null || !_isInGuild || skill == null || _availablePoints <= 0 || skill.CurrentLevel >= skill.MaxLevel)
+            if (_pendingRequest != null || !CanManageSkills() || skill == null || _availablePoints <= 0 || skill.CurrentLevel >= skill.MaxLevel)
             {
                 return false;
             }

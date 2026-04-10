@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal enum SocialListClientGuildResultKind : byte
     {
+        GradeChange = 66,
         Ranking = 76,
         RankTitles = 68,
         Notice = 71,
@@ -89,10 +90,12 @@ namespace HaCreator.MapSimulator.Interaction
         string Notice,
         GuildMarkSelection? MarkSelection,
         int GuildPoints,
-        int GuildLevel);
+        int GuildLevel,
+        SocialListGradeChangePacket GradeChange);
 
     internal enum SocialListClientAllianceResultKind : byte
     {
+        GradeChange = 27,
         RankTitles = 26,
         Notice = 28
     }
@@ -101,11 +104,13 @@ namespace HaCreator.MapSimulator.Interaction
         SocialListClientAllianceResultKind Kind,
         int AllianceId,
         IReadOnlyList<string> RankTitles,
-        string Notice);
+        string Notice,
+        SocialListGradeChangePacket GradeChange);
 
     internal readonly record struct SocialListGradeChangePacket(
         int MemberId,
         int Delta,
+        int? AbsoluteGrade,
         string Summary);
 
     internal static class SocialListPacketCodec
@@ -299,6 +304,30 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind kind = (SocialListClientGuildResultKind)reader.ReadByte();
                 switch (kind)
                 {
+                    case SocialListClientGuildResultKind.GradeChange:
+                    {
+                        int guildId = reader.ReadInt32();
+                        int memberId = reader.ReadInt32();
+                        int absoluteGrade = reader.ReadByte();
+                        if (memberId <= 0)
+                        {
+                            error = "Client guild-result grade-change member id must be positive.";
+                            return false;
+                        }
+
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            guildId,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            new SocialListGradeChangePacket(memberId, 0, absoluteGrade, null));
+                        return true;
+                    }
+
                     case SocialListClientGuildResultKind.Ranking:
                     {
                         int guildId = reader.ReadInt32();
@@ -326,7 +355,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 IsPacketOwned: true));
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0, default);
                         return true;
                     }
 
@@ -339,7 +368,7 @@ namespace HaCreator.MapSimulator.Interaction
                             titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0, default);
                         return true;
                     }
 
@@ -354,7 +383,8 @@ namespace HaCreator.MapSimulator.Interaction
                             reader.ReadString16().Trim(),
                             null,
                             0,
-                            0);
+                            0,
+                            default);
                         return true;
                     }
 
@@ -375,7 +405,8 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             selection,
                             0,
-                            0);
+                            0,
+                            default);
                         return true;
                     }
 
@@ -392,7 +423,8 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             null,
                             guildPoints,
-                            guildLevel);
+                            guildLevel,
+                            default);
                         return true;
                     }
 
@@ -465,6 +497,25 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientAllianceResultKind kind = (SocialListClientAllianceResultKind)reader.ReadByte();
                 switch (kind)
                 {
+                    case SocialListClientAllianceResultKind.GradeChange:
+                    {
+                        int memberId = reader.ReadInt32();
+                        int absoluteGrade = reader.ReadByte();
+                        if (memberId <= 0)
+                        {
+                            error = "Client alliance-result grade-change member id must be positive.";
+                            return false;
+                        }
+
+                        packet = new SocialListClientAllianceResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<string>(),
+                            null,
+                            new SocialListGradeChangePacket(memberId, 0, absoluteGrade, null));
+                        return true;
+                    }
+
                     case SocialListClientAllianceResultKind.RankTitles:
                     {
                         int allianceId = reader.ReadInt32();
@@ -474,14 +525,14 @@ namespace HaCreator.MapSimulator.Interaction
                             titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
-                        packet = new SocialListClientAllianceResultPacket(kind, allianceId, titles, null);
+                        packet = new SocialListClientAllianceResultPacket(kind, allianceId, titles, null, default);
                         return true;
                     }
 
                     case SocialListClientAllianceResultKind.Notice:
                     {
                         int allianceId = reader.ReadInt32();
-                        packet = new SocialListClientAllianceResultPacket(kind, allianceId, Array.Empty<string>(), reader.ReadString16().Trim());
+                        packet = new SocialListClientAllianceResultPacket(kind, allianceId, Array.Empty<string>(), reader.ReadString16().Trim(), default);
                         return true;
                     }
 
@@ -519,7 +570,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                packet = new SocialListGradeChangePacket(memberId, delta > 0 ? 1 : -1, reader.HasRemaining ? reader.ReadString16().Trim() : null);
+                packet = new SocialListGradeChangePacket(memberId, delta > 0 ? 1 : -1, null, reader.HasRemaining ? reader.ReadString16().Trim() : null);
                 return true;
             }
             catch (InvalidOperationException ex)

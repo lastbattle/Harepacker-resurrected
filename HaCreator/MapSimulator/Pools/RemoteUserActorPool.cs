@@ -38,7 +38,8 @@ namespace HaCreator.MapSimulator.Pools
             int SkillId,
             int? ActionSpeed,
             bool FacingRight,
-            int CurrentTime);
+            int CurrentTime,
+            IReadOnlyList<string> BranchNames = null);
 
         private readonly record struct RemoteMechanicModePresentation(
             string StandActionName,
@@ -198,6 +199,11 @@ namespace HaCreator.MapSimulator.Pools
             1221004,
             15101006,
             21111005
+        };
+        private static readonly HashSet<int> RemotePreparedSkillUseEffectSkillIds = new()
+        {
+            35001001,
+            35101009
         };
         private static readonly Color RemoteShadowPartnerTint = new(255, 255, 255, 150);
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
@@ -1611,6 +1617,19 @@ namespace HaCreator.MapSimulator.Pools
                 TextVariant = textVariant,
                 ShowText = showText
             };
+
+            if (RemotePreparedSkillUseEffectSkillIds.Contains(skillId))
+            {
+                string branchName = isHolding ? "keydown" : "prepare";
+                SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                    actor.CharacterId,
+                    skillId,
+                    null,
+                    actor.FacingRight,
+                    currentTime,
+                    new[] { branchName }));
+            }
+
             return true;
         }
 
@@ -4586,7 +4605,10 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            string normalizedActionName = NormalizeActionName(actionName, allowSitFallback);
+            string normalizedActionName = ResolvePortableChairVisibleActionName(
+                actor,
+                NormalizeActionName(actionName, allowSitFallback),
+                allowSitFallback);
             bool baseActionChanged = !string.Equals(actor.BaseActionName, normalizedActionName, StringComparison.OrdinalIgnoreCase);
             bool rawActionChanged = actor.BaseActionRawCode != rawActionCode;
 
@@ -4599,6 +4621,22 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.ActionName = ResolveClientVisibleActionName(actor.BaseActionName, actor.TemporaryStats.KnownState);
             actor.RidingVehicleId = ResolveRemoteRidingVehicleId(actor);
+        }
+
+        private static string ResolvePortableChairVisibleActionName(
+            RemoteUserActor actor,
+            string actionName,
+            bool allowSitFallback)
+        {
+            PortableChair chair = actor?.Build?.ActivePortableChair;
+            if (!allowSitFallback
+                || chair == null
+                || !string.Equals(actionName, CharacterPart.GetActionString(CharacterAction.Sit), StringComparison.OrdinalIgnoreCase))
+            {
+                return actionName;
+            }
+
+            return PlayerCharacter.ResolvePortableChairActionName(chair);
         }
 
         private static int ResolveRemoteRidingVehicleId(RemoteUserActor actor)
@@ -4698,17 +4736,13 @@ namespace HaCreator.MapSimulator.Pools
             {
                 "stand1" or "stand2" or "alert" or "sit" => presentation.StandActionName,
                 "walk1" or "walk2" => presentation.WalkActionName,
-                "jump" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "jump") ?? presentation.StandActionName,
+                "jump" => presentation.StandActionName,
                 "ladder" => "ladder2",
                 "rope" => "rope2",
-                "swim" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "swim")
-                          ?? ResolveMechanicActionFamilyVariant(presentation.StandActionName, "fly")
-                          ?? presentation.StandActionName,
-                "fly" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "fly")
-                         ?? ResolveMechanicActionFamilyVariant(presentation.StandActionName, "swim")
-                         ?? presentation.StandActionName,
+                "swim" => presentation.StandActionName,
+                "fly" => presentation.StandActionName,
                 "prone" or "proneStab" => presentation.ProneActionName,
-                "hit" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "hit") ?? presentation.StandActionName,
+                "hit" => presentation.StandActionName,
                 _ when IsHiddenLikeAttackAction(normalized) => presentation.AttackActionName,
                 _ => normalized
             };
@@ -4718,18 +4752,6 @@ namespace HaCreator.MapSimulator.Pools
             {
                 return true;
             }
-
-            actionName = normalized switch
-            {
-                "ladder" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "ladder")
-                            ?? ResolveMechanicActionFamilyVariant(presentation.StandActionName, "rope")
-                            ?? presentation.StandActionName,
-                "rope" => ResolveMechanicActionFamilyVariant(presentation.StandActionName, "rope")
-                          ?? ResolveMechanicActionFamilyVariant(presentation.StandActionName, "ladder")
-                          ?? presentation.StandActionName,
-                _ => actionName
-            };
-
             return true;
         }
 
@@ -4745,22 +4767,6 @@ namespace HaCreator.MapSimulator.Pools
 
             presentation = default;
             return false;
-        }
-
-        private static string ResolveMechanicActionFamilyVariant(string standActionName, string variantSuffix)
-        {
-            if (string.IsNullOrWhiteSpace(standActionName) || string.IsNullOrWhiteSpace(variantSuffix))
-            {
-                return null;
-            }
-
-            return standActionName switch
-            {
-                "tank_stand" => $"tank_{variantSuffix}",
-                "siege_stand" => $"siege_{variantSuffix}",
-                "tank_siegestand" => $"tank_siege{variantSuffix}",
-                _ => null
-            };
         }
 
         private static bool IsHiddenLikeAttackAction(string actionName)

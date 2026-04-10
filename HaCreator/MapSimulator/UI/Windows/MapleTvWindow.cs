@@ -19,8 +19,9 @@ namespace HaCreator.MapSimulator.UI
         // overhang that 240px surface. Keep the entire WZ composite centered rather than
         // pinning only the raw media frame to the screen center.
         private const int WorldOverlayTopMargin = 20;
-        // CUIMapleTV::OnCreate wires the receiver edit at (44,68,150,14) and the multiline
-        // message edit at (40,113,135,75) for the dedicated send boards the simulator exposes.
+        // CUIMapleTV::OnCreate wires dialog type 1 sender-only boards to a wider edit at
+        // (18,113,180,75), while flexible/dedication boards keep (40,113,135,75).
+        private static readonly Rectangle SenderOnlyDraftMessageTextBounds = new(18, 113, 180, 75);
         private static readonly Rectangle DraftMessageTextBounds = new(40, 113, 135, 75);
         private static readonly Rectangle ReceiverNameBounds = new(44, 68, 150, 14);
         // The MapleTV chat and media canvases carry non-zero WZ origins, so these bounds stay
@@ -613,7 +614,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static Rectangle ResolveMessageTextBounds(MapleTvSnapshot snapshot)
         {
-            return DraftMessageTextBounds;
+            return snapshot.MessageType == 1 ? SenderOnlyDraftMessageTextBounds : DraftMessageTextBounds;
         }
 
         private static string ResolveReceiverLabel(MapleTvSnapshot snapshot)

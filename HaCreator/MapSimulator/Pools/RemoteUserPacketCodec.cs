@@ -360,6 +360,10 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
     public static class RemoteUserPacketCodec
     {
+        private const int HelperNumericPayloadLength = sizeof(int) + sizeof(byte) + sizeof(byte);
+        private const int HelperNamedPayloadMinimumLength = sizeof(int) + sizeof(byte) + sizeof(byte);
+        private const byte HelperMarkerClearValue = byte.MaxValue;
+
         private const int OfficialEnterFieldSuffixLength = sizeof(int) * 6 + sizeof(short) * 2 + sizeof(byte);
 
         private enum RemoteTemporaryStatMaskBit
@@ -467,6 +471,36 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return TryParseCompactFollowCharacter(payload, out packet, out error);
+        }
+
+        public static bool TryParseClientFollowCharacter(
+            ReadOnlySpan<byte> payload,
+            int localCharacterId,
+            out RemoteUserFollowCharacterPacket packet,
+            out string error)
+        {
+            if (TryParseCompactFollowCharacter(payload, out packet, out error))
+            {
+                return true;
+            }
+
+            string commonPayloadError = error;
+            if (localCharacterId > 0
+                && TryParseOfficialFollowCharacter(payload, localCharacterId, out packet, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(commonPayloadError) && !string.IsNullOrWhiteSpace(error))
+            {
+                error = $"{error} Common CUserPool::OnUserCommonPacket parse also failed: {commonPayloadError}";
+            }
+            else if (!string.IsNullOrWhiteSpace(commonPayloadError))
+            {
+                error = commonPayloadError;
+            }
+
+            return false;
         }
 
         private static bool TryParseCompactFollowCharacter(ReadOnlySpan<byte> payload, out RemoteUserFollowCharacterPacket packet, out string error)
@@ -1626,9 +1660,95 @@ namespace HaCreator.MapSimulator.Pools
         {
             packet = default;
             error = null;
-            if (payload.Length != sizeof(int) + sizeof(byte) + sizeof(byte))
+            if (payload.Length == HelperNumericPayloadLength)
             {
-                error = $"Remote user helper packet expects 6 bytes but received {payload.Length}.";
+                int characterId = payload[0]
+                    | (payload[1] << 8)
+                    | (payload[2] << 16)
+                    | (payload[3] << 24);
+                byte markerRaw = payload[4];
+                MinimapUI.HelperMarkerType? markerType = markerRaw == HelperMarkerClearValue
+                    ? null
+                    : Enum.IsDefined(typeof(MinimapUI.HelperMarkerType), (int)markerRaw)
+                        ? (MinimapUI.HelperMarkerType)markerRaw
+                        : null;
+                if (markerRaw != HelperMarkerClearValue && !markerType.HasValue)
+                {
+                    error = $"Remote user helper marker value {markerRaw} is not recognized.";
+                    return false;
+                }
+
+                packet = new RemoteUserHelperPacket(characterId, markerType, payload[5] != 0);
+                return true;
+            }
+
+            return TryParseNamedHelper(payload, out packet, out error);
+        }
+
+        public static bool TryBuildHelperPayload(int characterId, string markerName, bool showDirectionOverlay, out byte[] payload, out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = null;
+
+            if (!TryResolveHelperMarkerName(markerName, out MinimapUI.HelperMarkerType? markerType))
+            {
+                error = "Helper marker must be another, friend, guild, guildmaster, match, party, partymaster, usertrader, anothertrader, or clear.";
+                return false;
+            }
+
+            string normalizedName = ResolveHelperMarkerWzName(markerType);
+            byte[] nameBytes = Encoding.UTF8.GetBytes(normalizedName);
+            if (nameBytes.Length > byte.MaxValue)
+            {
+                error = "Remote user helper marker names must fit in an 8-bit packet string.";
+                return false;
+            }
+
+            payload = new byte[sizeof(int) + sizeof(byte) + nameBytes.Length + sizeof(byte)];
+            payload[0] = (byte)characterId;
+            payload[1] = (byte)(characterId >> 8);
+            payload[2] = (byte)(characterId >> 16);
+            payload[3] = (byte)(characterId >> 24);
+            payload[4] = (byte)nameBytes.Length;
+            if (nameBytes.Length > 0)
+            {
+                Buffer.BlockCopy(nameBytes, 0, payload, 5, nameBytes.Length);
+            }
+
+            payload[^1] = showDirectionOverlay ? (byte)1 : (byte)0;
+            return true;
+        }
+
+        internal static bool TryResolveHelperMarkerName(string markerName, out MinimapUI.HelperMarkerType? markerType)
+        {
+            markerType = markerName?.Trim().ToLowerInvariant() switch
+            {
+                "another" => MinimapUI.HelperMarkerType.Another,
+                "friend" => MinimapUI.HelperMarkerType.Friend,
+                "guild" => MinimapUI.HelperMarkerType.Guild,
+                "guildmaster" => MinimapUI.HelperMarkerType.GuildMaster,
+                "match" => MinimapUI.HelperMarkerType.Match,
+                "party" => MinimapUI.HelperMarkerType.Party,
+                "partymaster" => MinimapUI.HelperMarkerType.PartyMaster,
+                "usertrader" => MinimapUI.HelperMarkerType.UserTrader,
+                "anothertrader" => MinimapUI.HelperMarkerType.AnotherTrader,
+                "clear" or "none" => null,
+                _ => null
+            };
+
+            return markerName != null
+                && (markerType.HasValue
+                    || string.Equals(markerName.Trim(), "clear", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(markerName.Trim(), "none", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool TryParseNamedHelper(ReadOnlySpan<byte> payload, out RemoteUserHelperPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+            if (payload.Length < HelperNamedPayloadMinimumLength)
+            {
+                error = $"Remote user helper packet expects the legacy 6-byte payload or a named DefaultHelper payload, but received {payload.Length} bytes.";
                 return false;
             }
 
@@ -1636,20 +1756,41 @@ namespace HaCreator.MapSimulator.Pools
                 | (payload[1] << 8)
                 | (payload[2] << 16)
                 | (payload[3] << 24);
-            byte markerRaw = payload[4];
-            MinimapUI.HelperMarkerType? markerType = markerRaw == byte.MaxValue
-                ? null
-                : Enum.IsDefined(typeof(MinimapUI.HelperMarkerType), (int)markerRaw)
-                    ? (MinimapUI.HelperMarkerType)markerRaw
-                    : null;
-            if (markerRaw != byte.MaxValue && !markerType.HasValue)
+            int nameLength = payload[4];
+            if (payload.Length != sizeof(int) + sizeof(byte) + nameLength + sizeof(byte))
             {
-                error = $"Remote user helper marker value {markerRaw} is not recognized.";
+                error = $"Remote user named helper packet length {payload.Length} does not match its {nameLength}-byte marker name.";
                 return false;
             }
 
-            packet = new RemoteUserHelperPacket(characterId, markerType, payload[5] != 0);
+            string markerName = nameLength == 0
+                ? "clear"
+                : Encoding.UTF8.GetString(payload.Slice(5, nameLength));
+            if (!TryResolveHelperMarkerName(markerName, out MinimapUI.HelperMarkerType? markerType))
+            {
+                error = $"Remote user helper marker '{markerName}' is not recognized.";
+                return false;
+            }
+
+            packet = new RemoteUserHelperPacket(characterId, markerType, payload[^1] != 0);
             return true;
+        }
+
+        private static string ResolveHelperMarkerWzName(MinimapUI.HelperMarkerType? markerType)
+        {
+            return markerType switch
+            {
+                MinimapUI.HelperMarkerType.Another => "another",
+                MinimapUI.HelperMarkerType.Friend => "friend",
+                MinimapUI.HelperMarkerType.Guild => "guild",
+                MinimapUI.HelperMarkerType.GuildMaster => "guildmaster",
+                MinimapUI.HelperMarkerType.Match => "match",
+                MinimapUI.HelperMarkerType.Party => "party",
+                MinimapUI.HelperMarkerType.PartyMaster => "partymaster",
+                MinimapUI.HelperMarkerType.UserTrader => "usertrader",
+                MinimapUI.HelperMarkerType.AnotherTrader => "anothertrader",
+                _ => "clear"
+            };
         }
 
         public static bool TryParseBattlefieldTeam(ReadOnlySpan<byte> payload, out RemoteUserBattlefieldTeamPacket packet, out string error)
@@ -1871,6 +2012,28 @@ namespace HaCreator.MapSimulator.Pools
             bool hasYellowAura = false;
             bool hasBlessingArmor = false;
             int weaponChargeMetadataOffset = -1;
+            int? attractValue = null;
+            int? spiritJavelinValue = null;
+            int? banMapValue = null;
+            int? dojangShieldValue = null;
+            int? reverseInputValue = null;
+            int? respectPImmuneValue = null;
+            int? respectMImmuneValue = null;
+            int? defenseAttValue = null;
+            int? defenseStateValue = null;
+            bool hasDojangBerserk = false;
+            bool hasDojangInvincible = false;
+            int? stopPortionValue = null;
+            int? stopMotionValue = null;
+            int? fearValue = null;
+            bool hasFlying = false;
+            int? frozenValue = null;
+            int? suddenDeathValue = null;
+            byte? cycloneValue = null;
+            bool hasSneak = false;
+            bool hasMorewildDamageUp = false;
+            byte? trailingDefenseAttByte = null;
+            byte? trailingDefenseStateByte = null;
 
             try
             {
@@ -1956,19 +2119,19 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Attract))
                 {
-                    reader.ReadInt32();
+                    attractValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.SpiritJavelin))
                 {
                     hasSpiritJavelin = true;
                     hasSoulArrow = true;
-                    reader.ReadInt32();
+                    spiritJavelinValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.BanMap))
                 {
-                    reader.ReadInt32();
+                    banMapValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Barrier))
@@ -1979,32 +2142,42 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DojangShield))
                 {
-                    reader.ReadInt32();
+                    dojangShieldValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.ReverseInput))
                 {
-                    reader.ReadInt32();
+                    reverseInputValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.RespectPImmune))
                 {
-                    reader.ReadInt32();
+                    respectPImmuneValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.RespectMImmune))
                 {
-                    reader.ReadInt32();
+                    respectMImmuneValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DefenseAtt))
                 {
-                    reader.ReadInt32();
+                    defenseAttValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DefenseState))
                 {
-                    reader.ReadInt32();
+                    defenseStateValue = reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DojangBerserk))
+                {
+                    hasDojangBerserk = true;
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DojangInvincible))
+                {
+                    hasDojangInvincible = true;
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.WindWalk))
@@ -2023,17 +2196,17 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.StopPortion))
                 {
-                    reader.ReadInt32();
+                    stopPortionValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.StopMotion))
                 {
-                    reader.ReadInt32();
+                    stopMotionValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Fear))
                 {
-                    reader.ReadInt32();
+                    fearValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.MagicShield))
@@ -2047,12 +2220,12 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Frozen))
                 {
-                    reader.ReadInt32();
+                    frozenValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.SuddenDeath))
                 {
-                    reader.ReadInt32();
+                    suddenDeathValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.FinalCut))
@@ -2066,7 +2239,17 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Cyclone))
                 {
-                    reader.ReadByte();
+                    cycloneValue = reader.ReadByte();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Sneak))
+                {
+                    hasSneak = true;
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.MorewildDamageUp))
+                {
+                    hasMorewildDamageUp = true;
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Mechanic))
@@ -2108,12 +2291,12 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (reader.RemainingLength > 0)
                 {
-                    reader.ReadByte();
+                    trailingDefenseAttByte = reader.ReadByte();
                 }
 
                 if (reader.RemainingLength > 0)
                 {
-                    reader.ReadByte();
+                    trailingDefenseStateByte = reader.ReadByte();
                 }
             }
             catch (InvalidOperationException)
@@ -2140,7 +2323,30 @@ namespace HaCreator.MapSimulator.Pools
                 hasDarkAura,
                 hasBlueAura,
                 hasYellowAura,
-                hasBlessingArmor);
+                hasBlessingArmor,
+                new RemoteUserTemporaryStatExtendedState(
+                    attractValue,
+                    spiritJavelinValue,
+                    banMapValue,
+                    dojangShieldValue,
+                    reverseInputValue,
+                    respectPImmuneValue,
+                    respectMImmuneValue,
+                    defenseAttValue,
+                    defenseStateValue,
+                    hasDojangBerserk,
+                    hasDojangInvincible,
+                    stopPortionValue,
+                    stopMotionValue,
+                    fearValue,
+                    hasFlying,
+                    frozenValue,
+                    suddenDeathValue,
+                    cycloneValue,
+                    hasSneak,
+                    hasMorewildDamageUp,
+                    trailingDefenseAttByte,
+                    trailingDefenseStateByte));
         }
 
         private static bool IsTemporaryStatActive(int[] maskWords, RemoteTemporaryStatMaskBit bit)
@@ -2202,10 +2408,36 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             RemoteUserTemporaryStatKnownState knownState = snapshot.KnownState;
+            RemoteUserTemporaryStatExtendedState extendedState = knownState.ExtendedState;
             bool hasSoulArrow = knownState.HasSoulArrow
                 && (IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SoulArrow)
                     || (knownState.HasSpiritJavelin
                         && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SpiritJavelin)));
+            bool keepDefenseAtt = IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DefenseAtt);
+            bool keepDefenseState = IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DefenseState);
+            RemoteUserTemporaryStatExtendedState maskedExtendedState = new(
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Attract) ? extendedState.AttractValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SpiritJavelin) ? extendedState.SpiritJavelinValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.BanMap) ? extendedState.BanMapValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DojangShield) ? extendedState.DojangShieldValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.ReverseInput) ? extendedState.ReverseInputValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.RespectPImmune) ? extendedState.RespectPImmuneValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.RespectMImmune) ? extendedState.RespectMImmuneValue : null,
+                keepDefenseAtt ? extendedState.DefenseAttValue : null,
+                keepDefenseState ? extendedState.DefenseStateValue : null,
+                extendedState.HasDojangBerserk && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DojangBerserk),
+                extendedState.HasDojangInvincible && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DojangInvincible),
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.StopPortion) ? extendedState.StopPortionValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.StopMotion) ? extendedState.StopMotionValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Fear) ? extendedState.FearValue : null,
+                extendedState.HasFlying && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Flying),
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Frozen) ? extendedState.FrozenValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SuddenDeath) ? extendedState.SuddenDeathValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Cyclone) ? extendedState.CycloneValue : null,
+                extendedState.HasSneak && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Sneak),
+                extendedState.HasMorewildDamageUp && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.MorewildDamageUp),
+                keepDefenseAtt ? extendedState.TrailingDefenseAttByte : null,
+                keepDefenseState ? extendedState.TrailingDefenseStateByte : null);
             RemoteUserTemporaryStatKnownState maskedKnownState = new(
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Speed) ? knownState.Speed : null,
                 knownState.HasShadowPartner && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.ShadowPartner),
@@ -2224,7 +2456,8 @@ namespace HaCreator.MapSimulator.Pools
                 knownState.HasDarkAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DarkAura),
                 knownState.HasBlueAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.BlueAura),
                 knownState.HasYellowAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.YellowAura),
-                knownState.HasBlessingArmor && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.BlessingArmor));
+                knownState.HasBlessingArmor && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.BlessingArmor),
+                maskedExtendedState);
 
             return snapshot with
             {

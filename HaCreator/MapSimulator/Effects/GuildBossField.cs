@@ -149,6 +149,7 @@ namespace HaCreator.MapSimulator.Effects
         private List<GuildBossSpriteFrame> _pulleyFrames;
         private int _pulleyFrameIndex = 0;
         private int _lastPulleyFrameTime = 0;
+        private int _pulleyHitAnimationUntil = int.MinValue;
         #endregion
 
 
@@ -166,6 +167,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int PulleyReuseDelayMs = 1200;
         private const int PulleyTransportRequestTimeoutMs = 1500;
         private const int StatusCueDurationMs = 1800;
+        private const int PulleyHitFallbackAnimationMs = 270;
 
 
         public bool IsActive => _isActive;
@@ -176,6 +178,7 @@ namespace HaCreator.MapSimulator.Effects
         public bool HasPendingLocalPulleySequence => _localPulleySequenceStage != LocalPulleySequenceStage.None;
         public PulleyPacketRequest? PendingPulleyPacketRequest => _pendingPulleyPacketRequest;
         public bool HasPulleyTransportRequestInFlight => _pulleyRequestInFlightUntil != int.MinValue;
+        public bool IsPulleyHitAnimationActive => _pulleyHitAnimationUntil != int.MinValue;
         public bool IsLocalPlayerWithinPulleyArea => _pulleyEnabled && !_localPlayerHitbox.IsEmpty && _pulleyArea.Intersects(_localPlayerHitbox);
         #endregion
 
@@ -507,7 +510,7 @@ namespace HaCreator.MapSimulator.Effects
 
             if (_pulleyEnabled)
             {
-                AdvanceFrame(_pulleyFrames, ref _pulleyFrameIndex, ref _lastPulleyFrameTime, currentTimeMs);
+                UpdatePulleyHitAnimation(currentTimeMs);
             }
 
 
@@ -836,6 +839,7 @@ namespace HaCreator.MapSimulator.Effects
             _pulleyFrameIndex = 0;
             _lastHealerFrameTime = 0;
             _lastPulleyFrameTime = 0;
+            _pulleyHitAnimationUntil = int.MinValue;
             _lastPulleyStateChangeTime = 0;
             _lastHealAmount = 0;
             _localPulleySequenceStage = LocalPulleySequenceStage.None;
@@ -986,9 +990,55 @@ namespace HaCreator.MapSimulator.Effects
 
         private void TriggerPulleyHitAnimation(int currentTimeMs)
         {
+            // CPulley::Hit starts the layer animation only when the pulley layer is not already animating.
+            if (IsPulleyHitAnimationActive)
+            {
+                SetStatusCue("Pulley hit", currentTimeMs);
+                return;
+            }
+
             _pulleyFrameIndex = 0;
             _lastPulleyFrameTime = currentTimeMs;
+            _pulleyHitAnimationUntil = unchecked(currentTimeMs + GetPulleyHitAnimationDurationMs());
             SetStatusCue("Pulley hit", currentTimeMs);
+        }
+
+
+        private void UpdatePulleyHitAnimation(int currentTimeMs)
+        {
+            if (!IsPulleyHitAnimationActive)
+            {
+                _pulleyFrameIndex = 0;
+                _lastPulleyFrameTime = 0;
+                return;
+            }
+
+            if (currentTimeMs >= _pulleyHitAnimationUntil)
+            {
+                _pulleyHitAnimationUntil = int.MinValue;
+                _pulleyFrameIndex = 0;
+                _lastPulleyFrameTime = 0;
+                return;
+            }
+
+            AdvanceFrame(_pulleyFrames, ref _pulleyFrameIndex, ref _lastPulleyFrameTime, currentTimeMs);
+        }
+
+
+        private int GetPulleyHitAnimationDurationMs()
+        {
+            if (_pulleyFrames == null || _pulleyFrames.Count == 0)
+            {
+                return PulleyHitFallbackAnimationMs;
+            }
+
+            int durationMs = 0;
+            foreach (GuildBossSpriteFrame frame in _pulleyFrames)
+            {
+                durationMs += Math.Max(0, frame.Delay);
+            }
+
+            return durationMs > 0 ? durationMs : PulleyHitFallbackAnimationMs;
         }
 
 

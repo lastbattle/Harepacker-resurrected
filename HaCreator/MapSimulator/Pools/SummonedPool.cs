@@ -910,9 +910,17 @@ namespace HaCreator.MapSimulator.Pools
 
         private void TryRegisterClientOwnedAttackTileOverlay(PacketOwnedSummonState state, int currentTime)
         {
+            int resolvedSkillLevel = state?.SkillLevel > 0
+                ? state.SkillLevel
+                : Math.Max(1, state?.Summon?.Level ?? 1);
+            int resolvedOwnerCharacterLevel = Math.Max(1, state?.OwnerCharacterLevel ?? 1);
+
             if (state?.Summon == null
                 || _mobPool == null
-                || !PacketOwnedSummonUpdateRules.ShouldRegisterClientOwnedAttackTileOverlay(state.Summon))
+                || !PacketOwnedSummonUpdateRules.ShouldRegisterClientOwnedAttackTileOverlay(
+                    state.Summon,
+                    resolvedSkillLevel,
+                    resolvedOwnerCharacterLevel))
             {
                 return;
             }
@@ -940,10 +948,6 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int resolvedSkillLevel = state.SkillLevel > 0
-                ? state.SkillLevel
-                : Math.Max(1, state.Summon.Level);
-            int resolvedOwnerCharacterLevel = Math.Max(1, state.OwnerCharacterLevel);
             SkillAnimation zoneAnimation = state.Summon.SkillData?.ZoneEffect?.ResolveAnimationVariant(
                                             resolvedSkillLevel,
                                             resolvedOwnerCharacterLevel,
@@ -961,7 +965,10 @@ namespace HaCreator.MapSimulator.Pools
             {
                 Animation = zoneAnimation,
                 Area = area,
-                EffectDistance = state.Summon.SkillData?.ZoneEffect?.EffectDistance ?? 0,
+                EffectDistance = PacketOwnedSummonUpdateRules.ResolveClientOwnedTileOverlayEffectDistance(
+                    state.Summon,
+                    resolvedSkillLevel,
+                    resolvedOwnerCharacterLevel),
                 StartTime = currentTime + attackDelayMs + tileDelayMs,
                 EndTime = currentTime + attackDelayMs + tileDelayMs + tileDurationMs,
                 StartAlpha = 128,
@@ -1922,9 +1929,10 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool ShouldClearPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
         {
-            return SummonRuntimeRules.ShouldClearSupportSuspend(
+            return SummonRuntimeRules.ShouldClearHealingRobotSupportSuspend(
                 state?.Summon,
-                currentTime);
+                currentTime,
+                HealingRobotSkillId);
         }
 
         private static void AdvanceSummonHitPeriod(ActiveSummon summon, int currentTime)
@@ -3025,9 +3033,33 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ArmPacketOwnedSupportSuspend(state, currentTime);
-            ScheduleLocalExpirySelfDestructSupportHitEffect(state.Summon, currentTime);
+            if (!TryScheduleLocalExpirySelfDestructSupportTargetEffects(state, currentTime))
+            {
+                ScheduleLocalExpirySelfDestructSupportHitEffect(state.Summon, currentTime);
+            }
 
             state.Summon.LastAttackTime = currentTime;
+            return true;
+        }
+
+        private bool TryScheduleLocalExpirySelfDestructSupportTargetEffects(PacketOwnedSummonState state, int currentTime)
+        {
+            List<MobItem> targets = ResolveLocalExpirySelfDestructTargets(state, currentTime);
+            if (targets.Count == 0)
+            {
+                return false;
+            }
+
+            Vector2 primaryTargetCenter = GetMobHitboxCenter(targets[0], currentTime);
+            if (MathF.Abs(primaryTargetCenter.X - state.Summon.PositionX) > 0.5f)
+            {
+                state.Summon.FacingRight = primaryTargetCenter.X >= state.Summon.PositionX;
+            }
+
+            state.LastAttackTargets = targets
+                .Select(static target => new SummonedAttackTargetPacket(target.PoolId, 0, 0))
+                .ToArray();
+            SpawnPacketAttackVisuals(state, currentTime);
             return true;
         }
 

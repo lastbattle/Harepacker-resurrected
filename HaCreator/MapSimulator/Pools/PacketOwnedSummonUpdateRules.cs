@@ -172,11 +172,14 @@ namespace HaCreator.MapSimulator.Pools
             return !packetFacingLeft;
         }
 
-        public static bool ShouldRegisterClientOwnedAttackTileOverlay(ActiveSummon summon)
+        public static bool ShouldRegisterClientOwnedAttackTileOverlay(
+            ActiveSummon summon,
+            int skillLevel,
+            int ownerCharacterLevel)
         {
             SkillAnimation zoneAnimation = summon?.SkillData?.ZoneEffect?.ResolveAnimationVariant(
-                                            summon.Level,
-                                            1,
+                                            skillLevel > 0 ? skillLevel : summon.Level,
+                                            Math.Max(1, ownerCharacterLevel),
                                             summon?.SkillData?.MaxLevel ?? 0)
                                         ?? summon?.SkillData?.ZoneAnimation;
             return summon != null
@@ -250,6 +253,17 @@ namespace HaCreator.MapSimulator.Pools
                     yield return new Point(worldX, worldY);
                 }
             }
+        }
+
+        internal static int ResolveClientOwnedTileOverlayEffectDistance(
+            ActiveSummon summon,
+            int skillLevel,
+            int ownerCharacterLevel)
+        {
+            return summon?.SkillData?.ZoneEffect?.ResolveEffectDistanceVariant(
+                       skillLevel > 0 ? skillLevel : summon.Level,
+                       Math.Max(1, ownerCharacterLevel))
+                   ?? 0;
         }
 
         internal static Vector2 ResolvePacketOwnedMobAttackHitAnchor(

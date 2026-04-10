@@ -1030,12 +1030,34 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             capture.ResolutionSource = string.IsNullOrWhiteSpace(resolutionSource) ? "resolved" : resolutionSource.Trim();
+            UpdateLearnedSg88ManualAttackTemplateResolution(capture);
             while (_recentSg88ManualAttackCaptures.Count >= MaxRecentSg88ManualAttackRequests)
             {
                 _recentSg88ManualAttackCaptures.Dequeue();
             }
 
             _recentSg88ManualAttackCaptures.Enqueue(capture);
+        }
+
+        private void UpdateLearnedSg88ManualAttackTemplateResolution(Sg88ManualAttackCapture capture)
+        {
+            if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
+                || capture.TargetMobIds.Length <= 0
+                || !_learnedSg88ManualAttackTemplates.TryGetValue(capture.TargetMobIds.Length, out List<LearnedSg88ManualAttackTemplate> templates))
+            {
+                return;
+            }
+
+            foreach (LearnedSg88ManualAttackTemplate template in templates)
+            {
+                if (template.RequestedAt == capture.RequestedAt
+                    && template.ObservedAt == requestPacket.ObservedAt
+                    && template.PrimaryTargetMobId == capture.PrimaryTargetMobId
+                    && template.TargetMobIds.SequenceEqual(capture.TargetMobIds))
+                {
+                    template.ResolutionSource = capture.ResolutionSource;
+                }
+            }
         }
 
         internal static Sg88ManualAttackTraceBinding EvaluateSg88ManualAttackTraceBinding(

@@ -166,7 +166,14 @@ namespace HaCreator.MapSimulator.UI
             ShowWindow(_editHandle, visible ? SwShow : SwHide);
             if (visible)
             {
-                SetWindowPos(_editHandle, HwndTop, 0, 0, 0, 0, SwpNoZOrder | SwpNoActivate);
+                SetWindowPos(
+                    _editHandle,
+                    HwndTop,
+                    _currentBounds.X,
+                    _currentBounds.Y,
+                    _currentBounds.Width,
+                    _currentBounds.Height,
+                    SwpNoZOrder | SwpNoActivate);
                 UpdateImePlacement();
             }
         }

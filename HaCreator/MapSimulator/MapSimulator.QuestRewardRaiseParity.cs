@@ -246,7 +246,9 @@ namespace HaCreator.MapSimulator
 
         private void HandleQuestRewardRaiseCancelRequested()
         {
-            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.DestroyActiveRaise();
+            QuestRewardRaiseState activeRaise = _questRewardRaiseManager.ActiveRaise;
+            MarkQuestRewardRaiseOwnerDestroyPending(activeRaise);
+            activeRaise = _questRewardRaiseManager.DestroyActiveRaise();
             RestoreQuestRewardRaisePlacedPieces(activeRaise);
 
             if (activeRaise?.Source == QuestRewardRaiseSourceKind.NpcOverlay && _activeNpcInteractionNpc != null)
@@ -270,6 +272,8 @@ namespace HaCreator.MapSimulator
                 RestoreQuestRewardRaisePlacedPieces(activeRaise);
                 return;
             }
+
+            _questRewardRaiseManager.RememberState(activeRaise);
 
             switch (activeRaise.Source)
             {
@@ -363,13 +367,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow)
-            {
-                foreach (QuestRewardRaisePlacedPiece piece in activeRaise.PlacedPieces)
-                {
-                    inventoryWindow.TryClearPendingRequestState(piece.RequestId);
-                }
-            }
+            ClearQuestRewardRaisePlacedPieceReservations(activeRaise);
 
             IReadOnlyList<string> releaseSummaries = ReleaseQuestRewardRaisePlacedPieces(activeRaise);
             if (releaseSummaries.Count > 0)
@@ -501,6 +499,18 @@ namespace HaCreator.MapSimulator
                 : DescribeQuestRewardRaiseOutboundDispatch(QuestRewardRaiseOutboundRequest.CreatePutItemConfirm(activeRaise));
         }
 
+        private static void MarkQuestRewardRaiseOwnerDestroyPending(QuestRewardRaiseState activeRaise)
+        {
+            if (activeRaise == null)
+            {
+                return;
+            }
+
+            activeRaise.AwaitingOwnerDestroyAck = true;
+            activeRaise.OpenDispatchSummary =
+                $"Client-shaped raise owner destroy requested for owner #{Math.Max(0, activeRaise.OwnerItemId)} quest #{Math.Max(0, activeRaise.Prompt?.QuestId ?? 0)} session #{Math.Max(0, activeRaise.ManagerSessionId)}.";
+        }
+
         private string DescribeQuestRewardRaiseOutboundDispatch(QuestRewardRaiseOutboundRequest request)
         {
             if (request == null)
@@ -577,11 +587,14 @@ namespace HaCreator.MapSimulator
             if (activeRaise == null
                 || Math.Max(0, activeRaise.Prompt?.QuestId ?? 0) != Math.Max(0, decodedPayload.QuestId))
             {
-                return DescribePacketOwnedQuestRewardRaisePacket(packet, null);
+                string inactiveSummary = DescribePacketOwnedQuestRewardRaisePacket(packet, null);
+                _questRewardRaiseManager.ObserveInboundPacket(packet, inactiveSummary);
+                return inactiveSummary;
             }
 
             SyncActiveQuestRewardRaiseFromInboundPayload(activeRaise, decodedPayload);
-            activeRaise.LastInboundSummary = DescribePacketOwnedQuestRewardRaisePacket(packet, activeRaise);
+            string inboundSummary = DescribePacketOwnedQuestRewardRaisePacket(packet, activeRaise);
+            activeRaise.LastInboundSummary = inboundSummary;
 
             switch (packet.Kind)
             {
@@ -608,9 +621,13 @@ namespace HaCreator.MapSimulator
 
                 case QuestRewardRaiseInboundPacketKind.OwnerDestroyResult:
                     activeRaise.AwaitingOwnerDestroyAck = false;
+                    ClearQuestRewardRaisePlacedPieceReservations(activeRaise);
+                    _questRewardRaiseManager.ClearActiveRaise();
+                    ClearQuestRewardRaiseWindow();
                     break;
             }
 
+            _questRewardRaiseManager.ObserveInboundPacket(packet, inboundSummary);
             return activeRaise.LastInboundSummary;
         }
 
@@ -682,6 +699,19 @@ namespace HaCreator.MapSimulator
             };
             placedPiece.LastInboundPayload = packet.RawPayload?.ToArray() ?? Array.Empty<byte>();
             placedPiece.LastInboundSummary = DescribePacketOwnedQuestRewardRaisePacket(packet, null);
+        }
+
+        private void ClearQuestRewardRaisePlacedPieceReservations(QuestRewardRaiseState activeRaise)
+        {
+            if (activeRaise?.PlacedPieces == null || uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                return;
+            }
+
+            foreach (QuestRewardRaisePlacedPiece piece in activeRaise.PlacedPieces)
+            {
+                inventoryWindow.TryClearPendingRequestState(piece.RequestId);
+            }
         }
 
         private void SyncActiveQuestRewardRaiseFromInboundPayload(QuestRewardRaiseState activeRaise, QuestRewardRaisePacketPayload decodedPayload)

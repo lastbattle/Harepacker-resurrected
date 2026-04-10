@@ -6,6 +6,8 @@ namespace HaCreator.MapSimulator.Character
     internal sealed class TamingMobActionFrameOwner
     {
         private const int MechanicTamingMobItemId = 1932016;
+        private const int PortableChairRideFamily = 1983;
+        private const int PortableChairRideClientActionCode = 48;
         private static readonly IReadOnlySet<int> EventVehicleType1ItemIds =
             new HashSet<int>
             {
@@ -233,6 +235,17 @@ namespace HaCreator.MapSimulator.Character
                 yield return "tired";
             }
 
+            if (VehicleItemId / 1000 == PortableChairRideFamily)
+            {
+                foreach (string candidate in EnumeratePortableChairRideCandidates())
+                {
+                    if (seen.Add(candidate) && IsActionAllowedForVehicle(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
+
             foreach (string candidate in EnumerateExactAndVehicleCandidates(actionName))
             {
                 if (seen.Add(candidate) && IsActionAllowedForVehicle(candidate))
@@ -264,6 +277,18 @@ namespace HaCreator.MapSimulator.Character
                     }
                 }
             }
+        }
+
+        private static IEnumerable<string> EnumeratePortableChairRideCandidates()
+        {
+            if (CharacterPart.TryGetActionStringFromCode(PortableChairRideClientActionCode, out string clientActionName)
+                && !string.IsNullOrWhiteSpace(clientActionName))
+            {
+                yield return clientActionName;
+            }
+
+            // WZ checked 01983000/01983019/01983039: these vehicle images only publish sit.
+            yield return "sit";
         }
 
         private IEnumerable<string> EnumerateExactAndVehicleCandidates(string actionName)

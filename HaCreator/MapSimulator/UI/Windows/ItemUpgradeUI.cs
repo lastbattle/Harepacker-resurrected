@@ -128,6 +128,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex AccuracyAvoidabilityBonusRegex = new Regex(@"Accuracy\s*(?:\/|&|and)\s*(?:Avoidability|Aviodability|Avoid)\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex HpMpBonusRegex = new Regex(@"(?:Max\s*)?HP\s*(?:\/|&|and)\s*(?:Max\s*)?MP\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex SpeedJumpBonusRegex = new Regex(@"(?:Movement\s+)?Speed\s*(?:\/|&|and)\s*Jump\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex DoesNotAffectUpgradeSlotsRegex = new Regex(@"does\s+not\s+affect\s+the\s+number\s+of\s+upgrades", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
             new Dictionary<int, EnhancementConsumableDefinition>
             {
@@ -683,6 +684,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (consumable.EffectType == ConsumableEffectType.Enhancement &&
+                consumable.SuccessCountGain > 0 &&
                 state.RemainingSlots <= 0)
             {
                 _statusMessage = $"{ResolveItemName(selectedPart)} has no upgrade slots left.";
@@ -691,6 +693,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (consumable.EffectType == ConsumableEffectType.Enhancement &&
+                consumable.SuccessCountGain > 0 &&
                 state.RemainingSlots < consumable.SuccessCountGain)
             {
                 _statusMessage = $"{consumable.Name} needs {consumable.SuccessCountGain} open slots on {ResolveItemName(selectedPart)}.";
@@ -1189,9 +1192,11 @@ namespace HaCreator.MapSimulator.UI
                 state.SuccessCount += consumable.SuccessCountGain;
                 ApplyUpgradeBonus(slot, selectedPart, state, consumable);
                 string statSummary = BuildAuthoredStatSummary(consumable.Definition.StatDeltaProfile, consumable.SuccessCountGain);
-                _statusMessage = $"{ResolveItemName(selectedPart)} gained {consumable.SuccessCountGain} enhancement" +
-                                 (consumable.SuccessCountGain == 1 ? string.Empty : "s") +
-                                 $" with {consumable.Name}{modifierSuffix}{statSummary}.";
+                _statusMessage = consumable.SuccessCountGain > 0 || !string.IsNullOrWhiteSpace(statSummary)
+                    ? $"{ResolveItemName(selectedPart)} gained {consumable.SuccessCountGain} enhancement" +
+                      (consumable.SuccessCountGain == 1 ? string.Empty : "s") +
+                      $" with {consumable.Name}{modifierSuffix}{statSummary}."
+                    : $"{ResolveItemName(selectedPart)} gained {consumable.Name}'s special effect without consuming an upgrade slot{modifierSuffix}.";
                 return;
             }
 
@@ -1202,8 +1207,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            state.RemainingSlots = Math.Max(0, state.RemainingSlots - 1);
-            _statusMessage = $"{ResolveItemName(selectedPart)} failed with {consumable.Name}{modifierSuffix}. A slot was consumed.";
+            if (consumable.SuccessCountGain > 0)
+            {
+                state.RemainingSlots = Math.Max(0, state.RemainingSlots - 1);
+                _statusMessage = $"{ResolveItemName(selectedPart)} failed with {consumable.Name}{modifierSuffix}. A slot was consumed.";
+                return;
+            }
+
+            _statusMessage = $"{ResolveItemName(selectedPart)} failed with {consumable.Name}{modifierSuffix}. No upgrade slot was consumed.";
         }
 
         private void ApplyPotentialScroll(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable, bool success)
@@ -1521,7 +1532,7 @@ namespace HaCreator.MapSimulator.UI
                             modifierReady &&
                             consumable switch
                             {
-                                { EffectType: ConsumableEffectType.Enhancement } => state.RemainingSlots > 0 && state.RemainingSlots >= consumable.SuccessCountGain,
+                                { EffectType: ConsumableEffectType.Enhancement } => consumable.SuccessCountGain == 0 || state.RemainingSlots > 0 && state.RemainingSlots >= consumable.SuccessCountGain,
                                 { EffectType: ConsumableEffectType.SlotRecovery } => state.RemainingSlots < state.TotalSlots,
                                 { EffectType: ConsumableEffectType.Reset } => true,
                                 { EffectType: ConsumableEffectType.PotentialScroll } => !state.HasPotential || (consumable.PotentialTierOnSuccess == PotentialTier.Epic && state.PotentialTier <= PotentialTier.Rare),
@@ -2062,7 +2073,8 @@ namespace HaCreator.MapSimulator.UI
                             continue;
                         }
 
-                        if (state.RemainingSlots <= 0 || state.RemainingSlots < candidate.SuccessCountGain)
+                        if (candidate.SuccessCountGain > 0 &&
+                            (state.RemainingSlots <= 0 || state.RemainingSlots < candidate.SuccessCountGain))
                         {
                             continue;
                         }
@@ -2516,7 +2528,7 @@ namespace HaCreator.MapSimulator.UI
                 int itemId = itemIds[i];
                 if (GetConsumableCount(itemId) <= 0 ||
                     !TryGetConsumableDefinition(itemId, out EnhancementConsumableDefinition definition) ||
-                    (definition.EffectType == ConsumableEffectType.Enhancement && definition.SuccessCountGain > state.RemainingSlots) ||
+                    (definition.EffectType == ConsumableEffectType.Enhancement && definition.SuccessCountGain > 0 && definition.SuccessCountGain > state.RemainingSlots) ||
                     !IsConsumableCompatibleWithItem(definition, selectedPart?.ItemId ?? 0))
                 {
                     continue;
@@ -2982,10 +2994,13 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            WzSubProperty info = ResolveEnhancementScrollInfo(itemId);
+            string description = ResolveCachedItemDescription(itemId);
+
             definition = new EnhancementConsumableDefinition(
                 itemId,
                 ResolveCachedItemNameOrFallback(itemId),
-                1,
+                ResolveUpgradeSlotCostFromWzInfo(info, description),
                 false,
                 false,
                 profile.SuccessRate,
@@ -3000,6 +3015,31 @@ namespace HaCreator.MapSimulator.UI
                 HammerBehavior.None,
                 profile.StatDeltaProfile);
             return true;
+        }
+
+        private static WzSubProperty ResolveEnhancementScrollInfo(int itemId)
+        {
+            string imagePath = $"Consume/{(itemId / 10000):D4}.img";
+            WzImage image = HaCreator.Program.DataSource?.GetImage("Item", imagePath);
+            if (image == null)
+            {
+                return null;
+            }
+
+            image.ParseImage();
+            return image.GetFromPath($"{itemId:D8}/info") as WzSubProperty;
+        }
+
+        private static int ResolveUpgradeSlotCostFromWzInfo(WzSubProperty info, string description)
+        {
+            if (ResolveWzInfoIntValue(info, "preventslip") > 0 ||
+                ResolveWzInfoIntValue(info, "warmsupport") > 0 ||
+                DoesNotAffectUpgradeSlotsRegex.IsMatch(description ?? string.Empty))
+            {
+                return 0;
+            }
+
+            return 1;
         }
 
         private static bool TryResolveEnhancementScrollProfile(int itemId, out EnhancementScrollProfile profile)

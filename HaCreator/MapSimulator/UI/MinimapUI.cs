@@ -1008,38 +1008,15 @@ namespace HaCreator.MapSimulator.UI
             int previousExpandedOption,
             bool supportsExpandedOption)
         {
-            static int NormalizeClientOptionForState(int option, bool supportsExpanded)
-            {
-                if (!supportsExpanded)
-                {
-                    return ClientOptionCompact;
-                }
+            int buttonId = currentOption == ClientOptionCollapsed
+                ? ClientButtonIdMinimapRestore
+                : ClientButtonIdMinimapState;
 
-                return option switch
-                {
-                    ClientOptionExpanded => ClientOptionExpanded,
-                    ClientOptionCompact => ClientOptionCompact,
-                    ClientOptionCollapsed => ClientOptionCollapsed,
-                    _ => ClientOptionCompact
-                };
-            }
-
-            int normalizedCurrentOption = NormalizeClientOptionForState(currentOption, supportsExpandedOption);
-            int nextOption = normalizedCurrentOption switch
-            {
-                ClientOptionExpanded => ClientOptionCollapsed,
-                ClientOptionCompact => ClientOptionExpanded,
-                ClientOptionCollapsed => ClientOptionCompact,
-                _ => ClientOptionCompact
-            };
-            int rememberedOption = nextOption == ClientOptionCollapsed
-                ? ClientOptionCompact
-                : normalizedCurrentOption;
-
-            return new ClientStateTransition(
-                nextOption,
-                rememberedOption,
-                nextOption == ClientOptionCollapsed);
+            return ResolveClientStateTransitionForTesting(
+                buttonId,
+                currentOption,
+                previousExpandedOption,
+                supportsExpandedOption);
         }
 
         internal static ClientStateTransition ResolveEnsureExpandedTransitionForTesting(

@@ -76,7 +76,10 @@ namespace HaCreator.MapSimulator.Character
                 ["iceSmash"] = new[] { "icemanAttack" },
                 ["iceTempest"] = new[] { "icemanAttack" },
                 ["iceChop"] = new[] { "icemanAttack" },
-                ["icePanic"] = new[] { "icemanAttack" }
+                ["icePanic"] = new[] { "icemanAttack" },
+                // The client raw action table includes `triplefire`, while pirate
+                // Morph/*.img publishes the same gun-family surface as `doublefire`.
+                ["triplefire"] = new[] { "doublefire" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedGenericMorphFallbackAliases =
@@ -508,9 +511,11 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // CAvatar::MoveAction2RawAction still promotes attackable morph move-action 18
-            // to raw action 42 (`paralyze`), while Morph/*.img commonly only publishes
-            // generic `shoot*` surfaces for that non-authored ranged request.
-            return string.Equals(actionName, "paralyze", StringComparison.OrdinalIgnoreCase);
+            // to raw action 42 (`paralyze`), and s_sMorphAction also exposes raw
+            // `shoot6`; archer Morph/*.img surfaces publish generic `shoot*` nodes
+            // for those non-authored ranged requests rather than verbatim branches.
+            return string.Equals(actionName, "paralyze", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "shoot6", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumerateGenericAttackAliases(CharacterPart morphPart, string actionName)
@@ -968,9 +973,16 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0
+                   || IsClientPublishedAuthoredMorphFallbackAction(actionName)
                    || IsClientPublishedMeleeMorphFallbackAction(actionName)
                    || IsGenericMeleeAttackAction(actionName)
                    || IsGenericRangedAttackAction(actionName);
+        }
+
+        private static bool IsClientPublishedAuthoredMorphFallbackAction(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && ClientPublishedAuthoredMorphFallbackAliases.ContainsKey(actionName);
         }
 
         private static bool IsGenericMeleeAttackAction(string actionName)

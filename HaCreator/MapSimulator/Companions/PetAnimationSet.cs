@@ -8,6 +8,8 @@ namespace HaCreator.MapSimulator.Companions
 {
     internal static class PetActionAliases
     {
+        // CActionMan::LoadPetAction uses these fixed s_sPetAction slots for nAction 0..8
+        // before falling back to CPetTemplate::GetActionName for template-specific actions.
         private static readonly string[] ClientBaseActionNames =
         {
             "stand0",

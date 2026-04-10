@@ -433,7 +433,7 @@ namespace HaCreator.MapSimulator
         {
             if (texture != null && bounds != Rectangle.Empty)
             {
-                _spriteBatch.Draw(texture, bounds, Color.White);
+                _spriteBatch.Draw(texture, new Rectangle(bounds.X, bounds.Y, texture.Width, texture.Height), Color.White);
             }
         }
 
@@ -533,9 +533,15 @@ namespace HaCreator.MapSimulator
 
         private Rectangle ResolveInitialQuizOwnerBounds()
         {
-            int left = Math.Max(0, (_renderParams.RenderWidth - InitialQuizOwnerWidth) / 2);
-            int top = Math.Max(24, (_renderParams.RenderHeight - InitialQuizOwnerHeight) / 2);
-            return new Rectangle(left, top, InitialQuizOwnerWidth, InitialQuizOwnerHeight);
+            int ownerWidth = _initialQuizOwnerBackgroundTexture?.Width > 0
+                ? _initialQuizOwnerBackgroundTexture.Width
+                : InitialQuizOwnerWidth;
+            int ownerHeight = _initialQuizOwnerBackgroundTexture?.Height > 0
+                ? _initialQuizOwnerBackgroundTexture.Height
+                : InitialQuizOwnerHeight;
+            int left = Math.Max(0, (_renderParams.RenderWidth - ownerWidth) / 2);
+            int top = Math.Max(24, (_renderParams.RenderHeight - ownerHeight) / 2);
+            return new Rectangle(left, top, ownerWidth, ownerHeight);
         }
 
         private static Rectangle ResolveInitialQuizOwnerOkButtonBounds(Rectangle ownerBounds)
@@ -574,7 +580,10 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerOkButtonPressedTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "pressed") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "pressed"));
             _initialQuizOwnerOkButtonDisabledTexture = LoadUiCanvasTexture(ResolveInitialQuizOwnerButtonCanvas(preferred?["BtOK"] as WzSubProperty, "disabled") ?? ResolveInitialQuizOwnerButtonCanvas(fallback?["BtOK"] as WzSubProperty, "disabled"));
             _initialQuizOwnerDigits = LoadInitialQuizOwnerDigits(preferred?["num1"] as WzSubProperty, fallback?["num1"] as WzSubProperty, out _initialQuizOwnerCommaTexture);
-            _initialQuizOwnerHeaderDigits = LoadInitialQuizOwnerDigits(preferred?["number"] as WzSubProperty, fallback?["number"] as WzSubProperty, out _);
+            _initialQuizOwnerHeaderDigits = LoadInitialQuizOwnerDigits(
+                ResolveInitialQuizOwnerHeaderDigits(preferred),
+                ResolveInitialQuizOwnerHeaderDigits(fallback),
+                out _);
             _initialQuizOwnerAnimationFrames = LoadInitialQuizOwnerAnimationFrames(preferred?["ani"] as WzSubProperty, fallback?["ani"] as WzSubProperty);
             _initialQuizOwnerBackground3Origin = ResolveCanvasOrigin(preferredBackground3 ?? fallbackBackground3);
         }
@@ -626,6 +635,12 @@ namespace HaCreator.MapSimulator
                     .FirstOrDefault(property => string.Equals(property.Name, stateName, StringComparison.OrdinalIgnoreCase))
                     ?.WzProperties.OfType<WzCanvasProperty>()
                     .FirstOrDefault();
+        }
+
+        private static WzSubProperty ResolveInitialQuizOwnerHeaderDigits(WzSubProperty ownerProperty)
+        {
+            return ownerProperty?["number"] as WzSubProperty
+                ?? ownerProperty?["num2"] as WzSubProperty;
         }
 
         internal static bool ShouldShowInitialQuizOwnerHint(string hintText)

@@ -121,6 +121,8 @@ namespace HaCreator.MapSimulator.Loaders
                 getButton,
                 exitButton,
                 LoadCanvasTexture(storeBankProperty, "en", device),
+                null,
+                null,
                 LoadVerticalScrollbarSkin(basicImage?["VScr9"] as WzSubProperty, device),
                 device)
             {

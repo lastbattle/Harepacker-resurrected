@@ -221,6 +221,13 @@ namespace HaCreator.MapSimulator.Interaction
             public int PetSpeedReward { get; set; }
             public int PetSkillRewardMask { get; set; }
             public int? NextQuestId { get; set; }
+            public int? ActionNpcId { get; set; }
+            public int? ActionMinLevel { get; set; }
+            public int? ActionMaxLevel { get; set; }
+            public DateTime? ActionAvailableFrom { get; set; }
+            public DateTime? ActionAvailableUntil { get; set; }
+            public int ActionRepeatIntervalMinutes { get; set; }
+            public bool FieldEnterAction { get; set; }
             public string NpcActionName { get; set; } = string.Empty;
             public List<int> BuffItemMapIds { get; } = new();
             public List<QuestStateMutation> QuestMutations { get; } = new();
@@ -1203,7 +1210,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             QuestStateType state = GetQuestState(questId);
             QuestProgress progress = GetOrCreateProgress(questId);
-            int currentMapId = 0;
+            int currentMapId = Math.Max(0, _currentMapIdProvider?.Invoke() ?? 0);
 
             if (state == QuestStateType.Not_Started)
             {
@@ -1252,7 +1259,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (itemMapIds.Count == 0)
                 {
-                    itemMapIds = ResolveQuestDemandItemMapIds(definition, currentMapId);
+                    itemMapIds = ResolveQuestDemandItemMapIds(definition, incompleteItemRequirement.ItemId, currentMapId);
                 }
 
                 target = new QuestWorldMapTarget
@@ -1311,7 +1318,7 @@ namespace HaCreator.MapSimulator.Interaction
                 if (!visibleItemIds.Contains(requirement.ItemId))
                 {
                     visibleItemIds.Add(requirement.ItemId);
-                    IReadOnlyList<int> mapIds = ResolveQuestDemandItemMapIds(definition, currentMapId);
+                    IReadOnlyList<int> mapIds = ResolveQuestDemandItemMapIds(definition, requirement.ItemId, currentMapId);
                     if (mapIds.Count > 0)
                     {
                         visibleItemMapIds[requirement.ItemId] = mapIds;
@@ -1335,7 +1342,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private IReadOnlyList<int> ResolveQuestDemandItemMapIds(QuestDefinition definition, int fallbackMapId)
+        private IReadOnlyList<int> ResolveQuestDemandItemMapIds(QuestDefinition definition, int itemId, int fallbackMapId)
         {
             if (definition == null)
             {
@@ -1344,16 +1351,23 @@ namespace HaCreator.MapSimulator.Interaction
 
             var seen = new HashSet<int>();
             var resolvedMapIds = new List<int>();
+            bool hasSingleVisibleDemandItem = definition.EndItemRequirements
+                .Count(requirement => requirement != null && !requirement.IsSecret && requirement.ItemId > 0) == 1;
+            bool hasSingleDemandMob = definition.EndMobRequirements
+                .Count(requirement => requirement != null && requirement.MobId > 0) == 1;
 
-            for (int i = 0; i < definition.EndMobRequirements.Count; i++)
+            if (hasSingleVisibleDemandItem || hasSingleDemandMob)
             {
-                QuestMobRequirement requirement = definition.EndMobRequirements[i];
-                if (requirement == null || requirement.MobId <= 0)
+                for (int i = 0; i < definition.EndMobRequirements.Count; i++)
                 {
-                    continue;
-                }
+                    QuestMobRequirement requirement = definition.EndMobRequirements[i];
+                    if (requirement == null || requirement.MobId <= 0)
+                    {
+                        continue;
+                    }
 
-                AppendUniqueMapIds(resolvedMapIds, seen, _mobMapIdsProvider?.Invoke(requirement.MobId));
+                    AppendUniqueMapIds(resolvedMapIds, seen, _mobMapIdsProvider?.Invoke(requirement.MobId));
+                }
             }
 
             if (resolvedMapIds.Count == 0)
@@ -3227,7 +3241,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (state == QuestStateType.Started)
             {
-                AppendProgressRequirementLines(definition, lines);
+                AppendProgressRequirementLines(definition, build, lines);
             }
 
             return lines;
@@ -3287,6 +3301,7 @@ namespace HaCreator.MapSimulator.Interaction
                 definition.StartAvailableUntil,
                 definition.StartAllowedDays,
                 lines);
+            AppendActionMetadataRequirementLines(definition.StartActions, build, lines);
             AppendTraitRequirementLines(definition.StartTraitRequirements, build, lines);
 
             for (int i = 0; i < definition.StartItemRequirements.Count; i++)
@@ -3333,7 +3348,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private void AppendProgressRequirementLines(QuestDefinition definition, ICollection<QuestLogLineSnapshot> lines)
+        private void AppendProgressRequirementLines(QuestDefinition definition, CharacterBuild build, ICollection<QuestLogLineSnapshot> lines)
         {
             QuestProgress progress = GetOrCreateProgress(definition.QuestId);
 
@@ -3342,6 +3357,7 @@ namespace HaCreator.MapSimulator.Interaction
                 definition.EndAvailableUntil,
                 definition.EndAllowedDays,
                 lines);
+            AppendActionMetadataRequirementLines(definition.EndActions, build, lines);
 
             for (int i = 0; i < definition.EndQuestRequirements.Count; i++)
             {
@@ -3400,6 +3416,62 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndPetTamenessMaximum),
                 lines);
             AppendActionConsumeItemRequirementLines(definition.EndActions.RewardItems, lines);
+        }
+
+        private static void AppendActionMetadataRequirementLines(
+            QuestActionBundle actions,
+            CharacterBuild build,
+            ICollection<QuestLogLineSnapshot> lines)
+        {
+            if (actions == null || lines == null)
+            {
+                return;
+            }
+
+            if (actions.ActionMinLevel.HasValue)
+            {
+                int currentLevel = build?.Level ?? 0;
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Level",
+                    Text = $"Action minimum level {actions.ActionMinLevel.Value}",
+                    ValueText = currentLevel > 0 ? $"{Math.Min(currentLevel, actions.ActionMinLevel.Value)}/{actions.ActionMinLevel.Value}" : string.Empty,
+                    IsComplete = build == null || currentLevel >= actions.ActionMinLevel.Value,
+                    CurrentValue = currentLevel > 0 ? Math.Min(currentLevel, actions.ActionMinLevel.Value) : (long?)null,
+                    RequiredValue = actions.ActionMinLevel.Value
+                });
+            }
+
+            if (actions.ActionMaxLevel.HasValue)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Level",
+                    Text = $"Action maximum level {actions.ActionMaxLevel.Value}",
+                    ValueText = build != null ? build.Level.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                    IsComplete = build == null || build.Level <= actions.ActionMaxLevel.Value,
+                    CurrentValue = build != null ? build.Level : (long?)null,
+                    RequiredValue = actions.ActionMaxLevel.Value
+                });
+            }
+
+            if (actions.ActionAvailableFrom.HasValue || actions.ActionAvailableUntil.HasValue)
+            {
+                string availabilityText = BuildAvailabilityWindowText(
+                    actions.ActionAvailableFrom,
+                    actions.ActionAvailableUntil);
+                if (!string.IsNullOrWhiteSpace(availabilityText))
+                {
+                    DateTime now = DateTime.Now;
+                    lines.Add(new QuestLogLineSnapshot
+                    {
+                        Label = "Period",
+                        Text = availabilityText,
+                        IsComplete = (!actions.ActionAvailableFrom.HasValue || now >= actions.ActionAvailableFrom.Value) &&
+                                     (!actions.ActionAvailableUntil.HasValue || now <= actions.ActionAvailableUntil.Value)
+                    });
+                }
+            }
         }
 
         private void AppendAvailabilityRequirementLines(
@@ -3583,6 +3655,8 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            AppendActionMetadataRewardLines(lines, definition.EndActions);
+
             for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
             {
                 QuestTraitReward reward = definition.EndActions.TraitRewards[i];
@@ -3687,6 +3761,46 @@ namespace HaCreator.MapSimulator.Interaction
             return lines;
         }
 
+        private static void AppendActionMetadataRewardLines(
+            ICollection<QuestLogLineSnapshot> lines,
+            QuestActionBundle actions)
+        {
+            if (actions == null || lines == null)
+            {
+                return;
+            }
+
+            if (actions.ActionNpcId.HasValue && actions.ActionNpcId.Value > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "NPC",
+                    Text = $"Action NPC: {ResolveNpcName(actions.ActionNpcId.Value)}",
+                    IsComplete = true
+                });
+            }
+
+            if (actions.ActionRepeatIntervalMinutes > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Repeat",
+                    Text = $"Action interval: {actions.ActionRepeatIntervalMinutes} minute(s)",
+                    IsComplete = true
+                });
+            }
+
+            if (actions.FieldEnterAction)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Action",
+                    Text = "Field-enter action",
+                    IsComplete = true
+                });
+            }
+        }
+
         private List<string> EvaluateStartIssues(QuestDefinition definition, CharacterBuild build)
         {
             var issues = new List<string>();
@@ -3727,6 +3841,7 @@ namespace HaCreator.MapSimulator.Interaction
                 definition.StartAllowedDays,
                 issues,
                 "start");
+            AppendActionMetadataIssues(definition.StartActions, build, issues, "start");
             AppendTraitIssues(definition.StartTraitRequirements, build, issues);
             AppendQuestStateIssues(definition.StartQuestRequirements, issues);
             AppendItemIssues(definition.StartItemRequirements, issues);
@@ -3785,6 +3900,7 @@ namespace HaCreator.MapSimulator.Interaction
                 definition.EndAllowedDays,
                 issues,
                 "complete");
+            AppendActionMetadataIssues(definition.EndActions, build, issues, "complete");
             AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null)));
 
@@ -3794,6 +3910,38 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return issues;
+        }
+
+        private static void AppendActionMetadataIssues(
+            QuestActionBundle actions,
+            CharacterBuild build,
+            ICollection<string> issues,
+            string actionLabel)
+        {
+            if (actions == null || issues == null)
+            {
+                return;
+            }
+
+            if (build != null)
+            {
+                if (actions.ActionMinLevel.HasValue && build.Level < actions.ActionMinLevel.Value)
+                {
+                    issues.Add($"Reach level {actions.ActionMinLevel.Value} to {actionLabel} this quest.");
+                }
+
+                if (actions.ActionMaxLevel.HasValue && build.Level > actions.ActionMaxLevel.Value)
+                {
+                    issues.Add($"This quest action is capped at level {actions.ActionMaxLevel.Value}.");
+                }
+            }
+
+            AppendAvailabilityIssues(
+                actions.ActionAvailableFrom,
+                actions.ActionAvailableUntil,
+                Array.Empty<DayOfWeek>(),
+                issues,
+                actionLabel);
         }
 
         private static void AppendAvailabilityIssues(
@@ -4770,7 +4918,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < actions.Messages.Count; i++)
             {
-                messages.Add(actions.Messages[i]);
+                string actionMessage = NormalizeQuestActionMessage(actions.Messages[i], CreateDialogueFormattingContext(build));
+                if (!string.IsNullOrWhiteSpace(actionMessage))
+                {
+                    messages.Add(actionMessage);
+                }
             }
 
             for (int i = 0; i < actions.QuestMutations.Count; i++)
@@ -6174,6 +6326,27 @@ namespace HaCreator.MapSimulator.Interaction
                         break;
                     case "nextQuest":
                         actions.NextQuestId = ParseInt(child);
+                        break;
+                    case "npc":
+                        actions.ActionNpcId = ParsePositiveInt(child);
+                        break;
+                    case "lvmin":
+                        actions.ActionMinLevel = ParsePositiveInt(child);
+                        break;
+                    case "lvmax":
+                        actions.ActionMaxLevel = ParsePositiveInt(child);
+                        break;
+                    case "start":
+                        actions.ActionAvailableFrom = ParseQuestDateTime(child);
+                        break;
+                    case "end":
+                        actions.ActionAvailableUntil = ParseQuestDateTime(child);
+                        break;
+                    case "interval":
+                        actions.ActionRepeatIntervalMinutes = ParsePositiveInt(child).GetValueOrDefault();
+                        break;
+                    case "fieldEnter":
+                        actions.FieldEnterAction = ParsePositiveInt(child).GetValueOrDefault() > 0;
                         break;
                     case "npcAct":
                         actions.NpcActionName = ParseString(child)?.Trim() ?? string.Empty;
@@ -8919,6 +9092,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add($"Maps: {FormatMapIdList(actions.BuffItemMapIds)}");
             }
 
+            lines.AddRange(BuildVisibleQuestActionMetadataLines(actions));
+
             if (!string.IsNullOrWhiteSpace(actions.NpcActionName))
             {
                 lines.Add(QuestNpcActionResolver.FormatActionDetail(actions.NpcActionName));
@@ -8977,6 +9152,50 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     lines.Add(message);
                 }
+            }
+
+            return lines;
+        }
+
+        private static IReadOnlyList<string> BuildVisibleQuestActionMetadataLines(QuestActionBundle actions)
+        {
+            var lines = new List<string>();
+            if (actions == null)
+            {
+                return lines;
+            }
+
+            if (actions.ActionNpcId.HasValue && actions.ActionNpcId.Value > 0)
+            {
+                lines.Add($"Action NPC: {ResolveNpcName(actions.ActionNpcId.Value)}");
+            }
+
+            if (actions.ActionMinLevel.HasValue)
+            {
+                lines.Add($"Action min level: {actions.ActionMinLevel.Value}");
+            }
+
+            if (actions.ActionMaxLevel.HasValue)
+            {
+                lines.Add($"Action max level: {actions.ActionMaxLevel.Value}");
+            }
+
+            string availabilityText = BuildAvailabilityWindowText(
+                actions.ActionAvailableFrom,
+                actions.ActionAvailableUntil);
+            if (!string.IsNullOrWhiteSpace(availabilityText))
+            {
+                lines.Add(availabilityText);
+            }
+
+            if (actions.ActionRepeatIntervalMinutes > 0)
+            {
+                lines.Add($"Action interval: {actions.ActionRepeatIntervalMinutes} minute(s)");
+            }
+
+            if (actions.FieldEnterAction)
+            {
+                lines.Add("Field-enter action");
             }
 
             return lines;
@@ -9084,6 +9303,8 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add($"Maps: {FormatMapIdList(actions.BuffItemMapIds)}");
             }
 
+            lines.AddRange(BuildVisibleQuestActionMetadataLines(actions));
+
             if (!string.IsNullOrWhiteSpace(actions.NpcActionName))
             {
                 lines.Add(QuestNpcActionResolver.FormatActionDetail(actions.NpcActionName));
@@ -9180,7 +9401,7 @@ namespace HaCreator.MapSimulator.Interaction
                     AppendStartRequirementLines(definition, build, lines);
                     break;
                 case QuestStateType.Started:
-                    AppendProgressRequirementLines(definition, lines);
+                    AppendProgressRequirementLines(definition, build, lines);
                     break;
                 case QuestStateType.Completed:
                     lines.Add(new QuestLogLineSnapshot

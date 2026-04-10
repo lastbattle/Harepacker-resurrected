@@ -39,7 +39,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && !string.IsNullOrWhiteSpace(actionName)
                 && assembler.TryGetFrameTimingAtTime(actionName, Math.Max(0, animationTime), out int frameIndex, out int frameElapsedMs))
             {
-                TryResolveFrameSnapshot(action, frameIndex, frameElapsedMs, out snapshot);
+                if (TryResolveFrameSnapshot(action, frameIndex, frameElapsedMs, out snapshot))
+                {
+                    return true;
+                }
+
+                snapshot = new Snapshot(frameIndex, null, 0f);
                 return true;
             }
 

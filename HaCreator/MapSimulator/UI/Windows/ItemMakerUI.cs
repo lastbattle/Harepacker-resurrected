@@ -321,8 +321,8 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            _packetOwnedSessionState = sessionState;
             ClearPacketOwnedSessionState();
+            _packetOwnedSessionState = sessionState;
             _packetOwnedServerOwnsCraftExecution = sessionState.ServerOwnsCraftExecution;
             _packetOwnedHasAuthoritativeDisassemblyTargets = sessionState.HasAuthoritativeDisassemblyTargets;
             _packetOwnedHasAuthoritativeHiddenRecipeList = sessionState.HasAuthoritativeHiddenRecipeList;

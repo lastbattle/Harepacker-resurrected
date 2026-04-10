@@ -438,6 +438,14 @@ namespace HaCreator.MapSimulator.Loaders
                     };
                     PositionStatusBarButton(obj_Ui_BtKeysetting, subProperty_BtKeysetting, chatFrameAnchorOrigin);
 
+                    Point leftBaseOffset = ResolveCanvasPosition(mainBarFrameOrigin, lvBacktrndCanvas);
+                    Point gaugeBaseOffset = ResolveCanvasPosition(mainBarFrameOrigin, gaugeBackgrdCanvas);
+                    int leftClusterWidth = ResolveBigBangStatusBarClusterWidth(
+                        mainBarFrameOrigin,
+                        leftBaseOffset,
+                        (lvBacktrndCanvas, bitmap_lvBacktrnd),
+                        (lvCoverCanvas, bitmap_lvCover));
+
                     backgrnd?.Dispose();
                     bitmap_lvBacktrnd?.Dispose();
                     bitmap_lvCover?.Dispose();
@@ -459,16 +467,10 @@ namespace HaCreator.MapSimulator.Loaders
                         new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y),
                         new List<UIObject> { });
                     statusBar.InitializeButtons();
-                    Point leftBaseOffset = ResolveCanvasPosition(mainBarFrameOrigin, lvBacktrndCanvas);
-                    Point gaugeBaseOffset = ResolveCanvasPosition(mainBarFrameOrigin, gaugeBackgrdCanvas);
                     statusBar.SetLayoutMetrics(
                         leftBaseOffset,
                         gaugeBaseOffset);
-                    statusBar.SetLeftClusterWidth(ResolveBigBangStatusBarClusterWidth(
-                        mainBarFrameOrigin,
-                        leftBaseOffset,
-                        (lvBacktrndCanvas, bitmap_lvBacktrnd),
-                        (lvCoverCanvas, bitmap_lvCover)));
+                    statusBar.SetLeftClusterWidth(leftClusterWidth);
                     statusBar.SetGaugeTextAnchors(
                         new Vector2(163, 4),
                         new Vector2(332, 4),

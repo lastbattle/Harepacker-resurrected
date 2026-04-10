@@ -607,7 +607,12 @@ namespace HaCreator.MapSimulator
                 char character = glyph.Character;
                 if (character == '\n')
                 {
-                    wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, index, preserveEmptyLine: true));
+                    wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(
+                        glyphs,
+                        lineStart,
+                        index,
+                        preserveEmptyLine: true,
+                        trimBoundaryWhitespace: false));
                     lineStart = index + 1;
                     currentWidth = 0;
                     lastBreakIndex = -1;
@@ -621,12 +626,22 @@ namespace HaCreator.MapSimulator
                 {
                     if (lastBreakIndex >= lineStart)
                     {
-                        wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, lastBreakIndex, preserveEmptyLine: false));
+                        wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(
+                            glyphs,
+                            lineStart,
+                            lastBreakIndex,
+                            preserveEmptyLine: false,
+                            trimBoundaryWhitespace: true));
                         index = SkipPacketOwnedBalloonLineLeadingSpaces(glyphs, lastBreakIndex);
                     }
                     else
                     {
-                        wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, index, preserveEmptyLine: false));
+                        wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(
+                            glyphs,
+                            lineStart,
+                            index,
+                            preserveEmptyLine: false,
+                            trimBoundaryWhitespace: false));
                     }
 
                     lineStart = index;
@@ -646,7 +661,12 @@ namespace HaCreator.MapSimulator
 
             if (lineStart < glyphs.Length || glyphs.Length > 0 && glyphs[^1].Character == '\n')
             {
-                wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, glyphs.Length, preserveEmptyLine: glyphs.Length > 0 && glyphs[^1].Character == '\n'));
+                wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(
+                    glyphs,
+                    lineStart,
+                    glyphs.Length,
+                    preserveEmptyLine: glyphs.Length > 0 && glyphs[^1].Character == '\n',
+                    trimBoundaryWhitespace: false));
             }
 
             return wrappedLines.Count == 0 ? Array.Empty<PacketOwnedBalloonWrappedLine>() : wrappedLines.ToArray();
@@ -923,7 +943,8 @@ namespace HaCreator.MapSimulator
             PacketOwnedBalloonGlyph[] glyphs,
             int start,
             int endExclusive,
-            bool preserveEmptyLine)
+            bool preserveEmptyLine,
+            bool trimBoundaryWhitespace)
         {
             if (glyphs == null || start >= endExclusive)
             {
@@ -932,14 +953,17 @@ namespace HaCreator.MapSimulator
                     : PacketOwnedBalloonWrappedLine.Empty;
             }
 
-            while (start < endExclusive && (glyphs[start].Character == ' ' || glyphs[start].Character == '\t'))
+            if (trimBoundaryWhitespace)
             {
-                start++;
-            }
+                while (start < endExclusive && (glyphs[start].Character == ' ' || glyphs[start].Character == '\t'))
+                {
+                    start++;
+                }
 
-            while (endExclusive > start && (glyphs[endExclusive - 1].Character == ' ' || glyphs[endExclusive - 1].Character == '\t'))
-            {
-                endExclusive--;
+                while (endExclusive > start && (glyphs[endExclusive - 1].Character == ' ' || glyphs[endExclusive - 1].Character == '\t'))
+                {
+                    endExclusive--;
+                }
             }
 
             if (start >= endExclusive)
@@ -3733,6 +3757,38 @@ namespace HaCreator.MapSimulator
         {
             return hasPendingFieldHazardRequest
                 && TryDecodeFieldHazardPetConsumeResultPayload(payload, out _, out _);
+        }
+
+        internal static bool ShouldHandlePacketOwned1026AsPetConsumeResult(
+            bool hasPendingFieldHazardRequest,
+            byte[] payload,
+            int expectedSlot,
+            int expectedItemId,
+            int expectedRequestIndex)
+        {
+            return hasPendingFieldHazardRequest
+                && TryDecodeFieldHazardPetConsumeResultPayload(payload, out FieldHazardPetConsumeInboundResult result, out _)
+                && MatchesFieldHazardPetConsumeInboundResult(
+                    expectedSlot,
+                    expectedItemId,
+                    expectedRequestIndex,
+                    result);
+        }
+
+        private bool ShouldHandlePacketOwned1026AsPetConsumeResult(byte[] payload)
+        {
+            if (!_pendingFieldHazardPetAutoConsumeRequest.HasValue)
+            {
+                return false;
+            }
+
+            FieldHazardPetAutoConsumeRequest request = _pendingFieldHazardPetAutoConsumeRequest.Value;
+            return ShouldHandlePacketOwned1026AsPetConsumeResult(
+                hasPendingFieldHazardRequest: true,
+                payload,
+                request.InventoryClientSlotIndex,
+                request.Candidate.ItemId,
+                request.RequestIndex);
         }
 
         private static string DescribePacketOwnedFadeAlpha(int alpha)

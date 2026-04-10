@@ -237,6 +237,11 @@ namespace HaCreator.MapSimulator.Fields
                 return "Skills cannot be used while the Guild Boss field owns basic attacks.";
             }
 
+            if (IsNoDragonField(mapInfo) && IsEvanDragonMagicAttack(skill))
+            {
+                return "Evan dragon magic skills cannot be used in no-dragon fields.";
+            }
+
             return mapInfo.fieldType switch
             {
                 _ => null
@@ -476,6 +481,27 @@ namespace HaCreator.MapSimulator.Fields
             // CUserLocal::{TryDoingMeleeAttack,TryDoingShootAttack,TryDoingMagicAttack}
             // reject this exact skill set when CField::IsUnableToUseSkill is active.
             return skill != null && ClientUnableToUseSkillForbiddenSet.Contains(skill.SkillId);
+        }
+
+        private static bool IsNoDragonField(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_NODRAGON
+                   || mapInfo?.vanishDragon == true;
+        }
+
+        private static bool IsEvanDragonMagicAttack(SkillData skill)
+        {
+            // Client evidence: CUserLocal::TryDoingMagicAttack rejects dragon-root
+            // skills when the local CDragon actor is absent. No-dragon fields are the
+            // WZ-authored field seam that already suppresses that actor in MapSimulator.
+            return skill?.AttackType == SkillAttackType.Magic
+                   && Math.Abs(GetSkillRoot(skill.SkillId)) / 100 == 22;
+        }
+
+        private static int GetSkillRoot(int skillId)
+        {
+            int absoluteSkillId = Math.Abs(skillId);
+            return absoluteSkillId >= 10000 ? absoluteSkillId / 10000 : absoluteSkillId;
         }
 
         private static bool UsesVehicleOwnershipOrMountSkill(SkillData skill)

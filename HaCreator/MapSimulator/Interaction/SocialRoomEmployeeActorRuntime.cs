@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const float HeadlineScale = 0.48f;
         private const float DetailScale = 0.42f;
         private const float NameTagScale = 0.5f;
+        private const int ClientEmployeeActionRandomModulo = 50;
 
         private static readonly Color SignHeadlineColor = new(255, 242, 176);
         private static readonly Color SignDetailColor = new(244, 244, 244);
@@ -215,6 +216,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             actor.MovementEnabled = false;
+            actor.IdleActionCyclingEnabled = false;
             _actorCache[actorKey] = actor;
             return actor;
         }
@@ -450,7 +452,59 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
+            if (profile.UsesClientIndexedActionCycle)
+            {
+                return ResolveClientIndexedAction(actor, profile.CycleActions);
+            }
+
             return ResolveNextAvailableAction(actorKey, actor, profile.CycleActions);
+        }
+
+        private string ResolveClientIndexedAction(NpcItem actor, IReadOnlyList<string> candidates)
+        {
+            if (actor == null || candidates == null || candidates.Count == 0)
+            {
+                return null;
+            }
+
+            List<string> availableActions = new();
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                string action = candidates[i];
+                if (!string.IsNullOrWhiteSpace(action) && actor.HasAction(action))
+                {
+                    availableActions.Add(action);
+                }
+            }
+
+            if (availableActions.Count == 0)
+            {
+                return actor.HasAction(AnimationKeys.Stand) ? AnimationKeys.Stand : null;
+            }
+
+            int actionIndex = ResolveClientEmployeeActionIndex(availableActions.Count, _random.Next(ClientEmployeeActionRandomModulo));
+            return availableActions[actionIndex];
+        }
+
+        internal static string SelectClientIndexedEmployeeActionForTesting(IReadOnlyList<string> actions, int randomModuloValue)
+        {
+            if (actions == null || actions.Count == 0)
+            {
+                return null;
+            }
+
+            return actions[ResolveClientEmployeeActionIndex(actions.Count, randomModuloValue)];
+        }
+
+        private static int ResolveClientEmployeeActionIndex(int actionCount, int randomModuloValue)
+        {
+            if (actionCount <= 0)
+            {
+                return 0;
+            }
+
+            int normalizedRandomValue = Math.Abs(randomModuloValue) % ClientEmployeeActionRandomModulo;
+            return normalizedRandomValue % actionCount;
         }
 
         private string ResolveContextualIdleAction(
@@ -1228,7 +1282,8 @@ namespace HaCreator.MapSimulator.Interaction
                 string[] activeActions,
                 string[] restockActions,
                 string[] ledgerActions,
-                string[] expiredActions)
+                string[] expiredActions,
+                bool usesClientIndexedActionCycle)
             {
                 NpcId = npcId;
                 SpeakDurationMs = Math.Max(0, speakDurationMs);
@@ -1241,6 +1296,7 @@ namespace HaCreator.MapSimulator.Interaction
                 RestockActions = restockActions ?? Array.Empty<string>();
                 LedgerActions = ledgerActions ?? Array.Empty<string>();
                 ExpiredActions = expiredActions ?? Array.Empty<string>();
+                UsesClientIndexedActionCycle = usesClientIndexedActionCycle;
             }
 
             public static EmployeeTemplateProfile Merchant { get; } = new(
@@ -1254,7 +1310,8 @@ namespace HaCreator.MapSimulator.Interaction
                 activeActions: new[] { "eye", AnimationKeys.Stand, "ear" },
                 restockActions: new[] { "potion", "ear", AnimationKeys.Stand },
                 ledgerActions: new[] { "ear", "eye", AnimationKeys.Stand },
-                expiredActions: new[] { AnimationKeys.Stand });
+                expiredActions: new[] { AnimationKeys.Stand },
+                usesClientIndexedActionCycle: false);
 
             public static EmployeeTemplateProfile StoreBanker { get; } = new(
                 StoreBankerNpcId,
@@ -1267,7 +1324,8 @@ namespace HaCreator.MapSimulator.Interaction
                 activeActions: new[] { AnimationKeys.Stand },
                 restockActions: new[] { AnimationKeys.Stand },
                 ledgerActions: new[] { AnimationKeys.Stand },
-                expiredActions: new[] { "say0", AnimationKeys.Stand });
+                expiredActions: new[] { "say0", AnimationKeys.Stand },
+                usesClientIndexedActionCycle: false);
 
             public static EmployeeTemplateProfile CashEmployee { get; } = CreateCashEmployee(Array.Empty<string>());
 
@@ -1345,7 +1403,8 @@ namespace HaCreator.MapSimulator.Interaction
                         "say",
                         "hand",
                         "smile",
-                        AnimationKeys.Stand));
+                        AnimationKeys.Stand),
+                    usesClientIndexedActionCycle: true);
             }
 
             private static List<string> NormalizeOrderedActions(IEnumerable<string> actionNames)
@@ -1460,6 +1519,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string[] RestockActions { get; }
             public string[] LedgerActions { get; }
             public string[] ExpiredActions { get; }
+            public bool UsesClientIndexedActionCycle { get; }
         }
 
         private sealed class EmployeeActionCatalog

@@ -178,6 +178,19 @@ namespace HaCreator.MapSimulator.Loaders
             return new List<int>(result);
         }
 
+        public static bool SkillRootContainsSkill(int skillRootId, int skillId)
+        {
+            if (skillRootId < 0 || skillId <= 0)
+                return false;
+
+            WzImage skillImage = Program.FindImage("Skill", GetSkillImageName(skillRootId));
+            if (skillImage == null)
+                return false;
+
+            return skillImage["skill"] is WzSubProperty skillProperty &&
+                   skillProperty[skillId.ToString(CultureInfo.InvariantCulture)] != null;
+        }
+
         private static void CollectSkillBookJobIds(WzDirectory directory, ISet<int> result)
         {
             if (directory == null)
@@ -809,6 +822,18 @@ namespace HaCreator.MapSimulator.Loaders
                 return builder.Length != originalLength;
             }
 
+            if (TryAppendContextualSingleLetterFallbackStat(
+                    builder,
+                    skillEntry,
+                    levelNode,
+                    commonNode,
+                    infoNode,
+                    level,
+                    statKey))
+            {
+                return true;
+            }
+
             if (!FallbackSkillStatDefinitions.TryGetValue(statKey, out FallbackSkillStatDefinition definition))
                 return allowGenericFallback &&
                        TryAppendGenericFallbackStat(builder, skillEntry, levelNode, commonNode, infoNode, level, statKey);
@@ -833,6 +858,64 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return builder.Length != originalBuilderLength;
+        }
+
+        private static bool TryAppendContextualSingleLetterFallbackStat(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string statKey)
+        {
+            string label = statKey switch
+            {
+                "x" => "Weapon ATT",
+                "y" => "Magic ATT",
+                "z" => "Weapon DEF",
+                "u" => "Magic DEF",
+                "v" => "Accuracy",
+                "w" => "Avoidability",
+                _ => null
+            };
+
+            if (label == null || !HasAdvancedBlessingFallbackShape(levelNode, commonNode, infoNode))
+                return false;
+
+            int originalLength = builder.Length;
+            AppendIntStat(
+                builder,
+                label,
+                skillEntry,
+                levelNode,
+                commonNode,
+                infoNode,
+                level,
+                statKey,
+                FormatSignedValue);
+            return builder.Length != originalLength;
+        }
+
+        private static bool HasAdvancedBlessingFallbackShape(
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode)
+        {
+            return HasFallbackProperty(levelNode, commonNode, infoNode, "mpConReduce") &&
+                   HasFallbackProperty(levelNode, commonNode, infoNode, "indieMhp") &&
+                   HasFallbackProperty(levelNode, commonNode, infoNode, "indieMmp");
+        }
+
+        private static bool HasFallbackProperty(
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            string propertyName)
+        {
+            return levelNode?[propertyName] != null ||
+                   commonNode?[propertyName] != null ||
+                   infoNode?[propertyName] != null;
         }
 
         private static bool TryAppendGenericFallbackStat(
@@ -1137,6 +1220,11 @@ namespace HaCreator.MapSimulator.Loaders
             return value > 0 ? "Enabled" : "Disabled";
         }
 
+        private static string FormatNegativePercentValue(int value)
+        {
+            return $"-{Math.Abs(value).ToString(CultureInfo.InvariantCulture)}%";
+        }
+
         private static string FormatActionSpeedValue(int value)
         {
             if (value == 0)
@@ -1322,6 +1410,7 @@ namespace HaCreator.MapSimulator.Loaders
             "eva",
             "speed",
             "jump",
+            "speedMax",
             "actionSpeed",
             "indieAllStat",
             "indiePad",
@@ -1337,6 +1426,7 @@ namespace HaCreator.MapSimulator.Loaders
             "indieJump",
             "hp",
             "mp",
+            "mpConReduce",
             "padX",
             "madX",
             "bulletCount",
@@ -1414,6 +1504,7 @@ namespace HaCreator.MapSimulator.Loaders
                 ["eva"] = new("eva", "Avoidability", formatter: FormatSignedValue),
                 ["speed"] = new("speed", "Speed", formatter: FormatSignedValue),
                 ["jump"] = new("jump", "Jump", formatter: FormatSignedValue),
+                ["speedMax"] = new("speedMax", "Max Movement Speed"),
                 ["actionSpeed"] = new("actionSpeed", "Attack Speed", formatter: FormatActionSpeedValue),
                 ["indieAllStat"] = new("indieAllStat", "All Stats", formatter: FormatSignedValue),
                 ["indiePad"] = new("indiePad", "Weapon ATT", formatter: FormatSignedValue),
@@ -1429,6 +1520,7 @@ namespace HaCreator.MapSimulator.Loaders
                 ["indieJump"] = new("indieJump", "Jump", formatter: FormatSignedValue),
                 ["hp"] = new("hp", "HP Recovery"),
                 ["mp"] = new("mp", "MP Recovery"),
+                ["mpConReduce"] = new("mpConReduce", "MP Consumption", formatter: FormatNegativePercentValue),
                 ["padX"] = new("padX", "Weapon ATT", formatter: FormatSignedValue),
                 ["madX"] = new("madX", "Magic ATT", formatter: FormatSignedValue),
                 ["bulletCount"] = new("bulletCount", "Bullet Count"),
@@ -1450,6 +1542,7 @@ namespace HaCreator.MapSimulator.Loaders
                 "masterLevel",
                 "priceUnit",
                 "invisible",
+                "hs",
                 "type"
             };
 

@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.UI
         public const string Event = "Event";
         public const string Radio = "Radio";
         public const string DragonBox = "DragonBox";
+        public const string AccountMoreInfo = "AccountMoreInfo";
         public const string FamilyChart = "FamilyChart";
         public const string FamilyTree = "FamilyTree";
         public const string SocialList = "SocialList";

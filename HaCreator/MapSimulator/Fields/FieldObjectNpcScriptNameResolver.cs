@@ -1,6 +1,6 @@
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Interaction;
-using HaCreator.Wz;
+using HaCreator.MapSimulator.Loaders;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -12,7 +12,7 @@ namespace HaCreator.MapSimulator.Fields
     {
         public static IReadOnlyList<string> ResolvePublishedScriptNames(NpcInstance npcInstance)
         {
-            WzImage npcImage = npcInstance?.NpcInfo?.LinkedWzImage;
+            WzImage npcImage = NpcImgEntryResolver.Resolve(npcInstance?.NpcInfo);
             return ResolvePublishedScriptNames(npcImage);
         }
 
@@ -23,7 +23,7 @@ namespace HaCreator.MapSimulator.Fields
                 return Array.Empty<string>();
             }
 
-            return ResolvePublishedScriptNames(ResolveNpcImage(npcTemplateId));
+            return ResolvePublishedScriptNames(NpcImgEntryResolver.Resolve(npcTemplateId));
         }
 
         private static IReadOnlyList<string> ResolvePublishedScriptNames(WzImage npcImage)
@@ -39,19 +39,6 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return ResolvePublishedScriptNames(npcImage["info"]?["script"]);
-        }
-
-        private static WzImage ResolveNpcImage(int npcTemplateId)
-        {
-            string key = npcTemplateId.ToString();
-            if (Program.InfoManager?.NpcPropertyCache != null
-                && Program.InfoManager.NpcPropertyCache.TryGetValue(key, out WzImage cachedImage)
-                && cachedImage != null)
-            {
-                return cachedImage;
-            }
-
-            return Program.FindImage("Npc", $"{key}.img");
         }
 
         internal static IReadOnlyList<string> ResolvePublishedScriptNames(WzImageProperty scriptProperty)

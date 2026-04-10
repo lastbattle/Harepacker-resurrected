@@ -93,6 +93,9 @@ namespace HaCreator.MapSimulator.Entities
         private int _activeFrameIndex;
         private int _lastStateTick;
         private IDXObject[] _transientFrames;
+        private WzImageProperty _transientHitLayerSourceProperty;
+        private int _transientHitLayerSourceState = -1;
+        private int _transientHitLayerProperEventIndex = -1;
         private int _transientFrameIndex;
         private int _lastTransientTick;
 
@@ -231,6 +234,12 @@ namespace HaCreator.MapSimulator.Entities
         public int CurrentWorldX => _currentWorldX;
 
         public int CurrentWorldY => _currentWorldY;
+
+        internal WzImageProperty TransientHitLayerSourceProperty => _transientHitLayerSourceProperty;
+
+        internal int TransientHitLayerSourceState => _transientHitLayerSourceState;
+
+        internal int TransientHitLayerProperEventIndex => _transientHitLayerProperEventIndex;
 
         public void SetAnimationState(int state, int tickCount, bool restartIfSameState = false)
         {
@@ -478,10 +487,20 @@ namespace HaCreator.MapSimulator.Entities
 
         public bool TryStartHitAnimation(int state, int properEventIndex, int tickCount, out int duration)
         {
-            if (!TryResolveHitAnimation(state, properEventIndex, out IDXObject[] frames, out duration))
+            if (!TryResolveHitAnimation(
+                state,
+                properEventIndex,
+                out IDXObject[] frames,
+                out duration,
+                out _,
+                out WzImageProperty sourceProperty))
             {
                 return false;
             }
+
+            _transientHitLayerSourceProperty = sourceProperty;
+            _transientHitLayerSourceState = ResolveState(state);
+            _transientHitLayerProperEventIndex = properEventIndex;
 
             if (frames != null && frames.Length > 0)
             {
@@ -496,6 +515,9 @@ namespace HaCreator.MapSimulator.Entities
         public void ClearTransientAnimation()
         {
             _transientFrames = null;
+            _transientHitLayerSourceProperty = null;
+            _transientHitLayerSourceState = -1;
+            _transientHitLayerProperEventIndex = -1;
             _transientFrameIndex = 0;
             _lastTransientTick = 0;
         }
@@ -562,10 +584,29 @@ namespace HaCreator.MapSimulator.Entities
 
         private bool TryResolveHitAnimation(int state, int properEventIndex, out IDXObject[] frames, out int duration)
         {
-            if (!TryResolveHitAnimationSource(state, properEventIndex, out HitAnimationSourceKind sourceKind, out WzImageProperty sourceProperty))
+            return TryResolveHitAnimation(
+                state,
+                properEventIndex,
+                out frames,
+                out duration,
+                out _,
+                out _);
+        }
+
+        private bool TryResolveHitAnimation(
+            int state,
+            int properEventIndex,
+            out IDXObject[] frames,
+            out int duration,
+            out HitAnimationSourceKind sourceKind,
+            out WzImageProperty sourceProperty)
+        {
+            if (!TryResolveHitAnimationSource(state, properEventIndex, out sourceKind, out sourceProperty))
             {
                 frames = Array.Empty<IDXObject>();
                 duration = 0;
+                sourceKind = HitAnimationSourceKind.None;
+                sourceProperty = null;
                 return false;
             }
 

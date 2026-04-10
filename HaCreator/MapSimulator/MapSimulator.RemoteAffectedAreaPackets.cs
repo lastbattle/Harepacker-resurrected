@@ -196,7 +196,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!_affectedAreaPool.TryBeginGameplayTick(area, currentTime, RemoteAffectedAreaFallbackTickMs))
+            int hostileTickIntervalMs = ResolveRemoteAffectedAreaHostileTickIntervalMs(
+                hostileSkillRuntimes.Select(static runtime => runtime.LevelData));
+            if (!_affectedAreaPool.TryBeginGameplayTick(area, currentTime, hostileTickIntervalMs))
             {
                 return;
             }
@@ -508,6 +510,29 @@ namespace HaCreator.MapSimulator
             return skill?.IsMagicDamageSkill == true
                 ? scaledDamage
                 : Math.Max(1, scaledDamage / 2);
+        }
+
+        internal static int ResolveRemoteAffectedAreaHostileTickIntervalMs(
+            System.Collections.Generic.IEnumerable<SkillLevelData> levelDataEntries)
+        {
+            int intervalMs = 0;
+            if (levelDataEntries != null)
+            {
+                foreach (SkillLevelData levelData in levelDataEntries)
+                {
+                    if (levelData?.DotInterval <= 0)
+                    {
+                        continue;
+                    }
+
+                    int candidateIntervalMs = levelData.DotInterval * 1000;
+                    intervalMs = intervalMs <= 0
+                        ? candidateIntervalMs
+                        : Math.Min(intervalMs, candidateIntervalMs);
+                }
+            }
+
+            return Math.Max(250, intervalMs > 0 ? intervalMs : RemoteAffectedAreaFallbackTickMs);
         }
 
         private bool IsRemoteAffectedAreaProtectionActive(int currentTime)

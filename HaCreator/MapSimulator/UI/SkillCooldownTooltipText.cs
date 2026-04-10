@@ -174,14 +174,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AppendSeparator();
+            AppendFragment(CooldownLabelText, 'c');
+            AppendFragment(" ");
             if (remainingMs <= 0)
             {
                 AppendFragment(cooldownText, 'g');
                 return fragments;
             }
 
-            AppendFragment(CooldownLabelText, 'c');
-            AppendFragment(" ");
             if (TrySplitRemainingCooldownText(cooldownText, out string secondsText, out string suffixText))
             {
                 AppendFragment(secondsText, 'c');

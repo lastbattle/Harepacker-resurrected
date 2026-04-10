@@ -156,6 +156,7 @@ namespace HaCreator.MapSimulator.Companions
         private const float PassiveArrivalDistance = 4f;
         private const float PassiveHoldDistance = ActiveFollowDistanceX;
         private const float PassiveVerticalHoldDistance = 5f;
+        private const int ClientVecCtrlPassiveStepMilliseconds = 30;
         private const float QuestInfoHorizontalOffset = 20f;
         private const float QuestInfoVerticalGap = 15f;
         private const int DragonBlinkEffectStringPoolId = 0x0B6B;
@@ -722,6 +723,7 @@ namespace HaCreator.MapSimulator.Companions
             }
             else
             {
+                float passiveDeltaSeconds = ResolveClientPassiveFollowStepSeconds(deltaSeconds);
                 bool hadPassiveTravel = HasPassiveTravel(
                     _visualAnchor,
                     _worldAnchor,
@@ -731,7 +733,7 @@ namespace HaCreator.MapSimulator.Companions
                     ref _visualAnchor.X,
                     _worldAnchor.X,
                     ref velocityX,
-                    deltaSeconds,
+                    passiveDeltaSeconds,
                     PassiveHorizontalResponse,
                     PassiveMaxHorizontalSpeed,
                     CVecCtrl.WalkAcceleration * PassiveHorizontalForceScale,
@@ -742,7 +744,7 @@ namespace HaCreator.MapSimulator.Companions
                     ref _visualAnchor.Y,
                     _worldAnchor.Y,
                     ref velocityY,
-                    deltaSeconds,
+                    passiveDeltaSeconds,
                     PassiveVerticalResponse,
                     PassiveMaxVerticalSpeed,
                     CVecCtrl.AirDragDeceleration * PassiveVerticalForceScale,
@@ -758,6 +760,12 @@ namespace HaCreator.MapSimulator.Companions
 
             _followVelocity = new Vector2((float)velocityX, (float)velocityY);
             return result;
+        }
+
+        internal static float ResolveClientPassiveFollowStepSeconds(float frameDeltaSeconds)
+        {
+            _ = frameDeltaSeconds;
+            return ClientVecCtrlPassiveStepMilliseconds / 1000f;
         }
 
         private FollowUpdateFlags UpdateActiveVisualAnchor(ref double velocityX, ref double velocityY)

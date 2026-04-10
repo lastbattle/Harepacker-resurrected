@@ -54,8 +54,23 @@ namespace HaCreator.MapSimulator.Loaders
             public List<MobAnimationSet.FrameMetadata> FrameMetadata { get; init; }
         }
 
+        private sealed class MobImgEntry
+        {
+            public MobImgEntry(string templateId, WzImage image, IReadOnlyList<WzImageProperty> wzProperties)
+            {
+                TemplateId = templateId;
+                Image = image;
+                WzProperties = wzProperties;
+            }
+
+            public string TemplateId { get; }
+            public WzImage Image { get; }
+            public IReadOnlyList<WzImageProperty> WzProperties { get; }
+        }
+
         private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobActionAssets>>> _cachedMobActionAssetsByDevice = new();
         private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobAttackAssets>>> _cachedMobAttackAssetsByDevice = new();
+        private static readonly ConcurrentDictionary<string, Lazy<MobImgEntry>> _cachedMobImgEntries = new(StringComparer.Ordinal);
         private sealed class CachedDoomMobAssets
         {
             public MobAnimationSet AnimationSet { get; init; }
@@ -79,7 +94,7 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device, SoundManager soundManager, ConcurrentBag<WzObject> usedProps)
         {
             MobInfo mobInfo = (MobInfo)mobInstance.BaseInfo;
-            WzImage source = mobInfo.LinkedWzImage;
+            MobImgEntry source = GetMobImgEntry(mobInfo);
 
             // Create animation set to store frames per action
             MobAnimationSet animationSet = new MobAnimationSet();
@@ -115,7 +130,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static CachedMobActionAssets GetOrBuildCachedMobActionAssets(
             TexturePool texturePool,
             MobInfo mobInfo,
-            WzImage source,
+            MobImgEntry source,
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps)
         {
@@ -139,7 +154,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static CachedMobAttackAssets GetOrBuildCachedMobAttackAssets(
             TexturePool texturePool,
             MobInfo mobInfo,
-            WzImage source,
+            MobImgEntry source,
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps)
         {
@@ -158,6 +173,90 @@ namespace HaCreator.MapSimulator.Loaders
                     System.Threading.LazyThreadSafetyMode.ExecutionAndPublication));
 
             return lazyAssets.Value;
+        }
+
+        private static MobImgEntry GetMobImgEntry(MobInfo mobInfo)
+        {
+            if (mobInfo == null || string.IsNullOrWhiteSpace(mobInfo.ID))
+            {
+                return null;
+            }
+
+            string templateId = NormalizeMobTemplateId(mobInfo.ID);
+            Lazy<MobImgEntry> lazyEntry = _cachedMobImgEntries.GetOrAdd(
+                templateId,
+                _ => new Lazy<MobImgEntry>(
+                    () => BuildMobImgEntry(templateId, new HashSet<string>(StringComparer.Ordinal)),
+                    System.Threading.LazyThreadSafetyMode.ExecutionAndPublication));
+
+            return lazyEntry.Value;
+        }
+
+        private static MobImgEntry BuildMobImgEntry(string templateId, HashSet<string> activeTemplateIds)
+        {
+            templateId = NormalizeMobTemplateId(templateId);
+            if (!activeTemplateIds.Add(templateId))
+            {
+                return null;
+            }
+
+            WzImage mobImage = Program.FindImage("Mob", templateId + ".img");
+            if (mobImage == null)
+            {
+                activeTemplateIds.Remove(templateId);
+                return null;
+            }
+
+            if (!mobImage.Parsed)
+            {
+                mobImage.ParseImage();
+            }
+
+            var mergedProperties = new List<WzImageProperty>(mobImage.WzProperties);
+            var currentNames = new HashSet<string>(
+                mergedProperties.Select(property => property.Name),
+                StringComparer.OrdinalIgnoreCase);
+
+            string linkedTemplateId = GetMobImgEntryLinkTemplateId(mobImage);
+            if (!string.IsNullOrWhiteSpace(linkedTemplateId))
+            {
+                MobImgEntry linkedEntry = BuildMobImgEntry(linkedTemplateId, activeTemplateIds);
+                if (linkedEntry != null)
+                {
+                    foreach (WzImageProperty linkedProperty in linkedEntry.WzProperties)
+                    {
+                        if (linkedProperty == null ||
+                            string.Equals(linkedProperty.Name, "info", StringComparison.OrdinalIgnoreCase) ||
+                            currentNames.Contains(linkedProperty.Name))
+                        {
+                            continue;
+                        }
+
+                        mergedProperties.Add(linkedProperty);
+                        currentNames.Add(linkedProperty.Name);
+                    }
+                }
+            }
+
+            activeTemplateIds.Remove(templateId);
+            return new MobImgEntry(templateId, mobImage, mergedProperties);
+        }
+
+        private static string GetMobImgEntryLinkTemplateId(WzImage mobImage)
+        {
+            WzImageProperty linkProperty = WzInfoTools.GetRealProperty(mobImage?["info"]?["link"]);
+            if (linkProperty is WzStringProperty stringLink &&
+                !string.IsNullOrWhiteSpace(stringLink.Value))
+            {
+                return NormalizeMobTemplateId(stringLink.Value);
+            }
+
+            return null;
+        }
+
+        private static string NormalizeMobTemplateId(string templateId)
+        {
+            return WzInfoTools.AddLeadingZeros(templateId?.Trim() ?? string.Empty, 7);
         }
 
         private static CachedDoomMobAssets GetOrBuildDoomMobAssets(
@@ -259,7 +358,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static CachedMobActionAssets BuildCachedMobActionAssets(
             TexturePool texturePool,
-            WzImage source,
+            MobImgEntry source,
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps)
         {
@@ -309,7 +408,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static CachedMobAttackAssets BuildCachedMobAttackAssets(
             TexturePool texturePool,
             MobInfo mobInfo,
-            WzImage source,
+            MobImgEntry source,
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps)
         {
@@ -1664,7 +1763,7 @@ namespace HaCreator.MapSimulator.Loaders
             Func<int, string> questRecordValueProvider = null)
         {
             NpcInfo npcInfo = (NpcInfo)npcInstance.BaseInfo;
-            WzImage source = npcInfo.LinkedWzImage;
+            WzImage source = NpcImgEntryResolver.Resolve(npcInfo);
 
             // Match the client-owned NPC action seam: resolve a single action set, then materialize only that set's actions.
             NpcAnimationSet animationSet = NpcClientActionSetLoader.LoadAnimationSet(
@@ -1700,7 +1799,7 @@ namespace HaCreator.MapSimulator.Loaders
                 animationSet,
                 nameTooltip,
                 npcDescTooltip,
-                LoadNpcIdleSpeech(source["info"]?["speak"]));
+                LoadNpcIdleSpeech(source?["info"]?["speak"]));
         }
 
         private static IReadOnlyList<string> LoadNpcIdleSpeech(WzImageProperty speakProperty)

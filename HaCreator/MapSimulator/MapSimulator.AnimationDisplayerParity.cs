@@ -21,6 +21,10 @@ namespace HaCreator.MapSimulator
             RelationshipOverlayClientStringPoolText.ResolveNewYearCardEffectPath();
         private const string AnimationDisplayerFireCrackerEffectUol = "Effect/OnUserEff.img/itemEffect/firework/5680024";
         private const string AnimationDisplayerGenericUserStateEffectUol = "Effect/OnUserEff.img/character";
+        private const int AnimationDisplayerSkillBookSuccessFrontStringPoolId = 0x0FF1;
+        private const int AnimationDisplayerSkillBookSuccessBackStringPoolId = 0x0FF2;
+        private const int AnimationDisplayerSkillBookFailureFrontStringPoolId = 0x0FF3;
+        private const int AnimationDisplayerSkillBookFailureBackStringPoolId = 0x0FF4;
         private static readonly string[] AnimationDisplayerFollowEffectUolCandidates =
         {
             "Effect/OnUserEff.img/eventEffect/flame/0",
@@ -798,6 +802,57 @@ namespace HaCreator.MapSimulator
                 underFaceAnimation,
                 currentTime,
                 out _) == true;
+        }
+
+        private bool TryRegisterPacketOwnedRemoteSkillBookResultAvatarEffect(
+            int ownerCharacterId,
+            bool success,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (ownerCharacterId <= 0)
+            {
+                message = "Remote skill-book result owner is missing.";
+                return false;
+            }
+
+            SkillAnimation frontAnimation = LoadAnimationDisplayerStringPoolAnimation(
+                success ? AnimationDisplayerSkillBookSuccessFrontStringPoolId : AnimationDisplayerSkillBookFailureFrontStringPoolId);
+            SkillAnimation backAnimation = LoadAnimationDisplayerStringPoolAnimation(
+                success ? AnimationDisplayerSkillBookSuccessBackStringPoolId : AnimationDisplayerSkillBookFailureBackStringPoolId);
+            if (frontAnimation == null && backAnimation == null)
+            {
+                message = "Remote skill-book result effect frames are unavailable.";
+                return false;
+            }
+
+            int registrationKey = BuildAnimationDisplayerSkillUseAvatarEffectRegistrationKey(
+                success ? AnimationDisplayerSkillBookSuccessFrontStringPoolId : AnimationDisplayerSkillBookFailureFrontStringPoolId,
+                "Effect_SkillBookUsed",
+                0);
+
+            // Client evidence: `CWvsContext::OnSkillLearnItemResult` passes `CAvatar::GetLayerUnderFace`
+            // as the overlay/anchor owner and `Effect_SkillBookUsed` loads the front UOL before the back UOL.
+            return _remoteUserPool?.TryApplyTransientSkillUseAvatarEffect(
+                ownerCharacterId,
+                registrationKey,
+                frontAnimation,
+                backAnimation,
+                currentTime,
+                out message) == true;
+        }
+
+        private SkillAnimation LoadAnimationDisplayerStringPoolAnimation(int stringPoolId)
+        {
+            if (!MapleStoryStringPool.TryGet(stringPoolId, out string effectUol)
+                || string.IsNullOrWhiteSpace(effectUol))
+            {
+                return null;
+            }
+
+            WzImageProperty property = ResolveAnimationDisplayerProperty(effectUol)?.GetLinkedWzImageProperty();
+            return LoadAnimationDisplayerSkillUseAnimation(property, effectUol);
         }
 
         private bool TryGetAnimationDisplayerSkillUseAvatarEffectVariants(

@@ -499,6 +499,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public List<SkillAnimation> VariantAnimations { get; set; } = new();
         public SortedDictionary<int, List<SkillAnimation>> CharacterLevelVariantAnimations { get; set; } = new();
         public Dictionary<int, List<SkillAnimation>> LevelVariantAnimations { get; set; } = new();
+        public SortedDictionary<int, int> CharacterLevelEffectDistances { get; set; } = new();
+        public Dictionary<int, int> LevelEffectDistances { get; set; } = new();
         public int EffectDistance { get; set; }
 
         public SkillAnimation ResolveAnimationVariant(int skillLevel, int characterLevel, int maxLevel = 0)
@@ -541,6 +543,55 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return ResolveAnimationVariant(VariantAnimations, skillLevel, maxLevel, Animation);
+        }
+
+        public int ResolveEffectDistanceVariant(int skillLevel, int characterLevel)
+        {
+            if (CharacterLevelVariantAnimations != null && CharacterLevelVariantAnimations.Count > 0)
+            {
+                int? selectedRequiredLevel = null;
+                foreach ((int requiredLevel, List<SkillAnimation> variants) in CharacterLevelVariantAnimations)
+                {
+                    if (requiredLevel > characterLevel)
+                    {
+                        break;
+                    }
+
+                    if (variants?.Any(static animation => animation?.Frames.Count > 0) == true)
+                    {
+                        selectedRequiredLevel = requiredLevel;
+                    }
+                }
+
+                if (selectedRequiredLevel.HasValue)
+                {
+                    if (CharacterLevelEffectDistances != null
+                        && CharacterLevelEffectDistances.TryGetValue(selectedRequiredLevel.Value, out int characterLevelEffectDistance)
+                        && characterLevelEffectDistance > 0)
+                    {
+                        return characterLevelEffectDistance;
+                    }
+
+                    return EffectDistance;
+                }
+            }
+
+            if (skillLevel > 0
+                && LevelVariantAnimations != null
+                && LevelVariantAnimations.TryGetValue(skillLevel, out List<SkillAnimation> levelVariants)
+                && levelVariants?.Any(static animation => animation?.Frames.Count > 0) == true)
+            {
+                if (LevelEffectDistances != null
+                    && LevelEffectDistances.TryGetValue(skillLevel, out int levelEffectDistance)
+                    && levelEffectDistance > 0)
+                {
+                    return levelEffectDistance;
+                }
+
+                return EffectDistance;
+            }
+
+            return EffectDistance;
         }
 
         private static SkillAnimation ResolveAnimationVariant(

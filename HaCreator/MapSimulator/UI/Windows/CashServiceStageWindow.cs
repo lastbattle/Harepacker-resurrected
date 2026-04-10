@@ -43,10 +43,33 @@ namespace HaCreator.MapSimulator.UI
             public string Seller { get; set; } = string.Empty;
             public string PriceLabel { get; set; } = string.Empty;
             public string StateLabel { get; set; } = string.Empty;
+            public long SerialNumber { get; set; }
             public int ListingId { get; set; }
             public int ItemId { get; set; }
             public int Quantity { get; set; } = 1;
             public int Price { get; set; }
+        }
+
+        private sealed class CashItemInfoPacketSnapshot
+        {
+            public long SerialNumber { get; init; }
+            public int AccountId { get; init; }
+            public int CharacterId { get; init; }
+            public int ItemId { get; init; }
+            public int CommodityId { get; init; }
+            public int Quantity { get; init; }
+            public string BuyerCharacterId { get; init; } = string.Empty;
+            public long RawExpireFileTime { get; init; }
+            public int PaybackRate { get; init; }
+            public int DiscountRate { get; init; }
+        }
+
+        private sealed class GiftListPacketSnapshot
+        {
+            public long SerialNumber { get; init; }
+            public int ItemId { get; init; }
+            public string Sender { get; init; } = string.Empty;
+            public string Message { get; init; } = string.Empty;
         }
 
         private sealed class StageLayer

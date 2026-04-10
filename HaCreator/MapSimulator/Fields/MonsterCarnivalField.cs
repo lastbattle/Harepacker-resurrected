@@ -184,6 +184,13 @@ namespace HaCreator.MapSimulator.Fields
             _ => "CField_MonsterCarnival"
         };
 
+        public string InitBaseOwnerLabel => ResolvedFieldType switch
+        {
+            FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "CField::Init",
+            FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "CField_MonsterCarnival::Init",
+            _ => $"{ClientOwnerLabel}::Init"
+        };
+
         public static FieldType ResolveClientOwnedVariant(FieldType fieldType, int mapType)
         {
             if (fieldType != FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM)
@@ -1058,6 +1065,46 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        public bool TryApplyNextGuardianReactorHit(int slotIndex, int tickCount, out string message)
+        {
+            message = null;
+            if (!_guardianPlacements.TryGetValue(slotIndex, out MonsterCarnivalGuardianPlacement placement) || placement?.Entry == null)
+            {
+                message = $"No Monster Carnival guardian is tracked at slot {slotIndex}.";
+                return false;
+            }
+
+            int requiredHits = Math.Max(1, placement.ReactorRequiredHits);
+            int nextHitCount = Math.Min(requiredHits, Math.Max(0, placement.ReactorHitCount) + 1);
+            return TryApplyGuardianReactorHit(
+                slotIndex,
+                nextHitCount,
+                requiredHits,
+                nextHitCount >= requiredHits,
+                tickCount,
+                out message);
+        }
+
+        public bool TryDestroyGuardianReactor(int slotIndex, int tickCount, out string message)
+        {
+            message = null;
+            if (!_guardianPlacements.TryGetValue(slotIndex, out MonsterCarnivalGuardianPlacement placement) || placement?.Entry == null)
+            {
+                message = $"No Monster Carnival guardian is tracked at slot {slotIndex}.";
+                return false;
+            }
+
+            int requiredHits = Math.Max(1, placement.ReactorRequiredHits);
+            int hitCount = Math.Max(requiredHits, placement.ReactorHitCount);
+            return TryApplyGuardianReactorHit(
+                slotIndex,
+                hitCount,
+                requiredHits,
+                destroyPlacement: true,
+                tickCount,
+                out message);
+        }
+
         public bool TryApplyGuardianReactorHit(int slotIndex, int hitCount, int requiredHits, bool destroyPlacement, int tickCount, out string message)
         {
             message = null;
@@ -1615,9 +1662,9 @@ namespace HaCreator.MapSimulator.Fields
 
             return _definition.ResolvedFieldType switch
             {
-                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "CField_MonsterCarnivalWaitingRoom::Init only retains monsterCarnival/mapType, then delegates shared Carnival HUD flow.",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "CField_MonsterCarnivalS2_Game::Init keeps the Season 2 wrapper explicit, then delegates shared Carnival HUD flow.",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive owns OnShowGameResult codes 8-11 and routes them through the recovered 0x1020-0x1023 StringPool seam into CUIStatusBar::ChatLogAdd.",
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "CField_MonsterCarnivalWaitingRoom::Init calls CField::Init, reads monsterCarnival/mapType, and has no recovered deeper init payload before the simulator delegates shared Carnival HUD flow.",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "CField_MonsterCarnivalS2_Game::Init calls CField_MonsterCarnival::Init, reads monsterCarnival/mapType, and keeps the Season 2 wrapper explicit before shared Carnival packet/HUD flow.",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive owns OnShowGameResult codes 8-11 and routes them through the recovered 0x1020-0x1023 StringPool seam into CUIStatusBar::ChatLogAdd(type=12, item=-1).",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE => "Legacy Carnival wrapper stays on the shared Monster Carnival packet family in this simulator seam.",
                 _ => "CField_MonsterCarnival owns the shared packet family while the simulator keeps map-backed summon, CP, and request seams live."
             };
@@ -1633,9 +1680,9 @@ namespace HaCreator.MapSimulator.Fields
             string mapLabel = FormatMapIdentity(_definition);
             return _definition.ResolvedFieldType switch
             {
-                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | Init reads monsterCarnival/mapType={_definition.MapType}",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | Season 2 Init reads monsterCarnival/mapType={_definition.MapType}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | revive owner packets 346-353 | failure ids 0x101B-0x101F | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd | UI 0x102B-0x1033",
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType}",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | revive owner packets 346-353 | failure ids 0x101B-0x101F | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | UI 0x102B-0x1033",
                 _ => $"{mapLabel} | shared Carnival packet family 346-353 | UI 0x102B-0x1033"
             };
         }
@@ -1844,9 +1891,9 @@ namespace HaCreator.MapSimulator.Fields
 
             return _definition.ResolvedFieldType switch
             {
-                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init->monsterCarnival/mapType={_definition.MapType} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init->monsterCarnival/mapType={_definition.MapType} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F | result StringPool=0x1020/0x1021/0x1022/0x1023 | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init base={_definition.InitBaseOwnerLabel}->monsterCarnival/mapType={_definition.MapType} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F | result StringPool=0x1020/0x1021/0x1022/0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 _ => $"{_definition.ClientOwnerLabel} packets=346-353 | map={FormatMapIdentity(_definition)}"
             };
         }
@@ -2277,9 +2324,9 @@ namespace HaCreator.MapSimulator.Fields
             if (_definition?.IsReviveMode == true)
             {
                 RecordClientOwnerAction(
-                    $"{_definition.ClientOwnerLabel}::OnShowGameResult -> CUIStatusBar::ChatLogAdd code={resultCode}",
+                    $"{_definition.ClientOwnerLabel}::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1) code={resultCode}",
                     new[] { definition.Value.StringPoolId });
-                return $"{message} via {_definition.ClientOwnerLabel}::OnShowGameResult -> CUIStatusBar::ChatLogAdd";
+                return $"{message} via {_definition.ClientOwnerLabel}::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)";
             }
 
             return message;
@@ -2307,9 +2354,9 @@ namespace HaCreator.MapSimulator.Fields
 
             return definition.ResolvedFieldType switch
             {
-                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{definition.ClientOwnerLabel}::Init read monsterCarnival/mapType={definition.MapType}.",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{definition.ClientOwnerLabel}::Init read monsterCarnival/mapType={definition.MapType}.",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{definition.ClientOwnerLabel} is waiting for OnShowGameResult codes 8-11 -> StringPool 0x1020-0x1023.",
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{definition.ClientOwnerLabel}::Init called {definition.InitBaseOwnerLabel} and read monsterCarnival/mapType={definition.MapType}.",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{definition.ClientOwnerLabel}::Init called {definition.InitBaseOwnerLabel} and read monsterCarnival/mapType={definition.MapType}.",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{definition.ClientOwnerLabel} is waiting for OnShowGameResult codes 8-11 -> StringPool 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1).",
                 _ => $"{definition.ClientOwnerLabel} owns the shared Monster Carnival packet family."
             };
         }

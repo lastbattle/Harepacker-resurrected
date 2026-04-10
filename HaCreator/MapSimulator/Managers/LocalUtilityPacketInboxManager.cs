@@ -47,6 +47,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int RadioSchedulePacketType = 1010;
         public const int AntiMacroResultPacketType = 1011;
         public const int DragonBoxClientPacketType = 164;
+        public const int AccountMoreInfoPacketType = 133;
+        public const int SetGenderPacketType = 58;
         public const int FollowCharacterPacketType = 1012;
         public const int SetDirectionModePacketType = 1013;
         public const int SetStandAloneModePacketType = 1014;
@@ -111,6 +113,10 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestRewardRaisePutItemReleaseResultPacketType = 1028;
         public const int QuestRewardRaisePutItemConfirmResultPacketType = 1029;
         public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1030;
+        public const int EventAlarmTextPacketType = 1031;
+        public const int EventCalendarEntriesPacketType = 1032;
+        public const int VegaLaunchPacketType = 1031;
+        public const int VegaResultClientPacketType = 429;
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -372,6 +378,24 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("eventalarmtext", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("eventalarm", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("eventct", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuieventalarmtext", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = EventAlarmTextPacketType;
+                return true;
+            }
+
+            if (token.Equals("eventcalendar", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("eventcalendarentries", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("attendancecalendar", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("eventlistentries", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = EventCalendarEntriesPacketType;
+                return true;
+            }
+
             if (token.Equals("eventsound", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("playeventsound", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onplayeventsound", StringComparison.OrdinalIgnoreCase))
@@ -410,6 +434,21 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("ondragonbox", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = DragonBoxClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("accountmoreinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("moreinfo", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onaccountmoreinfo", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = AccountMoreInfoPacketType;
+                return true;
+            }
+
+            if (token.Equals("setgender", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onsetgender", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SetGenderPacketType;
                 return true;
             }
 
@@ -772,6 +811,23 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("vegalaunch", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("vegaopen", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("openvega", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuivegaopen", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = VegaLaunchPacketType;
+                return true;
+            }
+
+            if (token.Equals("vegaresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onvegaresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuivegaresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = VegaResultClientPacketType;
+                return true;
+            }
+
             if (token.Equals("raiseownersync", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("raiseowner", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("raiseroot", StringComparison.OrdinalIgnoreCase))
@@ -872,6 +928,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == ChatMsgClientPacketType
                 || packetType == BuffzoneEffectPacketType
                 || packetType == BuffzoneEffectClientPacketType
+                || packetType == EventAlarmTextPacketType
+                || packetType == EventCalendarEntriesPacketType
                 || packetType == PlayEventSoundPacketType
                 || packetType == PlayEventSoundClientPacketType
                 || packetType == PlayMinigameSoundPacketType
@@ -895,6 +953,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == RandomMesobagFailedPacketType
                 || packetType == RandomEmotionPacketType
                 || packetType == DragonBoxClientPacketType
+                || packetType == AccountMoreInfoPacketType
+                || packetType == SetGenderPacketType
                 || packetType == RadioSchedulePacketType
                 || packetType == RadioScheduleClientPacketType
                 || packetType == LogoutGiftClientPacketType
@@ -912,6 +972,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == ItemMakerSessionPacketType
                 || packetType == MechanicEquipStatePacketType
                 || packetType == RepairDurabilityResultPacketType
+                || packetType == VegaLaunchPacketType
+                || packetType == VegaResultClientPacketType
                 || packetType == DamageMeterPacketType
                 || packetType == TimeBombAttackPacketType
                 || packetType == VengeanceSkillApplyPacketType

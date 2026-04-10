@@ -109,11 +109,16 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly struct QuickSlotPresentationState : IEquatable<QuickSlotPresentationState>
         {
-            public QuickSlotPresentationState(QuickSlotPresentationBindingType bindingType, int id, int quantity)
+            public QuickSlotPresentationState(
+                QuickSlotPresentationBindingType bindingType,
+                int id,
+                int quantity,
+                InventoryType inventoryType = InventoryType.NONE)
             {
                 BindingType = bindingType;
                 Id = id;
                 Quantity = quantity;
+                InventoryType = inventoryType;
             }
 
             public QuickSlotPresentationBindingType BindingType { get; }
@@ -122,11 +127,14 @@ namespace HaCreator.MapSimulator.UI
 
             public int Quantity { get; }
 
+            public InventoryType InventoryType { get; }
+
             public bool Equals(QuickSlotPresentationState other)
             {
                 return BindingType == other.BindingType &&
                        Id == other.Id &&
-                       Quantity == other.Quantity;
+                       Quantity == other.Quantity &&
+                       InventoryType == other.InventoryType;
             }
 
             public override bool Equals(object obj)
@@ -136,7 +144,7 @@ namespace HaCreator.MapSimulator.UI
 
             public override int GetHashCode()
             {
-                return HashCode.Combine((int)BindingType, Id, Quantity);
+                return HashCode.Combine((int)BindingType, Id, Quantity, InventoryType);
             }
         }
         #endregion
@@ -342,63 +350,7 @@ namespace HaCreator.MapSimulator.UI
                 // Draw slot background
                 sprite.Draw(_emptySlotTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
 
-                int macroIndex = _skillManager.GetHotkeyMacroIndex(absoluteSlotIndex);
-                SkillMacro macro = macroIndex >= 0 ? _macroProvider?.Invoke(macroIndex) : null;
-                int skillId = macro != null ? GetMacroDisplaySkillId(macro) : _skillManager.GetHotkeySkill(absoluteSlotIndex);
-                if (skillId > 0)
-                {
-                    var icon = GetSkillIcon(skillId);
-                    if (icon != null)
-                    {
-                        // Use DrawBackground for IDXObject (handles origin automatically)
-                        icon.DrawBackground(sprite, null, null, slotX, slotY, Color.White, false, null);
-                    }
-
-                    // Draw cooldown overlay if on cooldown
-                    if (TryGetCooldownVisualState(skillId, TickCount, out int cooldownFrameIndex, out string remainingText))
-                    {
-                        DrawCooldownMask(sprite, slotX, slotY, cooldownFrameIndex);
-
-                        if (_font != null && !string.IsNullOrWhiteSpace(remainingText))
-                        {
-                            Vector2 textSize = _font.MeasureString(remainingText) * COOLDOWN_TEXT_SCALE;
-                            Vector2 textPosition = new Vector2(
-                                slotX + SLOT_SIZE - textSize.X - 2f,
-                                slotY + SLOT_SIZE - textSize.Y - 1f);
-
-                            DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, COOLDOWN_TEXT_SCALE);
-                        }
-                    }
-
-                    if (macro != null && _font != null)
-                    {
-                        DrawTextWithShadow(sprite, $"M{macroIndex + 1}",
-                            new Vector2(slotX + 2, slotY + 1),
-                            Color.Yellow, Color.Black, 0.75f);
-                    }
-                }
-                else
-                {
-                    int itemId = _skillManager.GetHotkeyItem(absoluteSlotIndex);
-                    if (itemId > 0)
-                    {
-                        InventoryType inventoryType = _skillManager.GetHotkeyItemInventoryType(absoluteSlotIndex);
-                        Texture2D itemTexture = _inventoryRuntime?.GetItemTexture(inventoryType, itemId);
-                        if (itemTexture != null)
-                        {
-                            sprite.Draw(itemTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
-                        }
-
-                        if (_font != null)
-                        {
-                            int itemCount = _skillManager.GetHotkeyItemCount(absoluteSlotIndex);
-                            if (itemCount > 1)
-                            {
-                                InventoryRenderUtil.DrawSlotQuantity(sprite, _font, itemCount, slotX, slotY, SLOT_SIZE);
-                            }
-                        }
-                    }
-                }
+                DrawQuickSlotBinding(sprite, slotX, slotY, absoluteSlotIndex, TickCount);
 
                 // Draw highlight on hovered slot
                 if (i == _hoveredSlot)
@@ -503,6 +455,93 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return null;
+        }
+
+        private void DrawQuickSlotBinding(SpriteBatch sprite, int slotX, int slotY, int absoluteSlotIndex, int currentTime)
+        {
+            QuickSlotPresentationState state = GetQuickSlotPresentationStateForDraw(absoluteSlotIndex);
+            switch (state.BindingType)
+            {
+                case QuickSlotPresentationBindingType.Skill:
+                    DrawSkillBinding(sprite, slotX, slotY, state.Id, currentTime);
+                    break;
+
+                case QuickSlotPresentationBindingType.Macro:
+                    DrawMacroBinding(sprite, slotX, slotY, state.Id, currentTime);
+                    break;
+
+                case QuickSlotPresentationBindingType.Item:
+                    DrawItemBinding(sprite, slotX, slotY, state.Id, state.InventoryType, state.Quantity);
+                    break;
+            }
+        }
+
+        private QuickSlotPresentationState GetQuickSlotPresentationStateForDraw(int absoluteSlotIndex)
+        {
+            if (_currentBar == BAR_PRIMARY &&
+                absoluteSlotIndex >= 0 &&
+                absoluteSlotIndex < _primaryQuickSlotPresentationStates.Length)
+            {
+                return _primaryQuickSlotPresentationStates[absoluteSlotIndex];
+            }
+
+            return BuildQuickSlotPresentationState(absoluteSlotIndex);
+        }
+
+        private void DrawSkillBinding(SpriteBatch sprite, int slotX, int slotY, int skillId, int currentTime)
+        {
+            IDXObject icon = GetSkillIcon(skillId);
+            if (icon != null)
+            {
+                // Use DrawBackground for IDXObject (handles origin automatically).
+                icon.DrawBackground(sprite, null, null, slotX, slotY, Color.White, false, null);
+            }
+
+            if (TryGetCooldownVisualState(skillId, currentTime, out int cooldownFrameIndex, out string remainingText))
+            {
+                DrawCooldownMask(sprite, slotX, slotY, cooldownFrameIndex);
+
+                if (_font != null && !string.IsNullOrWhiteSpace(remainingText))
+                {
+                    Vector2 textSize = _font.MeasureString(remainingText) * COOLDOWN_TEXT_SCALE;
+                    Vector2 textPosition = new(
+                        slotX + SLOT_SIZE - textSize.X - 2f,
+                        slotY + SLOT_SIZE - textSize.Y - 1f);
+
+                    DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, COOLDOWN_TEXT_SCALE);
+                }
+            }
+        }
+
+        private void DrawMacroBinding(SpriteBatch sprite, int slotX, int slotY, int macroIndex, int currentTime)
+        {
+            SkillMacro macro = _macroProvider?.Invoke(macroIndex);
+            int skillId = GetMacroDisplaySkillId(macro);
+            if (skillId > 0)
+            {
+                DrawSkillBinding(sprite, slotX, slotY, skillId, currentTime);
+            }
+
+            if (_font != null)
+            {
+                DrawTextWithShadow(sprite, $"M{macroIndex + 1}",
+                    new Vector2(slotX + 2, slotY + 1),
+                    Color.Yellow, Color.Black, 0.75f);
+            }
+        }
+
+        private void DrawItemBinding(SpriteBatch sprite, int slotX, int slotY, int itemId, InventoryType inventoryType, int itemCount)
+        {
+            Texture2D itemTexture = _inventoryRuntime?.GetItemTexture(inventoryType, itemId);
+            if (itemTexture != null)
+            {
+                sprite.Draw(itemTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
+            }
+
+            if (_font != null && itemCount > 1)
+            {
+                InventoryRenderUtil.DrawSlotQuantity(sprite, _font, itemCount, slotX, slotY, SLOT_SIZE);
+            }
         }
 
         private void DrawTextWithShadow(SpriteBatch sprite, string text, Vector2 position, Color color, Color shadowColor, float scale = 1.0f)
@@ -1556,7 +1595,7 @@ namespace HaCreator.MapSimulator.UI
             bool same = _hasPrimaryQuickSlotPresentationSnapshot;
             for (int slotIndex = 0; slotIndex < SkillManager.PRIMARY_SLOT_COUNT; slotIndex++)
             {
-                QuickSlotPresentationState currentState = BuildPrimaryQuickSlotPresentationState(slotIndex);
+                QuickSlotPresentationState currentState = BuildQuickSlotPresentationState(slotIndex);
                 if (!_primaryQuickSlotPresentationStates[slotIndex].Equals(currentState))
                 {
                     same = false;
@@ -1568,7 +1607,7 @@ namespace HaCreator.MapSimulator.UI
             return same;
         }
 
-        private QuickSlotPresentationState BuildPrimaryQuickSlotPresentationState(int slotIndex)
+        private QuickSlotPresentationState BuildQuickSlotPresentationState(int slotIndex)
         {
             int skillId = _skillManager?.GetHotkeySkill(slotIndex) ?? 0;
             if (skillId > 0)
@@ -1582,7 +1621,8 @@ namespace HaCreator.MapSimulator.UI
             if (itemId > 0)
             {
                 int itemCount = _skillManager?.GetHotkeyItemCount(slotIndex) ?? 0;
-                return new QuickSlotPresentationState(QuickSlotPresentationBindingType.Item, itemId, itemCount);
+                InventoryType inventoryType = _skillManager?.GetHotkeyItemInventoryType(slotIndex) ?? InventoryType.NONE;
+                return new QuickSlotPresentationState(QuickSlotPresentationBindingType.Item, itemId, itemCount, inventoryType);
             }
 
             return default;

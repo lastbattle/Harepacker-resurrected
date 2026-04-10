@@ -237,6 +237,9 @@ namespace HaCreator.MapSimulator
                     }
 
                     CashShopOneADayArtSnapshot artSnapshot = ResolveCashShopOneADayArtSnapshot();
+                    IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries =
+                        BuildCashShopOneADayHistoryEntryStates(stageWindow);
+                    int currentCommoditySerialNumber = Math.Max(0, stageWindow.CashOneADayItemSerialNumber);
                     return new CashShopStageChildWindow.OneADayOwnerState
                     {
                         IsPending = stageWindow.IsOneADayPending,
@@ -251,12 +254,17 @@ namespace HaCreator.MapSimulator
                         HasPlateBigCanvas = artSnapshot.HasPlateBigCanvas,
                         NumberCanvasCount = artSnapshot.NumberCanvasCount,
                         PlateCount = Math.Max(1, artSnapshot.PlateCount),
-                        PreviousOfferCount = 10,
+                        PreviousOfferCount = historyEntries.Count > 0 ? historyEntries.Count : 10,
                         PlateCanvasBaseName = "NoItem",
                         ShortcutHelpCanvasName = artSnapshot.HasShortcutHelpCanvas ? "ShortcutHelp" : string.Empty,
+                        CurrentCommoditySerialNumber = currentCommoditySerialNumber,
+                        CurrentItemLabel = ResolveCashShopOneADayCommodityLabel(currentCommoditySerialNumber),
+                        CurrentDateRaw = stageWindow.CashOneADayItemDate,
+                        CurrentDateLabel = FormatCashShopOneADayDate(stageWindow.CashOneADayItemDate),
                         Hour = 0,
                         Minute = 0,
                         Second = 0,
+                        HistoryEntries = historyEntries,
                         RecentPackets = stageWindow.GetRecentPacketSummaries()
                     };
                 });
@@ -264,6 +272,67 @@ namespace HaCreator.MapSimulator
                 oneADayWindow.SetExternalAction("BtShortcut", () => "CCSWnd_OneADay switched focus to the shortcut-help plate owner.");
                 oneADayWindow.SetExternalAction("BtClose", () => "CCSWnd_OneADay dismissed the current reward plate preview.");
             }
+        }
+
+        private static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> BuildCashShopOneADayHistoryEntryStates(CashServiceStageWindow stageWindow)
+        {
+            if (stageWindow?.CashOneADayHistoryEntries == null || stageWindow.CashOneADayHistoryEntries.Count == 0)
+            {
+                return Array.Empty<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState>();
+            }
+
+            List<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> entries = new(stageWindow.CashOneADayHistoryEntries.Count);
+            foreach (CashServiceStageWindow.OneADayHistoryEntry entry in stageWindow.CashOneADayHistoryEntries)
+            {
+                int commoditySerialNumber = Math.Max(0, entry.CommoditySerialNumber);
+                entries.Add(new CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState
+                {
+                    CommoditySerialNumber = commoditySerialNumber,
+                    OriginalCommoditySerialNumber = Math.Max(0, entry.OriginalCommoditySerialNumber),
+                    ItemLabel = ResolveCashShopOneADayCommodityLabel(commoditySerialNumber),
+                    DateLabel = FormatCashShopOneADayDate(entry.RawDate)
+                });
+            }
+
+            return entries;
+        }
+
+        private static string ResolveCashShopOneADayCommodityLabel(int commoditySerialNumber)
+        {
+            if (commoditySerialNumber <= 0)
+            {
+                return string.Empty;
+            }
+
+            if (AdminShopDialogUI.TryResolveCommodityBySerialNumber(commoditySerialNumber, out int itemId, out long price, out int count, out bool onSale)
+                && itemId > 0)
+            {
+                string itemName = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName)
+                    ? resolvedName
+                    : $"Item {itemId.ToString(CultureInfo.InvariantCulture)}";
+                string countSuffix = count > 1 ? $" x{count.ToString(CultureInfo.InvariantCulture)}" : string.Empty;
+                string saleSuffix = onSale ? string.Empty : " off-sale";
+                return $"{itemName}{countSuffix} / SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)} / {price.ToString("N0", CultureInfo.InvariantCulture)} NX{saleSuffix}";
+            }
+
+            return $"SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        private static string FormatCashShopOneADayDate(int rawDate)
+        {
+            if (rawDate <= 0)
+            {
+                return string.Empty;
+            }
+
+            string rawText = rawDate.ToString(CultureInfo.InvariantCulture);
+            if (rawText.Length == 8
+                && DateTime.TryParseExact(rawText, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDate))
+            {
+                return parsedDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            }
+
+            return rawText;
         }
 
         private IReadOnlyList<string> BuildCashShopLockerOwnerLines(AdminShopDialogUI cashShopWindow)

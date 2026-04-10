@@ -132,6 +132,14 @@ namespace HaCreator.MapSimulator.Fields
 
             if (IsIndexLikePropertyName(property.Name))
             {
+                bool? stateFromNumericTagName = ReadBool(property);
+                if (stateFromNumericTagName.HasValue && IsLikelyNumericTagName(property.Name))
+                {
+                    tags = new[] { property.Name.Trim() };
+                    state = stateFromNumericTagName.Value;
+                    return true;
+                }
+
                 string indexedTag = ReadString(property);
                 if (!string.IsNullOrWhiteSpace(indexedTag))
                 {
@@ -265,6 +273,20 @@ namespace HaCreator.MapSimulator.Fields
                 return stringProperty.Value;
             }
 
+            switch (property)
+            {
+                case WzIntProperty intProperty:
+                    return intProperty.Value.ToString(CultureInfo.InvariantCulture);
+                case WzShortProperty shortProperty:
+                    return shortProperty.Value.ToString(CultureInfo.InvariantCulture);
+                case WzLongProperty longProperty:
+                    return longProperty.Value.ToString(CultureInfo.InvariantCulture);
+                case WzFloatProperty floatProperty:
+                    return floatProperty.Value.ToString(CultureInfo.InvariantCulture);
+                case WzDoubleProperty doubleProperty:
+                    return doubleProperty.Value.ToString(CultureInfo.InvariantCulture);
+            }
+
             return property.GetString();
         }
 
@@ -351,6 +373,12 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return int.TryParse(name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
+        }
+
+        private static bool IsLikelyNumericTagName(string name)
+        {
+            return !string.IsNullOrWhiteSpace(name)
+                && name.Trim().Length > 1;
         }
     }
 }

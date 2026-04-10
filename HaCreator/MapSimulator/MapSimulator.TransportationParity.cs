@@ -40,9 +40,6 @@ namespace HaCreator.MapSimulator
             {
                 if (fieldIdOverride.HasValue || shipKindOverride.HasValue)
                 {
-                    status = TryResolveTransportFieldInitRequestArguments(fieldIdOverride, shipKindOverride, out resolvedFieldId, out resolvedShipKind, out string overrideStatus)
-                        ? overrideStatus
-                        : overrideStatus;
                     if (!TryResolveTransportFieldInitRequestArguments(fieldIdOverride, shipKindOverride, out resolvedFieldId, out resolvedShipKind, out status))
                     {
                         return false;
@@ -53,10 +50,15 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
             }
-            else if (!TryResolveTransportFieldInitRequestArguments(fieldIdOverride, shipKindOverride, out resolvedFieldId, out resolvedShipKind, out string overrideError))
+            else if (!TryResolveTransportFieldInitRequestArguments(fieldIdOverride, shipKindOverride, resolvedFieldId, resolvedShipKind, out int overrideFieldId, out int overrideShipKind, out string overrideError))
             {
                 status = overrideError;
                 return false;
+            }
+            else
+            {
+                resolvedFieldId = overrideFieldId;
+                resolvedShipKind = overrideShipKind;
             }
 
             bool success = queueOnly
@@ -98,25 +100,44 @@ namespace HaCreator.MapSimulator
             return _lastTransportFieldInitRequestSummary;
         }
 
-        private static bool TryResolveTransportFieldInitRequestArguments(
+        internal static bool TryResolveTransportFieldInitRequestArguments(
             int? fieldIdOverride,
             int? shipKindOverride,
             out int fieldId,
             out int shipKind,
             out string status)
         {
-            fieldId = fieldIdOverride ?? 0;
-            shipKind = shipKindOverride ?? 0;
+            return TryResolveTransportFieldInitRequestArguments(
+                fieldIdOverride,
+                shipKindOverride,
+                currentFieldId: 0,
+                currentShipKind: 0,
+                out fieldId,
+                out shipKind,
+                out status);
+        }
 
-            if (fieldIdOverride.HasValue && fieldIdOverride.Value <= 0)
+        internal static bool TryResolveTransportFieldInitRequestArguments(
+            int? fieldIdOverride,
+            int? shipKindOverride,
+            int currentFieldId,
+            int currentShipKind,
+            out int fieldId,
+            out int shipKind,
+            out string status)
+        {
+            fieldId = fieldIdOverride ?? currentFieldId;
+            shipKind = shipKindOverride ?? currentShipKind;
+
+            if (fieldId <= 0)
             {
                 status = "Transport field-init request field id must be a positive integer.";
                 return false;
             }
 
-            if (shipKindOverride.HasValue && !TransportationFieldInitRequestCodec.IsSupportedShipKind(shipKindOverride.Value))
+            if (!TransportationFieldInitRequestCodec.IsSupportedShipKind(shipKind))
             {
-                status = $"Transport field-init request only supports ship kinds 0 and 1, but received {shipKindOverride.Value}.";
+                status = $"Transport field-init request only supports ship kinds 0 and 1, but received {shipKind}.";
                 return false;
             }
 

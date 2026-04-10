@@ -198,6 +198,13 @@ namespace HaCreator.MapSimulator.UI
             public const int Rejected = 2;
         }
 
+        private static class PacketOwnedAdminShopOutboundMode
+        {
+            public const int Reopen = 0;
+            public const int TradeRequest = 1;
+            public const int Close = 2;
+        }
+
         private static class StorageExpansionFailureReason
         {
             public const int None = 0;
@@ -321,8 +328,6 @@ namespace HaCreator.MapSimulator.UI
 
         private const int MaxVisibleRows = 5;
         private const int PacketOwnedStorageExpansionTimeoutMs = 4000;
-        private const int PacketOwnedAdminShopResultMode = 0;
-        private const int PacketOwnedAdminShopCloseMode = 2;
         private const int LeftPaneX = 17;
         private const int RightPaneX = 242;
         private const int PaneTopY = 101;
@@ -435,6 +440,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<PacketOwnedAdminShopCommoditySnapshot> _packetOwnedAdminShopRows = new();
         private readonly List<AdminShopEntry> _packetOwnedAdminShopSellTemplates = new();
         private readonly List<AdminShopUserSellMutationRow> _pendingPacketOwnedUserSellSnapshotRows = new();
+        private readonly AdminShopPacketOwnedSessionContract _packetOwnedAdminShopSession = new();
 
         private IInventoryRuntime _inventory;
         private IStorageRuntime _storageRuntime;
@@ -469,7 +475,10 @@ namespace HaCreator.MapSimulator.UI
         private long _nexonCash;
         private long _maplePoint;
         private long _prepaidCash;
+        private InventoryType _pendingPacketOwnedUserSellSnapshotInventoryType = InventoryType.NONE;
+        private int _pendingPacketOwnedUserSellSnapshotScrollOffset;
         private bool _packetOwnedAdminShopSessionActive;
+        private bool _packetOwnedAdminShopAskItemWishlist;
         private bool _pendingPacketOwnedAdminShopResult;
         private bool _packetOwnedAdminShopWouldDisconnect;
         private int _packetOwnedAdminShopNpcTemplateId;
@@ -481,9 +490,6 @@ namespace HaCreator.MapSimulator.UI
         private int _packetOwnedAdminShopLastResultCode = -1;
         private string _packetOwnedAdminShopLastNotice = string.Empty;
         private string _packetOwnedAdminShopLastOutboundSummary = string.Empty;
-        private bool _packetOwnedAdminShopAskItemWishlist;
-        private InventoryType _pendingPacketOwnedUserSellSnapshotInventoryType = InventoryType.NONE;
-        private int _pendingPacketOwnedUserSellSnapshotScrollOffset;
         public Action<AdminShopDialogUI> WishlistWindowRequested { get; set; }
         public Action<AdminShopDialogUI> WindowHidden { get; set; }
         public Func<long, bool> TryConsumeCashBalance { get; set; }
@@ -492,6 +498,8 @@ namespace HaCreator.MapSimulator.UI
         public Action<StorageExpansionResolution> StorageExpansionResolved { get; set; }
         internal Func<PacketOwnedNpcUtilityOutboundRequest, string> DispatchPacketOwnedAdminShopOutboundRequest { get; set; }
         public bool HasPendingStorageExpansionRequest => _pendingRequestEntry?.IsStorageExpansion == true;
+        private const int PacketOwnedAdminShopResultMode = PacketOwnedAdminShopOutboundMode.Reopen;
+        private const int PacketOwnedAdminShopCloseMode = PacketOwnedAdminShopOutboundMode.Close;
 
         public AdminShopDialogUI(
             IDXObject frame,

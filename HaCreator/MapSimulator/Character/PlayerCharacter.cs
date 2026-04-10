@@ -265,6 +265,7 @@ namespace HaCreator.MapSimulator.Character
             public Rectangle Bounds { get; set; }
             public Point Origin { get; set; }
             public int PreparedCurrentTime { get; set; } = int.MinValue;
+            public int PreparedSourceLayerCurrentTime { get; set; } = int.MinValue;
             public bool PreparedFacingRight { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
             public Texture2D ComposedTexture { get; set; }
@@ -498,6 +499,7 @@ namespace HaCreator.MapSimulator.Character
         // Hit state tracking
         private int _hitStateStartTime;
         private int _hitStateDurationMs = HIT_STUN_DURATION;
+        private bool _hitExpressionSuppressedByPacketOwnedItemOption;
 
         // Input state
         private bool _inputLeft;
@@ -1988,11 +1990,23 @@ namespace HaCreator.MapSimulator.Character
         {
             string expressionName = "default";
 
-            if (State == PlayerState.Hit || currentTime < _hitExpressionEndTime)
+            bool packetOwnedEmotionActive = TryGetActivePacketOwnedEmotionName(currentTime, out string packetOwnedEmotionName);
+            bool hitExpressionActive = State == PlayerState.Hit || currentTime < _hitExpressionEndTime;
+            if (!hitExpressionActive)
+            {
+                _hitExpressionSuppressedByPacketOwnedItemOption = false;
+            }
+
+            if (ShouldUsePacketOwnedHitFaceExpression(
+                    hitExpressionActive,
+                    _hitExpressionSuppressedByPacketOwnedItemOption,
+                    packetOwnedEmotionActive,
+                    _hitStateStartTime,
+                    _packetOwnedEmotionAppliedAt))
             {
                 expressionName = "hit";
             }
-            else if (TryGetActivePacketOwnedEmotionName(currentTime, out string packetOwnedEmotionName))
+            else if (packetOwnedEmotionActive)
             {
                 expressionName = packetOwnedEmotionName;
             }
@@ -2045,9 +2059,17 @@ namespace HaCreator.MapSimulator.Character
                 emotionEffectAnimation?.TotalDuration ?? 0,
                 faceLookDuration,
                 out bool usedFaceLookDurationFallback);
+            _packetOwnedEmotionByItemOption = byItemOption;
 
             if (string.Equals(emotionName, "default", StringComparison.OrdinalIgnoreCase))
             {
+                _lastPacketOwnedEmotionState = new PacketOwnedEmotionState(
+                    emotionId,
+                    emotionName,
+                    0,
+                    currentTime,
+                    0,
+                    byItemOption);
                 ResetPacketOwnedEmotionState(clearVisualEffect: true);
                 message = "Cleared packet-owned avatar emotion state.";
                 return true;
@@ -2055,6 +2077,13 @@ namespace HaCreator.MapSimulator.Character
 
             if (ShouldSuppressPacketOwnedEmotionApplication(emotionId))
             {
+                _lastPacketOwnedEmotionState = new PacketOwnedEmotionState(
+                    emotionId,
+                    emotionName,
+                    resolvedDurationMs,
+                    currentTime,
+                    resolvedDurationMs > 0 ? currentTime + resolvedDurationMs : 0,
+                    byItemOption);
                 message = HasActiveMorphTransform
                     ? $"Ignored packet-owned avatar emotion '{emotionName}' ({emotionId}) because a morph transform is active."
                     : $"Ignored packet-owned avatar emotion '{emotionName}' ({emotionId}) because the current client raw action suppresses blink emotion while the one-time action is active.";
@@ -2066,7 +2095,6 @@ namespace HaCreator.MapSimulator.Character
             _packetOwnedEmotionAppliedAt = currentTime;
             _packetOwnedEmotionName = emotionName;
             _packetOwnedEmotionEndTime = resolvedDurationMs > 0 ? currentTime + resolvedDurationMs : 0;
-            _packetOwnedEmotionByItemOption = byItemOption;
             _lastPacketOwnedEmotionState = new PacketOwnedEmotionState(
                 emotionId,
                 emotionName,
@@ -2129,6 +2157,21 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return 0;
+        }
+
+        internal static bool ShouldUsePacketOwnedHitFaceExpression(
+            bool hitExpressionActive,
+            bool hitExpressionSuppressedByItemOption,
+            bool packetOwnedEmotionActive,
+            int hitExpressionStartedAt,
+            int packetOwnedEmotionAppliedAt)
+        {
+            if (!hitExpressionActive || hitExpressionSuppressedByItemOption)
+            {
+                return false;
+            }
+
+            return !packetOwnedEmotionActive || hitExpressionStartedAt >= packetOwnedEmotionAppliedAt;
         }
 
         private bool ShouldSuppressPacketOwnedEmotionApplication(int emotionId)
@@ -3234,6 +3277,7 @@ namespace HaCreator.MapSimulator.Character
             _hitStateStartTime = currentTime;
             _hitStateDurationMs = Math.Max(1, hitDurationMs);
             _hitExpressionEndTime = currentTime + Math.Max(FACE_HIT_EXPRESSION_DURATION_MS, _hitStateDurationMs);
+            _hitExpressionSuppressedByPacketOwnedItemOption = _packetOwnedEmotionByItemOption;
             Physics.CurrentAction = MoveAction.Hit;
             CacheLadderStateForRegrab();
         }
@@ -3338,7 +3382,8 @@ namespace HaCreator.MapSimulator.Character
             ClearAllTransientSkillAvatarEffects();
             _blinkExpressionEndTime = 0;
             _hitExpressionEndTime = 0;
-            ResetPacketOwnedEmotionState(clearVisualEffect: true);
+            _hitExpressionSuppressedByPacketOwnedItemOption = false;
+            ResetPacketOwnedEmotionState(clearVisualEffect: true, clearDecodedItemOption: true);
             CurrentFaceExpressionName = "default";
 
             // Completely stop all physics - velocity, knockback, and movement state
@@ -3382,7 +3427,8 @@ namespace HaCreator.MapSimulator.Character
             ClearAllTransientSkillAvatarEffects();
             _blinkExpressionEndTime = 0;
             _hitExpressionEndTime = 0;
-            ResetPacketOwnedEmotionState(clearVisualEffect: true);
+            _hitExpressionSuppressedByPacketOwnedItemOption = false;
+            ResetPacketOwnedEmotionState(clearVisualEffect: true, clearDecodedItemOption: true);
             CurrentFaceExpressionName = "default";
             ScheduleNextBlink(Environment.TickCount);
             Physics.Reset();
@@ -4354,6 +4400,7 @@ namespace HaCreator.MapSimulator.Character
                     Bounds = Rectangle.Empty,
                     Origin = Point.Zero,
                     PreparedCurrentTime = int.MinValue,
+                    PreparedSourceLayerCurrentTime = int.MinValue,
                     PreparedFacingRight = false,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
                     ComposedTexture = null,
@@ -6441,14 +6488,18 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
-        private void ResetPacketOwnedEmotionState(bool clearVisualEffect)
+        private void ResetPacketOwnedEmotionState(bool clearVisualEffect, bool clearDecodedItemOption = false)
         {
             _packetOwnedEmotionId = 0;
             _packetOwnedEmotionDurationMs = 0;
             _packetOwnedEmotionAppliedAt = 0;
             _packetOwnedEmotionName = "default";
             _packetOwnedEmotionEndTime = 0;
-            _packetOwnedEmotionByItemOption = false;
+            if (clearDecodedItemOption)
+            {
+                _packetOwnedEmotionByItemOption = false;
+            }
+
             if (clearVisualEffect)
             {
                 ClearTransientSkillAvatarEffect(PacketOwnedEmotionEffectSkillId);

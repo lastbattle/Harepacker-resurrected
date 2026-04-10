@@ -945,7 +945,6 @@ namespace HaCreator.MapSimulator.Interaction
             internal long? NonCashSerialNumber { get; init; }
             internal short Hands { get; init; }
             internal long ExpirationTime { get; init; }
-            internal int IucOrExp { get; init; }
             internal long EquippedTime { get; init; }
             internal int PreviousBonusExpRate { get; init; }
         }
@@ -961,7 +960,6 @@ namespace HaCreator.MapSimulator.Interaction
             internal byte Level { get; init; }
             internal short Closeness { get; init; }
             internal byte Fullness { get; init; }
-            internal long ExpirationTime { get; init; }
             internal long DateDead { get; init; }
             internal short PetAttribute { get; init; }
             internal ushort Skill { get; init; }
@@ -1816,15 +1814,30 @@ namespace HaCreator.MapSimulator.Interaction
                     parts.Add($"EquipSN {item.EquipData.NonCashSerialNumber.Value.ToString(CultureInfo.InvariantCulture)}");
                 }
 
-                if (item.EquipData.IucOrExp > 0)
+                string equippedTime = FormatFileTime(item.EquipData.EquippedTime);
+                if (!string.IsNullOrWhiteSpace(equippedTime))
                 {
-                    parts.Add($"IUC/EXP {item.EquipData.IucOrExp.ToString(CultureInfo.InvariantCulture)}");
+                    parts.Add($"Equipped {equippedTime}");
+                }
+
+                if (item.EquipData.PreviousBonusExpRate >= 0)
+                {
+                    parts.Add($"PrevBonusEXP {item.EquipData.PreviousBonusExpRate.ToString(CultureInfo.InvariantCulture)}");
                 }
             }
 
             if (item.BundleData != null && item.BundleData.RechargeableSerialNumber > 0)
             {
                 parts.Add($"RechargeSN {item.BundleData.RechargeableSerialNumber.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (item.PetData != null)
+            {
+                string dateDead = FormatFileTime(item.PetData.DateDead);
+                if (!string.IsNullOrWhiteSpace(dateDead))
+                {
+                    parts.Add($"PetDead {dateDead}");
+                }
             }
 
             string expiration = FormatFileTime(item.BaseExpirationTime);
@@ -1927,7 +1940,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            long itemSerialNumber = reader.ReadInt64();
+            long baseExpirationTime = reader.ReadInt64();
 
             int quantity = 1;
             string title = string.Empty;
@@ -1978,6 +1991,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             int clientStock = ResolveClientStock(slotType, quantity);
             int encodedByteLength = checked((int)(stream.Position - itemStartPosition));
+            long itemSerialNumber = ResolveNativeItemSerialNumber(equipData, bundleData);
 
             entry = new StoreBankItemEntry
             {
@@ -1997,7 +2011,7 @@ namespace HaCreator.MapSimulator.Interaction
                 HasCashSerialNumber = hasCashSerialNumber,
                 ItemSerialNumber = itemSerialNumber,
                 CashSerialNumber = cashSerialNumber,
-                BaseExpirationTime = ResolveBaseExpirationTime(equipData, petData),
+                BaseExpirationTime = baseExpirationTime,
                 IsRechargeBundle = slotType == 2 && itemId / 10000 is 207 or 233,
                 MetadataSummary = metadataSummary,
                 EquipData = equipData,
@@ -2077,16 +2091,16 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private static long ResolveBaseExpirationTime(StoreBankEquipData equipData, StoreBankPetData petData)
+        private static long ResolveNativeItemSerialNumber(StoreBankEquipData equipData, StoreBankBundleData bundleData)
         {
-            if (equipData != null && equipData.ExpirationTime > 0)
+            if (equipData?.NonCashSerialNumber is long equipSerialNumber && equipSerialNumber > 0)
             {
-                return equipData.ExpirationTime;
+                return equipSerialNumber;
             }
 
-            if (petData != null && petData.ExpirationTime > 0)
+            if (bundleData != null && bundleData.RechargeableSerialNumber > 0)
             {
-                return petData.ExpirationTime;
+                return bundleData.RechargeableSerialNumber;
             }
 
             return 0;
@@ -2165,8 +2179,8 @@ namespace HaCreator.MapSimulator.Interaction
                 nonCashSerialNumber = reader.ReadInt64();
             }
 
-            long expirationTime = reader.ReadInt64();
-            int iucOrExp = reader.ReadInt32();
+            long equippedTime = reader.ReadInt64();
+            int previousBonusExpRate = reader.ReadInt32();
             metadataSummary = BuildEquipMetadataSummary(
                 remainingUpgradeCount,
                 upgradeCount,
@@ -2231,8 +2245,8 @@ namespace HaCreator.MapSimulator.Interaction
                 Socket1 = socket1,
                 Socket2 = socket2,
                 NonCashSerialNumber = nonCashSerialNumber,
-                ExpirationTime = expirationTime,
-                IucOrExp = iucOrExp
+                EquippedTime = equippedTime,
+                PreviousBonusExpRate = previousBonusExpRate
             };
             return true;
         }
@@ -2305,7 +2319,7 @@ namespace HaCreator.MapSimulator.Interaction
             byte level = reader.ReadByte();
             short closeness = reader.ReadInt16();
             byte fullness = reader.ReadByte();
-            long expirationTime = reader.ReadInt64();
+            long dateDead = reader.ReadInt64();
             short attribute = reader.ReadInt16();
             ushort skill = reader.ReadUInt16();
             int remainingLife = reader.ReadInt32();
@@ -2316,7 +2330,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Level = level,
                 Closeness = closeness,
                 Fullness = fullness,
-                ExpirationTime = expirationTime,
+                DateDead = dateDead,
                 Attribute = attribute,
                 Skill = skill,
                 RemainingLife = remainingLife,

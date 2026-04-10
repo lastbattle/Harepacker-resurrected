@@ -1334,6 +1334,7 @@ namespace HaCreator.MapSimulator
             Tuple<Board, string> targetMap = _loadMapCallback(targetMapId);
             IEnumerable<PortalInstance> targetPortals = targetMap?.Item1?.BoardItems?.Portals;
             var candidateNames = new List<string>();
+            string[] coordinateCandidateNames = Array.Empty<string>();
             if (TryCollectPacketOwnedTeleportPortalNamesByPosition(
                 targetPortals,
                 targetX,
@@ -1341,6 +1342,7 @@ namespace HaCreator.MapSimulator
                 out string[] coordinateCandidatePortalNames,
                 out bool usedExactCoordinateMatch))
             {
+                coordinateCandidateNames = coordinateCandidatePortalNames ?? Array.Empty<string>();
                 foreach (string coordinateCandidatePortalName in coordinateCandidatePortalNames)
                 {
                     AddPacketOwnedTeleportCandidateName(candidateNames, coordinateCandidatePortalName);
@@ -1372,6 +1374,18 @@ namespace HaCreator.MapSimulator
                     AddPacketOwnedTeleportCandidateName(candidateNames, reciprocalCandidateName);
                 }
 
+                if (string.IsNullOrWhiteSpace(targetPortalName)
+                    && TryResolvePacketOwnedTargetPortalNameByMetadataIntersection(
+                        coordinateCandidateNames,
+                        reciprocalCandidateNames,
+                        out string reciprocalCoordinateTargetName))
+                {
+                    targetPortalName = reciprocalCoordinateTargetName;
+                    resolutionSummary = $"reciprocal target-map portal '{targetPortalName}' at destination coordinates linked back to source portal '{sourcePortalName}'";
+                    candidatePortalNames = candidateNames.ToArray();
+                    return true;
+                }
+
                 resolutionSummary = reciprocalCandidateNames.Length == 1
                     ? $"reciprocal target-map portal '{reciprocalCandidateNames[0]}' linked back to source portal '{sourcePortalName}'"
                     : $"reciprocal target-map portals linked back to source portal '{sourcePortalName}'";
@@ -1383,6 +1397,18 @@ namespace HaCreator.MapSimulator
                 out PortalInstance mapOnlyPortal))
             {
                 AddPacketOwnedTeleportCandidateName(candidateNames, mapOnlyPortal.pn);
+                if (string.IsNullOrWhiteSpace(targetPortalName)
+                    && TryResolvePacketOwnedTargetPortalNameByMetadataIntersection(
+                        coordinateCandidateNames,
+                        new[] { mapOnlyPortal.pn },
+                        out string mapOnlyCoordinateTargetName))
+                {
+                    targetPortalName = mapOnlyCoordinateTargetName;
+                    resolutionSummary = $"single target-map portal '{targetPortalName}' at destination coordinates that returns to map {currentMapId}";
+                    candidatePortalNames = candidateNames.ToArray();
+                    return true;
+                }
+
                 resolutionSummary = $"single target-map portal '{mapOnlyPortal.pn}' that returns to map {currentMapId}";
             }
 
@@ -1394,6 +1420,40 @@ namespace HaCreator.MapSimulator
             }
 
             return !string.IsNullOrWhiteSpace(targetPortalName) || candidatePortalNames.Length > 0;
+        }
+
+        internal static bool TryResolvePacketOwnedTargetPortalNameByMetadataIntersection(
+            IEnumerable<string> coordinateCandidatePortalNames,
+            IEnumerable<string> metadataCandidatePortalNames,
+            out string targetPortalName)
+        {
+            targetPortalName = null;
+            if (coordinateCandidatePortalNames == null || metadataCandidatePortalNames == null)
+            {
+                return false;
+            }
+
+            var coordinateCandidateSet = new HashSet<string>(
+                coordinateCandidatePortalNames.Where(candidate => !string.IsNullOrWhiteSpace(candidate)),
+                StringComparer.OrdinalIgnoreCase);
+            if (coordinateCandidateSet.Count == 0)
+            {
+                return false;
+            }
+
+            var intersection = new List<string>();
+            foreach (string metadataCandidateName in metadataCandidatePortalNames)
+            {
+                if (string.IsNullOrWhiteSpace(metadataCandidateName)
+                    || !coordinateCandidateSet.Contains(metadataCandidateName))
+                {
+                    continue;
+                }
+
+                AddPacketOwnedTeleportCandidateName(intersection, metadataCandidateName);
+            }
+
+            return TryResolvePacketOwnedTeleportUniqueCandidatePortalName(intersection, out targetPortalName);
         }
 
         private static void AddPacketOwnedTeleportCandidateName(List<string> candidates, string portalName)

@@ -786,6 +786,11 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
+        public Texture2D GetMacroIconTexture(int macroIndex, bool enabled = true)
+        {
+            return ResolveMacroIconTexture(macroIndex, hovered: false, enabled);
+        }
+
         private void DrawSoftKeyboard(SpriteBatch sprite)
         {
             if (!_softKeyboardVisible)
@@ -2363,11 +2368,6 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
         {
-            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState))
-            {
-                return Rectangle.Empty;
-            }
-
             int visibleCount = GetVisibleCandidateCount();
             if (visibleCount <= 0)
             {

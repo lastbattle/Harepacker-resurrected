@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Func<string> ResolveJobNameText { get; init; }
         public Func<string> ResolveCurrentMapNameText { get; init; }
         public Func<int, string> ResolveQuestRecordText { get; init; }
+        public Func<string, string> ResolveQuestDetailRecordText { get; init; }
     }
 
     internal static class NpcDialogueTextFormatter
@@ -31,7 +32,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CurrentMapNameRegex = new(@"#m#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex JobNameRegex = new(@"#j#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex JobNameRegex = new(@"#j#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestDetailRecordRegex = new(@"#j(?<token>[A-Za-z0-9_]+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex SelectedMobRegex = new(@"#M(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -40,6 +42,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+:?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestDetailStyleRegex = new(@"#(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex MalformedQuestDetailStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -71,6 +74,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = SkillNameRegex.Replace(formatted, static match => ResolveSkillName(match.Groups[1].Value));
             formatted = MapNameRegex.Replace(formatted, static match => ResolveMapName(match.Groups[1].Value));
             formatted = CurrentMapNameRegex.Replace(formatted, match => ResolveCurrentMapNameText(context));
+            formatted = QuestDetailRecordRegex.Replace(formatted, match => ResolveQuestDetailRecordText(match.Groups["token"].Value, context));
             formatted = JobNameRegex.Replace(formatted, match => ResolveJobNameText(context));
             formatted = SelectedMobRegex.Replace(formatted, static match => ResolveSelectedMobText(match.Groups[1].Value));
             formatted = QuestAmountRegex.Replace(formatted, static match => ResolveQuestAmountText(match.Groups[1].Value));
@@ -113,6 +117,9 @@ namespace HaCreator.MapSimulator.Interaction
                 match => int.TryParse(match.Value.TrimStart('#', 'i', 'I', 'v', 'V').TrimEnd('#', ':'), out int itemId) && itemId > 0
                     ? BuildItemIconMarker(itemId)
                     : string.Empty);
+            preservedMarkers = MalformedQuestDetailStyleRegex.Replace(
+                preservedMarkers,
+                match => BuildQuestStyleMarker(match.Groups["tag"].Value));
             preservedMarkers = QuestDetailStyleRegex.Replace(
                 preservedMarkers,
                 match => BuildQuestStyleMarker(match.Groups["tag"].Value));
@@ -552,6 +559,35 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "0";
+        }
+
+        private static string ResolveQuestDetailRecordText(string token, NpcDialogueFormattingContext context)
+        {
+            string normalizedToken = token?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return string.Empty;
+            }
+
+            if (context?.ResolveQuestDetailRecordText != null)
+            {
+                string resolvedText = context.ResolveQuestDetailRecordText(normalizedToken);
+                if (resolvedText != null)
+                {
+                    return resolvedText;
+                }
+            }
+
+            return normalizedToken.ToLowerInvariant() switch
+            {
+                "cmp" => "0",
+                "min" => "0",
+                "sec" => "0",
+                "date" => "-",
+                "rank" => "-",
+                _ when normalizedToken.StartsWith("have", StringComparison.OrdinalIgnoreCase) => "0",
+                _ => string.Empty
+            };
         }
 
         private static bool HasSelectedMobFlag(string questIdText)

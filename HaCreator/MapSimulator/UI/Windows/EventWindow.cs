@@ -11,6 +11,14 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class EventWindow : UIWindowBase
     {
+        private static readonly PlayerIndex[] NavigationGamePadIndices =
+        {
+            PlayerIndex.One,
+            PlayerIndex.Two,
+            PlayerIndex.Three,
+            PlayerIndex.Four,
+        };
+
         internal readonly record struct CalendarSelectionState(DateTime Month, DateTime SelectedDate);
 
         private readonly struct PageLayer
@@ -60,6 +68,7 @@ namespace HaCreator.MapSimulator.UI
         private DateTime? _selectedCalendarDate;
         private int _autoDismissTick = int.MinValue;
         private KeyboardState _previousKeyboardState;
+        private readonly GamePadState[] _previousNavigationGamePadStates = new GamePadState[NavigationGamePadIndices.Length];
 
         public EventWindow(
             IDXObject frame,
@@ -112,6 +121,7 @@ namespace HaCreator.MapSimulator.UI
                 ? unchecked(Environment.TickCount + snapshot.AutoDismissDelayMs)
                 : int.MinValue;
             _previousKeyboardState = Keyboard.GetState();
+            CaptureNavigationGamePadStates(_previousNavigationGamePadStates);
             base.Show();
         }
 
@@ -227,7 +237,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            HandleKeyboardInput();
+            HandleOwnerInput();
         }
 
         protected override void DrawContents(
@@ -427,25 +437,46 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void HandleKeyboardInput()
+        private void HandleOwnerInput()
         {
             KeyboardState keyboard = Keyboard.GetState();
+            GamePadState[] gamePads = CaptureNavigationGamePadStates();
 
-            bool moveUp = IsNewKeyPress(keyboard, Keys.Up);
-            bool moveDown = IsNewKeyPress(keyboard, Keys.Down);
-            bool moveLeft = IsNewKeyPress(keyboard, Keys.Left);
-            bool moveRight = IsNewKeyPress(keyboard, Keys.Right);
-            bool pageLeft = IsNewKeyPress(keyboard, Keys.PageUp);
-            bool pageRight = IsNewKeyPress(keyboard, Keys.PageDown);
-            bool toggleCalendar = IsNewKeyPress(keyboard, Keys.Tab) || IsNewKeyPress(keyboard, Keys.C);
+            bool moveUp = IsNewKeyPress(keyboard, Keys.Up)
+                || IsNewButtonPress(gamePads, Buttons.DPadUp)
+                || IsNewButtonPress(gamePads, Buttons.LeftThumbstickUp);
+            bool moveDown = IsNewKeyPress(keyboard, Keys.Down)
+                || IsNewButtonPress(gamePads, Buttons.DPadDown)
+                || IsNewButtonPress(gamePads, Buttons.LeftThumbstickDown);
+            bool moveLeft = IsNewKeyPress(keyboard, Keys.Left)
+                || IsNewButtonPress(gamePads, Buttons.DPadLeft)
+                || IsNewButtonPress(gamePads, Buttons.LeftThumbstickLeft);
+            bool moveRight = IsNewKeyPress(keyboard, Keys.Right)
+                || IsNewButtonPress(gamePads, Buttons.DPadRight)
+                || IsNewButtonPress(gamePads, Buttons.LeftThumbstickRight);
+            bool pageLeft = IsNewKeyPress(keyboard, Keys.PageUp)
+                || IsNewButtonPress(gamePads, Buttons.LeftShoulder);
+            bool pageRight = IsNewKeyPress(keyboard, Keys.PageDown)
+                || IsNewButtonPress(gamePads, Buttons.RightShoulder);
+            bool toggleCalendar = IsNewKeyPress(keyboard, Keys.Tab)
+                || IsNewKeyPress(keyboard, Keys.C)
+                || IsNewButtonPress(gamePads, Buttons.Y);
+            bool cycleFilter = IsNewButtonPress(gamePads, Buttons.X);
+            bool selectCurrent = IsNewKeyPress(keyboard, Keys.Space)
+                || IsNewKeyPress(keyboard, Keys.Enter)
+                || IsNewButtonPress(gamePads, Buttons.A);
             bool filterAll = IsNewKeyPress(keyboard, Keys.D1) || IsNewKeyPress(keyboard, Keys.NumPad1);
             bool filterStart = IsNewKeyPress(keyboard, Keys.D2) || IsNewKeyPress(keyboard, Keys.NumPad2);
             bool filterRunning = IsNewKeyPress(keyboard, Keys.D3) || IsNewKeyPress(keyboard, Keys.NumPad3);
             bool filterClear = IsNewKeyPress(keyboard, Keys.D4) || IsNewKeyPress(keyboard, Keys.NumPad4);
             bool filterUpcoming = IsNewKeyPress(keyboard, Keys.D5) || IsNewKeyPress(keyboard, Keys.NumPad5);
-            bool close = IsNewKeyPress(keyboard, Keys.Escape) || IsNewKeyPress(keyboard, Keys.Back);
+            bool close = IsNewKeyPress(keyboard, Keys.Escape)
+                || IsNewKeyPress(keyboard, Keys.Back)
+                || IsNewButtonPress(gamePads, Buttons.B)
+                || IsNewButtonPress(gamePads, Buttons.Back);
 
             _previousKeyboardState = keyboard;
+            CopyNavigationGamePadStates(gamePads, _previousNavigationGamePadStates);
 
             if (close)
             {
@@ -483,6 +514,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (cycleFilter)
+            {
+                CycleFilter();
+                return;
+            }
+
             if (toggleCalendar)
             {
                 ToggleCalendarView();
@@ -500,6 +537,13 @@ namespace HaCreator.MapSimulator.UI
                 if (pageRight)
                 {
                     MoveNextPage();
+                    return;
+                }
+
+                if (selectCurrent)
+                {
+                    _selectedCalendarDate ??= ResolveCalendarSelectionForMonth(GetFilteredEntries(_currentSnapshot ?? RefreshSnapshot()), _calendarMonth, DateTime.Today.Date);
+                    KeepEventAlarmVisible(EventAlarmInteractionKind.CalendarDateSelection);
                     return;
                 }
 
@@ -538,6 +582,12 @@ namespace HaCreator.MapSimulator.UI
             if (moveDown)
             {
                 MoveRowSelection(1);
+                return;
+            }
+
+            if (selectCurrent)
+            {
+                KeepEventAlarmVisible(EventAlarmInteractionKind.RowSelection);
                 return;
             }
 
@@ -642,6 +692,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void MoveRowSelection(int direction)
         {
+            KeepEventAlarmVisible(EventAlarmInteractionKind.RowSelection);
             IReadOnlyList<EventEntrySnapshot> filteredEntries = GetFilteredEntries(_currentSnapshot ?? RefreshSnapshot());
             if (filteredEntries.Count == 0)
             {
@@ -669,6 +720,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            KeepEventAlarmVisible(EventAlarmInteractionKind.RowSelection);
             _pageIndex = Math.Max(0, _pageIndex - 1);
             _selectedIndex = Math.Min(_selectedIndex, ((_pageIndex + 1) * GetRowsPerPage()) - 1);
         }
@@ -685,6 +737,7 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<EventEntrySnapshot> filteredEntries = GetFilteredEntries(_currentSnapshot ?? RefreshSnapshot());
             int rowsPerPage = GetRowsPerPage();
             int maxPage = filteredEntries.Count == 0 ? 0 : Math.Max(0, (filteredEntries.Count - 1) / rowsPerPage);
+            KeepEventAlarmVisible(EventAlarmInteractionKind.RowSelection);
             _pageIndex = Math.Min(maxPage, _pageIndex + 1);
             _selectedIndex = Math.Min(Math.Max(0, filteredEntries.Count - 1), Math.Max(_selectedIndex, _pageIndex * rowsPerPage));
         }
@@ -743,6 +796,75 @@ namespace HaCreator.MapSimulator.UI
         private bool IsNewKeyPress(KeyboardState current, Keys key)
         {
             return current.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+        }
+
+        private void CycleFilter()
+        {
+            EventEntryStatus? nextFilter = _filter switch
+            {
+                null when !_showCalendar => EventEntryStatus.Start,
+                EventEntryStatus.Start => EventEntryStatus.InProgress,
+                EventEntryStatus.InProgress => EventEntryStatus.Clear,
+                EventEntryStatus.Clear => EventEntryStatus.Upcoming,
+                _ => null,
+            };
+
+            SetFilter(nextFilter, showCalendar: false);
+        }
+
+        private static GamePadState[] CaptureNavigationGamePadStates()
+        {
+            GamePadState[] states = new GamePadState[NavigationGamePadIndices.Length];
+            CaptureNavigationGamePadStates(states);
+            return states;
+        }
+
+        private static void CaptureNavigationGamePadStates(GamePadState[] states)
+        {
+            if (states == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < states.Length && i < NavigationGamePadIndices.Length; i++)
+            {
+                states[i] = GamePad.GetState(NavigationGamePadIndices[i]);
+            }
+        }
+
+        private static void CopyNavigationGamePadStates(GamePadState[] source, GamePadState[] destination)
+        {
+            if (source == null || destination == null)
+            {
+                return;
+            }
+
+            int count = Math.Min(source.Length, destination.Length);
+            for (int i = 0; i < count; i++)
+            {
+                destination[i] = source[i];
+            }
+        }
+
+        private bool IsNewButtonPress(GamePadState[] currentStates, Buttons button)
+        {
+            if (currentStates == null)
+            {
+                return false;
+            }
+
+            int count = Math.Min(currentStates.Length, _previousNavigationGamePadStates.Length);
+            for (int i = 0; i < count; i++)
+            {
+                if (currentStates[i].IsConnected
+                    && currentStates[i].IsButtonDown(button)
+                    && !_previousNavigationGamePadStates[i].IsButtonDown(button))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void BindActionButton(UIObject button, Action action)

@@ -36,11 +36,15 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientDetailRowGap = 1;
         private const int ClientDetailPaddingTop = 3;
         private const int ClientDetailPaddingBottom = 4;
+        private const int TitleTooltipMouseOffset = 20;
+        private const int TitleTooltipPadding = 6;
+        private const int TitleTooltipMaxWidth = 190;
         private const float TitleScale = 0.5f;
         private const float DetailScale = 0.42f;
         private const float HeaderScale = 0.48f;
         private const float HeaderActionScale = 0.4f;
         private const float PageScale = 0.38f;
+        private const float TitleTooltipScale = 0.45f;
         private static readonly Color ProgressRedColor = new(255, 159, 159);
         private static readonly Color ProgressRedVioletColor = new(214, 153, 217);
         private static readonly Color ProgressOrangeColor = new(255, 203, 140);
@@ -365,7 +369,7 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle rowRect = new Rectangle(Position.X + 6, y, _maxTopTexture.Width - 12, rowHeight);
                 Rectangle titleRect = new Rectangle(rowRect.X, rowRect.Y, rowRect.Width, ClientTitleHeight);
                 Rectangle deleteRect = new Rectangle(titleRect.Right - DeleteButtonSize - 4, titleRect.Y + 3, DeleteButtonSize, DeleteButtonSize);
-                _rowLayouts.Add(new RowLayout(entry.QuestId, rowRect, deleteRect));
+                _rowLayouts.Add(new RowLayout(entry.QuestId, rowRect, titleRect, deleteRect));
 
                 DrawRowBackground(sprite, titleRect, entry, isSelected);
 
@@ -423,6 +427,44 @@ namespace HaCreator.MapSimulator.UI
             {
                 button.ButtonClickReleased += _ => onClick();
             }
+        }
+
+        public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            int titleQuestId = !_isMinimized ? GetTitleQuestIdAtPoint(mouseState.X, mouseState.Y) : -1;
+            bool titleHovered = titleQuestId > 0;
+            bool localActionHovered = !_isMinimized && (titleHovered || GetDeleteQuestIdAtPoint(mouseState.X, mouseState.Y) > 0 || _deleteAllBounds.Contains(mouseState.X, mouseState.Y));
+            if (localActionHovered)
+            {
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                if (mouseState.LeftButton == ButtonState.Pressed)
+                {
+                    return false;
+                }
+            }
+
+            bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            if (handled)
+            {
+                return true;
+            }
+
+            if (titleHovered)
+            {
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+            }
+
+            return false;
+        }
+
+        public override bool CanStartDragAt(int x, int y)
+        {
+            if (!_isMinimized && (GetTitleQuestIdAtPoint(x, y) > 0 || GetDeleteQuestIdAtPoint(x, y) > 0 || _deleteAllBounds.Contains(x, y)))
+            {
+                return false;
+            }
+
+            return base.CanStartDragAt(x, y);
         }
 
         private void ToggleAutoTrack()
@@ -1053,9 +1095,98 @@ namespace HaCreator.MapSimulator.UI
             return _questButtonAnimationFrames[_questButtonAnimationFrames.Count - 1];
         }
 
+        protected override void DrawOverlay(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            DrawHoveredTitleTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
+        }
+
         private static int ResolveQuestButtonAnimationDelay(QuestAlarmAnimationFrame frame)
         {
             return frame.DelayMs > 0 ? frame.DelayMs : DefaultQuestButtonAnimationDelayMs;
+        }
+
+        private void DrawHoveredTitleTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        {
+            if (_font == null || _isMinimized)
+            {
+                return;
+            }
+
+            MouseState mouseState = Mouse.GetState();
+            int questId = GetTitleQuestIdAtPoint(mouseState.X, mouseState.Y);
+            if (questId <= 0 || !TryGetQuestAlarmEntry(_currentSnapshot ?? RefreshFilteredSnapshot(), questId, out QuestAlarmEntrySnapshot entry))
+            {
+                return;
+            }
+
+            string tooltipText = ResolveTitleTooltipText(entry);
+            if (string.IsNullOrWhiteSpace(tooltipText))
+            {
+                return;
+            }
+
+            IReadOnlyList<string> lines = QuestAlarmTextLayout.WrapText(
+                tooltipText,
+                TitleTooltipMaxWidth,
+                sample => MeasureClientText(sample, TitleTooltipScale).X);
+            if (lines.Count == 0)
+            {
+                return;
+            }
+
+            int contentWidth = 0;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                contentWidth = Math.Max(contentWidth, (int)Math.Ceiling(MeasureClientText(lines[i], TitleTooltipScale).X));
+            }
+
+            int lineHeight = Math.Max(12, (int)Math.Ceiling(_font.LineSpacing * TitleTooltipScale));
+            int width = Math.Min(TitleTooltipMaxWidth + (TitleTooltipPadding * 2), Math.Max(36, contentWidth + (TitleTooltipPadding * 2)));
+            int height = (TitleTooltipPadding * 2) + (lines.Count * lineHeight);
+            int x = mouseState.X + TitleTooltipMouseOffset;
+            int y = mouseState.Y + TitleTooltipMouseOffset;
+
+            if (renderWidth > 0 && x + width > renderWidth)
+            {
+                x = Math.Max(0, mouseState.X - TitleTooltipMouseOffset - width);
+            }
+
+            if (renderHeight > 0 && y + height > renderHeight)
+            {
+                y = Math.Max(0, mouseState.Y - TitleTooltipMouseOffset - height);
+            }
+
+            Rectangle bounds = new(x, y, width, height);
+            sprite.Draw(_pixel, bounds, new Color(18, 22, 30, 238));
+            DrawBorder(sprite, bounds, new Color(236, 208, 124, 220));
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                ClientTextDrawing.Draw(
+                    sprite,
+                    lines[i],
+                    new Vector2(bounds.X + TitleTooltipPadding, bounds.Y + TitleTooltipPadding + (i * lineHeight)),
+                    new Color(231, 236, 246),
+                    TitleTooltipScale,
+                    _font);
+            }
+        }
+
+        private static string ResolveTitleTooltipText(QuestAlarmEntrySnapshot entry)
+        {
+            return entry?.IsRecentlyUpdated == true
+                ? QuestAlarmOwnerStringPoolText.GetRecentUpdateTooltip()
+                : string.Empty;
         }
 
         private int GetDeleteQuestIdAtPoint(int mouseX, int mouseY)
@@ -1065,6 +1196,20 @@ namespace HaCreator.MapSimulator.UI
                 if (_rowLayouts[i].DeleteBounds.Contains(mouseX, mouseY))
                 {
                     return _rowLayouts[i].QuestId;
+                }
+            }
+
+            return -1;
+        }
+
+        private int GetTitleQuestIdAtPoint(int mouseX, int mouseY)
+        {
+            for (int i = 0; i < _rowLayouts.Count; i++)
+            {
+                RowLayout row = _rowLayouts[i];
+                if (row.TitleBounds.Contains(mouseX, mouseY) && !row.DeleteBounds.Contains(mouseX, mouseY))
+                {
+                    return row.QuestId;
                 }
             }
 
@@ -1380,6 +1525,24 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
+        private static bool TryGetQuestAlarmEntry(QuestAlarmSnapshot snapshot, int questId, out QuestAlarmEntrySnapshot entry)
+        {
+            if (snapshot?.Entries != null)
+            {
+                for (int i = 0; i < snapshot.Entries.Count; i++)
+                {
+                    if (snapshot.Entries[i].QuestId == questId)
+                    {
+                        entry = snapshot.Entries[i];
+                        return true;
+                    }
+                }
+            }
+
+            entry = null;
+            return false;
+        }
+
         private IEnumerable<QuestAlarmTextLine> BuildDemandTextLines(QuestAlarmEntrySnapshot entry, float maxWidth, float scale)
         {
             if (entry == null)
@@ -1571,15 +1734,17 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly struct RowLayout
         {
-            public RowLayout(int questId, Rectangle bounds, Rectangle deleteBounds)
+            public RowLayout(int questId, Rectangle bounds, Rectangle titleBounds, Rectangle deleteBounds)
             {
                 QuestId = questId;
                 Bounds = bounds;
+                TitleBounds = titleBounds;
                 DeleteBounds = deleteBounds;
             }
 
             public int QuestId { get; }
             public Rectangle Bounds { get; }
+            public Rectangle TitleBounds { get; }
             public Rectangle DeleteBounds { get; }
         }
     }

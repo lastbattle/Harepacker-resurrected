@@ -986,6 +986,11 @@ namespace HaCreator.MapSimulator.Interaction
                     snapshot = inventoryDecoratedSnapshot;
                 }
 
+                if (TryDecodeCharacterDataPreMapTransferSections(reader, characterDataFlags, snapshot, out PacketCharacterDataSnapshot preMapTransferDecoratedSnapshot))
+                {
+                    snapshot = preMapTransferDecoratedSnapshot;
+                }
+
                 if (TryDecodeKnownCharacterDataTailSections(reader, characterDataFlags, snapshot, out PacketCharacterDataSnapshot tailDecoratedSnapshot))
                 {
                     snapshot = tailDecoratedSnapshot;
@@ -1453,11 +1458,11 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if ((characterDataFlags & 0x40000UL) != 0)
                 {
-                    ushort newYearCardCount = reader.ReadUInt16();
-                    SkipCharacterDataNewYearCardRecords(reader, newYearCardCount);
+                    IReadOnlyList<PacketCharacterDataNewYearCardRecord> newYearCardRecords = ReadCharacterDataNewYearCardRecords(reader);
                     decoratedSnapshot = decoratedSnapshot with
                     {
-                        NewYearCardRecordCount = newYearCardCount
+                        NewYearCardRecordCount = newYearCardRecords.Count,
+                        NewYearCardRecords = newYearCardRecords
                     };
                 }
 
@@ -1722,14 +1727,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static PacketCharacterDataWildHunterInfo ReadCharacterDataWildHunterInfo(BinaryReader reader)
         {
-            int[] values = new int[5];
-            byte mode = reader.ReadByte();
-            for (int i = 0; i < values.Length; i++)
+            int[] capturedMobIds = new int[5];
+            byte rawMode = reader.ReadByte();
+            for (int i = 0; i < capturedMobIds.Length; i++)
             {
-                values[i] = reader.ReadInt32();
+                capturedMobIds[i] = reader.ReadInt32();
             }
 
-            return new PacketCharacterDataWildHunterInfo(mode, values);
+            return new PacketCharacterDataWildHunterInfo(
+                rawMode,
+                (byte)(rawMode / 10),
+                (byte)(rawMode % 10),
+                capturedMobIds);
         }
 
         private static PacketCharacterDataSnapshot DecodeCharacterDataLeadingTailSections(
@@ -1809,22 +1818,45 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static void SkipCharacterDataNewYearCardRecords(BinaryReader reader, int count)
+        private static IReadOnlyList<PacketCharacterDataNewYearCardRecord> ReadCharacterDataNewYearCardRecords(BinaryReader reader)
         {
+            ushort count = reader.ReadUInt16();
+            List<PacketCharacterDataNewYearCardRecord> records = new(count);
             for (int i = 0; i < count; i++)
             {
-                _ = reader.ReadInt32();
-                _ = reader.ReadInt32();
-                _ = ReadMapleString(reader);
-                _ = reader.ReadByte();
-                _ = reader.ReadInt64();
-                _ = reader.ReadInt32();
-                _ = ReadMapleString(reader);
-                _ = reader.ReadByte();
-                _ = reader.ReadByte();
-                _ = reader.ReadInt64();
-                _ = ReadMapleString(reader);
+                records.Add(new PacketCharacterDataNewYearCardRecord(
+                    reader.ReadInt32(),
+                    reader.ReadInt32(),
+                    TruncateClientString(ReadMapleString(reader), 12),
+                    reader.ReadByte() != 0,
+                    reader.ReadInt64(),
+                    reader.ReadInt32(),
+                    TruncateClientString(ReadMapleString(reader), 12),
+                    reader.ReadByte() != 0,
+                    reader.ReadByte() != 0,
+                    reader.ReadInt64(),
+                    TruncateClientString(ReadMapleString(reader), 120)));
             }
+
+            return records;
+        }
+
+        private static string TruncateClientString(string value, int maxBytes)
+        {
+            value ??= string.Empty;
+            Encoding encoding = Encoding.Default;
+            if (encoding.GetByteCount(value) <= maxBytes)
+            {
+                return value;
+            }
+
+            int characterCount = value.Length;
+            while (characterCount > 0 && encoding.GetByteCount(value[..characterCount]) > maxBytes)
+            {
+                characterCount--;
+            }
+
+            return value[..characterCount];
         }
 
         private static void SkipCharacterDataWildHunterInfo(BinaryReader reader)
@@ -2063,7 +2095,24 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct PacketCharacterDataSkillRecord(int SkillId, int SkillLevel, long ExpirationFileTime);
 
-    internal readonly record struct PacketCharacterDataWildHunterInfo(byte Mode, IReadOnlyList<int> Values);
+    internal readonly record struct PacketCharacterDataNewYearCardRecord(
+        int SerialNumber,
+        int SenderCharacterId,
+        string SenderName,
+        bool SenderDiscarded,
+        long SentFileTime,
+        int ReceiverCharacterId,
+        string ReceiverName,
+        bool ReceiverDiscarded,
+        bool ReceiverReceived,
+        long ReceivedFileTime,
+        string Content);
+
+    internal readonly record struct PacketCharacterDataWildHunterInfo(
+        byte RawMode,
+        byte ModeHighDigit,
+        byte ModeLowDigit,
+        IReadOnlyList<int> CapturedMobIds);
 
     internal sealed record PacketCharacterDataSnapshot(
         int CharacterId,
@@ -2124,6 +2173,7 @@ namespace HaCreator.MapSimulator.Interaction
         int FriendRecordCount = 0,
         int MarriageRecordCount = 0,
         int NewYearCardRecordCount = 0,
+        IReadOnlyList<PacketCharacterDataNewYearCardRecord> NewYearCardRecords = null,
         int QuestExRecordCount = 0,
         IReadOnlyDictionary<int, string> QuestExRecordValues = null,
         bool HasWildHunterInfo = false,

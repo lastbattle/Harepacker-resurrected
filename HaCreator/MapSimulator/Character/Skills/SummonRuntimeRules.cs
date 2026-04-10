@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     internal static class SummonRuntimeRules
     {
         private const int Sg88SkillId = 35121003;
+        private const int BeholderSummonSkillId = 1321007;
         private const int BeholderPddBranchIndex = 0;
         private const int BeholderMddBranchIndex = 1;
         private const int BeholderAccBranchIndex = 2;
@@ -58,6 +59,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             "heal",
             "support"
         };
+        private static readonly string[] ClientSummonedActionNamesByAction =
+        {
+            "stand",
+            "move",
+            "fly",
+            "summoned",
+            "attack1",
+            "attack2",
+            "attackTriangle",
+            "skill1",
+            "skill2",
+            "skill3",
+            "skill4",
+            "skill5",
+            "skill6",
+            "heal",
+            "subsummon",
+            "hit",
+            "die",
+            "say",
+            "prepare"
+        };
 
         public static int ResolveAuthoredDurationMs(SkillData skill, SkillLevelData levelData, int skillLevel)
         {
@@ -93,6 +116,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (UsesReactiveDamageTriggerSummon(skill))
             {
                 return SummonAssistType.TargetedAttack;
+            }
+
+            if (skill.SkillId == BeholderSummonSkillId)
+            {
+                return SummonAssistType.Support;
             }
 
             if (skill.SkillId == Sg88SkillId)
@@ -293,7 +321,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int attackIndex = normalizedAction - ClientDefaultSummonAttackActionBase + 1;
-            return ResolveNamedSummonBranch(skill, EnumeratePacketAttackBranchCandidates(attackIndex))
+            return ResolveClientSummonedActionBranch(skill, normalizedAction)
+                   ?? ResolveNamedSummonBranch(skill, EnumeratePacketAttackBranchCandidates(attackIndex))
                    ?? ResolveAuthoredCustomSummonSkillBranch(skill, attackIndex - 1);
         }
 
@@ -360,6 +389,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                    ?? ResolveNamedSummonBranch(skill, "attack1", "attack", "attack0", "attackTriangle");
         }
 
+        internal static int ResolveLocalAttackActionCode(SkillData skill, SummonAssistType assistType, string branchName, bool isSelfDestructAction = false)
+        {
+            if (skill == null || string.IsNullOrWhiteSpace(branchName))
+            {
+                return 0;
+            }
+
+            if (isSelfDestructAction
+                && string.Equals(
+                    branchName,
+                    ResolveSelfDestructFinalBranch(skill, assistType),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return ClientSelfDestructAttackAction;
+            }
+
+            if (skill.SkillId == 35111002
+                && string.Equals(branchName, "attackTriangle", StringComparison.OrdinalIgnoreCase))
+            {
+                return ClientTeslaTriangleAttackAction;
+            }
+
+            if (assistType == SummonAssistType.Support
+                && IsSupportOwnedSuspendBranch(skill, assistType, branchName))
+            {
+                return ClientSupportOwnedAttackAction;
+            }
+
+            return 0;
+        }
+
         internal static string ResolveLocalSupportBranch(SkillData skill, bool preferHealFirst)
         {
             return ResolveSupportOwnedBranch(skill, preferHealFirst);
@@ -380,7 +440,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return assistType switch
             {
-                SummonAssistType.Support when skill.SkillId == 1321007
+                SummonAssistType.Support when skill.SkillId == BeholderSummonSkillId
                     => ResolveNamedSummonBranch(skill, "skill1", "heal", "support", "stand"),
                 SummonAssistType.Support when HasMinionAbilityToken(skill.MinionAbility, "heal")
                     => ResolveSupportOwnedBranch(skill, preferHealFirst: true),
@@ -403,7 +463,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            if (skill.SkillId == 1321007)
+            if (skill.SkillId == BeholderSummonSkillId)
             {
                 return ResolveNamedSummonBranch(skill, "skill1", "heal", "support", "stand");
             }
@@ -796,6 +856,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
         }
 
+        private static string ResolveClientSummonedActionBranch(SkillData skill, int normalizedAction)
+        {
+            if (skill?.SummonNamedAnimations == null
+                || normalizedAction < 0
+                || normalizedAction >= ClientSummonedActionNamesByAction.Length)
+            {
+                return null;
+            }
+
+            return ResolveNamedSummonBranch(skill, ClientSummonedActionNamesByAction[normalizedAction]);
+        }
+
         private static string ResolveSummonPlaybackBranch(
             SkillData skill,
             string explicitBranchName,
@@ -838,6 +910,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 "support",
                 "skill1",
                 "skill2",
+                "skill3",
+                "skill4",
+                "skill5",
+                "skill6",
                 "stand",
                 "attack1",
                 "attack",
@@ -880,15 +956,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 yield return ResolveSelfDestructFinalBranch(skill, assistType);
 
-                if (skill?.SkillId == 1321007)
+                if (skill?.SkillId == BeholderSummonSkillId)
                 {
-                    yield return ResolveBeholderHealBranch(skill);
-
-                    for (int branchIndex = BeholderPddBranchIndex; branchIndex <= BeholderPadBranchIndex; branchIndex++)
+                    foreach (string branchName in EnumerateBeholderSupportBranchNames(skill))
                     {
-                        yield return GetBeholderBranchName(branchIndex);
+                        yield return branchName;
                     }
                 }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateBeholderSupportBranchNames(SkillData skill)
+        {
+            yield return ResolveBeholderHealBranch(skill);
+
+            for (int branchIndex = BeholderPddBranchIndex; branchIndex <= BeholderPadBranchIndex; branchIndex++)
+            {
+                yield return GetBeholderBranchName(branchIndex);
             }
         }
 

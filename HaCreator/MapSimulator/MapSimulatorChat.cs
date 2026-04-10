@@ -60,6 +60,8 @@ namespace HaCreator.MapSimulator
         public MapSimulatorChatTargetType TargetType { get; init; }
         public string WhisperTarget { get; init; } = string.Empty;
         public int WhisperTargetPickerSelectionIndex { get; init; } = -1;
+        public MapSimulatorChat.WhisperTargetPickerModalButtonFocus WhisperTargetPickerModalButtonFocus { get; init; } =
+            MapSimulatorChat.WhisperTargetPickerModalButtonFocus.Confirm;
         public string LocalPlayerName { get; init; } = string.Empty;
     }
 
@@ -128,6 +130,8 @@ namespace HaCreator.MapSimulator
         private bool _isWhisperTargetPickerActive;
         private WhisperTargetPickerPresentation _whisperTargetPickerPresentation = WhisperTargetPickerPresentation.Inline;
         private int _whisperTargetPickerSelectionIndex = -1;
+        private WhisperTargetPickerModalButtonFocus _whisperTargetPickerModalButtonFocus =
+            WhisperTargetPickerModalButtonFocus.Confirm;
         private string _savedChatInputBeforeWhisperPicker = string.Empty;
         private int _savedChatCursorBeforeWhisperPicker;
 
@@ -172,6 +176,12 @@ namespace HaCreator.MapSimulator
         {
             Inline = 0,
             Modal = 1
+        }
+
+        public enum WhisperTargetPickerModalButtonFocus
+        {
+            Confirm = 0,
+            Close = 1
         }
 
         private enum WhisperTargetPickerNavigationMode
@@ -269,6 +279,13 @@ namespace HaCreator.MapSimulator
                 {
                     if (_isWhisperTargetPickerActive)
                     {
+                        if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                            && _whisperTargetPickerModalButtonFocus == WhisperTargetPickerModalButtonFocus.Close)
+                        {
+                            CancelWhisperTargetPicker();
+                            return true;
+                        }
+
                         ConfirmWhisperTargetPicker(tickCount);
                         return true;
                     }
@@ -418,6 +435,14 @@ namespace HaCreator.MapSimulator
             // Handle Left arrow - move cursor left (with key repeat)
             if (newKeyboardState.IsKeyDown(Keys.Left))
             {
+                if (_isWhisperTargetPickerActive
+                    && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                    && oldKeyboardState.IsKeyUp(Keys.Left))
+                {
+                    MoveWhisperTargetPickerModalButtonFocus(-1);
+                    return true;
+                }
+
                 if (oldKeyboardState.IsKeyUp(Keys.Left))
                 {
                     if (_cursorPosition > 0)
@@ -442,6 +467,14 @@ namespace HaCreator.MapSimulator
             // Handle Right arrow - move cursor right (with key repeat)
             if (newKeyboardState.IsKeyDown(Keys.Right))
             {
+                if (_isWhisperTargetPickerActive
+                    && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                    && oldKeyboardState.IsKeyUp(Keys.Right))
+                {
+                    MoveWhisperTargetPickerModalButtonFocus(1);
+                    return true;
+                }
+
                 if (oldKeyboardState.IsKeyUp(Keys.Right))
                 {
                     if (_cursorPosition < _inputText.Length)
@@ -943,6 +976,7 @@ namespace HaCreator.MapSimulator
                 TargetType = _chatTarget,
                 WhisperTarget = _whisperTarget ?? string.Empty,
                 WhisperTargetPickerSelectionIndex = _whisperTargetPickerSelectionIndex,
+                WhisperTargetPickerModalButtonFocus = _whisperTargetPickerModalButtonFocus,
                 LocalPlayerName = _localPlayerName
             };
         }
@@ -983,6 +1017,7 @@ namespace HaCreator.MapSimulator
             Activate(tickCount);
             _isWhisperTargetPickerActive = true;
             _whisperTargetPickerPresentation = presentation;
+            _whisperTargetPickerModalButtonFocus = WhisperTargetPickerModalButtonFocus.Confirm;
             ResetHistoryNavigation();
 
             SetInputText(explicitInitialTarget ? normalizedInitialTarget : string.Empty);
@@ -1817,6 +1852,7 @@ namespace HaCreator.MapSimulator
             _isWhisperTargetPickerActive = false;
             _whisperTargetPickerPresentation = WhisperTargetPickerPresentation.Inline;
             _whisperTargetPickerSelectionIndex = -1;
+            _whisperTargetPickerModalButtonFocus = WhisperTargetPickerModalButtonFocus.Confirm;
 
             if (restoreDraft)
             {
@@ -1862,6 +1898,20 @@ namespace HaCreator.MapSimulator
 
             _whisperTargetPickerSelectionIndex = targetIndex;
             SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex]);
+        }
+
+        internal void MoveWhisperTargetPickerModalButtonFocus(int delta)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || delta == 0)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalButtonFocus = _whisperTargetPickerModalButtonFocus == WhisperTargetPickerModalButtonFocus.Confirm
+                ? WhisperTargetPickerModalButtonFocus.Close
+                : WhisperTargetPickerModalButtonFocus.Confirm;
         }
 
         internal static int ResolveWhisperTargetPickerFirstVisibleIndex(

@@ -524,7 +524,7 @@ namespace HaCreator.MapSimulator.Pools
                     reactor,
                     index,
                     objectId,
-                    data.PacketObjectId.HasValue,
+                    UsesPacketObjectIdForLocalTouch(data, objectId),
                     IsTouching: true));
             }
 
@@ -540,7 +540,7 @@ namespace HaCreator.MapSimulator.Pools
                     GetReactor(index),
                     index,
                     objectId,
-                    GetReactorData(index)?.PacketObjectId.HasValue == true,
+                    UsesPacketObjectIdForLocalTouch(GetReactorData(index), objectId),
                     IsTouching: false));
             }
 
@@ -1439,11 +1439,35 @@ namespace HaCreator.MapSimulator.Pools
 
             if (TryGetReactorIndexByPacketObjectId(packetObjectId, out int existingIndex))
             {
+                ApplyPacketOwnershipToReactor(existingIndex, packetObjectId, canRespawn: false);
                 ApplyPacketReactorState(existingIndex, initialState, x, y, flip, currentTick);
+                ReactorRuntimeData existingData = GetReactorData(existingIndex);
+                if (existingData != null)
+                {
+                    existingData.State = ReactorState.Idle;
+                }
+
                 BeginPacketEnterFade(GetReactorData(existingIndex), currentTick);
                 SyncPacketScriptPublication(GetReactor(existingIndex), GetReactorData(existingIndex), currentTick);
                 reactorIndex = existingIndex;
                 message = $"Updated packet-owned reactor {packetObjectId} as template {reactorId} at ({x}, {y}).";
+                return true;
+            }
+
+            if (TryFindAuthoredReactorForPacketEnter(reactorId, x, y, flip, name, out int authoredIndex))
+            {
+                ApplyPacketOwnershipToReactor(authoredIndex, packetObjectId, canRespawn: false);
+                ApplyPacketReactorState(authoredIndex, initialState, x, y, flip, currentTick);
+                ReactorRuntimeData authoredData = GetReactorData(authoredIndex);
+                if (authoredData != null)
+                {
+                    authoredData.State = ReactorState.Idle;
+                }
+
+                BeginPacketEnterFade(authoredData, currentTick);
+                SyncPacketScriptPublication(GetReactor(authoredIndex), authoredData, currentTick);
+                reactorIndex = authoredIndex;
+                message = $"Bound packet-owned reactor {packetObjectId} to authored template {reactorId} at ({x}, {y}).";
                 return true;
             }
 
@@ -1521,6 +1545,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ApplyPacketReactorState(spawnPoint.SpawnId, initialState, x, y, flip, currentTick);
+            ReactorRuntimeData enteredData = GetReactorData(spawnPoint.SpawnId);
+            if (enteredData != null)
+            {
+                enteredData.State = ReactorState.Idle;
+            }
+
             BeginPacketEnterFade(GetReactorData(spawnPoint.SpawnId), currentTick);
             SyncPacketScriptPublication(reactor, GetReactorData(spawnPoint.SpawnId), currentTick);
             TrackPacketObjectId(spawnPoint.SpawnId, packetObjectId);
@@ -1616,7 +1646,7 @@ namespace HaCreator.MapSimulator.Pools
             int currentY = reactor.CurrentWorldY;
             int moveEndTime = data.PacketStateEndTime > currentTick
                 ? data.PacketStateEndTime
-                : ResolvePacketStandaloneMoveEndTime(reactor.TemplateMoveEnabled, currentX, currentY, x, y, currentTick);
+                : ResolvePacketStandaloneMoveEndTime(currentX, currentY, x, y, currentTick);
             bool usesDefaultRelMove = moveEndTime > currentTick
                 && data.PacketStateEndTime <= currentTick;
 
@@ -2158,15 +2188,13 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         internal static int ResolvePacketStandaloneMoveEndTime(
-            bool templateMoveEnabled,
             int startX,
             int startY,
             int targetX,
             int targetY,
             int currentTick)
         {
-            if (!templateMoveEnabled
-                || (startX == targetX && startY == targetY))
+            if (startX == targetX && startY == targetY)
             {
                 return 0;
             }
@@ -2194,7 +2222,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (reactor == null
                 || data == null
-                || !reactor.TemplateMoveEnabled
+                || (!reactor.TemplateMoveEnabled && !data.PacketMoveUsesDefaultRelMove)
                 || data.PacketMoveEndTime <= currentTick
                 || data.PacketMoveStartTime > 0
                 || (data.PacketMoveStartX == data.PacketMoveTargetX && data.PacketMoveStartY == data.PacketMoveTargetY))
@@ -2211,7 +2239,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (reactor == null
                 || data == null
-                || !reactor.TemplateMoveEnabled
+                || (!reactor.TemplateMoveEnabled && !data.PacketMoveUsesDefaultRelMove)
                 || data.PacketMoveStartTime <= 0
                 || data.PacketMoveEndTime <= 0)
             {
@@ -2316,6 +2344,109 @@ namespace HaCreator.MapSimulator.Pools
             {
                 _reactorIndicesByPacketObjectId.Remove(objectId);
             }
+        }
+
+        private bool TryFindAuthoredReactorForPacketEnter(
+            string reactorId,
+            int x,
+            int y,
+            bool flip,
+            string name,
+            out int index)
+        {
+            index = -1;
+            int match = -1;
+
+            for (int i = 0; i < GetReactorCount(); i++)
+            {
+                ReactorItem reactor = GetReactor(i);
+                ReactorRuntimeData data = GetReactorData(i);
+                if (reactor?.ReactorInstance == null
+                    || data == null
+                    || data.PacketObjectId.HasValue
+                    || data.IsPacketOwned)
+                {
+                    continue;
+                }
+
+                if (!IsSameReactorTemplate(reactor.ReactorInstance.ReactorInfo?.ID, reactorId)
+                    || reactor.CurrentWorldX != x
+                    || reactor.CurrentWorldY != y
+                    || reactor.ReactorInstance.Flip != flip)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(name)
+                    && !string.IsNullOrWhiteSpace(reactor.ReactorInstance.Name)
+                    && !string.Equals(reactor.ReactorInstance.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (match >= 0)
+                {
+                    return false;
+                }
+
+                match = i;
+            }
+
+            index = match;
+            return index >= 0;
+        }
+
+        private void ApplyPacketOwnershipToReactor(int index, int packetObjectId, bool canRespawn)
+        {
+            if (packetObjectId <= 0)
+            {
+                return;
+            }
+
+            ReactorRuntimeData data = GetReactorData(index);
+            if (data == null)
+            {
+                return;
+            }
+
+            int previousTouchObjectId = ResolveLocalTouchObjectId(data);
+            UntrackPacketObjectId(data.PacketObjectId);
+            data.PacketObjectId = packetObjectId;
+            data.IsPacketOwned = true;
+            data.CanRespawn = canRespawn;
+            TrackPacketObjectId(index, packetObjectId);
+
+            if (index >= 0 && index < _spawnPoints.Count)
+            {
+                ReactorSpawnPoint spawnPoint = _spawnPoints[index];
+                spawnPoint.PacketObjectId = packetObjectId;
+                spawnPoint.IsPacketOwned = true;
+                spawnPoint.CanRespawn = canRespawn;
+            }
+
+            if (previousTouchObjectId != packetObjectId
+                && _reactorsOnLocalUser.TryGetValue(previousTouchObjectId, out int touchedIndex)
+                && touchedIndex == index)
+            {
+                _reactorsOnLocalUser.Remove(previousTouchObjectId);
+            }
+        }
+
+        private static bool UsesPacketObjectIdForLocalTouch(ReactorRuntimeData data, int objectId)
+        {
+            return data?.PacketObjectId == objectId;
+        }
+
+        private static bool IsSameReactorTemplate(string left, string right)
+        {
+            if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return int.TryParse(left, NumberStyles.Integer, CultureInfo.InvariantCulture, out int leftId)
+                && int.TryParse(right, NumberStyles.Integer, CultureInfo.InvariantCulture, out int rightId)
+                && leftId == rightId;
         }
 
         internal static bool DoesClientTouchBoundsContainPosition(Rectangle bounds, float playerX, float playerY)

@@ -380,8 +380,10 @@ namespace HaCreator.MapSimulator.Managers
                 118 => 53,
                 166 => 166,
                 167 => 167,
-                190 => 18,
+                180 => 18,
                 191 => 19,
+                198 or 199 => 18,
+                >= 190 and < 200 => 18,
                 _ when IsWeaponCategory(category) => 11,
                 _ => 0
             };
@@ -418,8 +420,10 @@ namespace HaCreator.MapSimulator.Managers
                 118 => bodyPart == 53,
                 166 => bodyPart == 166,
                 167 => bodyPart == 167,
-                190 => bodyPart == 18,
+                180 => bodyPart == 18,
                 191 => bodyPart == 19,
+                198 or 199 => bodyPart == 18,
+                >= 190 and < 200 => bodyPart == 18,
                 _ => IsWeaponCategory(category) && bodyPart == 11
             };
         }

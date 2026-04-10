@@ -330,7 +330,8 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            if (image[actionName] is WzSubProperty directActionNode)
+            if (image[actionName] is WzSubProperty directActionNode
+                && HasRenderableFrames(directActionNode))
             {
                 return new ActionNodeResolution(directActionNode, directActionNode);
             }

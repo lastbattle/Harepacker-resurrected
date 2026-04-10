@@ -99,6 +99,13 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        internal static string ResolvePacketOwnedAntiMacroUserBranchName(string userName)
+        {
+            // `CWvsContext::OnAntiMacroResult` forwards the decoded ZXString directly to
+            // chat formatting and screenshot naming, so preserve whitespace and empty values.
+            return userName ?? string.Empty;
+        }
+
         private void RegisterPacketOwnedAntiMacroWindows()
         {
             if (uiWindowManager == null || GraphicsDevice == null)
@@ -609,7 +616,7 @@ namespace HaCreator.MapSimulator
 
         private string ApplyPacketOwnedAntiMacroUserBranch(int mode, int antiMacroType, string userName)
         {
-            string resolvedName = string.IsNullOrWhiteSpace(userName) ? "Unknown" : userName.Trim();
+            string resolvedName = ResolvePacketOwnedAntiMacroUserBranchName(userName);
             PacketOwnedAntiMacroChatDefinition definition = ResolvePacketOwnedAntiMacroChatDefinition(mode, antiMacroType);
             _lastPacketOwnedAntiMacroChatStringPoolId = definition?.StringPoolId ?? -1;
             string chatText = AntiMacroOwnerStringPoolText.FormatUserBranchText(

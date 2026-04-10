@@ -101,7 +101,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=193,253,254,269,270,1011,1023; outbound opcodes=45,113,117,134,135,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,253,254,269,270,1011,1023; outbound opcodes=45,113,117,134,135,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -592,6 +592,8 @@ namespace HaCreator.MapSimulator.Managers
         internal static bool ShouldMirrorInboundPacketType(int packetType)
         {
             return packetType == LocalUtilityPacketInboxManager.FollowCharacterClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.SetGenderPacketType
+                || packetType == LocalUtilityPacketInboxManager.AccountMoreInfoPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.PassiveMoveClientPacketType
@@ -604,6 +606,8 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType switch
             {
+                LocalUtilityPacketInboxManager.SetGenderPacketType => "SetGender(58)",
+                LocalUtilityPacketInboxManager.AccountMoreInfoPacketType => "AccountMoreInfo(133)",
                 LocalUtilityPacketInboxManager.FollowCharacterClientPacketType => "FollowCharacter(193)",
                 LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType => "SetDirectionMode(253)",
                 LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",

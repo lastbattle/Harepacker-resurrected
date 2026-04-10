@@ -528,6 +528,7 @@ namespace HaCreator.MapSimulator
             WireGuildBbsWindowData();
             _engagementProposalController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
+            _weddingWishListController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();
@@ -1656,6 +1657,7 @@ namespace HaCreator.MapSimulator
             WireGuildBbsWindowData();
             _engagementProposalController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
+            _weddingWishListController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();

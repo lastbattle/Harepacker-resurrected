@@ -184,6 +184,7 @@ namespace HaCreator.MapSimulator.Interaction
                     participant.JobName,
                     participant.Level,
                     participant.IsOnline,
+                    participant.DataSourceLabel,
                     participant.AvatarLook));
             }
 
@@ -2286,6 +2287,7 @@ namespace HaCreator.MapSimulator.Interaction
         string JobName,
         int Level,
         bool IsOnline,
+        string DataSourceLabel,
         LoginAvatarLook AvatarLook);
 
     internal sealed record MessengerDeleteResult(string Message, bool ShouldHideWindow);

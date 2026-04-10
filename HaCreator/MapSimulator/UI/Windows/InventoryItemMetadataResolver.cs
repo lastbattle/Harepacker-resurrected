@@ -1602,9 +1602,55 @@ namespace HaCreator.MapSimulator.UI
             AppendLevelUpWarningMetadataLines(metadataLines, infoProperty);
             AppendRecipeMetadataLines(metadataLines, specProperty);
             AppendConditionalMapMetadataLines(metadataLines, specProperty);
+            AppendItemBagMetadataLines(metadataLines, specProperty);
             AppendSpecExMobSkillMetadataLines(metadataLines, specExProperty);
             AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
+        }
+
+        private static void AppendItemBagMetadataLines(List<string> metadataLines, WzSubProperty specProperty)
+        {
+            if (specProperty == null)
+            {
+                return;
+            }
+
+            int slotCount = GetIntOrStringValue(specProperty["slotCount"]);
+            int slotsPerLine = GetIntOrStringValue(specProperty["slotPerLine"]);
+            int bagType = GetIntOrStringValue(specProperty["type"]);
+            if (slotCount <= 0 && slotsPerLine <= 0 && bagType <= 0)
+            {
+                return;
+            }
+
+            if (slotCount > 0)
+            {
+                metadataLines.Add($"Bag Slots: {slotCount.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (slotsPerLine > 0)
+            {
+                metadataLines.Add($"Bag Layout: {slotsPerLine.ToString(CultureInfo.InvariantCulture)} per row");
+            }
+
+            string bagTypeLabel = ResolveItemBagTypeLabel(bagType);
+            if (!string.IsNullOrWhiteSpace(bagTypeLabel))
+            {
+                metadataLines.Add($"Bag Type: {bagTypeLabel}");
+            }
+        }
+
+        private static string ResolveItemBagTypeLabel(int bagType)
+        {
+            return bagType switch
+            {
+                1 => "Herb",
+                2 => "Mineral",
+                4 => "Party Quest",
+                5 => "Coin",
+                > 0 => $"Type {bagType.ToString(CultureInfo.InvariantCulture)}",
+                _ => string.Empty
+            };
         }
 
         private static void AppendSpecExMobSkillEffectLines(List<string> effectLines, WzSubProperty specExProperty)
@@ -2143,9 +2189,19 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add("Time-limited item");
             }
 
+            if (GetIntValue(infoProperty["notExtend"]) == 1)
+            {
+                metadataLines.Add("Duration cannot be extended");
+            }
+
             if (GetIntValue(infoProperty["expireOnLogout"]) == 1)
             {
                 metadataLines.Add("Expires on logout");
+            }
+
+            if (GetIntValue(infoProperty["noCancelMouse"]) == 1)
+            {
+                metadataLines.Add("Cannot be canceled by mouse");
             }
 
             if (GetIntValue(infoProperty["buffchair"]) == 1)
@@ -2167,6 +2223,28 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["noMoveToLocker"]) == 1)
             {
                 metadataLines.Add("Cannot be moved to locker");
+            }
+
+            if (GetIntValue(infoProperty["preventslip"]) == 1)
+            {
+                metadataLines.Add("Adds shoe traction");
+            }
+
+            if (GetIntValue(infoProperty["warmsupport"]) == 1)
+            {
+                metadataLines.Add("Adds cold-weather protection");
+            }
+
+            int protectionDays = GetIntOrStringValue(infoProperty["protectTime"]);
+            if (protectionDays > 0)
+            {
+                metadataLines.Add($"Seals item for {FormatDayCount(protectionDays)}");
+            }
+
+            int karmaTier = GetIntOrStringValue(infoProperty["karma"]);
+            if (karmaTier > 0)
+            {
+                metadataLines.Add($"Karma transfer tier: {karmaTier.ToString(CultureInfo.InvariantCulture)}");
             }
 
             if (IsNotConsumedOnUse(infoProperty))

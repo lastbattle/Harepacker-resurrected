@@ -300,6 +300,11 @@ namespace HaCreator.MapSimulator.Loaders
                         continue;
                     }
 
+                    if (!IsReactorIndexedHitPropertyCandidate(child))
+                    {
+                        continue;
+                    }
+
                     List<IDXObject> frames = LoadReactorFramesForProperty(
                         texturePool,
                         WzInfoTools.GetRealProperty(child),
@@ -346,6 +351,11 @@ namespace HaCreator.MapSimulator.Loaders
                         continue;
                     }
 
+                    if (!IsReactorIndexedHitPropertyCandidate(child))
+                    {
+                        continue;
+                    }
+
                     WzImageProperty hitProperty = ResolveReactorFrameSourceProperty(child);
                     if (hitProperty != null)
                     {
@@ -355,6 +365,17 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return indexedHitProperties;
+        }
+
+        internal static bool IsReactorIndexedHitPropertyCandidate(WzImageProperty property)
+        {
+            WzImageProperty resolvedProperty = WzInfoTools.GetRealProperty(property);
+            if (resolvedProperty is not WzSubProperty)
+            {
+                return false;
+            }
+
+            return ResolveReactorFrameSourceProperty(resolvedProperty) != null;
         }
 
         private static List<IDXObject> LoadReactorFramesForProperty(

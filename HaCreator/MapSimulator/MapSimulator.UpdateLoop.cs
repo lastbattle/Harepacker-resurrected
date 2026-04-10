@@ -246,6 +246,7 @@ namespace HaCreator.MapSimulator
             DrainMassacrePacketInbox(currTickCount);
             DrainDojoPacketInbox(currTickCount);
             DrainTransportPacketInbox();
+            DrainTransportOfficialSessionBridge();
             DrainGuildBossTransport(currTickCount);
 
             DrainPartyRaidPacketInbox(currTickCount);
@@ -298,9 +299,12 @@ namespace HaCreator.MapSimulator
             EnsureStageTransitionPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
             DrainStageTransitionPacketInbox();
             EnsureReactorPoolPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
+            EnsureReactorPoolOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
+            RefreshReactorPoolOfficialSessionBridgeDiscovery(currTickCount);
             EnsurePacketFieldOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
             RefreshPacketFieldOfficialSessionBridgeDiscovery(currTickCount);
             DrainReactorPoolPacketInbox();
+            DrainReactorPoolOfficialSessionBridge();
             DrainPacketFieldOfficialSessionBridge();
             EnsureComboCounterPacketInboxState(shouldRun: true);
             DrainComboCounterPacketInbox();

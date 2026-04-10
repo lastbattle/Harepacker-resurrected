@@ -261,7 +261,16 @@ namespace HaCreator.MapSimulator.Pools
 
             SkillLevelData levelData = ResolveSkillLevel(skill, createInfo.SkillLevel);
             int startTime = ResolveStartTime(currentTime, createInfo.StartDelayUnits);
-            int expireTime = ResolveExpireTime(startTime, levelData?.Time ?? 0);
+            Func<int, SkillData> loadLinkedSkill = _skillLoader == null
+                ? null
+                : skillId => _skillLoader.LoadSkill(skillId);
+            int durationSeconds = ResolvePlayerSkillAreaDurationSeconds(
+                skill,
+                levelData,
+                loadLinkedSkill,
+                ResolveSkillLevel,
+                createInfo.SkillLevel);
+            int expireTime = ResolveExpireTime(startTime, durationSeconds);
 
             return new ActiveAffectedArea
             {
@@ -365,6 +374,76 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return null;
+        }
+
+        internal static int ResolvePlayerSkillAreaDurationSeconds(
+            SkillData skill,
+            SkillLevelData levelData,
+            Func<int, SkillData> loadSkill,
+            Func<SkillData, int, SkillLevelData> resolveLevelData,
+            int skillLevel)
+        {
+            int durationSeconds = ResolveSkillAreaLevelDurationSeconds(levelData);
+            if (skill == null || loadSkill == null || resolveLevelData == null)
+            {
+                return durationSeconds;
+            }
+
+            var visitedSkillIds = new HashSet<int>();
+            CollectLinkedPlayerSkillAreaDurationSeconds(
+                skill,
+                loadSkill,
+                resolveLevelData,
+                Math.Max(1, skillLevel),
+                visitedSkillIds,
+                ref durationSeconds);
+            return durationSeconds;
+        }
+
+        private static void CollectLinkedPlayerSkillAreaDurationSeconds(
+            SkillData skill,
+            Func<int, SkillData> loadSkill,
+            Func<SkillData, int, SkillLevelData> resolveLevelData,
+            int skillLevel,
+            ISet<int> visitedSkillIds,
+            ref int durationSeconds)
+        {
+            if (skill == null)
+            {
+                return;
+            }
+
+            int skillId = skill.SkillId;
+            if (skillId > 0 && visitedSkillIds?.Add(skillId) != true)
+            {
+                return;
+            }
+
+            foreach (int linkedSkillId in RemoteAffectedAreaSupportResolver.EnumerateRemoteAffectedAreaLinkedSkillIds(skill))
+            {
+                SkillData linkedSkill = loadSkill(linkedSkillId);
+                if (linkedSkill == null)
+                {
+                    continue;
+                }
+
+                SkillLevelData linkedLevelData = resolveLevelData(linkedSkill, skillLevel);
+                durationSeconds = Math.Max(durationSeconds, ResolveSkillAreaLevelDurationSeconds(linkedLevelData));
+                CollectLinkedPlayerSkillAreaDurationSeconds(
+                    linkedSkill,
+                    loadSkill,
+                    resolveLevelData,
+                    skillLevel,
+                    visitedSkillIds,
+                    ref durationSeconds);
+            }
+        }
+
+        private static int ResolveSkillAreaLevelDurationSeconds(SkillLevelData levelData)
+        {
+            return levelData == null
+                ? 0
+                : Math.Max(levelData.Time, levelData.DotTime);
         }
 
         private static int ResolveExpireTime(int currentTime, int durationSeconds)

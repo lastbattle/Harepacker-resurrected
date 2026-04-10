@@ -215,6 +215,7 @@ namespace HaCreator.MapSimulator.Pools
         public const int PACKET_REMOVE_DURATION = 1000;
         public const int PACKET_ABSORB_DURATION = 220;
         public const int PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION = 1000;
+        public const int PACKET_MOTION_STEP_MS = 30;
         #endregion
 
         public bool IsExpired => State == DropState.Expired || State == DropState.Removed;
@@ -422,9 +423,8 @@ namespace HaCreator.MapSimulator.Pools
 
         private void UpdatePacketParabolicMotion(int currentTime)
         {
-            int deltaMs = Math.Max(0, currentTime - MotionLastUpdateTime);
             MotionLastUpdateTime = currentTime;
-            MotionElapsedMs += deltaMs;
+            MotionElapsedMs += PACKET_MOTION_STEP_MS;
 
             float horizontalHalfDistance = (TargetX - SpawnX) * 0.5f;
             float progressA = MathF.Min(MotionElapsedMs / 500f, 1f);
@@ -459,9 +459,8 @@ namespace HaCreator.MapSimulator.Pools
 
         private void UpdatePacketSettleMotion(int currentTime)
         {
-            int deltaMs = Math.Max(0, currentTime - MotionLastUpdateTime);
             MotionLastUpdateTime = currentTime;
-            MotionElapsedMs += deltaMs;
+            MotionElapsedMs += PACKET_MOTION_STEP_MS;
 
             float settleTimeSeconds = MotionElapsedMs / 1000f;
             float launchVelocity = OwnershipType == DropOwnershipType.Explosive ? 720f : 400f;

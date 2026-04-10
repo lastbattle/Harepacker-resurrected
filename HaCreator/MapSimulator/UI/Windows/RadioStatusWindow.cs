@@ -23,6 +23,16 @@ namespace HaCreator.MapSimulator.UI
         private const float TooltipLineGap = 2f;
         private const float TooltipSectionGap = 4f;
 
+        internal readonly record struct RadioCreateLayerPlacement(
+            Point Origin,
+            Point RelMove,
+            Point ScreenPosition,
+            int LeftMargin,
+            int FrameWidth,
+            int AlphaOriginX,
+            int AlphaOriginY,
+            bool StopsLayerAnimation);
+
         private readonly struct IndicatorFrame
         {
             public IndicatorFrame(Texture2D texture, int delayMs)
@@ -298,17 +308,28 @@ namespace HaCreator.MapSimulator.UI
 
         internal static Point ResolveAnchoredPosition(int renderWidth, int frameWidth, bool useClientLeftInset)
         {
-            // CUIRadio::CreateLayer anchors the widget to Origin_RT, then applies
-            // x = -3 - width - (bLeft ? 40 : 0), y = +3. IDA also recovers
-            // nMargin = (CWvsContext slot 3562 != 0) ? 40 : 0 in the ctor path.
-            // The client positions from the Off-layer canvas width, not the
-            // current animated On frame width.
+            return ResolveCreateLayerPlacement(renderWidth, frameWidth, useClientLeftInset).ScreenPosition;
+        }
+
+        internal static RadioCreateLayerPlacement ResolveCreateLayerPlacement(int renderWidth, int frameWidth, bool useClientLeftInset)
+        {
+            // CUIRadio::CreateLayer anchors the Off layer to Origin_RT, inserts
+            // Off/0 as the resident canvas, RelMove(-3-width-nMargin, +3),
+            // resets alpha to (0,0), and stops layer animation after placement.
             int normalizedRenderWidth = Math.Max(0, renderWidth);
             int normalizedFrameWidth = Math.Max(0, frameWidth);
-            int rightInset = ClientRightInset + (useClientLeftInset ? ClientLeftModeExtraRightInset : 0);
-            return new Point(
-                normalizedRenderWidth - normalizedFrameWidth - rightInset,
-                ClientTopInset);
+            int leftMargin = useClientLeftInset ? ClientLeftModeExtraRightInset : 0;
+            Point origin = new(normalizedRenderWidth, 0);
+            Point relMove = new(-ClientRightInset - normalizedFrameWidth - leftMargin, ClientTopInset);
+            return new RadioCreateLayerPlacement(
+                origin,
+                relMove,
+                new Point(origin.X + relMove.X, origin.Y + relMove.Y),
+                leftMargin,
+                normalizedFrameWidth,
+                0,
+                0,
+                StopsLayerAnimation: true);
         }
 
         private List<string> BuildWrappedTooltipLines()

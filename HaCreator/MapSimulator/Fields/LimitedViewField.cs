@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using SD = System.Drawing;
 using HaSharedLibrary.Util;
@@ -51,6 +52,8 @@ namespace HaCreator.MapSimulator.Fields
         private Vector2 _clientOwnedScreenMaskCenter;
         private bool _clientOwnedFocusWorldPositionValid;
         private Vector2 _clientOwnedFocusWorldPosition;
+        private readonly List<Vector2> _clientOwnedRemoteFocusWorldPositions = new();
+        private readonly List<Vector2> _clientOwnedScreenMaskCentersBuffer = new();
         #endregion
 
         #region Runtime State
@@ -273,6 +276,20 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedFocusWorldPositionValid = true;
         }
 
+        public void SetClientOwnedRemoteFocusWorldPositions(IEnumerable<Vector2> worldPositions)
+        {
+            _clientOwnedRemoteFocusWorldPositions.Clear();
+            if (worldPositions == null)
+            {
+                return;
+            }
+
+            foreach (Vector2 worldPosition in worldPositions)
+            {
+                _clientOwnedRemoteFocusWorldPositions.Add(worldPosition);
+            }
+        }
+
         public void ClearClientOwnedMask()
         {
             _clientOwnedMaskWidth = 0f;
@@ -286,6 +303,8 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedImmediateMode = false;
             _clientOwnedUpdateParityMode = false;
             _clientOwnedFocusWorldPositionValid = false;
+            _clientOwnedRemoteFocusWorldPositions.Clear();
+            _clientOwnedScreenMaskCentersBuffer.Clear();
         }
         #endregion
 
@@ -388,6 +407,24 @@ namespace HaCreator.MapSimulator.Fields
             {
                 case ViewMode.Circle:
                 case ViewMode.Spotlight:
+                    if (_clientOwnedUpdateParityMode)
+                    {
+                        IReadOnlyList<Vector2> maskCenters = GetClientOwnedUpdateParityScreenMaskCenters(mapShiftX, mapShiftY, centerX, centerY);
+                        for (int i = 0; i < maskCenters.Count; i++)
+                        {
+                            Vector2 clientMaskCenter = maskCenters[i];
+                            DrawCircularFog(
+                                spriteBatch,
+                                (int)MathF.Round(clientMaskCenter.X),
+                                (int)MathF.Round(clientMaskCenter.Y),
+                                effectiveRadius,
+                                fogColorWithAlpha,
+                                drawClientOwnedDarkLayer: i == 0);
+                        }
+
+                        break;
+                    }
+
                     DrawCircularFog(spriteBatch, screenCenterX, screenCenterY, effectiveRadius, fogColorWithAlpha);
                     break;
 
@@ -401,11 +438,17 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private void DrawCircularFog(SpriteBatch spriteBatch, int centerX, int centerY, float radius, Color fogColor)
+        private void DrawCircularFog(
+            SpriteBatch spriteBatch,
+            int centerX,
+            int centerY,
+            float radius,
+            Color fogColor,
+            bool drawClientOwnedDarkLayer = true)
         {
             if (_clientOwnedUpdateParityMode && _clientOwnedViewrangeTexture != null)
             {
-                DrawClientOwnedViewrangeFog(spriteBatch, centerX, centerY, fogColor);
+                DrawClientOwnedViewrangeFog(spriteBatch, centerX, centerY, fogColor, drawClientOwnedDarkLayer);
                 return;
             }
 
@@ -465,7 +508,12 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private void DrawClientOwnedViewrangeFog(SpriteBatch spriteBatch, int centerX, int centerY, Color fogColor)
+        private void DrawClientOwnedViewrangeFog(
+            SpriteBatch spriteBatch,
+            int centerX,
+            int centerY,
+            Color fogColor,
+            bool drawDarkLayer)
         {
             int width = _clientOwnedViewrangeTexture.Width;
             int height = _clientOwnedViewrangeTexture.Height;
@@ -475,6 +523,11 @@ namespace HaCreator.MapSimulator.Fields
             int bottom = top + height;
 
             spriteBatch.Draw(_clientOwnedViewrangeTexture, new Vector2(left, top), fogColor);
+
+            if (!drawDarkLayer)
+            {
+                return;
+            }
 
             Rectangle darkBounds = GetClientOwnedDarkLayerBounds();
             int darkLeft = darkBounds.Left;
@@ -628,6 +681,28 @@ namespace HaCreator.MapSimulator.Fields
             float screenX = _clientOwnedFocusWorldPosition.X - mapShiftX + centerX + offsetX;
             float screenY = _clientOwnedFocusWorldPosition.Y - mapShiftY + centerY + offsetY;
             return new Vector2(screenX, screenY);
+        }
+
+        internal IReadOnlyList<Vector2> GetClientOwnedUpdateParityScreenMaskCenters(int mapShiftX, int mapShiftY, int centerX, int centerY)
+        {
+            _clientOwnedScreenMaskCentersBuffer.Clear();
+            _clientOwnedScreenMaskCentersBuffer.Add(GetClientOwnedUpdateParityScreenMaskCenter(mapShiftX, mapShiftY, centerX, centerY));
+
+            foreach (Vector2 worldPosition in _clientOwnedRemoteFocusWorldPositions)
+            {
+                _clientOwnedScreenMaskCentersBuffer.Add(GetClientOwnedUpdateParityScreenPosition(worldPosition, mapShiftX, mapShiftY, centerX, centerY));
+            }
+
+            return _clientOwnedScreenMaskCentersBuffer;
+        }
+
+        private Vector2 GetClientOwnedUpdateParityScreenPosition(Vector2 worldPosition, int mapShiftX, int mapShiftY, int centerX, int centerY)
+        {
+            float offsetX = (_clientOwnedMaskWidth * 0.5f) - _clientOwnedMaskOriginX;
+            float offsetY = (_clientOwnedMaskHeight * 0.5f) - _clientOwnedMaskOriginY;
+            return new Vector2(
+                worldPosition.X - mapShiftX + centerX + offsetX,
+                worldPosition.Y - mapShiftY + centerY + offsetY);
         }
 
         private Rectangle GetClientOwnedDarkLayerBounds()

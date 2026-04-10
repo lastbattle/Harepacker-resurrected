@@ -9,6 +9,10 @@ public sealed class ShootAmmoSelection
     public int UseItemId { get; init; }
     public int CashSlotIndex { get; init; } = -1;
     public int CashItemId { get; init; }
+    // Client moving-shoot entries retain the queue-time bullet slot positions
+    // separately from the live fire-time slot refresh.
+    public int QueuedUseSlotIndex { get; init; } = -1;
+    public int QueuedCashSlotIndex { get; init; } = -1;
 
     public bool HasUseAmmo => UseSlotIndex >= 0 && UseItemId > 0;
     public bool HasCashAmmo => CashSlotIndex >= 0 && CashItemId > 0;
@@ -20,7 +24,9 @@ public sealed class ShootAmmoSelection
             UseSlotIndex = UseSlotIndex,
             UseItemId = UseItemId,
             CashSlotIndex = CashSlotIndex,
-            CashItemId = CashItemId
+            CashItemId = CashItemId,
+            QueuedUseSlotIndex = QueuedUseSlotIndex,
+            QueuedCashSlotIndex = QueuedCashSlotIndex
         };
     }
 }
@@ -61,7 +67,9 @@ public static class ClientShootAmmoResolver
                 UseSlotIndex = activeSlotIndex,
                 UseItemId = activeBulletItemId,
                 CashSlotIndex = cashSlotIndex,
-                CashItemId = cashItemId
+                CashItemId = cashItemId,
+                QueuedUseSlotIndex = activeSlotIndex,
+                QueuedCashSlotIndex = cashSlotIndex
             };
             return true;
         }
@@ -83,7 +91,9 @@ public static class ClientShootAmmoResolver
                     UseSlotIndex = fallbackSlotIndex,
                     UseItemId = fallbackActiveBulletItemId,
                     CashSlotIndex = cashSlotIndex,
-                    CashItemId = cashItemId
+                    CashItemId = cashItemId,
+                    QueuedUseSlotIndex = fallbackSlotIndex,
+                    QueuedCashSlotIndex = cashSlotIndex
                 };
                 return true;
             }
@@ -92,7 +102,9 @@ public static class ClientShootAmmoResolver
             {
                 UseItemId = fallbackActiveBulletItemId,
                 CashSlotIndex = cashSlotIndex,
-                CashItemId = cashItemId
+                CashItemId = cashItemId,
+                QueuedUseSlotIndex = -1,
+                QueuedCashSlotIndex = cashSlotIndex
             };
             return false;
         }
@@ -109,7 +121,9 @@ public static class ClientShootAmmoResolver
             selection = new ShootAmmoSelection
             {
                 CashSlotIndex = cashSlotIndex,
-                CashItemId = cashItemId
+                CashItemId = cashItemId,
+                QueuedUseSlotIndex = -1,
+                QueuedCashSlotIndex = cashSlotIndex
             };
             return false;
         }
@@ -119,7 +133,9 @@ public static class ClientShootAmmoResolver
             UseSlotIndex = useSlotIndex,
             UseItemId = useItemId,
             CashSlotIndex = cashSlotIndex,
-            CashItemId = cashItemId
+            CashItemId = cashItemId,
+            QueuedUseSlotIndex = useSlotIndex,
+            QueuedCashSlotIndex = cashSlotIndex
         };
         return true;
     }
@@ -163,7 +179,13 @@ public static class ClientShootAmmoResolver
             UseSlotIndex = refreshedUseSlotIndex,
             UseItemId = queuedSelection.UseItemId,
             CashSlotIndex = refreshedCashSlotIndex,
-            CashItemId = queuedSelection.CashItemId
+            CashItemId = queuedSelection.CashItemId,
+            QueuedUseSlotIndex = queuedSelection.QueuedUseSlotIndex >= 0
+                ? queuedSelection.QueuedUseSlotIndex
+                : queuedSelection.UseSlotIndex,
+            QueuedCashSlotIndex = queuedSelection.QueuedCashSlotIndex >= 0
+                ? queuedSelection.QueuedCashSlotIndex
+                : queuedSelection.CashSlotIndex
         };
     }
 
@@ -206,7 +228,9 @@ public static class ClientShootAmmoResolver
                     UseSlotIndex = -1,
                     UseItemId = queuedSelection.UseItemId,
                     CashSlotIndex = refreshedSelection?.CashSlotIndex ?? -1,
-                    CashItemId = refreshedSelection?.CashItemId ?? queuedSelection.CashItemId
+                    CashItemId = refreshedSelection?.CashItemId ?? queuedSelection.CashItemId,
+                    QueuedUseSlotIndex = refreshedSelection?.QueuedUseSlotIndex ?? queuedSelection.QueuedUseSlotIndex,
+                    QueuedCashSlotIndex = refreshedSelection?.QueuedCashSlotIndex ?? queuedSelection.QueuedCashSlotIndex
                 };
                 return false;
             }
@@ -216,7 +240,9 @@ public static class ClientShootAmmoResolver
                 UseSlotIndex = refreshedUseSlotIndex,
                 UseItemId = queuedSelection.UseItemId,
                 CashSlotIndex = refreshedSelection?.CashSlotIndex ?? -1,
-                CashItemId = refreshedSelection?.CashItemId ?? queuedSelection.CashItemId
+                CashItemId = refreshedSelection?.CashItemId ?? queuedSelection.CashItemId,
+                QueuedUseSlotIndex = refreshedSelection?.QueuedUseSlotIndex ?? queuedSelection.QueuedUseSlotIndex,
+                QueuedCashSlotIndex = refreshedSelection?.QueuedCashSlotIndex ?? queuedSelection.QueuedCashSlotIndex
             };
         }
 

@@ -481,9 +481,10 @@ namespace HaCreator.MapSimulator.Interaction
             byte resultCode = payload[5];
             _memoMailbox.DeleteMemo(memoId);
             _removalCount++;
+            string notice = PacketOwnedSocialUtilityStringPoolText.ResolveParcelRemovalNotice(resultCode, out int stringPoolId);
             StatusMessage = resultCode == 3
-                ? $"CParcelDlg packet 23 removed parcel #{memoId} through the claim-success branch."
-                : $"CParcelDlg packet 23 removed parcel #{memoId} through the discard-result branch ({resultCode.ToString(CultureInfo.InvariantCulture)}).";
+                ? $"CParcelDlg packet 23 removed parcel #{memoId} through the claim-success StringPool 0x{stringPoolId:X} branch: {notice}"
+                : $"CParcelDlg packet 23 removed parcel #{memoId} through the discard-result StringPool 0x{stringPoolId:X} branch ({resultCode.ToString(CultureInfo.InvariantCulture)}): {notice}";
             message = StatusMessage;
             return true;
         }
