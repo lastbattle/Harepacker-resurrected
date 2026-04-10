@@ -697,11 +697,6 @@ namespace HaCreator.MapSimulator.UI
                 out int preservedUserSelectionItemId,
                 out int preservedUserSelectionSlotPosition,
                 out int preservedUserSelectionScrollOffset);
-            AdminShopPacketOwnedOpenViewState reopenViewState = AdminShopPacketOwnedOpenViewParity.CaptureForSetAdminShopDlg(
-                _packetOwnedAdminShopSession.IsActive,
-                (int)_activePane,
-                (int)_activeBrowseMode,
-                (int)_activeCategory);
             _packetOwnedAdminShopSession.BeginOpen(
                 snapshot,
                 "CAdminShopDlg::OnPacket reused the admin-shop unique-modeless owner surface.");
@@ -710,21 +705,14 @@ namespace HaCreator.MapSimulator.UI
             ClearPendingPacketOwnedUserSellSnapshot();
             ClearPendingPacketOwnedWishlistRegister();
             ResetMode(AdminShopServiceMode.CashShop);
-            if (reopenViewState.PreserveView)
+            RestorePacketOwnedOpenViewState(AdminShopPacketOwnedOpenViewParity.ResolveDefaultForSetAdminShopDlg());
+            if (preservePacketOwnedUserSelection)
             {
-                RestorePacketOwnedOpenViewState(reopenViewState);
-                if (preservePacketOwnedUserSelection)
-                {
-                    TryApplyPacketOwnedSetUserItemsOpenParity(
-                        preservedUserSelectionInventoryType,
-                        preservedUserSelectionItemId,
-                        preservedUserSelectionSlotPosition,
-                        preservedUserSelectionScrollOffset);
-                }
-            }
-            else
-            {
-                ResetPacketOwnedAdminShopSelectionState();
+                TryApplyPacketOwnedSetUserItemsOpenParity(
+                    preservedUserSelectionInventoryType,
+                    preservedUserSelectionItemId,
+                    preservedUserSelectionSlotPosition,
+                    preservedUserSelectionScrollOffset);
             }
             _footerMessage = _packetOwnedAdminShopSession.NpcTemplateId > 0
                 ? $"CAdminShopDlg::SetAdminShopDlg opened the packet-owned admin-shop owner for NPC {_packetOwnedAdminShopSession.NpcTemplateId} with {_packetOwnedAdminShopSession.DecodedItemCount} decoded row(s); wishlist prompt={(_packetOwnedAdminShopSession.AskItemWishlist ? "on" : "off")}."
@@ -752,14 +740,16 @@ namespace HaCreator.MapSimulator.UI
                 "CAdminShopDlg unique-modeless owner surface is visible.");
         }
 
-        internal void RecordPacketOwnedAdminShopOwnerSurfaceHidden(string ownerState)
+        internal void RecordPacketOwnedAdminShopOwnerSurfaceHidden(
+            string ownerState,
+            AdminShopPacketOwnedOwnerVisibilityState visibilityState = AdminShopPacketOwnedOwnerVisibilityState.Hidden)
         {
             if (!_packetOwnedAdminShopSession.HasObservableState)
             {
                 return;
             }
 
-            _packetOwnedAdminShopSession.RecordOwnerSurfaceHidden(ownerState);
+            _packetOwnedAdminShopSession.RecordOwnerSurfaceHidden(ownerState, visibilityState);
         }
 
         internal string ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(string blockingOwner, AdminShopPacketOwnedOpenPayloadSnapshot snapshot)
@@ -896,6 +886,15 @@ namespace HaCreator.MapSimulator.UI
         public override void Hide()
         {
             bool wasVisible = IsVisible;
+            if (wasVisible
+                && _packetOwnedAdminShopSession.HasObservableState
+                && _packetOwnedAdminShopSession.OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible)
+            {
+                _packetOwnedAdminShopSession.RecordOwnerSurfaceHidden(
+                    "CAdminShopDlg unique-modeless owner surface is hidden.",
+                    AdminShopPacketOwnedOwnerVisibilityState.Hidden);
+            }
+
             base.Hide();
             if (wasVisible && !IsVisible)
             {
@@ -912,7 +911,8 @@ namespace HaCreator.MapSimulator.UI
                 _packetOwnedAdminShopSession.RejectOpen(
                     string.Empty,
                     outboundSummary,
-                    "The admin-shop unique-modeless owner was closed locally.");
+                    "The admin-shop unique-modeless owner was closed locally.",
+                    AdminShopPacketOwnedOwnerVisibilityState.Hidden);
                 _pendingPacketOwnedAdminShopResult = false;
                 _packetOwnedAdminShopRows.Clear();
                 _packetOwnedAdminShopSellTemplates.Clear();
@@ -1531,6 +1531,16 @@ namespace HaCreator.MapSimulator.UI
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
             _previousMouseState = mouseState;
             _previousKeyboardState = Keyboard.GetState();
+
+            if (_packetOwnedAdminShopSession.IsActive)
+            {
+                _footerMessage = BuildPacketOwnedAdminShopStateSummary();
+                UpdateRowButtons();
+                UpdateActionButtonStates();
+                UpdateModalButtons();
+                return;
+            }
+
             ResetMode(_defaultMode);
         }
 
@@ -3433,8 +3443,13 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            _activePane = AdminShopPane.User;
-            _activeCategory = ResolveCategoryForInventoryType(inventoryType);
+            AdminShopPacketOwnedOpenViewState refocusViewState = AdminShopPacketOwnedOpenViewParity.ResolveUserSellRefocus(
+                (int)ResolveCategoryForInventoryType(inventoryType));
+            _activePane = AdminShopPacketOwnedOpenViewParity.ClampPaneIndex(refocusViewState.ActivePaneIndex) == AdminShopPacketOwnedOpenViewParity.UserPaneIndex
+                ? AdminShopPane.User
+                : AdminShopPane.Npc;
+            _activeBrowseMode = (AdminShopBrowseMode)AdminShopPacketOwnedOpenViewParity.ClampBrowseModeIndex(refocusViewState.BrowseModeIndex);
+            _activeCategory = (AdminShopCategory)AdminShopPacketOwnedOpenViewParity.ClampCategoryIndex(refocusViewState.CategoryIndex);
             ApplyFilters(preserveActivePane: true);
 
             AdminShopPaneState paneState = _paneStates[AdminShopPane.User];

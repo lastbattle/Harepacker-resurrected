@@ -190,6 +190,11 @@ namespace HaCreator.MapSimulator
                 onConfirm: AcceptMessengerIncomingInvitePrompt,
                 onCancel: RejectMessengerIncomingInvitePrompt,
                 presentation: confirmDialogWindow.CreateMessengerInvitePresentation());
+            if (!_messengerInvitePromptOwnedDialogActive)
+            {
+                TryPlayPacketOwnedWzSound(MapleStoryStringPool.GetOrFallback(1275, "Invite"), "UI.img", out _, out _);
+            }
+
             _messengerInvitePromptOwnedDialogActive = true;
             ShowWindow(
                 MapSimulatorWindowNames.InGameConfirmDialog,

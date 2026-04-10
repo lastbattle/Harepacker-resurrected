@@ -222,7 +222,6 @@ namespace HaCreator.MapSimulator.Interaction
         public GuildBbsSnapshot BuildSnapshot()
         {
             IReadOnlyList<GuildBbsThreadState> orderedThreads = GetOrderedThreads();
-            EnsureSelection(orderedThreads);
             EnsureThreadPageInRange(orderedThreads.Count);
 
             GuildBbsThreadState selectedThread = orderedThreads.FirstOrDefault(thread => thread.ThreadId == _selectedThreadId);
@@ -528,7 +527,6 @@ namespace HaCreator.MapSimulator.Interaction
 
             _threads.Remove(selectedThread);
             _selectedThreadId = 0;
-            EnsureSelection(GetOrderedThreads());
             _commentPageIndex = 0;
             return $"Deleted Guild BBS thread #{selectedThread.ThreadId}.";
         }
@@ -702,14 +700,6 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _threadPageIndex = nextPage;
-            IReadOnlyList<GuildBbsThreadState> orderedThreads = GetOrderedThreads();
-            GuildBbsThreadState firstThread = orderedThreads.Skip(_threadPageIndex * VisibleThreadCount).FirstOrDefault();
-            if (firstThread != null)
-            {
-                _selectedThreadId = firstThread.ThreadId;
-                _commentPageIndex = 0;
-            }
-
             return $"Guild BBS thread page {_threadPageIndex + 1}/{pageCount}.";
         }
 
@@ -723,14 +713,6 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _threadPageIndex = nextPage;
-            IReadOnlyList<GuildBbsThreadState> orderedThreads = GetOrderedThreads();
-            GuildBbsThreadState firstThread = orderedThreads.Skip(_threadPageIndex * VisibleThreadCount).FirstOrDefault();
-            if (firstThread != null)
-            {
-                _selectedThreadId = firstThread.ThreadId;
-                _commentPageIndex = 0;
-            }
-
             return $"Guild BBS thread page {_threadPageIndex + 1}/{pageCount}.";
         }
 
@@ -1075,18 +1057,6 @@ namespace HaCreator.MapSimulator.Interaction
                 IsNotice = thread.IsNotice,
                 Emoticon = CreateEmoticonSnapshot(thread.EmoticonKind, thread.EmoticonSlot, thread.CashEmoticonPageIndex)
             };
-        }
-
-        private void EnsureSelection(IReadOnlyList<GuildBbsThreadState> orderedThreads)
-        {
-            if (_selectedThreadId > 0 && orderedThreads.Any(thread => thread.ThreadId == _selectedThreadId))
-            {
-                return;
-            }
-
-            GuildBbsThreadState selectedThread = orderedThreads.Skip(_threadPageIndex * VisibleThreadCount).FirstOrDefault()
-                ?? orderedThreads.FirstOrDefault();
-            _selectedThreadId = selectedThread?.ThreadId ?? 0;
         }
 
         private void EnsureThreadPageInRange(int totalThreadCount)
@@ -1846,11 +1816,6 @@ namespace HaCreator.MapSimulator.Interaction
                 CashEmoticonPageIndex = cashEmoticonPageIndex
             };
             _threads.Add(thread);
-            if (_selectedThreadId == 0)
-            {
-                _selectedThreadId = thread.ThreadId;
-            }
-
             return thread;
         }
 

@@ -170,6 +170,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            questRuntime.ApplyPacketOwnedQuestStateSnapshot(snapshot.QuestRecordValues, snapshot.QuestCompleteRecords);
             questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.QuestRecordValues);
             questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.QuestExRecordValues);
             questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.VisitorQuestRecords);

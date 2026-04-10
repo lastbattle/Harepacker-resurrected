@@ -174,6 +174,7 @@ namespace HaCreator.MapSimulator
                 ShowRewardRouletteVisual = TryShowPacketOwnedRewardRouletteEffect,
                 ResolveMobName = ResolvePacketFieldFeedbackMobName,
                 ResolveMapName = mapId => ResolveMapTransferDisplayName(mapId, null),
+                HasMapTransferTarget = HasPacketOwnedWhisperTransferTarget,
                 ResolveItemName = ResolvePacketFieldFeedbackItemName,
                 ResolveChannelName = ResolvePacketFieldFeedbackChannelName,
                 IsBlacklistedName = name => _socialListRuntime.IsBlacklisted(name),
@@ -372,6 +373,21 @@ namespace HaCreator.MapSimulator
             }
 
             return queued;
+        }
+
+        private bool HasPacketOwnedWhisperTransferTarget(int mapId)
+        {
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            {
+                return false;
+            }
+
+            if (_mapBoard?.MapInfo?.id == mapId)
+            {
+                return true;
+            }
+
+            return TryResolveMapDisplayNameFromCache(mapId, out _);
         }
 
         private void ShowPacketOwnedBossTimerClock(PacketFieldBossTimerVisualState state)

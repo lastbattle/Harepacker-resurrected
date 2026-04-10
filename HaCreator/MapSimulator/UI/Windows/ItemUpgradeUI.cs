@@ -4457,20 +4457,15 @@ namespace HaCreator.MapSimulator.UI
                 return string.Empty;
             }
 
-            string normalized = token.Trim();
+            string normalized = token.Trim().TrimEnd('.', ';', ':');
             return normalized.ToLowerInvariant() switch
             {
-                "pendant" or "pendants" or "necklace" or "necklaces" => "pendant",
-                "belt" or "belts" => "belt",
-                "ring" or "rings" => "ring",
-                "face accessory" or "face accessories" or "mask" or "masks" => "face accessory",
-                "eye accessory" or "eye accessories" or "glasses" => "eye accessory",
-                "earring" or "earrings" => "earring",
-                "shoulder" or "shoulders" => "shoulder",
-                "pocket" or "pockets" => "pocket",
-                "badge" or "badges" => "badge",
-                "medal" or "medals" => "medal",
-                _ => normalized
+                "necklace" => "pendant",
+                "necklaces" => "pendants",
+                "mask" => "face accessory",
+                "masks" => "face accessories",
+                "glasses" => "eye accessories",
+                _ => normalized.ToLowerInvariant()
             };
         }
 

@@ -12,14 +12,6 @@ namespace HaCreator.MapSimulator
     {
         private const int RandomMorphRequestOpcode = 184;
         private const int RandomMorphBlockedThrottleMs = 500;
-        // WZ `Item/Consume/0221` is the only mounted branch that currently publishes `spec/morphRandom`.
-        private static readonly HashSet<int> RandomMorphDialogItemIds = new()
-        {
-            2211000,
-            2211002,
-            2212000,
-            2212001,
-        };
 
         private bool _randomMorphRequestSent;
         private int _randomMorphRequestSentTick = int.MinValue;
@@ -111,7 +103,7 @@ namespace HaCreator.MapSimulator
 
         private bool IsRandomMorphDialogItem(int itemId)
         {
-            return itemId > 0 && RandomMorphDialogItemIds.Contains(itemId);
+            return itemId > 0 && InventoryItemMetadataResolver.IsRandomMorphItem(itemId);
         }
 
         private int ResolveRandomMorphInventoryPosition(

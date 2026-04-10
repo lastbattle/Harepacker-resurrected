@@ -97,7 +97,8 @@ namespace HaCreator.MapSimulator.Pools
         bool IsAlive,
         bool MatchesObservedAttack,
         bool MatchesCurrentAttack,
-        int ObservedFrameIndex);
+        int ObservedFrameIndex,
+        bool MatchesPacketFacing);
 
     public sealed class SummonedPool
     {
@@ -914,8 +915,9 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            int suspendDurationMs = SummonRuntimeRules.ResolveSupportSuspendDurationMs(
+            int suspendDurationMs = SummonRuntimeRules.ResolveTrackedSuspendDurationMs(
                 summon.SkillData,
+                summon.AssistType,
                 preferHealFirst,
                 explicitBranchName: summon.CurrentAnimationBranchName);
             if (suspendDurationMs <= 0 && summon.SkillId == healingRobotSkillId)
@@ -2020,7 +2022,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private bool TryBeginNaturalExpiryRemoval(PacketOwnedSummonState state, int currentTime)
         {
-            if (state?.Summon == null || !TryPrepareNaturalExpiryRemovalPlayback(state.Summon, currentTime))
+            if (state?.Summon == null || !TryPrepareNaturalExpiryRemovalPlaybackForParity(state.Summon, currentTime))
             {
                 return false;
             }
@@ -2033,7 +2035,7 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private static bool TryPrepareNaturalExpiryRemovalPlayback(ActiveSummon summon, int currentTime)
+        internal static bool TryPrepareNaturalExpiryRemovalPlaybackForParity(ActiveSummon summon, int currentTime)
         {
             if (summon == null
                 || summon.IsPendingRemoval
@@ -2159,10 +2161,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool ShouldClearPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
         {
-            return SummonRuntimeRules.ShouldClearHealingRobotSupportSuspend(
-                state?.Summon,
-                currentTime,
-                HealingRobotSkillId);
+            return SummonRuntimeRules.ShouldClearSupportSuspend(state?.Summon, currentTime);
         }
 
         private static void AdvanceSummonHitPeriod(ActiveSummon summon, int currentTime)
@@ -2841,6 +2840,11 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 if (TryBeginSelfDestructRemoval(state, currentTime, requiresNaturalExpiry: true))
+                {
+                    continue;
+                }
+
+                if (TryBeginNaturalExpiryRemoval(state, currentTime))
                 {
                     continue;
                 }
@@ -4363,7 +4367,11 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int bestCandidateIndex = SelectPacketHitMobCandidateIndex(
-                candidates.Select(candidate => BuildPacketHitMobCandidate(candidate, attackAction, currentTime)).ToArray());
+                candidates.Select(candidate => BuildPacketHitMobCandidate(
+                    candidate,
+                    attackAction,
+                    currentTime,
+                    packet.MobFacingLeft)).ToArray());
             return bestCandidateIndex >= 0 && bestCandidateIndex < candidates.Length
                 ? candidates[bestCandidateIndex]
                 : null;
@@ -4372,12 +4380,16 @@ namespace HaCreator.MapSimulator.Pools
         internal static PacketOwnedHitMobCandidate BuildPacketHitMobCandidate(
             MobItem mob,
             string attackAction,
-            int currentTime)
+            int currentTime,
+            bool? packetMobFacingLeft = null)
         {
             bool isAlive = mob?.AI?.IsDead != true;
             bool matchesCurrentAttack = mob != null
                 && !string.IsNullOrWhiteSpace(attackAction)
                 && string.Equals(mob.CurrentAction, attackAction, StringComparison.OrdinalIgnoreCase);
+            bool matchesPacketFacing = !packetMobFacingLeft.HasValue
+                || mob?.MovementInfo == null
+                || mob.MovementInfo.FlipX == packetMobFacingLeft.Value;
             int observedFrameIndex = -1;
             bool matchesObservedAttack = mob?.TryGetRecentAttackFrameIndex(
                 attackAction,
@@ -4388,7 +4400,8 @@ namespace HaCreator.MapSimulator.Pools
                 isAlive,
                 matchesObservedAttack,
                 matchesCurrentAttack,
-                matchesObservedAttack ? Math.Max(0, observedFrameIndex) : -1);
+                matchesObservedAttack ? Math.Max(0, observedFrameIndex) : -1,
+                matchesPacketFacing);
         }
 
         internal static int SelectPacketHitMobCandidateIndex(IReadOnlyList<PacketOwnedHitMobCandidate> candidates)
@@ -4435,7 +4448,13 @@ namespace HaCreator.MapSimulator.Pools
                 return comparison;
             }
 
-            return CompareBool(left.MatchesCurrentAttack, right.MatchesCurrentAttack);
+            comparison = CompareBool(left.MatchesCurrentAttack, right.MatchesCurrentAttack);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+
+            return CompareBool(left.MatchesPacketFacing, right.MatchesPacketFacing);
         }
 
         private static int CompareBool(bool left, bool right)
@@ -4512,27 +4531,45 @@ namespace HaCreator.MapSimulator.Pools
             MobAnimationSet.AttackHitEffectEntry liveHitEffectEntry = mob?.GetAttackHitEffectEntry(
                 attackAction,
                 currentMobAttackFrameIndex);
-            PacketOwnedMobAttackFeedbackPresentation livePresentation = SelectPacketMobAttackFeedbackPresentation(
-                liveAttackInfo,
-                liveHitEffectEntry,
-                templateAttackInfo: null,
-                templateHitEffectEntry: null,
-                templateCharDamSoundKey: null);
-            if (livePresentation.HitEffectEntry?.Frames?.Count > 0)
-            {
-                return livePresentation;
-            }
-
             if (mobTemplateId is not int resolvedMobTemplateId || resolvedMobTemplateId <= 0)
             {
-                return default;
+                return SelectPacketMobAttackFeedbackPresentation(
+                    liveAttackInfo,
+                    liveHitEffectEntry,
+                    templateAttackInfo: null,
+                    templateHitEffectEntry: null,
+                    templateCharDamSoundKey: null);
             }
 
-            MobAnimationSet templateAnimationSet = LifeLoader.CreateMobAttackPresentationSet(
-                texturePool,
-                graphicsDevice,
-                resolvedMobTemplateId.ToString());
-            MobAnimationSet.AttackInfoMetadata templateAttackInfo = templateAnimationSet?.GetAttackInfoMetadata(attackAction);
+            bool hasLiveHitFrames = liveHitEffectEntry?.Frames?.Count > 0;
+            bool needsTemplateAttackInfo = hasLiveHitFrames && liveAttackInfo == null;
+            bool needsTemplateSoundKey = !HasLivePacketMobAttackSound(mob, damageSoundIndex);
+            MobAnimationSet templateAnimationSet = null;
+            MobAnimationSet.AttackInfoMetadata templateAttackInfo = null;
+            if (needsTemplateAttackInfo || !hasLiveHitFrames)
+            {
+                templateAnimationSet = LifeLoader.CreateMobAttackPresentationSet(
+                    texturePool,
+                    graphicsDevice,
+                    resolvedMobTemplateId.ToString());
+                templateAttackInfo = templateAnimationSet?.GetAttackInfoMetadata(attackAction);
+            }
+
+            if (hasLiveHitFrames)
+            {
+                return SelectPacketMobAttackFeedbackPresentation(
+                    liveAttackInfo,
+                    liveHitEffectEntry,
+                    templateAttackInfo,
+                    templateHitEffectEntry: null,
+                    templateCharDamSoundKey: needsTemplateSoundKey
+                        ? LifeLoader.ResolveMobCharDamSoundKey(
+                            soundManager,
+                            resolvedMobTemplateId.ToString(),
+                            damageSoundIndex)
+                        : null);
+            }
+
             MobAnimationSet.AttackHitEffectEntry templateHitEffectEntry = ResolvePacketTemplateHitEffectEntry(
                 templateAnimationSet,
                 attackAction,
@@ -4559,15 +4596,37 @@ namespace HaCreator.MapSimulator.Pools
             if (liveHitEffectEntry?.Frames?.Count > 0)
             {
                 return new PacketOwnedMobAttackFeedbackPresentation(
-                    liveAttackInfo,
+                    templateAttackInfo ?? liveAttackInfo,
                     liveHitEffectEntry,
-                    CharDamSoundKey: null);
+                    templateCharDamSoundKey);
             }
 
             return new PacketOwnedMobAttackFeedbackPresentation(
                 templateAttackInfo ?? liveAttackInfo,
                 templateHitEffectEntry,
                 templateCharDamSoundKey);
+        }
+
+        private static bool HasLivePacketMobAttackSound(MobItem mob, int damageSoundIndex)
+        {
+            return HasLivePacketMobAttackSound(
+                mob?.CharDam1SE,
+                mob?.CharDam2SE,
+                damageSoundIndex);
+        }
+
+        private static bool HasLivePacketMobAttackSound(
+            string liveCharDam1SoundKey,
+            string liveCharDam2SoundKey,
+            int damageSoundIndex)
+        {
+            if (damageSoundIndex >= 2)
+            {
+                return !string.IsNullOrWhiteSpace(liveCharDam2SoundKey)
+                    || !string.IsNullOrWhiteSpace(liveCharDam1SoundKey);
+            }
+
+            return !string.IsNullOrWhiteSpace(liveCharDam1SoundKey);
         }
 
         private Vector2 ResolvePacketHitEffectPosition(

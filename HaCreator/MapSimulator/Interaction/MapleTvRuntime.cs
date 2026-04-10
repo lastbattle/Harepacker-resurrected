@@ -95,7 +95,8 @@ namespace HaCreator.MapSimulator.Interaction
             int itemId,
             string itemName,
             int defaultMediaIndex = DefaultMediaIndex,
-            IReadOnlyList<int> availableMediaIndices = null)
+            IReadOnlyList<int> availableMediaIndices = null,
+            int explicitWzDefaultMediaIndex = -1)
         {
             _defaultItemId = Math.Max(0, itemId);
             _defaultItemName = string.IsNullOrWhiteSpace(itemName) ? "Maple TV" : itemName.Trim();
@@ -106,7 +107,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _defaultMediaRootPath,
                 _defaultMediaPathTemplate,
                 _availableMediaIndices,
-                defaultMediaIndex);
+                defaultMediaIndex,
+                explicitWzDefaultMediaIndex);
             _defaultMediaIndex = resolution.MediaIndex;
             _defaultMediaResolutionSource = resolution.Source;
             _mediaBranchCount = _availableMediaIndices.Count;
@@ -933,7 +935,8 @@ namespace HaCreator.MapSimulator.Interaction
             string configuredPathOrToken,
             string configuredPathTemplateOrToken,
             IReadOnlyList<int> availableMediaIndices,
-            int fallbackDefaultMediaIndex)
+            int fallbackDefaultMediaIndex,
+            int explicitWzDefaultMediaIndex = -1)
         {
             IReadOnlyList<int> normalizedIndices = NormalizeAvailableMediaIndices(availableMediaIndices, fallbackDefaultMediaIndex);
             int configuredBranchIndex = TryResolveConfiguredDefaultMediaIndex(configuredPathOrToken, normalizedIndices);
@@ -946,6 +949,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (configuredTemplateIndex >= 0)
             {
                 return new MapleTvClientInitMediaResolution(configuredTemplateIndex, "client path template");
+            }
+
+            if (normalizedIndices.Contains(explicitWzDefaultMediaIndex))
+            {
+                return new MapleTvClientInitMediaResolution(explicitWzDefaultMediaIndex, "client root direct value");
             }
 
             if (IsConfiguredDefaultMediaRoot(configuredPathOrToken) && normalizedIndices.Contains(1))

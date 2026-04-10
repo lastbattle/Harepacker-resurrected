@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -58,7 +59,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (TryResolve(RecentUpdateTooltipStringPoolId, out string resolvedText) && IsPlausibleRecentUpdateTooltip(resolvedText))
             {
-                return resolvedText.Trim();
+                return NormalizeQuestAlarmText(resolvedText);
             }
 
             return appendFallbackSuffix
@@ -129,7 +130,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (TryResolve(TitleFormatStringPoolId, out string resolvedFormat) && IsPlausibleTitleFormat(resolvedFormat))
             {
-                return MapleStoryStringPool.GetCompositeFormatOrFallback(TitleFormatStringPoolId, TitleFormatFallback, 1, out _);
+                return NormalizeQuestAlarmText(MapleStoryStringPool.GetCompositeFormatOrFallback(TitleFormatStringPoolId, TitleFormatFallback, 1, out _));
             }
 
             return TitleFormatFallback;
@@ -139,7 +140,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (TryResolve(DeleteNoticeStringPoolId, out string resolvedFormat) && IsPlausibleDeleteNoticeFormat(resolvedFormat))
             {
-                return MapleStoryStringPool.GetCompositeFormatOrFallback(DeleteNoticeStringPoolId, DeleteNoticeFallback, 1, out _);
+                return NormalizeQuestAlarmText(MapleStoryStringPool.GetCompositeFormatOrFallback(DeleteNoticeStringPoolId, DeleteNoticeFallback, 1, out _));
             }
 
             return appendFallbackSuffix
@@ -151,7 +152,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (TryResolve(EmptyMaximizeNoticeStringPoolId, out string resolvedText) && IsPlausibleEmptyMaximizeNotice(resolvedText))
             {
-                text = resolvedText;
+                text = NormalizeQuestAlarmText(resolvedText);
                 return true;
             }
 
@@ -163,7 +164,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (TryResolve(stringPoolId, out string resolvedText) && IsPlausibleQuestAlarmText(resolvedText))
             {
-                return resolvedText.Trim();
+                return NormalizeQuestAlarmText(resolvedText);
             }
 
             return appendFallbackSuffix
@@ -195,6 +196,57 @@ namespace HaCreator.MapSimulator.Interaction
             return !string.IsNullOrWhiteSpace(text) &&
                    (text.Contains("%d", System.StringComparison.Ordinal) ||
                     text.Contains("%s", System.StringComparison.Ordinal));
+        }
+
+        private static string NormalizeQuestAlarmText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = text.Trim();
+            StringBuilder builder = new(trimmed.Length);
+            for (int i = 0; i < trimmed.Length; i++)
+            {
+                char current = trimmed[i];
+                if (current == '%' &&
+                    i + 2 < trimmed.Length &&
+                    IsHexDigit(trimmed[i + 1]) &&
+                    IsHexDigit(trimmed[i + 2]))
+                {
+                    int value = ParseHexDigit(trimmed[i + 1]) * 16 + ParseHexDigit(trimmed[i + 2]);
+                    builder.Append((char)value);
+                    i += 2;
+                    continue;
+                }
+
+                builder.Append(current);
+            }
+
+            return builder.ToString();
+        }
+
+        private static bool IsHexDigit(char value)
+        {
+            return (value >= '0' && value <= '9') ||
+                   (value >= 'A' && value <= 'F') ||
+                   (value >= 'a' && value <= 'f');
+        }
+
+        private static int ParseHexDigit(char value)
+        {
+            if (value >= '0' && value <= '9')
+            {
+                return value - '0';
+            }
+
+            if (value >= 'A' && value <= 'F')
+            {
+                return value - 'A' + 10;
+            }
+
+            return value - 'a' + 10;
         }
     }
 }

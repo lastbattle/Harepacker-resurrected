@@ -224,6 +224,11 @@ namespace HaCreator.MapSimulator
 
         private string DescribeRockPaperScissorsOfficialSessionBridgeStatus()
         {
+            if (_rockPaperScissorsOfficialSessionBridge.HasPassiveEstablishedSocketPair && !_rockPaperScissorsOfficialSessionBridgeEnabled)
+            {
+                return $"RPS session bridge passive attach. {_rockPaperScissorsOfficialSessionBridge.DescribeStatus()}";
+            }
+
             string enabledText = _rockPaperScissorsOfficialSessionBridgeEnabled ? "enabled" : "disabled";
             string modeText = _rockPaperScissorsOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
             string configuredTarget = _rockPaperScissorsOfficialSessionBridgeUseDiscovery
@@ -441,6 +446,36 @@ namespace HaCreator.MapSimulator
                     _rockPaperScissorsOfficialSessionBridge.DescribeDiscoveredSessions(remotePort, processSelector, localPort));
             }
 
+            if (string.Equals(args[0], "attach", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !int.TryParse(args[1], out int remotePort) || remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /rps session attach <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 3 ? args[2] : null;
+                int? localPort = null;
+                if (args.Length >= 4)
+                {
+                    if (!int.TryParse(args[3], out int parsedLocalPort) || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /rps session attach <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPort = parsedLocalPort;
+                }
+
+                _rockPaperScissorsOfficialSessionBridgeEnabled = false;
+                _rockPaperScissorsOfficialSessionBridgeUseDiscovery = false;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredLocalPort = localPort;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort = remotePort;
+
+                return _rockPaperScissorsOfficialSessionBridge.TryAttachEstablishedSession(remotePort, processSelector, localPort, out string status)
+                    ? ChatCommandHandler.CommandResult.Ok($"{status} {DescribeRockPaperScissorsOfficialSessionBridgeStatus()}")
+                    : ChatCommandHandler.CommandResult.Error(status);
+            }
+
             if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length < 4 ||
@@ -512,7 +547,7 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Ok(DescribeRockPaperScissorsOfficialSessionBridgeStatus());
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /rps session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /rps session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
         }
 
         private void DrainRockPaperScissorsPendingNotice(RockPaperScissorsField field)

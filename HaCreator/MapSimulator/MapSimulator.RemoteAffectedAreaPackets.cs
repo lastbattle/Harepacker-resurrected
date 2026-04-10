@@ -67,7 +67,8 @@ namespace HaCreator.MapSimulator
                     packet.Bounds,
                     packet.StartDelayUnits,
                     packet.ElementAttribute,
-                    packet.Phase)
+                    packet.Phase,
+                    ShouldUseRemoteAffectedAreaPvpLevelData())
                 : UpsertRemoteMobAffectedArea(
                     packet.ObjectId,
                     packet.Type,

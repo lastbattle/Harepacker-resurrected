@@ -191,6 +191,8 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedTutorCueFramesByIndex = new();
         private readonly HashSet<int> _packetOwnedTutorTrackedSummonObjectIds = new();
         private readonly Dictionary<int, int> _packetOwnedTutorSummonMessageSequenceIdsByObjectId = new();
+        private int _packetOwnedTutorObservedCharacterId;
+        private int _packetOwnedTutorObservedLevel;
         private PacketOwnedBattleshipDurabilityOverrideState _packetOwnedBattleshipDurabilityOverride;
         private int _packetQuestGuideQuestId;
         private int _packetOwnedUtilityRequestTick = int.MinValue;
@@ -878,6 +880,7 @@ namespace HaCreator.MapSimulator
                 MapSimulatorWindowNames.MemoMailbox => "Parcel Delivery",
                 MapSimulatorWindowNames.MemoSend => "Parcel Send Info",
                 MapSimulatorWindowNames.MemoGet => "Parcel Package",
+                MapSimulatorWindowNames.RandomMorph => "Random Morph",
                 MapSimulatorWindowNames.QuestDelivery => "Quest Delivery",
                 MapSimulatorWindowNames.ClassCompetition => "Class Competition",
                 MapSimulatorWindowNames.NpcShop => "NPC Shop",
@@ -3180,10 +3183,9 @@ namespace HaCreator.MapSimulator
                 HasItemMakerRequiredEquip,
                 MatchesItemMakerQuestRequirement);
 
-            if (HasStoredItemMakerSessionState(_packetOwnedItemMakerSessionState))
-            {
-                itemMakerWindow.TryApplyPacketOwnedSessionState(_packetOwnedItemMakerSessionState, out _);
-            }
+            // Reapply even "empty" session updates so a clear/local-only packet received while the
+            // window was hidden can still wipe stale authoritative owner state on the next launch.
+            itemMakerWindow.TryApplyPacketOwnedSessionState(_packetOwnedItemMakerSessionState, out _);
 
             TryApplyStoredPacketOwnedItemMakerResults(itemMakerWindow, out _);
             TryApplyStoredPacketOwnedItemMakerHiddenUnlocks(itemMakerWindow, out _);
@@ -4015,6 +4017,55 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryMirrorMessengerClaimClientRequest(string claimArguments, out string message)
+        {
+            message = null;
+            string packedArguments = claimArguments?.Trim();
+            if (string.IsNullOrWhiteSpace(packedArguments))
+            {
+                message = "Usage: /messenger session <send|queue> claim <target>|<type>|<context>[|<chatLog>]";
+                return false;
+            }
+
+            string[] parts = packedArguments.Split('|');
+            if (parts.Length < 3 || parts.Length > 4)
+            {
+                message = "Usage: /messenger session <send|queue> claim <target>|<type>|<context>[|<chatLog>]";
+                return false;
+            }
+
+            string targetCharacterName = parts[0].Trim();
+            string claimTypeText = parts[1].Trim();
+            string context = parts[2].Trim();
+            string chatLog = parts.Length >= 4 ? parts[3].Trim() : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(targetCharacterName))
+            {
+                message = "Messenger claim mirroring needs a target character name.";
+                return false;
+            }
+
+            if (!byte.TryParse(claimTypeText, out byte claimType))
+            {
+                message = $"Messenger claim type '{claimTypeText}' is invalid. Use an exact byte value from the client claim dialog seam.";
+                return false;
+            }
+
+            byte[] payload = MessengerPacketCodec.BuildClaimRequestPayload(targetCharacterName, claimType, context, chatLog);
+            if (!TryDispatchMessengerOfficialSessionRequest(
+                    118,
+                    payload,
+                    $"CWvsContext::SendClaimRequest targeted {targetCharacterName}",
+                    out string dispatchStatus))
+            {
+                message = dispatchStatus;
+                return false;
+            }
+
+            message = dispatchStatus;
+            return true;
+        }
+
         private bool TryMirrorMessengerChatEditInput(string text, out string message)
         {
             message = null;
@@ -4673,6 +4724,67 @@ namespace HaCreator.MapSimulator
             SyncPacketOwnedTutorLifecycle(currentTickCount);
             _packetOwnedTutorRuntime.Update(currentTickCount);
             SyncPacketOwnedTutorSummonState(currentTickCount);
+        }
+
+        private void UpdatePacketOwnedBattleshipCooldownLifecycle(int currentTickCount)
+        {
+            if (_playerManager?.Skills == null)
+            {
+                if (_packetOwnedBattleshipDurabilityOverride?.MountPart != null)
+                {
+                    RestorePacketOwnedBattleshipCooldownOverride();
+                }
+
+                return;
+            }
+
+            if (!_playerManager.Skills.TryGetCooldownUiState(
+                    PacketOwnedBattleshipSkillId,
+                    currentTickCount,
+                    out SkillManager.CooldownUiState cooldownState)
+                || cooldownState.PresentationKind != SkillManager.CooldownUiPresentationKind.VehicleDurability
+                || cooldownState.RemainingMs <= 0)
+            {
+                if (_packetOwnedBattleshipDurabilityOverride?.MountPart != null)
+                {
+                    RestorePacketOwnedBattleshipCooldownOverride();
+                    RefreshPacketOwnedBattleshipRepairWindow();
+                }
+
+                return;
+            }
+
+            CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
+            if (mountPart == null)
+            {
+                ResetPacketOwnedBattleshipCooldownOverrideIfStale();
+                return;
+            }
+
+            if (!ReferenceEquals(_packetOwnedBattleshipDurabilityOverride?.MountPart, mountPart))
+            {
+                RestorePacketOwnedBattleshipCooldownOverride();
+                EnsurePacketOwnedBattleshipCooldownOverrideCaptured(mountPart);
+            }
+
+            if (!TryResolvePacketOwnedBattleshipDurabilityPresentation(
+                    mountPart,
+                    cooldownState.CurrentValue,
+                    cooldownState.MaxValue,
+                    out int durability,
+                    out int maxDurability))
+            {
+                return;
+            }
+
+            bool changed = mountPart.Durability != durability || mountPart.MaxDurability != maxDurability;
+            mountPart.Durability = durability;
+            mountPart.MaxDurability = maxDurability;
+
+            if (changed)
+            {
+                RefreshPacketOwnedBattleshipRepairWindow();
+            }
         }
 
         private bool IsPacketOwnedRadioPlaying()
@@ -5716,6 +5828,32 @@ namespace HaCreator.MapSimulator
             return mountPart;
         }
 
+        internal static bool TryResolvePacketOwnedBattleshipDurabilityPresentation(
+            CharacterPart mountPart,
+            int currentValue,
+            int maxValue,
+            out int resolvedCurrentValue,
+            out int resolvedMaxValue)
+        {
+            resolvedCurrentValue = 0;
+            resolvedMaxValue = 0;
+
+            if (mountPart?.Slot != EquipSlot.TamingMob || mountPart.ItemId != PacketOwnedBattleshipMountItemId)
+            {
+                return false;
+            }
+
+            resolvedMaxValue = Math.Max(
+                0,
+                Math.Max(
+                    maxValue,
+                    mountPart.MaxDurability ?? 0));
+            resolvedCurrentValue = resolvedMaxValue > 0
+                ? Math.Clamp(Math.Max(0, currentValue), 0, resolvedMaxValue)
+                : Math.Max(0, currentValue);
+            return true;
+        }
+
         private void EnsurePacketOwnedBattleshipCooldownOverrideCaptured(CharacterPart mountPart)
         {
             if (mountPart?.Slot != EquipSlot.TamingMob)
@@ -5761,6 +5899,14 @@ namespace HaCreator.MapSimulator
             if (!ReferenceEquals(activeMountPart, _packetOwnedBattleshipDurabilityOverride.MountPart))
             {
                 RestorePacketOwnedBattleshipCooldownOverride();
+            }
+        }
+
+        private void RefreshPacketOwnedBattleshipRepairWindow()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RepairDurability) is RepairDurabilityWindow repairWindow)
+            {
+                RefreshRepairDurabilityWindow(repairWindow.NpcTemplateId, PacketOwnedBattleshipMountItemId);
             }
         }
 
@@ -6228,10 +6374,9 @@ namespace HaCreator.MapSimulator
 
         private void EnsurePacketOwnedRadioCreateLayerSessionState()
         {
-            if (ShouldRefreshPacketOwnedRadioCreateLayerSessionState(
+            if (ShouldCapturePacketOwnedRadioCreateLayerSessionState(
                     IsPacketOwnedRadioPlaying(),
-                    _packetOwnedRadioSessionCreateLayerMutationSequence,
-                    _packetOwnedLocalUtilityContext.RadioCreateLayerMutationSequence))
+                    _packetOwnedRadioSessionCreateLayerMutationSequence))
             {
                 CapturePacketOwnedRadioCreateLayerSessionState();
             }
@@ -6252,6 +6397,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            ObservePacketOwnedTutorLevelGate(runtimeCharacterId, currentTickCount);
             if (_packetOwnedTutorRuntime.RequiresCharacterRebind(runtimeCharacterId))
             {
                 RemovePacketOwnedTutorSummonForRuntimeOwner();
@@ -6264,6 +6410,51 @@ namespace HaCreator.MapSimulator
             {
                 _packetOwnedTutorRuntime.TryRestoreVisibleActorFromSharedVariant(runtimeCharacterId, currentTickCount);
             }
+        }
+
+        private void ObservePacketOwnedTutorLevelGate(int runtimeCharacterId, int currentTickCount)
+        {
+            int currentLevel = Math.Max(0, _playerManager?.Player?.Build?.Level ?? 0);
+            if (_packetOwnedTutorObservedCharacterId != runtimeCharacterId)
+            {
+                _packetOwnedTutorObservedCharacterId = runtimeCharacterId;
+                _packetOwnedTutorObservedLevel = currentLevel;
+                return;
+            }
+
+            if (!ShouldRemovePacketOwnedTutorForLevelTransition(_packetOwnedTutorObservedLevel, currentLevel))
+            {
+                _packetOwnedTutorObservedLevel = currentLevel;
+                return;
+            }
+
+            int tutorSkillId = ResolvePacketOwnedTutorSkillIdForCharacter(runtimeCharacterId);
+            bool removedVisibleTutor = _packetOwnedTutorRuntime.IsActive
+                && _packetOwnedTutorRuntime.BoundCharacterId == runtimeCharacterId
+                && _packetOwnedTutorRuntime.ActiveSkillId == tutorSkillId;
+            bool removedSharedTutor = false;
+
+            if (removedVisibleTutor)
+            {
+                RemovePacketOwnedTutorSummonForRuntimeOwner();
+                _packetOwnedTutorRuntime.ApplyRemovalRequest(
+                    tutorSkillId,
+                    currentTickCount,
+                    "packet-owned tutor auto-removed after level 11 stat change.");
+            }
+            else if (_packetOwnedTutorRuntime.TryGetSharedTutorVariantForCharacter(tutorSkillId, runtimeCharacterId, out TutorVariantSnapshot sharedVariant)
+                && sharedVariant.IsActive)
+            {
+                _packetOwnedTutorRuntime.ApplySharedRemovalRequestForCharacter(tutorSkillId, currentTickCount, runtimeCharacterId);
+                removedSharedTutor = true;
+            }
+
+            if (removedVisibleTutor || removedSharedTutor)
+            {
+                SyncPacketOwnedTutorSummonState(currentTickCount);
+            }
+
+            _packetOwnedTutorObservedLevel = currentLevel;
         }
 
         private int ResolvePacketOwnedApspSeedCharacterId()
@@ -6294,12 +6485,11 @@ namespace HaCreator.MapSimulator
                 : minimapExpanded;
         }
 
-        internal static bool ShouldRefreshPacketOwnedRadioCreateLayerSessionState(
+        internal static bool ShouldCapturePacketOwnedRadioCreateLayerSessionState(
             bool sessionActive,
-            int capturedMutationSequence,
-            int liveContextMutationSequence)
+            int capturedMutationSequence)
         {
-            return sessionActive && capturedMutationSequence != liveContextMutationSequence;
+            return sessionActive && capturedMutationSequence < 0;
         }
 
         internal static bool ShouldResetPacketOwnedRadioForRuntimeCharacterChange(
@@ -6311,6 +6501,13 @@ namespace HaCreator.MapSimulator
                 && boundCharacterId > 0
                 && runtimeCharacterId > 0
                 && boundCharacterId != runtimeCharacterId;
+        }
+
+        internal static bool ShouldRemovePacketOwnedTutorForLevelTransition(int previousObservedLevel, int currentLevel)
+        {
+            return previousObservedLevel > 0
+                && previousObservedLevel < 11
+                && currentLevel == 11;
         }
 
         private bool ResolvePacketOwnedRadioCreateLayerLeftContext()
@@ -11195,9 +11392,13 @@ namespace HaCreator.MapSimulator
                         summary = parsedSummary;
                     }
 
-                    if (root.TryGetProperty("lines", out JsonElement lineArray))
+                    if (TryGetJsonArrayProperty(root, out JsonElement lineArray, "lines", "alarmLines", "ctLines", "texts", "messages"))
                     {
                         AppendPacketOwnedEventAlarmJsonLines(lineArray, parsedLines);
+                    }
+                    else if (TryGetJsonStringProperty(root, out string inlineText, "text", "message", "alarmText", "ctText"))
+                    {
+                        AppendPacketOwnedEventAlarmStringLines(inlineText, parsedLines);
                     }
                 }
                 else if (root.ValueKind == JsonValueKind.Array)
@@ -11261,6 +11462,26 @@ namespace HaCreator.MapSimulator
                     IsHighlighted = TryGetJsonBoolean(item, "highlight", out bool highlight) && highlight
                 });
                 index++;
+            }
+        }
+
+        private static void AppendPacketOwnedEventAlarmStringLines(string text, ICollection<EventAlarmLineSnapshot> destination)
+        {
+            if (destination == null || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            int index = destination.Count;
+            string[] segments = text.Split(
+                new[] { "\r\n", "\n" },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (int i = 0; i < segments.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(segments[i]))
+                {
+                    destination.Add(CreateEventAlarmLine(segments[i], index++));
+                }
             }
         }
 
@@ -11494,20 +11715,24 @@ namespace HaCreator.MapSimulator
                     }
 
                     JsonElement ownerStateElement = root;
-                    if (root.TryGetProperty("ownerState", out JsonElement nestedOwnerState)
-                        && nestedOwnerState.ValueKind == JsonValueKind.Object)
+                    if (TryGetJsonObjectProperty(root, out JsonElement nestedOwnerState, "ownerState", "web", "webOwner", "cwebwnd", "cWebWnd"))
                     {
                         ownerStateElement = nestedOwnerState;
                     }
 
                     hasOwnerState = TryParsePacketOwnedRankingOwnerState(ownerStateElement, out ownerState);
-                    if (root.TryGetProperty("entries", out JsonElement entryArray))
+                    if (TryGetJsonArrayProperty(
+                        root,
+                        out JsonElement entryArray,
+                        "entries",
+                        "rows",
+                        "standings",
+                        "rankingEntries",
+                        "rankingRows",
+                        "cards",
+                        "items"))
                     {
                         AppendPacketOwnedRankingJsonEntries(entryArray, parsedEntries);
-                    }
-                    else if (root.TryGetProperty("rows", out JsonElement rowArray))
-                    {
-                        AppendPacketOwnedRankingJsonEntries(rowArray, parsedEntries);
                     }
                 }
                 else if (root.ValueKind == JsonValueKind.Array)
@@ -11556,21 +11781,50 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (item.ValueKind != JsonValueKind.Object
-                    || !TryGetJsonString(item, "label", out string label)
-                    || string.IsNullOrWhiteSpace(label))
+                if (item.ValueKind != JsonValueKind.Object)
                 {
                     continue;
                 }
 
-                string value = TryGetJsonString(item, "value", out string parsedValue)
+                string label = TryGetJsonStringProperty(
+                    item,
+                    out string resolvedLabel,
+                    "label",
+                    "title",
+                    "name",
+                    "category",
+                    "characterName",
+                    "rowLabel")
+                    ? resolvedLabel
+                    : string.Empty;
+                string value = TryGetJsonStringProperty(
+                    item,
+                    out string parsedValue,
+                    "value",
+                    "rank",
+                    "position",
+                    "score",
+                    "level",
+                    "worldRank")
                     ? parsedValue
                     : string.Empty;
-                string detail = TryGetJsonString(item, "detail", out string parsedDetail)
+                string detail = TryGetJsonStringProperty(
+                    item,
+                    out string parsedDetail,
+                    "detail",
+                    "description",
+                    "desc",
+                    "job",
+                    "world",
+                    "message",
+                    "extra")
                     ? parsedDetail
-                    : TryGetJsonString(item, "description", out string parsedDescription)
-                        ? parsedDescription
-                        : string.Empty;
+                    : string.Empty;
+                if (string.IsNullOrWhiteSpace(label))
+                {
+                    continue;
+                }
+
                 destination.Add(CreatePacketOwnedRankingEntry(label, value, detail));
             }
         }
@@ -11665,22 +11919,46 @@ namespace HaCreator.MapSimulator
                         replaceAlarmLines = parsedReplaceAlarmLines;
                     }
 
-                    if (root.TryGetProperty("entries", out JsonElement entryArray))
+                    if (TryGetJsonArrayProperty(
+                            root,
+                            out JsonElement entryArray,
+                            "entries",
+                            "rows",
+                            "calendarEntries",
+                            "eventEntries",
+                            "eventRows",
+                            "attendanceEntries",
+                            "attendanceRows",
+                            "events",
+                            "schedules")
+                        || TryGetJsonNestedArrayProperty(
+                            root,
+                            out entryArray,
+                            new[] { "calendar", "attendance", "attendanceCalendar", "eventCalendar", "payload" },
+                            new[] { "entries", "rows", "events", "attendanceEntries", "calendarEntries" }))
                     {
                         AppendPacketOwnedEventCalendarJsonEntries(entryArray, parsedEntries);
                     }
-                    else if (root.TryGetProperty("rows", out JsonElement rowArray))
-                    {
-                        AppendPacketOwnedEventCalendarJsonEntries(rowArray, parsedEntries);
-                    }
 
-                    JsonElement lineArray;
-                    if (root.TryGetProperty("alarmLines", out lineArray)
-                        || root.TryGetProperty("ctLines", out lineArray)
-                        || root.TryGetProperty("lines", out lineArray))
+                    if (TryGetJsonArrayProperty(root, out JsonElement lineArray, "alarmLines", "ctLines", "lines", "alarmTextLines", "eventAlarmLines")
+                        || TryGetJsonNestedArrayProperty(
+                            root,
+                            out lineArray,
+                            new[] { "calendar", "attendance", "attendanceCalendar", "eventCalendar", "payload" },
+                            new[] { "alarmLines", "ctLines", "lines" }))
                     {
                         List<EventAlarmLineSnapshot> parsedLines = new();
                         AppendPacketOwnedEventAlarmJsonLines(lineArray, parsedLines);
+                        if (parsedLines.Count > 0)
+                        {
+                            alarmLines = parsedLines.ToArray();
+                            hasAlarmLines = true;
+                        }
+                    }
+                    else if (TryGetJsonStringProperty(root, out string inlineAlarmText, "alarmText", "ctText", "message"))
+                    {
+                        List<EventAlarmLineSnapshot> parsedLines = new();
+                        AppendPacketOwnedEventAlarmStringLines(inlineAlarmText, parsedLines);
                         if (parsedLines.Count > 0)
                         {
                             alarmLines = parsedLines.ToArray();
@@ -11857,46 +12135,48 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (item.ValueKind != JsonValueKind.Object
-                    || !TryGetJsonString(item, "title", out string title)
-                    || string.IsNullOrWhiteSpace(title))
+                if (item.ValueKind != JsonValueKind.Object)
                 {
                     continue;
                 }
 
-                DateTime scheduledAt = TryGetJsonString(item, "scheduledAt", out string scheduledToken)
-                    && TryParsePacketOwnedEventDate(scheduledToken, out DateTime parsedScheduledAt)
-                    ? parsedScheduledAt
-                    : TryGetJsonString(item, "date", out string dateToken)
-                        && TryParsePacketOwnedEventDate(dateToken, out DateTime parsedDate)
-                        ? parsedDate
-                        : DateTime.Today;
-                string detail = TryGetJsonString(item, "detail", out string parsedDetail) ? parsedDetail : string.Empty;
-                if (string.IsNullOrWhiteSpace(detail)
-                    && TryGetJsonString(item, "description", out string parsedDescription))
+                string title = TryGetJsonStringProperty(
+                    item,
+                    out string resolvedTitle,
+                    "title",
+                    "name",
+                    "label",
+                    "subject",
+                    "eventName")
+                    ? resolvedTitle
+                    : string.Empty;
+                if (string.IsNullOrWhiteSpace(title))
                 {
-                    detail = parsedDescription;
+                    continue;
                 }
 
-                EventEntryStatus status = TryGetJsonString(item, "status", out string parsedStatusToken)
+                DateTime scheduledAt = TryGetJsonStringProperty(item, out string scheduledToken, "scheduledAt", "date", "day", "startDate", "start", "eventDate")
+                    && TryParsePacketOwnedEventDate(scheduledToken, out DateTime parsedScheduledAt)
+                    ? parsedScheduledAt
+                    : DateTime.Today;
+                string detail = TryGetJsonStringProperty(item, out string parsedDetail, "detail", "description", "desc", "body", "message")
+                    ? parsedDetail
+                    : string.Empty;
+
+                EventEntryStatus status = TryGetJsonStringProperty(item, out string parsedStatusToken, "status", "state", "progress", "attendanceState")
                     && TryParsePacketOwnedEventEntryStatus(parsedStatusToken, out EventEntryStatus parsedStatus)
                     ? parsedStatus
-                    : TryGetJsonString(item, "state", out string parsedStateToken)
-                        && TryParsePacketOwnedEventEntryStatus(parsedStateToken, out parsedStatus)
-                        ? parsedStatus
                     : EventEntryStatus.Upcoming;
-                string statusText = TryGetJsonString(item, "statusText", out string parsedStatusText)
+                string statusText = TryGetJsonStringProperty(item, out string parsedStatusText, "statusText", "statusLabel", "stateLabel", "progressLabel")
                     ? parsedStatusText
-                    : TryGetJsonString(item, "statusLabel", out string parsedStatusLabel)
-                        ? parsedStatusLabel
                     : GetDefaultPacketOwnedEventStatusText(status);
-                int sourceTick = TryGetJsonInt32(item, "sourceTick", out int parsedSourceTick)
+                int sourceTick = TryGetJsonInt32Property(item, out int parsedSourceTick, "sourceTick", "tick")
                     ? parsedSourceTick
                     : int.MinValue;
-                int sortPriority = TryGetJsonInt32(item, "sortPriority", out int parsedSortPriority)
+                int sortPriority = TryGetJsonInt32Property(item, out int parsedSortPriority, "sortPriority", "priority")
                     ? parsedSortPriority
                     : ResolvePacketOwnedEventEntrySortPriority(status);
-                int sortOrder = TryGetJsonInt32(item, "sortOrder", out int parsedSortOrder)
+                int sortOrder = TryGetJsonInt32Property(item, out int parsedSortOrder, "sortOrder", "index", "order")
                     ? parsedSortOrder
                     : index;
                 destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, title.Trim(), detail, status, statusText, sourceTick, sortPriority, sortOrder));
@@ -12148,6 +12428,106 @@ namespace HaCreator.MapSimulator
             }
 
             return string.Empty;
+        }
+
+        private static bool TryGetJsonStringProperty(JsonElement element, out string value, params string[] propertyNames)
+        {
+            value = string.Empty;
+            foreach (string propertyName in propertyNames ?? Array.Empty<string>())
+            {
+                if (TryGetJsonString(element, propertyName, out value))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetJsonInt32Property(JsonElement element, out int value, params string[] propertyNames)
+        {
+            value = 0;
+            foreach (string propertyName in propertyNames ?? Array.Empty<string>())
+            {
+                if (TryGetJsonInt32(element, propertyName, out value))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetJsonArrayProperty(JsonElement element, out JsonElement value, params string[] propertyNames)
+        {
+            value = default;
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            foreach (string propertyName in propertyNames ?? Array.Empty<string>())
+            {
+                if (element.TryGetProperty(propertyName, out JsonElement propertyValue)
+                    && propertyValue.ValueKind == JsonValueKind.Array)
+                {
+                    value = propertyValue;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetJsonObjectProperty(JsonElement element, out JsonElement value, params string[] propertyNames)
+        {
+            value = default;
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            foreach (string propertyName in propertyNames ?? Array.Empty<string>())
+            {
+                if (element.TryGetProperty(propertyName, out JsonElement propertyValue)
+                    && propertyValue.ValueKind == JsonValueKind.Object)
+                {
+                    value = propertyValue;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetJsonNestedArrayProperty(
+            JsonElement element,
+            out JsonElement value,
+            string[] objectPropertyNames,
+            string[] arrayPropertyNames)
+        {
+            value = default;
+            if (element.ValueKind != JsonValueKind.Object
+                || objectPropertyNames == null
+                || arrayPropertyNames == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < objectPropertyNames.Length; i++)
+            {
+                if (!TryGetJsonObjectProperty(element, out JsonElement nestedObject, objectPropertyNames[i]))
+                {
+                    continue;
+                }
+
+                if (TryGetJsonArrayProperty(nestedObject, out value, arrayPropertyNames))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static int ResolvePacketOwnedRankingOwnerInt32(
@@ -12642,7 +13022,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                    "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|minimaponoff|radioctx|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv] [accept|complete|none]|classcompetition|skillguide|radioctx <status|left|right|on|off|1|0|reset>|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|classcompetitionauth|skillguide|hiretutor|tutormsg|minimaponoff|radioctx|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|250|251|252|255|256|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|1035> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+                    "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|minimaponoff|radioctx|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv] [accept|complete|none]|classcompetition|skillguide|radioctx <status|left|right|on|off|1|0|reset>|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|classcompetitionauth|skillguide|hiretutor|tutormsg|minimaponoff|radioctx|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|250|251|252|255|256|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|1035> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
             }
         }
 
@@ -12802,12 +13182,6 @@ namespace HaCreator.MapSimulator
                     break;
                 case "commodity":
                     applied = TryApplyPacketOwnedCommodityPayload(payload, requireExactClientPayload: false, out message);
-                    break;
-                case "fade":
-                    applied = TryApplyPacketOwnedFieldFadePayload(payload, out message);
-                    break;
-                case "balloon":
-                    applied = TryApplyPacketOwnedBalloonPayload(payload, out message);
                     break;
                 case "damagemeter":
                     applied = TryApplyPacketOwnedDamageMeterPayload(payload, out message);
@@ -12971,8 +13345,8 @@ namespace HaCreator.MapSimulator
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                ? "Usage: /localutility packetraw <sitresult|teleport|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> <hex>"
-                : "Usage: /localutility packet <sitresult|teleport|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> [payloadhex=..|payloadb64=..]");
+                ? "Usage: /localutility packetraw <sitresult|teleport|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> <hex>"
+                : "Usage: /localutility packet <sitresult|teleport|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> [payloadhex=..|payloadb64=..]");
             }
 
             return applied

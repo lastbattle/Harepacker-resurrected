@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.MapleTv;
 
         internal int DefaultMediaIndex => _visualAssets?.DefaultMediaIndex ?? 1;
+        internal int ExplicitWzDefaultMediaIndex => _visualAssets?.ExplicitWzDefaultMediaIndex ?? -1;
         internal IReadOnlyList<int> AvailableMediaIndices => _visualAssets?.AvailableMediaIndices ?? Array.Empty<int>();
 
         internal void SetSnapshotProvider(Func<MapleTvSnapshot> snapshotProvider)
@@ -714,7 +715,8 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> chatFrames,
             IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> mediaFrames,
             int defaultMediaIndex,
-            IReadOnlyList<int> availableMediaIndices)
+            IReadOnlyList<int> availableMediaIndices,
+            int explicitWzDefaultMediaIndex)
         {
             OnFrames = onFrames ?? Array.Empty<MapleTvAnimationFrame>();
             BasicFrames = basicFrames ?? Array.Empty<MapleTvAnimationFrame>();
@@ -722,6 +724,7 @@ namespace HaCreator.MapSimulator.UI
             ChatFrames = chatFrames ?? new Dictionary<int, IReadOnlyList<MapleTvAnimationFrame>>();
             MediaFrames = mediaFrames ?? new Dictionary<int, IReadOnlyList<MapleTvAnimationFrame>>();
             DefaultMediaIndex = defaultMediaIndex;
+            ExplicitWzDefaultMediaIndex = explicitWzDefaultMediaIndex;
             AvailableMediaIndices = availableMediaIndices?
                 .Where(index => index >= 0)
                 .Distinct()
@@ -736,6 +739,7 @@ namespace HaCreator.MapSimulator.UI
         internal IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> ChatFrames { get; }
         internal IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> MediaFrames { get; }
         internal int DefaultMediaIndex { get; }
+        internal int ExplicitWzDefaultMediaIndex { get; }
         internal IReadOnlyList<int> AvailableMediaIndices { get; }
 
         internal IReadOnlyList<MapleTvAnimationFrame> GetChatFrames(int mediaIndex)

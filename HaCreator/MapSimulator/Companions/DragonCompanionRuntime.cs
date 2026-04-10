@@ -832,9 +832,7 @@ namespace HaCreator.MapSimulator.Companions
 
         private FollowUpdateFlags UpdateActiveVisualAnchor(ref double velocityX, ref double velocityY)
         {
-            float deltaX = _worldAnchor.X - _visualAnchor.X;
-            float deltaY = _worldAnchor.Y - _visualAnchor.Y;
-            if (Math.Abs(deltaX) > ActiveFollowSnapWidth || Math.Abs(deltaY) > ActiveFollowSnapHeight)
+            if (ShouldSnapActiveFollowToTarget(_visualAnchor, _worldAnchor))
             {
                 _visualAnchor = _worldAnchor;
                 _activeVerticalFollowState = 0;
@@ -857,6 +855,12 @@ namespace HaCreator.MapSimulator.Companions
 
             _visualAnchor = new Vector2(nextX, nextY);
             return FollowUpdateFlags.None;
+        }
+
+        internal static bool ShouldSnapActiveFollowToTarget(Vector2 currentAnchor, Vector2 targetAnchor)
+        {
+            return Math.Abs(targetAnchor.X - currentAnchor.X) > ActiveFollowSnapWidth
+                   || Math.Abs(targetAnchor.Y - currentAnchor.Y) > ActiveFollowSnapHeight;
         }
 
         internal static float ResolveClientActiveFollowHorizontalStep(float currentX, float targetX, out double velocityX)
@@ -902,6 +906,11 @@ namespace HaCreator.MapSimulator.Companions
                 }
             }
             else
+            {
+                checkCount = 0;
+            }
+
+            if (followingState != 0)
             {
                 checkCount = 0;
             }
@@ -1419,7 +1428,19 @@ namespace HaCreator.MapSimulator.Companions
 
         private static WzCanvasProperty ResolveMetadataCanvas(WzCanvasProperty canvas)
         {
-            return canvas;
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return canvas.GetLinkedWzImageProperty() as WzCanvasProperty ?? canvas;
+            }
+            catch
+            {
+                return canvas;
+            }
         }
 
         private static int ParseFrameIndex(string value)

@@ -289,6 +289,12 @@ namespace HaCreator.MapSimulator.Interaction
             [0x1522] = "UI/UIWindow.img/MonsterKilling/Result/Rank/c",
             [0x1523] = "UI/UIWindow.img/MonsterKilling/Result/Rank/d",
             [0x1524] = "UI/UIWindow.img/MonsterKilling/Result/Rank/s",
+            // Recovered from MapleStory.exe v95 `CStageSystem::IterateStageSystemClient`.
+            // The generated table in this workspace drifts across the stage-system block,
+            // so pin the client-owned WZ paths here before context-owned stage-period
+            // validation resolves the catalog inputs through StringPool.
+            [0x17BF] = "Etc/StageSystem.img",
+            [0x17C0] = "Etc/StageKeyword.img",
             // Recovered from MapleStory.exe v95 `CUIQuestAlarm::Draw` and
             // `CUIQuestAlarm::OnButtonClicked`. Keep these quest-alarm ids explicit so the
             // owner retains the exact client title and notice strings even if regenerated

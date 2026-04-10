@@ -236,6 +236,36 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
+        public SkillAnimation LoadSkillAnimationByNormalizedPath(string normalizedSkillAssetPath)
+        {
+            string normalizedPath = NormalizeClientSummonedUolPath(normalizedSkillAssetPath);
+            if (!TryParseNormalizedSkillAnimationPath(normalizedPath, out string imageName, out string[] propertySegments))
+            {
+                return null;
+            }
+
+            WzImage skillImage = GetSkillImage(imageName);
+            if (skillImage == null)
+            {
+                return null;
+            }
+
+            skillImage.ParseImage();
+
+            WzImageProperty property = null;
+            foreach (string segment in propertySegments)
+            {
+                property = property == null ? skillImage[segment] : property[segment];
+                if (property == null)
+                {
+                    return null;
+                }
+            }
+
+            SkillAnimation animation = LoadSkillAnimation(property, propertySegments[^1]);
+            return animation.Frames.Count > 0 ? animation : null;
+        }
+
         public string EnsureCastSoundRegistered(SkillData skill, SoundManager soundManager)
         {
             if (skill == null || soundManager == null)
@@ -663,7 +693,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            if (skill.UsesAffectedSkillPassiveData)
+            if (skill.UsesHelperOnlyAffectedSkillPassiveData)
             {
                 skill.Type = SkillType.Passive;
                 skill.IsPassive = true;
@@ -2405,6 +2435,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (!TryParseShadowPartnerClientActionPieces(actionNode, out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> parsedPieces))
+            {
+                _missingShadowPartnerClientActionPieceKeys.Add(actionName);
+                return false;
+            }
+
+            piecePlan = parsedPieces;
+            _shadowPartnerClientActionPieceCache[actionName] = piecePlan;
+            return true;
+        }
+
+        internal static bool TryParseShadowPartnerClientActionPieces(
+            WzImageProperty actionNode,
+            out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan)
+        {
+            piecePlan = null;
+            if (actionNode?.WzProperties == null || actionNode.WzProperties.Count == 0)
+            {
+                return false;
+            }
+
             var pieces = new List<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece>(actionNode.WzProperties.Count);
             int slotIndex = 0;
             foreach (WzImageProperty pieceNode in actionNode.WzProperties)
@@ -2420,23 +2471,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                int sourceFrameIndex = GetInt(pieceNode, "frame");
-                int delayMs = Math.Abs(GetInt(pieceNode, "delay"));
                 pieces.Add(new ShadowPartnerClientActionResolver.ShadowPartnerActionPiece(
                     slotIndex++,
                     pieceActionName,
-                    sourceFrameIndex,
-                    delayMs));
+                    GetInt(pieceNode, "frame"),
+                    GetInt(pieceNode, "delay"),
+                    GetInt(pieceNode, "flip") != 0));
             }
 
             if (pieces.Count == 0)
             {
-                _missingShadowPartnerClientActionPieceKeys.Add(actionName);
                 return false;
             }
 
             piecePlan = pieces.AsReadOnly();
-            _shadowPartnerClientActionPieceCache[actionName] = piecePlan;
             return true;
         }
 
@@ -4719,6 +4767,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             return NormalizeClientSummonedUolPath(summonedUolPath);
         }
 
+        internal static bool TryParseNormalizedSkillAnimationPathForTest(
+            string normalizedSkillAssetPath,
+            out string imageName,
+            out string[] propertySegments)
+        {
+            return TryParseNormalizedSkillAnimationPath(normalizedSkillAssetPath, out imageName, out propertySegments);
+        }
+
         private static string NormalizeClientSummonedUolPath(string summonedUolPath)
         {
             if (string.IsNullOrWhiteSpace(summonedUolPath))
@@ -4742,8 +4798,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 normalizedPath = $"Skill/{normalizedPath[skillArchivePrefix.Length..]}";
             }
-            normalizedPath = normalizedPath.TrimStart('/');
 
+            normalizedPath = normalizedPath.TrimStart('/');
             if (!normalizedPath.StartsWith("Skill/", StringComparison.OrdinalIgnoreCase))
             {
                 normalizedPath = $"Skill/{normalizedPath.TrimStart('/')}";
@@ -4751,23 +4807,100 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             string[] parts = normalizedPath
                 .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 3
-                && parts[0].Equals("Skill", StringComparison.OrdinalIgnoreCase)
-                && parts[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase)
-                && !parts[2].Equals("skill", StringComparison.OrdinalIgnoreCase)
-                && TryParseRequiredSkillId(parts[2], out _))
+            if (parts.Length == 0
+                || !parts[0].Equals("Skill", StringComparison.OrdinalIgnoreCase))
             {
-                var normalizedParts = new List<string>(parts.Length + 1)
-                {
-                    parts[0],
-                    parts[1],
-                    "skill"
-                };
-                normalizedParts.AddRange(parts.Skip(2));
-                return string.Join("/", normalizedParts);
+                return null;
+            }
+
+            if (TryNormalizeMountedSkillRootClientSummonedUolParts(parts, out string normalizedMountedRootPath))
+            {
+                return normalizedMountedRootPath;
             }
 
             return string.Join("/", parts);
+        }
+
+        private static bool TryParseNormalizedSkillAnimationPath(
+            string normalizedSkillAssetPath,
+            out string imageName,
+            out string[] propertySegments)
+        {
+            imageName = null;
+            propertySegments = null;
+
+            if (string.IsNullOrWhiteSpace(normalizedSkillAssetPath))
+            {
+                return false;
+            }
+
+            string[] parts = normalizedSkillAssetPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 3
+                || !parts[0].Equals("Skill", StringComparison.OrdinalIgnoreCase)
+                || !parts[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            imageName = parts[1];
+            propertySegments = parts.Skip(2).ToArray();
+            return propertySegments.Length > 0;
+        }
+
+        private static bool TryNormalizeMountedSkillRootClientSummonedUolParts(
+            string[] parts,
+            out string normalizedPath)
+        {
+            normalizedPath = null;
+            if (parts == null || parts.Length < 2)
+            {
+                return false;
+            }
+
+            int skillIdPartIndex = -1;
+            if (parts[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+            {
+                if (parts.Length < 3 || !TryParseRequiredSkillId(parts[2], out _))
+                {
+                    return false;
+                }
+
+                skillIdPartIndex = 2;
+            }
+            else if (TryParseRequiredSkillId(parts[1], out _))
+            {
+                skillIdPartIndex = 1;
+            }
+            else if (parts[1].Equals("skill", StringComparison.OrdinalIgnoreCase)
+                     && parts.Length >= 3
+                     && TryParseRequiredSkillId(parts[2], out _))
+            {
+                skillIdPartIndex = 2;
+            }
+
+            if (skillIdPartIndex < 0
+                || !TryParseRequiredSkillId(parts[skillIdPartIndex], out int skillId))
+            {
+                return false;
+            }
+
+            string imageName = $"{skillId / 10000}.img";
+            var normalizedParts = new List<string>(parts.Length + 2)
+            {
+                "Skill",
+                imageName,
+                "skill",
+                skillId.ToString(CultureInfo.InvariantCulture)
+            };
+
+            for (int i = skillIdPartIndex + 1; i < parts.Length; i++)
+            {
+                normalizedParts.Add(parts[i]);
+            }
+
+            normalizedPath = string.Join("/", normalizedParts);
+            return true;
         }
 
         internal static bool LooksLikeStandaloneSummonSourceProperty(WzImageProperty skillNode)
@@ -5004,9 +5137,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             frame.Flip = ResolveFrameInt(metadataNode, canvas, "flip") == 1;
             frame.Z = ResolveFrameInt(metadataNode, canvas, "z");
 
-            // Shadow-partner and companion layers can carry authored alpha ramps per frame.
-            frame.AlphaStart = Math.Clamp(ResolveFrameInt(metadataNode, canvas, "a0", 255), 0, 255);
-            frame.AlphaEnd = Math.Clamp(ResolveFrameInt(metadataNode, canvas, "a1", 255), 0, 255);
+            // CAnimationDisplayer::LoadCanvas passes a0/a1 as independent optional InsertCanvas endpoints.
+            // Preserve that client matrix here so lone authored a0 does not get re-expanded to an implicit 255 fade.
+            int? authoredAlphaStart = TryResolveFrameInt(metadataNode, canvas, "a0", out int resolvedAlphaStart)
+                ? resolvedAlphaStart
+                : null;
+            int? authoredAlphaEnd = TryResolveFrameInt(metadataNode, canvas, "a1", out int resolvedAlphaEnd)
+                ? resolvedAlphaEnd
+                : null;
+            (frame.AlphaStart, frame.AlphaEnd) = ResolveClientInsertCanvasAlphaEndpoints(authoredAlphaStart, authoredAlphaEnd);
             frame.ZoomStart = ResolveFrameInt(metadataNode, canvas, "z0");
             frame.ZoomEnd = ResolveFrameInt(metadataNode, canvas, "z1");
 
@@ -5044,6 +5183,41 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return canvas != null ? GetInt(canvas, propertyName, defaultValue) : defaultValue;
+        }
+
+        private static bool TryResolveFrameInt(WzImageProperty metadataNode, WzCanvasProperty canvas, string propertyName, out int value)
+        {
+            if (metadataNode != null && metadataNode[propertyName] != null)
+            {
+                value = GetInt(metadataNode, propertyName);
+                return true;
+            }
+
+            if (canvas != null && canvas[propertyName] != null)
+            {
+                value = GetInt(canvas, propertyName);
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+
+        internal static (int StartAlpha, int EndAlpha) ResolveClientInsertCanvasAlphaEndpoints(int? authoredAlphaStart, int? authoredAlphaEnd)
+        {
+            int startAlpha = authoredAlphaStart.HasValue
+                ? Math.Clamp(authoredAlphaStart.Value, 0, 255)
+                : 255;
+            int endAlpha = authoredAlphaEnd.HasValue
+                ? Math.Clamp(authoredAlphaEnd.Value, 0, 255)
+                : 255;
+
+            if (authoredAlphaStart.HasValue && !authoredAlphaEnd.HasValue)
+            {
+                endAlpha = startAlpha;
+            }
+
+            return (startAlpha, endAlpha);
         }
 
         private static Point ResolveFrameOrigin(WzImageProperty metadataNode, WzCanvasProperty canvas)
@@ -6125,18 +6299,30 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            levelData.PAD = ApplyDescriptionBackedAliasValue(
+            ReadOnlySpan<(string PlaceholderToken, int AliasValue)> placeholders =
+            [
+                ("#x", xValue),
+                ("#y", yValue),
+                ("#z", zValue),
+                ("#u", uValue),
+                ("#v", vValue),
+                ("#w", wValue)
+            ];
+
+            levelData.PAD = ApplyDescriptionBackedLabelAliases(
                 levelData.PAD,
-                xValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "weapon att", "weapon attack"));
-            levelData.MAD = ApplyDescriptionBackedAliasValue(
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "weapon att",
+                "weapon attack");
+            levelData.MAD = ApplyDescriptionBackedLabelAliases(
                 levelData.MAD,
-                yValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "magic att", "magic attack"));
-            levelData.MAD = ApplyDescriptionBackedAliasValue(
-                levelData.MAD,
-                xValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "magic att", "magic attack"));
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "magic att",
+                "magic attack");
             levelData.PAD = ApplyDescriptionBackedAliasValue(
                 levelData.PAD,
                 yValue,
@@ -6149,50 +6335,75 @@ namespace HaCreator.MapSimulator.Character.Skills
                 levelData.PAD,
                 wValue,
                 PlaceholderMatchesGenericAttackHint(normalizedSurface, "#w", requirePercentSuffix: false));
-            levelData.PDD = ApplyDescriptionBackedAliasValue(
+            levelData.PDD = ApplyDescriptionBackedLabelAliases(
                 levelData.PDD,
-                zValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#z", "weapon def", "weapon defense"));
-            levelData.MDD = ApplyDescriptionBackedAliasValue(
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "weapon def",
+                "weapon defense");
+            levelData.MDD = ApplyDescriptionBackedLabelAliases(
                 levelData.MDD,
-                uValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#u", "magic def", "magic defense"));
-            levelData.ACC = ApplyDescriptionBackedAliasValue(
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "magic def",
+                "magic defense");
+            levelData.STR = ApplyDescriptionBackedLabelAliases(
+                levelData.STR,
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "str",
+                "strength");
+            levelData.DEX = ApplyDescriptionBackedLabelAliases(
+                levelData.DEX,
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "dex",
+                "dexterity");
+            levelData.INT = ApplyDescriptionBackedLabelAliases(
+                levelData.INT,
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "int",
+                "intelligence");
+            levelData.LUK = ApplyDescriptionBackedLabelAliases(
+                levelData.LUK,
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "luk",
+                "luck");
+            levelData.AllStat = ApplyDescriptionBackedLabelAliases(
+                levelData.AllStat,
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "all stats",
+                "all stat",
+                "all attributes");
+            levelData.ACC = ApplyDescriptionBackedLabelAliases(
                 levelData.ACC,
-                vValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#v", "accuracy"));
-            levelData.ACC = ApplyDescriptionBackedAliasValue(
-                levelData.ACC,
-                xValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "accuracy"));
-            levelData.ACC = ApplyDescriptionBackedAliasValue(
-                levelData.ACC,
-                yValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "accuracy"));
-            levelData.ACC = ApplyDescriptionBackedAliasValue(
-                levelData.ACC,
-                zValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#z", "accuracy"));
-            levelData.EVA = ApplyDescriptionBackedAliasValue(
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "accuracy");
+            levelData.EVA = ApplyDescriptionBackedLabelAliases(
                 levelData.EVA,
-                wValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#w", "avoidability"));
-            levelData.EVA = ApplyDescriptionBackedAliasValue(
-                levelData.EVA,
-                xValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "avoidability"));
-            levelData.EVA = ApplyDescriptionBackedAliasValue(
-                levelData.EVA,
-                yValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "avoidability"));
-            levelData.EVA = ApplyDescriptionBackedAliasValue(
-                levelData.EVA,
-                zValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#z", "avoidability"));
-            levelData.Speed = ApplyDescriptionBackedAliasValue(
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "avoidability");
+            levelData.Speed = ApplyDescriptionBackedLabelAliases(
                 levelData.Speed,
-                xValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "movement speed", "speed"));
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "movement speed",
+                "speed");
             levelData.Speed = ApplyDescriptionBackedAliasValue(
                 levelData.Speed,
                 yValue,
@@ -6201,34 +6412,31 @@ namespace HaCreator.MapSimulator.Character.Skills
                 levelData.Speed,
                 wValue,
                 PlaceholderMatchesGenericSpeedHint(normalizedSurface, "#w"));
-            levelData.Jump = ApplyDescriptionBackedAliasValue(
+            levelData.Jump = ApplyDescriptionBackedLabelAliases(
                 levelData.Jump,
-                yValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "jump"));
-            levelData.CriticalRate = ApplyDescriptionBackedAliasValue(
+                normalizedSurface,
+                requirePercentSuffix: false,
+                placeholders,
+                "jump");
+            levelData.CriticalRate = ApplyDescriptionBackedLabelAliases(
                 levelData.CriticalRate,
-                xValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "critical rate", "critical chance"));
-            levelData.CriticalRate = ApplyDescriptionBackedAliasValue(
-                levelData.CriticalRate,
-                vValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#v", "critical rate", "critical chance"));
-            levelData.MaxHPPercent = ApplyDescriptionBackedAliasValue(
+                normalizedSurface,
+                requirePercentSuffix: null,
+                placeholders,
+                "critical rate",
+                "critical chance");
+            levelData.MaxHPPercent = ApplyDescriptionBackedLabelAliases(
                 levelData.MaxHPPercent,
-                xValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "max hp"));
-            levelData.MaxMPPercent = ApplyDescriptionBackedAliasValue(
+                normalizedSurface,
+                requirePercentSuffix: true,
+                placeholders,
+                "max hp");
+            levelData.MaxMPPercent = ApplyDescriptionBackedLabelAliases(
                 levelData.MaxMPPercent,
-                xValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "max mp"));
-            levelData.MaxHPPercent = ApplyDescriptionBackedAliasValue(
-                levelData.MaxHPPercent,
-                yValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "max hp"));
-            levelData.MaxMPPercent = ApplyDescriptionBackedAliasValue(
-                levelData.MaxMPPercent,
-                yValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#y", "max mp"));
+                normalizedSurface,
+                requirePercentSuffix: true,
+                placeholders,
+                "max mp");
         }
 
         private static int ApplyDescriptionBackedAliasValue(int target, int aliasValue, bool shouldApply)
@@ -6241,7 +6449,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             return PreferPrimaryStat(target, aliasValue);
         }
 
-        private static string NormalizeDescriptionBackedAliasSurface(string value)
+        private static int ApplyDescriptionBackedLabelAliases(
+            int target,
+            string normalizedSurface,
+            bool? requirePercentSuffix,
+            ReadOnlySpan<(string PlaceholderToken, int AliasValue)> placeholders,
+            params string[] labelTokens)
+        {
+            int resolved = target;
+            foreach ((string placeholderToken, int aliasValue) in placeholders)
+            {
+                resolved = ApplyDescriptionBackedAliasValue(
+                    resolved,
+                    aliasValue,
+                    PlaceholderMatchesHintLabel(
+                        normalizedSurface,
+                        placeholderToken,
+                        requirePercentSuffix,
+                        labelTokens));
+            }
+
+            return resolved;
+        }
+
+        internal static string NormalizeDescriptionBackedAliasSurface(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
             {
@@ -6262,7 +6493,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Replace("accurary", "accuracy", StringComparison.Ordinal);
         }
 
-        private static bool PlaceholderMatchesHintLabel(string normalizedSurface, string placeholderToken, params string[] labelTokens)
+        internal static bool PlaceholderMatchesHintLabel(
+            string normalizedSurface,
+            string placeholderToken,
+            bool? requirePercentSuffix = null,
+            params string[] labelTokens)
         {
             if (string.IsNullOrWhiteSpace(normalizedSurface)
                 || string.IsNullOrWhiteSpace(placeholderToken)
@@ -6284,6 +6519,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     break;
                 }
 
+                if (requirePercentSuffix.HasValue
+                    && PlaceholderHasPercentSuffix(normalizedSurface, placeholderIndex + placeholderToken.Length) != requirePercentSuffix.Value)
+                {
+                    searchIndex = placeholderIndex + placeholderToken.Length;
+                    continue;
+                }
+
                 int contextStart = Math.Max(0, placeholderIndex - 48);
                 int contextLength = placeholderIndex - contextStart + placeholderToken.Length;
                 string context = normalizedSurface.Substring(contextStart, contextLength);
@@ -6300,6 +6542,49 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        internal static int ResolveDescriptionBackedPrimaryStatPercentAlias(
+            SkillData skill,
+            SkillLevelData levelData,
+            params string[] labelTokens)
+        {
+            if (skill == null || levelData == null || labelTokens == null || labelTokens.Length == 0)
+            {
+                return 0;
+            }
+
+            string normalizedSurface = NormalizeDescriptionBackedAliasSurface(SkillDataTextSurface.GetDescriptionSurface(skill));
+            if (string.IsNullOrWhiteSpace(normalizedSurface))
+            {
+                return 0;
+            }
+
+            ReadOnlySpan<(string PlaceholderToken, int AliasValue)> placeholders =
+            [
+                ("#x", levelData.X),
+                ("#y", levelData.Y),
+                ("#z", levelData.Z)
+            ];
+
+            foreach ((string placeholderToken, int aliasValue) in placeholders)
+            {
+                if (aliasValue == 0)
+                {
+                    continue;
+                }
+
+                if (PlaceholderMatchesHintLabel(
+                    normalizedSurface,
+                    placeholderToken,
+                    requirePercentSuffix: true,
+                    labelTokens))
+                {
+                    return Math.Max(0, aliasValue);
+                }
+            }
+
+            return 0;
         }
 
         private static bool PlaceholderMatchesGenericAttackHint(

@@ -878,6 +878,25 @@ namespace HaCreator.MapSimulator.UI
             return removedSlot != null;
         }
 
+        public void ReplaceInventory(InventoryType type, IReadOnlyList<InventorySlotData> slotsSnapshot)
+        {
+            if (!_inventoryData.TryGetValue(type, out List<InventorySlotData> slots))
+            {
+                return;
+            }
+
+            slots.Clear();
+            if (slotsSnapshot != null)
+            {
+                for (int i = 0; i < slotsSnapshot.Count; i++)
+                {
+                    slots.Add(slotsSnapshot[i]?.Clone());
+                }
+            }
+
+            TrimTrailingEmptySlots(slots);
+        }
+
         public bool TrySetPendingRequestState(InventoryType type, int slotIndex, int requestId, bool isPending)
         {
             if (requestId <= 0

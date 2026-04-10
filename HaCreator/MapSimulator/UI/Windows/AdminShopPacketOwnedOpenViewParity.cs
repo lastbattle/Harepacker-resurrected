@@ -11,23 +11,25 @@ namespace HaCreator.MapSimulator.UI
         internal const int NpcPaneIndex = 0;
         internal const int UserPaneIndex = 1;
         internal const int AllBrowseModeIndex = 0;
-        internal const int RebuyBrowseModeIndex = 4;
         internal const int AllCategoryIndex = 0;
         internal const int ButtonCategoryIndex = 10;
 
-        public static AdminShopPacketOwnedOpenViewState CaptureForSetAdminShopDlg(
-            bool hadActivePacketOwnedSession,
-            int activePaneIndex,
-            int browseModeIndex,
-            int categoryIndex)
+        public static AdminShopPacketOwnedOpenViewState ResolveDefaultForSetAdminShopDlg()
         {
-            return hadActivePacketOwnedSession
-                ? new AdminShopPacketOwnedOpenViewState(
-                    true,
-                    ClampPaneIndex(activePaneIndex),
-                    ClampBrowseModeIndex(browseModeIndex),
-                    ClampCategoryIndex(categoryIndex))
-                : default;
+            return new AdminShopPacketOwnedOpenViewState(
+                true,
+                NpcPaneIndex,
+                AllBrowseModeIndex,
+                AllCategoryIndex);
+        }
+
+        public static AdminShopPacketOwnedOpenViewState ResolveUserSellRefocus(int categoryIndex)
+        {
+            return new AdminShopPacketOwnedOpenViewState(
+                true,
+                UserPaneIndex,
+                AllBrowseModeIndex,
+                ClampCategoryIndex(categoryIndex));
         }
 
         public static int ClampPaneIndex(int activePaneIndex)
@@ -39,9 +41,7 @@ namespace HaCreator.MapSimulator.UI
 
         public static int ClampBrowseModeIndex(int browseModeIndex)
         {
-            return browseModeIndex < AllBrowseModeIndex || browseModeIndex > RebuyBrowseModeIndex
-                ? AllBrowseModeIndex
-                : browseModeIndex;
+            return AllBrowseModeIndex;
         }
 
         public static int ClampCategoryIndex(int categoryIndex)

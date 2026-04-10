@@ -334,6 +334,7 @@ namespace HaCreator.MapSimulator
         private readonly MemoMailboxManager _memoMailbox = new MemoMailboxManager();
         private readonly FamilyChartRuntime _familyChartRuntime = new FamilyChartRuntime();
         private UserInfoUI.UserInfoActionContext? _bookCollectionActionContext;
+        private readonly Dictionary<string, int> _characterInfoCollectionClaimFingerprints = new(StringComparer.OrdinalIgnoreCase);
         private readonly SocialListRuntime _socialListRuntime = new SocialListRuntime();
         private readonly UserInfoPopularityPreviewService _userInfoPopularityPreviewService = new();
         private readonly GuildSkillRuntime _guildSkillRuntime = new GuildSkillRuntime();
@@ -2342,34 +2343,10 @@ namespace HaCreator.MapSimulator
 
             displayName = null;
 
-
-
-            string mapIdKey = mapId.ToString().PadLeft(9, '0');
-            if (Program.InfoManager?.MapsCache == null ||
-                !Program.InfoManager.MapsCache.TryGetValue(mapIdKey, out Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap) ||
-                cachedMap == null)
+            if (!MapSimulator.TryResolveMapNamePartsFromCache(mapId, out string mapName, out string streetName))
             {
                 return false;
             }
-
-
-            string mapName = cachedMap.Item2;
-            string streetName = cachedMap.Item3;
-            MapleLib.WzLib.WzStructure.MapInfo mapInfo = cachedMap.Item5;
-            if (mapInfo != null)
-            {
-                if (string.IsNullOrWhiteSpace(mapName))
-                {
-                    mapName = mapInfo.strMapName;
-                }
-
-
-                if (string.IsNullOrWhiteSpace(streetName))
-                {
-                    streetName = mapInfo.strStreetName;
-                }
-            }
-
 
             if (!string.IsNullOrWhiteSpace(streetName) &&
                 !string.IsNullOrWhiteSpace(mapName) &&
@@ -2386,8 +2363,47 @@ namespace HaCreator.MapSimulator
                 displayName = streetName;
             }
 
-
             return !string.IsNullOrWhiteSpace(displayName);
+
+        }
+
+
+
+        private static bool TryResolveMapNamePartsFromCache(int mapId, out string mapName, out string streetName)
+
+        {
+
+            mapName = null;
+            streetName = null;
+
+
+            string mapIdKey = mapId.ToString().PadLeft(9, '0');
+            if (Program.InfoManager?.MapsCache == null ||
+                !Program.InfoManager.MapsCache.TryGetValue(mapIdKey, out Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap) ||
+                cachedMap == null)
+            {
+                return false;
+            }
+
+
+            mapName = cachedMap.Item2;
+            streetName = cachedMap.Item3;
+            MapleLib.WzLib.WzStructure.MapInfo mapInfo = cachedMap.Item5;
+            if (mapInfo != null)
+            {
+                if (string.IsNullOrWhiteSpace(mapName))
+                {
+                    mapName = mapInfo.strMapName;
+                }
+
+
+                if (string.IsNullOrWhiteSpace(streetName))
+                {
+                    streetName = mapInfo.strStreetName;
+                }
+            }
+
+            return !string.IsNullOrWhiteSpace(mapName) || !string.IsNullOrWhiteSpace(streetName);
 
         }
 
@@ -3050,6 +3066,8 @@ namespace HaCreator.MapSimulator
             friendGroupWindow.SetHandlers(
                 visibleIndex => _socialListRuntime.ToggleFriendGroupPopupEntry(visibleIndex),
                 delta => _socialListRuntime.MoveFriendGroupPopupScroll(delta),
+                value => _socialListRuntime.AppendFriendGroupPopupInput(value),
+                () => _socialListRuntime.BackspaceFriendGroupPopupInput(),
                 () =>
                 {
                     string message = _socialListRuntime.ConfirmFriendGroupPopup();
@@ -3172,7 +3190,7 @@ namespace HaCreator.MapSimulator
                 visibleIndex => _guildSkillRuntime.SelectEntry(visibleIndex),
                 () => _guildSkillRuntime.TryRenewSelectedSkill(_socialListRuntime.UsesPacketOwnedGuildSkillAuthority()),
                 () => _guildSkillRuntime.TryLevelSelectedSkill(_socialListRuntime.UsesPacketOwnedGuildSkillAuthority()),
-                ShowUtilityFeedbackMessage);
+                ShowSocialUtilityFeedbackMessage);
             guildSkillWindow.SetFont(_fontChat);
         }
         private void RefreshSkillWindowShortcutState()
@@ -3562,7 +3580,8 @@ namespace HaCreator.MapSimulator
                 0,
                 "Maple TV",
                 mapleTvWindow.DefaultMediaIndex,
-                mapleTvWindow.AvailableMediaIndices);
+                mapleTvWindow.AvailableMediaIndices,
+                mapleTvWindow.ExplicitWzDefaultMediaIndex);
             _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
             mapleTvWindow.SetSnapshotProvider(() => _mapleTvRuntime.BuildSnapshot(currTickCount));
             mapleTvWindow.SetActionHandlers(
@@ -3926,6 +3945,8 @@ namespace HaCreator.MapSimulator
             userInfoWindow.FamilyRequested = HandleCharacterInfoFamilyRequest;
             userInfoWindow.PopularityRequested = HandleCharacterInfoPopularityRequest;
             userInfoWindow.BookCollectionRequested = HandleCharacterInfoBookCollectionRequest;
+            userInfoWindow.CollectionClaimRequested = HandleCharacterInfoCollectionClaimRequest;
+            userInfoWindow.CollectionClaimAvailable = IsCharacterInfoCollectionClaimAvailable;
             userInfoWindow.WishPresentRequested = HandleCharacterInfoWishPresentRequest;
             userInfoWindow.MarriedBadgeProvider = ResolveCharacterInfoMarriageBadgeState;
             userInfoWindow.LocalActionLocationSummaryProvider = GetCurrentMapTransferDisplayName;
@@ -4401,6 +4422,155 @@ namespace HaCreator.MapSimulator
             return context.IsRemoteTarget
                 ? $"Collection book opened for inspected target {context.CharacterName}."
                 : "Collection book opened.";
+        }
+
+        private string HandleCharacterInfoCollectionClaimRequest(UserInfoUI.UserInfoActionContext context)
+        {
+            if (context.IsRemoteTarget)
+            {
+                return "Collection claims stay local-only on this UserInfo seam; remote inspection keeps BtArrayGet unavailable.";
+            }
+
+            context = NormalizeCharacterInfoActionContext(context);
+            if (!TryBuildCharacterInfoCollectionClaimSnapshot(
+                    context,
+                    out CharacterBuild build,
+                    out ItemMakerProgressionSnapshot progression,
+                    out MonsterBookSnapshot snapshot,
+                    out int fingerprint,
+                    out string unavailableMessage))
+            {
+                return unavailableMessage;
+            }
+
+            string claimKey = ResolveCharacterInfoCollectionClaimKey(context, build);
+            if (_characterInfoCollectionClaimFingerprints.TryGetValue(claimKey, out int claimedFingerprint)
+                && claimedFingerprint == fingerprint)
+            {
+                return $"No new local collection summary is waiting on BtArrayGet for {context.CharacterName}.";
+            }
+
+            _characterInfoCollectionClaimFingerprints[claimKey] = fingerprint;
+            int totalRecipes = progression.DiscoveredRecipeCount + progression.UnlockedHiddenRecipeCount;
+            return $"Claimed the local collection summary for {context.CharacterName}: Monster Book {snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes}, crafts {progression.SuccessfulCrafts}, recipes {totalRecipes}.";
+        }
+
+        private bool IsCharacterInfoCollectionClaimAvailable(UserInfoUI.UserInfoActionContext context)
+        {
+            if (context.IsRemoteTarget)
+            {
+                return false;
+            }
+
+            context = NormalizeCharacterInfoActionContext(context);
+            if (!TryBuildCharacterInfoCollectionClaimSnapshot(
+                    context,
+                    out CharacterBuild build,
+                    out _,
+                    out _,
+                    out int fingerprint,
+                    out _))
+            {
+                return false;
+            }
+
+            string claimKey = ResolveCharacterInfoCollectionClaimKey(context, build);
+            return !_characterInfoCollectionClaimFingerprints.TryGetValue(claimKey, out int claimedFingerprint)
+                   || claimedFingerprint != fingerprint;
+        }
+
+        private bool TryBuildCharacterInfoCollectionClaimSnapshot(
+            UserInfoUI.UserInfoActionContext context,
+            out CharacterBuild build,
+            out ItemMakerProgressionSnapshot progression,
+            out MonsterBookSnapshot snapshot,
+            out int fingerprint,
+            out string unavailableMessage)
+        {
+            build = context.Build ?? _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
+            progression = ResolveCharacterInfoItemMakerProgressionSnapshot(build);
+            snapshot = ResolveCharacterInfoMonsterBookSnapshot(build);
+            fingerprint = 0;
+            unavailableMessage = null;
+
+            if (build == null)
+            {
+                unavailableMessage = "Collection claim routing is unavailable because the local character build is missing.";
+                return false;
+            }
+
+            if (!HasCharacterInfoCollectionClaimableSummary(progression, snapshot))
+            {
+                unavailableMessage = $"BtArrayGet has no local collection summary to claim yet for {context.CharacterName}.";
+                return false;
+            }
+
+            fingerprint = BuildCharacterInfoCollectionClaimFingerprint(progression, snapshot);
+            return true;
+        }
+
+        private static bool HasCharacterInfoCollectionClaimableSummary(
+            ItemMakerProgressionSnapshot progression,
+            MonsterBookSnapshot snapshot)
+        {
+            progression ??= ItemMakerProgressionSnapshot.Default;
+            snapshot ??= new MonsterBookSnapshot();
+
+            return progression.SuccessfulCrafts > 0
+                   || progression.DiscoveredRecipeCount > 0
+                   || progression.UnlockedHiddenRecipeCount > 0
+                   || progression.GenericLevel > 1
+                   || progression.GetLevel(ItemMakerRecipeFamily.Gloves) > 1
+                   || progression.GetLevel(ItemMakerRecipeFamily.Shoes) > 1
+                   || progression.GetLevel(ItemMakerRecipeFamily.Toys) > 1
+                   || progression.GetProgress(ItemMakerRecipeFamily.Generic) > 0
+                   || progression.GetProgress(ItemMakerRecipeFamily.Gloves) > 0
+                   || progression.GetProgress(ItemMakerRecipeFamily.Shoes) > 0
+                   || progression.GetProgress(ItemMakerRecipeFamily.Toys) > 0
+                   || snapshot.OwnedCardTypes > 0
+                   || snapshot.CompletedCardTypes > 0
+                   || snapshot.TotalOwnedCopies > 0;
+        }
+
+        private static int BuildCharacterInfoCollectionClaimFingerprint(
+            ItemMakerProgressionSnapshot progression,
+            MonsterBookSnapshot snapshot)
+        {
+            progression ??= ItemMakerProgressionSnapshot.Default;
+            snapshot ??= new MonsterBookSnapshot();
+
+            HashCode hash = new HashCode();
+            hash.Add(progression.GenericLevel);
+            hash.Add(progression.GloveLevel);
+            hash.Add(progression.ShoeLevel);
+            hash.Add(progression.ToyLevel);
+            hash.Add(progression.GenericProgress);
+            hash.Add(progression.GloveProgress);
+            hash.Add(progression.ShoeProgress);
+            hash.Add(progression.ToyProgress);
+            hash.Add(progression.SuccessfulCrafts);
+            hash.Add(progression.DiscoveredRecipeCount);
+            hash.Add(progression.UnlockedHiddenRecipeCount);
+            hash.Add(snapshot.OwnedCardTypes);
+            hash.Add(snapshot.CompletedCardTypes);
+            hash.Add(snapshot.TotalOwnedCopies);
+            hash.Add(snapshot.TotalCardTypes);
+            return hash.ToHashCode();
+        }
+
+        private static string ResolveCharacterInfoCollectionClaimKey(UserInfoUI.UserInfoActionContext context, CharacterBuild build)
+        {
+            if (context.CharacterId > 0)
+            {
+                return $"id:{context.CharacterId}";
+            }
+
+            if (build?.Id > 0)
+            {
+                return $"id:{build.Id}";
+            }
+
+            return $"name:{(!string.IsNullOrWhiteSpace(context.CharacterName) ? context.CharacterName : build?.Name ?? string.Empty).Trim()}";
         }
 
         private string HandleCharacterInfoWishPresentRequest(UserInfoUI.UserInfoActionContext context, string wishEntry)
@@ -5450,7 +5620,9 @@ namespace HaCreator.MapSimulator
 
         private bool TryShowUnhandledFieldRestrictedItemUse(int itemId, InventoryType inventoryType)
         {
-            if (inventoryType is not (InventoryType.USE or InventoryType.CASH) || itemId <= 0 || !HasInventoryItem(itemId))
+            if (inventoryType is not (InventoryType.USE or InventoryType.CASH or InventoryType.ETC)
+                || itemId <= 0
+                || !HasInventoryItem(itemId))
             {
                 return false;
             }
@@ -5747,6 +5919,13 @@ namespace HaCreator.MapSimulator
 
         private bool TryOpenItemAuthoredInventoryInteraction(int itemId, int npcId, string scriptName)
         {
+            IReadOnlyList<string> publishedScriptNames =
+                BuildItemAuthoredInteractionPublishedScriptNames(npcId, scriptName);
+            if (publishedScriptNames.Count > 0)
+            {
+                PublishDynamicObjectTagStatesForScriptNames(publishedScriptNames, currTickCount);
+            }
+
             NpcItem npcPreview = CreateNpcPreview(npcId, includeTooltips: false);
             if (npcPreview != null)
             {
@@ -5777,13 +5956,23 @@ namespace HaCreator.MapSimulator
             _activeNpcInteractionNpc = null;
             _activeNpcInteractionNpcId = npcId;
 
-            if (npcId > 0)
-            {
-                PublishDynamicObjectTagStatesForNpc(npcId, currTickCount);
-            }
-
             _npcInteractionOverlay.Open(interactionState);
             return true;
+        }
+
+        internal static IReadOnlyList<string> BuildItemAuthoredInteractionPublishedScriptNames(
+            int npcId,
+            string scriptName,
+            Func<int, IReadOnlyList<string>> npcScriptNameResolver = null)
+        {
+            IEnumerable<string> npcScriptNames = Array.Empty<string>();
+            if (npcId > 0)
+            {
+                npcScriptNameResolver ??= FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames;
+                npcScriptNames = npcScriptNameResolver(npcId) ?? Array.Empty<string>();
+            }
+
+            return QuestRuntimeManager.BuildPublishedScriptNames(npcScriptNames, scriptName);
         }
 
         private string ResolveItemAuthoredInteractionNpcName(int npcId)
@@ -6532,6 +6721,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!RepairDurabilityClientParity.MatchesPendingResultTarget(request.RepairAll, request.EncodedSlotPosition, result.EncodedSlotPosition))
+            {
+                message = $"Repair-result payload for encoded position {result.EncodedSlotPosition.Value} was ignored because position {request.EncodedSlotPosition} is still pending.";
+                return false;
+            }
+
             _pendingRepairDurabilityRequest = null;
             message = result.Success
                 ? AppendRepairDurabilityStatusText(ApplyPendingRepairDurabilitySuccess(request), result.StatusText)
@@ -6915,6 +7110,17 @@ namespace HaCreator.MapSimulator
             {
                 _chat?.AddMessage(message, new Color(255, 228, 151), Environment.TickCount);
             }
+        }
+
+        private void ShowSocialUtilityFeedbackMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            ShowUtilityFeedbackMessage(message);
+            TryTriggerSpecialistPetSocialFeedback(message, Environment.TickCount);
         }
 
         private void ShowMinimapOwnerNoticeDialog(string message, int stringPoolId)
@@ -16959,6 +17165,7 @@ namespace HaCreator.MapSimulator
 
             _cookieHousePointInbox.Dispose();
             _cookieHouseOfficialSessionBridge.Dispose();
+            _localOverlayPacketInbox.Dispose();
             _localUtilityPacketInbox.Dispose();
             _adminShopPacketInbox.Dispose();
             _localUtilityPacketOutbox.Dispose();
@@ -20302,6 +20509,22 @@ namespace HaCreator.MapSimulator
                    || effect.HasSupportedFieldProtection;
         }
 
+        private bool ShouldAutoHandlePickedUpItem(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            if (_monsterBookManager.IsConsumeOnPickupCardItem(itemId))
+            {
+                return true;
+            }
+
+            return ShouldAutoConsumePickedUpItem(itemId)
+                   || InventoryItemMetadataResolver.ShouldAutoRunOnPickupInteraction(itemId);
+        }
+
         private bool TryApplyQuestBuffItemReward(int itemId)
         {
             if (itemId <= 0 || _playerManager?.Player == null)
@@ -20409,6 +20632,50 @@ namespace HaCreator.MapSimulator
 
             return canQueueMovement && TryQueueConsumableMapTransfer(targetMapId);
 
+        }
+
+        private bool TryApplyPickedUpItemRuntime(int itemId, int currentTime)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            if (TryApplyQuestBuffItemReward(itemId))
+            {
+                return true;
+            }
+
+            if (!InventoryItemMetadataResolver.ShouldAutoRunOnPickupInteraction(itemId))
+            {
+                return false;
+            }
+
+            bool hasNpcReference = InventoryItemMetadataResolver.TryResolveNpcReference(itemId, out int npcId);
+            bool hasScript = InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out string scriptName);
+            if (!hasNpcReference && !hasScript)
+            {
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            string fieldItemRestrictionMessage = GetFieldItemUseRestrictionMessage(inventoryType, itemId, 1);
+            if (!string.IsNullOrWhiteSpace(fieldItemRestrictionMessage))
+            {
+                ShowFieldRestrictionMessage(fieldItemRestrictionMessage);
+                return false;
+            }
+
+            scriptName ??= string.Empty;
+            if (!TryOpenItemAuthoredInventoryInteraction(itemId, npcId, scriptName))
+            {
+                return false;
+            }
+
+            _fieldRuleRuntime?.RegisterSuccessfulItemUse(
+                ShouldTrackFieldConsumeItemCooldown(inventoryType, default, default),
+                currentTime);
+            return true;
         }
 
 
@@ -20633,7 +20900,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (ShouldAutoConsumePickedUpItem(itemId))
+            if (ShouldAutoHandlePickedUpItem(itemId))
             {
                 return true;
             }
@@ -21039,7 +21306,7 @@ namespace HaCreator.MapSimulator
             {
                 int itemId = int.TryParse(drop.ItemId, out int parsedItemId) ? parsedItemId : 0;
                 bool consumeOnPickupMonsterCard = _monsterBookManager.IsConsumeOnPickupCardItem(itemId);
-                bool autoConsumeOnPickupItem = !consumeOnPickupMonsterCard && ShouldAutoConsumePickedUpItem(itemId);
+                bool autoHandlePickedUpItem = !consumeOnPickupMonsterCard && ShouldAutoHandlePickedUpItem(itemId);
                 // Monster Book card entries in Item/Consume/0238.img are authored as only=1 plus
                 // consumeOnPickup=1, so a consumed card pickup advances one card copy even if a
                 // simulator or packet-injected drop carried a larger stack quantity.
@@ -21065,7 +21332,7 @@ namespace HaCreator.MapSimulator
                 {
                     _monsterBookManager.RecordCardPickup(_playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build, itemId, 1);
                 }
-                else if (!autoConsumeOnPickupItem || !TryApplyQuestBuffItemReward(itemId))
+                else if (!autoHandlePickedUpItem || !TryApplyPickedUpItemRuntime(itemId, currentTime))
                 {
                     AddItemToInventoryWindow(drop.ItemId, drop.Quantity);
                 }
@@ -21166,235 +21433,69 @@ namespace HaCreator.MapSimulator
 
 
         private void HandleDropPickedUpByRemotePlayer(DropItem drop, int playerId, string playerName)
-
-
-
         {
-
             if (drop == null || !ShouldSurfaceRemotePickupNotice(drop))
-
-
-
             {
-
-
-
                 return;
-
-
-
             }
 
-
-
-
-
-
-
             string itemName = ResolvePickupResultItemName(drop);
-
-
-
-            PickupNoticeMessagePair messages = PickupNoticeTextFormatter.FormatRemotePickup(
-
-
-
+            string resolvedActorName = ResolvePickupNoticeActorName(
                 Pools.DropPickupActorKind.Player,
-
-
-
+                playerId,
+                playerName);
+            PickupNoticeMessagePair messages = PickupNoticeTextFormatter.FormatRemotePickup(
+                Pools.DropPickupActorKind.Player,
                 drop.Type,
-
-
-
-                playerName,
-
-
-
+                resolvedActorName,
                 itemName,
-
-
-
                 drop.Quantity,
-
-
-
                 drop.MesoAmount);
-
-
-
             AddPickupFailureMessage(messages, Environment.TickCount);
-
-
-
         }
-
-
-
-
-
-
 
         private void HandleDropPickedUpByRemotePet(DropItem drop, int petId, string petName)
-
-
-
         {
-
-
-
             if (drop == null || !ShouldSurfaceRemotePickupNotice(drop))
-
-
-
             {
-
-
-
                 return;
-
-
-
             }
 
-
-
-
-
-
-
-            string actorName = !string.IsNullOrWhiteSpace(petName)
-
-
-
-                ? petName
-
-
-
-                : $"Pet {petId}";
-
-
-
             string itemName = ResolvePickupResultItemName(drop);
-
-
-
-            PickupNoticeMessagePair messages = PickupNoticeTextFormatter.FormatRemotePickup(
-
-
-
+            string resolvedActorName = ResolvePickupNoticeActorName(
                 Pools.DropPickupActorKind.Pet,
-
-
-
+                petId,
+                petName);
+            PickupNoticeMessagePair messages = PickupNoticeTextFormatter.FormatRemotePickup(
+                Pools.DropPickupActorKind.Pet,
                 drop.Type,
-
-
-
-                actorName,
-
-
-
+                resolvedActorName,
                 itemName,
-
-
-
                 drop.Quantity,
-
-
-
                 drop.MesoAmount);
-
-
-
             AddPickupFailureMessage(messages, Environment.TickCount);
-
-
-
         }
 
-
-
         private void HandleDropPickedUpByRemoteOther(DropItem drop, int actorId, string actorName)
-
-
-
         {
-
-
-
             if (drop == null || !ShouldSurfaceRemotePickupNotice(drop))
-
-
-
             {
-
-
-
                 return;
-
-
-
             }
 
-
-
-            string resolvedActorName = !string.IsNullOrWhiteSpace(actorName)
-
-
-
-                ? actorName
-
-
-
-                : actorId > 0
-
-
-
-                    ? $"Actor {actorId}"
-
-
-
-                    : null;
-
-
-
             string itemName = ResolvePickupResultItemName(drop);
-
-
-
-            PickupNoticeMessagePair messages = PickupNoticeTextFormatter.FormatRemotePickup(
-
-
-
+            string resolvedActorName = ResolvePickupNoticeActorName(
                 Pools.DropPickupActorKind.Other,
-
-
-
+                actorId,
+                actorName);
+            PickupNoticeMessagePair messages = PickupNoticeTextFormatter.FormatRemotePickup(
+                Pools.DropPickupActorKind.Other,
                 drop.Type,
-
-
-
                 resolvedActorName,
-
-
-
                 itemName,
-
-
-
                 drop.Quantity,
-
-
-
                 drop.MesoAmount);
-
-
-
             AddPickupFailureMessage(messages, Environment.TickCount);
-
-
-
         }
 
 
@@ -21498,6 +21599,21 @@ namespace HaCreator.MapSimulator
                     ? recentPickup.ActorName
                     : FormatOtherPickupActorLabel(recentPickup.PickerId),
                 _ => null
+            };
+        }
+
+        private string ResolvePickupNoticeActorName(
+            Pools.DropPickupActorKind actorKind,
+            int actorId,
+            string actorName,
+            int fallbackOwnerId = 0)
+        {
+            return actorKind switch
+            {
+                Pools.DropPickupActorKind.Mob => !string.IsNullOrWhiteSpace(actorName)
+                    ? actorName
+                    : ResolveMobPickupSourceName(actorId),
+                _ => ResolveRemotePickupActorName(actorKind, actorId, actorName, fallbackOwnerId)
             };
         }
 
@@ -23421,25 +23537,184 @@ namespace HaCreator.MapSimulator
         private string ResolveMinimapPortalTooltipText(PortalItem portal)
         {
             PortalInstance instance = portal?.PortalInstance;
-            if (instance == null || instance.hideTooltip == MapleBool.True)
+            if (instance == null || _mapBoard?.MapInfo == null)
             {
                 return null;
             }
 
+            return ResolveMinimapPortalTooltipTextForTesting(
+                instance.pt,
+                instance.hideTooltip,
+                instance.tm,
+                _mapBoard.MapInfo.id,
+                instance.pn,
+                TryResolveMinimapPortalTooltipTextFromWz,
+                ResolveMinimapPortalFallbackMapText);
 
-            string scriptText = string.IsNullOrWhiteSpace(instance.script) ? null : instance.script.Trim();
-            string targetMapText = instance.tm > 0 && instance.tm != MapConstants.MaxMap
-                ? ResolveMapTransferDisplayName(instance.tm)
-                : null;
-            string portalNameText = string.IsNullOrWhiteSpace(instance.pn) ? null : $"Portal: {instance.pn.Trim()}";
-            string targetPortalText = string.IsNullOrWhiteSpace(instance.tn) ? null : $"Target: {instance.tn.Trim()}";
+        }
 
-            return BuildMinimapTooltipText(
-                scriptText,
-                targetMapText,
-                portalNameText,
-                targetPortalText);
+        internal const int ClientMinimapPortalTooltipPathStringPoolId = 0x0EE3;
+        internal const int ClientMinimapPortalMapStringKeyStringPoolId = 0x06EC;
 
+        internal static string ResolveMinimapPortalTooltipTextForTesting(
+            PortalType portalType,
+            MapleBool hideTooltip,
+            int targetMapId,
+            int currentMapId,
+            string portalName,
+            Func<int, string, string> authoredTooltipResolver,
+            Func<int, string> mapDisplayNameResolver)
+        {
+            if (hideTooltip == MapleBool.True
+                || !IsClientMinimapTooltipPortalType(portalType)
+                || targetMapId <= 0
+                || targetMapId == MapConstants.MaxMap)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(portalName))
+            {
+                string authoredTooltip = authoredTooltipResolver?.Invoke(currentMapId, portalName.Trim());
+                if (!string.IsNullOrWhiteSpace(authoredTooltip))
+                {
+                    return authoredTooltip.Trim();
+                }
+            }
+
+            string fallbackMapText = mapDisplayNameResolver?.Invoke(targetMapId);
+            return string.IsNullOrWhiteSpace(fallbackMapText)
+                ? null
+                : fallbackMapText.Trim();
+        }
+
+        private string ResolveMinimapPortalFallbackMapText(int mapId)
+        {
+            string mapStringKey = MapleStoryStringPool.GetOrFallback(
+                ClientMinimapPortalMapStringKeyStringPoolId,
+                "streetName");
+            if (TryResolveMapStringByClientKey(mapId, mapStringKey, out string mapString)
+                && !string.IsNullOrWhiteSpace(mapString))
+            {
+                return mapString.Trim();
+            }
+
+            return ResolveMapTransferDisplayName(mapId);
+        }
+
+        private static bool TryResolveMapStringByClientKey(int mapId, string key, out string value)
+        {
+            value = null;
+            if (!TryResolveMapNamePartsFromCache(mapId, out string mapName, out string streetName))
+            {
+                return false;
+            }
+
+            if (string.Equals(key, "streetName", StringComparison.OrdinalIgnoreCase))
+            {
+                value = streetName;
+                return !string.IsNullOrWhiteSpace(value);
+            }
+
+            if (string.Equals(key, "mapName", StringComparison.OrdinalIgnoreCase))
+            {
+                value = mapName;
+                return !string.IsNullOrWhiteSpace(value);
+            }
+
+            return false;
+        }
+
+        private static bool IsClientMinimapTooltipPortalType(PortalType portalType)
+        {
+            return portalType == PortalType.Visible || portalType == PortalType.TownPortalPoint;
+        }
+
+        private static string TryResolveMinimapPortalTooltipTextFromWz(int currentMapId, string portalName)
+        {
+            if (currentMapId <= 0 || string.IsNullOrWhiteSpace(portalName))
+            {
+                return null;
+            }
+
+            if (!TryGetToolTipHelpStringImage(out WzImage toolTipHelpImage))
+            {
+                return null;
+            }
+
+            string portalTooltipPathTemplate = MapleStoryStringPool.GetOrFallback(
+                ClientMinimapPortalTooltipPathStringPoolId,
+                "String/ToolTipHelp.img/PortalTooltip/%d");
+            WzImageProperty portalTooltipRoot = ResolveWzPropertyPath(
+                toolTipHelpImage,
+                FormatClientWzPath(portalTooltipPathTemplate, currentMapId, "String/ToolTipHelp.img/"));
+            WzImageProperty tooltipProperty = portalTooltipRoot?[portalName.Trim()];
+            return ReadMinimapPortalTooltipString(tooltipProperty);
+        }
+
+        private static bool TryGetToolTipHelpStringImage(out WzImage toolTipHelpImage)
+        {
+            toolTipHelpImage = Program.DataSource?.GetImage("String", "ToolTipHelp.img");
+            if (toolTipHelpImage == null && Program.WzManager != null)
+            {
+                toolTipHelpImage = Program.WzManager.FindWzImageByName("string", "ToolTipHelp.img") as WzImage;
+            }
+
+            if (toolTipHelpImage == null)
+            {
+                return false;
+            }
+
+            if (!toolTipHelpImage.Parsed)
+            {
+                toolTipHelpImage.ParseImage();
+            }
+
+            return true;
+        }
+
+        private static WzImageProperty ResolveWzPropertyPath(WzImage image, string relativePath)
+        {
+            if (image == null || string.IsNullOrWhiteSpace(relativePath))
+            {
+                return null;
+            }
+
+            WzImageProperty current = null;
+            string[] segments = relativePath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string segment in segments)
+            {
+                current = current == null ? image[segment] : current[segment];
+                if (current == null)
+                {
+                    return null;
+                }
+            }
+
+            return current;
+        }
+
+        private static string FormatClientWzPath(string pathTemplate, int mapId, string prefixToTrim)
+        {
+            string formattedPath = pathTemplate?.Replace("%d", mapId.ToString(CultureInfo.InvariantCulture))
+                ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(prefixToTrim)
+                && formattedPath.StartsWith(prefixToTrim, StringComparison.OrdinalIgnoreCase))
+            {
+                return formattedPath[prefixToTrim.Length..];
+            }
+
+            return formattedPath;
+        }
+
+        private static string ReadMinimapPortalTooltipString(WzImageProperty tooltipProperty)
+        {
+            if (tooltipProperty is WzStringProperty stringProperty)
+            {
+                return stringProperty.GetString();
+            }
+
+            return null;
         }
 
 
@@ -26051,6 +26326,11 @@ namespace HaCreator.MapSimulator
 
                 return;
 
+            if (!PassiveTransferFieldReadinessEvaluator.CanHandleFreshUpKeyDown(_localFollowRuntime.HasAttachedDriver))
+            {
+                return;
+            }
+
 
 
             if (CanReplayPassiveTransferFieldUpKeyPath(currentTime) && _playerManager.Player?.CanMove == true)
@@ -26520,9 +26800,10 @@ namespace HaCreator.MapSimulator
             float playerY,
             int currentTime)
         {
+            byte fieldKey = ResolveCollisionScriptPortalFieldKey();
             if (portal == null
                 || !PortalCollisionScriptRequestCodec.TryBuildPayload(
-                    PortalCollisionScriptRequestCodec.SyntheticFieldKey,
+                    fieldKey,
                     portal.pn,
                     playerX,
                     playerY,
@@ -26536,19 +26817,27 @@ namespace HaCreator.MapSimulator
 
             _lastCollisionScriptOutboundOpcode = PortalCollisionScriptRequestCodec.Opcode;
             _lastCollisionScriptOutboundPayload = payload;
-            _lastCollisionScriptOutboundSummary = DispatchCollisionScriptPortalRequest(payload, portal.pn, playerX, playerY);
+            _lastCollisionScriptOutboundSummary = DispatchCollisionScriptPortalRequest(payload, portal.pn, playerX, playerY, fieldKey);
             SetCollisionScriptExclusiveRequestSent(currentTime, portalIndex, portal.delay ?? 0);
             RegisterPortalCollisionRequestSource(portalIndex);
             return true;
         }
 
-        private string DispatchCollisionScriptPortalRequest(byte[] payload, string portalName, float playerX, float playerY)
+        private byte ResolveCollisionScriptPortalFieldKey()
+        {
+            int mapId = _mapBoard?.MapInfo?.id ?? 0;
+            return _packetStageTransitionRuntime.TryGetAuthoritativeFieldKey(mapId, out byte fieldKey)
+                ? fieldKey
+                : PortalCollisionScriptRequestCodec.SyntheticFieldKey;
+        }
+
+        private string DispatchCollisionScriptPortalRequest(byte[] payload, string portalName, float playerX, float playerY, byte fieldKey)
         {
             payload ??= Array.Empty<byte>();
             string summary =
                 $"Recorded CUserLocal::CheckPortal_Collision opcode {PortalCollisionScriptRequestCodec.Opcode} " +
                 $"for CollisionScript portal '{portalName?.Trim()}' at ({(int)MathF.Round(playerX)}, {(int)MathF.Round(playerY)}) " +
-                $"with field key {PortalCollisionScriptRequestCodec.SyntheticFieldKey}.";
+                $"with field key {fieldKey}.";
 
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
                 PortalCollisionScriptRequestCodec.Opcode,
@@ -26880,9 +27169,10 @@ namespace HaCreator.MapSimulator
             }
 
 
-            bool allowLocalPreview = !_guildBossOfficialSessionBridge.IsRunning
-                && !_guildBossOfficialSessionBridge.HasAttachedClient
-                && !_guildBossTransport.HasConnectedClients;
+            bool officialSessionBridgeHoldsOwnership = HoldsGuildBossOfficialSessionBridgeOwnership();
+            bool allowLocalPreview = ShouldAllowLocalGuildBossPulleyPreview(
+                officialSessionBridgeHoldsOwnership,
+                _guildBossTransport.HasConnectedClients);
             if (!guildBoss.TryHandleLocalPulleyAttack(attackHitbox, currentTime, allowLocalPreview, out string message))
             {
                 return;
@@ -26891,7 +27181,7 @@ namespace HaCreator.MapSimulator
 
             if (!allowLocalPreview && guildBoss.TryConsumePulleyPacketRequest(out GuildBossField.PulleyPacketRequest request))
             {
-                if (_guildBossOfficialSessionBridge.IsRunning || _guildBossOfficialSessionBridge.HasAttachedClient)
+                if (officialSessionBridgeHoldsOwnership)
                 {
                     if (_guildBossOfficialSessionBridge.TrySendOrQueuePulleyRequest(request, out bool queued, out string sessionStatus))
                     {
@@ -29964,7 +30254,8 @@ namespace HaCreator.MapSimulator
             Rectangle worldBounds,
             short startDelayUnits = 0,
             int elementAttribute = 0,
-            int phase = 0)
+            int phase = 0,
+            bool preferPvpLevelData = false)
         {
             return _affectedAreaPool?.Upsert(
                 new AffectedAreaCreateInfo(
@@ -29978,7 +30269,8 @@ namespace HaCreator.MapSimulator
                     startDelayUnits,
                     elementAttribute,
                     phase,
-                    AffectedAreaSourceKind.PlayerSkill),
+                    AffectedAreaSourceKind.PlayerSkill,
+                    preferPvpLevelData),
                 Environment.TickCount) == true;
         }
 

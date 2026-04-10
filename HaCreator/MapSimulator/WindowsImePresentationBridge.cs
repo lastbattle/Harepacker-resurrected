@@ -14,6 +14,16 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryUpdatePlacement(IntPtr windowHandle, UI.SkillMacroImeWindowPlacement placement)
         {
+            return TryUpdatePlacement(windowHandle, placement, null, out _);
+        }
+
+        internal static bool TryUpdatePlacement(
+            IntPtr windowHandle,
+            UI.SkillMacroImeWindowPlacement placement,
+            ImeCandidateListState state,
+            out ImeCandidateListState refreshedState)
+        {
+            refreshedState = state ?? ImeCandidateListState.Empty;
             if (windowHandle == IntPtr.Zero)
             {
                 return false;
@@ -46,6 +56,11 @@ namespace HaCreator.MapSimulator
                     };
 
                     updated = ImmSetCandidateWindow(inputContext, ref candidateForm) || updated;
+                }
+
+                if (TryReadCandidateWindowForm(inputContext, state, out ImeCandidateListState liveState))
+                {
+                    refreshedState = liveState;
                 }
 
                 return updated;
@@ -124,39 +139,56 @@ namespace HaCreator.MapSimulator
 
             try
             {
-                CANDIDATEFORM candidateForm = new()
-                {
-                    dwIndex = (uint)state.ListIndex
-                };
-
-                if (!ImmGetCandidateWindow(inputContext, (uint)state.ListIndex, ref candidateForm))
-                {
-                    return false;
-                }
-
-                int areaWidth = Math.Max(0, candidateForm.rcArea.right - candidateForm.rcArea.left);
-                int areaHeight = Math.Max(0, candidateForm.rcArea.bottom - candidateForm.rcArea.top);
-                refreshedState = new ImeCandidateListState(
-                    state.Candidates,
-                    state.PageStart,
-                    state.PageSize,
-                    state.Selection,
-                    state.Vertical,
-                    state.ListIndex,
-                    new ImeCandidateWindowForm(
-                        candidateForm.dwStyle,
-                        candidateForm.ptCurrentPos.x,
-                        candidateForm.ptCurrentPos.y,
-                        candidateForm.rcArea.left,
-                        candidateForm.rcArea.top,
-                        areaWidth,
-                        areaHeight));
-                return true;
+                return TryReadCandidateWindowForm(inputContext, state, out refreshedState);
             }
             finally
             {
                 ImmReleaseContext(windowHandle, inputContext);
             }
+        }
+
+        private static bool TryReadCandidateWindowForm(
+            IntPtr inputContext,
+            ImeCandidateListState state,
+            out ImeCandidateListState refreshedState)
+        {
+            refreshedState = state ?? ImeCandidateListState.Empty;
+            if (inputContext == IntPtr.Zero
+                || state == null
+                || !state.HasCandidates
+                || state.ListIndex < 0)
+            {
+                return false;
+            }
+
+            CANDIDATEFORM candidateForm = new()
+            {
+                dwIndex = (uint)state.ListIndex
+            };
+
+            if (!ImmGetCandidateWindow(inputContext, (uint)state.ListIndex, ref candidateForm))
+            {
+                return false;
+            }
+
+            int areaWidth = Math.Max(0, candidateForm.rcArea.right - candidateForm.rcArea.left);
+            int areaHeight = Math.Max(0, candidateForm.rcArea.bottom - candidateForm.rcArea.top);
+            refreshedState = new ImeCandidateListState(
+                state.Candidates,
+                state.PageStart,
+                state.PageSize,
+                state.Selection,
+                state.Vertical,
+                state.ListIndex,
+                new ImeCandidateWindowForm(
+                    candidateForm.dwStyle,
+                    candidateForm.ptCurrentPos.x,
+                    candidateForm.ptCurrentPos.y,
+                    candidateForm.rcArea.left,
+                    candidateForm.rcArea.top,
+                    areaWidth,
+                    areaHeight));
+            return true;
         }
 
         private static POINT CreatePoint(Point point) => new() { x = point.X, y = point.Y };

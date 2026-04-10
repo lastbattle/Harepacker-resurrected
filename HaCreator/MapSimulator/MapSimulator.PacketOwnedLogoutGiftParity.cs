@@ -805,6 +805,11 @@ namespace HaCreator.MapSimulator
                 minimumHexWidth: 4);
         }
 
+        internal static LoginUtilityDialogFrameVariant ResolvePacketOwnedLogoutGiftCompletionDialogFrameVariant()
+        {
+            return LoginUtilityDialogFrameVariant.UtilDlgNotice;
+        }
+
         private string ShowPacketOwnedLogoutGiftCompletionDialog()
         {
             string completionMessage = BuildPacketOwnedLogoutGiftCompletionMessage();
@@ -815,6 +820,7 @@ namespace HaCreator.MapSimulator
                     completionMessage,
                     LoginUtilityDialogButtonLayout.Ok,
                     LoginUtilityDialogAction.LogoutGiftCompletion,
+                    frameVariant: ResolvePacketOwnedLogoutGiftCompletionDialogFrameVariant(),
                     trackDirectionModeOwner: true);
                 return
                     $"Surfaced the client follow-up util dialog through the shared LoginUtilityDialog owner (StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)}): {completionMessage}";

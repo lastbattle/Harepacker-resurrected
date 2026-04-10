@@ -65,6 +65,13 @@ namespace HaCreator.MapSimulator.UI
             public int DiscountRate { get; init; }
         }
 
+        private sealed class CashInventoryMutationPacketSnapshot
+        {
+            public int Quantity { get; init; }
+            public int SlotIndex { get; init; }
+            public int ItemId { get; init; }
+        }
+
         private const int CashItemInfoPacketByteLength = 55;
         private const int GiftListPacketByteLength = 98;
 
@@ -1431,26 +1438,116 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _ = reader.ReadByte();
-            string firstString = TryReadMapleString(reader, out string decodedString)
+            string actorLabel = TryReadMapleString(reader, out string decodedString)
                 ? SanitizePacketString(decodedString, isGiftCoupon ? "coupon recipient" : "coupon code")
                 : string.Empty;
-            int value = stream.Length - stream.Position >= sizeof(int)
+            int lockerItemCount = stream.Length - stream.Position >= sizeof(byte)
+                ? Math.Max(0, (int)reader.ReadByte())
+                : 0;
+            List<CashItemInfoPacketSnapshot> lockerSnapshots = new(lockerItemCount);
+            for (int i = 0; i < lockerItemCount; i++)
+            {
+                if (!TryReadCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
+                {
+                    return false;
+                }
+
+                lockerSnapshots.Add(snapshot);
+            }
+
+            int totalMaplePoint = stream.Length - stream.Position >= sizeof(int)
                 ? Math.Max(0, reader.ReadInt32())
                 : 0;
+            List<CashInventoryMutationPacketSnapshot> inventorySnapshots = new();
+            int totalMeso = 0;
+            if (!isGiftCoupon)
+            {
+                if (stream.Length - stream.Position < sizeof(int))
+                {
+                    return false;
+                }
+
+                int inventoryMutationCount = Math.Max(0, reader.ReadInt32());
+                for (int i = 0; i < inventoryMutationCount; i++)
+                {
+                    if (!TryReadCashInventoryMutationPacketSnapshot(reader, out CashInventoryMutationPacketSnapshot inventorySnapshot))
+                    {
+                        return false;
+                    }
+
+                    inventorySnapshots.Add(inventorySnapshot);
+                }
+
+                totalMeso = stream.Length - stream.Position >= sizeof(int)
+                    ? Math.Max(0, reader.ReadInt32())
+                    : 0;
+            }
+
+            if (lockerSnapshots.Count > 0)
+            {
+                for (int i = lockerSnapshots.Count - 1; i >= 0; i--)
+                {
+                    PacketCatalogEntry lockerEntry = BuildCashItemInfoPacketEntry(
+                        lockerSnapshots[i],
+                        isGiftCoupon ? "Gift coupon item" : "Coupon item",
+                        "CCSWnd_Locker",
+                        isGiftCoupon ? "Gift coupon" : "Coupon");
+                    UpsertCashLockerPacketEntry(lockerEntry);
+                    AppendCashPacketCatalogEntry("Packet coupons", "Coupon", lockerEntry);
+                }
+
+                _cashLockerItemCount = Math.Max(_cashLockerItemCount + lockerSnapshots.Count, _cashLockerPacketEntries.Count);
+            }
+
+            if (!isGiftCoupon)
+            {
+                _cashInventoryPacketEntries.Clear();
+                foreach (CashInventoryMutationPacketSnapshot inventorySnapshot in inventorySnapshots)
+                {
+                    PacketCatalogEntry inventoryEntry = BuildCashInventoryMutationPacketEntry(inventorySnapshot, "Coupon");
+                    _cashInventoryPacketEntries.Add(inventoryEntry);
+                    AppendCashPacketCatalogEntry("Packet coupons", "Coupon", ClonePacketCatalogEntry(inventoryEntry, "Coupon"));
+                }
+            }
+
+            string countSummary = BuildCashCouponCountSummary(lockerSnapshots.Count, inventorySnapshots.Count, totalMaplePoint, totalMeso);
+            string firstLockerDetail = lockerSnapshots.Count > 0
+                ? DescribeCashItemInfoPacketSnapshot(lockerSnapshots[0], includeSerialNumber: true)
+                : string.Empty;
+            string firstInventoryDetail = inventorySnapshots.Count > 0
+                ? BuildCashInventoryMutationPacketEntry(inventorySnapshots[0], "Coupon").Detail
+                : string.Empty;
             _cashCouponLastSummary = isGiftCoupon
-                ? (string.IsNullOrWhiteSpace(firstString)
+                ? (string.IsNullOrWhiteSpace(actorLabel)
                     ? "Gift coupon registration completed inside the dedicated Cash Shop status owner."
-                    : $"Gift coupon registration completed for {firstString}.")
-                : (string.IsNullOrWhiteSpace(firstString)
+                    : $"Gift coupon registration completed for {actorLabel}.")
+                : (string.IsNullOrWhiteSpace(actorLabel)
                     ? "Coupon registration completed inside the dedicated Cash Shop status owner."
-                    : $"Coupon registration completed for {firstString}.")
-                    + (value > 0 ? $" Packet value {value.ToString(CultureInfo.InvariantCulture)} was acknowledged." : string.Empty);
+                    : $"Coupon registration completed for {actorLabel}.");
+            if (!string.IsNullOrWhiteSpace(countSummary))
+            {
+                _cashCouponLastSummary += $" {countSummary}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(firstLockerDetail))
+            {
+                _cashCouponLastSummary += $" First locker row: {firstLockerDetail}.";
+            }
+            else if (!string.IsNullOrWhiteSpace(firstInventoryDetail))
+            {
+                _cashCouponLastSummary += $" First inventory row: {firstInventoryDetail}";
+            }
+
             AppendCashPacketCatalogEntry("Packet coupons", "Coupon", new PacketCatalogEntry
             {
                 Title = isGiftCoupon ? "Gift coupon" : "Coupon",
                 Detail = _cashCouponLastSummary,
-                Seller = string.IsNullOrWhiteSpace(firstString) ? "CCSWnd_Status" : firstString,
-                PriceLabel = value > 0 ? value.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                Seller = string.IsNullOrWhiteSpace(actorLabel) ? "CCSWnd_Status" : actorLabel,
+                PriceLabel = totalMaplePoint > 0
+                    ? $"{totalMaplePoint.ToString("N0", CultureInfo.InvariantCulture)} MP"
+                    : totalMeso > 0
+                        ? $"{totalMeso.ToString("N0", CultureInfo.InvariantCulture)} mesos"
+                        : string.Empty,
                 StateLabel = isGiftCoupon ? "Gift coupon" : "Coupon"
             });
             _noticeState = _cashCouponLastSummary;
@@ -3173,6 +3270,16 @@ namespace HaCreator.MapSimulator.UI
                 parts.Add($"Serial {snapshot.SerialNumber.ToString(CultureInfo.InvariantCulture)}");
             }
 
+            if (snapshot.AccountId > 0)
+            {
+                parts.Add($"Account {snapshot.AccountId.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (snapshot.CharacterId > 0)
+            {
+                parts.Add($"Character {snapshot.CharacterId.ToString(CultureInfo.InvariantCulture)}");
+            }
+
             int itemId = Math.Max(0, snapshot.ItemId);
             int commodityId = Math.Max(0, snapshot.CommodityId);
             parts.Add(ResolveCashStageItemTitle(itemId, commodityId, "Item"));
@@ -3256,6 +3363,85 @@ namespace HaCreator.MapSimulator.UI
             {
                 return string.Empty;
             }
+        }
+
+        private static bool TryReadCashInventoryMutationPacketSnapshot(BinaryReader reader, out CashInventoryMutationPacketSnapshot snapshot)
+        {
+            snapshot = null;
+            if (reader == null)
+            {
+                return false;
+            }
+
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < (sizeof(short) * 2) + sizeof(int))
+            {
+                return false;
+            }
+
+            int quantity = Math.Max(0, (int)reader.ReadUInt16());
+            int slotIndex = Math.Max(0, (int)reader.ReadUInt16());
+            int itemId = Math.Max(0, reader.ReadInt32());
+            if (quantity <= 0 && itemId / 1_000_000 is not (2 or 3 or 4))
+            {
+                quantity = 1;
+            }
+
+            snapshot = new CashInventoryMutationPacketSnapshot
+            {
+                Quantity = Math.Max(1, quantity),
+                SlotIndex = slotIndex,
+                ItemId = itemId
+            };
+            return true;
+        }
+
+        private static PacketCatalogEntry BuildCashInventoryMutationPacketEntry(CashInventoryMutationPacketSnapshot snapshot, string stateLabel)
+        {
+            int itemId = Math.Max(0, snapshot?.ItemId ?? 0);
+            int slotIndex = Math.Max(0, snapshot?.SlotIndex ?? 0);
+            int quantity = Math.Max(1, snapshot?.Quantity ?? 1);
+            int inventoryTab = Math.Max(0, (itemId / 1_000_000) - 1);
+            string itemTitle = ResolveCashStageItemTitle(itemId, itemId, "Item");
+            return new PacketCatalogEntry
+            {
+                Title = itemTitle,
+                Detail = $"CCSWnd_Inventory focused tab {inventoryTab.ToString(CultureInfo.InvariantCulture)} slot {slotIndex.ToString(CultureInfo.InvariantCulture)} for {itemTitle} x{quantity.ToString(CultureInfo.InvariantCulture)}.",
+                Seller = "CCSWnd_Inventory",
+                PriceLabel = $"Slot {slotIndex.ToString(CultureInfo.InvariantCulture)}",
+                StateLabel = stateLabel,
+                ListingId = slotIndex,
+                ItemId = itemId,
+                Quantity = quantity
+            };
+        }
+
+        private static string BuildCashCouponCountSummary(int lockerItemCount, int inventoryMutationCount, int totalMaplePoint, int totalMeso)
+        {
+            List<string> parts = new();
+            if (lockerItemCount > 0)
+            {
+                parts.Add($"{lockerItemCount.ToString(CultureInfo.InvariantCulture)} locker row(s)");
+            }
+
+            if (inventoryMutationCount > 0)
+            {
+                parts.Add($"{inventoryMutationCount.ToString(CultureInfo.InvariantCulture)} inventory row(s)");
+            }
+
+            if (totalMaplePoint > 0)
+            {
+                parts.Add($"{totalMaplePoint.ToString("N0", CultureInfo.InvariantCulture)} Maple Point");
+            }
+
+            if (totalMeso > 0)
+            {
+                parts.Add($"{totalMeso.ToString("N0", CultureInfo.InvariantCulture)} mesos");
+            }
+
+            return parts.Count == 0
+                ? string.Empty
+                : $"Packet-owned coupon state acknowledged {string.Join(", ", parts)}.";
         }
 
         private string ResolveCashPurchaseRecordStateLabel(int commoditySerialNumber)

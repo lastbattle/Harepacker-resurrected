@@ -1309,7 +1309,7 @@ namespace HaCreator.MapSimulator.UI
                 ConditionRowLayout layout = BuildConditionRowLayout(line, x, y, maxWidth, rewardSection);
                 if (line.ItemId.HasValue && clipRect.Contains(mouseX, mouseY) && layout.IconBounds.Contains(mouseX, mouseY))
                 {
-                    return CreateHoveredQuestItem(line.ItemId.Value, line.Text);
+                    return CreateHoveredQuestItem(line.ItemId.Value, line.Text, line.ItemQuantity);
                 }
 
                 y = layout.NextY;
@@ -1798,11 +1798,12 @@ namespace HaCreator.MapSimulator.UI
             return texture;
         }
 
-        private HoveredQuestItemInfo CreateHoveredQuestItem(int itemId, string lineText)
+        private HoveredQuestItemInfo CreateHoveredQuestItem(int itemId, string lineText, int? quantity)
         {
             return new HoveredQuestItemInfo
             {
                 ItemId = itemId,
+                Quantity = quantity,
                 Title = ResolveItemName(itemId),
                 Subtitle = lineText,
                 Description = ResolveItemDescription(itemId),
@@ -1879,6 +1880,13 @@ namespace HaCreator.MapSimulator.UI
             InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(
                 _hoveredQuestItem.ItemId,
                 InventoryItemMetadataResolver.ResolveInventoryType(_hoveredQuestItem.ItemId));
+            string quantityLine = _hoveredQuestItem.Quantity.GetValueOrDefault(0) > 0
+                ? $"Quantity: {_hoveredQuestItem.Quantity.Value}"
+                : string.Empty;
+            string stackLine = InventoryItemMetadataResolver.TryResolveMaxStackForItem(_hoveredQuestItem.ItemId, out int maxStackSize)
+                               && maxStackSize > 1
+                ? $"Stack Max: {maxStackSize}"
+                : string.Empty;
 
             string[] wrappedTitle = WrapTooltipText(title, titleWidth);
             float titleHeight = wrappedTitle.Length * _font.LineSpacing;
@@ -1900,6 +1908,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 AddSection(metadata.EffectLines[i], new Color(180, 255, 210));
             }
+
+            AddSection(quantityLine, Color.White);
+            AddSection(stackLine, new Color(180, 255, 210));
 
             for (int i = 0; i < metadata.MetadataLines.Count; i++)
             {

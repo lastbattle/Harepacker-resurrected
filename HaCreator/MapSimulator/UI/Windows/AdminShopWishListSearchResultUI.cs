@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.UI
         private MouseState _previousMouseState;
         private int _selectedIndex;
         private int _pageIndex;
+        private int _ownerSessionToken;
         private bool _isRegisterConfirmationOpen;
         private bool _confirmAcceptFocused = true;
         private string _statusMessage = string.Empty;
@@ -142,6 +143,7 @@ namespace HaCreator.MapSimulator.UI
             _results = results ?? Array.Empty<AdminShopDialogUI.WishlistSearchResult>();
             _selectedIndex = -1;
             _pageIndex = UseOwnerSession ? _owner.GetWishlistSearchResultSessionPageIndex() : 0;
+            _ownerSessionToken = owner?.GetWishlistSearchResultSessionToken() ?? 0;
             _isRegisterConfirmationOpen = false;
             _confirmAcceptFocused = true;
             _statusMessage = owner?.GetStatusMessage() ?? string.Empty;
@@ -173,6 +175,7 @@ namespace HaCreator.MapSimulator.UI
             _results = Array.Empty<AdminShopDialogUI.WishlistSearchResult>();
             _selectedIndex = -1;
             _pageIndex = 0;
+            _ownerSessionToken = 0;
             _isRegisterConfirmationOpen = false;
             _confirmAcceptFocused = true;
             _statusMessage = string.Empty;
@@ -198,6 +201,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             PositionRelativeToOwner(_owner);
+            SyncOwnerSessionState();
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
             HandleKeyboardInput(keyboardState);
@@ -369,6 +373,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawDetailBlock(sprite, bounds, 0, "Select a staged result to review or register it.", Color.White);
                 DrawDetailBlock(sprite, bounds, 2, "CUIAdminShopWishListSearchResult starts with no row selected.", new Color(255, 233, 160));
+            }
+            else
+            {
+                DrawDetailBlock(sprite, bounds, 0, "No staged result rows are currently available.", Color.White);
+                DrawDetailBlock(sprite, bounds, 2, "The child owner now follows packet-owned session invalidation instead of showing a detached local copy.", new Color(255, 233, 160));
             }
 
             string status = string.IsNullOrWhiteSpace(_statusMessage)
@@ -713,6 +722,38 @@ namespace HaCreator.MapSimulator.UI
             {
                 Position = owner.Position;
             }
+        }
+
+        private void SyncOwnerSessionState()
+        {
+            if (_owner == null)
+            {
+                return;
+            }
+
+            int liveSessionToken = _owner.GetWishlistSearchResultSessionToken();
+            if (liveSessionToken == _ownerSessionToken)
+            {
+                return;
+            }
+
+            _ownerSessionToken = liveSessionToken;
+            _isRegisterConfirmationOpen = false;
+            _confirmAcceptFocused = true;
+            _statusMessage = _owner.GetStatusMessage();
+            if (_owner.HasWishlistSearchResultSession())
+            {
+                _pageIndex = _owner.GetWishlistSearchResultSessionPageIndex();
+                _selectedIndex = -1;
+            }
+            else
+            {
+                _results = Array.Empty<AdminShopDialogUI.WishlistSearchResult>();
+                _pageIndex = 0;
+                _selectedIndex = -1;
+            }
+
+            UpdateButtons();
         }
 
         private void DrawDetailLine(SpriteBatch sprite, Rectangle bounds, int lineIndex, string text, Color color)

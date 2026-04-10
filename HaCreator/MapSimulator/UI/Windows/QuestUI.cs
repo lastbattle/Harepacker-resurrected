@@ -80,6 +80,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
         private Texture2D _categoryLegendTexture;
         private Texture2D _categoryLegendInnerTexture;
+        private Point _categoryLegendInnerOrigin;
         private Texture2D[] _categoryLegendSheetTextures = Array.Empty<Texture2D>();
         private Texture2D[] _categoryExpandButtonTextures = Array.Empty<Texture2D>();
         private Texture2D[] _categoryCollapseButtonTextures = Array.Empty<Texture2D>();
@@ -281,10 +282,15 @@ namespace HaCreator.MapSimulator.UI
             UpdateTabStates();
         }
 
-        public void SetCategoryLegendTextures(Texture2D categoryLegendTexture, Texture2D categoryLegendInnerTexture, params Texture2D[] categoryLegendSheetTextures)
+        public void SetCategoryLegendTextures(
+            Texture2D categoryLegendTexture,
+            Texture2D categoryLegendInnerTexture,
+            Point categoryLegendInnerOrigin,
+            params Texture2D[] categoryLegendSheetTextures)
         {
             _categoryLegendTexture = categoryLegendTexture;
             _categoryLegendInnerTexture = categoryLegendInnerTexture;
+            _categoryLegendInnerOrigin = categoryLegendInnerOrigin;
             _categoryLegendSheetTextures = categoryLegendSheetTextures?
                 .Where(texture => texture != null)
                 .ToArray()
@@ -293,7 +299,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void SetCategoryLegendTexture(Texture2D categoryLegendTexture)
         {
-            SetCategoryLegendTextures(categoryLegendTexture, null);
+            SetCategoryLegendTextures(categoryLegendTexture, null, Point.Zero);
         }
 
         public void SetCategoryButtonTextures(Texture2D[] expandButtonTextures, Texture2D[] collapseButtonTextures)
@@ -922,6 +928,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            Rectangle backingRect = ResolveExpandedCategoryBackingRectangle(panelRect);
+            if (_categoryLegendInnerTexture != null && backingRect.Width > 0 && backingRect.Height > 0)
+            {
+                sprite.Draw(_categoryLegendInnerTexture, backingRect, Color.White);
+            }
+
             if (!HasClientCategoryButtonArt())
             {
                 sprite.Draw(_pixel, panelRect, new Color(7, 16, 29, 188));
@@ -1128,6 +1140,12 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 return new Rectangle(x, y, width, legendHeight);
+            }
+
+            if (_categoryLegendInnerTexture != null)
+            {
+                width = _categoryLegendInnerTexture.Width;
+                x = Position.X + Math.Max(0, ((CurrentFrame?.Width ?? width) - width) / 2);
             }
 
             int columnCount = GetCategoryColumnCount(width);
@@ -1492,9 +1510,11 @@ namespace HaCreator.MapSimulator.UI
         {
             if (HasClientCategoryButtonArt())
             {
-                int rowWidth = Math.Min(panelRect.Width, ClientCategoryRowWidth);
-                int rowX = panelRect.X + Math.Max(0, (panelRect.Width - rowWidth) / 2);
-                return new Rectangle(rowX, panelRect.Y + (rowIndex * ClientCategoryRowStride), rowWidth, ClientCategoryRowStride);
+                Rectangle backingRect = ResolveExpandedCategoryBackingRectangle(panelRect);
+                int rowWidth = Math.Min(backingRect.Width, ClientCategoryRowWidth);
+                int rowX = backingRect.X + Math.Max(0, (backingRect.Width - rowWidth) / 2);
+                int rowY = panelRect.Y + (rowIndex * ClientCategoryRowStride);
+                return new Rectangle(rowX, rowY, rowWidth, ClientCategoryRowStride);
             }
 
             int availableWidth = panelRect.Width - (CATEGORY_PANEL_PADDING * 2) - ((columnCount - 1) * CATEGORY_COLUMN_GAP);
@@ -1539,6 +1559,22 @@ namespace HaCreator.MapSimulator.UI
             int offsetY = _categoryLegendTexture != null
                 ? Math.Max(0, (_categoryLegendTexture.Height - _categoryLegendInnerTexture.Height) / 2)
                 : CATEGORY_PANEL_PADDING;
+            return new Rectangle(
+                panelRect.X + offsetX,
+                panelRect.Y + offsetY,
+                _categoryLegendInnerTexture.Width,
+                _categoryLegendInnerTexture.Height);
+        }
+
+        private Rectangle ResolveExpandedCategoryBackingRectangle(Rectangle panelRect)
+        {
+            if (_categoryLegendInnerTexture == null || panelRect.Width <= 0 || panelRect.Height <= 0)
+            {
+                return panelRect;
+            }
+
+            int offsetX = -_categoryLegendInnerOrigin.X;
+            int offsetY = -_categoryLegendInnerOrigin.Y;
             return new Rectangle(
                 panelRect.X + offsetX,
                 panelRect.Y + offsetY,
@@ -1782,7 +1818,8 @@ namespace HaCreator.MapSimulator.UI
                     Label = "Item",
                     Text = $"Item #{reward.ItemId} x{reward.Quantity}",
                     IsComplete = true,
-                    ItemId = reward.ItemId
+                    ItemId = reward.ItemId,
+                    ItemQuantity = reward.Quantity
                 });
             }
 
@@ -1856,7 +1893,7 @@ namespace HaCreator.MapSimulator.UI
                     Rectangle iconRect = new Rectangle(detailRect.X + 8, y, DETAIL_LINE_ICON_SIZE, DETAIL_LINE_ICON_SIZE);
                     if (iconRect.Contains(mouseX, mouseY))
                     {
-                        return CreateHoveredQuestItem(line.ItemId.Value, line.Text);
+                        return CreateHoveredQuestItem(line.ItemId.Value, line.Text, line.ItemQuantity);
                     }
                 }
 
@@ -1867,11 +1904,12 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
-        private HoveredQuestItemInfo CreateHoveredQuestItem(int itemId, string lineText)
+        private HoveredQuestItemInfo CreateHoveredQuestItem(int itemId, string lineText, int? quantity)
         {
             return new HoveredQuestItemInfo
             {
                 ItemId = itemId,
+                Quantity = quantity,
                 Title = ResolveItemName(itemId),
                 Subtitle = lineText,
                 Description = ResolveItemDescription(itemId),
@@ -1925,6 +1963,13 @@ namespace HaCreator.MapSimulator.UI
             InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(
                 _hoveredQuestItem.ItemId,
                 InventoryItemMetadataResolver.ResolveInventoryType(_hoveredQuestItem.ItemId));
+            string quantityLine = _hoveredQuestItem.Quantity.GetValueOrDefault(0) > 0
+                ? $"Quantity: {_hoveredQuestItem.Quantity.Value}"
+                : string.Empty;
+            string stackLine = InventoryItemMetadataResolver.TryResolveMaxStackForItem(_hoveredQuestItem.ItemId, out int maxStackSize)
+                               && maxStackSize > 1
+                ? $"Stack Max: {maxStackSize}"
+                : string.Empty;
 
             string[] wrappedTitle = WrapText(title, titleWidth, titleScale);
             float titleHeight = MeasureTooltipHeight(wrappedTitle, titleScale);
@@ -1946,6 +1991,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 AddSection(metadata.EffectLines[i], new Color(180, 255, 210));
             }
+
+            AddSection(quantityLine, Color.White);
+            AddSection(stackLine, new Color(180, 255, 210));
 
             for (int i = 0; i < metadata.MetadataLines.Count; i++)
             {
@@ -2510,6 +2558,7 @@ namespace HaCreator.MapSimulator.UI
     internal sealed class HoveredQuestItemInfo
     {
         public int ItemId { get; init; }
+        public int? Quantity { get; init; }
         public string Title { get; init; } = string.Empty;
         public string Subtitle { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;

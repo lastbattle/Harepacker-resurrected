@@ -203,6 +203,7 @@ namespace HaCreator.MapSimulator
             {
                 EnsureRockPaperScissorsOfficialSessionBridgeState(shouldRun: false);
                 EnsureMapTransferOfficialSessionBridgeState(shouldRun: false);
+                EnsureLocalOverlayPacketInboxState(shouldRun: false);
                 EnsureComboCounterPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
                 EnsureAdminShopPacketInboxState(shouldRun: false);
@@ -320,6 +321,8 @@ namespace HaCreator.MapSimulator
             DrainReactorPoolPacketInbox();
             DrainReactorPoolOfficialSessionBridge();
             DrainPacketFieldOfficialSessionBridge();
+            EnsureLocalOverlayPacketInboxState(shouldRun: true);
+            DrainLocalOverlayPacketInbox();
             EnsureComboCounterPacketInboxState(shouldRun: true);
             DrainComboCounterPacketInbox();
             UpdatePacketOwnedComboState(currTickCount);
@@ -352,6 +355,7 @@ namespace HaCreator.MapSimulator
             UpdateInitialQuizOwner(currTickCount);
             UpdateSpeedQuizOwner(currTickCount);
             UpdatePacketOwnedTutorRuntime(currTickCount);
+            UpdatePacketOwnedBattleshipCooldownLifecycle(currTickCount);
             SyncClientOwnedTutorialTutorOwner(currTickCount);
             UpdateVegaSpellOwnerState();
             UpdatePacketOwnedRadioSchedule(currTickCount);
@@ -370,6 +374,7 @@ namespace HaCreator.MapSimulator
                 HandlePacketOwnedQuestResultOverlayClose(npcOverlayResult.CloseKind);
                 HandleAnimationDisplayerOverlayClose(npcOverlayResult.CloseKind);
 
+                bool cakePieMouseConsumed = false;
                 bool memoryGameMouseConsumed = false;
                 bool tournamentMatchTableMouseConsumed = false;
                 if (npcOverlayResult.PrimaryActionEntry != null)
@@ -406,6 +411,29 @@ namespace HaCreator.MapSimulator
                     newMouseState.LeftButton == ButtonState.Released &&
                     _oldMouseState.LeftButton == ButtonState.Pressed &&
                     uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
+                    _specialFieldRuntime.SpecialEffects.CakePie.HandleMouseClick(
+                        new Point(newMouseState.X, newMouseState.Y),
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight,
+                        out string cakePieMouseMessage))
+                {
+                    cakePieMouseConsumed = true;
+                    if (!string.IsNullOrWhiteSpace(cakePieMouseMessage))
+                    {
+                        _chat.AddMessage(cakePieMouseMessage, new Color(255, 228, 151), currTickCount);
+                    }
+                }
+
+
+                if (!initialQuizMouseConsumed &&
+                    !speedQuizMouseConsumed &&
+                    !dedicatedOwnerMouseConsumed &&
+                    !npcOverlayResult.Consumed &&
+                    !tournamentMatchTableMouseConsumed &&
+                    !cakePieMouseConsumed &&
+                    newMouseState.LeftButton == ButtonState.Released &&
+                    _oldMouseState.LeftButton == ButtonState.Pressed &&
+                    uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
                     _specialFieldRuntime.Minigames.MemoryGame.HandleMouseClick(
                         new Point(newMouseState.X, newMouseState.Y),
                         _renderParams.RenderWidth,
@@ -424,6 +452,7 @@ namespace HaCreator.MapSimulator
                 if (!initialQuizMouseConsumed &&
                     !dedicatedOwnerMouseConsumed &&
                     !npcOverlayResult.Consumed &&
+                    !cakePieMouseConsumed &&
                     !memoryGameMouseConsumed &&
                     !tournamentMatchTableMouseConsumed)
                 {

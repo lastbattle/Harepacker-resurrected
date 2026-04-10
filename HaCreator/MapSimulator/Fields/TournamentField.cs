@@ -776,6 +776,12 @@ namespace HaCreator.MapSimulator.Fields
         private const int InitialScroll = 2;
         private const int MaxScroll = (EntrantCount / VisibleEntrantCount) - 1;
         private const int MatchTableDialogTitleStringPoolId = 0x752;
+        private const int MatchTableSurfaceStringPoolId = 0x753;
+        private const int MatchTableUpButtonStringPoolId = 0x754;
+        private const int MatchTableDownButtonStringPoolId = 0x755;
+        private const int MatchTableCloseButtonStringPoolId = 0x746;
+        private const int MatchTableStateBadgeStringPoolId = 0x75B;
+        private const int MatchTableStateBadgeStride = 103;
         private const string DialogTitleFallback = "Tournament Match Table";
 
         private static readonly Point[] RoundOneNamePoints =
@@ -829,11 +835,20 @@ namespace HaCreator.MapSimulator.Fields
         public string Summary { get; private set; }
         public string DialogTitle { get; private set; }
         public int DialogTitleStringPoolId => IsVisible ? MatchTableDialogTitleStringPoolId : 0;
+        public int SurfaceStringPoolId => IsVisible ? MatchTableSurfaceStringPoolId : 0;
+        public int UpButtonStringPoolId => IsVisible ? MatchTableUpButtonStringPoolId : 0;
+        public int DownButtonStringPoolId => IsVisible ? MatchTableDownButtonStringPoolId : 0;
+        public int CloseButtonStringPoolId => IsVisible ? MatchTableCloseButtonStringPoolId : 0;
+        public int StateBadgeStringPoolId => IsVisible ? MatchTableStateBadgeStringPoolId : 0;
         public IReadOnlyList<string> SlotNames => _slotNames;
         public bool HasExactCtorPayloadShape => PayloadLength == ExactPayloadLength && _rawTable.Length == RawTableByteCount;
         public string StageLabel => ResolveStateLabel();
         public int EntrantCapacity => EntrantCount;
         public int VisibleSlotOffset => Scroll * VisibleEntrantCount;
+        public bool UsesRecoveredStateBadgeSeam => IsVisible && Scroll == InitialScroll && Stage >= MatchTableStatusMin && Stage <= MatchTableStatusMax;
+        public int? StateBadgeSourceYOffset => UsesRecoveredStateBadgeSeam
+            ? MatchTableStateBadgeStride * (MatchTableStatusMax - Stage)
+            : null;
 
         public void Reset()
         {
@@ -879,7 +894,7 @@ namespace HaCreator.MapSimulator.Fields
                 firstNames = "no printable entrant names recovered";
             }
 
-            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), decodedCapacity={EntrantCapacity} entrants x {EntryValueCount} ints, state-byte={Stage} [{StageLabel}], title StringPool=0x{DialogTitleStringPoolId:X}, title=\"{DialogTitle}\", scroll={Scroll}, visibleOffset={VisibleSlotOffset}, preview={firstNames}).";
+            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), decodedCapacity={EntrantCapacity} entrants x {EntryValueCount} ints, state-byte={Stage} [{StageLabel}], title StringPool=0x{DialogTitleStringPoolId:X}, title=\"{DialogTitle}\", surface StringPool=0x{SurfaceStringPoolId:X}, stateBadge={DescribeStateBadgeSeam()}, buttons up/down/close=0x{UpButtonStringPoolId:X}/0x{DownButtonStringPoolId:X}/0x{CloseButtonStringPoolId:X}, scroll={Scroll}, visibleOffset={VisibleSlotOffset}, preview={firstNames}).";
             summary = Summary;
             return true;
         }
@@ -917,7 +932,7 @@ namespace HaCreator.MapSimulator.Fields
                 names = "none recovered";
             }
 
-            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | exactCtorShape={HasExactCtorPayloadShape} | capacity={EntrantCapacity} entrants x {EntryValueCount} ints | state-byte={Stage} [{StageLabel}] | title=0x{DialogTitleStringPoolId:X} \"{DialogTitle}\" | scroll={Scroll} | visibleOffset={VisibleSlotOffset} | entrants={names}";
+            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | exactCtorShape={HasExactCtorPayloadShape} | capacity={EntrantCapacity} entrants x {EntryValueCount} ints | state-byte={Stage} [{StageLabel}] | title=0x{DialogTitleStringPoolId:X} \"{DialogTitle}\" | surface=0x{SurfaceStringPoolId:X} | stateBadge={DescribeStateBadgeSeam()} | buttons up/down/close=0x{UpButtonStringPoolId:X}/0x{DownButtonStringPoolId:X}/0x{CloseButtonStringPoolId:X} | scroll={Scroll} | visibleOffset={VisibleSlotOffset} | entrants={names}";
         }
 
         public int GetMatchValue(int slotIndex, int valueIndex)
@@ -1380,12 +1395,22 @@ namespace HaCreator.MapSimulator.Fields
         {
             return Stage switch
             {
-                2 => "round-of-8",
-                3 => "final-4",
-                4 => "semi-final",
-                5 => "champion",
+                2 => "state-2 (badge row 3)",
+                3 => "state-3 (badge row 2)",
+                4 => "state-4 (badge row 1)",
+                5 => "state-5 (badge row 0)",
                 _ => "raw"
             };
+        }
+
+        private string DescribeStateBadgeSeam()
+        {
+            if (!UsesRecoveredStateBadgeSeam || !StateBadgeSourceYOffset.HasValue)
+            {
+                return "none";
+            }
+
+            return $"0x{StateBadgeStringPoolId:X}@y={StateBadgeSourceYOffset.Value}";
         }
 
         private static string ResolveDialogTitle()

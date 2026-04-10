@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator
         private bool _initialQuizOwnerHoveringOkButton;
         private bool _initialQuizOwnerPressedOkButton;
         private bool _initialQuizOwnerResultSent;
+        private bool _initialQuizOwnerTimeoutCloseArmed;
         private InitialQuizOwnerFocusTarget _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
 
         private sealed record InitialQuizAnimationFrame(Texture2D Texture, int DelayMs);
@@ -74,14 +75,15 @@ namespace HaCreator.MapSimulator
                 payload,
                 currTickCount,
                 ResolveInitialQuizOwnerRuntimeCharacterId(),
+                out InitialQuizOwnerApplyDisposition disposition,
                 out message);
             if (applied)
             {
-                if (_initialQuizTimerRuntime.IsActive(currTickCount))
+                if (disposition == InitialQuizOwnerApplyDisposition.Started)
                 {
                     ResetInitialQuizOwnerInputState(currTickCount);
                 }
-                else
+                else if (disposition == InitialQuizOwnerApplyDisposition.Cleared)
                 {
                     ClearInitialQuizOwnerInputState();
                 }
@@ -117,6 +119,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerHoveringOkButton = false;
             _initialQuizOwnerPressedOkButton = false;
             _initialQuizOwnerResultSent = false;
+            _initialQuizOwnerTimeoutCloseArmed = false;
             _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
         }
 
@@ -127,6 +130,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerHoveringOkButton = false;
             _initialQuizOwnerPressedOkButton = false;
             _initialQuizOwnerResultSent = false;
+            _initialQuizOwnerTimeoutCloseArmed = false;
             _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
         }
 
@@ -138,8 +142,21 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (snapshot.RemainingMs > 0 || _initialQuizOwnerResultSent)
+            InitialQuizOwnerTimeoutBehavior timeoutBehavior = ResolveInitialQuizOwnerTimeoutBehavior(
+                snapshot.RemainingMs,
+                _initialQuizOwnerResultSent,
+                _initialQuizOwnerTimeoutCloseArmed);
+            if (timeoutBehavior == InitialQuizOwnerTimeoutBehavior.Wait)
             {
+                _initialQuizOwnerTimeoutCloseArmed = false;
+                return;
+            }
+
+            if (timeoutBehavior == InitialQuizOwnerTimeoutBehavior.ArmClose)
+            {
+                _initialQuizOwnerTimeoutCloseArmed = true;
+                _initialQuizOwnerPressedOkButton = false;
+                _initialQuizOwnerHoveringOkButton = false;
                 return;
             }
 
@@ -769,6 +786,21 @@ namespace HaCreator.MapSimulator
                 : InitialQuizOwnerFocusTarget.Input;
         }
 
+        internal static InitialQuizOwnerTimeoutBehavior ResolveInitialQuizOwnerTimeoutBehavior(
+            int remainingMs,
+            bool resultSent,
+            bool timeoutCloseArmed)
+        {
+            if (resultSent || remainingMs > 0)
+            {
+                return InitialQuizOwnerTimeoutBehavior.Wait;
+            }
+
+            return timeoutCloseArmed
+                ? InitialQuizOwnerTimeoutBehavior.SubmitAndClose
+                : InitialQuizOwnerTimeoutBehavior.ArmClose;
+        }
+
         internal static InitialQuizOwnerButtonVisualState ResolveInitialQuizOwnerButtonVisualState(bool enabled, bool pressed, bool hover, bool keyFocused)
         {
             if (!enabled)
@@ -1109,6 +1141,13 @@ namespace HaCreator.MapSimulator
         internal sealed record InitialQuizOwnerSubmissionValidation(bool CanSubmit, string NoticeMessage, bool RefocusInput)
         {
             internal static InitialQuizOwnerSubmissionValidation Accepted { get; } = new(true, null, false);
+        }
+
+        internal enum InitialQuizOwnerTimeoutBehavior
+        {
+            Wait,
+            ArmClose,
+            SubmitAndClose
         }
     }
 }

@@ -600,7 +600,8 @@ namespace HaCreator.MapSimulator.UI
                 return top;
             }
 
-            int styleIndex = ResolveEntryStyleIndex(entry.Tone);
+            int labelStyleIndex = ResolveEntryLabelStyleIndex(entry);
+            int valueStyleIndex = ResolveEntryValueStyleIndex(entry);
             string label = entry.Label?.Trim() ?? string.Empty;
             string value = entry.Value?.Trim() ?? string.Empty;
             bool hasLabel = !string.IsNullOrWhiteSpace(label);
@@ -615,7 +616,7 @@ namespace HaCreator.MapSimulator.UI
                     ClientCollectionLabelLaneLeft,
                     top,
                     ClientCollectionLabelLaneWidth,
-                    styleIndex,
+                    labelStyleIndex,
                     CollectionBookTextAlignment.Left,
                     CollectionBookRecordRole.Label,
                     measureTextWidth);
@@ -625,12 +626,12 @@ namespace HaCreator.MapSimulator.UI
                     ClientCollectionValueLaneLeft,
                     top,
                     ClientCollectionValueLaneWidth,
-                    styleIndex,
+                    valueStyleIndex,
                     CollectionBookTextAlignment.Right,
                     CollectionBookRecordRole.Value,
                     measureTextWidth);
-                int labelBottom = GetWrappedRecordBottom(label, top, ClientCollectionLabelLaneWidth, styleIndex, measureTextWidth);
-                int valueBottom = GetWrappedRecordBottom(value, top, ClientCollectionValueLaneWidth, styleIndex, measureTextWidth);
+                int labelBottom = GetWrappedRecordBottom(label, top, ClientCollectionLabelLaneWidth, labelStyleIndex, measureTextWidth);
+                int valueBottom = GetWrappedRecordBottom(value, top, ClientCollectionValueLaneWidth, valueStyleIndex, measureTextWidth);
                 bottom = Math.Max(labelBottom, valueBottom);
                 return bottom;
             }
@@ -643,11 +644,11 @@ namespace HaCreator.MapSimulator.UI
                     ClientCollectionTextLaneLeft,
                     top,
                     ClientCollectionTextLaneWidthInt,
-                    styleIndex,
+                    labelStyleIndex,
                     CollectionBookTextAlignment.Left,
                     CollectionBookRecordRole.Label,
                     measureTextWidth);
-                bottom = GetWrappedRecordBottom(label, top, ClientCollectionTextLaneWidthInt, styleIndex, measureTextWidth);
+                bottom = GetWrappedRecordBottom(label, top, ClientCollectionTextLaneWidthInt, labelStyleIndex, measureTextWidth);
             }
             else if (hasValue)
             {
@@ -657,11 +658,11 @@ namespace HaCreator.MapSimulator.UI
                     ClientCollectionTextLaneLeft,
                     top,
                     ClientCollectionTextLaneWidthInt,
-                    styleIndex,
+                    valueStyleIndex,
                     CollectionBookTextAlignment.Right,
                     CollectionBookRecordRole.Value,
                     measureTextWidth);
-                bottom = GetWrappedRecordBottom(value, top, ClientCollectionTextLaneWidthInt, styleIndex, measureTextWidth);
+                bottom = GetWrappedRecordBottom(value, top, ClientCollectionTextLaneWidthInt, valueStyleIndex, measureTextWidth);
             }
 
             return bottom;
@@ -726,7 +727,8 @@ namespace HaCreator.MapSimulator.UI
                 return top;
             }
 
-            int styleIndex = ResolveEntryStyleIndex(entry.Tone);
+            int labelStyleIndex = ResolveEntryLabelStyleIndex(entry);
+            int valueStyleIndex = ResolveEntryValueStyleIndex(entry);
             string label = entry.Label?.Trim() ?? string.Empty;
             string value = entry.Value?.Trim() ?? string.Empty;
             bool hasLabel = !string.IsNullOrWhiteSpace(label);
@@ -734,19 +736,19 @@ namespace HaCreator.MapSimulator.UI
 
             if (hasLabel && hasValue)
             {
-                int labelBottom = GetWrappedRecordBottom(label, top, ClientCollectionLabelLaneWidth, styleIndex, measureTextWidth);
-                int valueBottom = GetWrappedRecordBottom(value, top, ClientCollectionValueLaneWidth, styleIndex, measureTextWidth);
+                int labelBottom = GetWrappedRecordBottom(label, top, ClientCollectionLabelLaneWidth, labelStyleIndex, measureTextWidth);
+                int valueBottom = GetWrappedRecordBottom(value, top, ClientCollectionValueLaneWidth, valueStyleIndex, measureTextWidth);
                 return Math.Max(labelBottom, valueBottom);
             }
 
             if (hasLabel)
             {
-                return GetWrappedRecordBottom(label, top, ClientCollectionTextLaneWidthInt, styleIndex, measureTextWidth);
+                return GetWrappedRecordBottom(label, top, ClientCollectionTextLaneWidthInt, labelStyleIndex, measureTextWidth);
             }
 
             if (hasValue)
             {
-                return GetWrappedRecordBottom(value, top, ClientCollectionTextLaneWidthInt, styleIndex, measureTextWidth);
+                return GetWrappedRecordBottom(value, top, ClientCollectionTextLaneWidthInt, valueStyleIndex, measureTextWidth);
             }
 
             return top;
@@ -926,6 +928,18 @@ namespace HaCreator.MapSimulator.UI
                 CollectionBookEntryTone.Muted => 10,
                 _ => 2
             };
+        }
+
+        private static int ResolveEntryLabelStyleIndex(CollectionBookEntrySnapshot entry)
+        {
+            return string.IsNullOrWhiteSpace(entry?.Label) && !string.IsNullOrWhiteSpace(entry?.Value)
+                ? ResolveEntryValueStyleIndex(entry)
+                : 2;
+        }
+
+        private static int ResolveEntryValueStyleIndex(CollectionBookEntrySnapshot entry)
+        {
+            return ResolveEntryStyleIndex(entry?.Tone ?? CollectionBookEntryTone.Normal);
         }
 
         private static CollectionBookOwnerContextSnapshot CreateDefaultOwnerContext(CharacterBuild build)

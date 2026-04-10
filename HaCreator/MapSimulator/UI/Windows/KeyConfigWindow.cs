@@ -58,7 +58,8 @@ namespace HaCreator.MapSimulator.UI
                 byte packetEntryType = 0,
                 int packetEntryId = 0,
                 int packetScanCode = -1,
-                int packetBindableSlotIndex = -1)
+                int packetBindableSlotIndex = -1,
+                int packetPaletteSlotId = -1)
             {
                 HasClientOwner = hasClientOwner;
                 ClientFunctionId = clientFunctionId;
@@ -67,6 +68,7 @@ namespace HaCreator.MapSimulator.UI
                 PacketEntryId = packetEntryId;
                 PacketScanCode = packetScanCode;
                 PacketBindableSlotIndex = packetBindableSlotIndex;
+                PacketPaletteSlotId = packetPaletteSlotId;
             }
 
             public bool HasClientOwner { get; }
@@ -76,6 +78,7 @@ namespace HaCreator.MapSimulator.UI
             public int PacketEntryId { get; }
             public int PacketScanCode { get; }
             public int PacketBindableSlotIndex { get; }
+            public int PacketPaletteSlotId { get; }
             public bool HasPacketShortcutEntry => PacketEntryType != 0 && PacketEntryId > 0;
         }
 
@@ -606,12 +609,11 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_highlightTexture, bounds, selected ? new Color(92, 120, 190, 200) : new Color(32, 40, 54, 200));
 
             KeyBinding binding = GetBinding(row.Action);
-            Texture2D paletteTexture = row.PaletteSlotId >= 0 ? GetSelectedPaletteTexture(row.PaletteSlotId) : null;
+            int paletteSlotId = ResolveDisplayedPaletteSlotId(row);
+            Texture2D paletteTexture = GetSelectedPaletteTexture(paletteSlotId);
             ShortcutVisualState shortcutVisualState = ResolveShortcutVisualState(row.Action);
             int labelX = bounds.X + 8;
-            bool showShortcutVisual = _page == KeyConfigPage.Main
-                ? paletteTexture != null || shortcutVisualState.HasVisual
-                : shortcutVisualState.HasVisual;
+            bool showShortcutVisual = paletteTexture != null || shortcutVisualState.HasVisual;
             if (showShortcutVisual)
             {
                 Rectangle iconBounds = new(bounds.X + 6, bounds.Y + 3, 18, 18);
@@ -636,6 +638,8 @@ namespace HaCreator.MapSimulator.UI
             int footerY = Position.Y + (CurrentFrame?.Height ?? 374) - footerHeight - 10;
             Rectangle footerBounds = new(footerX, footerY, footerWidth, footerHeight);
             Rectangle infoBounds = new(footerBounds.X + padding, footerBounds.Y + padding, footerBounds.Width - (padding * 2), footerBounds.Height - (padding * 2));
+            int selectedPaletteSlotId = GetSelectedPaletteSlotId();
+            Texture2D selectedPaletteTexture = GetSelectedPaletteTexture(selectedPaletteSlotId);
             ShortcutVisualState selectedShortcutVisual = _selectedAction.HasValue
                 ? ResolveShortcutVisualState(_selectedAction.Value)
                 : default;
@@ -663,14 +667,15 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle previewBounds = new(infoBounds.X + 6, infoBounds.Y + 49, 40, 40);
             sprite.Draw(_highlightTexture, previewBounds, new Color(56, 68, 92, 215));
-            if (selectedShortcutVisual.HasVisual)
-            {
-                DrawShortcutVisualIcon(sprite, previewBounds, selectedShortcutVisual, compact: false);
-            }
+            DrawMainPageShortcutPreview(sprite, previewBounds, selectedPaletteTexture, selectedShortcutVisual);
 
-            string quickSlotText = selectedShortcutVisual.HasDetails
-                ? $"Live shortcut visual: {selectedShortcutVisual.Title}"
-                : "No live packet-owned shortcut visual is currently staged on this quick-slot row.";
+            string quickSlotText = selectedPaletteSlotId >= 0
+                ? selectedShortcutVisual.HasDetails
+                    ? $"Palette slot {selectedPaletteSlotId}: {GetPaletteSlotLabel(selectedPaletteSlotId)} plus live {selectedShortcutVisual.Title}"
+                    : $"Palette slot {selectedPaletteSlotId}: {GetPaletteSlotLabel(selectedPaletteSlotId)}"
+                : selectedShortcutVisual.HasDetails
+                    ? $"Live shortcut visual: {selectedShortcutVisual.Title}"
+                    : "No live packet-owned shortcut visual or recovered palette owner is currently staged on this quick-slot row.";
             sprite.DrawString(_font, quickSlotText, new Vector2(previewBounds.Right + 8, previewBounds.Y + 4), new Color(220, 220, 220), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
 
             string clientOwnerText = BuildClientOwnerStatusText();
@@ -873,20 +878,33 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetSelectedPaletteSlotId()
         {
-            if (_page != KeyConfigPage.Main || !_selectedAction.HasValue)
+            if (!_selectedAction.HasValue)
             {
                 return -1;
             }
 
-            foreach (BindingRow row in _bindingRows)
+            BindingRow? selectedRow = TryGetSelectedRow();
+            if (selectedRow is { } row)
             {
-                if (row.Action == _selectedAction.Value)
+                int rowPaletteSlotId = ResolveDisplayedPaletteSlotId(row);
+                if (rowPaletteSlotId >= 0)
                 {
-                    return row.PaletteSlotId;
+                    return rowPaletteSlotId;
                 }
             }
 
             return -1;
+        }
+
+        private int ResolveDisplayedPaletteSlotId(BindingRow row)
+        {
+            if (row.PaletteSlotId >= 0)
+            {
+                return row.PaletteSlotId;
+            }
+
+            ClientOwnerState ownerState = ResolveClientOwnerState(row.Action);
+            return ownerState.PacketPaletteSlotId;
         }
 
         private Texture2D GetSelectedPaletteTexture(int paletteSlotId)
@@ -1088,6 +1106,9 @@ namespace HaCreator.MapSimulator.UI
                 1 => $"skill {packetEntryId}",
                 2 => $"item {packetEntryId}",
                 3 => $"item {packetEntryId}",
+                4 => $"function {packetEntryId}",
+                5 => $"control {packetEntryId}",
+                6 => $"emotion {packetEntryId}",
                 7 => $"cash item {packetEntryId}",
                 8 => $"macro {packetEntryId}",
                 _ => $"entry {packetEntryId}",
@@ -1114,7 +1135,10 @@ namespace HaCreator.MapSimulator.UI
                     : ownerState.PacketScanCode >= 0
                         ? $"scan {ownerState.PacketScanCode}"
                         : "an unresolved shortcut slot";
-                return $"Packet-owned {DescribePacketEntry(ownerState.PacketEntryType, ownerState.PacketEntryId)} currently resolves to {FormatKey(ownerState.ClientKey)} through {ownerLocation}.";
+                string paletteText = ownerState.PacketPaletteSlotId >= 0
+                    ? $" and maps to palette slot {ownerState.PacketPaletteSlotId} ({GetPaletteSlotLabel(ownerState.PacketPaletteSlotId)})"
+                    : string.Empty;
+                return $"Packet-owned {DescribePacketEntry(ownerState.PacketEntryType, ownerState.PacketEntryId)} currently resolves to {FormatKey(ownerState.ClientKey)} through {ownerLocation}{paletteText}.";
             }
 
             return "This staged row is explicit in the simulator, but the packet-owned function map does not currently own it.";
@@ -1142,7 +1166,10 @@ namespace HaCreator.MapSimulator.UI
                 string slotText = ownerState.PacketBindableSlotIndex >= 0
                     ? $", slot {ownerState.PacketBindableSlotIndex + 1}"
                     : string.Empty;
-                return $"Client shortcut: {DescribePacketEntry(ownerState.PacketEntryType, ownerState.PacketEntryId)} on {FormatKey(ownerState.ClientKey)} ({scanText}{slotText}); footer uses the live shortcut owner visual.";
+                string footerText = ownerState.PacketPaletteSlotId >= 0
+                    ? $"footer uses palette slot {ownerState.PacketPaletteSlotId} ({GetPaletteSlotLabel(ownerState.PacketPaletteSlotId)}) before any live shortcut overlay"
+                    : "footer uses the live shortcut owner visual";
+                return $"Client shortcut: {DescribePacketEntry(ownerState.PacketEntryType, ownerState.PacketEntryId)} on {FormatKey(ownerState.ClientKey)} ({scanText}{slotText}); {footerText}.";
             }
 
             if (selectedRow is { ClientFunctionId: >= 0 })

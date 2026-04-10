@@ -31,7 +31,8 @@ namespace HaCreator.MapSimulator.Pools
             short startDelayUnits,
             int elementAttribute,
             int phase,
-            AffectedAreaSourceKind sourceKind)
+            AffectedAreaSourceKind sourceKind,
+            bool preferPvpLevelData = false)
         {
             ObjectId = objectId;
             Type = type;
@@ -43,6 +44,7 @@ namespace HaCreator.MapSimulator.Pools
             ElementAttribute = elementAttribute;
             Phase = phase;
             SourceKind = sourceKind;
+            PreferPvpLevelData = preferPvpLevelData;
         }
 
         public int ObjectId { get; }
@@ -55,6 +57,7 @@ namespace HaCreator.MapSimulator.Pools
         public int ElementAttribute { get; }
         public int Phase { get; }
         public AffectedAreaSourceKind SourceKind { get; }
+        public bool PreferPvpLevelData { get; }
     }
 
     public sealed class ActiveAffectedArea
@@ -269,18 +272,26 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
-            SkillLevelData levelData = ResolveSkillLevel(skill, createInfo.SkillLevel);
+            SkillLevelData levelData = RemoteAffectedAreaSupportResolver.ResolveRemoteAffectedAreaSkillLevel(
+                skill,
+                createInfo.SkillLevel,
+                createInfo.PreferPvpLevelData);
             int startTime = ResolveStartTime(currentTime, createInfo.StartDelayUnits);
             Func<int, SkillData> loadLinkedSkill = _skillLoader == null
                 ? null
                 : skillId => _skillLoader.LoadSkill(skillId);
+            Func<SkillData, int, SkillLevelData> resolveLevelData = (linkedSkill, linkedSkillLevel) =>
+                RemoteAffectedAreaSupportResolver.ResolveRemoteAffectedAreaSkillLevel(
+                    linkedSkill,
+                    linkedSkillLevel,
+                    createInfo.PreferPvpLevelData);
             PlayerSkillAreaMetadata metadata = ResolvePlayerSkillAreaMetadata(
                 skill,
                 levelData,
                 loadLinkedSkill,
                 affectedSkillId => _skillLoader?.FindAffectedSkillParentIds(affectedSkillId) ?? Array.Empty<int>(),
                 dummySkillId => _skillLoader?.FindDummySkillParentIds(dummySkillId) ?? Array.Empty<int>(),
-                ResolveSkillLevel,
+                resolveLevelData,
                 createInfo.SkillLevel);
             int expireTime = ResolveExpireTime(startTime, metadata.DurationSeconds);
 

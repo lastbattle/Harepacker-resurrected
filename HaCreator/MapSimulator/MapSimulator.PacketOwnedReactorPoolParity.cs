@@ -377,7 +377,7 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "clear", StringComparison.OrdinalIgnoreCase))
             {
-                _packetReactorPoolRuntime.Clear();
+                ClearPacketOwnedReactorPoolState();
                 return ChatCommandHandler.CommandResult.Ok($"{_packetReactorPoolRuntime.DescribeStatus()} {DescribeReactorPoolPacketInboxStatus()} {DescribeReactorTouchOutboxStatus()} {DescribeReactorPoolOfficialSessionBridgeStatus()}");
             }
 

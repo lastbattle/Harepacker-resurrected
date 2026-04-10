@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _selectedRowTexture;
         private readonly Texture2D _slotTexture;
         private readonly Texture2D[] _statusIcons;
+        private readonly Point[] _statusIconOffsets;
         private readonly Texture2D _todayTexture;
         private readonly Texture2D[] _calendarBackgroundTextures;
         private readonly Texture2D[] _calendarOverlayTextures;
@@ -75,7 +76,7 @@ namespace HaCreator.MapSimulator.UI
             string windowName,
             Texture2D normalRowTexture,
             Texture2D selectedRowTexture)
-            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>())
+            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), Array.Empty<Point>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>())
         {
         }
 
@@ -86,6 +87,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D selectedRowTexture,
             Texture2D slotTexture,
             Texture2D[] statusIcons,
+            Point[] statusIconOffsets,
             Texture2D todayTexture,
             Texture2D[] calendarBackgroundTextures,
             Texture2D[] calendarOverlayTextures,
@@ -99,6 +101,7 @@ namespace HaCreator.MapSimulator.UI
             _selectedRowTexture = selectedRowTexture ?? normalRowTexture;
             _slotTexture = slotTexture;
             _statusIcons = statusIcons ?? Array.Empty<Texture2D>();
+            _statusIconOffsets = statusIconOffsets ?? Array.Empty<Point>();
             _todayTexture = todayTexture;
             _calendarBackgroundTextures = calendarBackgroundTextures ?? Array.Empty<Texture2D>();
             _calendarOverlayTextures = calendarOverlayTextures ?? Array.Empty<Texture2D>();
@@ -345,7 +348,12 @@ namespace HaCreator.MapSimulator.UI
                 Texture2D statusIcon = ResolveStatusIcon(entry.Status);
                 if (statusIcon != null)
                 {
-                    Vector2 iconPosition = new(slotBounds.X + ((slotBounds.Width - statusIcon.Width) / 2f), slotBounds.Y + ((slotBounds.Height - statusIcon.Height) / 2f));
+                    Point iconOffset = ResolveStatusIconOffset(entry.Status);
+                    Point iconPositionPoint = ResolveStatusIconDrawPosition(
+                        slotBounds,
+                        iconOffset,
+                        new Point(statusIcon.Width, statusIcon.Height));
+                    Vector2 iconPosition = new(iconPositionPoint.X, iconPositionPoint.Y);
                     sprite.Draw(statusIcon, iconPosition, Color.White);
                 }
 
@@ -906,6 +914,35 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        private Point ResolveStatusIconOffset(EventEntryStatus status)
+        {
+            if (_statusIconOffsets.Length == 0)
+            {
+                return Point.Zero;
+            }
+
+            return status switch
+            {
+                EventEntryStatus.Start => GetStatusIconOffset(0),
+                EventEntryStatus.InProgress => GetStatusIconOffset(1),
+                EventEntryStatus.Clear => GetStatusIconOffset(2),
+                EventEntryStatus.Upcoming => GetStatusIconOffset(0),
+                _ => Point.Zero,
+            };
+        }
+
+        internal static Point ResolveStatusIconDrawPosition(Rectangle slotBounds, Point iconOffset, Point iconSize)
+        {
+            if (iconOffset != Point.Zero)
+            {
+                return new Point(slotBounds.X + iconOffset.X, slotBounds.Y + iconOffset.Y);
+            }
+
+            return new Point(
+                slotBounds.X + ((slotBounds.Width - iconSize.X) / 2),
+                slotBounds.Y + ((slotBounds.Height - iconSize.Y) / 2));
+        }
+
         private void SetCalendarMonth(DateTime month)
         {
             _calendarMonth = new DateTime(month.Year, month.Month, 1);
@@ -1402,6 +1439,13 @@ namespace HaCreator.MapSimulator.UI
             return index >= 0 && index < _statusIcons.Length
                 ? _statusIcons[index]
                 : null;
+        }
+
+        private Point GetStatusIconOffset(int index)
+        {
+            return index >= 0 && index < _statusIconOffsets.Length
+                ? _statusIconOffsets[index]
+                : Point.Zero;
         }
     }
 }

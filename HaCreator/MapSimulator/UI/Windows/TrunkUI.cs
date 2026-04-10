@@ -731,6 +731,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_currentTab == tabIndex)
+            {
+                UpdateTabStates();
+                return;
+            }
+
             SaveCurrentTabState();
             _currentTab = tabIndex;
             LoadCurrentTabState();
@@ -741,11 +747,22 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateTabStates()
         {
-            _tabEquip?.SetButtonState(_currentTab == 0 ? UIObjectState.Pressed : UIObjectState.Normal);
-            _tabUse?.SetButtonState(_currentTab == 1 ? UIObjectState.Pressed : UIObjectState.Normal);
-            _tabSetup?.SetButtonState(_currentTab == 2 ? UIObjectState.Pressed : UIObjectState.Normal);
-            _tabEtc?.SetButtonState(_currentTab == 3 ? UIObjectState.Pressed : UIObjectState.Normal);
-            _tabCash?.SetButtonState(_currentTab == 4 ? UIObjectState.Pressed : UIObjectState.Normal);
+            ApplyTabState(_tabEquip, _currentTab == 0);
+            ApplyTabState(_tabUse, _currentTab == 1);
+            ApplyTabState(_tabSetup, _currentTab == 2);
+            ApplyTabState(_tabEtc, _currentTab == 3);
+            ApplyTabState(_tabCash, _currentTab == 4);
+        }
+
+        private static void ApplyTabState(UIObject button, bool selected)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.SetEnabled(!selected);
+            button.SetButtonState(selected ? UIObjectState.Disabled : UIObjectState.Normal);
         }
 
         private void SelectStorageRow(int rowIndex)

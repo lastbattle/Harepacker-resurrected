@@ -96,6 +96,11 @@ namespace HaCreator.MapSimulator.Fields
             return hasPendingRequest && (leftKeyPressed || rightKeyPressed);
         }
 
+        public static bool CanHandleFreshUpKeyDown(bool hasAttachedPacketOwnedDriver)
+        {
+            return !hasAttachedPacketOwnedDriver;
+        }
+
         public static bool CanReplayHandleUpKeyDown(PassiveTransferFieldReplayState state)
         {
             return state.HasOneTimeActionCompleted

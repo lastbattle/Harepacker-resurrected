@@ -95,6 +95,18 @@ namespace HaCreator.MapSimulator
                 }
 
                 CharacterBuild targetBuild = pendingRequest?.Build ?? GetActiveMapTransferCharacterBuild();
+                MapTransferRuntimeRequest request = pendingRequest?.Request;
+                MapTransferRuntimeResponse predictedResponse = pendingRequest?.PredictedResponse;
+                if (request == null &&
+                    _mapTransferOfficialSessionBridge.TryResolveObservedRequest(previewResponse, out MapTransferRuntimeRequest observedRequest))
+                {
+                    request = NormalizeObservedOfficialMapTransferRequest(observedRequest);
+                    if (request != null)
+                    {
+                        predictedResponse = _mapTransferRuntime.PreviewRequest(targetBuild, request);
+                    }
+                }
+
                 bool applied = _mapTransferRuntime.ApplyMapTransferResultPayload(targetBuild, message.Payload, out MapTransferRuntimeResponse response);
                 if (!applied)
                 {
@@ -102,9 +114,8 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                MapTransferRuntimeRequest request = pendingRequest?.Request;
                 response = MapTransferOfficialSessionResultResolver.Resolve(
-                    pendingRequest?.PredictedResponse,
+                    predictedResponse,
                     response,
                     request);
                 if (response.Applied)
@@ -202,6 +213,7 @@ namespace HaCreator.MapSimulator
                     out bool ignoredTrailingLogoutGiftConfig,
                     out bool matchedExactTailBoundary,
                     out bool matchedKnownLeadingCharacterDataTail,
+                    out ulong matchedKnownLeadingSectionFlags,
                     out int matchedOpaquePreMapTransferByteCount,
                     out bool matchedKnownCharacterDataTail))
             {
@@ -219,7 +231,7 @@ namespace HaCreator.MapSimulator
                 ? " using the exact payload-tail boundary the client keeps after CharacterData::Decode"
                 : string.Empty;
             string knownLeadingSuffix = matchedKnownLeadingCharacterDataTail
-                ? " after consuming the client-owned skill, expiration, cooldown, quest-string, short-filetime, mini-game, or relationship lead-in that can sit immediately before adwMapTransfer"
+                ? FormatKnownLeadingCharacterDataTailSuffix(matchedKnownLeadingSectionFlags, matchedOpaquePreMapTransferByteCount)
                 : string.Empty;
             string knownTailSuffix = matchedKnownCharacterDataTail
                 ? " matched against a known CharacterData tail layout"
@@ -228,9 +240,95 @@ namespace HaCreator.MapSimulator
                 $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} from CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} at payload offset {matchedOffset.ToString(CultureInfo.InvariantCulture)}{logoutGiftSuffix}{tailBoundarySuffix}{knownLeadingSuffix}{knownTailSuffix}.";
         }
 
+        private static string FormatKnownLeadingCharacterDataTailSuffix(ulong matchedSectionFlags, int opaquePreMapTransferByteCount)
+        {
+            List<string> sections = new();
+            if ((matchedSectionFlags & 0x100000UL) != 0)
+            {
+                sections.Add("the pre-inventory two-int header");
+            }
+
+            if ((matchedSectionFlags & 0x100UL) != 0)
+            {
+                sections.Add("skill records");
+            }
+
+            if ((matchedSectionFlags & 0x200UL) != 0)
+            {
+                sections.Add("skill expirations");
+            }
+
+            if ((matchedSectionFlags & 0x4000UL) != 0)
+            {
+                sections.Add("skill cooltimes");
+            }
+
+            if ((matchedSectionFlags & 0x8000UL) != 0)
+            {
+                string opaqueSectionText = opaquePreMapTransferByteCount > 0
+                    ? $"the preserved opaque 0x8000 span ({opaquePreMapTransferByteCount.ToString(CultureInfo.InvariantCulture)} byte(s))"
+                    : "the 0x8000 lead-in section";
+                sections.Add(opaqueSectionText);
+            }
+
+            if ((matchedSectionFlags & 0x10000UL) != 0)
+            {
+                sections.Add("quest strings");
+            }
+
+            if ((matchedSectionFlags & 0x20000UL) != 0)
+            {
+                sections.Add("short filetimes");
+            }
+
+            if ((matchedSectionFlags & 0x400UL) != 0)
+            {
+                sections.Add("mini-game records");
+            }
+
+            if ((matchedSectionFlags & 0x800UL) != 0)
+            {
+                sections.Add("relationship records");
+            }
+
+            if (sections.Count == 0)
+            {
+                return " after consuming a known CharacterData lead-in immediately before adwMapTransfer";
+            }
+
+            if (sections.Count == 1)
+            {
+                return $" after consuming {sections[0]} immediately before adwMapTransfer";
+            }
+
+            return $" after consuming {string.Join(", ", sections.Take(sections.Count - 1))}, and {sections[^1]} immediately before adwMapTransfer";
+        }
+
         private bool IsPlausibleAuthoritativeMapTransferMapId(int mapId)
         {
             return mapId > 0 && ResolveMapTransferDestinationMapInfo(mapId) != null;
+        }
+
+        private MapTransferRuntimeRequest NormalizeObservedOfficialMapTransferRequest(MapTransferRuntimeRequest request)
+        {
+            if (request == null)
+            {
+                return null;
+            }
+
+            int resolvedMapId = request.MapId;
+            if (request.Type == MapTransferRuntimeRequestType.Register && resolvedMapId <= 0)
+            {
+                resolvedMapId = _mapBoard?.MapInfo?.id ?? 0;
+            }
+
+            return new MapTransferRuntimeRequest
+            {
+                Type = request.Type,
+                Book = request.Book,
+                MapId = resolvedMapId,
+                SlotIndex = request.SlotIndex
+            };
         }
 
         private string DescribeMapTransferOfficialSessionBridgeStatus()

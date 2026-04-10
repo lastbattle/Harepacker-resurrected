@@ -118,16 +118,19 @@ namespace HaCreator.MapSimulator.Interaction
             int remainingSeconds,
             int currentTickCount,
             int runtimeCharacterId,
+            out InitialQuizOwnerApplyDisposition disposition,
             out string message)
         {
             if (HasLiveOwner(currentTickCount))
             {
+                disposition = InitialQuizOwnerApplyDisposition.IgnoredReopen;
                 message =
                     $"Ignored context-owned initial quiz reopen while the existing owner is still alive: " +
                     $"client `CWvsContext::OnInitialQuiz` only seeds `CUIInitialQuiz` during singleton creation.";
                 return true;
             }
 
+            disposition = InitialQuizOwnerApplyDisposition.Started;
             message = ApplyClientOwnerState(
                 title,
                 problemText,
@@ -141,11 +144,17 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        internal bool TryApplyPayload(byte[] payload, int currentTickCount, int runtimeCharacterId, out string message)
+        internal bool TryApplyPayload(
+            byte[] payload,
+            int currentTickCount,
+            int runtimeCharacterId,
+            out InitialQuizOwnerApplyDisposition disposition,
+            out string message)
         {
             payload ??= Array.Empty<byte>();
             if (payload.Length == 0)
             {
+                disposition = InitialQuizOwnerApplyDisposition.None;
                 message = "Initial-quiz payload is empty.";
                 return false;
             }
@@ -158,12 +167,14 @@ namespace HaCreator.MapSimulator.Interaction
                 if (mode == FailMode)
                 {
                     Clear();
+                    disposition = InitialQuizOwnerApplyDisposition.Cleared;
                     message = "Cleared the context-owned initial quiz owner.";
                     return true;
                 }
 
                 if (mode != RequestMode)
                 {
+                    disposition = InitialQuizOwnerApplyDisposition.None;
                     message = $"Initial-quiz payload used unsupported mode {mode}.";
                     return false;
                 }
@@ -184,10 +195,12 @@ namespace HaCreator.MapSimulator.Interaction
                     remainingSeconds,
                     currentTickCount,
                     runtimeCharacterId,
+                    out disposition,
                     out message);
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
             {
+                disposition = InitialQuizOwnerApplyDisposition.None;
                 message = $"Initial-quiz payload could not be decoded: {ex.Message}";
                 return false;
             }
@@ -277,4 +290,12 @@ namespace HaCreator.MapSimulator.Interaction
         int MaxInputByteLength,
         int RemainingSeconds,
         int RemainingMs);
+
+    internal enum InitialQuizOwnerApplyDisposition
+    {
+        None,
+        Started,
+        IgnoredReopen,
+        Cleared
+    }
 }

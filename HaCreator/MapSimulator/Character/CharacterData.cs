@@ -2460,6 +2460,16 @@ namespace HaCreator.MapSimulator.Character
                 : GetWeapon();
         }
 
+        public CharacterAction ResolveClientWalkAction()
+        {
+            return GetWeapon()?.ResolveClientWalkAction() ?? CharacterAction.Walk1;
+        }
+
+        public CharacterAction ResolveClientStandAction()
+        {
+            return GetWeapon()?.ResolveClientStandAction() ?? CharacterAction.Stand1;
+        }
+
         public string GetEffectiveWeaponSfx()
         {
             string weaponSfx = GetWeapon()?.Sfx;

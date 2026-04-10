@@ -1489,7 +1489,9 @@ namespace HaCreator.MapSimulator.UI
             _joypadScrollOffset = 0;
             _draggingJoypadScrollKnob = false;
             _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
-            _selectedJoypadActionButton = JoypadActionButtonKind.None;
+            _selectedJoypadActionButton = _mode == OptionMenuMode.Joypad
+                ? JoypadActionButtonKind.Default
+                : JoypadActionButtonKind.None;
             foreach (List<OptionRow> rows in _rows.Values)
             {
                 if (rows == null)
@@ -1522,6 +1524,10 @@ namespace HaCreator.MapSimulator.UI
             _previousLeftMouseDown = mouseState.LeftButton == ButtonState.Pressed;
             _previousRightMouseDown = mouseState.RightButton == ButtonState.Pressed;
             _previousMouseWheelValue = mouseState.ScrollWheelValue;
+            if (_mode == OptionMenuMode.Joypad && _selectedJoypadActionButton != JoypadActionButtonKind.None)
+            {
+                _statusMessage = BuildJoypadActionButtonStatus(_selectedJoypadActionButton);
+            }
         }
 
         private void CommitAndHide(bool force = false)

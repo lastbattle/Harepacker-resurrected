@@ -88,5 +88,65 @@ namespace HaCreator.MapSimulator.Managers
                 : rawPacket[sizeof(ushort)..];
             return true;
         }
+
+        internal static bool TryDecodeOutboundRequestPacket(
+            byte[] rawPacket,
+            out MapTransferRuntimeRequest request,
+            out string errorMessage)
+        {
+            request = null;
+            errorMessage = null;
+
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort) + sizeof(byte) + sizeof(byte))
+            {
+                errorMessage = "Map transfer request packet must include a 2-byte opcode, request type, and continent flag.";
+                return false;
+            }
+
+            int packetType = BitConverter.ToUInt16(rawPacket, 0);
+            if (packetType != OutboundRequestOpcode)
+            {
+                errorMessage = $"Expected map transfer request opcode {OutboundRequestOpcode}, but received {packetType}.";
+                return false;
+            }
+
+            using MemoryStream stream = new(rawPacket, sizeof(ushort), rawPacket.Length - sizeof(ushort), writable: false);
+            using BinaryReader reader = new(stream);
+            byte requestType = reader.ReadByte();
+            bool canTransferContinent = reader.ReadBoolean();
+            MapTransferRuntimeRequestType resolvedType = requestType switch
+            {
+                0 => MapTransferRuntimeRequestType.Delete,
+                1 => MapTransferRuntimeRequestType.Register,
+                _ => (MapTransferRuntimeRequestType)(-1)
+            };
+            if (resolvedType != MapTransferRuntimeRequestType.Delete &&
+                resolvedType != MapTransferRuntimeRequestType.Register)
+            {
+                errorMessage = $"Unsupported map transfer request type {requestType}.";
+                return false;
+            }
+
+            int mapId = 0;
+            if (resolvedType == MapTransferRuntimeRequestType.Delete)
+            {
+                if (stream.Position + sizeof(int) > stream.Length)
+                {
+                    errorMessage = "Map transfer delete request packet is missing the target map id.";
+                    return false;
+                }
+
+                mapId = reader.ReadInt32();
+            }
+
+            request = new MapTransferRuntimeRequest
+            {
+                Type = resolvedType,
+                Book = canTransferContinent ? MapTransferDestinationBook.Continent : MapTransferDestinationBook.Regular,
+                MapId = mapId,
+                SlotIndex = -1
+            };
+            return true;
+        }
     }
 }

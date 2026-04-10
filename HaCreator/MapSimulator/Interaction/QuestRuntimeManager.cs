@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string ValueText { get; init; } = string.Empty;
         public bool IsComplete { get; init; }
         public int? ItemId { get; init; }
+        public int? ItemQuantity { get; init; }
         public long? CurrentValue { get; init; }
         public long? RequiredValue { get; init; }
     }
@@ -277,6 +278,8 @@ namespace HaCreator.MapSimulator.Interaction
             public bool HasNormalAutoStart { get; init; }
             public bool HasFieldEnterAutoStart { get; init; }
             public bool HasEquipOnAutoStart { get; init; }
+            public bool StartDayByDayRepeat { get; init; }
+            public bool StartWeeklyRepeat { get; init; }
             public int StartRepeatIntervalMinutes { get; init; }
             public IReadOnlyList<int> StartFieldEnterMapIds { get; init; } = Array.Empty<int>();
             public int? StartNpcId { get; init; }
@@ -399,6 +402,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return new NpcDialogueFormattingContext
             {
+                ActiveQuestId = questId,
                 ResolvePlayerNameText = () => ResolveCurrentPlayerNameForDialogue(build),
                 ResolveItemCountText = itemId => GetResolvedItemCount(itemId).ToString(CultureInfo.InvariantCulture),
                 ResolveQuestStateText = questId => FormatQuestStateForDialogue(GetQuestState(questId)),
@@ -963,6 +967,51 @@ namespace HaCreator.MapSimulator.Interaction
             foreach ((int questId, int value) in questRecordValues)
             {
                 SetPacketOwnedQuestRecordValue(questId, value.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+
+        public void ApplyPacketOwnedQuestStateSnapshot(
+            IReadOnlyDictionary<int, string> activeQuestRecords,
+            IReadOnlyDictionary<int, long> completedQuestRecords)
+        {
+            if (activeQuestRecords != null)
+            {
+                foreach ((int questId, string _) in activeQuestRecords)
+                {
+                    if (questId <= 0)
+                    {
+                        continue;
+                    }
+
+                    QuestProgress progress = GetOrCreateProgress(questId);
+                    if (progress.State == QuestStateType.Completed)
+                    {
+                        continue;
+                    }
+
+                    progress.State = QuestStateType.Started;
+                    if (progress.StartedAtUtc == DateTime.MinValue)
+                    {
+                        progress.StartedAtUtc = DateTime.UtcNow;
+                    }
+                }
+            }
+
+            if (completedQuestRecords == null)
+            {
+                return;
+            }
+
+            foreach ((int questId, long _) in completedQuestRecords)
+            {
+                if (questId <= 0)
+                {
+                    continue;
+                }
+
+                QuestProgress progress = GetOrCreateProgress(questId);
+                progress.State = QuestStateType.Completed;
+                progress.MobKills.Clear();
             }
         }
 
@@ -4438,6 +4487,72 @@ namespace HaCreator.MapSimulator.Interaction
                 : TimeSpan.Zero;
         }
 
+        internal static DateTime? ResolveRepeatableQuestResetUtc(
+            DateTime lastCompletionUtc,
+            bool dayByDay,
+            bool weeklyRepeat,
+            IReadOnlyList<DayOfWeek> allowedDays)
+        {
+            if (lastCompletionUtc == DateTime.MinValue || (!dayByDay && !weeklyRepeat))
+            {
+                return null;
+            }
+
+            DateTime completionLocal = lastCompletionUtc.Kind == DateTimeKind.Local
+                ? lastCompletionUtc
+                : lastCompletionUtc.ToLocalTime();
+            DateTime? nextResetLocal = null;
+
+            if (dayByDay)
+            {
+                nextResetLocal = completionLocal.Date.AddDays(1);
+            }
+
+            if (weeklyRepeat)
+            {
+                IReadOnlyList<DayOfWeek> weeklyResetDays = allowedDays != null && allowedDays.Count > 0
+                    ? allowedDays
+                    : new[] { DayOfWeek.Monday };
+                DateTime firstCandidateDate = completionLocal.Date.AddDays(1);
+                for (int i = 0; i < weeklyResetDays.Count; i++)
+                {
+                    int offsetDays = ((int)weeklyResetDays[i] - (int)firstCandidateDate.DayOfWeek + 7) % 7;
+                    DateTime candidateLocal = firstCandidateDate.AddDays(offsetDays);
+                    if (!nextResetLocal.HasValue || candidateLocal < nextResetLocal.Value)
+                    {
+                        nextResetLocal = candidateLocal;
+                    }
+                }
+            }
+
+            return nextResetLocal.HasValue
+                ? TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(nextResetLocal.Value, DateTimeKind.Local))
+                : null;
+        }
+
+        internal static QuestStateType ResolveRepeatableQuestState(
+            QuestStateType state,
+            DateTime nowUtc,
+            DateTime lastCompletionUtc,
+            bool dayByDay,
+            bool weeklyRepeat,
+            IReadOnlyList<DayOfWeek> allowedDays)
+        {
+            if (state != QuestStateType.Completed)
+            {
+                return state;
+            }
+
+            DateTime? nextResetUtc = ResolveRepeatableQuestResetUtc(
+                lastCompletionUtc,
+                dayByDay,
+                weeklyRepeat,
+                allowedDays);
+            return nextResetUtc.HasValue && nowUtc >= nextResetUtc.Value
+                ? QuestStateType.Not_Started
+                : state;
+        }
+
         private void AppendActionRepeatIntervalIssues(
             QuestDefinition definition,
             QuestActionBundle actions,
@@ -5765,9 +5880,23 @@ namespace HaCreator.MapSimulator.Interaction
 
         private QuestStateType GetQuestState(int questId)
         {
-            return _progress.TryGetValue(questId, out QuestProgress progress)
-                ? progress.State
-                : QuestStateType.Not_Started;
+            if (!_progress.TryGetValue(questId, out QuestProgress progress))
+            {
+                return QuestStateType.Not_Started;
+            }
+
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                return progress.State;
+            }
+
+            return ResolveRepeatableQuestState(
+                progress.State,
+                DateTime.UtcNow,
+                progress.LastEndActionAtUtc,
+                definition.StartDayByDayRepeat,
+                definition.StartWeeklyRepeat,
+                definition.StartAllowedDays);
         }
 
         private string BuildHeaderNoteText(QuestDefinition definition, QuestStateType state, CharacterBuild build)
@@ -5798,7 +5927,7 @@ namespace HaCreator.MapSimulator.Interaction
             return string.Empty;
         }
 
-        private static string BuildQuestDetailEligibilityText(QuestDefinition definition)
+        private string BuildQuestDetailEligibilityText(QuestDefinition definition)
         {
             if (definition == null)
             {
@@ -5810,7 +5939,12 @@ namespace HaCreator.MapSimulator.Interaction
                 definition.MinLevel,
                 definition.MaxLevel,
                 definition.AllowedJobs,
-                definition.StartSubJobFlagsRequirement);
+                definition.StartSubJobFlagsRequirement,
+                definition.StartFameRequirement,
+                definition.StartAvailableFrom,
+                definition.StartAvailableUntil,
+                definition.StartAllowedDays,
+                BuildQuestDetailSupplementalEligibilitySegments(definition));
         }
 
         internal static string BuildQuestDetailEligibilityText(
@@ -5818,7 +5952,12 @@ namespace HaCreator.MapSimulator.Interaction
             int? minLevel,
             int? maxLevel,
             IReadOnlyList<int> allowedJobs,
-            int startSubJobFlagsRequirement)
+            int startSubJobFlagsRequirement,
+            int? fameRequirement = null,
+            DateTime? availableFrom = null,
+            DateTime? availableUntil = null,
+            IReadOnlyList<DayOfWeek> allowedDays = null,
+            IReadOnlyList<string> additionalRequirements = null)
         {
             string authoredText = storedLevelLimitText?.Trim() ?? string.Empty;
             if (authoredText.Length > 0)
@@ -5840,9 +5979,100 @@ namespace HaCreator.MapSimulator.Interaction
                 segments.Add(jobLimitText);
             }
 
+            if (fameRequirement.HasValue)
+            {
+                segments.Add($"Fame {fameRequirement.Value}+");
+            }
+
+            string availabilityText = BuildAvailabilityWindowText(availableFrom, availableUntil);
+            if (!string.IsNullOrWhiteSpace(availabilityText))
+            {
+                segments.Add(availabilityText);
+            }
+
+            string dayText = BuildAllowedDaysText(allowedDays);
+            if (!string.IsNullOrWhiteSpace(dayText))
+            {
+                segments.Add(dayText);
+            }
+
+            if (additionalRequirements != null)
+            {
+                for (int i = 0; i < additionalRequirements.Count; i++)
+                {
+                    string requirementText = additionalRequirements[i]?.Trim() ?? string.Empty;
+                    if (requirementText.Length > 0)
+                    {
+                        segments.Add(requirementText);
+                    }
+                }
+            }
+
             return segments.Count > 0
                 ? string.Join(" / ", segments)
                 : MapleStoryStringPool.GetOrFallback(3283, "No limit");
+        }
+
+        private List<string> BuildQuestDetailSupplementalEligibilitySegments(QuestDefinition definition)
+        {
+            var segments = new List<string>();
+            if (definition == null)
+            {
+                return segments;
+            }
+
+            AppendQuestDetailTraitEligibilitySegments(definition.StartTraitRequirements, segments);
+
+            string petRequirementText = BuildPetRequirementText(CreatePetRequirementContext(
+                definition.StartPetRequirements,
+                definition.StartPetRecallLimit,
+                definition.StartPetTamenessMinimum,
+                definition.StartPetTamenessMaximum));
+            if (!string.IsNullOrWhiteSpace(petRequirementText))
+            {
+                segments.Add(petRequirementText);
+            }
+
+            for (int i = 0; i < definition.StartSkillRequirements.Count; i++)
+            {
+                string skillRequirementText = GetSkillRequirementText(definition.StartSkillRequirements[i]);
+                if (!string.IsNullOrWhiteSpace(skillRequirementText))
+                {
+                    segments.Add($"Skill: {skillRequirementText}");
+                }
+            }
+
+            for (int i = 0; i < definition.StartQuestRequirements.Count; i++)
+            {
+                QuestStateRequirement requirement = definition.StartQuestRequirements[i];
+                string questName = _definitions.TryGetValue(requirement.QuestId, out QuestDefinition requirementDefinition)
+                    ? requirementDefinition.Name
+                    : $"Quest #{requirement.QuestId}";
+                segments.Add($"{questName}: {FormatQuestState(requirement.State)}");
+            }
+
+            return segments;
+        }
+
+        private static void AppendQuestDetailTraitEligibilitySegments(
+            IReadOnlyList<QuestTraitRequirement> requirements,
+            ICollection<string> segments)
+        {
+            if (requirements == null || segments == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < requirements.Count; i++)
+            {
+                QuestTraitRequirement requirement = requirements[i];
+                if (requirement == null)
+                {
+                    continue;
+                }
+
+                segments.Add($"{FormatTraitName(requirement.Trait)} {requirement.MinimumValue}+");
+            }
         }
 
         private static string BuildLevelLimitText(QuestDefinition definition)
@@ -6276,6 +6506,8 @@ namespace HaCreator.MapSimulator.Interaction
                 HasNormalAutoStart = ParseTruthyFlag(startCheck?["normalAutoStart"]),
                 HasFieldEnterAutoStart = startCheck?["fieldEnter"] != null,
                 HasEquipOnAutoStart = HasEquipOnAutoStart(startCheck),
+                StartDayByDayRepeat = ParseTruthyFlag(startCheck?["dayByDay"]),
+                StartWeeklyRepeat = ParseTruthyFlag(startCheck?["weeklyRepeat"]),
                 StartRepeatIntervalMinutes = ParsePositiveInt(startCheck?["interval"]).GetValueOrDefault(),
                 StartFieldEnterMapIds = ParseQuestMapIdList(startCheck?["fieldEnter"]),
                 StartNpcId = ParseNpcId(startCheck?["npc"]),
@@ -9054,7 +9286,8 @@ namespace HaCreator.MapSimulator.Interaction
                     Label = "Item",
                     Text = GetRewardItemDescription(reward),
                     IsComplete = true,
-                    ItemId = reward.ItemId
+                    ItemId = reward.ItemId,
+                    ItemQuantity = reward.Count
                 });
             }
 
@@ -9073,7 +9306,8 @@ namespace HaCreator.MapSimulator.Interaction
                         Label = "Item",
                         Text = GetRewardItemDescription(reward, includeSelectionTag: false, includeFilters: build == null),
                         IsComplete = true,
-                        ItemId = reward.ItemId
+                        ItemId = reward.ItemId,
+                        ItemQuantity = reward.Count
                     });
                     continue;
                 }
@@ -9805,89 +10039,12 @@ namespace HaCreator.MapSimulator.Interaction
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
             if (string.IsNullOrWhiteSpace(summaryText))
             {
-                return string.Join(
-                    "\n",
-                    BuildClientPacketQuestResultSupplementalNoticeLines(
-                        actions,
-                        build,
-                        questId,
-                        suppressNegativeMesoLine: false));
+                return string.Empty;
             }
 
-            string wrappedSummary = actions.MesoReward < 0
+            return actions.MesoReward < 0
                 ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
                 : summaryText;
-            IReadOnlyList<string> supplementalLines = BuildClientPacketQuestResultSupplementalNoticeLines(
-                actions,
-                build,
-                questId,
-                suppressNegativeMesoLine: actions.MesoReward < 0);
-            if (supplementalLines.Count == 0)
-            {
-                return wrappedSummary;
-            }
-
-            return $"{wrappedSummary}\n{string.Join("\n", supplementalLines)}";
-        }
-
-        private List<string> BuildClientPacketQuestResultSupplementalNoticeLines(
-            QuestActionBundle actions,
-            CharacterBuild build,
-            int questId,
-            bool suppressNegativeMesoLine)
-        {
-            List<string> supplementalLines = BuildVisibleQuestActionLines(
-                actions,
-                build,
-                questId,
-                includeSelectionTag: false);
-            RemoveMatchingQuestActionLines(
-                supplementalLines,
-                BuildVisibleRewardItemActionLines(actions?.RewardItems, build, includeSelectionTag: false));
-
-            if (suppressNegativeMesoLine && actions?.MesoReward < 0)
-            {
-                RemoveFirstMatchingQuestActionLine(
-                    supplementalLines,
-                    $"Meso {actions.MesoReward:+#;-#;0}");
-            }
-
-            return supplementalLines;
-        }
-
-        private static void RemoveMatchingQuestActionLines(ICollection<string> sourceLines, IEnumerable<string> linesToRemove)
-        {
-            if (sourceLines == null || linesToRemove == null)
-            {
-                return;
-            }
-
-            foreach (string line in linesToRemove)
-            {
-                RemoveFirstMatchingQuestActionLine(sourceLines, line);
-            }
-        }
-
-        private static void RemoveFirstMatchingQuestActionLine(ICollection<string> sourceLines, string lineToRemove)
-        {
-            if (sourceLines == null || string.IsNullOrWhiteSpace(lineToRemove))
-            {
-                return;
-            }
-
-            if (sourceLines is not List<string> lines)
-            {
-                return;
-            }
-
-            for (int i = 0; i < lines.Count; i++)
-            {
-                if (string.Equals(lines[i], lineToRemove, StringComparison.Ordinal))
-                {
-                    lines.RemoveAt(i);
-                    return;
-                }
-            }
         }
 
         private static string ResolvePacketQuestResultPrimaryText(

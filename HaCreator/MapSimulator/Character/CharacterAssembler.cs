@@ -295,6 +295,12 @@ namespace HaCreator.MapSimulator.Character
 
         public AssembledFrame GetFrameAtTime(string actionName, int timeMs)
         {
+            AssembledFrame mountedFrame = TryResolveMountedFrameAtTime(actionName, timeMs);
+            if (mountedFrame != null)
+            {
+                return ResolveDynamicPortableChairFrame(mountedFrame, timeMs);
+            }
+
             var frames = GetAnimation(actionName);
             if (frames == null || frames.Length == 0)
                 return null;
@@ -588,6 +594,46 @@ namespace HaCreator.MapSimulator.Character
             };
         }
 
+        private AssembledFrame TryResolveMountedFrameAtTime(string actionName, int timeMs)
+        {
+            if (_overrideAvatarPart != null)
+            {
+                return null;
+            }
+
+            string preparedActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(actionName, isMorphAvatar: false);
+            CharacterLoader.CharacterActionMergeInput mergeInput =
+                CharacterLoader.PrepareActionMergeInput(_build, preparedActionName, GetActiveTamingMobPart());
+            string resolvedActionName = mergeInput?.ActionName ?? preparedActionName;
+            CharacterPart activeTamingMob = mergeInput?.ActiveTamingMobPart;
+            if (activeTamingMob?.Slot != EquipSlot.TamingMob
+                || ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, resolvedActionName))
+            {
+                return null;
+            }
+
+            CharacterAnimation bodyAnimation = _build.Body?.GetAnimation(CharacterPart.ParseActionString(resolvedActionName))
+                                           ?? _build.Body?.GetAnimation(CharacterAction.Stand1);
+            CharacterAnimation tamingMobAnimation = GetPartAnimation(activeTamingMob, resolvedActionName);
+            if (bodyAnimation?.Frames?.Count <= 0 || tamingMobAnimation?.Frames?.Count <= 0)
+            {
+                return null;
+            }
+
+            CharacterFrame bodyFrame = bodyAnimation.GetFrameAtTime(timeMs, out int bodyFrameIndex);
+            CharacterFrame tamingMobFrame = tamingMobAnimation.GetFrameAtTime(timeMs, out _);
+            if (bodyFrame == null || tamingMobFrame == null)
+            {
+                return null;
+            }
+
+            return AssembleFrame(
+                mergeInput,
+                bodyFrameIndex,
+                bodyFrame,
+                tamingMobFrame);
+        }
+
         #region Assembly
 
         private AssembledFrame[] AssembleAnimation(string actionName)
@@ -697,7 +743,11 @@ namespace HaCreator.MapSimulator.Character
             return assembled;
         }
 
-        private AssembledFrame AssembleFrame(CharacterLoader.CharacterActionMergeInput mergeInput, int frameIndex, CharacterFrame bodyFrame)
+        private AssembledFrame AssembleFrame(
+            CharacterLoader.CharacterActionMergeInput mergeInput,
+            int frameIndex,
+            CharacterFrame bodyFrame,
+            CharacterFrame tamingMobFrameOverride = null)
         {
             string actionName = mergeInput?.ActionName ?? CharacterPart.GetActionString(CharacterAction.Stand1);
             var assembled = new AssembledFrame
@@ -837,7 +887,9 @@ namespace HaCreator.MapSimulator.Character
                     mergeInput?.WeaponSticker,
                     actionName,
                     frameIndex);
-                var equipFrame = GetPartFrame(renderPart, actionName, frameIndex);
+                CharacterFrame equipFrame = kv.Key == EquipSlot.TamingMob && tamingMobFrameOverride != null
+                    ? tamingMobFrameOverride
+                    : GetPartFrame(renderPart, actionName, frameIndex);
                 if (equipFrame == null) continue;
 
                 Point equipOffset = CalculateEquipOffset(equipFrame, bodyFrame, headFrame, baseOffset, headOffset, renderPart.Type);
@@ -874,7 +926,7 @@ namespace HaCreator.MapSimulator.Character
             if (!suppressBaseAvatar
                 && activeTamingMob?.Slot == EquipSlot.TamingMob)
             {
-                CharacterFrame tamingMobFrame = GetPartFrame(activeTamingMob, actionName, frameIndex);
+                CharacterFrame tamingMobFrame = tamingMobFrameOverride ?? GetPartFrame(activeTamingMob, actionName, frameIndex);
                 if (tamingMobFrame != null)
                 {
                     AvatarActionLayerCoordinator.ApplyMountedOriginRelocation(
@@ -1045,14 +1097,14 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            if (tamingMobPart.GetAnimation(actionName) != null)
+            if (TryLoadNamedTamingMobAnimation(tamingMobPart, actionName, out _))
             {
                 return true;
             }
 
             foreach (string alias in GetPartActionAliases(tamingMobPart, actionName))
             {
-                if (tamingMobPart.GetAnimation(alias) != null)
+                if (TryLoadNamedTamingMobAnimation(tamingMobPart, alias, out _))
                 {
                     return true;
                 }
@@ -1093,7 +1145,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool IsMechanicMountOnlyAction(CharacterPart tamingMobPart, string actionName)
         {
-            if (tamingMobPart?.GetAnimation(actionName) == null)
+            if (!HasPublishedTamingMobAnimation(tamingMobPart, actionName))
             {
                 return false;
             }
@@ -1116,6 +1168,65 @@ namespace HaCreator.MapSimulator.Character
                    && !string.Equals(actionName, "dead", StringComparison.OrdinalIgnoreCase)
                    && !string.Equals(actionName, "ghost", StringComparison.OrdinalIgnoreCase)
                    && !string.Equals(actionName, "tired", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool HasPublishedTamingMobAnimation(CharacterPart tamingMobPart, string actionName)
+        {
+            if (tamingMobPart?.Type != CharacterPartType.TamingMob || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (tamingMobPart.Animations.TryGetValue(actionName, out CharacterAnimation animation))
+            {
+                return animation?.Frames?.Count > 0;
+            }
+
+            return tamingMobPart.AvailableAnimations != null
+                   && tamingMobPart.AvailableAnimations.Count > 0
+                   && tamingMobPart.AvailableAnimations.Contains(actionName);
+        }
+
+        private static bool TryLoadNamedTamingMobAnimation(
+            CharacterPart tamingMobPart,
+            string actionName,
+            out CharacterAnimation animation)
+        {
+            animation = null;
+            if (tamingMobPart?.Type != CharacterPartType.TamingMob || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (tamingMobPart.Animations.TryGetValue(actionName, out animation)
+                && animation?.Frames?.Count > 0)
+            {
+                return true;
+            }
+
+            if (tamingMobPart.AvailableAnimations != null
+                && tamingMobPart.AvailableAnimations.Count > 0
+                && !tamingMobPart.AvailableAnimations.Contains(actionName))
+            {
+                animation = null;
+                return false;
+            }
+
+            if (tamingMobPart.AnimationResolver == null)
+            {
+                animation = null;
+                return false;
+            }
+
+            animation = tamingMobPart.AnimationResolver(actionName);
+            if (animation?.Frames?.Count > 0)
+            {
+                tamingMobPart.Animations[actionName] = animation;
+                return true;
+            }
+
+            animation = null;
+            return false;
         }
 
         private static bool IsMechanicMountedSitFallbackAction(CharacterPart tamingMobPart, string actionName)
@@ -1303,20 +1414,20 @@ namespace HaCreator.MapSimulator.Character
                     return part.TamingMobActionFrameOwner.GetAnimation(part, actionName);
                 }
 
-                if (part.Animations.TryGetValue(actionName, out CharacterAnimation mountAnimation))
+                if (TryLoadNamedTamingMobAnimation(part, actionName, out CharacterAnimation mountAnimation))
                 {
                     return mountAnimation;
                 }
 
                 foreach (string alias in GetPartActionAliases(part, actionName))
                 {
-                    if (part.Animations.TryGetValue(alias, out mountAnimation))
+                    if (TryLoadNamedTamingMobAnimation(part, alias, out mountAnimation))
                     {
                         return mountAnimation;
                     }
                 }
 
-                return part.GetAnimation(actionName);
+                return null;
             }
 
             CharacterAnimation animation = part.GetAnimation(actionName);

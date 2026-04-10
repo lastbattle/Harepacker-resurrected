@@ -700,6 +700,11 @@ namespace HaCreator.MapSimulator.Loaders
             EnsureDefaultSkillBookHeader(skillWindow, device);
 
             IReadOnlyList<int> visibleRootIds = GetVisibleSkillRootIdsForJob(jobId, subJob, learnedSkillIds);
+            if (!clearLoadedSkillTabs)
+            {
+                ResetTabsForNoLongerVisibleSkillRoots(skillWindow, visibleRootIds);
+            }
+
             foreach (int skillRootId in visibleRootIds)
             {
                 EnsureSkillRootLoaded(skillWindow, skillRootId, device);
@@ -708,6 +713,31 @@ namespace HaCreator.MapSimulator.Loaders
             // Keep both the full load and live record refresh on the same client-shaped
             // root reload seam before the visible tab strip is re-filtered.
             skillWindow.RefreshVisibleTabsFromLoadedSkillRoots();
+        }
+
+        private static void ResetTabsForNoLongerVisibleSkillRoots(
+            SkillUIBigBang skillWindow,
+            IEnumerable<int> visibleRootIds)
+        {
+            HashSet<int> visibleTabs = visibleRootIds?
+                .Select(GetSkillTabFromJobId)
+                .ToHashSet() ?? new HashSet<int>();
+
+            for (int tabIndex = 0; tabIndex <= 6; tabIndex++)
+            {
+                if (visibleTabs.Contains(tabIndex))
+                    continue;
+
+                bool hasDisplayedRoot = skillWindow.TryGetDisplayedSkillRootId(tabIndex, out int displayedSkillRootId);
+                bool hasLoadedSkills = skillWindow.GetLoadedSkillCount(tabIndex) > 0;
+                if (!hasDisplayedRoot && !hasLoadedSkills)
+                    continue;
+
+                if (displayedSkillRootId <= 0 && !hasLoadedSkills)
+                    continue;
+
+                skillWindow.ResetSkillRootTab(tabIndex);
+            }
         }
 
         private static void EnsureSkillRootLoaded(SkillUIBigBang skillWindow, int skillRootId, GraphicsDevice device)
@@ -1364,6 +1394,10 @@ namespace HaCreator.MapSimulator.Loaders
             quest.SetCategoryLegendTextures(
                 LoadCanvasTexture(iconInfoProperty, "backgrnd", device),
                 LoadCanvasTexture(iconInfoProperty, "backgrnd2", device),
+                iconInfoProperty?["backgrnd2"] is WzCanvasProperty iconInfoInnerCanvas &&
+                iconInfoInnerCanvas.GetCanvasOriginPosition() is System.Drawing.PointF iconInfoInnerOrigin
+                    ? new Point((int)iconInfoInnerOrigin.X, (int)iconInfoInnerOrigin.Y)
+                    : Point.Zero,
                 iconInfoSheets);
 
             WzSubProperty bigBangTooltipProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty

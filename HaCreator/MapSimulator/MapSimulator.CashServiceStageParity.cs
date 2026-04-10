@@ -293,6 +293,20 @@ namespace HaCreator.MapSimulator
                         RecentPackets = stageWindow.GetRecentPacketSummaries()
                     };
                 });
+                oneADayWindow.SetExternalAction("BtBuy", () =>
+                {
+                    string summary = BuildCashShopOneADayCurrentPurchaseSummary();
+                    return string.IsNullOrWhiteSpace(summary)
+                        ? "CCSWnd_OneADay routed the dedicated today-item buy button through the packet-owned reward lane."
+                        : summary;
+                });
+                oneADayWindow.SetExternalAction("BtItemBox", () =>
+                {
+                    string summary = BuildCashShopOneADayItemBoxSummary();
+                    return string.IsNullOrWhiteSpace(summary)
+                        ? "CCSWnd_OneADay moved owner focus through the dedicated item-box lane."
+                        : summary;
+                });
                 oneADayWindow.SetExternalAction("BtJoin", () => "CCSWnd_OneADay joined the packet-armed reward session preview.");
                 oneADayWindow.SetExternalAction("BtShortcut", () => "CCSWnd_OneADay switched focus to the shortcut-help plate owner.");
                 oneADayWindow.SetExternalAction("BtClose", () => "CCSWnd_OneADay dismissed the current reward plate preview.");
@@ -811,6 +825,37 @@ namespace HaCreator.MapSimulator
             lines.Add(summary);
         }
 
+        private string BuildCashShopOneADayCurrentPurchaseSummary()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCSWnd_OneADay is waiting for the parent Cash Shop stage.";
+            }
+
+            int commoditySerialNumber = Math.Max(0, stageWindow.CashOneADayItemSerialNumber);
+            string itemLabel = ResolveCashShopOneADayCommodityLabel(commoditySerialNumber);
+            if (!stageWindow.IsOneADayPending)
+            {
+                return $"CCSWnd_OneADay kept the dedicated buy lane idle because no packet-authored today reward is pending for {itemLabel}.";
+            }
+
+            return $"CCSWnd_OneADay routed the dedicated buy lane through packet 395 for {itemLabel} (SN {commoditySerialNumber.ToString(CultureInfo.InvariantCulture)}).";
+        }
+
+        private string BuildCashShopOneADayItemBoxSummary()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return "CCSWnd_OneADay is waiting for the parent Cash Shop stage.";
+            }
+
+            IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries =
+                BuildCashShopOneADayHistoryEntryStates(stageWindow);
+            return historyEntries.Count > 0
+                ? $"CCSWnd_OneADay switched the dedicated item-box lane to the packet-authored previous-reward history ({historyEntries.Count.ToString(CultureInfo.InvariantCulture)} row(s))."
+                : "CCSWnd_OneADay kept the item-box lane on the recovered previous selector, but no packet-authored history rows are loaded.";
+        }
+
         private IReadOnlyList<string> BuildCashShopOneADayOwnerLines()
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
@@ -1242,7 +1287,8 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
             {
                 cashShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
-                    "CAdminShopDlg owner surface is hidden because the Cash Shop owner family is not visible.");
+                    "CAdminShopDlg owner surface is hidden because the Cash Shop owner family is not visible.",
+                    AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily);
             }
 
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShop);

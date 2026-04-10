@@ -329,39 +329,84 @@ namespace HaCreator.MapSimulator
                 summary);
         }
 
+        internal enum PacketOwnedTeleportOutboundRoute
+        {
+            LiveOfficialSessionBridge,
+            DeferredOfficialSessionBridge,
+            GenericPacketOutbox,
+            DeferredGenericPacketOutbox,
+            SimulatorOwned
+        }
+
+        internal static PacketOwnedTeleportOutboundRoute ResolvePacketOwnedTeleportOutboundRoute(
+            bool liveBridgeSent,
+            bool officialBridgeRunning,
+            bool deferredOfficialBridgeQueued,
+            bool genericOutboxSent,
+            bool deferredGenericOutboxQueued)
+        {
+            if (liveBridgeSent)
+            {
+                return PacketOwnedTeleportOutboundRoute.LiveOfficialSessionBridge;
+            }
+
+            if (officialBridgeRunning && deferredOfficialBridgeQueued)
+            {
+                return PacketOwnedTeleportOutboundRoute.DeferredOfficialSessionBridge;
+            }
+
+            if (genericOutboxSent)
+            {
+                return PacketOwnedTeleportOutboundRoute.GenericPacketOutbox;
+            }
+
+            if (deferredGenericOutboxQueued)
+            {
+                return PacketOwnedTeleportOutboundRoute.DeferredGenericPacketOutbox;
+            }
+
+            return PacketOwnedTeleportOutboundRoute.SimulatorOwned;
+        }
+
         private string DispatchPacketOwnedTeleportPortalRequest(byte[] payload, string summary)
         {
             payload ??= Array.Empty<byte>();
 
-            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+            bool liveBridgeSent = _localUtilityOfficialSessionBridge.TrySendOutboundPacket(
                 PacketOwnedTeleportPortalRequestOpcode,
                 payload,
-                out string bridgeStatus))
+                out string bridgeStatus);
+            if (liveBridgeSent)
             {
                 return $"{summary} Dispatched it through the live official-session bridge. {bridgeStatus}";
             }
 
-            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+            string outboxStatus = "generic packet outbox not attempted.";
+            string queuedBridgeStatus = "official-session deferred bridge queue not attempted.";
+            bool deferredOfficialBridgeQueued = _localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PacketOwnedTeleportPortalRequestOpcode,
+                    payload,
+                    out queuedBridgeStatus);
+            if (deferredOfficialBridgeQueued)
+            {
+                return $"{summary} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            bool genericOutboxSent = _localUtilityPacketOutbox.TrySendOutboundPacket(
                 PacketOwnedTeleportPortalRequestOpcode,
                 payload,
-                out string outboxStatus))
+                out outboxStatus);
+            if (genericOutboxSent)
             {
                 return $"{summary} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
             }
 
-            if (_localUtilityOfficialSessionBridge.IsRunning
-                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
-                    PacketOwnedTeleportPortalRequestOpcode,
-                    payload,
-                    out string queuedBridgeStatus))
-            {
-                return $"{summary} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
-            }
-
-            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+            bool deferredGenericOutboxQueued = _localUtilityPacketOutbox.TryQueueOutboundPacket(
                 PacketOwnedTeleportPortalRequestOpcode,
                 payload,
-                out string queuedOutboxStatus))
+                out string queuedOutboxStatus);
+            if (deferredGenericOutboxQueued)
             {
                 return $"{summary} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
             }

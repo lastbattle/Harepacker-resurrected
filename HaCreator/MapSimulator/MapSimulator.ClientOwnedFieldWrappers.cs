@@ -338,20 +338,11 @@ namespace HaCreator.MapSimulator
 
         private string HandleClientOwnedFieldSpecificDataPacket(byte[] payload, int currentTick)
         {
-            if (!IsShowaBathWrapperMap(_mapBoard?.MapInfo))
-            {
-                return null;
-            }
-
-            CharacterBuild build = _playerManager?.Player?.Build;
-            CharacterLoader loader = _playerManager?.Loader;
-            if (build == null || loader == null)
-            {
-                return "showa-bath wrapper pending character loader/build";
-            }
-
-            ApplyShowaBathFieldAppearance(build, loader);
-            return "showa-bath appearance override applied";
+            return _specialFieldRuntime.TryDispatchCurrentWrapperFieldSpecificData(
+                TryApplyShowaBathFieldSpecificPresentationOwner,
+                out string message)
+                ? message
+                : message;
         }
 
         private bool TryApplyClientOwnedWrapperFieldValue(string wrapperName, string key, string value, int currentTick, out string message)
@@ -364,25 +355,14 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(wrapperName, "huntingadballoon", StringComparison.OrdinalIgnoreCase))
             {
-                if (!_specialFieldRuntime.PartyRaid.IsActive)
-                {
-                    message = "Hunting Ad Balloon overlay inactive.";
-                    return false;
-                }
-
-                bool applied = _specialFieldRuntime.PartyRaid.OnFieldSetVariable(key, value);
-                message = applied ? _specialFieldRuntime.PartyRaid.DescribeStatus() : $"field key not accepted ({key}={value})";
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperFieldValue(key, value, currentTick, out message);
                 return applied;
             }
 
-            if (string.Equals(wrapperName, "escortresult", StringComparison.OrdinalIgnoreCase)
-                && IsEscortResultWrapperMap(_mapBoard?.MapInfo)
-                && MatchesEscortFailKey(key)
-                && string.Equals(value, "fail", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(wrapperName, "escortresult", StringComparison.OrdinalIgnoreCase))
             {
-                _escortFailOverlayUntilTick = currentTick + EscortFailOverlayDurationMs;
-                message = "escort-result fail overlay armed";
-                return true;
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperFieldValue(key, value, currentTick, out message);
+                return applied;
             }
 
             return false;
@@ -397,14 +377,25 @@ namespace HaCreator.MapSimulator
             }
 
             if (string.Equals(wrapperName, "chaoszakum", StringComparison.OrdinalIgnoreCase)
-                && IsChaosZakumPortalSessionWrapperMap(_mapBoard?.MapInfo)
-                && IsChaosZakumPortalSessionKey(key))
+                && _specialFieldRuntime.TryDispatchCurrentWrapperSessionValue(key, value, out message))
             {
-                message = $"chaos-zakum session key accepted ({key.Trim()}={value ?? string.Empty})";
                 return true;
             }
 
             return false;
+        }
+
+        private (bool Applied, string Message) TryApplyShowaBathFieldSpecificPresentationOwner()
+        {
+            CharacterBuild build = _playerManager?.Player?.Build;
+            CharacterLoader loader = _playerManager?.Loader;
+            if (build == null || loader == null)
+            {
+                return (false, "showa-bath wrapper pending character loader/build");
+            }
+
+            ApplyShowaBathFieldAppearance(build, loader);
+            return (true, "showa-bath appearance override applied");
         }
 
         internal static bool IsChaosZakumPortalSessionWrapperMap(MapInfo mapInfo)
@@ -1471,6 +1462,15 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryGetWeddingPhotoSceneSafeArea(MapInfo mapInfo, out int side, out int top, out int bottom)
         {
+            if (TryBuildWeddingPhotoSceneContract(mapInfo, out WeddingPhotoSceneContract contract)
+                && contract.HasSafeArea)
+            {
+                side = contract.Side;
+                top = contract.Top;
+                bottom = contract.Bottom;
+                return true;
+            }
+
             side = Math.Max(0, mapInfo?.LBSide ?? 0);
             top = Math.Max(0, mapInfo?.LBTop ?? 0);
             bottom = Math.Max(0, mapInfo?.LBBottom ?? 0);
@@ -1479,6 +1479,16 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryGetWeddingPhotoSceneViewport(MapInfo mapInfo, out int left, out int top, out int right, out int bottom)
         {
+            if (TryBuildWeddingPhotoSceneContract(mapInfo, out WeddingPhotoSceneContract contract)
+                && contract.HasViewport)
+            {
+                left = contract.ViewportLeft;
+                top = contract.ViewportTop;
+                right = contract.ViewportRight;
+                bottom = contract.ViewportBottom;
+                return true;
+            }
+
             left = mapInfo?.VRLeft ?? 0;
             top = mapInfo?.VRTop ?? 0;
             right = mapInfo?.VRRight ?? 0;

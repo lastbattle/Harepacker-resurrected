@@ -170,6 +170,7 @@ namespace HaCreator.MapSimulator.Effects
         internal const int DamageNumberFormatStringPoolId = 0x1A15;
         internal const string DamageNumberEffectCategoryName = "effect";
         internal const string DamageNumberBasicEffectImageName = "BasicEff.img";
+        internal const string DamageNumberSpecialTextOwnerSetName = "NoRed0";
         #endregion
 
         internal readonly record struct DigitLayoutEntry(int Digit, bool UseLargeDigitSet, int RelativeX);
@@ -539,7 +540,23 @@ namespace HaCreator.MapSimulator.Effects
 
         internal static string ResolveSpecialTextName(string specialTextName)
         {
-            return string.IsNullOrWhiteSpace(specialTextName) ? "Miss" : specialTextName.Trim();
+            if (string.IsNullOrWhiteSpace(specialTextName))
+            {
+                return "Miss";
+            }
+
+            string authoredName = specialTextName.Trim();
+            return authoredName.Equals("miss", StringComparison.OrdinalIgnoreCase)
+                ? "Miss"
+                : authoredName.Equals("guard", StringComparison.OrdinalIgnoreCase)
+                    ? "guard"
+                    : authoredName.Equals("shot", StringComparison.OrdinalIgnoreCase)
+                        ? "shot"
+                        : authoredName.Equals("counter", StringComparison.OrdinalIgnoreCase)
+                            ? "counter"
+                            : authoredName.Equals("resist", StringComparison.OrdinalIgnoreCase)
+                                ? "resist"
+                                : authoredName;
         }
 
         internal static string FormatDamageValue(int damage)
@@ -627,13 +644,14 @@ namespace HaCreator.MapSimulator.Effects
 
             if (isMiss)
             {
+                DamageNumberDigitSet specialTextDigitSet = ResolveSpecialTextDigitSet(smallDigitSet);
                 PreparedSpriteDrawInfo? missSprite = null;
                 int canvasWidth = 0;
                 int canvasHeight = ResolveCompositeCanvasHeight();
 
-                if (smallDigitSet.SpecialOrigins.TryGetValue(damageString, out Point missOrigin))
+                if (specialTextDigitSet.SpecialOrigins.TryGetValue(damageString, out Point missOrigin))
                 {
-                    canvasWidth = ResolveSpecialTextWidth(smallDigitSet, damageString);
+                    canvasWidth = ResolveSpecialTextWidth(specialTextDigitSet, damageString);
                     int canvasOffsetX = canvasWidth > 0
                         ? (canvasWidth / 2) - missOrigin.X
                         : -missOrigin.X;
@@ -656,7 +674,7 @@ namespace HaCreator.MapSimulator.Effects
                         canvasWidth,
                         canvasHeight,
                         missSprite,
-                        smallDigitSet));
+                        specialTextDigitSet));
             }
 
             (DigitLayoutEntry[] layoutEntries, int totalWidth) = BuildDigitLayout(
@@ -862,6 +880,17 @@ namespace HaCreator.MapSimulator.Effects
             return DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX;
         }
 
+        private static DamageNumberDigitSet ResolveSpecialTextDigitSet(DamageNumberDigitSet currentSmallDigitSet)
+        {
+            DamageNumberDigitSet authoredSpecialTextSet = DamageNumberLoader.GetDigitSetByName(DamageNumberSpecialTextOwnerSetName);
+            if (authoredSpecialTextSet?.IsLoaded == true)
+            {
+                return authoredSpecialTextSet;
+            }
+
+            return currentSmallDigitSet;
+        }
+
         internal static DamageNumberAnimationTimeline ResolveAnimationTimeline()
         {
             return new DamageNumberAnimationTimeline(
@@ -1052,12 +1081,13 @@ namespace HaCreator.MapSimulator.Effects
             DamageNumberDigitSet smallDigitSet = ResolveSmallDigitSet(colorType, isCritical);
             if (largeDigitSet == null || smallDigitSet == null)
                 return null;
+            DamageNumberDigitSet specialTextDigitSet = ResolveSpecialTextDigitSet(smallDigitSet);
 
             int canvasWidth = visual.CanvasWidth;
             int canvasHeight = visual.CanvasHeight;
 
             if (visual.MissSprite is PreparedSpriteDrawInfo missSprite
-                && smallDigitSet.SpecialTextures.TryGetValue(missSprite.SpriteName, out Texture2D missTexture))
+                && specialTextDigitSet?.SpecialTextures.TryGetValue(missSprite.SpriteName, out Texture2D missTexture) == true)
             {
                 canvasWidth = Math.Max(canvasWidth, missTexture.Width);
                 canvasHeight = Math.Max(canvasHeight, missTexture.Height);
@@ -1084,10 +1114,10 @@ namespace HaCreator.MapSimulator.Effects
                     BlendState.AlphaBlend,
                     SamplerState.PointClamp,
                     DepthStencilState.None,
-                    RasterizerState.CullNone);
+                RasterizerState.CullNone);
 
                 if (visual.MissSprite is PreparedSpriteDrawInfo preparedMiss
-                    && smallDigitSet.SpecialTextures.TryGetValue(preparedMiss.SpriteName, out missTexture))
+                    && specialTextDigitSet?.SpecialTextures.TryGetValue(preparedMiss.SpriteName, out missTexture) == true)
                 {
                     compositeBatch.Draw(
                         missTexture,

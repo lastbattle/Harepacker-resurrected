@@ -2,6 +2,7 @@ using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Linq;
@@ -32,6 +33,13 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18497;
         private const string DefaultProcessName = "MapleStory";
+
+        private sealed class ObservedOutboundRequest
+        {
+            public MapTransferRuntimeRequest Request { get; init; }
+            public string Source { get; init; }
+            public string RawText { get; init; }
+        }
 
         private sealed class BridgePair
         {
@@ -75,6 +83,7 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         private readonly ConcurrentQueue<MapTransferPacketInboxMessage> _pendingMessages = new();
+        private readonly List<ObservedOutboundRequest> _observedOutboundRequests = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -87,6 +96,16 @@ namespace HaCreator.MapSimulator.Managers
         public int RemotePort { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        internal int ObservedOutboundRequestCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _observedOutboundRequests.Count;
+                }
+            }
+        }
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public string LastStatus { get; private set; } = "Map transfer official-session bridge inactive.";
@@ -99,7 +118,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Map transfer official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; inbound opcode={MapTransferPacketCodec.InboundResultOpcode}; outbound opcode={MapTransferPacketCodec.OutboundRequestOpcode}. {LastStatus}";
+            return $"Map transfer official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; observed outbound={ObservedOutboundRequestCount}; inbound opcode={MapTransferPacketCodec.InboundResultOpcode}; outbound opcode={MapTransferPacketCodec.OutboundRequestOpcode}. {LastStatus}";
         }
 
         public bool TryStart(int listenPort, string remoteHost, int remotePort, out string status)
@@ -217,6 +236,59 @@ namespace HaCreator.MapSimulator.Managers
         public bool TryDequeue(out MapTransferPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        internal bool TryResolveObservedRequest(
+            MapTransferRuntimeResponse authoritativeResponse,
+            out MapTransferRuntimeRequest request)
+        {
+            request = null;
+            if (authoritativeResponse == null)
+            {
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (_observedOutboundRequests.Count == 0)
+                {
+                    return false;
+                }
+
+                List<MapTransferRuntimeRequest> pendingRequests = _observedOutboundRequests.ConvertAll(observed => observed?.Request);
+                int requestIndex = MapTransferOfficialSessionResultResolver.ResolvePendingRequestIndex(pendingRequests, authoritativeResponse);
+                if (requestIndex < 0 || requestIndex >= _observedOutboundRequests.Count)
+                {
+                    return false;
+                }
+
+                request = _observedOutboundRequests[requestIndex].Request;
+                _observedOutboundRequests.RemoveAt(requestIndex);
+                return request != null;
+            }
+        }
+
+        internal bool TryObserveOutboundRequestPacket(byte[] rawPacket, string source, out string status)
+        {
+            if (!MapTransferPacketCodec.TryDecodeOutboundRequestPacket(rawPacket, out MapTransferRuntimeRequest request, out string errorMessage))
+            {
+                status = errorMessage;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                _observedOutboundRequests.Add(new ObservedOutboundRequest
+                {
+                    Request = request,
+                    Source = string.IsNullOrWhiteSpace(source) ? "official-session" : source,
+                    RawText = rawPacket == null ? string.Empty : Convert.ToHexString(rawPacket)
+                });
+            }
+
+            status = $"Observed map transfer opcode {MapTransferPacketCodec.OutboundRequestOpcode} from {source ?? "official-session"}.";
+            LastStatus = status;
+            return true;
         }
 
         public void RecordDispatchResult(string source, bool success, string detail)
@@ -404,7 +476,9 @@ namespace HaCreator.MapSimulator.Managers
                     return;
                 }
 
-                pair.ServerSession.SendPacket(packet.ToArray());
+                byte[] rawPacket = packet.ToArray();
+                pair.ServerSession.SendPacket(rawPacket);
+                TryObserveOutboundRequestPacket(rawPacket, $"official-session:{pair.ClientEndpoint}", out _);
             }
             catch (Exception ex)
             {
@@ -472,6 +546,11 @@ namespace HaCreator.MapSimulator.Managers
             {
                 while (_pendingMessages.TryDequeue(out _))
                 {
+                }
+
+                lock (_sync)
+                {
+                    _observedOutboundRequests.Clear();
                 }
 
                 ReceivedCount = 0;

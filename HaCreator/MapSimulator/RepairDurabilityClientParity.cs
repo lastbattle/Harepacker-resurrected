@@ -29,17 +29,19 @@ namespace HaCreator.MapSimulator
 
         internal readonly struct ResultPayload
         {
-            public ResultPayload(bool success, int? reasonCode, short? operationCode, string statusText)
+            public ResultPayload(bool success, int? reasonCode, short? operationCode, int? encodedSlotPosition, string statusText)
             {
                 Success = success;
                 ReasonCode = reasonCode;
                 OperationCode = operationCode;
+                EncodedSlotPosition = encodedSlotPosition;
                 StatusText = statusText ?? string.Empty;
             }
 
             public bool Success { get; }
             public int? ReasonCode { get; }
             public short? OperationCode { get; }
+            public int? EncodedSlotPosition { get; }
             public string StatusText { get; }
         }
 
@@ -248,12 +250,19 @@ namespace HaCreator.MapSimulator
             return !resultOperationCode.HasValue || resultOperationCode.Value == pendingOperationCode;
         }
 
+        internal static bool MatchesPendingResultTarget(bool repairAllRequest, int pendingEncodedSlotPosition, int? resultEncodedSlotPosition)
+        {
+            return repairAllRequest
+                || !resultEncodedSlotPosition.HasValue
+                || resultEncodedSlotPosition.Value == pendingEncodedSlotPosition;
+        }
+
         internal static bool TryDecodeSyntheticResultPayload(
             byte[] payload,
             out ResultPayload result,
             out string error)
         {
-            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, statusText: string.Empty);
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
             error = null;
 
             if (payload == null || payload.Length == 0)
@@ -289,10 +298,26 @@ namespace HaCreator.MapSimulator
                 offset++;
             }
 
+            int? encodedSlotPosition = null;
             int remainingLength = payload.Length - offset;
+            if (remainingLength >= sizeof(int) + 1
+                && payload[offset] != 0
+                && payload[offset] != 1)
+            {
+                int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                int remainingAfterSlotPosition = payload.Length - (offset + sizeof(int));
+                if (LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition)
+                    && (remainingAfterSlotPosition == 1 || remainingAfterSlotPosition >= 1 + sizeof(int)))
+                {
+                    encodedSlotPosition = candidateEncodedSlotPosition;
+                    offset += sizeof(int);
+                }
+            }
+
+            remainingLength = payload.Length - offset;
             if (remainingLength != 1 && remainingLength < 1 + sizeof(int))
             {
-                error = "Repair-result payload must be empty, [result], [result+reason], [opcode+result], [opcode16+result], or [opcode+result+reason(+text)].";
+                error = "Repair-result payload must be empty, [result], [result+reason], [opcode+result], [opcode16+result], [slot+result], or [opcode/slot+result+reason(+text)].";
                 return false;
             }
 
@@ -310,8 +335,14 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            result = new ResultPayload(success, reasonCode, operationCode, statusText);
+            result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText);
             return true;
+        }
+
+        private static bool LooksLikeEncodedSlotPosition(int encodedSlotPosition)
+        {
+            return encodedSlotPosition is >= 1 and <= 255
+                || encodedSlotPosition is <= -1 and >= -255;
         }
 
         private static string DecodeResultStatusText(ReadOnlySpan<byte> payload)

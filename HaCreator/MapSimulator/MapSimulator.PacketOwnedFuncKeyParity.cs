@@ -115,11 +115,10 @@ namespace HaCreator.MapSimulator
             SocialListParty = 5,
             ShortcutMenu = 6,
             PartySearch = 7,
-            FamilyChart = 8,
+            Family = 8,
             Profession = 9,
             Event = 10,
-            Ranking = 11,
-            FamilyTree = 12,
+            Expedition = 11,
             QuestAlarm = 13,
         }
 
@@ -704,8 +703,16 @@ namespace HaCreator.MapSimulator
                 }
 
                 return TryResolvePacketOwnedBindingKey(clientFunctionId, out Keys functionKey)
-                    ? new KeyConfigWindow.ClientOwnerState(hasClientOwner: true, clientFunctionId, functionKey)
-                    : new KeyConfigWindow.ClientOwnerState(hasClientOwner: false, clientFunctionId, Keys.None);
+                    ? new KeyConfigWindow.ClientOwnerState(
+                        hasClientOwner: true,
+                        clientFunctionId: clientFunctionId,
+                        clientKey: functionKey,
+                        packetPaletteSlotId: ResolvePacketOwnedKeyConfigPaletteSlotId(PacketOwnedFuncKeyFunctionType, clientFunctionId))
+                    : new KeyConfigWindow.ClientOwnerState(
+                        hasClientOwner: false,
+                        clientFunctionId: clientFunctionId,
+                        clientKey: Keys.None,
+                        packetPaletteSlotId: ResolvePacketOwnedKeyConfigPaletteSlotId(PacketOwnedFuncKeyFunctionType, clientFunctionId));
             }
 
             if (!TryResolvePacketOwnedBindableHotkeySlotIndex(action, out int slotIndex)
@@ -722,7 +729,7 @@ namespace HaCreator.MapSimulator
             }
 
             PacketOwnedFuncKeyMappedEntry entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
-            if (!IsPacketOwnedCastEntryType(entry.Type) || entry.Id <= 0)
+            if (entry.Type == 0 || entry.Id <= 0)
             {
                 return default;
             }
@@ -735,7 +742,8 @@ namespace HaCreator.MapSimulator
                 packetEntryType: entry.Type,
                 packetEntryId: entry.Id,
                 packetScanCode: scanCode,
-                packetBindableSlotIndex: slotIndex);
+                packetBindableSlotIndex: slotIndex,
+                packetPaletteSlotId: ResolvePacketOwnedKeyConfigPaletteSlotId(entry.Type, entry.Id));
         }
 
         private KeyConfigWindow.ShortcutVisualState ResolvePacketOwnedKeyConfigShortcutVisualState(InputAction action)
@@ -955,6 +963,19 @@ namespace HaCreator.MapSimulator
             }
 
             return totalCount;
+        }
+
+        private static int ResolvePacketOwnedKeyConfigPaletteSlotId(byte packetEntryType, int packetEntryId)
+        {
+            // `CUIKeyConfig::{ResetPaletteItems,GetPaletteSlotFromIdx}` keep the authored KeyConfig icon families
+            // on explicit function (0-32), control (50-54), and emotion (100-106) ids.
+            return packetEntryType switch
+            {
+                PacketOwnedFuncKeyFunctionType when packetEntryId >= 0 && packetEntryId <= 32 => packetEntryId,
+                PacketOwnedFuncKeyClientControlType when packetEntryId >= 50 && packetEntryId <= 54 => packetEntryId,
+                PacketOwnedFuncKeyEmotionType when packetEntryId >= 100 && packetEntryId <= 106 => packetEntryId,
+                _ => -1,
+            };
         }
 
         private static int ResolvePacketOwnedMacroIndex(int packetMacroId)
@@ -1302,8 +1323,8 @@ namespace HaCreator.MapSimulator
                 case PacketOwnedRawFunctionOwner.PartySearch:
                     ApplyPacketOwnedPartySearchLaunch(option: -1);
                     return true;
-                case PacketOwnedRawFunctionOwner.FamilyChart:
-                    ShowPacketOwnedFamilyChartWindow();
+                case PacketOwnedRawFunctionOwner.Family:
+                    ShowPacketOwnedFamilyWindow();
                     return true;
                 case PacketOwnedRawFunctionOwner.Profession:
                     ShowPacketOwnedProfessionWindow();
@@ -1312,12 +1333,8 @@ namespace HaCreator.MapSimulator
                     TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.Event, () =>
                         ShowUtilityWindow(MapSimulatorWindowNames.Event, "packet-owned-funckey:31"));
                     return true;
-                case PacketOwnedRawFunctionOwner.Ranking:
-                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.Ranking, () =>
-                        ShowUtilityWindow(MapSimulatorWindowNames.Ranking, "packet-owned-funckey:25"));
-                    return true;
-                case PacketOwnedRawFunctionOwner.FamilyTree:
-                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyTree);
+                case PacketOwnedRawFunctionOwner.Expedition:
+                    ShowPacketOwnedExpeditionSearchWindow();
                     return true;
                 case PacketOwnedRawFunctionOwner.QuestAlarm:
                     TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.QuestAlarm, () =>
@@ -1387,10 +1404,17 @@ namespace HaCreator.MapSimulator
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.ItemMaker);
         }
 
-        private void ShowPacketOwnedFamilyChartWindow()
+        private void ShowPacketOwnedFamilyWindow()
         {
             _familyChartRuntime.ClearRemotePreviewRequest();
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
+        }
+
+        private void ShowPacketOwnedExpeditionSearchWindow()
+        {
+            _socialListRuntime.OpenSearchWindow(SocialSearchTab.Expedition);
+            WireSocialSearchWindowData();
+            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
         }
 
         private static bool WasPacketOwnedFuncKeyPressed(KeyboardState keyboardState, KeyboardState previousKeyboardState, Keys key)
@@ -1476,10 +1500,12 @@ namespace HaCreator.MapSimulator
 
         internal static PacketOwnedRawFunctionOwner ResolvePacketOwnedRawFunctionOwner(int clientFunctionId)
         {
-            // The direct type-4 palette ids come from CUIKeyConfig::ResetPaletteItems /
-            // GetIdxFromPaletteSlot, and the narrower owner targets here are aligned to
-            // the corresponding CWvsContext::UI_Open cases when the simulator already
-            // has an equivalent window seam.
+            // IDA v95:
+            // - CUIKeyConfig::ResetPaletteItems(0x7d8bc0) keeps palette slots 0-29 as type-4 ids 0-29.
+            // - CUIKeyConfig::GetIdxFromPaletteSlot(0x7d83b0) only remaps slots 30-34 to 50-54
+            //   and slots 35-41 to 100-106.
+            // Keep raw function ownership aligned to those client ids, but only route ids that
+            // already have a simulator-owned surface in this owner family.
             return clientFunctionId switch
             {
                 4 => PacketOwnedRawFunctionOwner.SocialListFriend,
@@ -1489,12 +1515,9 @@ namespace HaCreator.MapSimulator
                 19 => PacketOwnedRawFunctionOwner.SocialListParty,
                 20 => PacketOwnedRawFunctionOwner.QuestAlarm,
                 14 => PacketOwnedRawFunctionOwner.ShortcutMenu,
-                21 => PacketOwnedRawFunctionOwner.PartySearch,
-                22 => PacketOwnedRawFunctionOwner.Profession,
-                25 => PacketOwnedRawFunctionOwner.Ranking,
-                26 => PacketOwnedRawFunctionOwner.FamilyChart,
-                27 => PacketOwnedRawFunctionOwner.FamilyTree,
                 24 => PacketOwnedRawFunctionOwner.PartySearch,
+                25 => PacketOwnedRawFunctionOwner.Family,
+                27 => PacketOwnedRawFunctionOwner.Expedition,
                 29 => PacketOwnedRawFunctionOwner.Profession,
                 31 => PacketOwnedRawFunctionOwner.Event,
                 _ => PacketOwnedRawFunctionOwner.None,

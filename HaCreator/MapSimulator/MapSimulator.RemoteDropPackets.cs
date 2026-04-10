@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator
         private DateTime? _remoteDropPacketServerUtcAnchor;
         private int _remoteDropPacketServerTickAnchor;
         private string _remoteDropPacketServerClockSource = "hostUtc";
+        private int _remoteDropPacketServerClockFieldId;
 
         private ChatCommandHandler.CommandResult ApplyRemoteDropPacketCommand(int packetType, byte[] payload)
         {
@@ -63,13 +64,14 @@ namespace HaCreator.MapSimulator
             return $"Drop pool count={_dropPool.ActiveDropCount}; {clockText}.";
         }
 
-        private void SetRemoteDropPacketServerClock(DateTime serverUtc, int currentTime, string sourceLabel = "packet")
+        private void SetRemoteDropPacketServerClock(DateTime serverUtc, int currentTime, string sourceLabel = "packet", int fieldId = 0)
         {
             _remoteDropPacketServerUtcAnchor = NormalizeRemoteDropPacketClockUtc(serverUtc);
             _remoteDropPacketServerTickAnchor = currentTime;
             _remoteDropPacketServerClockSource = string.IsNullOrWhiteSpace(sourceLabel)
                 ? "packet"
                 : sourceLabel;
+            _remoteDropPacketServerClockFieldId = fieldId;
         }
 
         private void ClearRemoteDropPacketServerClock()
@@ -77,6 +79,7 @@ namespace HaCreator.MapSimulator
             _remoteDropPacketServerUtcAnchor = null;
             _remoteDropPacketServerTickAnchor = 0;
             _remoteDropPacketServerClockSource = "hostUtc";
+            _remoteDropPacketServerClockFieldId = 0;
         }
 
         private DateTime ResolveRemoteDropPacketServerUtc()
@@ -107,7 +110,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            SetRemoteDropPacketServerClock(serverUtc, currTickCount, "setfield");
+            SetRemoteDropPacketServerClock(serverUtc, currTickCount, "setfield", packet.FieldId);
         }
 
         internal static bool TryResolveRemoteDropPacketServerClock(PacketSetFieldPacket packet, out DateTime serverUtc)
@@ -137,7 +140,36 @@ namespace HaCreator.MapSimulator
 
         private void BindRemoteDropPacketField()
         {
-            _remoteDropPacketRuntime.BindField(_mapBoard?.MapInfo?.id ?? -1, () => _dropPool?.ClearPacketDrops());
+            int mapId = _mapBoard?.MapInfo?.id ?? -1;
+            _remoteDropPacketRuntime.BindField(mapId, () =>
+            {
+                _dropPool?.ClearPacketDrops();
+                if (ShouldClearRemoteDropPacketServerClockOnFieldBind(
+                    mapId,
+                    _remoteDropPacketServerClockSource,
+                    _remoteDropPacketServerClockFieldId))
+                {
+                    ClearRemoteDropPacketServerClock();
+                }
+            });
+        }
+
+        internal static bool ShouldClearRemoteDropPacketServerClockOnFieldBind(
+            int mapId,
+            string clockSource,
+            int anchoredFieldId)
+        {
+            if (mapId <= 0)
+            {
+                return false;
+            }
+
+            if (!string.Equals(clockSource, "setfield", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return anchoredFieldId <= 0 || anchoredFieldId != mapId;
         }
 
         private Vector2? ResolveDropPacketSourcePosition(int sourceId)

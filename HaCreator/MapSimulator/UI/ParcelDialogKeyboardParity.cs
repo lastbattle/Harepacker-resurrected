@@ -12,7 +12,7 @@ namespace HaCreator.MapSimulator.UI
 
     internal static class ParcelDialogKeyboardParity
     {
-        internal static ParcelDialogKeyboardAction ResolveAction(ParcelDialogTab activeTab, bool hasFocusedComposeField, Keys key)
+        internal static ParcelDialogKeyboardAction ResolveAction(global::HaCreator.MapSimulator.Interaction.ParcelDialogTab activeTab, bool hasFocusedComposeField, Keys key)
         {
             if (key == Keys.Escape)
             {
@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator.UI
                 return ParcelDialogKeyboardAction.None;
             }
 
-            return activeTab == ParcelDialogTab.Send
+            return activeTab == global::HaCreator.MapSimulator.Interaction.ParcelDialogTab.Send
                 ? ParcelDialogKeyboardAction.DispatchSend
                 : ParcelDialogKeyboardAction.None;
         }

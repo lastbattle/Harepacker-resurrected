@@ -296,17 +296,19 @@ namespace HaCreator.MapSimulator.Effects
 
         public void BindWeddingPhotoSceneOwner(int mapId, string sourceDescription, Rectangle? viewport, string backgroundMusicPath = null)
         {
-            if (_isActive)
-            {
-                return;
-            }
-
             bool ownerChanged =
                 !IsWeddingPhotoSceneOwnerActive
+                || _isActive
                 || _mapId != mapId
                 || WeddingPhotoSceneViewport != viewport
                 || !string.Equals(WeddingPhotoSceneBackgroundMusicPath, backgroundMusicPath, StringComparison.Ordinal);
 
+            if (!ownerChanged)
+            {
+                return;
+            }
+
+            _isActive = false;
             IsWeddingPhotoSceneOwnerActive = true;
             WeddingPhotoSceneOwnerDescription = sourceDescription ?? "CField_WeddingPhoto scene owner";
             WeddingPhotoSceneViewport = viewport;
@@ -323,11 +325,29 @@ namespace HaCreator.MapSimulator.Effects
             _ceremonyHearts.Clear();
             _lastPacketResponse = null;
             _lastPacketType = null;
+            _groomId = 0;
+            _brideId = 0;
+            _groomPosition = null;
+            _bridePosition = null;
+            _participantPositions.Clear();
+            _participantActors.Clear();
+            _audienceActors.Clear();
+            _audienceActorNamesById.Clear();
+            _pendingExternalRemoteActorLoads.Clear();
+            _pendingExternalRemoteActorLoadIds.Clear();
+            _loadedExternalRemoteActorIds.Clear();
+            _officialRemoteLifecycleActorIds.Clear();
+            _externalRemoteActorLoadWindowEndTimeMs = 0;
+            _externalRemoteActorLoadCooltimeEndTimeMs = 0;
+            LocalParticipantRole = WeddingParticipantRole.Guest;
 
-            if (ownerChanged && !string.IsNullOrWhiteSpace(WeddingPhotoSceneBackgroundMusicPath))
+            if (!string.IsNullOrWhiteSpace(WeddingPhotoSceneBackgroundMusicPath))
             {
                 _requestBgmOverride?.Invoke(WeddingPhotoSceneBackgroundMusicPath);
+                return;
             }
+
+            _clearBgmOverride?.Invoke();
         }
 
 

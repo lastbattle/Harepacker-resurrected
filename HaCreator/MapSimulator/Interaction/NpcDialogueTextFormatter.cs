@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class NpcDialogueFormattingContext
     {
+        public int ActiveQuestId { get; init; }
         public Func<string> ResolvePlayerNameText { get; init; }
         public Func<int, string> ResolveItemCountText { get; init; }
         public Func<int, string> ResolveQuestStateText { get; init; }
@@ -27,17 +28,24 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex ItemNameRegex = new(@"#t(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MobNameRegex = new(@"#o(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestNameRegex = new(@"#q(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentQuestNameRegex = new(@"#q#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestReferenceNameRegex = new(@"#y(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentQuestReferenceNameRegex = new(@"#y#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestStateRegex = new(@"#u(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentQuestStateRegex = new(@"#u#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CurrentMapNameRegex = new(@"#m#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex JobNameRegex = new(@"#j(?![A-Za-z0-9_])#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestDetailRecordRegex = new(@"#j(?<token>[A-Za-z0-9_]+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex SelectedMobRegex = new(@"#M(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex CurrentSelectedMobRegex = new(@"#M#", RegexOptions.Compiled);
         private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentQuestAmountRegex = new(@"#a#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentQuestValueRegex = new(@"#x#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestRecordRegex = new(@"#R(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex CurrentQuestRecordRegex = new(@"#R#", RegexOptions.Compiled);
         private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+:?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -70,17 +78,24 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = MobNameRegex.Replace(formatted, static match => ResolveMobName(match.Groups[1].Value));
             formatted = ItemNameAliasRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
             formatted = QuestNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
+            formatted = CurrentQuestNameRegex.Replace(formatted, match => ResolveActiveQuestNameText(context));
             formatted = QuestReferenceNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
+            formatted = CurrentQuestReferenceNameRegex.Replace(formatted, match => ResolveActiveQuestNameText(context));
             formatted = QuestStateRegex.Replace(formatted, match => ResolveQuestStateText(match.Groups[1].Value, context));
+            formatted = CurrentQuestStateRegex.Replace(formatted, match => ResolveActiveQuestStateText(context));
             formatted = SkillNameRegex.Replace(formatted, static match => ResolveSkillName(match.Groups[1].Value));
             formatted = MapNameRegex.Replace(formatted, static match => ResolveMapName(match.Groups[1].Value));
             formatted = CurrentMapNameRegex.Replace(formatted, match => ResolveCurrentMapNameText(context));
             formatted = QuestDetailRecordRegex.Replace(formatted, match => ResolveQuestDetailRecordText(match.Groups["token"].Value, context));
             formatted = JobNameRegex.Replace(formatted, match => ResolveJobNameText(context));
             formatted = SelectedMobRegex.Replace(formatted, static match => ResolveSelectedMobText(match.Groups[1].Value));
+            formatted = CurrentSelectedMobRegex.Replace(formatted, match => ResolveActiveSelectedMobText(context));
             formatted = QuestAmountRegex.Replace(formatted, static match => ResolveQuestAmountText(match.Groups[1].Value));
+            formatted = CurrentQuestAmountRegex.Replace(formatted, match => ResolveActiveQuestAmountText(context));
             formatted = QuestValueRegex.Replace(formatted, static match => ResolveQuestValueText(match.Groups[1].Value));
+            formatted = CurrentQuestValueRegex.Replace(formatted, match => ResolveActiveQuestValueText(context));
             formatted = QuestRecordRegex.Replace(formatted, match => ResolveQuestRecordText(match.Groups[1].Value, context));
+            formatted = CurrentQuestRecordRegex.Replace(formatted, match => ResolveActiveQuestRecordText(context));
             formatted = StyleTagRegex.Replace(formatted, string.Empty);
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = LiteralWordHashRegex.Replace(formatted, string.Empty);
@@ -553,6 +568,22 @@ namespace HaCreator.MapSimulator.Interaction
             return "Not started";
         }
 
+        private static string ResolveActiveQuestNameText(NpcDialogueFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveQuestName(activeQuestId.ToString())
+                : "current quest";
+        }
+
+        private static string ResolveActiveQuestStateText(NpcDialogueFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveQuestStateText(activeQuestId.ToString(), context)
+                : "Not started";
+        }
+
         private static string ResolveCurrentMapNameText(NpcDialogueFormattingContext context)
         {
             if (context?.ResolveCurrentMapNameText != null)
@@ -615,6 +646,30 @@ namespace HaCreator.MapSimulator.Interaction
                 : ResolveQuestAmountText(questIdText);
         }
 
+        private static string ResolveActiveSelectedMobText(NpcDialogueFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveSelectedMobText(activeQuestId.ToString())
+                : "the selected monster";
+        }
+
+        private static string ResolveActiveQuestAmountText(NpcDialogueFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveQuestAmountText(activeQuestId.ToString())
+                : "the listed amount";
+        }
+
+        private static string ResolveActiveQuestValueText(NpcDialogueFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveQuestValueText(activeQuestId.ToString())
+                : "the listed amount";
+        }
+
         private static string ResolveQuestRecordText(string questIdText, NpcDialogueFormattingContext context)
         {
             if (context?.ResolveQuestRecordText != null &&
@@ -629,6 +684,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "0";
+        }
+
+        private static string ResolveActiveQuestRecordText(NpcDialogueFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveQuestRecordText(activeQuestId.ToString(), context)
+                : "0";
         }
 
         private static string ResolveQuestDetailRecordText(string token, NpcDialogueFormattingContext context)

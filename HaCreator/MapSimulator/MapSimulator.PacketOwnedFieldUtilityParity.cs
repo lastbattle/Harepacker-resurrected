@@ -608,6 +608,10 @@ namespace HaCreator.MapSimulator
         {
             string bridgeStatus = "Live official-session bridge transport was not attempted.";
             string outboxStatus = "Generic local-utility outbox transport was not attempted.";
+            string queuedBridgeStatus = allowDeferredBridge
+                ? "Deferred official-session bridge queueing was not attempted."
+                : "Deferred official-session bridge queueing is disabled.";
+            string queuedOutboxStatus = "Deferred generic local-utility outbox queueing was not attempted.";
 
             if (trySendBridge != null)
             {
@@ -636,7 +640,7 @@ namespace HaCreator.MapSimulator
             if (allowDeferredBridge && tryQueueBridge != null)
             {
                 (bool success, string status) = tryQueueBridge(opcode, payload);
-                string queuedBridgeStatus = string.IsNullOrWhiteSpace(status)
+                queuedBridgeStatus = string.IsNullOrWhiteSpace(status)
                     ? "Deferred official-session bridge queueing produced no status."
                     : status;
                 if (success)
@@ -648,7 +652,7 @@ namespace HaCreator.MapSimulator
             if (tryQueueOutbox != null)
             {
                 (bool success, string status) = tryQueueOutbox(opcode, payload);
-                string queuedOutboxStatus = string.IsNullOrWhiteSpace(status)
+                queuedOutboxStatus = string.IsNullOrWhiteSpace(status)
                     ? "Deferred generic local-utility outbox queueing produced no status."
                     : status;
                 if (success)
@@ -657,7 +661,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            return $"{payloadSummary} The simulator kept opcode {opcode} local because neither the live bridge nor the packet outbox accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            return $"{payloadSummary} The simulator kept opcode {opcode} local because neither the live bridge nor the generic local-utility outbox nor either deferred queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus} Deferred outbox: {queuedOutboxStatus}";
         }
 
         private IReadOnlyList<PacketFieldUtilityFootholdEntry> BuildPacketOwnedFootholdSnapshot()

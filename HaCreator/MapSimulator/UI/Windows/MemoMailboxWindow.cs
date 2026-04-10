@@ -1434,6 +1434,20 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboardInput(MemoMailboxSnapshot snapshot, MemoMailboxDraftSnapshot draftSnapshot, KeyboardState keyboardState, int tickCount)
         {
+            Keys dialogActionKey = ResolveDialogActionKey(keyboardState);
+            if (dialogActionKey != Keys.None)
+            {
+                ParcelDialogKeyboardAction dialogAction = ParcelDialogKeyboardParity.ResolveAction(
+                    snapshot.ActiveTab,
+                    _activeInputField != ComposeInputField.None,
+                    dialogActionKey);
+                if (dialogAction != ParcelDialogKeyboardAction.None)
+                {
+                    HandleDialogKeyboardAction(dialogAction);
+                    return;
+                }
+            }
+
             if (snapshot.ActiveTab == ParcelDialogTab.Receive)
             {
                 HandleReceiveKeyboardInput(snapshot, keyboardState);
@@ -1498,6 +1512,31 @@ namespace HaCreator.MapSimulator.UI
             if (_lastHeldKey != Keys.None && !keyboardState.IsKeyDown(_lastHeldKey))
             {
                 ResetKeyRepeat();
+            }
+        }
+
+        private Keys ResolveDialogActionKey(KeyboardState keyboardState)
+        {
+            if (Pressed(keyboardState, Keys.Escape))
+            {
+                return Keys.Escape;
+            }
+
+            return Pressed(keyboardState, Keys.Enter)
+                ? Keys.Enter
+                : Keys.None;
+        }
+
+        private void HandleDialogKeyboardAction(ParcelDialogKeyboardAction action)
+        {
+            switch (action)
+            {
+                case ParcelDialogKeyboardAction.CloseDialog:
+                    Hide();
+                    break;
+                case ParcelDialogKeyboardAction.DispatchSend:
+                    HandleDispatch();
+                    break;
             }
         }
 
@@ -2264,8 +2303,7 @@ namespace HaCreator.MapSimulator.UI
                 useClauseAnchor,
                 clauseAnchorWidth,
                 clauseWidth);
-            WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
-            if (WindowsImePresentationBridge.TryRefreshCandidateWindowForm(windowHandle, _candidateListState, out ImeCandidateListState refreshedCandidateState))
+            if (WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement, _candidateListState, out ImeCandidateListState refreshedCandidateState))
             {
                 _candidateListState = refreshedCandidateState;
             }

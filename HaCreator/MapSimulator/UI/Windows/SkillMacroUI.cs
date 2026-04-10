@@ -154,6 +154,8 @@ namespace HaCreator.MapSimulator.UI
         private Color _ownerNoticeColor = Color.White;
         private bool _nameFieldFocused;
         private int _editingCursorPosition;
+        private int _editingSelectionAnchor = -1;
+        private bool _nameSelectionDragActive;
         private int _caretBlinkTick;
         private string _compositionText = string.Empty;
         private int _compositionInsertionIndex = -1;
@@ -459,6 +461,8 @@ namespace HaCreator.MapSimulator.UI
             _nameFieldFocused = false;
             ClearOwnerNotice();
             _editingCursorPosition = 0;
+            ClearNameSelection();
+            _nameSelectionDragActive = false;
             _caretBlinkTick = Environment.TickCount;
             ClearCompositionText();
             Array.Clear(_editingSkillIds, 0, _editingSkillIds.Length);
@@ -608,20 +612,19 @@ namespace HaCreator.MapSimulator.UI
             Rectangle fieldRect = new(fieldX, fieldY, NAME_FIELD_WIDTH, NAME_FIELD_HEIGHT);
             sprite.Draw(_textPixelTexture, fieldRect, new Color(18, 18, 24, 28));
 
-            int safeCursorPosition = Math.Clamp(_editingCursorPosition, 0, _editingMacroName?.Length ?? 0);
+            string committedText = _editingMacroName ?? string.Empty;
+            int safeCursorPosition = Math.Clamp(_editingCursorPosition, 0, committedText.Length);
+            int selectionStart = GetNameSelectionStart();
+            int selectionLength = GetNameSelectionLength();
+            int selectionEnd = selectionStart >= 0
+                ? Math.Clamp(selectionStart + selectionLength, 0, committedText.Length)
+                : -1;
             string committedPrefix = safeCursorPosition > 0
-                ? _editingMacroName[..safeCursorPosition]
-                : string.Empty;
-            string committedSuffix = safeCursorPosition < (_editingMacroName?.Length ?? 0)
-                ? _editingMacroName[safeCursorPosition..]
+                ? committedText[..safeCursorPosition]
                 : string.Empty;
             string compositionText = _compositionText ?? string.Empty;
             Vector2 textPosition = new(fieldX + NAME_FIELD_TEXT_INSET_X, fieldY + NAME_FIELD_TEXT_INSET_Y);
-
-            if (committedPrefix.Length > 0)
-            {
-                sprite.DrawString(_font, committedPrefix, textPosition, Color.White);
-            }
+            DrawCommittedNameText(sprite, committedText, selectionStart, selectionEnd, textPosition);
 
             float prefixWidth = committedPrefix.Length > 0 ? _font.MeasureString(committedPrefix).X : 0f;
             Vector2 compositionPosition = new(textPosition.X + prefixWidth, textPosition.Y);
@@ -634,14 +637,6 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_textPixelTexture,
                     new Rectangle((int)compositionPosition.X, underlineY, compositionWidth, 1),
                     new Color(255, 235, 160, 220));
-            }
-
-            if (committedSuffix.Length > 0)
-            {
-                float compositionWidth = compositionText.Length > 0 ? _font.MeasureString(compositionText).X : 0f;
-                sprite.DrawString(_font, committedSuffix,
-                    new Vector2(compositionPosition.X + compositionWidth, compositionPosition.Y),
-                    Color.White);
             }
 
             if (_nameFieldFocused && ((Environment.TickCount - _caretBlinkTick) / 500) % 2 == 0)
@@ -1047,6 +1042,8 @@ namespace HaCreator.MapSimulator.UI
             _editingMacroName = _macros[index].Name ?? "";
             _nameFieldFocused = false;
             _editingCursorPosition = _editingMacroName.Length;
+            ClearNameSelection();
+            _nameSelectionDragActive = false;
             _notifyPartyMembers = _macros[index].NotifyParty;
             _validationMessage = string.Empty;
             ClearOwnerNotice();
@@ -1154,6 +1151,8 @@ namespace HaCreator.MapSimulator.UI
             if (!focused)
             {
                 _softKeyboardActive = false;
+                _nameSelectionDragActive = false;
+                ClearNameSelection();
                 ClearCompositionText();
             }
         }
@@ -1225,7 +1224,7 @@ namespace HaCreator.MapSimulator.UI
                 SkillMacroSoftKeyboardFunctionKey.CapsLock => SkillMacroSoftKeyboardLayout.IsAlphabeticFamilyEnabled(mode),
                 SkillMacroSoftKeyboardFunctionKey.LeftShift or SkillMacroSoftKeyboardFunctionKey.RightShift => SkillMacroSoftKeyboardLayout.IsAlphabeticFamilyEnabled(mode),
                 SkillMacroSoftKeyboardFunctionKey.Enter => CanSaveCurrentMacro(),
-                SkillMacroSoftKeyboardFunctionKey.Backspace => !string.IsNullOrEmpty(_editingMacroName),
+                SkillMacroSoftKeyboardFunctionKey.Backspace => !string.IsNullOrEmpty(_editingMacroName) || HasNameSelection,
                 _ => false
             };
         }
@@ -1270,6 +1269,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ClearCompositionText();
+            DeleteNameSelectionIfAny();
             if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, text, out string updatedText, out int insertedLength, out string error)
                 && insertedLength > 0)
             {
@@ -1497,6 +1497,20 @@ namespace HaCreator.MapSimulator.UI
                 _softKeyboardPressedVisualUntil = 0;
             }
 
+            if (_nameSelectionDragActive)
+            {
+                MouseState mouseState = Mouse.GetState();
+                if (mouseState.LeftButton == ButtonState.Pressed && _editingMacroIndex >= 0)
+                {
+                    _editingCursorPosition = ResolveNameCursorFromMouse(mouseX);
+                    _caretBlinkTick = Environment.TickCount;
+                }
+                else
+                {
+                    _nameSelectionDragActive = false;
+                }
+            }
+
             if (IsSoftKeyboardVisible)
             {
                 Point softKeyboardPosition = GetSoftKeyboardPosition();
@@ -1556,7 +1570,14 @@ namespace HaCreator.MapSimulator.UI
                     ShowSoftKeyboard(resetDismissedState: true);
                     ClearOwnerNotice();
                     int updatedCursorPosition = ResolveNameCursorFromMouse(mouseX);
-                    _editingCursorPosition = updatedCursorPosition;
+                    bool extendSelection = IsShiftHeld();
+                    MoveNameCaret(updatedCursorPosition, extendSelection);
+                    if (!extendSelection)
+                    {
+                        _editingSelectionAnchor = updatedCursorPosition;
+                    }
+
+                    _nameSelectionDragActive = true;
                     if (_compositionText.Length > 0)
                     {
                         _compositionInsertionIndex = updatedCursorPosition;
@@ -1622,6 +1643,8 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void OnMouseUp(int mouseX, int mouseY)
         {
+            _nameSelectionDragActive = false;
+
             if (_dragMode == MacroDragMode.Skill)
             {
                 int targetMacro = GetMacroIndexAtPosition(mouseX, mouseY);
@@ -1700,6 +1723,114 @@ namespace HaCreator.MapSimulator.UI
             return _editingMacroIndex >= 0 && GetNameFieldBounds().Contains(mouseX, mouseY);
         }
 
+        private bool HasNameSelection => GetNameSelectionLength() > 0;
+
+        private int GetNameSelectionStart()
+        {
+            return ClientEditSelectionHelper.GetSelectionStart(
+                _editingMacroName?.Length ?? 0,
+                _editingSelectionAnchor,
+                _editingCursorPosition);
+        }
+
+        private int GetNameSelectionLength()
+        {
+            return ClientEditSelectionHelper.GetSelectionLength(
+                _editingMacroName?.Length ?? 0,
+                _editingSelectionAnchor,
+                _editingCursorPosition);
+        }
+
+        private void ClearNameSelection()
+        {
+            _editingSelectionAnchor = -1;
+        }
+
+        private void MoveNameCaret(int targetPosition, bool extendSelection)
+        {
+            int textLength = _editingMacroName?.Length ?? 0;
+            int clampedPosition = Math.Clamp(targetPosition, 0, textLength);
+            if (extendSelection)
+            {
+                _editingSelectionAnchor = _editingSelectionAnchor >= 0
+                    ? Math.Clamp(_editingSelectionAnchor, 0, textLength)
+                    : Math.Clamp(_editingCursorPosition, 0, textLength);
+            }
+            else
+            {
+                ClearNameSelection();
+            }
+
+            _editingCursorPosition = clampedPosition;
+        }
+
+        private bool DeleteNameSelectionIfAny()
+        {
+            if (!ClientEditSelectionHelper.TryDeleteSelection(
+                _editingMacroName,
+                _editingSelectionAnchor,
+                _editingCursorPosition,
+                out string updatedText,
+                out int updatedCaretIndex))
+            {
+                return false;
+            }
+
+            _editingMacroName = updatedText;
+            _editingCursorPosition = updatedCaretIndex;
+            ClearNameSelection();
+            return true;
+        }
+
+        private void SelectAllNameText()
+        {
+            if (string.IsNullOrEmpty(_editingMacroName))
+            {
+                ClearNameSelection();
+                _editingCursorPosition = 0;
+                _caretBlinkTick = Environment.TickCount;
+                return;
+            }
+
+            _editingSelectionAnchor = 0;
+            _editingCursorPosition = _editingMacroName.Length;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        private void CopySelectedNameText(bool cutSelection)
+        {
+            int selectionStart = GetNameSelectionStart();
+            int selectionLength = GetNameSelectionLength();
+            if (selectionStart < 0 || selectionLength <= 0)
+            {
+                return;
+            }
+
+            try
+            {
+                System.Windows.Forms.Clipboard.SetText(_editingMacroName.Substring(selectionStart, selectionLength));
+            }
+            catch
+            {
+                return;
+            }
+
+            if (!cutSelection)
+            {
+                return;
+            }
+
+            DeleteNameSelectionIfAny();
+            _validationMessage = string.Empty;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        private static bool IsShiftHeld()
+        {
+            KeyboardState keyboardState = Keyboard.GetState();
+            return keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+        }
+
         private int ResolveNameCursorFromMouse(int mouseX)
         {
             if (_font == null || string.IsNullOrEmpty(_editingMacroName))
@@ -1729,6 +1860,51 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return bestCursor;
+        }
+
+        private void DrawCommittedNameText(SpriteBatch sprite, string committedText, int selectionStart, int selectionEnd, Vector2 textPosition)
+        {
+            if (string.IsNullOrEmpty(committedText))
+            {
+                return;
+            }
+
+            if (selectionStart < 0 || selectionEnd <= selectionStart)
+            {
+                sprite.DrawString(_font, committedText, textPosition, Color.White);
+                return;
+            }
+
+            string prefix = selectionStart > 0 ? committedText[..selectionStart] : string.Empty;
+            string selectedText = committedText.Substring(selectionStart, selectionEnd - selectionStart);
+            string suffix = selectionEnd < committedText.Length ? committedText[selectionEnd..] : string.Empty;
+
+            if (prefix.Length > 0)
+            {
+                sprite.DrawString(_font, prefix, textPosition, Color.White);
+            }
+
+            float prefixWidth = prefix.Length > 0 ? _font.MeasureString(prefix).X : 0f;
+            Vector2 selectionPosition = new(textPosition.X + prefixWidth, textPosition.Y);
+            if (selectedText.Length > 0)
+            {
+                Vector2 selectionSize = _font.MeasureString(selectedText);
+                sprite.Draw(
+                    _textPixelTexture,
+                    new Rectangle(
+                        (int)Math.Floor(selectionPosition.X),
+                        (int)Math.Floor(selectionPosition.Y),
+                        Math.Max(1, (int)Math.Ceiling(selectionSize.X)),
+                        Math.Max(1, Math.Min(NAME_FIELD_HEIGHT, _font.LineSpacing))),
+                    new Color(89, 108, 147, 220));
+                sprite.DrawString(_font, selectedText, selectionPosition, Color.White);
+            }
+
+            if (suffix.Length > 0)
+            {
+                float selectionWidth = selectedText.Length > 0 ? _font.MeasureString(selectedText).X : 0f;
+                sprite.DrawString(_font, suffix, new Vector2(selectionPosition.X + selectionWidth, selectionPosition.Y), Color.White);
+            }
         }
 
         private void HandleSoftKeyboardMouseDown(int mouseX, int mouseY)
@@ -1785,7 +1961,10 @@ namespace HaCreator.MapSimulator.UI
                         SaveCurrentMacro();
                         break;
                     case SkillMacroSoftKeyboardFunctionKey.Backspace:
-                        RemoveCharacterBeforeCursor();
+                        if (!DeleteNameSelectionIfAny())
+                        {
+                            RemoveCharacterBeforeCursor();
+                        }
                         break;
                 }
 
@@ -1816,6 +1995,7 @@ namespace HaCreator.MapSimulator.UI
             SetNameFieldFocus(true);
             ClearOwnerNotice();
             _caretBlinkTick = Environment.TickCount;
+            _nameSelectionDragActive = false;
 
             if (!leftButton)
             {
@@ -1950,6 +2130,7 @@ namespace HaCreator.MapSimulator.UI
 
             ClearCompositionText();
             ClearOwnerNotice();
+            DeleteNameSelectionIfAny();
             if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, text, out string updatedText, out int insertedLength, out string error))
             {
                 _editingMacroName = updatedText;
@@ -1981,6 +2162,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_compositionText.Length == 0)
             {
+                DeleteNameSelectionIfAny();
                 _compositionInsertionIndex = _editingCursorPosition;
             }
 
@@ -2053,14 +2235,17 @@ namespace HaCreator.MapSimulator.UI
 
         bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
         {
-            if (string.IsNullOrEmpty(_editingMacroName))
+            if (string.IsNullOrEmpty(_editingMacroName) && !HasNameSelection)
             {
                 return ((ISoftKeyboardHost)this).TryInsertSoftKeyboardCharacter(character, out errorMessage);
             }
 
             ClearCompositionText();
             ClearOwnerNotice();
-            RemoveCharacterBeforeCursor();
+            if (!DeleteNameSelectionIfAny())
+            {
+                RemoveCharacterBeforeCursor();
+            }
             if (!TryInsertSoftKeyboardText(character.ToString()))
             {
                 errorMessage = string.IsNullOrWhiteSpace(_validationMessage)
@@ -2075,7 +2260,7 @@ namespace HaCreator.MapSimulator.UI
 
         bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
         {
-            if (string.IsNullOrEmpty(_editingMacroName))
+            if (string.IsNullOrEmpty(_editingMacroName) && !HasNameSelection)
             {
                 errorMessage = "The macro name is already empty.";
                 return false;
@@ -2083,7 +2268,10 @@ namespace HaCreator.MapSimulator.UI
 
             ClearCompositionText();
             ClearOwnerNotice();
-            RemoveCharacterBeforeCursor();
+            if (!DeleteNameSelectionIfAny())
+            {
+                RemoveCharacterBeforeCursor();
+            }
             errorMessage = string.Empty;
             return true;
         }
@@ -2116,12 +2304,30 @@ namespace HaCreator.MapSimulator.UI
         private void HandleKeyboardInput(KeyboardState keyboardState)
         {
             bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
+            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+
+            if (!ctrl && shift && keyboardState.IsKeyDown(Keys.Insert) && _previousKeyboardState.IsKeyUp(Keys.Insert))
+            {
+                HandleClipboardPaste();
+                return;
+            }
+
+            if (!ctrl && shift && keyboardState.IsKeyDown(Keys.Delete) && _previousKeyboardState.IsKeyUp(Keys.Delete))
+            {
+                CopySelectedNameText(cutSelection: true);
+                return;
+            }
 
             if (keyboardState.IsKeyDown(Keys.Back) && _previousKeyboardState.IsKeyUp(Keys.Back))
             {
                 if (_compositionText.Length > 0)
                 {
                     ClearCompositionText();
+                    _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
+                }
+                else if (DeleteNameSelectionIfAny())
+                {
                     _validationMessage = string.Empty;
                     _caretBlinkTick = Environment.TickCount;
                 }
@@ -2139,6 +2345,11 @@ namespace HaCreator.MapSimulator.UI
                     _validationMessage = string.Empty;
                     _caretBlinkTick = Environment.TickCount;
                 }
+                else if (DeleteNameSelectionIfAny())
+                {
+                    _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
+                }
                 else if (_editingCursorPosition < _editingMacroName.Length)
                 {
                     RemoveCharacterAtCursor();
@@ -2149,7 +2360,17 @@ namespace HaCreator.MapSimulator.UI
             {
                 ClearCompositionText();
                 ClearOwnerNotice();
-                _editingCursorPosition = SkillMacroNameRules.GetPreviousCaretStop(_editingMacroName, _editingCursorPosition);
+                int baseCaret = shift
+                    ? Math.Clamp(_editingCursorPosition, 0, _editingMacroName.Length)
+                    : ClientEditSelectionHelper.ResolveNavigationCaret(
+                    _editingMacroName.Length,
+                    _editingSelectionAnchor,
+                    _editingCursorPosition,
+                    moveRight: false);
+                int targetCaret = !shift && HasNameSelection
+                    ? baseCaret
+                    : SkillMacroNameRules.GetPreviousCaretStop(_editingMacroName, baseCaret);
+                MoveNameCaret(targetCaret, shift);
                 _caretBlinkTick = Environment.TickCount;
             }
 
@@ -2157,7 +2378,17 @@ namespace HaCreator.MapSimulator.UI
             {
                 ClearCompositionText();
                 ClearOwnerNotice();
-                _editingCursorPosition = SkillMacroNameRules.GetNextCaretStop(_editingMacroName, _editingCursorPosition);
+                int baseCaret = shift
+                    ? Math.Clamp(_editingCursorPosition, 0, _editingMacroName.Length)
+                    : ClientEditSelectionHelper.ResolveNavigationCaret(
+                    _editingMacroName.Length,
+                    _editingSelectionAnchor,
+                    _editingCursorPosition,
+                    moveRight: true);
+                int targetCaret = !shift && HasNameSelection
+                    ? baseCaret
+                    : SkillMacroNameRules.GetNextCaretStop(_editingMacroName, baseCaret);
+                MoveNameCaret(targetCaret, shift);
                 _caretBlinkTick = Environment.TickCount;
             }
 
@@ -2165,7 +2396,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 ClearCompositionText();
                 ClearOwnerNotice();
-                _editingCursorPosition = 0;
+                MoveNameCaret(0, shift);
                 _caretBlinkTick = Environment.TickCount;
             }
 
@@ -2173,7 +2404,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 ClearCompositionText();
                 ClearOwnerNotice();
-                _editingCursorPosition = _editingMacroName.Length;
+                MoveNameCaret(_editingMacroName.Length, shift);
                 _validationMessage = string.Empty;
                 _caretBlinkTick = Environment.TickCount;
             }
@@ -2191,6 +2422,24 @@ namespace HaCreator.MapSimulator.UI
             if (ctrl && keyboardState.IsKeyDown(Keys.V) && _previousKeyboardState.IsKeyUp(Keys.V))
             {
                 HandleClipboardPaste();
+                return;
+            }
+
+            if (ctrl && keyboardState.IsKeyDown(Keys.A) && _previousKeyboardState.IsKeyUp(Keys.A))
+            {
+                SelectAllNameText();
+                return;
+            }
+
+            if (ctrl && keyboardState.IsKeyDown(Keys.C) && _previousKeyboardState.IsKeyUp(Keys.C))
+            {
+                CopySelectedNameText(cutSelection: false);
+                return;
+            }
+
+            if (ctrl && keyboardState.IsKeyDown(Keys.X) && _previousKeyboardState.IsKeyUp(Keys.X))
+            {
+                CopySelectedNameText(cutSelection: true);
                 return;
             }
         }
@@ -2219,6 +2468,7 @@ namespace HaCreator.MapSimulator.UI
 
                 ClearCompositionText();
                 ClearOwnerNotice();
+                DeleteNameSelectionIfAny();
                 if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, normalizedClipboardText, out string updatedText, out int insertedLength, out string error))
                 {
                     _editingMacroName = updatedText;
@@ -2838,8 +3088,7 @@ namespace HaCreator.MapSimulator.UI
                 clauseAnchorWidth,
                 clauseWidth);
             placement = SkillMacroImeWindowPlacementLayout.PreserveNativeCandidateWindowPlacement(placement, _candidateListState);
-            WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
-            if (WindowsImePresentationBridge.TryRefreshCandidateWindowForm(windowHandle, _candidateListState, out ImeCandidateListState refreshedCandidateState))
+            if (WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement, _candidateListState, out ImeCandidateListState refreshedCandidateState))
             {
                 _candidateListState = refreshedCandidateState;
             }

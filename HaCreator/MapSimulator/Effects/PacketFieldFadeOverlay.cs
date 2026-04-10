@@ -43,6 +43,23 @@ namespace HaCreator.MapSimulator.Effects
             _entries.Clear();
         }
 
+        public int RemoveLayer(int layerZ)
+        {
+            int removedCount = 0;
+            for (int index = _entries.Count - 1; index >= 0; index--)
+            {
+                if (_entries[index].LayerZ != layerZ)
+                {
+                    continue;
+                }
+
+                _entries.RemoveAt(index);
+                removedCount++;
+            }
+
+            return removedCount;
+        }
+
         public void Update(int currentTickCount)
         {
             if (_entries.Count == 0)

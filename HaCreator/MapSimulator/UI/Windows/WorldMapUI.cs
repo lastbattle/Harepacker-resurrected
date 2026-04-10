@@ -2762,8 +2762,7 @@ namespace HaCreator.MapSimulator.UI
                 useClauseAnchor,
                 clauseAnchorWidth,
                 clauseWidth);
-            WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
-            if (WindowsImePresentationBridge.TryRefreshCandidateWindowForm(windowHandle, _candidateListState, out ImeCandidateListState refreshedCandidateState))
+            if (WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement, _candidateListState, out ImeCandidateListState refreshedCandidateState))
             {
                 _candidateListState = refreshedCandidateState;
             }

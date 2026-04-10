@@ -145,9 +145,24 @@ namespace HaCreator.MapSimulator.Character
         {
             public WzImage BaseImage { get; init; }
             public WzObject ActionSourceRoot { get; init; }
+            public CharacterImageEntryMetadata Metadata { get; init; }
             public bool HasWeeklyVariant { get; init; }
             public bool UsesWeeklyVariantOverride { get; init; }
             public int ResolvedWeeklyVariantIndex { get; init; } = -1;
+        }
+
+        private sealed class CharacterImageEntryMetadata
+        {
+            public string ISlot { get; init; }
+            public string VSlot { get; init; }
+            public string Sfx { get; init; }
+            public bool IsCash { get; init; }
+            public bool HasWeeklyVariant { get; init; }
+            public string WeaponAfterImageType { get; init; }
+            public int WeaponWalkFrameCount { get; init; }
+            public int WeaponStandFrameCount { get; init; }
+            public int WeaponAttackFrameCount { get; init; }
+            public int WeaponAttackSpeed { get; init; } = 6;
         }
 
         private sealed class MorphImageEntry
@@ -2220,7 +2235,7 @@ namespace HaCreator.MapSimulator.Character
             if (part != null)
             {
                 // Load info
-                LoadEquipInfo(part, imageEntry.BaseImage);
+                LoadEquipInfo(part, imageEntry);
                 part.UsesWeeklyVariantOverride = imageEntry.UsesWeeklyVariantOverride;
                 part.ResolvedWeeklyVariantIndex = imageEntry.ResolvedWeeklyVariantIndex;
                 AttachTamingMobOverlayResolver(part);
@@ -2263,14 +2278,15 @@ namespace HaCreator.MapSimulator.Character
             var info = img["info"];
             if (info != null)
             {
-                LoadEquipInfo(weapon, img);
-                weapon.AttackSpeed = GetIntValue(info["attackSpeed"]) ?? 6;
-                weapon.WalkFrameCount = GetIntValue(info["walk"]) ?? 0;
-                weapon.StandFrameCount = GetIntValue(info["stand"]) ?? 0;
-                weapon.AttackFrameCount = GetIntValue(info["attack"]) ?? 0;
+                LoadEquipInfo(weapon, imageEntry);
+                CharacterImageEntryMetadata metadata = imageEntry?.Metadata;
+                weapon.AttackSpeed = metadata?.WeaponAttackSpeed ?? 6;
+                weapon.WalkFrameCount = metadata?.WeaponWalkFrameCount ?? 0;
+                weapon.StandFrameCount = metadata?.WeaponStandFrameCount ?? 0;
+                weapon.AttackFrameCount = metadata?.WeaponAttackFrameCount ?? 0;
                 weapon.Attack = weapon.BonusWeaponAttack;
                 weapon.WeaponType = ResolveWeaponType(itemId);
-                weapon.AfterImageType = GetStringValue(info["afterImage"]);
+                weapon.AfterImageType = metadata?.WeaponAfterImageType;
                 weapon.IsTwoHanded = GetIntValue(info["twoHanded"]) == 1;
                 System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon info: attackSpeed={weapon.AttackSpeed}, walk={weapon.WalkFrameCount}, stand={weapon.StandFrameCount}, attack={weapon.AttackFrameCount}, PAD={weapon.Attack}, twoHanded={weapon.IsTwoHanded}");
             }
@@ -2505,18 +2521,20 @@ namespace HaCreator.MapSimulator.Character
             return "weaponBelowHand";
         }
 
-        private void LoadEquipInfo(CharacterPart part, WzImage img)
+        private void LoadEquipInfo(CharacterPart part, CharacterImageEntry imageEntry)
         {
+            WzImage img = imageEntry?.BaseImage;
             if (img == null) return;
 
             var info = img["info"];
             if (info == null) return;
 
-            part.VSlot = GetStringValue(info["vslot"]);
-            part.ISlot = GetStringValue(info["islot"]);
-            part.Sfx = GetStringValue(info["sfx"]);
-            part.IsCash = GetIntValue(info["cash"]) == 1;
-            part.HasWeeklyVariant = GetIntValue(info["weekly"]) == 1;
+            CharacterImageEntryMetadata metadata = imageEntry.Metadata;
+            part.VSlot = metadata?.VSlot;
+            part.ISlot = metadata?.ISlot;
+            part.Sfx = metadata?.Sfx;
+            part.IsCash = metadata?.IsCash == true;
+            part.HasWeeklyVariant = metadata?.HasWeeklyVariant == true;
             part.RequiredJobMask = GetIntValue(info["reqJob"]) ?? 0;
             part.RequiredLevel = GetIntValue(info["reqLevel"]) ?? 0;
             part.RequiredSTR = GetIntValue(info["reqSTR"]) ?? 0;
@@ -3103,9 +3121,39 @@ namespace HaCreator.MapSimulator.Character
             {
                 BaseImage = baseImage,
                 ActionSourceRoot = actionSourceRoot,
+                Metadata = ReadCharacterImageEntryMetadata(baseImage),
                 HasWeeklyVariant = hasWeeklyVariant,
                 UsesWeeklyVariantOverride = usesWeeklyVariantOverride,
                 ResolvedWeeklyVariantIndex = usesWeeklyVariantOverride ? resolvedWeeklyVariantIndex : -1
+            };
+        }
+
+        private CharacterImageEntryMetadata ReadCharacterImageEntryMetadata(WzImage baseImage)
+        {
+            if (baseImage == null)
+            {
+                return new CharacterImageEntryMetadata();
+            }
+
+            baseImage.ParseImage();
+            WzImageProperty info = baseImage["info"];
+            if (info == null)
+            {
+                return new CharacterImageEntryMetadata();
+            }
+
+            return new CharacterImageEntryMetadata
+            {
+                ISlot = GetStringValue(info["islot"]),
+                VSlot = GetStringValue(info["vslot"]),
+                Sfx = GetStringValue(info["sfx"]),
+                IsCash = GetIntValue(info["cash"]) == 1,
+                HasWeeklyVariant = GetIntValue(info["weekly"]) == 1,
+                WeaponAfterImageType = GetStringValue(info["afterImage"]),
+                WeaponWalkFrameCount = GetIntValue(info["walk"]) ?? 0,
+                WeaponStandFrameCount = GetIntValue(info["stand"]) ?? 0,
+                WeaponAttackFrameCount = GetIntValue(info["attack"]) ?? 0,
+                WeaponAttackSpeed = GetIntValue(info["attackSpeed"]) ?? 6
             };
         }
 

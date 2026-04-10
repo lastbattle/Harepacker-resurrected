@@ -16,6 +16,29 @@ namespace HaCreator.MapSimulator
         private const int GuildBossOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private int _nextGuildBossOfficialSessionBridgeDiscoveryRefreshAt;
 
+        internal static bool HasGuildBossOfficialSessionBridgeOwnership(
+            bool isRunning,
+            bool hasAttachedClient,
+            bool hasPassiveEstablishedSocketPair)
+        {
+            return isRunning || hasAttachedClient || hasPassiveEstablishedSocketPair;
+        }
+
+        internal static bool ShouldAllowLocalGuildBossPulleyPreview(
+            bool officialSessionBridgeHoldsOwnership,
+            bool transportHasConnectedClients)
+        {
+            return !officialSessionBridgeHoldsOwnership && !transportHasConnectedClients;
+        }
+
+        private bool HoldsGuildBossOfficialSessionBridgeOwnership()
+        {
+            return HasGuildBossOfficialSessionBridgeOwnership(
+                _guildBossOfficialSessionBridge.IsRunning,
+                _guildBossOfficialSessionBridge.HasAttachedClient,
+                _guildBossOfficialSessionBridge.HasPassiveEstablishedSocketPair);
+        }
+
         private string DescribeGuildBossOfficialSessionBridgeStatus()
         {
             string enabledText = _guildBossOfficialSessionBridgeEnabled ? "enabled" : "disabled";

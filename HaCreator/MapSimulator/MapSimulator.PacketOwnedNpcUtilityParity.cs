@@ -453,7 +453,8 @@ namespace HaCreator.MapSimulator
             if (!string.IsNullOrWhiteSpace(blockingOwner))
             {
                 adminShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
-                    $"CAdminShopDlg owner surface stayed hidden because {blockingOwner} already owned the unique-modeless slot.");
+                    $"CAdminShopDlg owner surface stayed hidden because {blockingOwner} already owned the unique-modeless slot.",
+                    AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden);
                 return $"{defaultMessage} Admin Shop stayed in status-only mode because {blockingOwner} is already visible.";
             }
 

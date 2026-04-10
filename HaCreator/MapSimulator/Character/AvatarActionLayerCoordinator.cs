@@ -110,8 +110,7 @@ namespace HaCreator.MapSimulator.Character
             CharacterFrame tamingMobFrame,
             bool facingRight)
         {
-            if (frame?.Parts == null
-                || frame.Parts.Count == 0
+            if (frame == null
                 || characterFrame == null
                 || tamingMobFrame == null)
             {
@@ -131,6 +130,11 @@ namespace HaCreator.MapSimulator.Character
 
             Point bodyRelMove = relocation.BodyRelMove;
             if (bodyRelMove == Point.Zero)
+            {
+                return;
+            }
+
+            if (frame.Parts == null)
             {
                 return;
             }

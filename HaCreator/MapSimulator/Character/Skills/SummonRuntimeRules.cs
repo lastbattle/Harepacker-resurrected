@@ -773,6 +773,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool preferHealFirst = true,
             string explicitBranchName = null)
         {
+            return ResolveTrackedSuspendDurationMs(
+                skill,
+                SummonAssistType.Support,
+                preferHealFirst,
+                explicitBranchName);
+        }
+
+        internal static int ResolveTrackedSuspendDurationMs(
+            SkillData skill,
+            SummonAssistType assistType,
+            bool preferHealFirst = true,
+            string explicitBranchName = null)
+        {
             if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
             {
                 return 0;
@@ -781,10 +794,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             string branchName = explicitBranchName;
             if (string.IsNullOrWhiteSpace(branchName))
             {
-                branchName = ResolveSupportOwnedBranch(skill, preferHealFirst);
+                branchName = assistType == SummonAssistType.SummonAction
+                    ? ResolveLocalSummonActionBranch(skill)
+                    : ResolveSupportOwnedBranch(skill, preferHealFirst);
             }
 
             if (string.IsNullOrWhiteSpace(branchName)
+                || !IsTrackedSuspendBranch(skill, assistType, branchName)
                 || !skill.SummonNamedAnimations.TryGetValue(branchName, out SkillAnimation suspendAnimation))
             {
                 return 0;
@@ -800,24 +816,68 @@ namespace HaCreator.MapSimulator.Character.Skills
             string explicitBranchName = null,
             int fallbackDurationMs = 0)
         {
-            if (assistType != SummonAssistType.Support || skill == null)
+            if ((assistType != SummonAssistType.Support
+                 && assistType != SummonAssistType.SummonAction)
+                || skill == null)
             {
                 return false;
             }
 
             if (!string.IsNullOrWhiteSpace(explicitBranchName)
-                && !IsSupportOwnedSuspendBranch(skill, assistType, explicitBranchName))
+                && !IsTrackedSuspendBranch(skill, assistType, explicitBranchName))
             {
                 return false;
             }
 
             bool preferHealFirst = preferHealFirstOverride
                 ?? HasMinionAbilityToken(skill.MinionAbility, "heal");
-            return ResolveSupportSuspendDurationMs(
+            return ResolveTrackedSuspendDurationMs(
                        skill,
+                       assistType,
                        preferHealFirst,
                        explicitBranchName) > 0
                    || fallbackDurationMs > 0;
+        }
+
+        private static bool IsTrackedSuspendBranch(
+            SkillData skill,
+            SummonAssistType assistType,
+            string branchName)
+        {
+            if (assistType == SummonAssistType.SummonAction)
+            {
+                return IsSummonActionSuspendBranch(skill, branchName);
+            }
+
+            return IsSupportOwnedSuspendBranch(skill, assistType, branchName);
+        }
+
+        private static bool IsSummonActionSuspendBranch(
+            SkillData skill,
+            string branchName)
+        {
+            if (skill?.SummonNamedAnimations == null
+                || string.IsNullOrWhiteSpace(branchName))
+            {
+                return false;
+            }
+
+            foreach (string candidate in EnumerateSummonActionSuspendBranchCandidates(skill))
+            {
+                if (!string.IsNullOrWhiteSpace(candidate)
+                    && string.Equals(candidate, branchName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<string> EnumerateSummonActionSuspendBranchCandidates(SkillData skill)
+        {
+            yield return ResolveLocalSummonActionBranch(skill);
+            yield return ResolveSelfDestructFinalBranch(skill, SummonAssistType.SummonAction);
         }
 
         internal static bool ShouldClearSupportSuspend(ActiveSummon summon, int currentTime)

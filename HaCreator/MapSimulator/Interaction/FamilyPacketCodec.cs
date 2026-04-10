@@ -170,6 +170,63 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static bool TryDecodeLocalChartPayload(byte[] payload, out FamilyLocalChartPacketSnapshot snapshot, out string error)
+        {
+            snapshot = null;
+            error = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Family local-chart packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload);
+                int focusMemberId = reader.ReadInt();
+                int memberCount = Math.Max(0, reader.ReadInt());
+                List<FamilyLocalChartMemberPacketSnapshot> members = new(memberCount);
+                for (int i = 0; i < memberCount; i++)
+                {
+                    members.Add(new FamilyLocalChartMemberPacketSnapshot(
+                        reader.ReadInt(),
+                        reader.ReadInt(),
+                        reader.ReadShort(),
+                        reader.ReadByte(),
+                        reader.ReadByte() != 0,
+                        reader.ReadInt(),
+                        reader.ReadInt(),
+                        reader.ReadInt(),
+                        reader.ReadInt(),
+                        reader.ReadInt(),
+                        reader.ReadInt(),
+                        reader.ReadMapleString()));
+                }
+
+                IReadOnlyDictionary<int, int> statistics = ReadIntMap(ref reader);
+                IReadOnlyDictionary<int, int> privilegeUses = ReadIntMap(ref reader);
+                int juniorLimit = reader.ReadUShort();
+
+                snapshot = new FamilyLocalChartPacketSnapshot(
+                    focusMemberId,
+                    members,
+                    statistics,
+                    privilegeUses,
+                    juniorLimit);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "Family local-chart packet ended before decoding completed.";
+                return false;
+            }
+            catch (IOException)
+            {
+                error = "Family local-chart packet could not be read.";
+                return false;
+            }
+        }
+
         internal static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int opcode, out byte[] payload, out string error)
         {
             opcode = -1;
@@ -276,6 +333,18 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        private static IReadOnlyDictionary<int, int> ReadIntMap(ref PacketReader reader)
+        {
+            int count = Math.Max(0, reader.ReadInt());
+            Dictionary<int, int> values = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                values[reader.ReadInt()] = reader.ReadInt();
+            }
+
+            return values;
+        }
+
         private ref struct PacketReader
         {
             private readonly ReadOnlySpan<byte> _payload;
@@ -300,6 +369,14 @@ namespace HaCreator.MapSimulator.Interaction
                 EnsureAvailable(sizeof(short));
                 short value = BinaryPrimitives.ReadInt16LittleEndian(_payload.Slice(_offset, sizeof(short)));
                 _offset += sizeof(short);
+                return value;
+            }
+
+            public ushort ReadUShort()
+            {
+                EnsureAvailable(sizeof(ushort));
+                ushort value = BinaryPrimitives.ReadUInt16LittleEndian(_payload.Slice(_offset, sizeof(ushort)));
+                _offset += sizeof(ushort);
                 return value;
             }
 
@@ -389,4 +466,41 @@ namespace HaCreator.MapSimulator.Interaction
         int IncrementExpRate,
         int IncrementDropRate,
         long EndTimeFileTimeUtc);
+
+    internal sealed class FamilyLocalChartPacketSnapshot
+    {
+        internal FamilyLocalChartPacketSnapshot(
+            int focusMemberId,
+            IReadOnlyList<FamilyLocalChartMemberPacketSnapshot> members,
+            IReadOnlyDictionary<int, int> statistics,
+            IReadOnlyDictionary<int, int> privilegeUses,
+            int juniorLimit)
+        {
+            FocusMemberId = focusMemberId;
+            Members = members ?? Array.Empty<FamilyLocalChartMemberPacketSnapshot>();
+            Statistics = statistics ?? new Dictionary<int, int>();
+            PrivilegeUses = privilegeUses ?? new Dictionary<int, int>();
+            JuniorLimit = Math.Max(0, juniorLimit);
+        }
+
+        public int FocusMemberId { get; }
+        public IReadOnlyList<FamilyLocalChartMemberPacketSnapshot> Members { get; }
+        public IReadOnlyDictionary<int, int> Statistics { get; }
+        public IReadOnlyDictionary<int, int> PrivilegeUses { get; }
+        public int JuniorLimit { get; }
+    }
+
+    internal readonly record struct FamilyLocalChartMemberPacketSnapshot(
+        int CharacterId,
+        int ParentId,
+        short JobId,
+        byte Level,
+        bool IsOnline,
+        int FamousPoint,
+        int TotalFamousPoint,
+        int TodayParentPoint,
+        int TodayGrandParentPoint,
+        int ChannelId,
+        int LoginMinutes,
+        string Name);
 }

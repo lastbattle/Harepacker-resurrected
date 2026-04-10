@@ -32,8 +32,9 @@ namespace HaCreator.MapSimulator
                         sync.RemainingSeconds,
                         currTickCount,
                         ResolveInitialQuizOwnerRuntimeCharacterId(),
+                        out InitialQuizOwnerApplyDisposition initialQuizDisposition,
                         out string initialQuizMessage);
-                    if (initialQuizMessage.StartsWith("Started", StringComparison.Ordinal)
+                    if (initialQuizDisposition == InitialQuizOwnerApplyDisposition.Started
                         && _initialQuizTimerRuntime.IsActive(currTickCount))
                     {
                         ResetInitialQuizOwnerInputState(currTickCount);

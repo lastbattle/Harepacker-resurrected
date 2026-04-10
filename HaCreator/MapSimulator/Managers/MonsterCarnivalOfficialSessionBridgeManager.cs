@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int RecentPacketCapacity = 8;
 
         private readonly ConcurrentQueue<MonsterCarnivalPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<PendingRequest> _pendingOutboundRequests = new();
         private readonly ConcurrentDictionary<int, int> _opcodeMappings = new();
         private readonly Queue<string> _recentPackets = new();
         private readonly object _sync = new();
@@ -41,6 +42,8 @@ namespace HaCreator.MapSimulator.Managers
         private Task _listenerTask;
         private BridgePair _activePair;
         private SessionDiscoveryCandidate? _passiveEstablishedSession;
+
+        private sealed record PendingRequest(MonsterCarnivalTab Tab, int EntryIndex, byte[] RawPacket);
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -96,7 +99,10 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasAttachedClient => _activePair != null;
         public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public int PendingPacketCount => _pendingOutboundRequests.Count;
         public int ReceivedCount { get; private set; }
+        public int SentCount { get; private set; }
+        public int QueuedCount { get; private set; }
         public string LastStatus { get; private set; } = "Monster Carnival official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -109,7 +115,7 @@ namespace HaCreator.MapSimulator.Managers
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
-            return $"Monster Carnival official-session bridge {lifecycle}; {session}; attachMode=proxy+passive-observe; received={ReceivedCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
+            return $"Monster Carnival official-session bridge {lifecycle}; {session}; attachMode=proxy+passive-observe; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -428,6 +434,100 @@ namespace HaCreator.MapSimulator.Managers
             return _pendingMessages.TryDequeue(out message);
         }
 
+        public bool TrySendRequest(MonsterCarnivalTab tab, int entryIndex, out string status)
+        {
+            if (entryIndex < 0)
+            {
+                status = $"Monster Carnival request index must be non-negative, got {entryIndex}.";
+                LastStatus = status;
+                return false;
+            }
+
+            BridgePair pair = _activePair;
+            if (HasPassiveEstablishedSocketPair)
+            {
+                status = $"Monster Carnival official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. It cannot inject opcode {OutboundRequestOpcode} into an already-established Maple socket pair after the handshake; reconnect through the localhost proxy first.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = "Monster Carnival official-session bridge has no active Maple session.";
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                byte[] rawPacket = BuildRequestPacket(tab, entryIndex);
+                pair.ServerSession.SendPacket((byte[])rawPacket.Clone());
+                SentCount++;
+                RecordRecentPacket(OutboundRequestOpcode, rawPacket, OutboundRequestOpcode, $"inject-request tab={(int)tab} index={entryIndex}");
+                status = $"Injected Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) into live session {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                status = $"Monster Carnival official-session injection failed: {ex.Message}";
+                LastStatus = status;
+                ClearActivePair(pair, status);
+                return false;
+            }
+        }
+
+        public bool TrySendOrQueueRequest(MonsterCarnivalTab tab, int entryIndex, out bool queued, out string status)
+        {
+            queued = false;
+            if (HasConnectedSession)
+            {
+                return TrySendRequest(tab, entryIndex, out status);
+            }
+
+            if (!TryQueueRequest(tab, entryIndex, out status))
+            {
+                return false;
+            }
+
+            queued = true;
+            return true;
+        }
+
+        public bool TryQueueRequest(MonsterCarnivalTab tab, int entryIndex, out string status)
+        {
+            if (entryIndex < 0)
+            {
+                status = $"Monster Carnival request index must be non-negative, got {entryIndex}.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (HasPassiveEstablishedSocketPair && !IsRunning)
+            {
+                status = $"Monster Carnival official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Deferred opcode {OutboundRequestOpcode} queueing only applies to sessions that reconnect through the localhost proxy.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (!IsRunning && !HasAttachedClient)
+            {
+                status = "Monster Carnival official-session bridge is not armed for deferred live-session injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] rawPacket = BuildRequestPacket(tab, entryIndex);
+            _pendingOutboundRequests.Enqueue(new PendingRequest(tab, entryIndex, rawPacket));
+            QueuedCount++;
+            RecordRecentPacket(OutboundRequestOpcode, rawPacket, OutboundRequestOpcode, $"queue-request tab={(int)tab} index={entryIndex}");
+            status = HasPassiveEstablishedSocketPair
+                ? $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) for the proxied reconnect handshake."
+                : $"Queued Monster Carnival opcode {OutboundRequestOpcode} (tab={(int)tab}, index={entryIndex}) for deferred live-session injection.";
+            LastStatus = status;
+            return true;
+        }
+
         public void RecordDispatchResult(string source, int packetType, bool success, string message)
         {
             string packetLabel = packetType is >= FirstCarnivalOpcode and <= LastCarnivalOpcode
@@ -534,7 +634,10 @@ namespace HaCreator.MapSimulator.Managers
                     pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
                     pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
                     pair.InitCompleted = true;
-                    LastStatus = $"Monster Carnival official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
+                    int flushed = FlushQueuedRequests(pair);
+                    LastStatus = flushed > 0
+                        ? $"Monster Carnival official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued request(s)."
+                        : $"Monster Carnival official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
                     pair.ClientSession.WaitForData();
                     return;
                 }
@@ -691,12 +794,47 @@ namespace HaCreator.MapSimulator.Managers
                 {
                 }
 
+                while (_pendingOutboundRequests.TryDequeue(out _))
+                {
+                }
+
+                SentCount = 0;
+                QueuedCount = 0;
+
                 ReceivedCount = 0;
                 lock (_sync)
                 {
                     _recentPackets.Clear();
                 }
             }
+        }
+
+        private int FlushQueuedRequests(BridgePair pair)
+        {
+            if (pair == null || !pair.InitCompleted)
+            {
+                return 0;
+            }
+
+            int flushed = 0;
+            while (_pendingOutboundRequests.TryDequeue(out PendingRequest pending))
+            {
+                pair.ServerSession.SendPacket((byte[])pending.RawPacket.Clone());
+                SentCount++;
+                flushed++;
+                RecordRecentPacket(OutboundRequestOpcode, pending.RawPacket, OutboundRequestOpcode, $"flush-request tab={(int)pending.Tab} index={pending.EntryIndex}");
+            }
+
+            return flushed;
+        }
+
+        private static byte[] BuildRequestPacket(MonsterCarnivalTab tab, int entryIndex)
+        {
+            byte[] rawPacket = new byte[sizeof(short) + sizeof(byte) + sizeof(int)];
+            BitConverter.GetBytes((short)OutboundRequestOpcode).CopyTo(rawPacket, 0);
+            rawPacket[sizeof(short)] = (byte)tab;
+            BitConverter.GetBytes(entryIndex).CopyTo(rawPacket, sizeof(short) + sizeof(byte));
+            return rawPacket;
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

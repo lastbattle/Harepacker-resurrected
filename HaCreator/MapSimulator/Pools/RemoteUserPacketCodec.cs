@@ -1323,7 +1323,7 @@ namespace HaCreator.MapSimulator.Pools
                             return false;
                         }
 
-                        skillId = BinaryPrimitives.ReadInt32LittleEndian(effectPayload.AsSpan(0, sizeof(int)));
+                        skillId = NormalizeEffectSkillUseSkillId(BinaryPrimitives.ReadInt32LittleEndian(effectPayload.AsSpan(0, sizeof(int))));
                         characterLevel = effectPayload[sizeof(int)];
                         skillLevel = effectPayload[sizeof(int) + 1];
                         break;
@@ -1357,6 +1357,22 @@ namespace HaCreator.MapSimulator.Pools
                 error = ex.Message;
                 return false;
             }
+        }
+
+        private static int NormalizeEffectSkillUseSkillId(int skillId)
+        {
+            // CUser::OnEffect remaps these packet-owned Mechanic ids onto the authored skill rows
+            // before the client resolves appointed actions or avatar/world effect branches.
+            return skillId switch
+            {
+                35000001 => 35001001,
+                35100004 => 35101004,
+                35100009 => 35101009,
+                35110004 => 35111004,
+                35120005 => 35121005,
+                35120013 => 35121013,
+                _ => skillId
+            };
         }
 
         public static bool TryParseUpgradeTombEffect(ReadOnlySpan<byte> payload, out RemoteUserUpgradeTombPacket packet, out string error)

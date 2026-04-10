@@ -6,6 +6,7 @@ using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
+using MapleLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -2160,10 +2161,16 @@ namespace HaCreator.MapSimulator.Loaders
             WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
             WzSubProperty fadeYesNoProperty = uiWindow2Image?["FadeYesNo"] as WzSubProperty
                                               ?? uiWindowImage?["FadeYesNo"] as WzSubProperty;
+            WzSubProperty uiWindowFadeYesNoProperty = uiWindowImage?["FadeYesNo"] as WzSubProperty
+                                                     ?? fadeYesNoProperty;
             Texture2D frameTexture = LoadCanvasTexture(fadeYesNoProperty, "backgrnd7", device)
                                      ?? LoadCanvasTexture(fadeYesNoProperty, "backgrnd", device)
                                      ?? CreatePlaceholderWindowTexture(device, 206, 70, "Confirm");
             Texture2D defaultIcon = LoadCanvasTexture(fadeYesNoProperty, "icon0", device);
+            Texture2D messengerInviteFrameTexture = LoadCanvasTexture(uiWindowFadeYesNoProperty, "backgrnd7", device)
+                                                   ?? frameTexture;
+            Texture2D messengerInviteIcon = LoadCanvasTexture(uiWindowFadeYesNoProperty, "icon0", device)
+                                            ?? defaultIcon;
             UIObject confirmButton = LoadButton(fadeYesNoProperty, "BtOK", btClickSound, btOverSound, device);
             UIObject cancelButton = LoadButton(fadeYesNoProperty, "BtCancel", btClickSound, btOverSound, device);
 
@@ -2173,8 +2180,8 @@ namespace HaCreator.MapSimulator.Loaders
                 confirmButton,
                 cancelButton,
                 defaultIcon,
-                null,
-                null,
+                new DXObject(0, 0, messengerInviteFrameTexture, 0),
+                messengerInviteIcon,
                 screenWidth,
                 screenHeight);
             manager.RegisterCustomWindow(window);
@@ -6367,6 +6374,8 @@ namespace HaCreator.MapSimulator.Loaders
                 groupDeletePopupOffset,
                 LoadWindowCanvasLayerWithOffset(popupProperty, "GroupDelDeny", device, out Point groupDeleteDenyPopupOffset),
                 groupDeleteDenyPopupOffset,
+                LoadWindowCanvasLayerWithOffset(popupProperty, "NeedMessage", device, out Point needMessagePopupOffset),
+                needMessagePopupOffset,
                 LoadButton(groupProperty, "BtOK", clickSound, overSound, device),
                 LoadButton(groupProperty, "BtCancle", clickSound, overSound, device),
                 device)
@@ -7732,6 +7741,8 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
+            int explicitWzDefaultMediaIndex = ResolveExplicitMapleTvMediaIndex(mediaRoot, mediaFrames.Keys);
+
 
             IReadOnlyList<MapleTvAnimationFrame> defaultChatFrames = LoadMapleTvAnimationFrames(mapleTvImage["TVchat"] as WzSubProperty, device);
             if (defaultChatFrames.Count > 0)
@@ -7760,8 +7771,9 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadMapleTvAnimationFrames(mapleTvImage["TVoff"] as WzSubProperty, device),
                 chatFrames,
                 mediaFrames,
-                ResolveDefaultMapleTvMediaIndex(mediaFrames),
-                mediaFrames.Keys.ToArray());
+                ResolveDefaultMapleTvMediaIndex(mediaFrames, explicitWzDefaultMediaIndex),
+                mediaFrames.Keys.ToArray(),
+                explicitWzDefaultMediaIndex);
         }
 
 
@@ -7803,7 +7815,9 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-        private static int ResolveDefaultMapleTvMediaIndex(IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> mediaFrames)
+        private static int ResolveDefaultMapleTvMediaIndex(
+            IReadOnlyDictionary<int, IReadOnlyList<MapleTvAnimationFrame>> mediaFrames,
+            int explicitWzDefaultMediaIndex)
         {
             if (mediaFrames == null || mediaFrames.Count == 0)
             {
@@ -7816,8 +7830,26 @@ namespace HaCreator.MapSimulator.Loaders
                 clientDefaultPath,
                 clientDefaultPathTemplate,
                 mediaFrames.Keys.ToArray(),
-                1);
+                1,
+                explicitWzDefaultMediaIndex);
             return resolution.MediaIndex;
+        }
+
+        private static int ResolveExplicitMapleTvMediaIndex(WzSubProperty mediaRoot, IEnumerable<int> availableMediaIndices)
+        {
+            if (mediaRoot == null)
+            {
+                return -1;
+            }
+
+            int directValue = mediaRoot.ReadValue(-1);
+            HashSet<int> availableIndexSet = availableMediaIndices?
+                .Where(index => index >= 0)
+                .ToHashSet()
+                ?? new HashSet<int>();
+            return availableIndexSet.Contains(directValue)
+                ? directValue
+                : -1;
         }
 
 
@@ -8591,7 +8623,12 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D normalRowTexture = LoadCanvasTexture(eventListProperty, "normal", device);
             Texture2D selectedRowTexture = LoadCanvasTexture(eventListProperty, "select", device) ?? normalRowTexture;
             Texture2D slotTexture = LoadCanvasTexture(eventListProperty, "slot", device);
-            Texture2D[] statusIcons = LoadIndexedCanvasTextureList(eventListProperty?["icon"] as WzSubProperty, device).ToArray();
+            LoadIndexedCanvasSequence(
+                eventListProperty?["icon"] as WzSubProperty,
+                device,
+                out Texture2D[] statusIcons,
+                out Point[] statusIconOffsets,
+                out _);
             WzSubProperty calendarProperty = eventRoot?["calendar"] as WzSubProperty;
             WzSubProperty calendarBackgroundRoot = calendarProperty?["bg"] as WzSubProperty;
             WzSubProperty calendarBackgroundProperty0 = calendarBackgroundRoot?["0"] as WzSubProperty;
@@ -8603,6 +8640,7 @@ namespace HaCreator.MapSimulator.Loaders
                 selectedRowTexture,
                 slotTexture,
                 statusIcons,
+                statusIconOffsets,
                 LoadCanvasTexture(calendarProperty, "today", device),
                 new[]
                 {
@@ -8795,12 +8833,21 @@ namespace HaCreator.MapSimulator.Loaders
         {
             const int clientOwnerWidth = 398;
             const int clientOwnerHeight = 364;
-            IDXObject frame = LoadWindowCanvasLayerFromClientUiPath(
-                AccountMoreInfoOwnerStringPoolText.ResolveBackgroundResourcePath(),
-                uiWindow1Image,
-                uiWindow2Image,
-                device,
-                out _);
+            IDXObject frame = null;
+            foreach (string backgroundPath in AccountMoreInfoOwnerStringPoolText.EnumerateBackgroundResourcePaths())
+            {
+                frame = LoadWindowCanvasLayerFromClientUiPath(
+                    backgroundPath,
+                    uiWindow1Image,
+                    uiWindow2Image,
+                    device,
+                    out _);
+                if (frame != null)
+                {
+                    break;
+                }
+            }
+
             if (frame == null)
             {
                 Texture2D frameTexture = CreateFilledTexture(
@@ -9302,7 +9349,6 @@ namespace HaCreator.MapSimulator.Loaders
                     }
                 }
             }
-
             window.InitializeButtons(okButton, closeButton);
             return window;
         }

@@ -99,7 +99,7 @@ namespace HaCreator.MapSimulator
             public Point SpawnOffsetMin { get; init; }
             public Point SpawnOffsetMax { get; init; }
             public bool UsesRelativeEmission { get; init; }
-            public bool SpawnRelativeToTarget { get; init; }
+            public bool? SpawnRelativeToTarget { get; init; }
             public bool SpawnOnlyOnOwnerMove { get; init; }
             public bool SuppressOwnerFlip { get; init; }
             public int ThetaDegrees { get; init; }
@@ -2401,11 +2401,12 @@ namespace HaCreator.MapSimulator
             int updateIntervalMs = GetAnimationDisplayerNumericValue(effectProperty, "interval")
                 ?? AnimationDisplayerFollowUpdateIntervalMs;
             int spawnDurationMs = GetAnimationDisplayerNumericValue(effectProperty, "delay") ?? 0;
-            Point spawnOffsetMin = BuildAnimationDisplayerFollowEquipmentSpawnOffsetMin(effectProperty);
+            int? authoredFollowFlag = GetAnimationDisplayerNumericValue(effectProperty, "follow");
+            bool? authoredRelativePosition = ResolveAnimationDisplayerFollowAuthoredRelativePosition(authoredFollowFlag);
+            Point spawnOffsetMin = BuildAnimationDisplayerFollowEquipmentSpawnOffsetMin(effectProperty, authoredRelativePosition);
             Point spawnOffsetMax = BuildAnimationDisplayerFollowEquipmentSpawnOffsetMax(effectProperty, spawnOffsetMin);
             IReadOnlyList<Vector2> generationPoints = LoadAnimationDisplayerFollowEquipmentGenerationPoints(effectProperty["genPoint"]);
             float radius = BuildAnimationDisplayerFollowEquipmentRadius(generationPoints, spawnOffsetMax);
-            int authoredFollowFlag = GetAnimationDisplayerNumericValue(effectProperty, "follow") ?? 0;
 
             return new AnimationDisplayerFollowEquipmentDefinition
             {
@@ -2418,7 +2419,7 @@ namespace HaCreator.MapSimulator
                 SpawnOffsetMin = spawnOffsetMin,
                 SpawnOffsetMax = spawnOffsetMax,
                 UsesRelativeEmission = GetAnimationDisplayerNumericValue(effectProperty, "emission") != 0,
-                SpawnRelativeToTarget = authoredFollowFlag != 0,
+                SpawnRelativeToTarget = authoredRelativePosition,
                 SpawnOnlyOnOwnerMove = GetAnimationDisplayerNumericValue(effectProperty, "genOnMove")
                     == 1
                     || GetAnimationDisplayerNumericValue(effectProperty, "bGenOnMove") == 1,
@@ -2534,6 +2535,20 @@ namespace HaCreator.MapSimulator
                 : null;
         }
 
+        internal static bool? ResolveAnimationDisplayerFollowAuthoredRelativePosition(int? authoredFollowFlag)
+        {
+            return authoredFollowFlag.HasValue
+                ? authoredFollowFlag.Value != 0
+                : null;
+        }
+
+        internal static int ResolveAnimationDisplayerFollowAuthoredDefaultOffsetY(bool? authoredRelativePosition)
+        {
+            return (authoredRelativePosition ?? true)
+                ? 0
+                : AnimationDisplayerFollowAbsoluteTravelOffsetY;
+        }
+
         private static Rectangle BuildAnimationDisplayerFollowEquipmentEmissionArea(WzImageProperty effectProperty)
         {
             int left = GetAnimationDisplayerNumericValue(effectProperty, "left") ?? 0;
@@ -2567,7 +2582,9 @@ namespace HaCreator.MapSimulator
             return points.Count > 0 ? points : null;
         }
 
-        private static Point BuildAnimationDisplayerFollowEquipmentSpawnOffsetMin(WzImageProperty effectProperty)
+        private static Point BuildAnimationDisplayerFollowEquipmentSpawnOffsetMin(
+            WzImageProperty effectProperty,
+            bool? authoredRelativePosition)
         {
             return new Point(
                 GetAnimationDisplayerNumericValue(effectProperty, "x0")
@@ -2575,7 +2592,7 @@ namespace HaCreator.MapSimulator
                     ?? 0,
                 GetAnimationDisplayerNumericValue(effectProperty, "y0")
                     ?? GetAnimationDisplayerNumericValue(effectProperty, "ry0")
-                    ?? 0);
+                    ?? ResolveAnimationDisplayerFollowAuthoredDefaultOffsetY(authoredRelativePosition));
         }
 
         private static Point BuildAnimationDisplayerFollowEquipmentSpawnOffsetMax(WzImageProperty effectProperty, Point spawnOffsetMin)

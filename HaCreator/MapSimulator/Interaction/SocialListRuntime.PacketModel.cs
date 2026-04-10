@@ -485,12 +485,14 @@ namespace HaCreator.MapSimulator.Interaction
             if (_pendingGuildDialogRequest.HasValue)
             {
                 GuildDialogPendingRequest pending = _pendingGuildDialogRequest.Value;
-                return $"{pending.RequestLabel} for {pending.GuildName} is already awaiting approval or rejection.";
+                return NotifyGuildDialogSocialChatObserved(
+                    $"{pending.RequestLabel} for {pending.GuildName} is already awaiting approval or rejection.");
             }
 
             if (_guildDialogMesoBalance < request.RequiredMesos)
             {
-                return $"{request.RequestLabel} for {request.GuildName} needs {request.RequiredMesos} mesos, but the shared guild dialog seam only tracks {_guildDialogMesoBalance} mesos.";
+                return NotifyGuildDialogSocialChatObserved(
+                    $"{request.RequestLabel} for {request.GuildName} needs {request.RequiredMesos} mesos, but the shared guild dialog seam only tracks {_guildDialogMesoBalance} mesos.");
             }
 
             _pendingGuildDialogRequest = request;
@@ -501,7 +503,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (IsPacketOwned(SocialListTab.Guild))
             {
-                return $"{request.RequestLabel} request for {request.GuildName} is now pending packet-owned guild approval at {request.RequiredMesos} mesos.";
+                return NotifyGuildDialogSocialChatObserved(
+                    $"{request.RequestLabel} request for {request.GuildName} is now pending packet-owned guild approval at {request.RequiredMesos} mesos.");
             }
 
             return ResolvePendingGuildDialogRequest(
@@ -513,7 +516,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (!_pendingGuildDialogRequest.HasValue)
             {
-                return "There is no pending guild creation or guild mark request.";
+                return NotifyGuildDialogSocialChatObserved("There is no pending guild creation or guild mark request.");
             }
 
             GuildDialogPendingRequest request = _pendingGuildDialogRequest.Value;
@@ -525,7 +528,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _lastPacketSyncSummaryByTab[SocialListTab.Guild] = string.IsNullOrWhiteSpace(summary)
                     ? $"{request.RequestLabel} for {request.GuildName} was rejected before any guild state changed."
                     : summary.Trim();
-                return $"{request.RequestLabel} for {request.GuildName} was rejected. Meso balance remains {_guildDialogMesoBalance}.";
+                return NotifyGuildDialogSocialChatObserved(
+                    $"{request.RequestLabel} for {request.GuildName} was rejected. Meso balance remains {_guildDialogMesoBalance}.");
             }
 
             _guildDialogMesoBalance = Math.Max(0, _guildDialogMesoBalance - request.RequiredMesos);
@@ -539,9 +543,16 @@ namespace HaCreator.MapSimulator.Interaction
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] = string.IsNullOrWhiteSpace(summary)
                 ? $"{request.RequestLabel} for {request.GuildName} was approved and consumed {request.RequiredMesos} mesos."
                 : summary.Trim();
-            return string.IsNullOrWhiteSpace(applyMessage)
-                ? $"{request.RequestLabel} for {request.GuildName} was approved. Deducted {request.RequiredMesos} mesos; balance={_guildDialogMesoBalance}."
-                : $"{request.RequestLabel} for {request.GuildName} was approved. Deducted {request.RequiredMesos} mesos; balance={_guildDialogMesoBalance}. {applyMessage}";
+            return NotifyGuildDialogSocialChatObserved(
+                string.IsNullOrWhiteSpace(applyMessage)
+                    ? $"{request.RequestLabel} for {request.GuildName} was approved. Deducted {request.RequiredMesos} mesos; balance={_guildDialogMesoBalance}."
+                    : $"{request.RequestLabel} for {request.GuildName} was approved. Deducted {request.RequiredMesos} mesos; balance={_guildDialogMesoBalance}. {applyMessage}");
+        }
+
+        private string NotifyGuildDialogSocialChatObserved(string message)
+        {
+            NotifySocialChatObserved(message);
+            return message;
         }
 
         private void TryFinalizePendingGuildDialogRequestFromPacket()

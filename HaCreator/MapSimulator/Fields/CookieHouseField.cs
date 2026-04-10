@@ -582,30 +582,10 @@ namespace HaCreator.MapSimulator.Fields
                     _bitmapNumberStyles[i].SignMinusOrigin = ResolveCanvasOrigin(minusCanvas);
                 }
 
-                if (_bitmapNumberStyles[i].SignPlus == null || _bitmapNumberStyles[i].SignMinus == null)
-                {
-                    var unnamedCanvases = GetNonDigitCanvases(styleRoot)
-                        .Concat(GetNonDigitCanvases(digitContainer))
-                        .Distinct()
-                        .ToList();
-                    if (_bitmapNumberStyles[i].SignPlus == null && unnamedCanvases.Count >= 1)
-                    {
-                        _bitmapNumberStyles[i].SignPlus = LoadCanvasTexture(unnamedCanvases[0]);
-                        _bitmapNumberStyles[i].SignPlusOrigin = ResolveCanvasOrigin(unnamedCanvases[0]);
-                    }
-
-                    if (_bitmapNumberStyles[i].SignMinus == null && unnamedCanvases.Count >= 2)
-                    {
-                        _bitmapNumberStyles[i].SignMinus = LoadCanvasTexture(unnamedCanvases[1]);
-                        _bitmapNumberStyles[i].SignMinusOrigin = ResolveCanvasOrigin(unnamedCanvases[1]);
-                    }
-                }
-
-                if (_bitmapNumberStyles[i].SignMinus == null)
-                {
-                    _bitmapNumberStyles[i].SignMinus = _bitmapNumberStyles[i].SignPlus;
-                    _bitmapNumberStyles[i].SignMinusOrigin = _bitmapNumberStyles[i].SignPlusOrigin;
-                }
+                // The client constructor probes literal "plus"/"minus" children and
+                // leaves the sign canvases null when that data is absent. The shipped
+                // eventPointCount root in the current export is digit-only, so the
+                // simulator must not synthesize signs from unrelated canvases.
             }
 
             return true;
@@ -643,28 +623,6 @@ namespace HaCreator.MapSimulator.Fields
             {
                 compatibleStyle.SignMinus = LoadCanvasTexture(minusCanvas);
                 compatibleStyle.SignMinusOrigin = ResolveCanvasOrigin(minusCanvas);
-            }
-
-            if (compatibleStyle.SignPlus == null || compatibleStyle.SignMinus == null)
-            {
-                var unnamedCanvases = GetNonDigitCanvases(digitContainer).ToList();
-                if (compatibleStyle.SignPlus == null && unnamedCanvases.Count >= 1)
-                {
-                    compatibleStyle.SignPlus = LoadCanvasTexture(unnamedCanvases[0]);
-                    compatibleStyle.SignPlusOrigin = ResolveCanvasOrigin(unnamedCanvases[0]);
-                }
-
-                if (compatibleStyle.SignMinus == null && unnamedCanvases.Count >= 2)
-                {
-                    compatibleStyle.SignMinus = LoadCanvasTexture(unnamedCanvases[1]);
-                    compatibleStyle.SignMinusOrigin = ResolveCanvasOrigin(unnamedCanvases[1]);
-                }
-            }
-
-            if (compatibleStyle.SignMinus == null)
-            {
-                compatibleStyle.SignMinus = compatibleStyle.SignPlus;
-                compatibleStyle.SignMinusOrigin = compatibleStyle.SignPlusOrigin;
             }
 
             for (int i = 0; i < GradeCount; i++)
@@ -785,12 +743,7 @@ namespace HaCreator.MapSimulator.Fields
             }
             while (remaining > 0 && slotIndex >= 0);
 
-            Texture2D signTexture = value < 0
-                ? style.SignMinus ?? style.SignPlus
-                : style.SignPlus;
-            Point signOrigin = value < 0
-                ? (style.SignMinus != null ? style.SignMinusOrigin : style.SignPlusOrigin)
-                : style.SignPlusOrigin;
+            Texture2D signTexture = SelectBitmapNumberSignTexture(style, value, out Point signOrigin);
             if (signTexture != null && digitsDrawn > 0)
             {
                 int signSlotIndex = CalculateClientBitmapNumberSignSlot(digitsDrawn);
@@ -810,6 +763,34 @@ namespace HaCreator.MapSimulator.Fields
         internal static int CalculateClientBitmapNumberSignSlotForTesting(int digitsDrawn)
         {
             return CalculateClientBitmapNumberSignSlot(digitsDrawn);
+        }
+
+        private static Texture2D SelectBitmapNumberSignTexture(CookieBitmapNumberStyle style, int value, out Point origin)
+        {
+            origin = new Point(0, 0);
+            if (style == null)
+            {
+                return null;
+            }
+
+            if (value < 0)
+            {
+                origin = style.SignMinusOrigin;
+                return style.SignMinus;
+            }
+
+            origin = style.SignPlusOrigin;
+            return style.SignPlus;
+        }
+
+        internal static string SelectBitmapNumberSignKindForTesting(bool hasPlus, bool hasMinus, int value)
+        {
+            if (value < 0)
+            {
+                return hasMinus ? "minus" : "none";
+            }
+
+            return hasPlus ? "plus" : "none";
         }
 
         private Texture2D LoadCanvasTexture(WzImageProperty source)

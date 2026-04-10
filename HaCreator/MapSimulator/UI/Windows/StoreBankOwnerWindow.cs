@@ -37,6 +37,8 @@ namespace HaCreator.MapSimulator.UI
         private const int FooterX = 12;
         private const int FooterY = 308;
         private const int FooterWidth = 182;
+        private static readonly Color MoneyShadowColor = Color.Black;
+        private static readonly Color MoneyTextColor = Color.White;
 
         private readonly struct Layer
         {
@@ -456,18 +458,35 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string moneyText = Math.Max(0, _runtime?.OwnerMoney ?? 0).ToString("N0", CultureInfo.InvariantCulture);
-            int drawX = Position.X + MoneyRightX;
-            int drawY = Position.Y + MoneyY;
-            Vector2 size = _font.MeasureString(moneyText) * 0.62f;
-            Vector2 position = new(drawX - size.X, drawY);
-            InventoryRenderUtil.DrawOutlinedText(
+            const float moneyScale = 1.0f;
+            string moneyText = FormatClientMoneyText(_runtime?.OwnerMoney ?? 0);
+            Vector2 size = ClientTextDrawing.Measure(
+                sprite.GraphicsDevice,
+                moneyText,
+                moneyScale,
+                _font);
+            Vector2 position = new(
+                Position.X + MoneyRightX - size.X,
+                Position.Y + MoneyY);
+            ClientTextDrawing.Draw(
                 sprite,
-                _font,
+                moneyText,
+                position + Vector2.One,
+                MoneyShadowColor,
+                moneyScale,
+                _font);
+            ClientTextDrawing.Draw(
+                sprite,
                 moneyText,
                 position,
-                Color.White,
-                0.62f);
+                MoneyTextColor,
+                moneyScale,
+                _font);
+        }
+
+        private static string FormatClientMoneyText(int money)
+        {
+            return Math.Max(0, money).ToString("N0", CultureInfo.InvariantCulture);
         }
 
         private void DrawRowSeparator(SpriteBatch sprite, int rowX, int rowY)

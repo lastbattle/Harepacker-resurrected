@@ -526,19 +526,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public string ResolveGetBallLikeUolPath(int skillLevel, int characterLevel, bool flip, int maxLevel = 0)
         {
-            if (CharacterLevelVariantAnimations != null && CharacterLevelVariantAnimations.Count > 0)
+            if (CharacterLevelBallUolPaths != null || CharacterLevelFlipBallUolPaths != null)
             {
-                List<SkillAnimation> characterLevelVariants = null;
                 string characterLevelBallUolPath = null;
                 string characterLevelFlipBallUolPath = null;
-                foreach ((int requiredLevel, List<SkillAnimation> variants) in CharacterLevelVariantAnimations)
+                foreach (int requiredLevel in EnumerateSortedKeys(CharacterLevelBallUolPaths?.Keys, CharacterLevelFlipBallUolPaths?.Keys))
                 {
                     if (requiredLevel > characterLevel)
                     {
                         break;
                     }
 
-                    characterLevelVariants = variants;
                     if (CharacterLevelBallUolPaths != null)
                     {
                         CharacterLevelBallUolPaths.TryGetValue(requiredLevel, out characterLevelBallUolPath);
@@ -550,18 +548,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                     }
                 }
 
-                string characterLevelResolvedUolPath = ResolveVariantUolPath(
-                    characterLevelVariants,
-                    SelectPreferredUolPath(flip, characterLevelFlipBallUolPath, characterLevelBallUolPath));
+                string characterLevelResolvedUolPath = SelectPreferredUolPath(
+                    flip,
+                    characterLevelFlipBallUolPath,
+                    characterLevelBallUolPath);
                 if (!string.IsNullOrWhiteSpace(characterLevelResolvedUolPath))
                 {
                     return characterLevelResolvedUolPath;
                 }
             }
 
-            if (skillLevel > 0
-                && LevelVariantAnimations != null
-                && LevelVariantAnimations.TryGetValue(skillLevel, out List<SkillAnimation> levelVariants))
+            if (skillLevel > 0)
             {
                 string levelBallUolPath = null;
                 string levelFlipBallUolPath = null;
@@ -575,9 +572,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                     LevelFlipBallUolPaths.TryGetValue(skillLevel, out levelFlipBallUolPath);
                 }
 
-                string levelResolvedUolPath = ResolveVariantUolPath(
-                    levelVariants,
-                    SelectPreferredUolPath(flip, levelFlipBallUolPath, levelBallUolPath));
+                string levelResolvedUolPath = SelectPreferredUolPath(
+                    flip,
+                    levelFlipBallUolPath,
+                    levelBallUolPath);
                 if (!string.IsNullOrWhiteSpace(levelResolvedUolPath))
                 {
                     return levelResolvedUolPath;
@@ -659,6 +657,25 @@ namespace HaCreator.MapSimulator.Character.Skills
             return flip && !string.IsNullOrWhiteSpace(flipUolPath)
                 ? flipUolPath
                 : uolPath;
+        }
+
+        private static IEnumerable<int> EnumerateSortedKeys(params IEnumerable<int>[] keySets)
+        {
+            SortedSet<int> mergedKeys = new();
+            foreach (IEnumerable<int> keySet in keySets)
+            {
+                if (keySet == null)
+                {
+                    continue;
+                }
+
+                foreach (int key in keySet)
+                {
+                    mergedKeys.Add(key);
+                }
+            }
+
+            return mergedKeys;
         }
 
         private static int? ResolveRenderableVariantIndex(
@@ -865,36 +882,26 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public string ResolveTileUolPath(int skillLevel, int characterLevel)
         {
-            if (CharacterLevelVariantAnimations != null && CharacterLevelVariantAnimations.Count > 0)
+            if (CharacterLevelTileUolPaths != null && CharacterLevelTileUolPaths.Count > 0)
             {
-                List<SkillAnimation> characterLevelVariants = null;
                 string characterLevelTileUolPath = null;
-                foreach ((int requiredLevel, List<SkillAnimation> variants) in CharacterLevelVariantAnimations)
+                foreach (int requiredLevel in CharacterLevelTileUolPaths.Keys)
                 {
                     if (requiredLevel > characterLevel)
                     {
                         break;
                     }
 
-                    characterLevelVariants = variants;
-                    if (CharacterLevelTileUolPaths != null)
-                    {
-                        CharacterLevelTileUolPaths.TryGetValue(requiredLevel, out characterLevelTileUolPath);
-                    }
+                    CharacterLevelTileUolPaths.TryGetValue(requiredLevel, out characterLevelTileUolPath);
                 }
 
-                string characterLevelResolvedUolPath = ResolveVariantUolPath(
-                    characterLevelVariants,
-                    characterLevelTileUolPath);
-                if (!string.IsNullOrWhiteSpace(characterLevelResolvedUolPath))
+                if (!string.IsNullOrWhiteSpace(characterLevelTileUolPath))
                 {
-                    return characterLevelResolvedUolPath;
+                    return characterLevelTileUolPath;
                 }
             }
 
-            if (skillLevel > 0
-                && LevelVariantAnimations != null
-                && LevelVariantAnimations.TryGetValue(skillLevel, out List<SkillAnimation> levelVariants))
+            if (skillLevel > 0)
             {
                 string levelTileUolPath = null;
                 if (LevelTileUolPaths != null)
@@ -902,10 +909,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     LevelTileUolPaths.TryGetValue(skillLevel, out levelTileUolPath);
                 }
 
-                string levelResolvedUolPath = ResolveVariantUolPath(levelVariants, levelTileUolPath);
-                if (!string.IsNullOrWhiteSpace(levelResolvedUolPath))
+                if (!string.IsNullOrWhiteSpace(levelTileUolPath))
                 {
-                    return levelResolvedUolPath;
+                    return levelTileUolPath;
                 }
             }
 
@@ -1220,11 +1226,45 @@ namespace HaCreator.MapSimulator.Character.Skills
             GetAffectedSkillIds().Length > 0
             && !string.IsNullOrWhiteSpace(AffectedSkillEffect);
 
-        public bool UsesAffectedSkillBodyAttack =>
+        public bool HasStandaloneActiveCastSurface =>
+            !string.IsNullOrWhiteSpace(ActionName)
+            || (ActionNames?.Count ?? 0) > 0
+            || !string.IsNullOrWhiteSpace(PrepareActionName)
+            || !string.IsNullOrWhiteSpace(KeydownActionName)
+            || !string.IsNullOrWhiteSpace(KeydownEndActionName)
+            || HasAnimationFrames(Effect)
+            || HasAnimationFrames(EffectSecondary)
+            || HasAnimationFrames(PrepareEffect)
+            || HasAnimationFrames(PrepareSecondaryEffect)
+            || HasAnimationFrames(KeydownEffect)
+            || HasAnimationFrames(KeydownSecondaryEffect)
+            || HasAnimationFrames(RepeatEffect)
+            || HasAnimationFrames(RepeatSecondaryEffect)
+            || HasAnimationFrames(KeydownEndEffect)
+            || HasAnimationFrames(KeydownEndSecondaryEffect)
+            || HasAnimationFrames(StopEffect)
+            || HasAnimationFrames(StopSecondaryEffect)
+            || HasAnimationFrames(HitEffect)
+            || HasAnimationFrames(SummonSpawnAnimation)
+            || HasAnimationFrames(SummonAnimation)
+            || HasAnimationFrames(SummonAttackPrepareAnimation)
+            || HasAnimationFrames(SummonAttackAnimation)
+            || HasAnimationFrames(SummonHitAnimation)
+            || HasAnimationFrames(SummonRemovalAnimation)
+            || Projectile != null
+            || HasAnimationFrames(ZoneAnimation)
+            || SummonActionAnimations.Count > 0
+            || SummonNamedAnimations.Count > 0;
+
+        public bool UsesHelperOnlyAffectedSkillPassiveData =>
             UsesAffectedSkillPassiveData
+            && !HasStandaloneActiveCastSurface;
+
+        public bool UsesAffectedSkillBodyAttack =>
+            UsesHelperOnlyAffectedSkillPassiveData
             && AffectedSkillEffect.IndexOf("bodyAttack", StringComparison.OrdinalIgnoreCase) >= 0;
 
-        public bool SuppressesStandaloneActiveCast => UsesAffectedSkillPassiveData;
+        public bool SuppressesStandaloneActiveCast => UsesHelperOnlyAffectedSkillPassiveData;
 
         public bool HasShadowPartnerActionAnimations => ShadowPartnerActionAnimations != null && ShadowPartnerActionAnimations.Count > 0;
 
@@ -1243,6 +1283,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return skillId > 0
                    && Array.IndexOf(GetAffectedSkillIds(), skillId) >= 0;
+        }
+
+        private static bool HasAnimationFrames(SkillAnimation animation)
+        {
+            return animation?.Frames?.Count > 0;
         }
 
         public int[] GetAffectedSkillIds()

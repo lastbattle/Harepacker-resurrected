@@ -13,11 +13,13 @@ namespace HaCreator.MapSimulator
     {
         private const int EquipmentChangeResponseDelayMs = 50;
         private const int CharacterEquipmentPacketAuthorityTimeoutMs = 350;
+        private const int CompletedCharacterEquipmentAuthorityRetentionMs = CharacterEquipmentPacketAuthorityTimeoutMs * 2;
         private const int MechanicEquipmentPacketAuthorityTimeoutMs = 350;
         private int _nextEquipmentChangeRequestId = 1;
         private int _lastEquipmentExclusiveRequestSentTick = int.MinValue;
         private readonly Dictionary<int, PendingEquipmentChangeEnvelope> _pendingEquipmentChangeRequests = new();
         private readonly Dictionary<int, QueuedCharacterEquipmentPacketResult> _pendingCharacterEquipmentPacketResults = new();
+        private readonly Dictionary<int, CompletedCharacterEquipmentAuthorityEnvelope> _completedCharacterEquipmentPacketRequests = new();
         private readonly Dictionary<int, EquipmentChangeResult> _pendingMechanicEquipmentPacketResults = new();
 
         private sealed class PendingEquipmentChangeEnvelope
@@ -30,9 +32,19 @@ namespace HaCreator.MapSimulator
             public int MechanicPacketAuthorityDeadlineAtTick { get; set; }
         }
 
+        private sealed class CompletedCharacterEquipmentAuthorityEnvelope
+        {
+            public EquipmentChangeRequest Request { get; init; }
+            public CharacterBuild BuildBeforeLocalAccept { get; init; }
+            public IReadOnlyList<InventorySlotData> EquipInventoryBeforeLocalAccept { get; init; }
+            public IReadOnlyList<InventorySlotData> CashInventoryBeforeLocalAccept { get; init; }
+            public int CompletedAtTick { get; set; }
+        }
+
         private readonly record struct QueuedCharacterEquipmentPacketResult(
             EquipmentChangeResult Result,
-            CharacterEquipmentAuthorityResultKind ResultKind);
+            CharacterEquipmentAuthorityResultKind ResultKind,
+            CompletedCharacterEquipmentAuthorityEnvelope CompletedLocalAcceptEnvelope);
 
         private readonly record struct CharacterAuthoritySlotParts(
             CharacterPart VisiblePart,
@@ -139,6 +151,7 @@ namespace HaCreator.MapSimulator
 
         private EquipmentChangeResult TryResolveEquipmentChangeRequest(EquipmentChangeResolutionQuery resolutionQuery)
         {
+            PruneCompletedCharacterEquipmentPacketRequests(currTickCount);
             if (resolutionQuery == null
                 || resolutionQuery.RequestId <= 0
                 || !_pendingEquipmentChangeRequests.TryGetValue(resolutionQuery.RequestId, out PendingEquipmentChangeEnvelope pendingEnvelope))
@@ -155,6 +168,13 @@ namespace HaCreator.MapSimulator
 
                 _pendingCharacterEquipmentPacketResults.Remove(resolutionQuery.RequestId);
                 _pendingEquipmentChangeRequests.Remove(resolutionQuery.RequestId);
+                if (queuedCharacterPacketResult.ResultKind == CharacterEquipmentAuthorityResultKind.LocalRequestAccept
+                    && queuedCharacterPacketResult.CompletedLocalAcceptEnvelope != null)
+                {
+                    queuedCharacterPacketResult.CompletedLocalAcceptEnvelope.CompletedAtTick = currTickCount;
+                    _completedCharacterEquipmentPacketRequests[resolutionQuery.RequestId] = queuedCharacterPacketResult.CompletedLocalAcceptEnvelope;
+                }
+
                 return queuedCharacterPacketResult.Result;
             }
 
@@ -381,6 +401,7 @@ namespace HaCreator.MapSimulator
             out string message)
         {
             message = null;
+            PruneCompletedCharacterEquipmentPacketRequests(currTickCount);
             if (payload.Mode != CharacterEquipmentAuthorityPayloadMode.AuthorityResult)
             {
                 message = "Character equipment authority payload is not a result.";
@@ -391,8 +412,7 @@ namespace HaCreator.MapSimulator
                 || !_pendingEquipmentChangeRequests.TryGetValue(payload.RequestId, out PendingEquipmentChangeEnvelope pendingEnvelope)
                 || pendingEnvelope?.Request == null)
             {
-                message = $"Character equipment authority result did not match a pending request id ({payload.RequestId}).";
-                return false;
+                return TryApplyLateCompletedCharacterPacketAuthorityResult(payload, out message);
             }
 
             EquipmentChangeRequest request = pendingEnvelope.Request;
@@ -431,6 +451,7 @@ namespace HaCreator.MapSimulator
                     payload.RequestedAtTick,
                     rejectResult,
                     CharacterEquipmentAuthorityResultKind.Reject,
+                    null,
                     out message);
             }
 
@@ -450,10 +471,17 @@ namespace HaCreator.MapSimulator
                     payload.RequestedAtTick,
                     staleReject,
                     CharacterEquipmentAuthorityResultKind.Reject,
+                    null,
                     out message);
             }
 
-            if (!TryCreatePacketOwnedCharacterAuthorityResult(request, build, payload, out EquipmentChangeResult acceptedResult, out string rejectReason))
+            if (!TryCreatePacketOwnedCharacterAuthorityResult(
+                    request,
+                    build,
+                    payload,
+                    out EquipmentChangeResult acceptedResult,
+                    out CompletedCharacterEquipmentAuthorityEnvelope completedLocalAcceptEnvelope,
+                    out string rejectReason))
             {
                 EquipmentChangeResult rejectResult = EquipmentChangeResult.Reject(rejectReason)
                     .WithCompletionMetadata(
@@ -468,6 +496,7 @@ namespace HaCreator.MapSimulator
                     payload.ResultKind == CharacterEquipmentAuthorityResultKind.Reject
                         ? CharacterEquipmentAuthorityResultKind.Reject
                         : CharacterEquipmentAuthorityResultKind.AuthoritativeStateAccept,
+                    null,
                     out message);
             }
 
@@ -476,6 +505,7 @@ namespace HaCreator.MapSimulator
                 payload.RequestedAtTick,
                 acceptedResult,
                 payload.ResultKind,
+                completedLocalAcceptEnvelope,
                 out message);
         }
 
@@ -484,12 +514,15 @@ namespace HaCreator.MapSimulator
             CharacterBuild build,
             CharacterEquipmentAuthorityPayload payload,
             out EquipmentChangeResult result,
+            out CompletedCharacterEquipmentAuthorityEnvelope completedLocalAcceptEnvelope,
             out string rejectReason)
         {
             result = null;
+            completedLocalAcceptEnvelope = null;
             rejectReason = null;
             if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.LocalRequestAccept)
             {
+                completedLocalAcceptEnvelope = CaptureCompletedCharacterEquipmentAuthorityEnvelope(request, build);
                 result = request.Kind switch
                 {
                     EquipmentChangeRequestKind.InventoryToCharacter => HandleInventoryToCharacterChange(request, build),
@@ -500,6 +533,7 @@ namespace HaCreator.MapSimulator
 
                 if (!result.Accepted)
                 {
+                    completedLocalAcceptEnvelope = null;
                     rejectReason = result.RejectReason;
                     return false;
                 }
@@ -699,6 +733,7 @@ namespace HaCreator.MapSimulator
             int requestedAtTick,
             EquipmentChangeResult result,
             CharacterEquipmentAuthorityResultKind resultKind,
+            CompletedCharacterEquipmentAuthorityEnvelope completedLocalAcceptEnvelope,
             out string message)
         {
             message = null;
@@ -732,7 +767,10 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            _pendingCharacterEquipmentPacketResults[requestId] = new QueuedCharacterEquipmentPacketResult(result, resultKind);
+            _pendingCharacterEquipmentPacketResults[requestId] = new QueuedCharacterEquipmentPacketResult(
+                result,
+                resultKind,
+                completedLocalAcceptEnvelope);
             pendingEnvelope.AwaitingCharacterPacketAuthority = false;
             pendingEnvelope.CharacterPacketAuthorityDeadlineAtTick = currTickCount;
             message = result.Accepted
@@ -741,9 +779,108 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyLateCompletedCharacterPacketAuthorityResult(
+            CharacterEquipmentAuthorityPayload payload,
+            out string message)
+        {
+            message = null;
+            if (payload.RequestId <= 0
+                || !_completedCharacterEquipmentPacketRequests.TryGetValue(payload.RequestId, out CompletedCharacterEquipmentAuthorityEnvelope completedEnvelope)
+                || completedEnvelope?.Request == null)
+            {
+                message = $"Character equipment authority result did not match a pending request id ({payload.RequestId}).";
+                return false;
+            }
+
+            if (completedEnvelope.Request.RequestedAtTick != payload.RequestedAtTick)
+            {
+                message = $"Character equipment authority result for request {payload.RequestId} did not match the completed request timestamp.";
+                return false;
+            }
+
+            if (!ShouldRetainCompletedCharacterPacketRequest(
+                    currTickCount,
+                    completedEnvelope.CompletedAtTick,
+                    CompletedCharacterEquipmentAuthorityRetentionMs))
+            {
+                _completedCharacterEquipmentPacketRequests.Remove(payload.RequestId);
+                message = $"Character equipment authority result for request {payload.RequestId} arrived after the late-result reconciliation window closed.";
+                return false;
+            }
+
+            if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.LocalRequestAccept)
+            {
+                message = $"Ignored provisional packet-authored character equipment result for completed request {payload.RequestId}.";
+                return true;
+            }
+
+            if (_playerManager?.Player?.Build is not CharacterBuild build)
+            {
+                message = "Character equipment runtime is unavailable.";
+                return false;
+            }
+
+            if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                message = "Inventory runtime is unavailable.";
+                return false;
+            }
+
+            CharacterBuild liveBuildSnapshot = build.Clone();
+            IReadOnlyList<InventorySlotData> liveEquipInventory = CaptureInventorySnapshot(inventoryWindow, InventoryType.EQUIP);
+            IReadOnlyList<InventorySlotData> liveCashInventory = CaptureInventorySnapshot(inventoryWindow, InventoryType.CASH);
+
+            RestoreCompletedCharacterEquipmentAuthorityBaseline(build, inventoryWindow, completedEnvelope);
+            if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.Reject)
+            {
+                _completedCharacterEquipmentPacketRequests.Remove(payload.RequestId);
+                message = $"Reconciled late packet-authored character equipment rejection for request {payload.RequestId}.";
+                return true;
+            }
+
+            if (!TryCreatePacketOwnedCharacterAuthorityResult(
+                    completedEnvelope.Request,
+                    build,
+                    payload,
+                    out EquipmentChangeResult authoritativeResult,
+                    out _,
+                    out string rejectReason))
+            {
+                RestoreCharacterEquipmentState(build, liveBuildSnapshot);
+                inventoryWindow.ReplaceInventory(InventoryType.EQUIP, liveEquipInventory);
+                inventoryWindow.ReplaceInventory(InventoryType.CASH, liveCashInventory);
+                message = rejectReason;
+                return false;
+            }
+
+            if (!TryApplyResolvedCharacterEquipmentResultToInventory(
+                    completedEnvelope.Request,
+                    authoritativeResult,
+                    inventoryWindow,
+                    out string inventoryRejectReason))
+            {
+                RestoreCharacterEquipmentState(build, liveBuildSnapshot);
+                inventoryWindow.ReplaceInventory(InventoryType.EQUIP, liveEquipInventory);
+                inventoryWindow.ReplaceInventory(InventoryType.CASH, liveCashInventory);
+                message = inventoryRejectReason;
+                return false;
+            }
+
+            _completedCharacterEquipmentPacketRequests.Remove(payload.RequestId);
+            message = $"Reconciled late packet-authored character equipment result for request {payload.RequestId}.";
+            return true;
+        }
+
         internal static bool ShouldDeferQueuedCharacterPacketResultDrain(int currentTick, int readyAtTick)
         {
             return unchecked(currentTick - readyAtTick) < 0;
+        }
+
+        internal static bool ShouldRetainCompletedCharacterPacketRequest(int currentTick, int completedAtTick, int retentionMs)
+        {
+            return completedAtTick > 0
+                   && retentionMs > 0
+                   && unchecked(currentTick - completedAtTick) <= retentionMs;
         }
 
         internal static bool ShouldReplaceQueuedCharacterPacketResult(
@@ -1009,6 +1146,203 @@ namespace HaCreator.MapSimulator
             }
 
             displacedParts.Add(candidate.Clone());
+        }
+
+        private void PruneCompletedCharacterEquipmentPacketRequests(int currentTick)
+        {
+            if (_completedCharacterEquipmentPacketRequests.Count == 0)
+            {
+                return;
+            }
+
+            List<int> expiredRequestIds = null;
+            foreach (KeyValuePair<int, CompletedCharacterEquipmentAuthorityEnvelope> entry in _completedCharacterEquipmentPacketRequests)
+            {
+                if (entry.Value == null
+                    || !ShouldRetainCompletedCharacterPacketRequest(
+                        currentTick,
+                        entry.Value.CompletedAtTick,
+                        CompletedCharacterEquipmentAuthorityRetentionMs))
+                {
+                    expiredRequestIds ??= new List<int>();
+                    expiredRequestIds.Add(entry.Key);
+                }
+            }
+
+            if (expiredRequestIds == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < expiredRequestIds.Count; i++)
+            {
+                _completedCharacterEquipmentPacketRequests.Remove(expiredRequestIds[i]);
+            }
+        }
+
+        private CompletedCharacterEquipmentAuthorityEnvelope CaptureCompletedCharacterEquipmentAuthorityEnvelope(
+            EquipmentChangeRequest request,
+            CharacterBuild build)
+        {
+            InventoryUI inventoryWindow = uiWindowManager?.InventoryWindow as InventoryUI;
+            return new CompletedCharacterEquipmentAuthorityEnvelope
+            {
+                Request = request,
+                BuildBeforeLocalAccept = build?.Clone(),
+                EquipInventoryBeforeLocalAccept = CaptureInventorySnapshot(inventoryWindow, InventoryType.EQUIP),
+                CashInventoryBeforeLocalAccept = CaptureInventorySnapshot(inventoryWindow, InventoryType.CASH)
+            };
+        }
+
+        private static IReadOnlyList<InventorySlotData> CaptureInventorySnapshot(InventoryUI inventoryWindow, InventoryType inventoryType)
+        {
+            if (inventoryWindow == null)
+            {
+                return Array.Empty<InventorySlotData>();
+            }
+
+            IReadOnlyList<InventorySlotData> liveSlots = inventoryWindow.GetSlots(inventoryType);
+            List<InventorySlotData> snapshot = new(liveSlots.Count);
+            for (int i = 0; i < liveSlots.Count; i++)
+            {
+                snapshot.Add(liveSlots[i]?.Clone());
+            }
+
+            return snapshot;
+        }
+
+        private static void RestoreCharacterEquipmentState(CharacterBuild build, CharacterBuild snapshot)
+        {
+            if (build == null || snapshot == null)
+            {
+                return;
+            }
+
+            build.Equipment = CloneEquipmentLayer(snapshot.Equipment);
+            build.HiddenEquipment = CloneEquipmentLayer(snapshot.HiddenEquipment);
+        }
+
+        private static Dictionary<EquipSlot, CharacterPart> CloneEquipmentLayer(
+            IReadOnlyDictionary<EquipSlot, CharacterPart> source)
+        {
+            Dictionary<EquipSlot, CharacterPart> clone = new();
+            if (source == null)
+            {
+                return clone;
+            }
+
+            foreach (KeyValuePair<EquipSlot, CharacterPart> entry in source)
+            {
+                clone[entry.Key] = entry.Value?.Clone();
+            }
+
+            return clone;
+        }
+
+        private static void RestoreCompletedCharacterEquipmentAuthorityBaseline(
+            CharacterBuild build,
+            InventoryUI inventoryWindow,
+            CompletedCharacterEquipmentAuthorityEnvelope envelope)
+        {
+            if (envelope == null)
+            {
+                return;
+            }
+
+            RestoreCharacterEquipmentState(build, envelope.BuildBeforeLocalAccept);
+            inventoryWindow?.ReplaceInventory(InventoryType.EQUIP, envelope.EquipInventoryBeforeLocalAccept);
+            inventoryWindow?.ReplaceInventory(InventoryType.CASH, envelope.CashInventoryBeforeLocalAccept);
+        }
+
+        private bool TryApplyResolvedCharacterEquipmentResultToInventory(
+            EquipmentChangeRequest request,
+            EquipmentChangeResult result,
+            InventoryUI inventoryWindow,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null || result == null || inventoryWindow == null)
+            {
+                rejectReason = "Inventory runtime is unavailable.";
+                return false;
+            }
+
+            switch (request.Kind)
+            {
+                case EquipmentChangeRequestKind.InventoryToCharacter:
+                    if (!inventoryWindow.TryRemoveSlotAt(request.SourceInventoryType, request.SourceInventoryIndex, out _))
+                    {
+                        rejectReason = "The source inventory slot changed before the packet-authored equipment result completed.";
+                        return false;
+                    }
+
+                    AddResolvedInventorySlots(result.DisplacedParts, inventoryWindow);
+                    return true;
+
+                case EquipmentChangeRequestKind.CharacterToCharacter:
+                    return true;
+
+                case EquipmentChangeRequestKind.CharacterToInventory:
+                    InventorySlotData returnedSlot = CreateInventorySlot(result.ReturnedPart);
+                    if (returnedSlot != null)
+                    {
+                        inventoryWindow.AddItem(ResolveInventoryTypeForSlot(returnedSlot), returnedSlot);
+                    }
+
+                    return true;
+
+                default:
+                    rejectReason = "Unsupported character equipment authority request kind.";
+                    return false;
+            }
+        }
+
+        private void AddResolvedInventorySlots(IReadOnlyList<CharacterPart> parts, InventoryUI inventoryWindow)
+        {
+            if (parts == null || inventoryWindow == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < parts.Count; i++)
+            {
+                InventorySlotData slot = CreateInventorySlot(parts[i]);
+                if (slot != null)
+                {
+                    inventoryWindow.AddItem(ResolveInventoryTypeForSlot(slot), slot);
+                }
+            }
+        }
+
+        private static InventoryType ResolveInventoryTypeForSlot(InventorySlotData slot)
+        {
+            return slot?.PreferredInventoryType is InventoryType type && type != InventoryType.NONE
+                ? type
+                : InventoryType.EQUIP;
+        }
+
+        private InventorySlotData CreateInventorySlot(CharacterPart part)
+        {
+            if (part == null)
+            {
+                return null;
+            }
+
+            return new InventorySlotData
+            {
+                ItemId = part.ItemId,
+                Quantity = 1,
+                MaxStackSize = 1,
+                PreferredInventoryType = part.IsCash ? InventoryType.CASH : InventoryType.EQUIP,
+                GradeFrameIndex = 0,
+                ItemName = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name,
+                ItemTypeName = string.IsNullOrWhiteSpace(part.ItemCategory) ? "Equip" : part.ItemCategory,
+                Description = part.Description,
+                OwnerAccountId = part.OwnerAccountId,
+                OwnerCharacterId = part.OwnerCharacterId,
+                IsCashOwnershipLocked = part.IsCashOwnershipLocked,
+                TooltipPart = part.Clone()
+            };
         }
 
         private static bool FailPacketOwnedCharacterAuthorityResult(

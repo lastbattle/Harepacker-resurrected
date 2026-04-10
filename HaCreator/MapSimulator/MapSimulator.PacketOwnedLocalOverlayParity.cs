@@ -128,9 +128,12 @@ namespace HaCreator.MapSimulator
 
         private readonly PacketFieldFadeOverlay _packetOwnedFieldFadeOverlay = new();
         private readonly LocalOverlayBalloonState _packetOwnedBalloonState = new();
+        private readonly LocalOverlayPacketInboxManager _localOverlayPacketInbox = new();
         private readonly Dictionary<string, Texture2D> _packetOwnedBalloonInlineUiCanvasCache = new(StringComparer.OrdinalIgnoreCase);
         private FieldHazardPetAutoConsumeRequest? _pendingFieldHazardPetAutoConsumeRequest;
         private LocalOverlayBalloonSkin _packetOwnedBalloonSkin;
+        private bool _localOverlayPacketInboxEnabled = EnablePacketConnectionsByDefault;
+        private int _localOverlayPacketInboxConfiguredPort = LocalOverlayPacketInboxManager.DefaultPort;
         private int _fieldHazardSharedPetConsumeItemId;
         private InventoryType _fieldHazardSharedPetConsumeInventoryType = InventoryType.NONE;
         private FieldHazardSharedPetConsumeSource _fieldHazardSharedPetConsumeSource = FieldHazardSharedPetConsumeSource.None;
@@ -317,6 +320,66 @@ namespace HaCreator.MapSimulator
             _packetOwnedBalloonState.Update(currentTickCount);
             UpdateFieldHazardPetAutoConsumeRequestState(currentTickCount);
             RefreshFieldHazardPetAutoConsumeTransportDetail(currentTickCount);
+        }
+
+        private void EnsureLocalOverlayPacketInboxState(bool shouldRun)
+        {
+            if (!shouldRun || !_localOverlayPacketInboxEnabled)
+            {
+                if (_localOverlayPacketInbox.IsRunning)
+                {
+                    _localOverlayPacketInbox.Stop();
+                }
+
+                return;
+            }
+
+            if (_localOverlayPacketInbox.IsRunning && _localOverlayPacketInbox.Port == _localOverlayPacketInboxConfiguredPort)
+            {
+                return;
+            }
+
+            if (_localOverlayPacketInbox.IsRunning)
+            {
+                _localOverlayPacketInbox.Stop();
+            }
+
+            try
+            {
+                _localOverlayPacketInbox.Start(_localOverlayPacketInboxConfiguredPort);
+            }
+            catch (Exception ex)
+            {
+                _localOverlayPacketInbox.Stop();
+                _chat?.AddErrorMessage($"Local overlay packet inbox failed to start: {ex.Message}", currTickCount);
+            }
+        }
+
+        private void DrainLocalOverlayPacketInbox()
+        {
+            while (_localOverlayPacketInbox.TryDequeue(out LocalOverlayPacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = TryApplyPacketOwnedLocalOverlayPacket(message.PacketType, message.Payload, out string detail);
+                _localOverlayPacketInbox.RecordDispatchResult(message, applied, detail);
+                if (string.IsNullOrWhiteSpace(detail))
+                {
+                    continue;
+                }
+
+                if (applied)
+                {
+                    _chat?.AddSystemMessage(detail, currTickCount);
+                }
+                else
+                {
+                    _chat?.AddErrorMessage(detail, currTickCount);
+                }
+            }
         }
 
         private void DrawPacketOwnedLocalOverlayState(int currentTickCount, int mapCenterX, int mapCenterY)
@@ -3464,11 +3527,40 @@ namespace HaCreator.MapSimulator
 
             return string.Join(
                 Environment.NewLine,
+                DescribeLocalOverlayPacketInboxStatus(),
                 fadeStatus,
                 balloonStatus,
                 _localOverlayRuntime.DescribeDamageMeterStatus(currentTickCount),
                 _localOverlayRuntime.DescribeFieldHazardStatus(currentTickCount),
                 DescribeFieldHazardPetAutoConsumeTransportStatus(currentTickCount));
+        }
+
+        private string DescribeLocalOverlayPacketInboxStatus()
+        {
+            string enabledText = _localOverlayPacketInboxEnabled ? "enabled" : "disabled";
+            string listeningText = _localOverlayPacketInbox.IsRunning
+                ? $"listening on 127.0.0.1:{_localOverlayPacketInbox.Port}"
+                : $"configured for 127.0.0.1:{_localOverlayPacketInboxConfiguredPort}";
+            return $"Local overlay packet inbox {enabledText}, {listeningText}, received {_localOverlayPacketInbox.ReceivedCount} packet(s).";
+        }
+
+        private bool TryApplyPacketOwnedLocalOverlayPacket(int packetType, byte[] payload, out string message)
+        {
+            switch (packetType)
+            {
+                case LocalOverlayPacketInboxManager.FieldFadeInOutClientPacketType:
+                    return TryApplyPacketOwnedFieldFadePayload(payload, out message);
+
+                case LocalOverlayPacketInboxManager.FieldFadeOutForceClientPacketType:
+                    return TryApplyPacketOwnedFieldFadeOutForcePayload(payload, out message);
+
+                case LocalOverlayPacketInboxManager.BalloonMsgClientPacketType:
+                    return TryApplyPacketOwnedBalloonPayload(payload, out message);
+
+                default:
+                    message = $"Unsupported local overlay packet type {packetType}.";
+                    return false;
+            }
         }
 
         private void ClearPacketOwnedLocalOverlayState(string scope)
@@ -3527,6 +3619,9 @@ namespace HaCreator.MapSimulator
                     ClearPacketOwnedLocalOverlayState(args.Length >= 2 ? args[1] : "all");
                     return ChatCommandHandler.CommandResult.Ok(DescribePacketOwnedFieldFadeAndBalloonStatus(currTickCount));
 
+                case "inbox":
+                    return HandlePacketOwnedLocalOverlayInboxCommand(args.Skip(1).ToArray());
+
                 case "fade":
                     return HandlePacketOwnedFieldFadeCommand(args);
 
@@ -3555,8 +3650,104 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]");
+                        "Usage: /localoverlay [status|inbox [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [force] [buffskill] [message]|hazardclear]");
             }
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayInboxCommand(string[] args)
+        {
+            const string usagePrefix = "/localoverlaypacket";
+            if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
+            {
+                int port = LocalOverlayPacketInboxManager.DefaultPort;
+                if (args.Length >= 2 && (!int.TryParse(args[1], out port) || port <= 0 || port > ushort.MaxValue))
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+                }
+
+                _localOverlayPacketInboxConfiguredPort = port;
+                _localOverlayPacketInboxEnabled = true;
+                EnsureLocalOverlayPacketInboxState(shouldRun: true);
+                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                _localOverlayPacketInboxEnabled = false;
+                EnsureLocalOverlayPacketInboxState(shouldRun: false);
+                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[0], "packetclientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandlePacketOwnedLocalOverlayClientPacketRawCommand(args);
+            }
+
+            if (string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandlePacketOwnedLocalOverlayPacketCommand(
+                    args,
+                    rawHex: string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase));
+            }
+
+            return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|fadeoutforce|balloon|240|241|245> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayPacketCommand(string[] args, bool rawHex)
+        {
+            if (args.Length < 2)
+            {
+                return ChatCommandHandler.CommandResult.Error(
+                    rawHex
+                        ? "Usage: /localoverlaypacket packetraw <type> <hex>"
+                        : "Usage: /localoverlaypacket packet <type> [payloadhex=..|payloadb64=..]");
+            }
+
+            if (!LocalOverlayPacketInboxManager.TryParsePacketType(args[1], out int packetType))
+            {
+                return ChatCommandHandler.CommandResult.Error("Local overlay packet type must be fade, fadeoutforce, balloon, 240, 241, or 245.");
+            }
+
+            byte[] payload = Array.Empty<byte>();
+            if (rawHex)
+            {
+                if (args.Length < 3 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out payload))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /localoverlaypacket packetraw <type> <hex>");
+                }
+            }
+            else if (args.Length >= 3 && !TryParseBinaryPayloadArgument(args[2], out payload, out string payloadError))
+            {
+                return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /localoverlaypacket packet <type> [payloadhex=..|payloadb64=..]");
+            }
+
+            _localOverlayPacketInbox.EnqueueLocal(packetType, payload, "local-overlay-command");
+            DrainLocalOverlayPacketInbox();
+            return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedLocalOverlayClientPacketRawCommand(string[] args)
+        {
+            if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] rawPacket))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /localoverlaypacket packetclientraw <hex>");
+            }
+
+            if (!LocalUtilityPacketInboxManager.TryDecodeOpcodeFramedPacket(rawPacket, out int packetType, out byte[] payload, out string message)
+                || !LocalOverlayPacketInboxManager.IsSupportedPacketType(packetType))
+            {
+                return ChatCommandHandler.CommandResult.Error(message ?? $"Unsupported local overlay client opcode {packetType}.");
+            }
+
+            _localOverlayPacketInbox.EnqueueLocal(packetType, payload, "local-overlay-client-raw");
+            DrainLocalOverlayPacketInbox();
+            return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFadeCommand(string[] args)
@@ -3729,6 +3920,33 @@ namespace HaCreator.MapSimulator
             }
 
             message = ApplyPacketOwnedFieldFade(fadeInMs, holdMs, fadeOutMs, startingAlpha, currTickCount);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedFieldFadeOutForcePayload(
+            byte[] payload,
+            out int layerZ,
+            out string message)
+        {
+            return TryDecodeSingleInt32LocalUtilityPayload(
+                payload,
+                "Field-fade-out-force",
+                "layer",
+                out layerZ,
+                out message);
+        }
+
+        private bool TryApplyPacketOwnedFieldFadeOutForcePayload(byte[] payload, out string message)
+        {
+            if (!TryDecodePacketOwnedFieldFadeOutForcePayload(payload, out int layerZ, out message))
+            {
+                return false;
+            }
+
+            int removedCount = _packetOwnedFieldFadeOverlay.RemoveLayer(layerZ);
+            message = removedCount > 0
+                ? $"Removed {removedCount} packet-authored field fade entr{(removedCount == 1 ? "y" : "ies")} at layer {layerZ}."
+                : $"No packet-authored field fade entries matched layer {layerZ}.";
             return true;
         }
 

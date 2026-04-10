@@ -8212,6 +8212,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || ActionTextContains(actionName, "screw");
         }
 
+        private static bool HasBoundJumpMovementProfile(
+            SkillData skill,
+            IEnumerable<string> candidateActions = null,
+            string movementActionName = null)
+        {
+            if (IsExplicitBoundJumpSkill(skill))
+            {
+                return true;
+            }
+
+            candidateActions ??= EnumerateMovementActionCandidates(skill);
+            return candidateActions.Any(IsBoundJumpActionName)
+                   || IsBoundJumpActionName(movementActionName)
+                   || SkillTextContains(skill, "flash jump");
+        }
+
         private static bool ActionTextContains(string actionName, string value)
         {
             return !string.IsNullOrWhiteSpace(actionName)
@@ -8302,7 +8318,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (IsExplicitBoundJumpSkill(skill) || skill.ClientInfoType == 40 || skill.ClientDelayMs > 0)
+            if (HasBoundJumpMovementProfile(skill) || skill.ClientDelayMs > 0)
             {
                 return true;
             }
@@ -8357,11 +8373,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return SkillMovementFamily.Backstep;
             }
 
-            if (skill.ClientInfoType == 40
-                || candidateActions.Any(IsBoundJumpActionName)
-                || IsBoundJumpActionName(movementActionName)
-                || IsExplicitBoundJumpSkill(skill)
-                || SkillTextContains(skill, "flash jump"))
+            if (HasBoundJumpMovementProfile(skill, candidateActions, movementActionName))
             {
                 return SkillMovementFamily.BoundJump;
             }
@@ -8638,7 +8650,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return _player.Physics.IsOnFoothold();
             }
 
-            if (skill.ClientInfoType == 40 || IsExplicitBoundJumpSkill(skill))
+            if (HasBoundJumpMovementProfile(skill))
             {
                 return RequiresAirborneBoundJumpStart(skill)
                     ? !_player.Physics.IsOnFoothold()
@@ -9869,12 +9881,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (skill.ClientInfoType == 40)
+            if (HasBoundJumpMovementProfile(skill))
             {
                 return skill.AvailableInJumpingState;
             }
 
-            return IsExplicitBoundJumpSkill(skill);
+            return false;
         }
 
         internal static bool AllowsClientOwnedOneTimeActionDuringSmoothingMovingShootPrepare(SkillData skill)
@@ -11776,9 +11788,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            SkillAnimation animation = kind == BulletAnimationOwnerKind.Normal
-                ? ResolveNormalBulletAnimation(projectile, bulletItemId) ?? ResolveSkillBallAnimation(skill, projectile)
-                : ResolveSkillBallAnimation(skill, projectile);
+            SkillAnimation animation = ResolveRegisteredBulletAnimation(
+                skill,
+                projectile,
+                kind,
+                bulletItemId,
+                ballUol);
             Vector2 destinationPoint = ResolveBulletAnimationDestinationPoint(projectile);
             Vector2 targetPoint = projectile.PreferredTargetPosition ?? destinationPoint;
 
@@ -12003,7 +12018,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill?.MaxLevel ?? 0);
         }
 
-        private SkillAnimation ResolveNormalBulletAnimation(ActiveProjectile projectile, int bulletItemId)
+        private SkillAnimation ResolveRegisteredBulletAnimation(
+            SkillData skill,
+            ActiveProjectile projectile,
+            BulletAnimationOwnerKind kind,
+            int bulletItemId,
+            string effectUol)
+        {
+            SkillAnimation effectAnimation = ResolveBulletEffectAnimation(effectUol);
+            return kind == BulletAnimationOwnerKind.Normal
+                ? ResolveNormalBulletAnimation(projectile, bulletItemId, effectAnimation) ?? ResolveSkillBallAnimation(skill, projectile)
+                : effectAnimation ?? ResolveSkillBallAnimation(skill, projectile);
+        }
+
+        private SkillAnimation ResolveNormalBulletAnimation(
+            ActiveProjectile projectile,
+            int bulletItemId,
+            SkillAnimation effectAnimation)
         {
             if (bulletItemId > 0)
             {
@@ -12014,7 +12045,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            if (effectAnimation?.Frames?.Count > 0)
+            {
+                return effectAnimation;
+            }
+
             return ResolveProjectileVisualAnimation(projectile);
+        }
+
+        private SkillAnimation ResolveBulletEffectAnimation(string effectUol)
+        {
+            return string.IsNullOrWhiteSpace(effectUol)
+                ? null
+                : _loader?.LoadSkillAnimationByNormalizedPath(effectUol);
         }
 
         internal static Vector2? ResolveDeferredProjectileTargetPositionSnapshot(
@@ -13332,18 +13375,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public void NotifyLocalPlayerDamaged(int currentTime)
         {
-            TryRequestStanceSpecialEffectOnDamage(currentTime);
+            TryRequestDamageReactiveSpecialEffectOnDamage(currentTime);
         }
 
-        private bool TryRequestStanceSpecialEffectOnDamage(int currentTime)
+        private bool TryRequestDamageReactiveSpecialEffectOnDamage(int currentTime)
         {
             for (int i = _buffs.Count - 1; i >= 0; i--)
             {
                 ActiveBuff buff = _buffs[i];
                 if (buff == null
                     || buff.IsExpired(currentTime)
-                    || !IsStanceSpecialEffectBuff(buff)
-                    || !ShouldTriggerStanceSpecialEffect(buff.LevelData))
+                    || !CanRequestDamageReactiveSpecialEffect(buff))
                 {
                     continue;
                 }
@@ -13364,28 +13406,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        private static bool IsStanceSpecialEffectBuff(ActiveBuff buff)
+        private bool CanRequestDamageReactiveSpecialEffect(ActiveBuff buff)
         {
-            if (buff?.SkillData == null)
-            {
-                return false;
-            }
-
-            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
-            for (int i = 0; i < temporaryStats.Count; i++)
-            {
-                if (string.Equals(temporaryStats[i]?.Label, StanceBuffLabel, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return buff?.SkillData != null
+                   && IsDamageReactiveSpecialSkillUseEffectCandidate(
+                       buff.SkillData,
+                       HasAnimationDisplayerSpecialBranch(buff.SkillId))
+                   && ShouldTriggerDamageReactiveSpecialEffect(buff.LevelData?.Prop ?? 0);
         }
 
-        private static bool ShouldTriggerStanceSpecialEffect(SkillLevelData levelData)
+        internal static bool IsDamageReactiveSpecialSkillUseEffectCandidate(SkillData skill, bool hasSpecialBranch)
         {
-            int prop = levelData?.Prop ?? 0;
+            return skill?.SkillId > 0
+                   && hasSpecialBranch
+                   && string.Equals(skill.TriggerCondition, "damaged", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool ShouldTriggerDamageReactiveSpecialEffect(int prop, int? randomRollPercent = null)
+        {
             if (prop <= 0)
             {
                 return false;
@@ -13396,7 +13434,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            return Random.Next(100) < prop;
+            int roll = randomRollPercent ?? Random.Next(100);
+            return roll < prop;
         }
 
         private void UpdateSummons(int currentTime, float deltaTime)
@@ -15315,23 +15354,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 hpHeal = summon.LevelData.X;
             }
 
-            bool healed = false;
+            bool recoveredStats = false;
             if (hpHeal > 0)
             {
                 int previousHp = _player.HP;
                 _player.Recover(hpHeal, 0);
                 int newHp = _player.HP;
-                healed = newHp > previousHp;
+                recoveredStats = newHp > previousHp;
             }
 
             if (mpHeal > 0)
             {
                 int previousMp = _player.MP;
                 _player.Recover(0, mpHeal);
-                healed |= _player.MP > previousMp;
+                recoveredStats |= _player.MP > previousMp;
             }
 
-            if (!healed)
+            if (!ShouldCompleteHealingSupportAttempt(summon, recoveredStats))
             {
                 return false;
             }
@@ -15591,9 +15630,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (IsSupportSummonSuspended(summon, currentTime))
+            {
+                return false;
+            }
+
             summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveLocalSummonActionBranch(summon.SkillData);
             summon.LastAttackAnimationStartTime = currentTime;
             ArmLocalSummonOneTimeActionFallback(summon, currentTime);
+            ArmSupportSummonSuspend(summon, currentTime);
             SetSummonActorState(summon, SummonActorState.Attack, currentTime);
             if (summon.SkillData.HitEffect != null)
             {
@@ -15653,8 +15698,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool preferHealFirst = SummonRuntimeRules.HasMinionAbilityToken(
                 summon.SkillData.MinionAbility,
                 "heal");
-            int suspendDuration = SummonRuntimeRules.ResolveSupportSuspendDurationMs(
+            int suspendDuration = SummonRuntimeRules.ResolveTrackedSuspendDurationMs(
                 summon.SkillData,
+                summon.AssistType,
                 preferHealFirst,
                 explicitBranchName: summon.CurrentAnimationBranchName);
             if (suspendDuration <= 0)
@@ -15838,10 +15884,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool ShouldClearSupportSummonSuspend(ActiveSummon summon, int currentTime)
         {
-            return SummonRuntimeRules.ShouldClearHealingRobotSupportSuspend(
-                summon,
-                currentTime,
-                HEALING_ROBOT_SKILL_ID);
+            return SummonRuntimeRules.ShouldClearSupportSuspend(summon, currentTime);
         }
 
         private bool ProcessFriendlySummonBuffSupport(ActiveSummon summon, int currentTime)
@@ -15981,6 +16024,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return summon.LevelData.HP;
+        }
+
+        internal static bool ShouldCompleteHealingSupportAttempt(ActiveSummon summon, bool recoveredStats)
+        {
+            if (recoveredStats)
+            {
+                return true;
+            }
+
+            // Client `CSummoned::TryDoingHealingRobot` sends action 13 and starts suspend/reheal
+            // once the seated-range probe succeeds; it does not first verify that HP/MP will change.
+            return summon?.SkillId == HEALING_ROBOT_SKILL_ID
+                   && summon.AssistType == SummonAssistType.Support
+                   && SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData);
         }
 
         private static int ResolveSupportSummonRehealLockMs(ActiveSummon summon)
@@ -18885,9 +18942,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
-            if (IsMapleWarriorLikeBasicStatPercentBuff(skill, levelData))
+            int percent = ResolveDescriptionBackedBasicStatPercent(skill, levelData, stat);
+            if (percent > 0)
             {
-                int percent = Math.Max(0, levelData.X);
                 return stat switch
                 {
                     BuffStatType.Strength => build.STR * percent / 100,
@@ -18901,26 +18958,65 @@ namespace HaCreator.MapSimulator.Character.Skills
             return 0;
         }
 
-        private static bool IsMapleWarriorLikeBasicStatPercentBuff(SkillData skill, SkillLevelData levelData)
+        private static int ResolveDescriptionBackedBasicStatPercent(
+            SkillData skill,
+            SkillLevelData levelData,
+            BuffStatType stat)
         {
-            if (skill == null || levelData == null || levelData.X <= 0)
+            if (skill == null || levelData == null)
             {
-                return false;
+                return 0;
             }
 
             if (HasAllPrimaryStatBonus(levelData) || levelData.AllStat != 0)
             {
-                return false;
+                return 0;
             }
 
-            if (string.Equals(skill.Name?.Trim(), "Maple Warrior", StringComparison.OrdinalIgnoreCase))
+            return stat switch
             {
-                return true;
-            }
+                BuffStatType.Strength => ResolveDescriptionBackedBasicStatPercentAlias(
+                    skill,
+                    levelData,
+                    "all stats",
+                    "all stat",
+                    "all attributes",
+                    "strength",
+                    "str"),
+                BuffStatType.Dexterity => ResolveDescriptionBackedBasicStatPercentAlias(
+                    skill,
+                    levelData,
+                    "all stats",
+                    "all stat",
+                    "all attributes",
+                    "dexterity",
+                    "dex"),
+                BuffStatType.Intelligence => ResolveDescriptionBackedBasicStatPercentAlias(
+                    skill,
+                    levelData,
+                    "all stats",
+                    "all stat",
+                    "all attributes",
+                    "intelligence",
+                    "int"),
+                BuffStatType.Luck => ResolveDescriptionBackedBasicStatPercentAlias(
+                    skill,
+                    levelData,
+                    "all stats",
+                    "all stat",
+                    "all attributes",
+                    "luck",
+                    "luk"),
+                _ => 0
+            };
+        }
 
-            string descriptionSurface = SkillDataTextSurface.GetDescriptionSurface(skill);
-            return descriptionSurface.IndexOf("all stats", StringComparison.OrdinalIgnoreCase) >= 0
-                   && descriptionSurface.IndexOf("#x%", StringComparison.OrdinalIgnoreCase) >= 0;
+        private static int ResolveDescriptionBackedBasicStatPercentAlias(
+            SkillData skill,
+            SkillLevelData levelData,
+            params string[] labelTokens)
+        {
+            return SkillLoader.ResolveDescriptionBackedPrimaryStatPercentAlias(skill, levelData, labelTokens);
         }
 
         private static int ResolveBoosterStatBonus(SkillData skill, SkillLevelData levelData)
@@ -19576,6 +19672,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                if (ShouldSuppressCompoundFamilyTooltipDisplayName(
+                        temporaryStat?.Label,
+                        activeTemporaryStatsByLabel))
+                {
+                    continue;
+                }
+
                 string displayName = temporaryStat?.DisplayName;
                 if (!string.IsNullOrWhiteSpace(displayName) && seenDisplayNames.Add(displayName))
                 {
@@ -19596,7 +19699,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (string.IsNullOrWhiteSpace(propertyName)
                 || activeTemporaryStatsByLabel == null
                 || activeTemporaryStatsByLabel.Count == 0
-                || !AuthoredPropertyTemporaryStatLabels.TryGetValue(propertyName, out string[] labels)
+                || !TryResolveAuthoredPropertyTemporaryStatLabelsForTooltip(
+                    propertyName,
+                    activeTemporaryStatsByLabel,
+                    out string[] labels)
                 || labels == null)
             {
                 return false;
@@ -19629,6 +19735,123 @@ namespace HaCreator.MapSimulator.Character.Skills
                 representedLabels?.Add(label);
                 displayName = temporaryStat.DisplayName;
                 return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveAuthoredPropertyTemporaryStatLabelsForTooltip(
+            string propertyName,
+            IReadOnlyDictionary<string, BuffTemporaryStatPresentation> activeTemporaryStatsByLabel,
+            out string[] labels)
+        {
+            labels = null;
+            if (string.IsNullOrWhiteSpace(propertyName)
+                || activeTemporaryStatsByLabel == null
+                || activeTemporaryStatsByLabel.Count == 0)
+            {
+                return false;
+            }
+
+            if (AuthoredPropertyTemporaryStatLabels.TryGetValue(propertyName, out labels) && labels != null && labels.Length > 0)
+            {
+                return true;
+            }
+
+            return TryResolveContextualTooltipTemporaryStatLabels(
+                propertyName,
+                activeTemporaryStatsByLabel,
+                out labels);
+        }
+
+        private static bool TryResolveContextualTooltipTemporaryStatLabels(
+            string propertyName,
+            IReadOnlyDictionary<string, BuffTemporaryStatPresentation> activeTemporaryStatsByLabel,
+            out string[] labels)
+        {
+            labels = null;
+            if (string.IsNullOrWhiteSpace(propertyName)
+                || activeTemporaryStatsByLabel == null
+                || activeTemporaryStatsByLabel.Count == 0)
+            {
+                return false;
+            }
+
+            if (string.Equals(propertyName, "x", StringComparison.OrdinalIgnoreCase))
+            {
+                if (activeTemporaryStatsByLabel.ContainsKey(MaxHpBuffLabel)
+                    && activeTemporaryStatsByLabel.ContainsKey(HyperBodyBuffLabel))
+                {
+                    labels = new[] { MaxHpBuffLabel };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(CriticalRateBuffLabel)
+                    && activeTemporaryStatsByLabel.ContainsKey(SharpEyesBuffLabel))
+                {
+                    labels = new[] { CriticalRateBuffLabel };
+                    return true;
+                }
+
+                if (activeTemporaryStatsByLabel.ContainsKey(AllStatsBuffLabel)
+                    && activeTemporaryStatsByLabel.ContainsKey(MapleWarriorBuffLabel))
+                {
+                    labels = new[] { AllStatsBuffLabel };
+                    return true;
+                }
+            }
+
+            if (string.Equals(propertyName, "y", StringComparison.OrdinalIgnoreCase)
+                && activeTemporaryStatsByLabel.ContainsKey(MaxMpBuffLabel)
+                && activeTemporaryStatsByLabel.ContainsKey(HyperBodyBuffLabel))
+            {
+                labels = new[] { MaxMpBuffLabel };
+                return true;
+            }
+
+            if ((string.Equals(propertyName, "y", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(propertyName, "z", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(propertyName, "u", StringComparison.OrdinalIgnoreCase))
+                && activeTemporaryStatsByLabel.ContainsKey(AllStatsBuffLabel)
+                && activeTemporaryStatsByLabel.ContainsKey(MapleWarriorBuffLabel))
+            {
+                labels = new[] { AllStatsBuffLabel };
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool ShouldSuppressCompoundFamilyTooltipDisplayName(
+            string label,
+            IReadOnlyDictionary<string, BuffTemporaryStatPresentation> activeTemporaryStatsByLabel)
+        {
+            if (string.IsNullOrWhiteSpace(label)
+                || activeTemporaryStatsByLabel == null
+                || activeTemporaryStatsByLabel.Count == 0)
+            {
+                return false;
+            }
+
+            if (string.Equals(label, HyperBodyBuffLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return activeTemporaryStatsByLabel.ContainsKey(MaxHpBuffLabel)
+                    || activeTemporaryStatsByLabel.ContainsKey(MaxMpBuffLabel);
+            }
+
+            if (string.Equals(label, SharpEyesBuffLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return activeTemporaryStatsByLabel.ContainsKey(CriticalRateBuffLabel)
+                    || activeTemporaryStatsByLabel.ContainsKey(CriticalDamageBuffLabel);
+            }
+
+            if (string.Equals(label, MapleWarriorBuffLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                return activeTemporaryStatsByLabel.ContainsKey(AllStatsBuffLabel)
+                    || activeTemporaryStatsByLabel.ContainsKey(StrengthBuffLabel)
+                    || activeTemporaryStatsByLabel.ContainsKey(DexterityBuffLabel)
+                    || activeTemporaryStatsByLabel.ContainsKey(IntelligenceBuffLabel)
+                    || activeTemporaryStatsByLabel.ContainsKey(LuckBuffLabel);
             }
 
             return false;
@@ -21936,7 +22159,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private SkillLevelData ResolveAffectedSkillPassiveLinkedSupportLevelData(SkillData skill)
         {
-            if (skill?.UsesAffectedSkillPassiveData == true
+            if (skill?.UsesHelperOnlyAffectedSkillPassiveData == true
                 && TryResolveAffectedSkillPassiveRuntimeLevel(
                     skill,
                     GetSkillLevel,
@@ -21966,7 +22189,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             level = 0;
 
-            if (skill?.UsesAffectedSkillPassiveData != true || getSkillLevel == null)
+            if (skill?.UsesHelperOnlyAffectedSkillPassiveData != true || getSkillLevel == null)
             {
                 return false;
             }
@@ -23796,7 +24019,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool UsesAuraDotAffectedSkillPassive(SkillData skill)
         {
-            return skill?.UsesAffectedSkillPassiveData == true
+            return skill?.UsesHelperOnlyAffectedSkillPassiveData == true
                    && string.Equals(skill.AffectedSkillEffect, "dot", StringComparison.OrdinalIgnoreCase)
                    && string.Equals(skill.DotType, "aura", StringComparison.OrdinalIgnoreCase);
         }
@@ -23806,7 +24029,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             SkillLevelData levelData,
             IReadOnlyCollection<SkillData> supportSkills = null)
         {
-            return skill?.UsesAffectedSkillPassiveData == true
+            return skill?.UsesHelperOnlyAffectedSkillPassiveData == true
                    && !skill.UsesAffectedSkillBodyAttack
                    && !UsesAuraDotAffectedSkillPassive(skill)
                    && RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill, supportSkills, levelData)

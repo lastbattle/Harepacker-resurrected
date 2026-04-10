@@ -1200,6 +1200,26 @@ namespace HaCreator.MapSimulator.UI
             SyncOneADayOwnerState();
             switch (actionKey)
             {
+                case "BtBuy":
+                    _oneADayShortcutHelpActive = false;
+                    _oneADaySelectorIndex = 0;
+                    if (_oneADayPending)
+                    {
+                        _oneADayPlateFocusIndex = 0;
+                    }
+
+                    _oneADaySessionState = !_oneADayPending
+                        ? $"CCSWnd_OneADay kept the dedicated buy button armed, but no packet-authored today reward is pending for {ResolveOneADayCurrentSelectionSummary(state)}."
+                        : $"CCSWnd_OneADay routed the dedicated buy button through the Today reward lane for {ResolveOneADayCurrentSelectionSummary(state)}.";
+                    break;
+                case "BtItemBox":
+                    _oneADayShortcutHelpActive = false;
+                    _oneADaySelectorIndex = Math.Min(1, Math.Max(0, Math.Max(1, state?.SelectorCount ?? 2) - 1));
+                    _oneADayPlateFocusIndex = Math.Clamp(_oneADayPlateFocusIndex, 0, Math.Max(0, Math.Max(1, state?.PreviousOfferCount ?? 12) - 1));
+                    _oneADaySessionState = state?.HistoryEntries?.Count > 0
+                        ? $"CCSWnd_OneADay routed the dedicated item-box button into previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}."
+                        : "CCSWnd_OneADay switched into the dedicated previous-item lane, but no packet-authored history rows are loaded.";
+                    break;
                 case "BtJoin":
                     _oneADayShortcutHelpActive = false;
                     if (_oneADaySelectorIndex == 1)
@@ -1561,6 +1581,18 @@ namespace HaCreator.MapSimulator.UI
             else if (WasPressed(keyboardState, Keys.Enter))
             {
                 string actionKey = "BtJoin";
+                ApplyOneADayButtonState(actionKey);
+                ApplyStatusMessage(InvokeExternalAction(actionKey));
+            }
+            else if (WasPressed(keyboardState, Keys.B))
+            {
+                string actionKey = "BtBuy";
+                ApplyOneADayButtonState(actionKey);
+                ApplyStatusMessage(InvokeExternalAction(actionKey));
+            }
+            else if (WasPressed(keyboardState, Keys.I))
+            {
+                string actionKey = "BtItemBox";
                 ApplyOneADayButtonState(actionKey);
                 ApplyStatusMessage(InvokeExternalAction(actionKey));
             }
@@ -2020,6 +2052,21 @@ namespace HaCreator.MapSimulator.UI
             if (state == null || string.IsNullOrWhiteSpace(layerKey))
             {
                 return true;
+            }
+
+            if (string.Equals(layerKey, "Base01", StringComparison.Ordinal))
+            {
+                return state.HasKeyFocusCanvas && !_oneADayShortcutHelpActive;
+            }
+
+            if (string.Equals(layerKey, "ItemBox", StringComparison.Ordinal))
+            {
+                return state.HasPlateCanvas && !_oneADayShortcutHelpActive && _oneADaySelectorIndex == 0;
+            }
+
+            if (string.Equals(layerKey, "ItemBoxBig", StringComparison.Ordinal))
+            {
+                return state.HasPlateBigCanvas && !_oneADayShortcutHelpActive && _oneADaySelectorIndex == 1;
             }
 
             string expectedLayer = ResolveOneADayPlateName(state);

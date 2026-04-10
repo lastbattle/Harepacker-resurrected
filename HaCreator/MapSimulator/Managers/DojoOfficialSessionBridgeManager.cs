@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Managers
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private BridgePair _activePair;
+        private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -143,6 +144,7 @@ namespace HaCreator.MapSimulator.Managers
         public int RemotePort { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasAttachedClient => _activePair != null;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public string LastStatus { get; private set; } = "Dojo official-session bridge inactive.";
@@ -154,8 +156,10 @@ namespace HaCreator.MapSimulator.Managers
                 : "inactive";
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                : HasPassiveEstablishedSocketPair
+                    ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
-            return $"Dojo official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mappings={DescribePacketMappings()}; learned={DescribeLearnedPacketTable()}; deferred={DescribeDeferredPackets()}; inference={DescribeInferenceContext()}; recent={DescribeRecentPackets()}. {LastStatus}";
+            return $"Dojo official-session bridge {lifecycle}; {session}; attachMode=proxy+passive-observe; received={ReceivedCount}; mappings={DescribePacketMappings()}; learned={DescribeLearnedPacketTable()}; deferred={DescribeDeferredPackets()}; inference={DescribeInferenceContext()}; recent={DescribeRecentPackets()}. {LastStatus}";
         }
 
         public void UpdateInferenceContext(DojoField field)
@@ -256,11 +260,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
-                int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                bool autoSelectListenPort = listenPort <= 0;
+                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasAttachedClient)
                 {
-                    if (MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                    if (MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, remotePort, autoSelectListenPort))
                     {
                         status = $"Dojo official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
                         LastStatus = status;
@@ -273,7 +278,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 if (IsRunning
-                    && MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                    && MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, remotePort, autoSelectListenPort))
                 {
                     status = $"Dojo official-session bridge already listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     LastStatus = status;
@@ -284,12 +289,13 @@ namespace HaCreator.MapSimulator.Managers
 
                 try
                 {
-                    ListenPort = resolvedListenPort;
                     RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
                     _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
+                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
                     _listener.Start();
+                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
+                    _passiveEstablishedSession = null;
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = $"Dojo official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     status = LastStatus;
@@ -328,10 +334,11 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
             if (HasAttachedClient)
             {
-                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
+                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, candidate.RemoteEndpoint, autoSelectListenPort))
                 {
                     status = $"Dojo official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
                     LastStatus = status;
@@ -343,7 +350,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint) && IsRunning)
+            if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, candidate.RemoteEndpoint, autoSelectListenPort) && IsRunning)
             {
                 status = $"Dojo official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}.";
                 LastStatus = status;
@@ -357,9 +364,62 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            status = $"Dojo official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus}";
+            status =
+                $"Dojo official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. " +
+                $"{startStatus} {BuildDiscoveryAttachmentRequirementMessage(ListenPort)}";
             LastStatus = status;
             return true;
+        }
+
+        public bool TryAttachEstablishedSession(int remotePort, string processSelector, int? localPort, out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            return TryAttachEstablishedSession(candidate, out status);
+        }
+
+        public bool TryAttachEstablishedSession(SessionDiscoveryCandidate candidate, out string status)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
+            {
+                status = "Dojo official-session attach requires an established Maple client socket pair.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (HasAttachedClient)
+                {
+                    status = $"Dojo official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before observing an already-established socket pair.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                StopInternal(clearPending: true);
+                _passiveEstablishedSession = candidate;
+                RemoteHost = candidate.RemoteEndpoint.Address.ToString();
+                RemotePort = candidate.RemoteEndpoint.Port;
+                LastStatus =
+                    $"Observed already-established Mu Lung Dojo Maple socket pair {DescribeEstablishedSession(candidate)}. " +
+                    "This passive attach keeps the live socket pair visible to the Dojo ownership seam, but it still cannot decrypt inbound Dojo traffic after the Maple handshake; reconnect through the localhost proxy for live packet ownership.";
+                status = LastStatus;
+                return true;
+            }
         }
 
         public string DescribeDiscoveredSessions(int remotePort, string processSelector = null, int? localPort = null)
@@ -695,6 +755,7 @@ namespace HaCreator.MapSimulator.Managers
             _listener = null;
             _listenerCancellation?.Dispose();
             _listenerCancellation = null;
+            _passiveEstablishedSession = null;
 
             BridgePair pair = _activePair;
             _activePair = null;
@@ -1138,7 +1199,8 @@ namespace HaCreator.MapSimulator.Managers
             string currentRemoteHost,
             int currentRemotePort,
             int expectedListenPort,
-            IPEndPoint discoveredRemoteEndpoint)
+            IPEndPoint discoveredRemoteEndpoint,
+            bool ignoreListenPort = false)
         {
             return discoveredRemoteEndpoint != null
                 && MatchesTargetConfiguration(
@@ -1147,7 +1209,8 @@ namespace HaCreator.MapSimulator.Managers
                     currentRemotePort,
                     expectedListenPort,
                     discoveredRemoteEndpoint.Address.ToString(),
-                    discoveredRemoteEndpoint.Port);
+                    discoveredRemoteEndpoint.Port,
+                    ignoreListenPort);
         }
 
         internal static bool MatchesTargetConfiguration(
@@ -1156,9 +1219,10 @@ namespace HaCreator.MapSimulator.Managers
             int currentRemotePort,
             int expectedListenPort,
             string expectedRemoteHost,
-            int expectedRemotePort)
+            int expectedRemotePort,
+            bool ignoreListenPort = false)
         {
-            return currentListenPort == expectedListenPort
+            return (ignoreListenPort || currentListenPort == expectedListenPort)
                 && currentRemotePort == expectedRemotePort
                 && string.Equals(
                     NormalizeRemoteHost(currentRemoteHost),
@@ -1228,7 +1292,7 @@ namespace HaCreator.MapSimulator.Managers
             string matches = string.Join(
                 Environment.NewLine,
                 filteredCandidates.Select(candidate => $"- {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
-            return $"Dojo official-session discovery matches for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}:{Environment.NewLine}{matches}";
+            return $"Dojo official-session discovery matches for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}:{Environment.NewLine}{matches}{Environment.NewLine}{BuildDiscoveryAttachmentRequirementMessage()}";
         }
 
         private static bool TryResolveDiscoveryCandidate(
@@ -1287,6 +1351,24 @@ namespace HaCreator.MapSimulator.Managers
             return localPort.HasValue && localPort.Value > 0
                 ? $"{processScope} remotePort {remotePort} localPort {localPort.Value}"
                 : $"{processScope} remotePort {remotePort}";
+        }
+
+        private static string BuildDiscoveryAttachmentRequirementMessage(int? listenPort = null)
+        {
+            string reconnectTarget = listenPort.HasValue && listenPort.Value > 0
+                ? $"127.0.0.1:{listenPort.Value}"
+                : "the configured localhost listen port";
+            return $"Discovery identifies established Maple sockets. Use `/dojo session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or reconnect Maple through {reconnectTarget} so the bridge can recover Dojo traffic through the localhost proxy.";
+        }
+
+        private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"observing established socket pair {DescribeEstablishedSession(candidate)}; proxy reconnect required for decrypt";
+        }
+
+        private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
         }
 
         private static string NormalizeProcessSelector(string selector)

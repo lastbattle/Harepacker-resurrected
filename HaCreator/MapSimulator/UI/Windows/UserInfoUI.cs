@@ -311,6 +311,8 @@ namespace HaCreator.MapSimulator.UI
         public Action PersonalShopRequested { get; set; }
         public Action EntrustedShopRequested { get; set; }
         public Func<UserInfoActionContext, string> BookCollectionRequested { get; set; }
+        public Func<UserInfoActionContext, string> CollectionClaimRequested { get; set; }
+        public Func<UserInfoActionContext, bool> CollectionClaimAvailable { get; set; }
         public Func<UserInfoActionContext, string, string> WishPresentRequested { get; set; }
         public Func<UserInfoActionContext, bool> MarriedBadgeProvider { get; set; }
         public Func<string> LocalActionLocationSummaryProvider { get; set; }
@@ -479,7 +481,7 @@ namespace HaCreator.MapSimulator.UI
 
             BindActionButton(_petExceptionButton, "Pet exception list opened.", ToggleExceptionPopup);
             BindActionButton(_collectSortButton, "Collection entries sorted by name.", SortCollectEntriesByName);
-            BindActionButton(_collectClaimButton, "Collection entries sorted by time.", SortCollectEntriesByTime);
+            BindActionButton(_collectClaimButton, "Collection claim prepared.", RequestCollectionClaimAction);
             UpdateButtonStates();
         }
 
@@ -1722,10 +1724,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 bool showCollectButtons = _currentPage == UserInfoPage.Collect;
                 _collectClaimButton.ButtonVisible = showCollectButtons;
-                _collectClaimButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen);
-                _collectClaimButton.SetButtonState(showCollectButtons && _collectSortMode == CollectSortMode.Time
-                    ? UIObjectState.Pressed
-                    : UIObjectState.Normal);
+                bool collectionClaimAvailable = showCollectButtons
+                                               && !_exceptionPopupOpen
+                                               && (CollectionClaimAvailable?.Invoke(BuildCurrentActionContext()) ?? !IsRemoteInspectionActive());
+                _collectClaimButton.SetEnabled(collectionClaimAvailable);
+                _collectClaimButton.SetButtonState(UIObjectState.Normal);
             }
 
             if (_exceptionRegisterButton != null)
@@ -2164,6 +2167,16 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = string.IsNullOrWhiteSpace(message)
                 ? "Collection book opened."
                 : message;
+        }
+
+        private void RequestCollectionClaimAction()
+        {
+            UserInfoActionContext context = BuildCurrentActionContext();
+            string message = CollectionClaimRequested?.Invoke(context);
+            _statusMessage = string.IsNullOrWhiteSpace(message)
+                ? "Collection claim routing is unavailable in this simulator session."
+                : message;
+            UpdateButtonStates();
         }
 
         private void PresentWishEntry()

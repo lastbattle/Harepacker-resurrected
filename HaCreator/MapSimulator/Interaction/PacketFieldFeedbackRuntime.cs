@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<int, int, int, bool> ShowRewardRouletteVisual { get; init; }
         internal Func<int, string> ResolveMobName { get; init; }
         internal Func<int, string> ResolveMapName { get; init; }
+        internal Func<int, bool> HasMapTransferTarget { get; init; }
         internal Func<int, string> ResolveItemName { get; init; }
         internal Func<int, string> ResolveChannelName { get; init; }
         internal Func<string, bool> IsBlacklistedName { get; init; }
@@ -114,6 +115,12 @@ namespace HaCreator.MapSimulator.Interaction
         private const int HontaleTimerStageTwoStringPoolId = 0x16EF;
         private const int HontaleTimerStageOneStringPoolId = 0x16F0;
         private const int HontaleTimerStageZeroStringPoolId = 0x16F1;
+        private const int WhisperLocationUnavailableStringPoolId = 0x9A;
+        private const int WhisperChannelStringPoolId = 0x9B;
+        private const int WhisperNotFoundStringPoolId = 0x9C;
+        private const int WhisperLocationStringPoolId = 0x9D;
+        private const int WhisperHiddenFieldStringPoolId = 0x9E;
+        private const int WhisperUserListFormatStringPoolId = 0x2D7;
         private const string ZakumTimerBeforeFallback = "The Zakum Shrine will close if you do not summon Zakum in {0} minutes.";
         private const string ZakumTimerWarningFallback = "The Zakum Shrine will close in {0} minutes.";
         private const string ZakumTimerExpiredFallback = "The Zakum Shrine has closed.";
@@ -123,6 +130,11 @@ namespace HaCreator.MapSimulator.Interaction
         private const string HontaleTimerStageTwoFallback = "The Horntail Expedition has ended.";
         private const string HontaleTimerStageOneFallback = "The Horntail Expedition will end in {0} min(s).";
         private const string HontaleTimerStageZeroFallback = "The Horntail Expedition will end if it does not start within {0} min(s) of entering.";
+        private const string WhisperLocationUnavailableFallback = "{0} cannot be followed right now.";
+        private const string WhisperChannelFallback = "{0} is on {1}.";
+        private const string WhisperNotFoundFallback = "{0} could not be found.";
+        private const string WhisperLocationFallback = "{0} is in {1}.";
+        private const string WhisperHiddenFieldFallback = "{0} is in a hidden field.";
         private static readonly Encoding SwindleEncoding = Encoding.Default;
         // Recovered from CCurseProcess::s_FilterChars in the v95 client.
         private static readonly byte[] SwindleFilteredCharacters =
@@ -733,20 +745,23 @@ namespace HaCreator.MapSimulator.Interaction
                         string target = ReadMapleString(reader);
                         byte result = reader.ReadByte();
                         int value = reader.ReadInt32();
-                        string resolved = result switch
-                        {
-                            1 => BuildWhisperLocationMessage(target, value, callbacks),
-                            2 => $"{target} could not be found.",
-                            3 => $"{target} is on {(callbacks?.ResolveChannelName?.Invoke(value) ?? $"Ch. {value}")}.",
-                            4 => $"{target} cannot be followed right now.",
-                            _ => $"{target} returned whisper result {result}."
-                        };
+                        TryBuildWhisperFindMessage(subtype, target, result, value, callbacks, out string resolved);
                         bool queuedTransfer = false;
                         if (subtype == 9
                             && result == 1
+                            && HasWhisperTransferTarget(value, callbacks)
                             && TryReadWhisperFindTransferPosition(reader, stream, out int transferX, out int transferY))
                         {
                             queuedTransfer = callbacks?.QueueMapTransfer?.Invoke(value, transferX, transferY) == true;
+                        }
+
+                        if (subtype == 72)
+                        {
+                            _statusMessage = queuedTransfer
+                                ? $"Updated packet-owned whisper find-reply for {target} and queued map transfer."
+                                : $"Updated packet-owned whisper find-reply for {target}.";
+                            message = _statusMessage;
+                            return true;
                         }
 
                         callbacks?.AddClientChatMessage?.Invoke($"[System] {resolved}", queuedTransfer ? 7 : 12, null);
@@ -1380,6 +1395,103 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"{target} is in {mapName}.";
         }
 
+        private static bool HasWhisperTransferTarget(int mapId, PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (mapId <= 0)
+            {
+                return false;
+            }
+
+            return callbacks?.HasMapTransferTarget?.Invoke(mapId) ?? true;
+        }
+
+        private static string FormatWhisperStringPoolText(int stringPoolId, string fallbackFormat, params object[] args)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                maxPlaceholderCount: args?.Length ?? 0,
+                out bool usedResolvedText);
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                format = fallbackFormat;
+            }
+
+            try
+            {
+                return args == null || args.Length == 0
+                    ? format
+                    : string.Format(CultureInfo.InvariantCulture, format, args);
+            }
+            catch (FormatException)
+            {
+                return usedResolvedText
+                    ? MapleStoryStringPool.GetOrFallback(
+                        stringPoolId,
+                        args == null || args.Length == 0
+                            ? fallbackFormat
+                            : string.Format(CultureInfo.InvariantCulture, fallbackFormat, args))
+                    : (args == null || args.Length == 0
+                        ? fallbackFormat
+                        : string.Format(CultureInfo.InvariantCulture, fallbackFormat, args));
+            }
+        }
+
+        private static bool TryBuildWhisperFindMessage(
+            byte subtype,
+            string target,
+            byte result,
+            int value,
+            PacketFieldFeedbackCallbacks callbacks,
+            out string text)
+        {
+            string normalizedTarget = target?.Trim() ?? string.Empty;
+            switch (result)
+            {
+                case 1:
+                    if (!HasWhisperTransferTarget(value, callbacks))
+                    {
+                        text = FormatWhisperStringPoolText(
+                            subtype == 72 ? WhisperUserListFormatStringPoolId : WhisperHiddenFieldStringPoolId,
+                            WhisperHiddenFieldFallback,
+                            normalizedTarget);
+                        return true;
+                    }
+
+                    string location = BuildWhisperLocationMessage(normalizedTarget, value, callbacks);
+                    text = subtype == 72
+                        ? FormatWhisperStringPoolText(
+                            WhisperUserListFormatStringPoolId,
+                            WhisperLocationFallback,
+                            normalizedTarget,
+                            callbacks?.ResolveMapName?.Invoke(value) ?? value.ToString(CultureInfo.InvariantCulture))
+                        : location;
+                    return true;
+                case 2:
+                    text = FormatWhisperStringPoolText(
+                        subtype == 72 ? WhisperUserListFormatStringPoolId : WhisperNotFoundStringPoolId,
+                        WhisperNotFoundFallback,
+                        normalizedTarget);
+                    return true;
+                case 3:
+                    text = FormatWhisperStringPoolText(
+                        subtype == 72 ? WhisperUserListFormatStringPoolId : WhisperChannelStringPoolId,
+                        WhisperChannelFallback,
+                        normalizedTarget,
+                        callbacks?.ResolveChannelName?.Invoke(value) ?? $"Ch. {value}");
+                    return true;
+                case 4:
+                    text = FormatWhisperStringPoolText(
+                        subtype == 72 ? WhisperUserListFormatStringPoolId : WhisperLocationUnavailableStringPoolId,
+                        WhisperLocationUnavailableFallback,
+                        normalizedTarget);
+                    return true;
+                default:
+                    text = $"{normalizedTarget} returned whisper result {result}.";
+                    return true;
+            }
+        }
+
         private static bool TryResolveGroupFamily(byte family, out int chatLogType, out string prefix)
         {
             (chatLogType, prefix) = family switch
@@ -1885,6 +1997,18 @@ namespace HaCreator.MapSimulator.Interaction
                 filteredMessage,
                 keywordBytes,
                 value => Array.IndexOf(dbcsLeadBytes ?? Array.Empty<byte>(), value) >= 0) >= 0;
+        }
+
+        internal static string BuildWhisperFindMessageForTest(
+            byte subtype,
+            string target,
+            byte result,
+            int value,
+            PacketFieldFeedbackCallbacks callbacks = null)
+        {
+            return TryBuildWhisperFindMessage(subtype, target, result, value, callbacks, out string text)
+                ? text
+                : string.Empty;
         }
 
         [DllImport("kernel32.dll")]

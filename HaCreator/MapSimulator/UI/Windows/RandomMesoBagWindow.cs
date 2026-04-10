@@ -3,6 +3,7 @@ using HaSharedLibrary.Render.DX;
 using HaCreator.MapSimulator.Managers;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -13,7 +14,8 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int MessageOffsetX = 78;
         private const int MessageOffsetY = 16;
-        private const int AmountRightEdgeX = 195;
+        private const int AmountTextBoxRightEdgeX = 200;
+        private const int AmountTextRightPadding = 5;
         private const int AmountOffsetY = 34;
         private const int OkButtonOffsetX = 204;
         private const int OkButtonOffsetY = 77;
@@ -29,6 +31,7 @@ namespace HaCreator.MapSimulator.UI
         private string _amountText = string.Empty;
         private int _rank = 1;
         private bool _useAuthoredLayout = true;
+        private KeyboardState _previousKeyboardState;
 
         public RandomMesoBagWindow(
             IReadOnlyDictionary<int, IDXObject> backgrounds,
@@ -42,6 +45,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.RandomMesoBag;
         public override bool SupportsDragging => false;
+        public override bool CapturesKeyboardInput => IsVisible;
 
         public void Configure(PacketOwnedRandomMesoBagPresentation presentation)
         {
@@ -68,6 +72,30 @@ namespace HaCreator.MapSimulator.UI
             ApplyButtonLayout();
             _okButton.ButtonClickReleased += _ => Hide();
             AddButton(_okButton);
+        }
+
+        public override void Show()
+        {
+            _previousKeyboardState = Keyboard.GetState();
+            base.Show();
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            if (!IsVisible)
+            {
+                return;
+            }
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (WasPressed(keyboardState, Keys.Enter)
+                || WasPressed(keyboardState, Keys.Space)
+                || WasPressed(keyboardState, Keys.Escape))
+            {
+                Hide();
+            }
+
+            _previousKeyboardState = keyboardState;
         }
 
         protected override void DrawContents(
@@ -200,11 +228,19 @@ namespace HaCreator.MapSimulator.UI
         {
             if (useAuthoredLayout)
             {
-                return new Point(Math.Max(0, (int)MathF.Round(AmountRightEdgeX - measuredWidth)), AmountOffsetY);
+                int amountX = Math.Max(
+                    0,
+                    (int)MathF.Round(AmountTextBoxRightEdgeX - measuredWidth - AmountTextRightPadding));
+                return new Point(amountX, AmountOffsetY);
             }
 
             int centeredX = Math.Max(0, (int)MathF.Round((frameWidth - measuredWidth) / 2f));
             return new Point(centeredX, FallbackAmountY);
+        }
+
+        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
         }
     }
 }

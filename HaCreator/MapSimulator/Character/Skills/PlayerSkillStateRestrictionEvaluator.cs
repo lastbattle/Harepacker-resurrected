@@ -445,9 +445,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            return skill.ClientInfoType == 40
-                   && skill.CasterMove
-                   && skill.AvailableInJumpingState;
+            return false;
         }
 
         private static bool UsesHighestJumpStateGate(SkillData skill)

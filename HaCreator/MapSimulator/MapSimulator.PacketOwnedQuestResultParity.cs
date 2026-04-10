@@ -283,10 +283,9 @@ namespace HaCreator.MapSimulator
             }
 
             message = resultSummary;
-            return showedNotice
-                || openedModal
-                || !string.IsNullOrWhiteSpace(presentation.NoticeText)
-                || !string.IsNullOrWhiteSpace(followUpStatus);
+            // CUserLocal::OnQuestResult still owns subtype 10 after decode even when
+            // the filtered Quest/Act.img branch resolves to no visible notice.
+            return true;
         }
 
         private bool TryApplyPacketOwnedQuestResultActionNotice(BinaryReader reader, out string message)

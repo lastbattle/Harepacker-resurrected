@@ -527,18 +527,22 @@ namespace HaCreator.MapSimulator
                 PacketScriptButtonVisuals rightVisuals = _packetScriptSlideMenuRightButtonVisuals;
                 PacketScriptButtonVisuals moveVisuals = _packetScriptSlideMenuMoveButtonVisuals;
                 PacketScriptButtonVisuals cancelVisuals = _packetScriptSlideMenuCancelButtonVisuals;
-                prevBounds = TryResolveAnchoredButtonBounds(ownerBounds, leftVisuals, prevBounds);
-                nextBounds = TryResolveAnchoredButtonBounds(ownerBounds, rightVisuals, nextBounds);
-                confirmBounds = TryResolveAnchoredButtonBounds(ownerBounds, moveVisuals, confirmBounds);
-                cancelBounds = TryResolveAnchoredButtonBounds(ownerBounds, cancelVisuals, cancelBounds);
+                bool allowZeroOriginAnchors = snapshot.Mode == 0;
+                prevBounds = TryResolveAnchoredButtonBounds(ownerBounds, leftVisuals, prevBounds, allowZeroOriginAnchors);
+                nextBounds = TryResolveAnchoredButtonBounds(ownerBounds, rightVisuals, nextBounds, allowZeroOriginAnchors);
+                confirmBounds = TryResolveAnchoredButtonBounds(ownerBounds, moveVisuals, confirmBounds, allowZeroOriginAnchors);
+                cancelBounds = TryResolveAnchoredButtonBounds(ownerBounds, cancelVisuals, cancelBounds, allowZeroOriginAnchors);
 
                 PacketScriptOwnerLayer cover = snapshot.Mode == 0 ? _packetScriptSlideMenuType0Cover : _packetScriptSlideMenuType1Cover;
-                if (cover?.Texture != null)
-                {
-                    selectionBounds = ResolvePacketScriptOwnerAnchoredBounds(
+                if (cover?.Texture != null &&
+                    TryResolvePacketScriptOwnerAnchoredBounds(
                         ownerBounds,
                         cover.Origin,
-                        new Point(cover.Texture.Width, cover.Texture.Height));
+                        new Point(cover.Texture.Width, cover.Texture.Height),
+                        allowZeroOriginAnchors,
+                        out Rectangle coverBounds))
+                {
+                    selectionBounds = coverBounds;
                 }
                 else
                 {
@@ -557,11 +561,41 @@ namespace HaCreator.MapSimulator
             return new PacketScriptDedicatedOwnerLayout(prevBounds, nextBounds, confirmBounds, cancelBounds, selectionBounds);
         }
 
-        private static Rectangle TryResolveAnchoredButtonBounds(Rectangle ownerBounds, PacketScriptButtonVisuals visuals, Rectangle fallback)
+        internal static bool TryResolvePacketScriptOwnerAnchoredBounds(
+            Rectangle ownerBounds,
+            Point origin,
+            Point size,
+            bool allowZeroOrigin,
+            out Rectangle bounds)
         {
-            if (visuals != null && visuals.TryGetAnchorMetrics(out Point origin, out Point size))
+            if (!CanUsePacketScriptOwnerAnchor(origin, size, allowZeroOrigin))
             {
-                return ResolvePacketScriptOwnerAnchoredBounds(ownerBounds, origin, size);
+                bounds = Rectangle.Empty;
+                return false;
+            }
+
+            bounds = ResolvePacketScriptOwnerAnchoredBounds(ownerBounds, origin, size);
+            return true;
+        }
+
+        internal static bool CanUsePacketScriptOwnerAnchor(Point origin, Point size, bool allowZeroOrigin)
+        {
+            return size.X > 0
+                && size.Y > 0
+                && (allowZeroOrigin || origin != Point.Zero);
+        }
+
+        private static Rectangle TryResolveAnchoredButtonBounds(
+            Rectangle ownerBounds,
+            PacketScriptButtonVisuals visuals,
+            Rectangle fallback,
+            bool allowZeroOrigin = true)
+        {
+            if (visuals != null &&
+                visuals.TryGetAnchorMetrics(out Point origin, out Point size) &&
+                TryResolvePacketScriptOwnerAnchoredBounds(ownerBounds, origin, size, allowZeroOrigin, out Rectangle anchoredBounds))
+            {
+                return anchoredBounds;
             }
 
             return fallback;

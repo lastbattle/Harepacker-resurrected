@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace HaCreator.MapSimulator.Interaction
 {
     internal static class AccountMoreInfoOwnerStringPoolText
@@ -13,6 +16,16 @@ namespace HaCreator.MapSimulator.Interaction
         private const string OkButtonUolFallback = "UI/Basic.img/BtOK2";
         private const string CancelButtonUolFallback = "UI/Basic.img/BtCancel2";
         private const string BackgroundFallback = "UI/UIWindow.img/FriendRecommendations/UserInfo/back";
+        private static readonly string[] BackgroundRecoveryCandidates =
+        {
+            // Active WZ evidence: the mounted UI set exposes `UserInfo/backgrnd7`
+            // while the older FriendRecommendations path is absent. Keep the
+            // larger mounted shell first so the recovered control layout has a
+            // usable owner frame when the exact string-pool skin is unavailable.
+            "UI/UIWindow.img/UserInfo/backgrnd7",
+            "UI/UIWindow.img/UserInfo/backgrnd8",
+            BackgroundFallback,
+        };
         private const string ExitWithoutInfoNoticeFallback = "Are you sure you want to exit without filling in any information? (You can fill out your info later by clicking My Info in the Friends window.)";
         private const string SaveFailedNoticeFallback = "Fail. Please try again later.";
         private const string DefaultRegionItemFallback = "Select";
@@ -36,10 +49,52 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static string ResolveBackgroundResourcePath()
         {
-            return MapleStoryStringPool.GetOrFallback(
-                BackgroundStringPoolId,
-                BackgroundFallback,
-                appendFallbackSuffix: true);
+            foreach (string candidate in EnumerateBackgroundResourcePaths())
+            {
+                if (!string.IsNullOrWhiteSpace(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return $"{BackgroundFallback} ({MapleStoryStringPool.FormatFallbackLabel(BackgroundStringPoolId)} fallback)";
+        }
+
+        internal static IReadOnlyList<string> EnumerateBackgroundResourcePaths()
+        {
+            List<string> candidates = new();
+
+            // The generated table in this workspace currently resolves 0x16AE to
+            // `UI/UIWindow.img/UserInfo/backgrnd8`, while older reverse-engineered
+            // notes pinned a FriendRecommendations path that is absent from the
+            // active mounted UI set. Keep both in the recovery list, but let the
+            // WZ-backed mounted `UserInfo` shells lead the order.
+            foreach (string candidate in BackgroundRecoveryCandidates)
+            {
+                AddDistinctCandidate(candidates, candidate);
+            }
+
+            AddDistinctCandidate(candidates, MapleStoryStringPool.GetOrNull(BackgroundStringPoolId));
+
+            return candidates;
+        }
+
+        private static void AddDistinctCandidate(ICollection<string> candidates, string candidate)
+        {
+            if (candidates == null || string.IsNullOrWhiteSpace(candidate))
+            {
+                return;
+            }
+
+            foreach (string existing in candidates)
+            {
+                if (string.Equals(existing, candidate, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            candidates.Add(candidate);
         }
 
         internal static string ResolveExitWithoutInfoNotice()

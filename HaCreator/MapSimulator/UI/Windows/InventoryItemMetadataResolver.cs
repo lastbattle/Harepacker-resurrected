@@ -375,6 +375,25 @@ namespace HaCreator.MapSimulator.UI
                 itemProperty?["specEx"] as WzSubProperty);
         }
 
+        public static bool IsRunOnPickup(int itemId)
+        {
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return IsRunOnPickup(
+                itemProperty?["spec"] as WzSubProperty,
+                itemProperty?["specEx"] as WzSubProperty);
+        }
+
+        public static bool ShouldAutoRunOnPickupInteraction(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return ShouldAutoRunOnPickupInteraction(itemProperty);
+        }
+
         internal static bool IsNotConsumedOnUse(WzSubProperty infoProperty)
         {
             return GetIntOrStringValue(infoProperty?["noExpend"]) == 1
@@ -387,6 +406,12 @@ namespace HaCreator.MapSimulator.UI
                    || GetIntValue(specExProperty?["consumeOnPickup"]) == 1;
         }
 
+        internal static bool IsRunOnPickup(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return GetIntValue(specProperty?["runOnPickup"]) == 1
+                   || GetIntValue(specExProperty?["runOnPickup"]) == 1;
+        }
+
         public static bool IsPetFoodItem(int itemId)
         {
             if (itemId <= 0)
@@ -396,6 +421,24 @@ namespace HaCreator.MapSimulator.UI
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
             return IsPetFoodSpec(itemId, itemProperty?["spec"] as WzSubProperty);
+        }
+
+        public static bool IsRandomMorphItem(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return IsRandomMorphSpec(itemProperty?["spec"] as WzSubProperty);
+        }
+
+        internal static bool IsRandomMorphSpec(WzSubProperty specProperty)
+        {
+            return specProperty?["morphRandom"] is WzSubProperty morphRandomProperty
+                && morphRandomProperty.WzProperties != null
+                && morphRandomProperty.WzProperties.Count > 0;
         }
 
         public static bool TryResolveItemInfoPath(int itemId, out string path)
@@ -804,6 +847,11 @@ namespace HaCreator.MapSimulator.UI
             return IsConsumedOnPickup(specProperty, specExProperty);
         }
 
+        public static bool IsRunOnPickupForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return IsRunOnPickup(specProperty, specExProperty);
+        }
+
         internal static bool TryResolveSpecScript(WzSubProperty specProperty, out string script)
         {
             script = null;
@@ -828,6 +876,25 @@ namespace HaCreator.MapSimulator.UI
             return TryResolveNpcValue(itemProperty?["spec"] as WzSubProperty, out _)
                    || TryResolveNpcValue(itemProperty?["info"] as WzSubProperty, out _)
                    || TryResolveSpecScript(itemProperty?["spec"] as WzSubProperty, out _);
+        }
+
+        internal static bool ShouldAutoRunOnPickupInteraction(WzSubProperty itemProperty)
+        {
+            if (itemProperty == null)
+            {
+                return false;
+            }
+
+            return IsRunOnPickup(
+                       itemProperty["spec"] as WzSubProperty,
+                       itemProperty["specEx"] as WzSubProperty)
+                   && HasAuthoredNpcInteraction(itemProperty)
+                   && !IsNotConsumedOnUse(itemProperty["info"] as WzSubProperty);
+        }
+
+        public static bool ShouldAutoRunOnPickupInteractionForTests(WzSubProperty itemProperty)
+        {
+            return ShouldAutoRunOnPickupInteraction(itemProperty);
         }
 
         private static uint ComputeItemCommonCrc(int itemId, WzSubProperty itemProperty)

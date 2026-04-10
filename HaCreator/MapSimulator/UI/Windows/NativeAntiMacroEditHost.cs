@@ -40,6 +40,9 @@ namespace HaCreator.MapSimulator.UI
         private const int WmClear = 0x0303;
         private const int WmUndo = 0x0304;
         private const int WmPaste = 0x0302;
+        private const int GcsCompStr = 0x0008;
+        private const int NiCompositionStr = 0x0015;
+        private const int CpsCancel = 0x0004;
         private const int EmGetSel = 0x00B0;
         private const int EmSetSel = 0x00B1;
         private const int EmReplaceSel = 0x00C2;
@@ -261,6 +264,7 @@ namespace HaCreator.MapSimulator.UI
 
             _mouseSelecting = false;
             _mouseSelectionAnchor = -1;
+            CancelImeComposition();
             SetFocus(_parentHandle);
         }
 
@@ -612,6 +616,7 @@ namespace HaCreator.MapSimulator.UI
 
         private IntPtr SubclassWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
         {
+            int virtualKey = wParam.ToInt32();
             if (msg == WmGetDlgCode)
             {
                 IntPtr originalResult = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
@@ -620,12 +625,13 @@ namespace HaCreator.MapSimulator.UI
 
             bool controlHeld = IsControlKeyDown();
             bool shiftHeld = IsShiftKeyDown();
-            if (msg == WmKeyDown && HandleClientOwnedKeyDown(wParam.ToInt32(), controlHeld, shiftHeld, wParam, lParam))
+            bool allowImeOwnedDownHandling = ShouldDeferDownKeyToIme(controlHeld, shiftHeld, HasActiveImeComposition());
+            if (msg == WmKeyDown && !allowImeOwnedDownHandling && HandleClientOwnedKeyDown(virtualKey, controlHeld, shiftHeld, wParam, lParam))
             {
                 return IntPtr.Zero;
             }
 
-            if (msg == WmChar && wParam.ToInt32() == VkReturn)
+            if (msg == WmChar && virtualKey == VkReturn)
             {
                 return IntPtr.Zero;
             }
@@ -636,7 +642,7 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
-            if (ShouldSuppressClientUnsupportedEditKey(msg, wParam.ToInt32(), controlHeld, shiftHeld))
+            if (ShouldSuppressClientUnsupportedEditKey(msg, virtualKey, controlHeld, shiftHeld))
             {
                 return IntPtr.Zero;
             }
@@ -646,13 +652,22 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
-            if ((msg == WmKeyDown || msg == WmKeyUp) && IsStagePassthroughVirtualKey(wParam.ToInt32()))
+            if ((msg == WmKeyDown || msg == WmKeyUp) && IsStagePassthroughVirtualKey(virtualKey))
             {
                 ForwardKeyToParent(msg, wParam, lParam);
                 return IntPtr.Zero;
             }
 
             IntPtr result = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
+            if (msg == WmKeyDown && allowImeOwnedDownHandling)
+            {
+                ForwardKeyToParent(WmKeyDown, wParam, lParam);
+            }
+            else if (msg == WmKeyUp && ShouldForwardClientOwnedKeyUpToParent(virtualKey))
+            {
+                ForwardKeyToParent(WmKeyUp, wParam, lParam);
+            }
+
             if (msg == WmSetFocus)
             {
                 UpdateImePlacement();
@@ -660,6 +675,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (msg == WmKillFocus)
             {
+                CancelImeComposition();
                 FocusChanged?.Invoke(false);
             }
 
@@ -806,6 +822,17 @@ namespace HaCreator.MapSimulator.UI
             return virtualKey >= VkF1 && virtualKey <= VkF12;
         }
 
+        internal static bool ShouldForwardClientOwnedKeyUpToParent(int virtualKey)
+        {
+            return virtualKey is VkLeft or VkRight or VkUp or VkDown
+                || IsStagePassthroughVirtualKey(virtualKey);
+        }
+
+        internal static bool ShouldDeferDownKeyToIme(bool controlHeld, bool shiftHeld, bool imeCompositionActive)
+        {
+            return imeCompositionActive && !controlHeld && !shiftHeld;
+        }
+
         internal static bool ShouldSuppressClientUnsupportedEditKey(uint msg, int virtualKey, bool controlHeld, bool shiftHeld)
         {
             if (msg != WmKeyDown)
@@ -853,6 +880,57 @@ namespace HaCreator.MapSimulator.UI
         private static bool IsShiftKeyDown()
         {
             return (GetKeyState(VkShift) & 0x8000) != 0;
+        }
+
+        private bool HasActiveImeComposition()
+        {
+            if (!IsAttached || !HasFocus)
+            {
+                return false;
+            }
+
+            IntPtr inputContext = ImmGetContext(_editHandle);
+            if (inputContext == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            try
+            {
+                if (!ImmGetOpenStatus(inputContext))
+                {
+                    return false;
+                }
+
+                return ImmGetCompositionString(inputContext, GcsCompStr, IntPtr.Zero, 0) > 0;
+            }
+            finally
+            {
+                ImmReleaseContext(_editHandle, inputContext);
+            }
+        }
+
+        private void CancelImeComposition()
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            IntPtr inputContext = ImmGetContext(_editHandle);
+            if (inputContext == IntPtr.Zero)
+            {
+                return;
+            }
+
+            try
+            {
+                ImmNotifyIME(inputContext, NiCompositionStr, CpsCancel, 0);
+            }
+            finally
+            {
+                ImmReleaseContext(_editHandle, inputContext);
+            }
         }
 
         private void ApplyClientWordSelectionFromDoubleClick(IntPtr lParam)
@@ -1198,6 +1276,15 @@ namespace HaCreator.MapSimulator.UI
 
         [DllImport("imm32.dll")]
         private static extern IntPtr ImmGetContext(IntPtr hWnd);
+
+        [DllImport("imm32.dll")]
+        private static extern int ImmGetCompositionString(IntPtr hIMC, int dwIndex, IntPtr lpBuf, int dwBufLen);
+
+        [DllImport("imm32.dll")]
+        private static extern bool ImmGetOpenStatus(IntPtr hIMC);
+
+        [DllImport("imm32.dll")]
+        private static extern bool ImmNotifyIME(IntPtr hIMC, int dwAction, int dwIndex, int dwValue);
 
         [DllImport("imm32.dll")]
         private static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);

@@ -264,17 +264,43 @@ namespace HaCreator.MapSimulator.Fields
                 return null;
             }
 
-            if (MatchesListedSkill(noSkillProperty["skill"], skill.SkillId))
+            if (MatchesAnyListedSkill(noSkillProperty, skill.SkillId))
             {
                 return "This skill is forbidden in this field.";
             }
 
-            if (MatchesListedSkillClass(noSkillProperty["class"], currentJobId, skill))
+            if (MatchesAnyListedSkillClass(noSkillProperty, currentJobId, skill))
             {
                 return "This field forbids skills for your job branch.";
             }
 
             return null;
+        }
+
+        private static bool MatchesAnyListedSkill(WzImageProperty noSkillProperty, int skillId)
+        {
+            foreach (WzImageProperty property in EnumerateNamedDescendants(noSkillProperty, "skill"))
+            {
+                if (MatchesListedSkill(property, skillId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool MatchesAnyListedSkillClass(WzImageProperty noSkillProperty, int currentJobId, SkillData skill)
+        {
+            foreach (WzImageProperty property in EnumerateNamedDescendants(noSkillProperty, "class"))
+            {
+                if (MatchesListedSkillClass(property, currentJobId, skill))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool HasNoCancelSkillFlag(MapInfo mapInfo)
@@ -372,6 +398,38 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return false;
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateNamedDescendants(WzImageProperty root, string propertyName)
+        {
+            if (root == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                yield break;
+            }
+
+            Stack<WzImageProperty> pending = new Stack<WzImageProperty>();
+            pending.Push(root);
+            while (pending.Count > 0)
+            {
+                WzImageProperty current = pending.Pop();
+                if (string.Equals(current?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return current;
+                }
+
+                if (current?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < current.WzProperties.Count; i++)
+                {
+                    if (current.WzProperties[i] != null)
+                    {
+                        pending.Push(current.WzProperties[i]);
+                    }
+                }
+            }
         }
 
         private static bool TryReadInt(WzImageProperty property, out int value)

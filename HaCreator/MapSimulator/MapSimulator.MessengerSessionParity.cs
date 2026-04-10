@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
     {
         private ChatCommandHandler.CommandResult HandleMessengerSessionCommand(string[] args)
         {
-            const string usage = "Usage: /messenger session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|room <message>>|queue <invite <name>|room <message>>|sendraw <hex>|queueraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /messenger session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|room <message>|claim <target>|<type>|<context>[|<chatLog>]>|queue <invite <name>|room <message>|claim <target>|<type>|<context>[|<chatLog>]>|sendraw <hex>|queueraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeMessengerOfficialSessionBridgeStatus());
@@ -45,7 +45,7 @@ namespace HaCreator.MapSimulator
             {
                 if (args.Length < 3)
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session <send|queue> <invite <name>|room <message>>");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session <send|queue> <invite <name>|room <message>|claim <target>|<type>|<context>[|<chatLog>]>");
                 }
 
                 switch (args[1].ToLowerInvariant())
@@ -63,8 +63,12 @@ namespace HaCreator.MapSimulator
                         return TryMirrorMessengerProcessChatClientRequest(string.Join(" ", args, 2, args.Length - 2), out string roomStatus)
                             ? ChatCommandHandler.CommandResult.Ok(roomStatus)
                             : ChatCommandHandler.CommandResult.Error(roomStatus);
+                    case "claim":
+                        return TryMirrorMessengerClaimClientRequest(string.Join(" ", args, 2, args.Length - 2), out string claimStatus)
+                            ? ChatCommandHandler.CommandResult.Ok(claimStatus)
+                            : ChatCommandHandler.CommandResult.Error(claimStatus);
                     default:
-                        return ChatCommandHandler.CommandResult.Error("Usage: /messenger session <send|queue> <invite <name>|room <message>>");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /messenger session <send|queue> <invite <name>|room <message>|claim <target>|<type>|<context>[|<chatLog>]>");
                 }
             }
 

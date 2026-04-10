@@ -84,6 +84,7 @@ public static class ClientShootAmmoResolver
                     fallbackActiveBulletItemId,
                     normalizedRequiredAmmoCount,
                     requiredSkillAmmoItemId,
+                    preferredClientSlotPosition: 0,
                     out int fallbackSlotIndex))
             {
                 selection = new ShootAmmoSelection
@@ -156,7 +157,10 @@ public static class ClientShootAmmoResolver
         if (queuedSelection.UseItemId > 0
             && IsCompatibleBulletItem(weaponCode, weaponItemId, queuedSelection.UseItemId))
         {
-            int resolvedUseSlotIndex = FindSlotIndexByItemId(useSlots, queuedSelection.UseItemId);
+            int resolvedUseSlotIndex = FindSlotIndexByItemId(
+                useSlots,
+                queuedSelection.UseItemId,
+                queuedSelection.QueuedUseSlotIndex);
             if (resolvedUseSlotIndex >= 0)
             {
                 refreshedUseSlotIndex = resolvedUseSlotIndex;
@@ -167,7 +171,10 @@ public static class ClientShootAmmoResolver
         if (queuedSelection.CashItemId > 0
             && IsCompatibleCashBulletItem(weaponCode, weaponItemId, queuedSelection.CashItemId))
         {
-            int resolvedCashSlotIndex = FindSlotIndexByItemId(cashSlots, queuedSelection.CashItemId);
+            int resolvedCashSlotIndex = FindSlotIndexByItemId(
+                cashSlots,
+                queuedSelection.CashItemId,
+                queuedSelection.QueuedCashSlotIndex);
             if (resolvedCashSlotIndex >= 0)
             {
                 refreshedCashSlotIndex = resolvedCashSlotIndex;
@@ -221,6 +228,7 @@ public static class ClientShootAmmoResolver
                     queuedSelection.UseItemId,
                     normalizedRequiredAmmoCount,
                     requiredSkillAmmoItemId,
+                    queuedSelection.QueuedUseSlotIndex,
                     out int refreshedUseSlotIndex))
             {
                 refreshedSelection = new ShootAmmoSelection
@@ -273,28 +281,47 @@ public static class ClientShootAmmoResolver
         return runtimeSlotIndex >= 0 ? runtimeSlotIndex + 1 : 0;
     }
 
-    private static int FindSlotIndexByItemId(IReadOnlyList<InventorySlotData> slots, int itemId)
+    private static int FromClientSlotPosition(int clientSlotPosition)
+    {
+        return clientSlotPosition > 0 ? clientSlotPosition - 1 : -1;
+    }
+
+    private static int FindSlotIndexByItemId(
+        IReadOnlyList<InventorySlotData> slots,
+        int itemId,
+        int preferredClientSlotPosition = 0,
+        int minimumQuantity = 1)
     {
         if (slots == null || itemId <= 0)
         {
             return -1;
         }
 
+        int preferredSlotIndex = FromClientSlotPosition(preferredClientSlotPosition);
+        if (preferredSlotIndex >= 0
+            && preferredSlotIndex < slots.Count
+            && IsViableSlotMatch(slots[preferredSlotIndex], itemId, minimumQuantity))
+        {
+            return preferredSlotIndex;
+        }
+
         for (int i = 0; i < slots.Count; i++)
         {
-            InventorySlotData slot = slots[i];
-            if (slot == null
-                || slot.IsDisabled
-                || slot.ItemId != itemId
-                || slot.Quantity <= 0)
+            if (IsViableSlotMatch(slots[i], itemId, minimumQuantity))
             {
-                continue;
+                return i;
             }
-
-            return i;
         }
 
         return -1;
+    }
+
+    private static bool IsViableSlotMatch(InventorySlotData slot, int itemId, int minimumQuantity)
+    {
+        return slot != null
+               && !slot.IsDisabled
+               && slot.ItemId == itemId
+               && slot.Quantity >= minimumQuantity;
     }
 
     private static bool TryResolveActiveBulletSelection(
@@ -341,6 +368,7 @@ public static class ClientShootAmmoResolver
         int itemId,
         int requiredAmmoCount,
         int requiredSkillAmmoItemId,
+        int preferredClientSlotPosition,
         out int slotIndex)
     {
         slotIndex = -1;
@@ -352,22 +380,12 @@ public static class ClientShootAmmoResolver
             return false;
         }
 
-        for (int i = 0; i < useSlots.Count; i++)
-        {
-            InventorySlotData slot = useSlots[i];
-            if (slot == null
-                || slot.IsDisabled
-                || slot.ItemId != itemId
-                || slot.Quantity < requiredAmmoCount)
-            {
-                continue;
-            }
-
-            slotIndex = i;
-            return true;
-        }
-
-        return false;
+        slotIndex = FindSlotIndexByItemId(
+            useSlots,
+            itemId,
+            preferredClientSlotPosition,
+            requiredAmmoCount);
+        return slotIndex >= 0;
     }
 
     private static bool TryResolveCompatibleUseAmmoSlot(

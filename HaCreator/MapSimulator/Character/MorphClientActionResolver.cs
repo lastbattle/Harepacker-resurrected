@@ -69,6 +69,15 @@ namespace HaCreator.MapSimulator.Character
                 // `windspear` rather than verbatim `*Piercing` nodes.
                 ["piercing"] = new[] { "windspear" },
                 ["crossPiercing"] = new[] { "windspear" },
+                // Thief-family ranged raw actions still surface through the client table
+                // and WZ skill rows like `Skill/411.img/skill/4111005/action/0 = avenger`,
+                // `Skill/412.img/skill/4121008/action/0 = ninjastorm`, and
+                // `Skill/1410.img/skill/14101006/action/0 = vampire`, while the checked
+                // morph images still publish only generic `shoot*` plus archer-authored
+                // `windshot` rather than verbatim thief ranged roots.
+                ["avenger"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
+                ["ninjastorm"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
+                ["vampire"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
                 // Character action codes 305-311 name the modern ice-family branches, while
                 // older Morph/2001.img still only publishes `icemanAttack` / `icemandoubleJump`.
                 ["iceStrike"] = new[]
@@ -252,7 +261,14 @@ namespace HaCreator.MapSimulator.Character
                 ["cannonBooster"] = new[] { "doublefire" },
                 ["noiseWave"] = new[] { "doublefire" },
                 ["noiseWave_pre"] = new[] { "doublefire" },
-                ["noiseWave_ing"] = new[] { "doublefire" }
+                ["noiseWave_ing"] = new[] { "doublefire" },
+                // Support-family client raw actions like `smokeshell`, `holyshield`, and
+                // `resurrection` still come from WZ skill rows, but the checked morph
+                // templates only publish the alert-family surface rather than those verbatim
+                // support roots.
+                ["smokeshell"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["holyshield"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["resurrection"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedGenericMorphFallbackAliases =
@@ -277,6 +293,12 @@ namespace HaCreator.MapSimulator.Character
                 ["assaulter"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["assassination"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["assassinationS"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                // Additional thief-family raw actions still surface in the client action table
+                // and WZ skill rows like `Skill/412.img/skill/4121003/action/0 = showdown`
+                // and `Skill/433.img/skill/4331005/action/0 = flyingAssaulter`, while the
+                // checked morph templates keep only generic stab/swing families.
+                ["showdown"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["flyingAssaulter"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 // The client raw table still exposes dual-blade swing-family names while
                 // archer morphs such as 1003/1103 only publish generic swingT branches.
                 ["swingC1"] = new[] { "swingT1", "swingT3" },
@@ -1321,7 +1343,9 @@ namespace HaCreator.MapSimulator.Character
                    || string.Equals(actionName, "brandish2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "blast", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "sanctuary", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "showdown", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "assaulter", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "flyingAssaulter", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "assassination", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "assassinationS", StringComparison.OrdinalIgnoreCase);
         }

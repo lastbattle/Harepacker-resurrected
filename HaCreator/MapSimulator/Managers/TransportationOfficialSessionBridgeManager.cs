@@ -279,31 +279,14 @@ namespace HaCreator.MapSimulator.Managers
 
                 StopInternal(clearPending: true);
 
-                try
+                if (!TryStartProxyListener(resolvedListenPort, resolvedRemoteHost, remotePort, out string startStatus))
                 {
-                    ListenPort = resolvedListenPort;
-                    RemoteHost = resolvedRemoteHost;
-                    RemotePort = remotePort;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
-                    _listener.Start();
-                    if (_listener.LocalEndpoint is IPEndPoint localEndpoint)
-                    {
-                        ListenPort = localEndpoint.Port;
-                    }
-
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Transport official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
-                    status = LastStatus;
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Transport official-session bridge failed to start: {ex.Message}";
-                    status = LastStatus;
+                    status = startStatus;
                     return false;
                 }
+
+                status = startStatus;
+                return true;
             }
         }
 
@@ -415,6 +398,86 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public bool TryAttachEstablishedSessionAndStartProxy(
+            int listenPort,
+            int remotePort,
+            string processSelector,
+            int? localPort,
+            out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            return TryAttachEstablishedSessionAndStartProxy(listenPort, candidate, out status);
+        }
+
+        public bool TryAttachEstablishedSessionAndStartProxy(int listenPort, SessionDiscoveryCandidate candidate, out string status)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
+            {
+                status = "Transport official-session proxy attach requires an established Maple client socket pair.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (listenPort < 0 || listenPort > ushort.MaxValue)
+            {
+                status = "Transport official-session proxy attach listen port must be 0 or a valid TCP port.";
+                LastStatus = status;
+                return false;
+            }
+
+            int requestedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            string resolvedRemoteHost = candidate.RemoteEndpoint.Address.ToString();
+            int resolvedRemotePort = candidate.RemoteEndpoint.Port;
+
+            lock (_sync)
+            {
+                if (HasAttachedClient)
+                {
+                    status = $"Transport official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before preparing an already-established socket pair for reconnect.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (IsRunning
+                    && MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, resolvedRemotePort))
+                {
+                    _passiveEstablishedSession = candidate;
+                    status = $"Observed already-established transport Maple socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. Transport official-session bridge remains armed on 127.0.0.1:{ListenPort}; reconnect Maple through that localhost proxy to recover transport packet ownership.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                StopInternal(clearPending: true);
+                _passiveEstablishedSession = candidate;
+
+                if (!TryStartProxyListener(requestedListenPort, resolvedRemoteHost, resolvedRemotePort, out string startStatus))
+                {
+                    LastStatus = $"Observed already-established transport Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
+                    status = LastStatus;
+                    return false;
+                }
+
+                status = $"Observed already-established transport Maple socket pair {DescribeEstablishedSession(candidate)}. {startStatus} Reconnect Maple through 127.0.0.1:{ListenPort} so the bridge can recover the init packet and Maple crypto; deferred outbound transport queueing is now armed for that reconnect path.";
+                LastStatus = status;
+                return true;
+            }
+        }
+
         public string DescribeDiscoveredSessions(int remotePort, string processSelector = null, int? localPort = null)
         {
             int? owningProcessId = null;
@@ -482,7 +545,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryQueueRawPacket(byte[] rawPacket, out string status)
         {
-            if (HasPassiveEstablishedSocketPair)
+            if (HasPassiveEstablishedSocketPair && !IsRunning)
             {
                 status = $"Transport official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Deferred outbound queueing only applies to sessions that reconnect through the localhost proxy.";
                 LastStatus = status;
@@ -501,7 +564,9 @@ namespace HaCreator.MapSimulator.Managers
             QueuedCount++;
             LastQueuedOpcode = opcode;
             LastQueuedRawPacket = clonedPacket;
-            status = $"Queued outbound {DescribeOutboundPacket(opcode, clonedPacket)} for deferred live-session injection.";
+            status = HasPassiveEstablishedSocketPair
+                ? $"Queued outbound {DescribeOutboundPacket(opcode, clonedPacket)} for deferred live-session injection after Maple reconnects through 127.0.0.1:{ListenPort}."
+                : $"Queued outbound {DescribeOutboundPacket(opcode, clonedPacket)} for deferred live-session injection.";
             LastStatus = status;
             return true;
         }
@@ -736,6 +801,35 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 _recentOutboundPackets.Enqueue(trace);
+            }
+        }
+
+        private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
+        {
+            try
+            {
+                ListenPort = listenPort;
+                RemoteHost = remoteHost;
+                RemotePort = remotePort;
+                _listenerCancellation = new CancellationTokenSource();
+                _listener = new TcpListener(IPAddress.Loopback, ListenPort);
+                _listener.Start();
+                if (_listener.LocalEndpoint is IPEndPoint localEndpoint)
+                {
+                    ListenPort = localEndpoint.Port;
+                }
+
+                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
+                LastStatus = $"Transport official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                status = LastStatus;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                StopInternal(clearPending: true);
+                LastStatus = $"Transport official-session bridge failed to start: {ex.Message}";
+                status = LastStatus;
+                return false;
             }
         }
 
@@ -1171,12 +1265,17 @@ namespace HaCreator.MapSimulator.Managers
             string reconnectTarget = listenPort.HasValue && listenPort.Value > 0
                 ? $"127.0.0.1:{listenPort.Value}"
                 : "the configured localhost listen port";
-            return $"Discovery identifies established Maple sockets. Use `/transport session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or reconnect Maple through {reconnectTarget} so the bridge can recover the init packet and Maple crypto for live decrypt/inject ownership.";
+            return $"Discovery identifies established Maple sockets. Use `/transport session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or `/transport session attachproxy ...` to arm a reconnect proxy and queue transport packets until Maple reconnects through {reconnectTarget}.";
         }
 
         private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
         {
             return $"observing established socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}; proxy reconnect required for decrypt/inject";
+        }
+
+        private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
         }
 
         private static string FormatOwnershipSuffix(int? owningProcessId, string owningProcessName)

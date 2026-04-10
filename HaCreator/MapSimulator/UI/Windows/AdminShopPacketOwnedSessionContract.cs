@@ -70,13 +70,17 @@ namespace HaCreator.MapSimulator.UI
             LastOwnerState = ownerState ?? string.Empty;
         }
 
-        public void RejectOpen(string noticeText, string outboundSummary, string ownerState = null)
+        public void RejectOpen(
+            string noticeText,
+            string outboundSummary,
+            string ownerState = null,
+            AdminShopPacketOwnedOwnerVisibilityState visibilityState = AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily)
         {
             IsActive = false;
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
-            OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily;
+            OwnerVisibilityState = visibilityState;
             DecodedItemCount = 0;
             NpcTemplateId = 0;
             TrailingByteCount = 0;

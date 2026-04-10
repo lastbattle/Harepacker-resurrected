@@ -65,7 +65,8 @@ namespace HaCreator.MapSimulator.Interaction
                 windowPosition = backupPosition;
             }
 
-            if (ShouldReuseRetainedClosedRaise(retainedState, prompt))
+            bool reuseRetainedClosedRaise = ShouldReuseRetainedClosedRaise(retainedState, prompt);
+            if (reuseRetainedClosedRaise)
             {
                 ActiveRaise = retainedState.CloneShallow();
                 _retainedClosedRaisesByQuestId.Remove(questId);
@@ -78,12 +79,8 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveRaise.Source = source;
             ActiveRaise.Prompt = prompt;
             ActiveRaise.GroupIndex = ResolveOpenGroupIndex(prompt, ActiveRaise, displayMode);
-            ActiveRaise.ManagerSessionId = reuseObservedOwnerState && snapshot.ManagerSessionId > 0
-                ? snapshot.ManagerSessionId
-                : GetNextManagerSessionId();
-            ActiveRaise.RequestId = reuseObservedOwnerState && snapshot.OwnerRequestId > 0
-                ? snapshot.OwnerRequestId
-                : GetNextOwnerRequestId();
+            ActiveRaise.ManagerSessionId = ResolveOpenManagerSessionId(reuseObservedOwnerState, snapshot, reuseRetainedClosedRaise, retainedState);
+            ActiveRaise.RequestId = ResolveOpenOwnerRequestId(reuseObservedOwnerState, snapshot, reuseRetainedClosedRaise, retainedState);
             ActiveRaise.OwnerItemId = ownerItemId;
             ActiveRaise.QrData = qrData;
             ActiveRaise.MaxDropCount = maxDropCount;
@@ -404,10 +401,50 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return retainedState.PlacedPieces.Count > 0
+                || retainedState.SelectedItemsByGroup.Count > 0
+                || retainedState.GroupIndex > 0
                 || retainedState.AwaitingConfirmAck
                 || retainedState.AwaitingOwnerDestroyAck
                 || !string.IsNullOrWhiteSpace(retainedState.LastInboundSummary)
                 || !string.IsNullOrWhiteSpace(retainedState.OpenDispatchSummary);
+        }
+
+        private int ResolveOpenManagerSessionId(
+            bool reuseObservedOwnerState,
+            QuestRewardRaiseOwnerSnapshot snapshot,
+            bool reuseRetainedClosedRaise,
+            QuestRewardRaiseState retainedState)
+        {
+            if (reuseObservedOwnerState && snapshot?.ManagerSessionId > 0)
+            {
+                return snapshot.ManagerSessionId;
+            }
+
+            if (reuseRetainedClosedRaise && retainedState?.ManagerSessionId > 0)
+            {
+                return retainedState.ManagerSessionId;
+            }
+
+            return GetNextManagerSessionId();
+        }
+
+        private int ResolveOpenOwnerRequestId(
+            bool reuseObservedOwnerState,
+            QuestRewardRaiseOwnerSnapshot snapshot,
+            bool reuseRetainedClosedRaise,
+            QuestRewardRaiseState retainedState)
+        {
+            if (reuseObservedOwnerState && snapshot?.OwnerRequestId > 0)
+            {
+                return snapshot.OwnerRequestId;
+            }
+
+            if (reuseRetainedClosedRaise && retainedState?.RequestId > 0)
+            {
+                return retainedState.RequestId;
+            }
+
+            return GetNextOwnerRequestId();
         }
 
         private int GetNextManagerSessionId()

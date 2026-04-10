@@ -148,6 +148,26 @@ namespace HaCreator.MapSimulator.Interaction
             return writer.ToArray();
         }
 
+        public static byte[] BuildClaimRequestPayload(
+            string targetCharacterName,
+            byte claimType,
+            string context,
+            string chatLog = null)
+        {
+            PacketWriter writer = new();
+            bool includeChatLog = !string.IsNullOrWhiteSpace(chatLog);
+            writer.WriteByte(includeChatLog ? (byte)1 : (byte)0);
+            writer.WriteMapleString(NormalizeText(targetCharacterName));
+            writer.WriteByte(claimType);
+            writer.WriteMapleString(NormalizeText(context));
+            if (includeChatLog)
+            {
+                writer.WriteMapleString(NormalizeText(chatLog));
+            }
+
+            return writer.ToArray();
+        }
+
         public static byte[] BuildInvitePayload(
             string contactName,
             byte inviteType = 0,

@@ -106,8 +106,10 @@ namespace HaCreator.MapSimulator
 
         private string HandleFieldSpecificDataPacketHandoff(byte[] payload, int currentTick)
         {
-            string wrapperMessage = HandleClientOwnedFieldSpecificDataPacket(payload, currentTick);
-            if (!string.IsNullOrWhiteSpace(wrapperMessage))
+            bool wrapperApplied = _specialFieldRuntime.TryDispatchCurrentWrapperFieldSpecificData(
+                TryApplyShowaBathFieldSpecificPresentationOwner,
+                out string wrapperMessage);
+            if (wrapperApplied || !string.IsNullOrWhiteSpace(wrapperMessage))
             {
                 return wrapperMessage;
             }
@@ -183,27 +185,27 @@ namespace HaCreator.MapSimulator
 
             if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
                 IsEscortResultWrapperMap(_mapBoard?.MapInfo) &&
-                TryApplyClientOwnedWrapperFieldValue("escortresult", key, value, currentTick, out _))
+                _specialFieldRuntime.TryDispatchCurrentWrapperFieldValue(key, value, currentTick, out string wrapperMessage))
             {
                 TryApplyPendingPortalSessionValueImpact(key, value);
-                target = "escort-result wrapper";
+                target = wrapperMessage;
                 return true;
             }
 
             if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
-                TryApplyClientOwnedWrapperSessionValue("chaoszakum", key, value, out _))
+                _specialFieldRuntime.TryDispatchCurrentWrapperSessionValue(key, value, out string sessionMessage))
             {
                 TryApplyPendingPortalSessionValueImpact(key, value);
-                target = "chaos-zakum session wrapper";
+                target = sessionMessage;
                 return true;
             }
 
             if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
                 _mapBoard?.MapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON &&
-                TryApplyClientOwnedWrapperFieldValue("huntingadballoon", key, value, currentTick, out _))
+                _specialFieldRuntime.TryDispatchCurrentWrapperFieldValue(key, value, currentTick, out string huntingAdBalloonMessage))
             {
                 TryApplyPendingPortalSessionValueImpact(key, value);
-                target = "hunting-ad-balloon wrapper";
+                target = huntingAdBalloonMessage;
                 return true;
             }
 

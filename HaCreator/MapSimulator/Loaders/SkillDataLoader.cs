@@ -942,16 +942,49 @@ namespace HaCreator.MapSimulator.Loaders
             string placeholderToken = $"#{statKey.Trim()}";
             foreach (string clause in EnumeratePlaceholderContextClauses(stringEntry, placeholderToken))
             {
-                if (!TryResolveSingleLetterContextLabel(clause, placeholderToken, out label))
+                if (!TryResolveSingleLetterContextPresentation(clause, placeholderToken, out label, out formatter))
                 {
                     continue;
                 }
-
-                formatter = ResolveSingleLetterContextFormatter(label, clause, placeholderToken);
                 return true;
             }
 
             return false;
+        }
+
+        internal static bool TryResolveSingleLetterContextPresentation(
+            string clause,
+            string placeholderToken,
+            int sampleValue,
+            out string label,
+            out string formattedValue)
+        {
+            formattedValue = null;
+            if (!TryResolveSingleLetterContextPresentation(clause, placeholderToken, out label, out Func<int, string> formatter))
+            {
+                return false;
+            }
+
+            formattedValue = formatter != null
+                ? formatter(sampleValue)
+                : sampleValue.ToString(CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        private static bool TryResolveSingleLetterContextPresentation(
+            string clause,
+            string placeholderToken,
+            out string label,
+            out Func<int, string> formatter)
+        {
+            formatter = null;
+            if (!TryResolveSingleLetterContextLabel(clause, placeholderToken, out label))
+            {
+                return false;
+            }
+
+            formatter = ResolveSingleLetterContextFormatter(label, clause, placeholderToken);
+            return true;
         }
 
         private static IEnumerable<string> EnumeratePlaceholderContextClauses(
@@ -1038,6 +1071,18 @@ namespace HaCreator.MapSimulator.Loaders
                 || normalizedClause.Contains("movement speed limit", StringComparison.Ordinal))
             {
                 label = "Max Movement Speed";
+            }
+            else if (normalizedClause.Contains("robot factory duration", StringComparison.Ordinal))
+            {
+                label = "Robot Factory Duration";
+            }
+            else if (normalizedClause.Contains("summon interval", StringComparison.Ordinal))
+            {
+                label = "Summon Interval";
+            }
+            else if (normalizedClause.Contains("dash speed", StringComparison.Ordinal))
+            {
+                label = "Dash Speed";
             }
             else if (normalizedClause.Contains("movement speed", StringComparison.Ordinal))
             {
@@ -1162,9 +1207,22 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Attacks Absorbed";
             }
+            else if (normalizedClause.Contains("toy robot damage", StringComparison.Ordinal))
+            {
+                label = "Toy Robot Damage";
+            }
+            else if (normalizedClause.Contains("spin attack damage", StringComparison.Ordinal))
+            {
+                label = "Spin Attack Damage";
+            }
             else if (normalizedClause.Contains("time to next shield", StringComparison.Ordinal))
             {
                 label = "Time to Next Shield Available";
+            }
+            else if (normalizedClause.Contains("toy robots", StringComparison.Ordinal)
+                     && normalizedClause.Contains("summoned", StringComparison.Ordinal))
+            {
+                label = "Toy Robot Count";
             }
             else if (normalizedClause.Contains("number of attacks", StringComparison.Ordinal)
                      || normalizedClause.Contains("attack count", StringComparison.Ordinal)
@@ -1223,6 +1281,11 @@ namespace HaCreator.MapSimulator.Loaders
             else if (normalizedClause.Contains("hp recovery", StringComparison.Ordinal))
             {
                 label = "HP Recovery";
+            }
+            else if (normalizedClause.Contains("provides", StringComparison.Ordinal)
+                     && normalizedClause.Contains("potion", StringComparison.Ordinal))
+            {
+                label = "Potion Count";
             }
             else if (normalizedClause.Contains("max stack", StringComparison.Ordinal))
             {
@@ -1322,11 +1385,14 @@ namespace HaCreator.MapSimulator.Loaders
                 "Accuracy" => FormatSignedValue,
                 "Avoidability" => FormatSignedValue,
                 "Movement Speed" => FormatSignedValue,
+                "Dash Speed" => FormatSignedValue,
                 "Speed" => FormatSignedValue,
                 "Jump" => FormatSignedValue,
                 "Max HP" => FormatSignedValue,
                 "Max MP" => FormatSignedValue,
                 "Teleport Distance" => FormatSignedValue,
+                "Robot Factory Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
+                "Summon Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 "Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 "Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 _ => null

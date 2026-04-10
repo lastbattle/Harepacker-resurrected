@@ -88,9 +88,6 @@ namespace HaCreator.MapSimulator.UI
         private bool _autoTrackEnabled;
         private int _hoveredDeleteQuestId = -1;
         private int _pressedDeleteQuestId = -1;
-        private int _lastTitleClickQuestId = -1;
-        private double _lastTitleClickTimeMs = double.NegativeInfinity;
-        private Point _lastTitleClickPosition = new(-1, -1);
         private bool _pressedDeleteAll;
         private int _scrollOffset;
         private Rectangle _deleteAllBounds = Rectangle.Empty;
@@ -325,7 +322,7 @@ namespace HaCreator.MapSimulator.UI
                     }
                     else
                     {
-                        HandleRowSelection(mouseState.X, mouseState.Y, gameTime);
+                        HandleRowSelection(mouseState.X, mouseState.Y);
                     }
 
                     _pressedDeleteQuestId = -1;
@@ -583,7 +580,7 @@ namespace HaCreator.MapSimulator.UI
             return removedTrackedQuest;
         }
 
-        private void HandleRowSelection(int mouseX, int mouseY, GameTime gameTime)
+        private void HandleRowSelection(int mouseX, int mouseY)
         {
             QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
             for (int i = 0; i < _rowLayouts.Count; i++)
@@ -598,7 +595,6 @@ namespace HaCreator.MapSimulator.UI
                 EnsureSelectionVisible(snapshot);
                 UpdateButtonStates();
 
-                bool isDoubleClick = IsTitleDoubleClick(row.QuestId, mouseX, mouseY, gameTime);
                 QuestAlarmEntrySnapshot clickedEntry = snapshot?.Entries?.FirstOrDefault(entry => entry.QuestId == row.QuestId);
                 if (clickedEntry?.IsRecentlyUpdated == true)
                 {
@@ -612,41 +608,9 @@ namespace HaCreator.MapSimulator.UI
                     UpdateButtonStates();
                 }
 
-                if (isDoubleClick)
-                {
-                    ResetLastTitleClick();
-                    QuestRequested?.Invoke(row.QuestId);
-                }
-                else
-                {
-                    _lastTitleClickQuestId = row.QuestId;
-                    _lastTitleClickTimeMs = gameTime?.TotalGameTime.TotalMilliseconds ?? 0d;
-                    _lastTitleClickPosition = new Point(mouseX, mouseY);
-                }
-
+                QuestRequested?.Invoke(row.QuestId);
                 return;
             }
-
-            ResetLastTitleClick();
-        }
-
-        private bool IsTitleDoubleClick(int questId, int mouseX, int mouseY, GameTime gameTime)
-        {
-            if (questId <= 0 || _lastTitleClickQuestId != questId)
-            {
-                return false;
-            }
-
-            double currentTimeMs = gameTime?.TotalGameTime.TotalMilliseconds ?? 0d;
-            if (currentTimeMs < _lastTitleClickTimeMs ||
-                currentTimeMs - _lastTitleClickTimeMs > System.Windows.Forms.SystemInformation.DoubleClickTime)
-            {
-                return false;
-            }
-
-            System.Drawing.Size doubleClickSize = System.Windows.Forms.SystemInformation.DoubleClickSize;
-            return Math.Abs(mouseX - _lastTitleClickPosition.X) <= Math.Max(1, doubleClickSize.Width / 2) &&
-                   Math.Abs(mouseY - _lastTitleClickPosition.Y) <= Math.Max(1, doubleClickSize.Height / 2);
         }
 
         private QuestAlarmSnapshot RefreshFilteredSnapshot()
@@ -1898,16 +1862,8 @@ namespace HaCreator.MapSimulator.UI
             _selectedQuestId = -1;
             _hoveredDeleteQuestId = -1;
             _pressedDeleteQuestId = -1;
-            ResetLastTitleClick();
             _pressedDeleteAll = false;
             _scrollOffset = 0;
-        }
-
-        private void ResetLastTitleClick()
-        {
-            _lastTitleClickQuestId = -1;
-            _lastTitleClickTimeMs = double.NegativeInfinity;
-            _lastTitleClickPosition = new Point(-1, -1);
         }
 
         private readonly struct RowLayout

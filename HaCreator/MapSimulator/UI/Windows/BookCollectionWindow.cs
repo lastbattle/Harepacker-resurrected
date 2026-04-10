@@ -2762,7 +2762,11 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
         {
-            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState))
+            // Monster Book follows the same recovered client-owned candidate popup seam as the
+            // macro owner: keep the local popup rendered and hit-testable even when IMM reports
+            // a native point/rect/exclude placement form, while still forwarding that form to
+            // the Win32 bridge for native positioning.
+            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState, clientOwnedCandidateWindow: true))
             {
                 return Rectangle.Empty;
             }
@@ -3105,8 +3109,7 @@ namespace HaCreator.MapSimulator.UI
                 };
             }
 
-            WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
-            if (WindowsImePresentationBridge.TryRefreshCandidateWindowForm(windowHandle, _candidateListState, out ImeCandidateListState refreshedCandidateState))
+            if (WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement, _candidateListState, out ImeCandidateListState refreshedCandidateState))
             {
                 _candidateListState = refreshedCandidateState;
             }

@@ -705,7 +705,7 @@ namespace HaCreator.MapSimulator
             }
 
             QuestRewardRaisePacketPayload payload = packet.Payload;
-            QuestRewardRaisePlacedPiece placedPiece = activeRaise.PlacedPieces.FirstOrDefault(piece => piece.RequestId == payload.PieceRequestId);
+            QuestRewardRaisePlacedPiece placedPiece = TryMatchQuestRewardRaisePlacedPieceByRequestId(activeRaise, payload);
             if (placedPiece != null)
             {
                 return placedPiece;
@@ -730,7 +730,7 @@ namespace HaCreator.MapSimulator
 
             placedPiece = new QuestRewardRaisePlacedPiece
             {
-                RequestId = Math.Max(0, payload.PieceRequestId),
+                RequestId = ResolveSyntheticQuestRewardRaiseRequestId(activeRaise, payload),
                 InventoryType = payload.InventoryType,
                 SlotIndex = Math.Max(-1, payload.SlotIndex),
                 ItemId = Math.Max(0, payload.ItemId),
@@ -748,6 +748,40 @@ namespace HaCreator.MapSimulator
             };
             activeRaise.PlacedPieces.Add(placedPiece);
             return placedPiece;
+        }
+
+        private int ResolveSyntheticQuestRewardRaiseRequestId(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaisePacketPayload payload)
+        {
+            int inboundRequestId = Math.Max(0, payload?.PieceRequestId ?? 0);
+            if (inboundRequestId > 0
+                && activeRaise?.PlacedPieces?.All(piece => piece.RequestId != inboundRequestId) != false)
+            {
+                return inboundRequestId;
+            }
+
+            int syntheticRequestId;
+            do
+            {
+                syntheticRequestId = GetNextQuestRewardRaiseRequestId();
+            }
+            while (syntheticRequestId <= 0
+                   || activeRaise?.PlacedPieces?.Any(piece => piece.RequestId == syntheticRequestId) == true);
+
+            return syntheticRequestId;
+        }
+
+        private static QuestRewardRaisePlacedPiece TryMatchQuestRewardRaisePlacedPieceByRequestId(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaisePacketPayload payload)
+        {
+            if (activeRaise?.PlacedPieces == null || payload == null || payload.PieceRequestId <= 0)
+            {
+                return null;
+            }
+
+            return activeRaise.PlacedPieces.FirstOrDefault(piece => piece.RequestId == payload.PieceRequestId);
         }
 
         private static QuestRewardRaisePlacedPiece TryMatchQuestRewardRaisePlacedPieceByInventorySlot(
@@ -844,6 +878,8 @@ namespace HaCreator.MapSimulator
 
             bool shouldRetain = activeRaise.WindowMode == QuestRewardRaiseWindowMode.PiecePlacement
                 || activeRaise.PlacedPieces.Count > 0
+                || activeRaise.SelectedItemsByGroup.Count > 0
+                || activeRaise.GroupIndex > 0
                 || activeRaise.AwaitingConfirmAck
                 || activeRaise.AwaitingOwnerDestroyAck
                 || !string.IsNullOrWhiteSpace(activeRaise.LastInboundSummary)

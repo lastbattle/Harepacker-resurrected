@@ -12,7 +12,8 @@ namespace HaCreator.MapSimulator.Character
             int SlotIndex,
             string PieceActionName,
             int? SourceFrameIndex,
-            int? DelayOverrideMs = null);
+            int? DelayOverrideMs = null,
+            bool Flip = false);
 
         private static readonly string[] SwingHeuristicFragments =
         {
@@ -760,7 +761,10 @@ namespace HaCreator.MapSimulator.Character
                 if (piece.SourceFrameIndex.HasValue)
                 {
                     int frameIndex = Math.Clamp(piece.SourceFrameIndex.Value, 0, pieceAnimation.Frames.Count - 1);
-                    SkillFrame frame = CloneSkillFrame(pieceAnimation.Frames[frameIndex], piece.DelayOverrideMs);
+                    SkillFrame frame = CloneSkillFrame(
+                        pieceAnimation.Frames[frameIndex],
+                        piece.DelayOverrideMs,
+                        piece.Flip);
                     if (frame != null)
                     {
                         frames.Add(frame);
@@ -771,7 +775,7 @@ namespace HaCreator.MapSimulator.Character
 
                 foreach (SkillFrame frame in pieceAnimation.Frames)
                 {
-                    SkillFrame clonedFrame = CloneSkillFrame(frame, piece.DelayOverrideMs);
+                    SkillFrame clonedFrame = CloneSkillFrame(frame, piece.DelayOverrideMs, piece.Flip);
                     if (clonedFrame != null)
                     {
                         frames.Add(clonedFrame);
@@ -797,7 +801,10 @@ namespace HaCreator.MapSimulator.Character
             return piecedAnimation;
         }
 
-        private static SkillFrame CloneSkillFrame(SkillFrame sourceFrame, int? delayOverrideMs = null)
+        private static SkillFrame CloneSkillFrame(
+            SkillFrame sourceFrame,
+            int? delayOverrideMs = null,
+            bool pieceFlip = false)
         {
             if (sourceFrame == null)
             {
@@ -810,7 +817,7 @@ namespace HaCreator.MapSimulator.Character
                 Origin = sourceFrame.Origin,
                 Delay = delayOverrideMs ?? sourceFrame.Delay,
                 Bounds = sourceFrame.Bounds,
-                Flip = sourceFrame.Flip,
+                Flip = pieceFlip ? !sourceFrame.Flip : sourceFrame.Flip,
                 Z = sourceFrame.Z,
                 AlphaStart = sourceFrame.AlphaStart,
                 AlphaEnd = sourceFrame.AlphaEnd,
@@ -977,7 +984,7 @@ namespace HaCreator.MapSimulator.Character
                 && animation?.Frames != null
                 && animation.Frames.Count > 0)
             {
-                int frameDelay = animation.Frames[0]?.Delay ?? 0;
+                int frameDelay = ResolvePlaybackFrameDurationMs(animation.Frames[0]?.Delay ?? 0);
                 if (frameDelay > 0)
                 {
                     return frameDelay;
@@ -985,6 +992,85 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return defaultDelayMs;
+        }
+
+        public static bool TryGetPlaybackFrameAtTime(
+            SkillAnimation animation,
+            int timeMs,
+            out SkillFrame frame,
+            out int frameElapsedMs)
+        {
+            frame = null;
+            frameElapsedMs = 0;
+
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            int totalDuration = ResolvePlaybackTotalDurationMs(animation);
+            if (totalDuration <= 0)
+            {
+                frame = animation.Frames[0];
+                return true;
+            }
+
+            int resolvedTime = animation.Loop
+                ? Math.Max(0, timeMs) % totalDuration
+                : Math.Min(Math.Max(0, timeMs), totalDuration - 1);
+            int elapsed = 0;
+
+            foreach (SkillFrame currentFrame in animation.Frames)
+            {
+                int frameDuration = ResolvePlaybackFrameDurationMs(currentFrame?.Delay ?? 0);
+                elapsed += frameDuration;
+                if (resolvedTime < elapsed)
+                {
+                    frame = currentFrame;
+                    frameElapsedMs = resolvedTime - (elapsed - frameDuration);
+                    return true;
+                }
+            }
+
+            frame = animation.Frames[^1];
+            frameElapsedMs = ResolvePlaybackFrameDurationMs(frame?.Delay ?? 0) - 1;
+            return true;
+        }
+
+        public static bool IsPlaybackComplete(SkillAnimation animation, int timeMs)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return true;
+            }
+
+            if (animation.Loop)
+            {
+                return false;
+            }
+
+            return Math.Max(0, timeMs) >= ResolvePlaybackTotalDurationMs(animation);
+        }
+
+        public static int ResolvePlaybackFrameDurationMs(int frameDelayMs)
+        {
+            return Math.Max(1, Math.Abs(frameDelayMs));
+        }
+
+        private static int ResolvePlaybackTotalDurationMs(SkillAnimation animation)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int totalDuration = 0;
+            foreach (SkillFrame frame in animation.Frames)
+            {
+                totalDuration += ResolvePlaybackFrameDurationMs(frame?.Delay ?? 0);
+            }
+
+            return totalDuration;
         }
 
         internal static string ResolveCreateActionName(

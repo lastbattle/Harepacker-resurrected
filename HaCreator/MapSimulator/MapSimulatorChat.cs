@@ -508,6 +508,12 @@ namespace HaCreator.MapSimulator
                     }
                 }
 
+                if (oldKeyboardState.IsKeyUp(Keys.Left)
+                    && TryHandleWhisperTargetPickerModalComboToggleKey(Keys.Left))
+                {
+                    return true;
+                }
+
                 if (oldKeyboardState.IsKeyUp(Keys.Left))
                 {
                     if (_cursorPosition > 0)
@@ -541,6 +547,12 @@ namespace HaCreator.MapSimulator
                         MoveWhisperTargetPickerModalButtonFocus(1);
                         return true;
                     }
+                }
+
+                if (oldKeyboardState.IsKeyUp(Keys.Right)
+                    && TryHandleWhisperTargetPickerModalComboToggleKey(Keys.Right))
+                {
+                    return true;
                 }
 
                 if (oldKeyboardState.IsKeyUp(Keys.Right))
@@ -1416,10 +1428,18 @@ namespace HaCreator.MapSimulator
                 string[] parts = trimmedMessage.Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 1)
                 {
-                    OpenWhisperTargetPicker(
-                        tickCount,
-                        _whisperTarget,
-                        WhisperTargetPickerPresentation.Modal);
+                    string whisperTarget = ResolveActiveWhisperTarget();
+                    if (string.IsNullOrWhiteSpace(whisperTarget))
+                    {
+                        OpenWhisperTargetPicker(
+                            tickCount,
+                            presentation: WhisperTargetPickerPresentation.Modal);
+                    }
+                    else
+                    {
+                        TryArmWhisperTarget(whisperTarget, tickCount);
+                    }
+
                     disposition = ChatSubmitDisposition.KeepChatOpen;
                     return true;
                 }
@@ -1523,7 +1543,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryArmWhisperTarget(string whisperTarget, int tickCount)
         {
-            WhisperTargetValidationResult validationResult = ValidateWhisperTargetCandidate(
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
                 whisperTarget,
                 _localPlayerName,
                 out string normalizedTarget);
@@ -1558,6 +1578,16 @@ namespace HaCreator.MapSimulator
                 SyncWhisperTargetPickerSelectionFromInput();
             }
             return true;
+        }
+
+        private string ResolveActiveWhisperTarget()
+        {
+            if (!string.IsNullOrWhiteSpace(_whisperTarget))
+            {
+                return _whisperTarget;
+            }
+
+            return !string.IsNullOrWhiteSpace(_replyTarget) ? _replyTarget : string.Empty;
         }
 
         private void AddClientMessage(string text, int tickCount, ClientChatLogType chatLogType, Color? colorOverride = null)
@@ -1939,6 +1969,36 @@ namespace HaCreator.MapSimulator
             return WhisperTargetValidationResult.Valid;
         }
 
+        internal static WhisperTargetValidationResult ValidateExplicitWhisperTargetCandidate(
+            string whisperTarget,
+            string localPlayerName,
+            out string normalizedTarget)
+        {
+            normalizedTarget = string.Empty;
+            string trimmedInput = whisperTarget?.Trim() ?? string.Empty;
+            if (trimmedInput.Length == 0)
+            {
+                return WhisperTargetValidationResult.Empty;
+            }
+
+            string extractedTarget = ExtractCharacterName(trimmedInput);
+            if (string.IsNullOrWhiteSpace(extractedTarget)
+                || !IsPlausibleCharacterName(extractedTarget))
+            {
+                return WhisperTargetValidationResult.Invalid;
+            }
+
+            string normalizedLocalPlayerName = NormalizeChatSpeakerCandidate(localPlayerName);
+            if (!string.IsNullOrWhiteSpace(normalizedLocalPlayerName)
+                && string.Equals(extractedTarget, normalizedLocalPlayerName, StringComparison.OrdinalIgnoreCase))
+            {
+                return WhisperTargetValidationResult.Self;
+            }
+
+            normalizedTarget = extractedTarget;
+            return WhisperTargetValidationResult.Valid;
+        }
+
         private static bool IsPlausibleCharacterName(string characterName)
         {
             if (string.IsNullOrWhiteSpace(characterName))
@@ -2220,6 +2280,24 @@ namespace HaCreator.MapSimulator
         {
             return IsWhisperTargetPickerModalComboFocused()
                 && _isWhisperTargetPickerComboDropdownOpen;
+        }
+
+        private bool TryHandleWhisperTargetPickerModalComboToggleKey(Keys key)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !IsWhisperTargetPickerModalComboFocused())
+            {
+                return false;
+            }
+
+            if (key != Keys.Left && key != Keys.Right && key != Keys.Down)
+            {
+                return false;
+            }
+
+            ToggleWhisperTargetPickerModalComboDropdown();
+            return true;
         }
 
         internal static int ResolveWhisperTargetPickerFirstVisibleIndex(

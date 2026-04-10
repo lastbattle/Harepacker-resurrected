@@ -154,7 +154,8 @@ namespace HaCreator.MapSimulator.Interaction
         Notice = 71,
         Mark = 69,
         PointsAndLevel = 75,
-        SkillRecord = 81
+        SkillRecord = 81,
+        ResultNotice = 82
     }
 
     internal readonly record struct SocialListClientGuildResultPacket(
@@ -166,6 +167,8 @@ namespace HaCreator.MapSimulator.Interaction
         GuildMarkSelection? MarkSelection,
         int GuildPoints,
         int GuildLevel,
+        bool Approved,
+        string ResultNotice,
         SocialListGradeChangePacket GradeChange,
         SocialListGuildSkillRecordPacket? GuildSkillRecord);
 
@@ -599,6 +602,8 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             0,
                             0,
+                            Approved: false,
+                            null,
                             new SocialListGradeChangePacket(memberId, 0, absoluteGrade, null),
                             null);
                         return true;
@@ -631,7 +636,7 @@ namespace HaCreator.MapSimulator.Interaction
                                 IsPacketOwned: true));
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0, default, null);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null, null, 0, 0, Approved: false, null, default, null);
                         return true;
                     }
 
@@ -644,7 +649,7 @@ namespace HaCreator.MapSimulator.Interaction
                             titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0, default, null);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null, null, 0, 0, Approved: false, null, default, null);
                         return true;
                     }
 
@@ -660,6 +665,8 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             0,
                             0,
+                            Approved: false,
+                            null,
                             default,
                             null);
                         return true;
@@ -683,6 +690,8 @@ namespace HaCreator.MapSimulator.Interaction
                             selection,
                             0,
                             0,
+                            Approved: false,
+                            null,
                             default,
                             null);
                         return true;
@@ -702,6 +711,8 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             guildPoints,
                             guildLevel,
+                            Approved: false,
+                            null,
                             default,
                             null);
                         return true;
@@ -742,8 +753,32 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             0,
                             0,
+                            Approved: false,
+                            null,
                             default,
                             new SocialListGuildSkillRecordPacket(skillId, skillLevel, expiration, buyCharacterName));
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.ResultNotice:
+                    {
+                        bool approved = reader.ReadBoolean();
+                        string resultNotice = approved && reader.HasRemaining
+                            ? reader.ReadString16().Trim()
+                            : null;
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            approved,
+                            resultNotice,
+                            default,
+                            null);
                         return true;
                     }
 

@@ -407,6 +407,7 @@ namespace HaCreator.MapSimulator
             }
 
             string skillRecordDetail = _guildSkillRuntime.ApplyPacketOwnedSkillRecord(packet.GuildSkillRecord.Value, packet.GuildId);
+            TryTriggerSpecialistPetSocialFeedback(skillRecordDetail, Environment.TickCount);
             RefreshGuildSkillUiContext();
             WireGuildSkillWindowData();
             return string.IsNullOrWhiteSpace(detail)
@@ -432,6 +433,7 @@ namespace HaCreator.MapSimulator
             }
 
             string detail = _guildSkillRuntime.ApplyPacketOwnedResult(packet);
+            TryTriggerSpecialistPetSocialFeedback(detail, Environment.TickCount);
             RefreshGuildSkillUiContext();
             WireGuildSkillWindowData();
             return detail;

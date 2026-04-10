@@ -183,7 +183,7 @@ namespace HaCreator.MapSimulator.Interaction
             return Resolve(premium: false, timedOut: true);
         }
 
-        public ReviveOwnerResolution Resolve(bool premium, bool timedOut = false)
+        public ReviveOwnerResolution Resolve(bool premium, bool timedOut = false, bool? clientPremiumFlag = null)
         {
             if (!IsOpen)
             {
@@ -192,7 +192,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             ReviveOwnerVariant variant = Variant;
             bool resolvedPremium = premium && HasPremiumChoice;
-            bool clientPremiumFlag = resolvedPremium;
+            bool resolvedClientPremiumFlag = clientPremiumFlag ?? premium;
             string ownerLabel = string.IsNullOrWhiteSpace(_ownerLabel) ? "revive owner" : _ownerLabel;
             string summary = resolvedPremium
                 ? $"CUIRevive premium recovery branch confirmed through {ownerLabel}."
@@ -201,15 +201,19 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"CUIRevive default recovery branch confirmed through {ownerLabel}.";
 
             Close();
-            return new ReviveOwnerResolution(true, resolvedPremium, timedOut, variant, summary, clientPremiumFlag);
+            return new ReviveOwnerResolution(true, resolvedPremium, timedOut, variant, summary, resolvedClientPremiumFlag);
         }
 
         public ReviveOwnerResolution ResolveClientButtonClick(int buttonId)
         {
             return buttonId switch
             {
-                ClientYesButtonId => Resolve(premium: true),
-                ClientNoButtonId or ClientCloseButtonId => Resolve(premium: false),
+                ClientYesButtonId => Resolve(
+                    premium: HasPremiumChoice,
+                    clientPremiumFlag: true),
+                ClientNoButtonId or ClientCloseButtonId => Resolve(
+                    premium: false,
+                    clientPremiumFlag: false),
                 _ => default
             };
         }

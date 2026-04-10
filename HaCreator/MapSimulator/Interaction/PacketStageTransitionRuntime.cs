@@ -50,6 +50,8 @@ namespace HaCreator.MapSimulator.Interaction
         private int _boundMapId = int.MinValue;
         private string _stageStatus = "Packet-owned stage transition idle.";
         private string _mapLoadStatus = "Packet-owned map-load presentation idle.";
+        private int _lastAuthoritativeFieldId = -1;
+        private byte _lastAuthoritativeFieldKey;
 
         internal void BindMap(int mapId)
         {
@@ -63,6 +65,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _stageStatus = "Packet-owned stage transition cleared.";
             _mapLoadStatus = "Packet-owned map-load presentation cleared.";
+            _lastAuthoritativeFieldId = -1;
+            _lastAuthoritativeFieldKey = 0;
         }
 
         internal string DescribeStatus()
@@ -71,6 +75,18 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $" map={_boundMapId}"
                 : string.Empty;
             return $"{_stageStatus} {_mapLoadStatus}{mapSuffix}";
+        }
+
+        internal bool TryGetAuthoritativeFieldKey(int mapId, out byte fieldKey)
+        {
+            fieldKey = 0;
+            if (mapId <= 0 || mapId != _lastAuthoritativeFieldId)
+            {
+                return false;
+            }
+
+            fieldKey = _lastAuthoritativeFieldKey;
+            return true;
         }
 
         internal bool TryApplyPacket(int packetType, byte[] payload, int currentTick, PacketStageTransitionCallbacks callbacks, out string message)
@@ -666,6 +682,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (TryDecodeOfficialSetFieldPayload(payload, out PacketSetFieldPacket officialPacket, out string officialDecodeError))
             {
+                RecordAuthoritativeFieldKey(officialPacket);
                 if (!officialPacket.SupportsFieldTransfer)
                 {
                     string notifierSuffix = FormatNotifierSuffix(officialPacket.NotifierTitle, officialPacket.NotifierLines);
@@ -711,6 +728,17 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"CStage::OnSetField ignored map {mapId}{FormatPortalSuffix(portalName)} because the simulator could not queue the transfer.";
             message = _stageStatus;
             return legacyQueued;
+        }
+
+        private void RecordAuthoritativeFieldKey(PacketSetFieldPacket packet)
+        {
+            if (packet.FieldId <= 0)
+            {
+                return;
+            }
+
+            _lastAuthoritativeFieldId = packet.FieldId;
+            _lastAuthoritativeFieldKey = packet.FieldKey;
         }
 
         private bool TryApplySetBackEffect(byte[] payload, int currentTick, PacketStageTransitionCallbacks callbacks, out string message)

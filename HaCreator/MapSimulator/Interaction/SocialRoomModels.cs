@@ -6069,6 +6069,33 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = accepted
                 ? $"{actor} accepted the locked trade."
                 : $"{actor} canceled their final trade acceptance.";
+
+            if (accepted
+                && _tradeLocalAccepted
+                && _tradeRemoteAccepted)
+            {
+                if (TryCompleteTrade(out string settlementMessage))
+                {
+                    message = settlementMessage;
+                    return true;
+                }
+
+                if (remoteParty)
+                {
+                    _tradeRemoteAccepted = false;
+                }
+                else
+                {
+                    _tradeLocalAccepted = false;
+                }
+
+                RoomState = "Locked";
+                RefreshTradeOccupantsAndRows();
+                PersistState();
+                message = settlementMessage;
+                return false;
+            }
+
             PersistState();
             message = StatusMessage;
             return true;

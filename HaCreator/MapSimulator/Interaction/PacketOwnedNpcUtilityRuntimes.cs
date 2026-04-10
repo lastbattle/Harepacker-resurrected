@@ -2975,6 +2975,14 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryBuildToggleOnCalcOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            // CUIBattleRecord::OnButtonClicked(2007) uses !m_bOnCalc || !m_bServerOnCalc
+            // to decide whether the on/off owner control should request opcode 299 with 1 or 0.
+            bool enabled = !OnCalc || !ServerOnCalc;
+            return TryBuildRequestOnCalcOutboundRequest(enabled, out request, out message);
+        }
+
         internal string SetAdditionDamageInclude(bool enabled, int option)
         {
             switch (option)

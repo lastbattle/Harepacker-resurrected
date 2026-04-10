@@ -21,12 +21,14 @@ namespace HaCreator.MapSimulator.UI
         private readonly IDXObject _groupWhisperPopupLayer;
         private readonly IDXObject _groupDeletePopupLayer;
         private readonly IDXObject _groupDeleteDenyPopupLayer;
+        private readonly IDXObject _needMessagePopupLayer;
         private readonly Point _overlayOffset;
         private readonly Point _baseOffset;
         private readonly Point _addFriendPopupOffset;
         private readonly Point _groupWhisperPopupOffset;
         private readonly Point _groupDeletePopupOffset;
         private readonly Point _groupDeleteDenyPopupOffset;
+        private readonly Point _needMessagePopupOffset;
         private readonly Texture2D _pixel;
         private readonly UIObject _okButton;
         private readonly UIObject _cancelButton;
@@ -35,12 +37,18 @@ namespace HaCreator.MapSimulator.UI
         private Func<FriendGroupPopupSnapshot> _snapshotProvider;
         private Action<int> _toggleEntryHandler;
         private Action<int> _scrollHandler;
+        private Action<char> _appendInputHandler;
+        private Action _backspaceInputHandler;
         private Func<string> _confirmHandler;
         private Func<string> _cancelHandler;
         private Action<string> _feedbackHandler;
         private SpriteFont _font;
         private MouseState _previousMouseState;
+        private KeyboardState _previousKeyboardState;
         private int _previousScrollWheelValue;
+        private Keys _lastHeldKey = Keys.None;
+        private int _keyHoldStartTime;
+        private int _lastKeyRepeatTime;
         private FriendGroupPopupSnapshot _currentSnapshot = new();
 
         public FriendGroupWindow(
@@ -57,6 +65,8 @@ namespace HaCreator.MapSimulator.UI
             Point groupDeletePopupOffset,
             IDXObject groupDeleteDenyPopupLayer,
             Point groupDeleteDenyPopupOffset,
+            IDXObject needMessagePopupLayer,
+            Point needMessagePopupOffset,
             UIObject okButton,
             UIObject cancelButton,
             GraphicsDevice device)
@@ -68,12 +78,14 @@ namespace HaCreator.MapSimulator.UI
             _groupWhisperPopupLayer = groupWhisperPopupLayer;
             _groupDeletePopupLayer = groupDeletePopupLayer;
             _groupDeleteDenyPopupLayer = groupDeleteDenyPopupLayer;
+            _needMessagePopupLayer = needMessagePopupLayer;
             _overlayOffset = overlayOffset;
             _baseOffset = baseOffset;
             _addFriendPopupOffset = addFriendPopupOffset;
             _groupWhisperPopupOffset = groupWhisperPopupOffset;
             _groupDeletePopupOffset = groupDeletePopupOffset;
             _groupDeleteDenyPopupOffset = groupDeleteDenyPopupOffset;
+            _needMessagePopupOffset = needMessagePopupOffset;
             _okButton = okButton;
             _cancelButton = cancelButton;
             _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
@@ -109,12 +121,16 @@ namespace HaCreator.MapSimulator.UI
         internal void SetHandlers(
             Action<int> toggleEntryHandler,
             Action<int> scrollHandler,
+            Action<char> appendInputHandler,
+            Action backspaceInputHandler,
             Func<string> confirmHandler,
             Func<string> cancelHandler,
             Action<string> feedbackHandler)
         {
             _toggleEntryHandler = toggleEntryHandler;
             _scrollHandler = scrollHandler;
+            _appendInputHandler = appendInputHandler;
+            _backspaceInputHandler = backspaceInputHandler;
             _confirmHandler = confirmHandler;
             _cancelHandler = cancelHandler;
             _feedbackHandler = feedbackHandler;
@@ -128,7 +144,9 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates(snapshot);
 
             MouseState mouseState = Mouse.GetState();
+            KeyboardState keyboardState = Keyboard.GetState();
             HandleScrollWheel(mouseState);
+            HandleKeyboardInput(keyboardState);
 
             bool leftReleased = mouseState.LeftButton == ButtonState.Released &&
                                 _previousMouseState.LeftButton == ButtonState.Pressed;
@@ -145,6 +163,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _previousMouseState = mouseState;
+            _previousKeyboardState = keyboardState;
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
         }
 
@@ -173,6 +192,11 @@ namespace HaCreator.MapSimulator.UI
             if (snapshot.ShowEntryList)
             {
                 DrawEntryList(sprite, snapshot);
+            }
+
+            if (snapshot.ShowTextInput)
+            {
+                DrawInputField(sprite, snapshot);
             }
 
             DrawSummary(sprite, snapshot);
@@ -210,6 +234,85 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void HandleKeyboardInput(KeyboardState keyboardState)
+        {
+            if (keyboardState.IsKeyDown(Keys.Enter) && _previousKeyboardState.IsKeyUp(Keys.Enter))
+            {
+                ShowFeedback(_confirmHandler?.Invoke());
+                return;
+            }
+
+            if (keyboardState.IsKeyDown(Keys.Escape) && _previousKeyboardState.IsKeyUp(Keys.Escape))
+            {
+                ShowFeedback(_cancelHandler?.Invoke());
+                return;
+            }
+
+            FriendGroupPopupSnapshot snapshot = _currentSnapshot;
+            if (snapshot?.ShowTextInput != true)
+            {
+                _lastHeldKey = Keys.None;
+                return;
+            }
+
+            int tickCount = Environment.TickCount;
+            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+            foreach (Keys key in keyboardState.GetPressedKeys())
+            {
+                if (_previousKeyboardState.IsKeyDown(key) || KeyboardTextInputHelper.IsControlKey(key))
+                {
+                    continue;
+                }
+
+                if (key == Keys.Back)
+                {
+                    _backspaceInputHandler?.Invoke();
+                    _lastHeldKey = key;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                    return;
+                }
+
+                char? character = KeyboardTextInputHelper.KeyToChar(key, shift);
+                if (!character.HasValue)
+                {
+                    continue;
+                }
+
+                _appendInputHandler?.Invoke(character.Value);
+                _lastHeldKey = key;
+                _keyHoldStartTime = tickCount;
+                _lastKeyRepeatTime = tickCount;
+                return;
+            }
+
+            if (_lastHeldKey != Keys.None && !keyboardState.IsKeyDown(_lastHeldKey))
+            {
+                _lastHeldKey = Keys.None;
+                return;
+            }
+
+            if (_lastHeldKey == Keys.Back
+                && KeyboardTextInputHelper.ShouldRepeatKey(_lastHeldKey, keyboardState, _keyHoldStartTime, _lastKeyRepeatTime, tickCount))
+            {
+                _backspaceInputHandler?.Invoke();
+                _lastKeyRepeatTime = tickCount;
+                return;
+            }
+
+            if (_lastHeldKey != Keys.None
+                && _lastHeldKey != Keys.Back
+                && KeyboardTextInputHelper.ShouldRepeatKey(_lastHeldKey, keyboardState, _keyHoldStartTime, _lastKeyRepeatTime, tickCount))
+            {
+                char? repeatedCharacter = KeyboardTextInputHelper.KeyToChar(_lastHeldKey, shift);
+                if (repeatedCharacter.HasValue)
+                {
+                    _appendInputHandler?.Invoke(repeatedCharacter.Value);
+                    _lastKeyRepeatTime = tickCount;
+                }
+            }
+        }
+
         private void DrawPopupLayer(
             SpriteBatch sprite,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -226,6 +329,9 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 case FriendGroupPopupMode.DeleteGroupDeny:
                     DrawLayer(sprite, _groupDeleteDenyPopupLayer, _groupDeleteDenyPopupOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+                    break;
+                case FriendGroupPopupMode.NeedMessage:
+                    DrawLayer(sprite, _needMessagePopupLayer, _needMessagePopupOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                     break;
                 default:
                     DrawLayer(sprite, _addFriendPopupLayer, _addFriendPopupOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
@@ -276,6 +382,30 @@ namespace HaCreator.MapSimulator.UI
                 DrawText(sprite, line, summaryBounds.X + 6, y, new Color(228, 233, 239), 0.31f);
                 y += 11;
             }
+        }
+
+        private void DrawInputField(SpriteBatch sprite, FriendGroupPopupSnapshot snapshot)
+        {
+            Rectangle inputBounds = new Rectangle(Position.X + 13, Position.Y + 67, 239, 12);
+            sprite.Draw(_pixel, inputBounds, new Color(255, 255, 255, 22));
+
+            string text = snapshot.InputText ?? string.Empty;
+            DrawText(sprite, text, inputBounds.X + 3, inputBounds.Y - 1, new Color(28, 28, 28), 0.34f);
+
+            bool drawCaret = ((Environment.TickCount / 500) & 1) == 0;
+            if (!drawCaret)
+            {
+                return;
+            }
+
+            Vector2 measured = _font?.MeasureString(text) ?? Vector2.Zero;
+            int caretX = inputBounds.X + 3 + (int)Math.Round(measured.X * 0.34f);
+            Rectangle caretBounds = new Rectangle(
+                Math.Min(inputBounds.Right - 1, caretX),
+                inputBounds.Y + 1,
+                1,
+                Math.Max(8, inputBounds.Height - 2));
+            sprite.Draw(_pixel, caretBounds, new Color(32, 32, 32, 220));
         }
 
         private void DrawLayer(

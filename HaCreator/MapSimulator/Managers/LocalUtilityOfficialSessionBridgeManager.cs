@@ -19,7 +19,8 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18496;
         internal const int FollowCharacterRequestPayloadLength = sizeof(int) + sizeof(byte) + sizeof(byte);
-        internal const byte FollowCharacterWithdrawDriverId = 0;
+        // CWvsContext::SendFollowCharacterRequest encodes withdraw as opcode 134 with (0, 0, 1).
+        internal const int FollowCharacterWithdrawDriverId = 0;
         internal const byte FollowCharacterWithdrawAutoRequest = 0;
         internal const byte FollowCharacterWithdrawKeyInput = 1;
         private const string DefaultProcessName = "MapleStory";
@@ -105,7 +106,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,234,250,253,254,255,256,261,269,270,274,275,291,366,367,1011,1023; outbound opcodes=45,74,113,117,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,234,250,253,254,255,256,261,269,270,274,275,291,366,367,1011,1023,1025; outbound opcodes=45,74,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)

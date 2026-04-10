@@ -168,6 +168,7 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 Position,
             bool FacingRight,
             int? PreferredPairCharacterId,
+            int? ExistingPairCharacterId,
             bool IsChairSessionActive,
             bool IsVisibleInWorld,
             bool IsRelationshipOverlaySuppressed);
@@ -305,13 +306,7 @@ namespace HaCreator.MapSimulator.Pools
         private static readonly IReadOnlyDictionary<int, RemoteMechanicModePresentation> RemoteMechanicModePresentationBySkillId =
             new Dictionary<int, RemoteMechanicModePresentation>
             {
-                [35001001] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
-                [35101004] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
-                [35101009] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
-                [35121003] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
                 [35121005] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
-                [35121009] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
-                [35121010] = new("tank_stand", "tank_walk", "tank", "tank_prone"),
                 [35111004] = new("siege_stand", "siege_stand", "siege", "siege_stand"),
                 [35121013] = new("tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand")
             };
@@ -2602,17 +2597,20 @@ namespace HaCreator.MapSimulator.Pools
                 ? actor.Position.Y - ownerFrame.FeetOffset
                 : actor.Position.Y;
 
-            string dragonActionName = ResolveRemoteDragonActionName(
+            ResolveRemoteDragonActionSelection(
                 prepared,
                 isHolding,
                 actor.ActionName,
                 actor.BaseActionRawCode,
-                metadata);
+                metadata,
+                out string dragonActionName,
+                out bool useOwnerActionTimeline);
             int dragonActionElapsedMs = ResolveRemoteDragonActionElapsedMs(
                 prepared,
                 currentTime,
                 dragonActionName,
                 isHolding,
+                useOwnerActionTimeline,
                 actor.BaseActionStartTime);
             int dragonFrameHeight = metadata.ResolveFrameHeight(dragonActionName, dragonActionElapsedMs);
             Vector2 dragonAnchor = ResolveRemoteDragonAnchor(
@@ -2848,37 +2846,26 @@ namespace HaCreator.MapSimulator.Pools
             int? ownerRawActionCode,
             RemoteDragonHudMetadata metadata)
         {
-            if (TryResolveRemoteExplicitDragonActionName(ownerActionName, ownerRawActionCode, metadata, out string explicitActionName))
-            {
-                return explicitActionName;
-            }
-
-            if (isHolding)
-            {
-                if (ShouldUseRemoteDragonMoveAction(ownerActionName, ownerRawActionCode)
-                    && metadata.HasAction("move"))
-                {
-                    return "move";
-                }
-
-                return "stand";
-            }
-
-            return prepared?.SkillId switch
-            {
-                22121000 => "icebreathe_prepare",
-                22151001 => "breathe_prepare",
-                _ => "stand"
-            };
+            ResolveRemoteDragonActionSelection(
+                prepared,
+                isHolding,
+                ownerActionName,
+                ownerRawActionCode,
+                metadata,
+                out string actionName,
+                out _);
+            return actionName;
         }
 
         internal static bool TryResolveRemoteExplicitDragonActionName(
             string ownerActionName,
             int? ownerRawActionCode,
             RemoteDragonHudMetadata metadata,
-            out string actionName)
+            out string actionName,
+            out bool useOwnerActionTimeline)
         {
             actionName = null;
+            useOwnerActionTimeline = false;
             if (metadata.ActionTimelines == null || metadata.ActionTimelines.Count == 0)
             {
                 return false;
@@ -2887,25 +2874,77 @@ namespace HaCreator.MapSimulator.Pools
             if (ownerRawActionCode.HasValue
                 && DragonActionLoader.TryGetClientActionNameFromRawActionCode(ownerRawActionCode.Value, out string rawActionName))
             {
-                if (IsExplicitRemoteDragonAction(rawActionName) && metadata.HasAction(rawActionName))
+                bool isExplicitOwnerAction = IsExplicitRemoteDragonAction(rawActionName);
+                foreach (string candidate in EnumerateRemoteDragonActionCandidates(rawActionName))
                 {
-                    actionName = rawActionName;
+                    if (!metadata.HasAction(candidate))
+                    {
+                        continue;
+                    }
+
+                    actionName = candidate;
+                    useOwnerActionTimeline = isExplicitOwnerAction;
                     return true;
                 }
 
                 return false;
             }
 
+            bool isExplicitRequestedAction = IsExplicitRemoteDragonAction(ownerActionName);
             foreach (string candidate in EnumerateRemoteDragonActionCandidates(ownerActionName))
             {
-                if (IsExplicitRemoteDragonAction(candidate) && metadata.HasAction(candidate))
+                if (metadata.HasAction(candidate))
                 {
                     actionName = candidate;
+                    useOwnerActionTimeline = isExplicitRequestedAction;
                     return true;
                 }
             }
 
             return false;
+        }
+
+        internal static void ResolveRemoteDragonActionSelection(
+            RemotePreparedSkillState prepared,
+            bool isHolding,
+            string ownerActionName,
+            int? ownerRawActionCode,
+            RemoteDragonHudMetadata metadata,
+            out string actionName,
+            out bool useOwnerActionTimeline)
+        {
+            if (TryResolveRemoteExplicitDragonActionName(
+                    ownerActionName,
+                    ownerRawActionCode,
+                    metadata,
+                    out string explicitActionName,
+                    out bool explicitOwnerTimeline))
+            {
+                actionName = explicitActionName;
+                useOwnerActionTimeline = explicitOwnerTimeline;
+                return;
+            }
+
+            useOwnerActionTimeline = false;
+            if (isHolding)
+            {
+                if (ShouldUseRemoteDragonMoveAction(ownerActionName, ownerRawActionCode)
+                    && metadata.HasAction("move"))
+                {
+                    actionName = "move";
+                    return;
+                }
+
+                actionName = "stand";
+                return;
+            }
+
+            actionName = prepared?.SkillId switch
+            {
+                22121000 => "icebreathe_prepare",
+                22151001 => "breathe_prepare",
+                _ => "stand"
+            };
         }
 
         internal static bool ShouldUseRemoteDragonMoveAction(string ownerActionName, int? ownerRawActionCode = null)
@@ -2990,6 +3029,7 @@ namespace HaCreator.MapSimulator.Pools
             int currentTime,
             string actionName,
             bool isHolding,
+            bool useOwnerActionTimeline = false,
             int ownerActionStartTime = int.MinValue)
         {
             if (prepared == null)
@@ -2997,7 +3037,7 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            bool useOwnerActionTimeline = IsExplicitRemoteDragonAction(actionName)
+            useOwnerActionTimeline = useOwnerActionTimeline
                 && ownerActionStartTime != int.MinValue;
             int resolvedActionStartTime = useOwnerActionTimeline
                 ? ownerActionStartTime
@@ -5014,33 +5054,28 @@ namespace HaCreator.MapSimulator.Pools
             IEnumerable<PortableChairPairRecord> pairRecords,
             bool preferVisibleOnly)
         {
-            IReadOnlyDictionary<int, PortableChairPairRecord> recordMap = pairRecords?
+            IReadOnlyDictionary<int, PortableChairPairRecord> sourceRecordMap = pairRecords?
                 .Where(static record => record.CharacterId > 0 && record.ItemId > 0)
                 .GroupBy(static record => record.CharacterId)
-                .ToDictionary(
-                    static group => group.Key,
-                    static group => group.Last() with
-                    {
-                        PairCharacterId = null,
-                        Status = 0
-                    })
+                .ToDictionary(static group => group.Key, static group => group.Last())
                 ?? new Dictionary<int, PortableChairPairRecord>();
             List<PortableChairPairParticipant> resolvedParticipants = participants?
                 .Where(participant =>
                     participant.CharacterId > 0
                     && participant.Chair?.IsCoupleChair == true
                     && participant.IsChairSessionActive
-                    && recordMap.TryGetValue(participant.CharacterId, out PortableChairPairRecord record)
+                    && sourceRecordMap.TryGetValue(participant.CharacterId, out PortableChairPairRecord record)
                     && participant.Chair.ItemId == record.ItemId)
                 .Select(participant =>
                 {
-                    PortableChairPairRecord record = recordMap[participant.CharacterId];
+                    PortableChairPairRecord record = sourceRecordMap[participant.CharacterId];
                     return new PortableChairPairParticipant(
                         participant.CharacterId,
                         participant.Chair,
                         participant.Position,
                         participant.FacingRight,
                         record.PreferredPairCharacterId,
+                        record.PairCharacterId,
                         participant.IsChairSessionActive,
                         participant.IsVisibleInWorld,
                         participant.IsRelationshipOverlaySuppressed);
@@ -5050,7 +5085,13 @@ namespace HaCreator.MapSimulator.Pools
                 ?? new List<PortableChairPairParticipant>();
             if (resolvedParticipants.Count < 2)
             {
-                return new Dictionary<int, PortableChairPairRecord>(recordMap);
+                return sourceRecordMap.ToDictionary(
+                    static entry => entry.Key,
+                    static entry => entry.Value with
+                    {
+                        PairCharacterId = null,
+                        Status = 0
+                    });
             }
 
             List<PortableChairPairCandidate> candidates = new();
@@ -5069,7 +5110,13 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            Dictionary<int, PortableChairPairRecord> resolvedRecords = new(recordMap);
+            Dictionary<int, PortableChairPairRecord> resolvedRecords = sourceRecordMap.ToDictionary(
+                static entry => entry.Key,
+                static entry => entry.Value with
+                {
+                    PairCharacterId = null,
+                    Status = 0
+                });
             foreach (PortableChairPairCandidate candidate in candidates
                 .OrderBy(static candidate => candidate.Priority)
                 .ThenBy(static candidate => candidate.Score)
@@ -5122,6 +5169,7 @@ namespace HaCreator.MapSimulator.Pools
                     actor.Position,
                     actor.FacingRight,
                     actor.PreferredPortableChairPairCharacterId,
+                    null,
                     IsPortableChairPairSessionActive(actor.Build?.ActivePortableChair, actor.BaseActionName),
                     actor.IsVisibleInWorld,
                     IsRelationshipOverlaySuppressed(actor)));
@@ -5138,6 +5186,7 @@ namespace HaCreator.MapSimulator.Pools
                     localChair,
                     localPlayer.Position,
                     localPlayer.FacingRight,
+                    null,
                     null,
                     IsPortableChairPairSessionActive(localChair, localPlayer.CurrentActionName),
                     true,
@@ -5315,15 +5364,29 @@ namespace HaCreator.MapSimulator.Pools
             PortableChairPairParticipant left,
             PortableChairPairParticipant right)
         {
+            bool rightRetainsLeft = right.ExistingPairCharacterId == left.CharacterId;
+            bool leftRetainsRight = left.ExistingPairCharacterId == right.CharacterId;
             bool leftPrefersRight = left.PreferredPairCharacterId == right.CharacterId;
             bool rightPrefersLeft = right.PreferredPairCharacterId == left.CharacterId;
-            return (leftPrefersRight, rightPrefersLeft) switch
+            return (rightRetainsLeft, leftRetainsRight, leftPrefersRight, rightPrefersLeft) switch
             {
-                (true, true) => 0,
-                (true, false) => 1,
-                (false, true) => 1,
-                _ => 2
+                (true, true, _, _) => 0,
+                (true, false, _, _) => 1,
+                (false, true, _, _) => 2,
+                (false, false, true, true) => 3,
+                (false, false, true, false) => 4,
+                (false, false, false, true) => 4,
+                _ => 5
             };
+        }
+
+        private static bool CanReusePortableChairPairRecord(
+            PortableChairPairParticipant owner,
+            PortableChairPairParticipant candidate)
+        {
+            return !candidate.ExistingPairCharacterId.HasValue
+                   || candidate.ExistingPairCharacterId.Value <= 0
+                   || candidate.ExistingPairCharacterId.Value == owner.CharacterId;
         }
 
         private static int ResolvePortableChairPairStatus(
@@ -6958,7 +7021,8 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             UpdateRemoteShadowPartnerPresentation(actor, baseActionName, state, currentTime);
-            if (actor.ShadowPartnerPresentation?.CurrentPlaybackAnimation?.TryGetFrameAtTime(
+            if (ShadowPartnerClientActionResolver.TryGetPlaybackFrameAtTime(
+                    actor.ShadowPartnerPresentation?.CurrentPlaybackAnimation,
                     Math.Max(0, currentTime - actor.ShadowPartnerPresentation.CurrentActionStartTime),
                     out SkillFrame frame,
                     out int frameElapsedMs) != true
@@ -7347,7 +7411,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int elapsedTime = Math.Max(0, currentTime - presentation.CurrentActionStartTime);
-            return !presentation.CurrentPlaybackAnimation.IsComplete(elapsedTime);
+            return !ShadowPartnerClientActionResolver.IsPlaybackComplete(presentation.CurrentPlaybackAnimation, elapsedTime);
         }
 
         private static int ResolveRemoteShadowPartnerAttackDelayMs(RemoteUserActor actor, string actionName)
@@ -7620,7 +7684,7 @@ namespace HaCreator.MapSimulator.Pools
                 return 1f;
             }
 
-            int delay = Math.Max(1, frame.Delay);
+            int delay = ShadowPartnerClientActionResolver.ResolvePlaybackFrameDurationMs(frame.Delay);
             if (frame.AlphaStart == frame.AlphaEnd || delay <= 1)
             {
                 return MathHelper.Clamp(frame.AlphaStart / 255f, 0f, 1f);

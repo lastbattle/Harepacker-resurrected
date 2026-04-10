@@ -17,11 +17,11 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
-        private const int StageSystemStringPoolId = 0x17BB;
+        private const int StageSystemStringPoolId = 0x17BF;
         private const string StageSystemFallbackPath = "Etc/StageSystem.img";
-        private const int StageKeywordStringPoolId = 0x17BC;
+        private const int StageKeywordStringPoolId = 0x17C0;
         private const string StageKeywordFallbackPath = "Etc/StageKeyword.img";
-        private const int StageAffectedMapStringPoolId = 0x17BD;
+        private const int StageAffectedMapStringPoolId = 0x17BE;
         private const string StageAffectedMapFallbackPath = "Etc/StageAffectedMap.img";
 
         private readonly ContextOwnedStagePeriodRuntime _contextOwnedStagePeriodRuntime = new();

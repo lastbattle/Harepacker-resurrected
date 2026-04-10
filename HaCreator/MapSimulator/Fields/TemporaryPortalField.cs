@@ -6,6 +6,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -39,6 +40,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<RemoteOpenGateKey, RemoteOpenGateState> _remoteOpenGates = new();
         private readonly Dictionary<RemoteTownPortalOwnerTownKey, RemoteTownPortalFieldMetadata> _remoteTownPortalFieldMetadata = new();
         private readonly Dictionary<RemoteTownPortalOwnerTownKey, Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>>> _remoteTownPortalOwnerFieldObservations = new();
+        private readonly Dictionary<uint, Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation>>> _remoteTownPortalPendingOwnerFieldObservations = new();
         private readonly Dictionary<uint, RemoteTownPortalRuntimePair> _remoteTownPortalRuntimes = new();
         private readonly Dictionary<RemoteOpenGateKey, RemoteOpenGateRuntime> _remoteOpenGateRuntimes = new();
         private PortalVisualSet _openGateOpeningVisuals;
@@ -249,6 +251,28 @@ namespace HaCreator.MapSimulator.Fields
                 sourceX,
                 sourceY,
                 destination.MapId,
+                observationSource,
+                recordedAt);
+        }
+
+        public void RememberPendingRemoteTownPortalOwnerFieldObservation(
+            uint ownerCharacterId,
+            int sourceMapId,
+            float sourceX,
+            float sourceY,
+            int recordedAt,
+            RemoteTownPortalObservationSource observationSource = RemoteTownPortalObservationSource.MovementSnapshot)
+        {
+            if (ownerCharacterId == 0 || sourceMapId <= 0)
+            {
+                return;
+            }
+
+            UpsertPendingRemoteTownPortalOwnerFieldObservation(
+                ownerCharacterId,
+                sourceMapId,
+                sourceX,
+                sourceY,
                 observationSource,
                 recordedAt);
         }
@@ -508,12 +532,14 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalResolvedDestination? destination)
         {
             destination = NormalizeRemoteTownPortalIncomingDestination(currentMapId, destination);
+            AdoptPendingRemoteTownPortalOwnerFieldObservations(packet.OwnerCharacterId, currentMapId);
             RemoteTownPortalState? existingState = _remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState existingStateValue)
                 ? existingStateValue
                 : null;
             if (destination.HasValue)
             {
                 RememberRemoteTownPortalFieldMetadata(packet.OwnerCharacterId, currentMapId, packet.X, packet.Y, destination.Value, currentTime);
+                AdoptPendingRemoteTownPortalOwnerFieldObservations(packet.OwnerCharacterId, destination.Value.MapId);
             }
 
             RemoteTownPortalResolvedDestination? resolvedDestination = ResolveRemoteTownPortalDestination(
@@ -1268,6 +1294,96 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private void UpsertPendingRemoteTownPortalOwnerFieldObservation(
+            uint ownerCharacterId,
+            int sourceMapId,
+            float sourceX,
+            float sourceY,
+            RemoteTownPortalObservationSource observationSource,
+            int recordedAt)
+        {
+            if (!_remoteTownPortalPendingOwnerFieldObservations.TryGetValue(ownerCharacterId, out Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation>> observationsBySourceMap))
+            {
+                observationsBySourceMap = new Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation>>();
+                _remoteTownPortalPendingOwnerFieldObservations[ownerCharacterId] = observationsBySourceMap;
+            }
+
+            if (!observationsBySourceMap.TryGetValue(sourceMapId, out Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation> observationsBySource))
+            {
+                observationsBySource = new Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation>();
+                observationsBySourceMap[sourceMapId] = observationsBySource;
+            }
+
+            if (observationsBySource.TryGetValue(observationSource, out RemoteTownPortalPendingOwnerFieldObservation existingObservation)
+                && CompareRemoteTownPortalSameSourceCoordinateAuthority(
+                    existingObservation.ObservationSource,
+                    existingObservation.RecordedAt,
+                    observationSource,
+                    recordedAt) >= 0)
+            {
+                return;
+            }
+
+            observationsBySource[observationSource] = new RemoteTownPortalPendingOwnerFieldObservation(
+                sourceMapId,
+                sourceX,
+                sourceY,
+                observationSource,
+                recordedAt);
+        }
+
+        private void AdoptPendingRemoteTownPortalOwnerFieldObservations(uint ownerCharacterId, int townMapId)
+        {
+            if (ownerCharacterId == 0
+                || townMapId <= 0
+                || !_remoteTownPortalPendingOwnerFieldObservations.TryGetValue(ownerCharacterId, out Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation>> observationsBySourceMap)
+                || observationsBySourceMap.Count == 0)
+            {
+                return;
+            }
+
+            List<int> adoptedSourceMaps = null;
+            foreach ((int sourceMapId, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation> observationsBySource) in observationsBySourceMap)
+            {
+                if (!TryResolveRemoteTownPortalTownMapForSourceMap(sourceMapId, out int resolvedTownMapId)
+                    || resolvedTownMapId != townMapId)
+                {
+                    continue;
+                }
+
+                foreach (RemoteTownPortalPendingOwnerFieldObservation observation in observationsBySource.Values)
+                {
+                    UpsertRemoteTownPortalOwnerFieldObservation(
+                        ownerCharacterId,
+                        observation.SourceMapId,
+                        observation.SourceX,
+                        observation.SourceY,
+                        townMapId,
+                        observation.ObservationSource,
+                        observation.RecordedAt,
+                        refreshActiveDestination: false);
+                }
+
+                adoptedSourceMaps ??= new List<int>();
+                adoptedSourceMaps.Add(sourceMapId);
+            }
+
+            if (adoptedSourceMaps == null)
+            {
+                return;
+            }
+
+            foreach (int sourceMapId in adoptedSourceMaps)
+            {
+                observationsBySourceMap.Remove(sourceMapId);
+            }
+
+            if (observationsBySourceMap.Count == 0)
+            {
+                _remoteTownPortalPendingOwnerFieldObservations.Remove(ownerCharacterId);
+            }
+        }
+
         private RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestination(
             uint ownerCharacterId,
             int currentMapId,
@@ -1416,6 +1532,94 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return null;
+        }
+
+        private static bool TryResolveRemoteTownPortalTownMapForSourceMap(int sourceMapId, out int townMapId)
+        {
+            townMapId = -1;
+            if (sourceMapId <= 0)
+            {
+                return false;
+            }
+
+            string mapIdKey = sourceMapId.ToString().PadLeft(9, '0');
+            if (Program.InfoManager?.MapsCache != null
+                && Program.InfoManager.MapsCache.TryGetValue(mapIdKey, out Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap)
+                && cachedMap?.Item5 != null)
+            {
+                int configuredReturnMap = cachedMap.Item5.returnMap;
+                if (configuredReturnMap <= 0 || configuredReturnMap == MapConstants.MaxMap)
+                {
+                    configuredReturnMap = cachedMap.Item5.forcedReturn;
+                }
+
+                if (configuredReturnMap > 0 && configuredReturnMap != MapConstants.MaxMap)
+                {
+                    townMapId = configuredReturnMap;
+                    return true;
+                }
+            }
+
+            WzImage mapImage = TryGetMapImageForRemoteTownPortalMetadataLookup(sourceMapId);
+            if (mapImage == null)
+            {
+                return false;
+            }
+
+            bool shouldUnparse = !mapImage.Parsed;
+            try
+            {
+                if (!mapImage.Parsed)
+                {
+                    mapImage.ParseImage();
+                }
+
+                if (mapImage["info"] is not WzSubProperty infoProperty)
+                {
+                    return false;
+                }
+
+                int configuredReturnMap = (infoProperty["returnMap"] as WzIntProperty)?.GetInt() ?? 0;
+                if (configuredReturnMap <= 0 || configuredReturnMap == MapConstants.MaxMap)
+                {
+                    configuredReturnMap = (infoProperty["forcedReturn"] as WzIntProperty)?.GetInt() ?? 0;
+                }
+
+                if (configuredReturnMap <= 0 || configuredReturnMap == MapConstants.MaxMap)
+                {
+                    return false;
+                }
+
+                townMapId = configuredReturnMap;
+                return true;
+            }
+            finally
+            {
+                if (shouldUnparse)
+                {
+                    mapImage.UnparseImage();
+                }
+            }
+        }
+
+        private static WzImage TryGetMapImageForRemoteTownPortalMetadataLookup(int mapId)
+        {
+            string mapIdKey = mapId.ToString().PadLeft(9, '0');
+            if (Program.InfoManager?.MapsCache != null
+                && Program.InfoManager.MapsCache.TryGetValue(mapIdKey, out Tuple<WzImage, string, string, string, MapleLib.WzLib.WzStructure.MapInfo> cachedMap)
+                && cachedMap?.Item1 != null)
+            {
+                return cachedMap.Item1;
+            }
+
+            if (Program.DataSource == null)
+            {
+                return null;
+            }
+
+            string folderNum = mapIdKey[0].ToString();
+            return Program.DataSource.GetImageByPath($"Map/Map/Map{folderNum}/{mapIdKey}.img")
+                   ?? Program.DataSource.GetImage("Map", $"Map/Map{folderNum}/{mapIdKey}.img");
         }
 
         private static int? SelectPreferredRemoteTownPortalSourceMapId(
@@ -2170,6 +2374,13 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalObservationSource ObservationSource,
             int RecordedAt);
 
+        private readonly record struct RemoteTownPortalPendingOwnerFieldObservation(
+            int SourceMapId,
+            float SourceX,
+            float SourceY,
+            RemoteTownPortalObservationSource ObservationSource,
+            int RecordedAt);
+
         private readonly record struct RemoteTownPortalOwnerFieldObservation(
             int SourceMapId,
             float SourceX,
@@ -2751,6 +2962,78 @@ namespace HaCreator.MapSimulator.Fields
                     observation.SourceX,
                     observation.SourceY,
                     observation.TownMapId,
+                    observation.ObservationSource,
+                    observation.RecordedAt))
+                .GroupBy(observation => observation.SourceMapId)
+                .Select(group => group.ToArray())
+                .ToList();
+            int? preferredSourceMapId = SelectPreferredRemoteTownPortalSourceMapId(
+                existingState,
+                metadata,
+                observationGroups);
+            RemoteTownPortalOwnerFieldObservation? ownerObservation = preferredSourceMapId.HasValue
+                ? SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(observationGroups, preferredSourceMapId.Value)
+                : null;
+            return ResolveRemoteTownPortalDestination(
+                currentMapId,
+                incomingDestination,
+                existingState,
+                metadata,
+                ownerObservation,
+                preferredSourceMapId);
+        }
+
+        internal static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestinationFromPendingObservedCandidatesForTesting(
+            int currentMapId,
+            bool hasIncomingDestination,
+            int incomingDestinationMapId,
+            float incomingDestinationX,
+            float incomingDestinationY,
+            bool hasExistingDestination,
+            int existingDestinationMapId,
+            float existingDestinationX,
+            float existingDestinationY,
+            bool hasMetadata,
+            int metadataSourceMapId,
+            float metadataSourceX,
+            float metadataSourceY,
+            int metadataTownMapId,
+            RemoteTownPortalObservationSource metadataObservationSource,
+            int metadataRecordedAt,
+            params (int SourceMapId, float SourceX, float SourceY, int ResolvedTownMapId, RemoteTownPortalObservationSource ObservationSource, int RecordedAt)[] pendingObservations)
+        {
+            RemoteTownPortalResolvedDestination? incomingDestination = hasIncomingDestination
+                ? new RemoteTownPortalResolvedDestination(incomingDestinationMapId, incomingDestinationX, incomingDestinationY)
+                : null;
+            RemoteTownPortalState? existingState = hasExistingDestination
+                ? new RemoteTownPortalState(
+                    OwnerCharacterId: 1,
+                    State: 1,
+                    MapId: currentMapId,
+                    X: 0,
+                    Y: 0,
+                    Destination: new RemoteTownPortalResolvedDestination(existingDestinationMapId, existingDestinationX, existingDestinationY),
+                    Phase: RemoteTownPortalVisualPhase.Stable,
+                    PhaseStartedAt: 0,
+                    RemovalState: null,
+                    RemovalSnapshot: null)
+                : null;
+            RemoteTownPortalFieldMetadata? metadata = hasMetadata
+                ? new RemoteTownPortalFieldMetadata(
+                    metadataSourceMapId,
+                    metadataSourceX,
+                    metadataSourceY,
+                    metadataTownMapId,
+                    metadataObservationSource,
+                    metadataRecordedAt)
+                : null;
+            List<RemoteTownPortalOwnerFieldObservation[]> observationGroups = pendingObservations
+                .Where(observation => observation.ResolvedTownMapId == currentMapId)
+                .Select(observation => new RemoteTownPortalOwnerFieldObservation(
+                    observation.SourceMapId,
+                    observation.SourceX,
+                    observation.SourceY,
+                    currentMapId,
                     observation.ObservationSource,
                     observation.RecordedAt))
                 .GroupBy(observation => observation.SourceMapId)
