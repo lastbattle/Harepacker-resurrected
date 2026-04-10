@@ -82,6 +82,7 @@ IDA confirms there is a coherent pre-field client surface that is not covered by
 ## Cross-Document Scope Notes
 
 - `CStage::OnSetCashShop` and `CStage::OnSetITC` stay indexed here only as pre-field stage-handoff references. The actual Cash Shop / ITC service-stage, child-window, and wishlist parity work belongs to backlog 8.
+- Packet-owned stage/map-load dispatch ownership for `CField::OnPacket`, `CStage::OnPacket`, `CStage::OnSetField`, and `CMapLoadable::OnPacket` is consolidated in backlog 7. This document only keeps the login-shell selectors, roster, and entitlement consequences that consume those transitions before field play resumes.
 - `CField::OnCharacterSale` remains relevant here because it is the stage-side bridge back into login-side character-slot entitlement flow, not the broader Cash Shop / ITC owner family itself.
 
 ## Client Function Index By Backlog Area
