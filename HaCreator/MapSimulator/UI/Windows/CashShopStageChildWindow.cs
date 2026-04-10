@@ -81,6 +81,30 @@ namespace HaCreator.MapSimulator.UI
 
         public sealed class OneADayOwnerState
         {
+            public sealed class SelectorEntryState
+            {
+                public int Index { get; init; }
+                public string Label { get; init; } = string.Empty;
+                public bool IsActive { get; init; }
+            }
+
+            public sealed class CounterSlotState
+            {
+                public int SlotIndex { get; init; }
+                public char Digit { get; init; }
+                public bool IsSeparator { get; init; }
+                public bool HasDigitCanvas { get; init; }
+            }
+
+            public sealed class PlateButtonState
+            {
+                public int SlotIndex { get; init; }
+                public bool HasCanvas { get; init; }
+                public bool IsLoaded { get; init; }
+                public bool IsFocused { get; init; }
+                public string Label { get; init; } = string.Empty;
+            }
+
             public sealed class HistoryEntryState
             {
                 public int CommoditySerialNumber { get; init; }
@@ -99,6 +123,7 @@ namespace HaCreator.MapSimulator.UI
             public Point SelectorPosition { get; init; } = new(412, 406);
             public string TodaySelectorLabel { get; init; } = "Today";
             public string PreviousSelectorLabel { get; init; } = "Previous";
+            public IReadOnlyList<SelectorEntryState> SelectorEntries { get; init; } = Array.Empty<SelectorEntryState>();
             public bool HasKeyFocusCanvas { get; init; }
             public bool HasPlateCanvas { get; init; }
             public bool HasPlateBigCanvas { get; init; }
@@ -116,6 +141,9 @@ namespace HaCreator.MapSimulator.UI
             public int Hour { get; init; }
             public int Minute { get; init; }
             public int Second { get; init; }
+            public IReadOnlyList<CounterSlotState> CounterSlots { get; init; } = Array.Empty<CounterSlotState>();
+            public IReadOnlyList<PlateButtonState> PlateButtons { get; init; } = Array.Empty<PlateButtonState>();
+            public string RewardSessionSummary { get; init; } = string.Empty;
             public string PacketStateSignature { get; init; } = string.Empty;
             public IReadOnlyList<HistoryEntryState> HistoryEntries { get; init; } = Array.Empty<HistoryEntryState>();
             public IReadOnlyList<string> RecentPackets { get; init; } = Array.Empty<string>();
@@ -715,12 +743,37 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
+            if (state.CounterSlots.Count > 0)
+            {
+                string counterSlotLine = string.Join(
+                    " ",
+                    state.CounterSlots.Select(slot =>
+                        slot.IsSeparator
+                            ? $"{slot.SlotIndex.ToString(CultureInfo.InvariantCulture)}::"
+                            : $"{slot.SlotIndex.ToString(CultureInfo.InvariantCulture)}:{slot.Digit}{(slot.HasDigitCanvas ? string.Empty : "!")}"));
+                DrawWrapped(sprite, counterSlotLine, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+
+            if (state.PlateButtons.Count > 0)
+            {
+                string plateButtonLine = string.Join(
+                    " ",
+                    state.PlateButtons.Take(6).Select(button =>
+                        $"{(button.IsFocused ? ">" : string.Empty)}{button.SlotIndex.ToString(CultureInfo.InvariantCulture)}:{(button.IsLoaded ? "on" : "off")}{(button.HasCanvas ? string.Empty : "!")}"));
+                DrawWrapped(sprite, $"Plate buttons {plateButtonLine}", Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+
             sprite.DrawString(
                 _font,
                 $"KeyFocus {(state.HasKeyFocusCanvas ? "on" : "off")}  Plate {(state.HasPlateCanvas ? "small" : "off")}/{(state.HasPlateBigCanvas ? "big" : "off")}  Digits {state.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/{state.ExpectedNumberCanvasCount.ToString(CultureInfo.InvariantCulture)}  Plate buttons {state.PlateButtonCount.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
+            if (!string.IsNullOrWhiteSpace(state.RewardSessionSummary))
+            {
+                DrawWrapped(sprite, state.RewardSessionSummary, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+            }
+
             DrawWrapped(sprite, _oneADaySessionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
             DrawWrapped(sprite, state.NoticeState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
             foreach (string recentPacket in state.RecentPackets.Take(2))
@@ -1915,8 +1968,8 @@ namespace HaCreator.MapSimulator.UI
             _oneADayCounterDigits = FormatOneADayCounterDigits(_oneADayRemainingSeconds);
             _oneADayRuntimeSeeded = true;
             _oneADaySessionState = state.IsPending
-                ? "CCSWnd_OneADay::ChangeState(0,1) armed the Today/Previous selector, key-focus canvas, and reward plate surfaces."
-                : "CCSWnd_OneADay::ChangeState(0,1) left the owner idle while keeping the Today/Previous selector seam alive.";
+                ? $"CCSWnd_OneADay::ChangeState(0,1) armed selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)}, {state.CounterSlots.Count.ToString(CultureInfo.InvariantCulture)} counter slots, and {state.PlateButtons.Count.ToString(CultureInfo.InvariantCulture)} recovered plate-button lanes."
+                : $"CCSWnd_OneADay::ChangeState(0,1) left selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} and {state.PlateButtons.Count.ToString(CultureInfo.InvariantCulture)} plate-button lanes alive while no packet-authored reward is pending.";
             _statusMessage = _oneADaySessionState;
         }
 

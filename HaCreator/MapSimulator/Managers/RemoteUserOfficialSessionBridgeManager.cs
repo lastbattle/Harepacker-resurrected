@@ -37,6 +37,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18492;
         private const string DefaultProcessName = "MapleStory";
 
+        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnUserRemotePacket (0x94b390) routes only enter/leave and remote-user opcodes 210-230; tutor remains local under CUserLocal::OnPacket 255/256.";
+
         private static readonly IReadOnlyDictionary<ushort, int> DefaultPacketMap = new Dictionary<ushort, int>
         {
             [179] = (int)Pools.RemoteUserPacketType.UserEnterField,
@@ -154,7 +156,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Remote-user official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}. {LastStatus}";
+            return $"Remote-user official-session bridge {lifecycle}; {session}; officialOwnerTable={OfficialRemoteOwnerEvidence}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; learned={DescribeLearnedPacketMappings()}. {LastStatus}";
         }
 
         public string DescribePacketMappings()
@@ -384,6 +386,12 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (!_packetMap.TryGetValue(opcode, out packetType))
                 {
+                    if (IsOfficialRemoteOpcodeCoveredByV95OwnerTable(opcode))
+                    {
+                        LastStatus = $"Ignored remote-user opcode {opcode}: {OfficialRemoteOwnerEvidence}";
+                        return false;
+                    }
+
                     byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
                     if (!TryInferInboundRemoteTutorPacketTypeNoLock(inferencePayload, out packetType, out string inferenceReason))
                     {
@@ -391,8 +399,9 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     _packetMap[opcode] = packetType;
-                    RememberLearnedOpcodeNoLock(opcode, packetType, $"auto:{inferenceReason}");
-                    LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}).";
+                    string learnedEvidence = $"auto:{inferenceReason}; {OfficialRemoteOwnerEvidence}";
+                    RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence);
+                    LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}); {OfficialRemoteOwnerEvidence}";
                 }
             }
 
@@ -404,6 +413,13 @@ namespace HaCreator.MapSimulator.Managers
             byte[] payload = rawPacket.Skip(sizeof(ushort)).ToArray();
             message = new RemoteUserOfficialSessionBridgeMessage(packetType, payload, source, opcode);
             return true;
+        }
+
+        internal static bool IsOfficialRemoteOpcodeCoveredByV95OwnerTable(ushort opcode)
+        {
+            return opcode == 179
+                || opcode == 180
+                || (opcode >= 210 && opcode <= 230);
         }
 
         private static bool TryInferInboundRemoteTutorPacketTypeNoLock(

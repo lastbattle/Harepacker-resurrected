@@ -407,31 +407,21 @@ namespace HaCreator.MapSimulator
                 return primaryLevelData;
             }
 
-            var levelDataEntries = new System.Collections.Generic.List<SkillLevelData>
-            {
-                primaryLevelData
-            };
-
+            SkillData primarySkill = null;
             for (int i = 0; i < supportSkills.Length; i++)
             {
-                SkillData supportSkill = supportSkills[i];
-                if (supportSkill == null)
+                if (supportSkills[i] != null)
                 {
-                    continue;
-                }
-
-                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(
-                    supportSkill,
-                    primaryLevelData?.Level ?? 1,
-                    preferPvpLevelData);
-                if (supportLevelData != null)
-                {
-                    levelDataEntries.Add(supportLevelData);
+                    primarySkill = supportSkills[i];
+                    break;
                 }
             }
 
             SkillLevelData projectedLevelData =
-                RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(levelDataEntries.ToArray()) ?? primaryLevelData;
+                RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(
+                    primarySkill,
+                    primaryLevelData,
+                    supportSkills) ?? primaryLevelData;
             if (projectedLevelData == null)
             {
                 return null;

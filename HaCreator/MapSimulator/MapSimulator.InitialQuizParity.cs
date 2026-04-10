@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizOwnerWidth = 266;
         private const int InitialQuizOwnerHeight = 224;
         private const int InitialQuizOwnerInputMaxLength = 50;
+        private const int InitialQuizOwnerInputFontHeightPixels = 12;
         private const int InitialQuizOwnerFrameFadeAlpha = 176;
         private const int InitialQuizTimerStringPoolIdTensMinutes = 0x0F73;
         private const int InitialQuizTimerStringPoolIdOnesMinutes = 3955;
@@ -32,6 +33,7 @@ namespace HaCreator.MapSimulator
         private const float InitialQuizOwnerInputTextScale = 0.38f;
 
         private bool _initialQuizOwnerVisualsLoaded;
+        private ClientTextRasterizer _initialQuizOwnerInputTextRasterizer;
         private Texture2D _initialQuizOwnerBackgroundTexture;
         private Texture2D _initialQuizOwnerBackgroundTexture2;
         private Texture2D _initialQuizOwnerBackgroundTexture3;
@@ -44,6 +46,15 @@ namespace HaCreator.MapSimulator
         private Texture2D _initialQuizOwnerCommaTexture;
         private InitialQuizAnimationFrame[] _initialQuizOwnerAnimationFrames = Array.Empty<InitialQuizAnimationFrame>();
         private Point _initialQuizOwnerBackground3Origin = Point.Zero;
+        private static readonly string[] InitialQuizOwnerInputFontFamilyCandidates =
+        {
+            "Arial",
+            "DotumChe",
+            "Dotum",
+            "GulimChe",
+            "Gulim",
+            "Tahoma",
+        };
 
         private readonly StringBuilder _initialQuizOwnerInput = new(InitialQuizOwnerInputMaxLength);
         private int _initialQuizOwnerCursorIndex;
@@ -518,6 +529,7 @@ namespace HaCreator.MapSimulator
 
         private void DrawInitialQuizOwnerInputField(Rectangle inputBounds, int currentTickCount)
         {
+            ClientTextRasterizer inputTextRasterizer = EnsureInitialQuizOwnerInputTextRasterizer();
             bool inputFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
             Color fillColor = inputFocused
                 ? new Color(255, 255, 255, 212)
@@ -538,14 +550,21 @@ namespace HaCreator.MapSimulator
             Vector2 drawPosition = new(inputBounds.X + 4, inputBounds.Y - 1);
             if (!string.IsNullOrEmpty(visibleInputText))
             {
-                ClientTextDrawing.Draw(
-                    _spriteBatch,
-                    visibleInputText,
-                    drawPosition,
-                    Color.Black,
-                    InitialQuizOwnerInputTextScale,
-                    _fontChat,
-                    textAreaWidth);
+                if (inputTextRasterizer != null)
+                {
+                    inputTextRasterizer.DrawString(_spriteBatch, visibleInputText, drawPosition, Color.Black, 1f, textAreaWidth);
+                }
+                else
+                {
+                    ClientTextDrawing.Draw(
+                        _spriteBatch,
+                        visibleInputText,
+                        drawPosition,
+                        Color.Black,
+                        InitialQuizOwnerInputTextScale,
+                        _fontChat,
+                        textAreaWidth);
+                }
             }
 
             bool cursorVisible = inputFocused && ShouldDrawInitialQuizOwnerCursor(currentTickCount, _initialQuizOwnerCursorBlinkStartedAt);
@@ -578,20 +597,49 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<int>();
             }
 
+            ClientTextRasterizer inputTextRasterizer = EnsureInitialQuizOwnerInputTextRasterizer();
             int[] glyphWidths = new int[inputText.Length];
             for (int i = 0; i < inputText.Length; i++)
             {
-                glyphWidths[i] = Math.Max(
-                    1,
-                    (int)Math.Ceiling(
-                        ClientTextDrawing.Measure(
-                            GraphicsDevice,
-                            inputText[i].ToString(),
-                            InitialQuizOwnerInputTextScale,
-                            _fontChat).X));
+                Vector2 glyphSize = inputTextRasterizer != null
+                    ? inputTextRasterizer.MeasureString(inputText[i].ToString())
+                    : ClientTextDrawing.Measure(
+                        GraphicsDevice,
+                        inputText[i].ToString(),
+                        InitialQuizOwnerInputTextScale,
+                        _fontChat);
+                glyphWidths[i] = Math.Max(1, (int)Math.Ceiling(glyphSize.X));
             }
 
             return glyphWidths;
+        }
+
+        private ClientTextRasterizer EnsureInitialQuizOwnerInputTextRasterizer()
+        {
+            if (_initialQuizOwnerInputTextRasterizer != null || GraphicsDevice == null)
+            {
+                return _initialQuizOwnerInputTextRasterizer;
+            }
+
+            try
+            {
+                string requestedFontFamily = MapleStoryStringPool.GetOrFallback(AntiMacroEditControl.ClientFontStringPoolId, "Arial");
+                string resolvedFontFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                    requestedFontFamily,
+                    preferredPrivateFontFamilyCandidates: InitialQuizOwnerInputFontFamilyCandidates,
+                    preferEmbeddedPrivateFontSources: true);
+                _initialQuizOwnerInputTextRasterizer = new ClientTextRasterizer(
+                    GraphicsDevice,
+                    resolvedFontFamily,
+                    basePointSize: InitialQuizOwnerInputFontHeightPixels,
+                    preferEmbeddedPrivateFontSources: true);
+            }
+            catch
+            {
+                _initialQuizOwnerInputTextRasterizer = null;
+            }
+
+            return _initialQuizOwnerInputTextRasterizer;
         }
 
         private void DrawInitialQuizOwnerAnimationFrame(Rectangle ownerBounds, int currentTickCount)

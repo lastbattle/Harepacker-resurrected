@@ -138,6 +138,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<InputAction, KeyBinding> _stagedBindings = new();
         private readonly Dictionary<InputAction, KeyBinding> _originalBindings = new();
         private const int ClientFuncKeyMappedCellSize = 32;
+        private const int ClientFuncKeyMappedItemCountTop = 20;
         private static readonly Color ClientFuncKeyMappedUnavailableTint = new(160, 160, 160, 215);
         private static readonly Color ClientFuncKeyMappedUnavailableOverlay = new(128, 128, 128, 160);
         private static readonly IReadOnlyDictionary<int, string> PaletteSlotLabels = new Dictionary<int, string>
@@ -1045,9 +1046,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float scale = ResolveClientFuncKeyMappedScale(cellBounds, iconTexture, shortcutVisualState.DrawLayer, compact);
-            Vector2 drawPosition = ResolveClientFuncKeyMappedPosition(cellBounds, iconTexture, shortcutVisualState.DrawLayer, scale);
+            int drawWidth = Math.Max(1, (int)Math.Round(iconTexture.Width * scale, MidpointRounding.AwayFromZero));
+            int drawHeight = Math.Max(1, (int)Math.Round(iconTexture.Height * scale, MidpointRounding.AwayFromZero));
+            Rectangle iconBounds = ResolveClientFuncKeyMappedIconBounds(cellBounds, drawWidth, drawHeight, shortcutVisualState.DrawLayer);
             Color tint = shortcutVisualState.Unavailable ? ClientFuncKeyMappedUnavailableTint : Color.White;
-            sprite.Draw(iconTexture, drawPosition, null, tint, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.Draw(iconTexture, iconBounds, tint);
 
             if (shortcutVisualState.DrawLayer == ShortcutVisualState.ClientDrawLayer.ItemUnavailable)
             {
@@ -1094,22 +1097,35 @@ namespace HaCreator.MapSimulator.UI
                     : Math.Min(scale, 1f);
         }
 
-        private static Vector2 ResolveClientFuncKeyMappedPosition(
+        internal static Rectangle ResolveClientFuncKeyMappedIconBounds(
             Rectangle cellBounds,
-            Texture2D iconTexture,
+            int drawWidth,
+            int drawHeight,
             ShortcutVisualState.ClientDrawLayer drawLayer,
-            float scale)
+            bool clampToCell = true)
         {
             if (drawLayer is ShortcutVisualState.ClientDrawLayer.Skill or ShortcutVisualState.ClientDrawLayer.Macro)
             {
-                return new Vector2(
-                    cellBounds.Right - (iconTexture.Width * scale),
-                    cellBounds.Bottom - (iconTexture.Height * scale));
+                return new Rectangle(
+                    cellBounds.X,
+                    cellBounds.Bottom - drawHeight,
+                    drawWidth,
+                    drawHeight);
             }
 
-            return new Vector2(
-                cellBounds.Center.X - ((iconTexture.Width * scale) * 0.5f),
-                cellBounds.Center.Y - ((iconTexture.Height * scale) * 0.5f));
+            Rectangle iconBounds = new(
+                cellBounds.Center.X - (drawWidth / 2),
+                cellBounds.Center.Y - (drawHeight / 2),
+                drawWidth,
+                drawHeight);
+            if (!clampToCell)
+            {
+                return iconBounds;
+            }
+
+            int clampedX = Math.Clamp(iconBounds.X, cellBounds.X, cellBounds.Right - iconBounds.Width);
+            int clampedY = Math.Clamp(iconBounds.Y, cellBounds.Y, cellBounds.Bottom - iconBounds.Height);
+            return new Rectangle(clampedX, clampedY, iconBounds.Width, iconBounds.Height);
         }
 
         private void DrawClientFuncKeyMappedQuantity(SpriteBatch sprite, Rectangle cellBounds, ShortcutVisualState shortcutVisualState, bool compact)
@@ -1121,16 +1137,36 @@ namespace HaCreator.MapSimulator.UI
 
             float scale = compact ? 0.28f : 0.36f;
             Vector2 quantitySize = _font.MeasureString(shortcutVisualState.QuantityText) * scale;
+            Vector2 quantityPosition = ResolveClientFuncKeyMappedQuantityPosition(
+                cellBounds,
+                quantitySize,
+                shortcutVisualState.DrawLayer);
             sprite.DrawString(
                 _font,
                 shortcutVisualState.QuantityText,
-                new Vector2(cellBounds.Right - quantitySize.X - 1f, cellBounds.Y + 20f),
+                quantityPosition,
                 new Color(255, 248, 194),
                 0f,
                 Vector2.Zero,
                 scale,
                 SpriteEffects.None,
                 0f);
+        }
+
+        internal static Vector2 ResolveClientFuncKeyMappedQuantityPosition(
+            Rectangle cellBounds,
+            Vector2 quantitySize,
+            ShortcutVisualState.ClientDrawLayer drawLayer)
+        {
+            float x = drawLayer == ShortcutVisualState.ClientDrawLayer.ItemStack
+                ? cellBounds.X
+                : cellBounds.Right - quantitySize.X - 1f;
+            float y = drawLayer == ShortcutVisualState.ClientDrawLayer.ItemStack
+                ? Math.Min(
+                    cellBounds.Bottom - quantitySize.Y,
+                    cellBounds.Y + ((ClientFuncKeyMappedItemCountTop / (float)ClientFuncKeyMappedCellSize) * cellBounds.Height))
+                : cellBounds.Y + ClientFuncKeyMappedItemCountTop;
+            return new Vector2(x, y);
         }
 
         private static float ResolveShortcutVisualScale(

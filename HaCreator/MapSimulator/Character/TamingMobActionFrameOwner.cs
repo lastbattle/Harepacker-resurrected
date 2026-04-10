@@ -271,8 +271,9 @@ namespace HaCreator.MapSimulator.Character
         private bool ShouldRequireExactMechanicVehicleAction(string actionName)
         {
             return VehicleItemId == MechanicTamingMobItemId
-                   && (ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(actionName, includeTransformStates: true)
-                       || ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationActionName(actionName));
+                   && ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                       VehicleItemId,
+                       actionName);
         }
 
         private static IEnumerable<string> EnumeratePortableChairRideCandidates()

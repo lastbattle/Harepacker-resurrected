@@ -180,13 +180,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static Dictionary<byte, ContextOwnedStagePeriodCatalogEntry> BuildPeriods(WzImageProperty themeProperty)
         {
             Dictionary<byte, ContextOwnedStagePeriodCatalogEntry> periods = new();
-            foreach (WzImageProperty periodNode in EnumeratePeriodNodes(themeProperty))
+            foreach ((byte mode, WzImageProperty periodNode) in EnumeratePeriodNodes(themeProperty))
             {
-                if (!byte.TryParse(periodNode.Name, NumberStyles.None, CultureInfo.InvariantCulture, out byte mode))
-                {
-                    continue;
-                }
-
                 periods[mode] = new ContextOwnedStagePeriodCatalogEntry(
                     themeProperty.Name,
                     mode,
@@ -200,47 +195,58 @@ namespace HaCreator.MapSimulator.Interaction
             return periods;
         }
 
-        private static IEnumerable<WzImageProperty> EnumeratePeriodNodes(WzImageProperty themeProperty)
+        private static IEnumerable<(byte Mode, WzImageProperty Property)> EnumeratePeriodNodes(WzImageProperty themeProperty)
         {
             if (themeProperty["stage"] is WzImageProperty stageProperty)
             {
-                foreach (WzImageProperty child in stageProperty.WzProperties.OfType<WzImageProperty>())
+                foreach ((byte mode, WzImageProperty property) in EnumerateIndexedPeriodNodes(stageProperty))
                 {
-                    if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out _))
-                    {
-                        yield return child;
-                    }
+                    yield return (mode, property);
                 }
-
                 yield break;
             }
 
             if (themeProperty["stageList"] is WzImageProperty stageList)
             {
-                foreach (WzImageProperty child in stageList.WzProperties.OfType<WzImageProperty>())
+                foreach ((byte mode, WzImageProperty property) in EnumerateIndexedPeriodNodes(stageList))
                 {
-                    if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out _))
-                    {
-                        yield return child;
-                    }
+                    yield return (mode, property);
                 }
-
                 yield break;
             }
 
             foreach (WzImageProperty child in themeProperty.WzProperties.OfType<WzImageProperty>())
             {
-                if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out _))
+                if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out byte mode))
                 {
-                    yield return child;
+                    yield return (mode, child);
                 }
+            }
+        }
+
+        private static IEnumerable<(byte Mode, WzImageProperty Property)> EnumerateIndexedPeriodNodes(WzImageProperty container)
+        {
+            int ordinal = 0;
+            foreach (WzImageProperty child in container.WzProperties.OfType<WzImageProperty>())
+            {
+                if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out byte explicitMode))
+                {
+                    yield return (explicitMode, child);
+                }
+                else if (ordinal <= byte.MaxValue)
+                {
+                    // `CStageSystem::IterateStageSystemClient` walks `stage` / `stageList`
+                    // by child index rather than by extracted property name.
+                    yield return ((byte)ordinal, child);
+                }
+
+                ordinal++;
             }
         }
 
         private static uint? TryReadStageBackColor(WzImageProperty periodNode)
         {
-            WzImageProperty colorProperty = periodNode["backColor"];
-            return colorProperty == null ? null : unchecked((uint)InfoTool.GetInt(colorProperty));
+            return unchecked((uint)InfoTool.GetInt(periodNode["backColor"], -1));
         }
 
         private static IReadOnlyList<ContextOwnedStageBackImageEntry> ParseStageBackImages(WzImageProperty periodNode)
@@ -527,13 +533,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static Dictionary<byte, HashSet<string>> BuildPeriodKeywordAugmentations(WzImageProperty themeProperty)
         {
             Dictionary<byte, HashSet<string>> periodKeywords = new();
-            foreach (WzImageProperty periodProperty in EnumeratePeriodNodes(themeProperty))
+            foreach ((byte mode, WzImageProperty periodProperty) in EnumeratePeriodNodes(themeProperty))
             {
-                if (!byte.TryParse(periodProperty.Name, NumberStyles.None, CultureInfo.InvariantCulture, out byte mode))
-                {
-                    continue;
-                }
-
                 HashSet<string> extraKeywords = ParseStringSet(periodProperty["stageKeyword"] ?? periodProperty);
                 if (extraKeywords.Count > 0)
                 {

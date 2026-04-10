@@ -110,6 +110,12 @@ namespace HaCreator.MapSimulator
             public int? OriginalMaxDurability { get; init; }
         }
 
+        private sealed class PacketOwnedBattleshipDurabilityPresentationState
+        {
+            public int CurrentValue { get; init; }
+            public int MaxValue { get; init; }
+        }
+
         private sealed class PacketOwnedRadioTrackResolution
         {
             public WzBinaryProperty AudioProperty { get; init; }
@@ -194,6 +200,7 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedTutorObservedCharacterId;
         private int _packetOwnedTutorObservedLevel;
         private PacketOwnedBattleshipDurabilityOverrideState _packetOwnedBattleshipDurabilityOverride;
+        private PacketOwnedBattleshipDurabilityPresentationState _packetOwnedBattleshipDurabilityPresentation;
         private int _packetQuestGuideQuestId;
         private int _packetOwnedUtilityRequestTick = int.MinValue;
         private int _lastDeliveryQuestId;
@@ -4776,63 +4783,7 @@ namespace HaCreator.MapSimulator
 
         private void UpdatePacketOwnedBattleshipCooldownLifecycle(int currentTickCount)
         {
-            if (_playerManager?.Skills == null)
-            {
-                if (_packetOwnedBattleshipDurabilityOverride?.MountPart != null)
-                {
-                    RestorePacketOwnedBattleshipCooldownOverride();
-                }
-
-                return;
-            }
-
-            if (!_playerManager.Skills.TryGetCooldownUiState(
-                    PacketOwnedBattleshipSkillId,
-                    currentTickCount,
-                    out SkillManager.CooldownUiState cooldownState)
-                || cooldownState.PresentationKind != SkillManager.CooldownUiPresentationKind.VehicleDurability
-                || cooldownState.CurrentValue <= 0)
-            {
-                if (_packetOwnedBattleshipDurabilityOverride?.MountPart != null)
-                {
-                    RestorePacketOwnedBattleshipCooldownOverride();
-                    RefreshPacketOwnedBattleshipRepairWindow();
-                }
-
-                return;
-            }
-
-            CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
-            if (mountPart == null)
-            {
-                ResetPacketOwnedBattleshipCooldownOverrideIfStale();
-                return;
-            }
-
-            if (!ReferenceEquals(_packetOwnedBattleshipDurabilityOverride?.MountPart, mountPart))
-            {
-                RestorePacketOwnedBattleshipCooldownOverride();
-                EnsurePacketOwnedBattleshipCooldownOverrideCaptured(mountPart);
-            }
-
-            if (!TryResolvePacketOwnedBattleshipDurabilityPresentation(
-                    mountPart,
-                    cooldownState.CurrentValue,
-                    cooldownState.MaxValue,
-                    out int durability,
-                    out int maxDurability))
-            {
-                return;
-            }
-
-            bool changed = mountPart.Durability != durability || mountPart.MaxDurability != maxDurability;
-            mountPart.Durability = durability;
-            mountPart.MaxDurability = maxDurability;
-
-            if (changed)
-            {
-                RefreshPacketOwnedBattleshipRepairWindow();
-            }
+            SyncPacketOwnedBattleshipDurabilityPresentation(refreshRepairWindow: false);
         }
 
         private bool IsPacketOwnedRadioPlaying()
@@ -5819,52 +5770,38 @@ namespace HaCreator.MapSimulator
 
         private void ApplyPacketOwnedBattleshipCooldownSideEffects(int remainingUnits)
         {
-            CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
-            if (mountPart == null)
-            {
-                if (remainingUnits <= 0)
-                {
-                    RestorePacketOwnedBattleshipCooldownOverride();
-                }
-
-                return;
-            }
-
             int skillLevel = Math.Max(0, _playerManager.Skills?.GetSkillLevel(PacketOwnedBattleshipSkillId) ?? 0);
-            int characterLevel = Math.Max(0, _playerManager.Player.Build.Level);
+            int characterLevel = Math.Max(0, _playerManager?.Player?.Build?.Level ?? 0);
             if (remainingUnits > 0)
             {
-                EnsurePacketOwnedBattleshipCooldownOverrideCaptured(mountPart);
-
                 int maxDurability = ResolvePacketOwnedBattleshipMaxDurability(skillLevel, characterLevel);
-                if (maxDurability > 0)
-                {
-                    mountPart.MaxDurability = maxDurability;
-                }
-
-                int boundedMaxDurability = Math.Max(0, mountPart.MaxDurability ?? maxDurability);
-                mountPart.Durability = boundedMaxDurability > 0
-                    ? Math.Clamp(remainingUnits, 0, boundedMaxDurability)
+                int boundedMaxDurability = Math.Max(0, maxDurability);
+                int boundedCurrentDurability = boundedMaxDurability > 0
+                    ? Math.Clamp(Math.Max(0, remainingUnits), 0, boundedMaxDurability)
                     : Math.Max(0, remainingUnits);
-                _playerManager.Skills.SetAuthoritativeVehicleDurabilityPresentation(
-                    PacketOwnedBattleshipSkillId,
-                    mountPart.Durability ?? Math.Max(0, remainingUnits),
-                    mountPart.MaxDurability ?? maxDurability);
+                _packetOwnedBattleshipDurabilityPresentation = new PacketOwnedBattleshipDurabilityPresentationState
+                {
+                    CurrentValue = boundedCurrentDurability,
+                    MaxValue = Math.Max(boundedCurrentDurability, boundedMaxDurability)
+                };
             }
             else
             {
-                RestorePacketOwnedBattleshipCooldownOverride();
+                _packetOwnedBattleshipDurabilityPresentation = null;
             }
 
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RepairDurability) is RepairDurabilityWindow repairWindow)
-            {
-                int npcTemplateId = repairWindow.NpcTemplateId;
-                RefreshRepairDurabilityWindow(npcTemplateId, mountPart.ItemId);
-            }
+            SyncPacketOwnedBattleshipDurabilityPresentation(refreshRepairWindow: true);
         }
 
         private CharacterPart ResolveActivePacketOwnedBattleshipMountPart()
         {
+            CharacterPart mountedStatePart = _playerManager?.Player?.ResolveMountedStateTamingMobPart();
+            if (mountedStatePart?.Slot == EquipSlot.TamingMob
+                && mountedStatePart.ItemId == PacketOwnedBattleshipMountItemId)
+            {
+                return mountedStatePart;
+            }
+
             if (_playerManager?.Player?.Build?.Equipment == null
                 || !_playerManager.Player.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart)
                 || mountPart?.Slot != EquipSlot.TamingMob
@@ -5874,6 +5811,133 @@ namespace HaCreator.MapSimulator
             }
 
             return mountPart;
+        }
+
+        private void SyncPacketOwnedBattleshipDurabilityPresentation(bool refreshRepairWindow)
+        {
+            if (_playerManager?.Skills == null)
+            {
+                if (_packetOwnedBattleshipDurabilityOverride?.MountPart != null)
+                {
+                    RestorePacketOwnedBattleshipCooldownOverride();
+                    refreshRepairWindow = true;
+                }
+
+                if (refreshRepairWindow)
+                {
+                    RefreshPacketOwnedBattleshipRepairWindow();
+                }
+
+                return;
+            }
+
+            if (!TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue)
+                || !IsPacketOwnedBattleshipVehiclePresentationActive())
+            {
+                _playerManager.Skills.ClearAuthoritativeCooldownPresentation(PacketOwnedBattleshipSkillId);
+                if (_packetOwnedBattleshipDurabilityOverride?.MountPart != null)
+                {
+                    RestorePacketOwnedBattleshipCooldownOverride();
+                    refreshRepairWindow = true;
+                }
+
+                if (refreshRepairWindow)
+                {
+                    RefreshPacketOwnedBattleshipRepairWindow();
+                }
+
+                return;
+            }
+
+            _playerManager.Skills.SetAuthoritativeVehicleDurabilityPresentation(
+                PacketOwnedBattleshipSkillId,
+                currentValue,
+                maxValue);
+
+            CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
+            if (mountPart == null)
+            {
+                ResetPacketOwnedBattleshipCooldownOverrideIfStale();
+                if (refreshRepairWindow)
+                {
+                    RefreshPacketOwnedBattleshipRepairWindow();
+                }
+
+                return;
+            }
+
+            if (!ReferenceEquals(_packetOwnedBattleshipDurabilityOverride?.MountPart, mountPart))
+            {
+                RestorePacketOwnedBattleshipCooldownOverride();
+                EnsurePacketOwnedBattleshipCooldownOverrideCaptured(mountPart);
+            }
+
+            if (!TryResolvePacketOwnedBattleshipDurabilityPresentation(
+                    mountPart,
+                    currentValue,
+                    maxValue,
+                    out int durability,
+                    out int resolvedMaxDurability))
+            {
+                return;
+            }
+
+            bool changed = mountPart.Durability != durability || mountPart.MaxDurability != resolvedMaxDurability;
+            mountPart.Durability = durability;
+            mountPart.MaxDurability = resolvedMaxDurability;
+
+            if (changed || refreshRepairWindow)
+            {
+                RefreshPacketOwnedBattleshipRepairWindow();
+            }
+        }
+
+        private bool TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue)
+        {
+            currentValue = 0;
+            maxValue = 0;
+            if (_packetOwnedBattleshipDurabilityPresentation == null)
+            {
+                return false;
+            }
+
+            currentValue = Math.Max(0, _packetOwnedBattleshipDurabilityPresentation.CurrentValue);
+            if (currentValue <= 0)
+            {
+                return false;
+            }
+
+            maxValue = Math.Max(currentValue, _packetOwnedBattleshipDurabilityPresentation.MaxValue);
+            return true;
+        }
+
+        private bool IsPacketOwnedBattleshipVehiclePresentationActive()
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null)
+            {
+                return false;
+            }
+
+            CharacterPart equippedMountPart = null;
+            player.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out equippedMountPart);
+            CharacterPart activeMountedRenderOwner = player.ResolveMountedStateTamingMobPart();
+            return ResolvePacketOwnedBattleshipMountedVehicleId(
+                equippedMountPart,
+                activeMountedRenderOwner,
+                player.CurrentActionName) == PacketOwnedBattleshipMountItemId;
+        }
+
+        internal static int ResolvePacketOwnedBattleshipMountedVehicleId(
+            CharacterPart equippedMountPart,
+            CharacterPart activeMountedRenderOwner,
+            string currentActionName)
+        {
+            return FollowCharacterEligibilityResolver.ResolveMountedVehicleId(
+                equippedMountPart,
+                currentActionName,
+                mechanicMode: null,
+                activeMountedRenderOwner: activeMountedRenderOwner);
         }
 
         internal static bool TryResolvePacketOwnedBattleshipDurabilityPresentation(
@@ -6383,8 +6447,10 @@ namespace HaCreator.MapSimulator
             }
 
             int previousBoundCharacterId = _packetOwnedLocalUtilityContext.RadioCreateLayerBoundCharacterId;
+            bool resetForRuntimeCharacterChange = false;
             if (_packetOwnedLocalUtilityContext.RequiresRadioCreateLayerCharacterReset(runtimeCharacterId))
             {
+                resetForRuntimeCharacterChange = true;
                 if (ShouldResetPacketOwnedRadioForRuntimeCharacterChange(
                         IsPacketOwnedRadioPlaying(),
                         previousBoundCharacterId,
@@ -6401,7 +6467,9 @@ namespace HaCreator.MapSimulator
             }
 
             _packetOwnedLocalUtilityContext.EnsureRadioCreateLayerInitializedFromRuntime(runtimeCharacterId);
-            RestorePersistedPacketOwnedRadioCreateLayerContextIfNeeded(runtimeCharacterId);
+            RestorePersistedPacketOwnedRadioCreateLayerContextIfNeeded(
+                runtimeCharacterId,
+                allowAfterRuntimeCharacterReset: resetForRuntimeCharacterChange);
         }
 
         private void CapturePacketOwnedRadioCreateLayerSessionState()
@@ -6607,14 +6675,17 @@ namespace HaCreator.MapSimulator
             return $"Cleared packet-owned local utility CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] (radio bLeft) override.";
         }
 
-        private void RestorePersistedPacketOwnedRadioCreateLayerContextIfNeeded(int runtimeCharacterId)
+        private void RestorePersistedPacketOwnedRadioCreateLayerContextIfNeeded(
+            int runtimeCharacterId,
+            bool allowAfterRuntimeCharacterReset)
         {
             if (!ShouldRestorePersistedPacketOwnedRadioCreateLayerContext(
                     runtimeCharacterId,
                     _packetOwnedLocalUtilityContext.RadioCreateLayerBoundCharacterId,
                     _packetOwnedLocalUtilityContext.HasRadioCreateLayerLeftContextValue,
                     _packetOwnedLocalUtilityContext.RadioCreateLayerMutationSequence,
-                    _packetOwnedLocalUtilityContext.RadioCreateLayerLastMutationSource))
+                    _packetOwnedLocalUtilityContext.RadioCreateLayerLastMutationSource,
+                    allowAfterRuntimeCharacterReset))
             {
                 return;
             }
@@ -6642,13 +6713,26 @@ namespace HaCreator.MapSimulator
             int boundCharacterId,
             bool hasOverride,
             int mutationSequence,
-            string mutationSource)
+            string mutationSource,
+            bool allowAfterRuntimeCharacterReset)
         {
-            return runtimeCharacterId > 0
-                && boundCharacterId == runtimeCharacterId
-                && !hasOverride
-                && mutationSequence <= 0
-                && string.Equals(mutationSource ?? string.Empty, "fallback", StringComparison.Ordinal);
+            if (runtimeCharacterId <= 0
+                || boundCharacterId != runtimeCharacterId
+                || hasOverride)
+            {
+                return false;
+            }
+
+            string normalizedMutationSource = mutationSource ?? string.Empty;
+            if (mutationSequence <= 0
+                && string.Equals(normalizedMutationSource, "fallback", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return allowAfterRuntimeCharacterReset
+                && mutationSequence == 1
+                && string.Equals(normalizedMutationSource, "runtime-character-reset", StringComparison.Ordinal);
         }
 
         private LoginCharacterAccountStore.LoginCharacterAccountEntryState ResolveStoredPacketOwnedRadioCreateLayerEntry(int runtimeCharacterId)
@@ -7423,7 +7507,7 @@ namespace HaCreator.MapSimulator
                     {
                         PacketOwnedBalloonTextRun run = line.Runs[runIndex];
                         DrawPacketOwnedBalloonRun(
-                            run with { Style = new PacketOwnedBalloonTextStyle(run.Style.Color, run.Style.Emphasis) },
+                            run with { Style = new PacketOwnedBalloonTextStyle(run.Style.Color, run.Style.Emphasis, run.Style.Scale) },
                             new Vector2(drawX, drawY),
                             1f);
                         drawX += MeasurePacketOwnedBalloonRun(run);
@@ -11917,14 +12001,26 @@ namespace HaCreator.MapSimulator
                 }
 
                 JsonElement rankingItem = item;
-                if (TryGetJsonObjectProperty(rankingItem, out JsonElement nestedRankingEntry, "entry", "row", "standing", "card", "item", "record"))
+                if (TryGetJsonObjectProperty(
+                        rankingItem,
+                        out JsonElement nestedRankingEntry,
+                        "entry",
+                        "row",
+                        "standing",
+                        "card",
+                        "item",
+                        "record",
+                        "character",
+                        "player",
+                        "avatar",
+                        "ranker"))
                 {
                     rankingItem = nestedRankingEntry;
                 }
 
-                string label = TryGetJsonStringProperty(
+                string label = ResolvePacketOwnedRankingEntryText(
                     rankingItem,
-                    out string resolvedLabel,
+                    item,
                     "label",
                     "title",
                     "name",
@@ -11933,12 +12029,10 @@ namespace HaCreator.MapSimulator
                     "charName",
                     "userName",
                     "avatarName",
-                    "rowLabel")
-                    ? resolvedLabel
-                    : string.Empty;
-                string value = TryGetJsonStringProperty(
+                    "rowLabel");
+                string value = ResolvePacketOwnedRankingEntryText(
                     item,
-                    out string parsedValue,
+                    rankingItem,
                     "value",
                     "rank",
                     "position",
@@ -11948,12 +12042,10 @@ namespace HaCreator.MapSimulator
                     "orderNo",
                     "score",
                     "level",
-                    "worldRank")
-                    ? parsedValue
-                    : string.Empty;
-                string detail = TryGetJsonStringProperty(
+                    "worldRank");
+                string detail = ResolvePacketOwnedRankingEntryText(
                     item,
-                    out string parsedDetail,
+                    rankingItem,
                     "detail",
                     "description",
                     "desc",
@@ -11964,9 +12056,7 @@ namespace HaCreator.MapSimulator
                     "guild",
                     "guildName",
                     "message",
-                    "extra")
-                    ? parsedDetail
-                    : string.Empty;
+                    "extra");
                 if (string.IsNullOrWhiteSpace(label))
                 {
                     continue;
@@ -12287,48 +12377,154 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                string title = TryGetJsonStringProperty(
+                if (TryGetJsonArrayProperty(
+                        item,
+                        out JsonElement nestedEntries,
+                        "entries",
+                        "rows",
+                        "events",
+                        "attendanceEntries",
+                        "attendanceRows",
+                        "calendarEntries",
+                        "eventRows",
+                        "schedules",
+                        "days")
+                    || TryGetJsonNestedArrayProperty(
+                        item,
+                        out nestedEntries,
+                        new[] { "entry", "row", "event", "schedule", "attendance", "calendar", "day" },
+                        new[] { "entries", "rows", "events", "attendanceEntries", "calendarEntries", "schedules", "days" }))
+                {
+                    AppendPacketOwnedEventCalendarJsonEntries(nestedEntries, destination);
+                    index = destination.Count;
+                    continue;
+                }
+
+                JsonElement eventItem = item;
+                if (TryGetJsonObjectProperty(
+                        eventItem,
+                        out JsonElement nestedEventItem,
+                        "entry",
+                        "row",
+                        "event",
+                        "schedule",
+                        "attendance",
+                        "calendarEntry",
+                        "attendanceEntry"))
+                {
+                    eventItem = nestedEventItem;
+                }
+
+                string title = ResolvePacketOwnedJsonText(
+                    eventItem,
                     item,
-                    out string resolvedTitle,
                     "title",
                     "name",
                     "label",
                     "subject",
-                    "eventName")
-                    ? resolvedTitle
-                    : string.Empty;
+                    "eventName");
                 if (string.IsNullOrWhiteSpace(title))
                 {
                     continue;
                 }
 
-                DateTime scheduledAt = TryGetJsonStringProperty(item, out string scheduledToken, "scheduledAt", "date", "day", "startDate", "start", "eventDate")
-                    && TryParsePacketOwnedEventDate(scheduledToken, out DateTime parsedScheduledAt)
+                DateTime scheduledAt = TryResolvePacketOwnedEventDate(eventItem, item, out DateTime parsedScheduledAt)
                     ? parsedScheduledAt
                     : DateTime.Today;
-                string detail = TryGetJsonStringProperty(item, out string parsedDetail, "detail", "description", "desc", "body", "message")
-                    ? parsedDetail
-                    : string.Empty;
+                string detail = ResolvePacketOwnedJsonText(
+                    eventItem,
+                    item,
+                    "detail",
+                    "description",
+                    "desc",
+                    "body",
+                    "message");
 
-                EventEntryStatus status = TryGetJsonStringProperty(item, out string parsedStatusToken, "status", "state", "progress", "attendanceState")
+                EventEntryStatus status = ResolvePacketOwnedJsonText(
+                        eventItem,
+                        item,
+                        "status",
+                        "state",
+                        "progress",
+                        "attendanceState")
+                    is string parsedStatusToken
                     && TryParsePacketOwnedEventEntryStatus(parsedStatusToken, out EventEntryStatus parsedStatus)
                     ? parsedStatus
                     : EventEntryStatus.Upcoming;
-                string statusText = TryGetJsonStringProperty(item, out string parsedStatusText, "statusText", "statusLabel", "stateLabel", "progressLabel")
-                    ? parsedStatusText
-                    : GetDefaultPacketOwnedEventStatusText(status);
-                int sourceTick = TryGetJsonInt32Property(item, out int parsedSourceTick, "sourceTick", "tick")
+                string statusText = ResolvePacketOwnedJsonText(
+                    eventItem,
+                    item,
+                    "statusText",
+                    "statusLabel",
+                    "stateLabel",
+                    "progressLabel");
+                int sourceTick = TryGetJsonInt32Property(eventItem, out int parsedSourceTick, "sourceTick", "tick")
+                    || TryGetJsonInt32Property(item, out parsedSourceTick, "sourceTick", "tick")
                     ? parsedSourceTick
                     : int.MinValue;
-                int sortPriority = TryGetJsonInt32Property(item, out int parsedSortPriority, "sortPriority", "priority")
+                int sortPriority = TryGetJsonInt32Property(eventItem, out int parsedSortPriority, "sortPriority", "priority")
+                    || TryGetJsonInt32Property(item, out parsedSortPriority, "sortPriority", "priority")
                     ? parsedSortPriority
                     : ResolvePacketOwnedEventEntrySortPriority(status);
-                int sortOrder = TryGetJsonInt32Property(item, out int parsedSortOrder, "sortOrder", "index", "order")
+                int sortOrder = TryGetJsonInt32Property(eventItem, out int parsedSortOrder, "sortOrder", "index", "order")
+                    || TryGetJsonInt32Property(item, out parsedSortOrder, "sortOrder", "index", "order")
                     ? parsedSortOrder
                     : index;
                 destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, title.Trim(), detail, status, statusText, sourceTick, sortPriority, sortOrder));
                 index++;
             }
+        }
+
+        private static string ResolvePacketOwnedRankingEntryText(
+            JsonElement primaryElement,
+            JsonElement fallbackElement,
+            params string[] propertyNames)
+        {
+            return ResolvePacketOwnedJsonText(primaryElement, fallbackElement, propertyNames);
+        }
+
+        private static string ResolvePacketOwnedJsonText(
+            JsonElement primaryElement,
+            JsonElement fallbackElement,
+            params string[] propertyNames)
+        {
+            foreach (string propertyName in propertyNames ?? Array.Empty<string>())
+            {
+                if (TryGetJsonText(primaryElement, propertyName, out string value)
+                    || TryGetJsonText(fallbackElement, propertyName, out value))
+                {
+                    return value;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static bool TryResolvePacketOwnedEventDate(
+            JsonElement primaryElement,
+            JsonElement fallbackElement,
+            out DateTime scheduledAt)
+        {
+            return TryGetJsonDateProperty(
+                       primaryElement,
+                       out scheduledAt,
+                       "scheduledAt",
+                       "date",
+                       "day",
+                       "startDate",
+                       "start",
+                       "eventDate")
+                   || TryGetJsonDateProperty(
+                       fallbackElement,
+                       out scheduledAt,
+                       "scheduledAt",
+                       "date",
+                       "day",
+                       "startDate",
+                       "start",
+                       "eventDate")
+                   || TryBuildPacketOwnedEventDateFromFields(primaryElement, out scheduledAt)
+                   || TryBuildPacketOwnedEventDateFromFields(fallbackElement, out scheduledAt);
         }
 
         private static bool TryParsePacketOwnedEventCalendarTextEntry(string line, int sortOrder, out EventEntrySnapshot entry)
@@ -12422,6 +12618,11 @@ namespace HaCreator.MapSimulator
                 ? parsedNavigationCaption
                 : TryGetJsonString(element, "caption", out string parsedCaption)
                     ? parsedCaption
+                    : string.Empty;
+            string navigationSeedText = TryGetJsonString(element, "navigationSeedText", out string parsedNavigationSeedText)
+                ? parsedNavigationSeedText
+                : TryGetJsonString(element, "seed", out string parsedSeed)
+                    ? parsedSeed
                     : string.Empty;
             string navigateUrl = TryGetJsonString(element, "navigateUrl", out string parsedNavigateUrl)
                 ? parsedNavigateUrl
@@ -12546,10 +12747,15 @@ namespace HaCreator.MapSimulator
                 Subtitle = subtitle,
                 StatusText = statusText,
                 NavigationCaption = navigationCaption,
+                NavigationSeedText = navigationSeedText,
                 NavigateUrl = navigateUrl,
                 NavigationHostText = navigationHostText,
                 NavigationRequestText = navigationRequestText,
                 NavigationStateText = navigationStateText,
+                ServerHost = serverHost,
+                TemplateId = templateId,
+                WorldId = requestWorldId,
+                CharacterId = requestCharacterId,
                 IsLoading = isLoading,
                 LoadingStartTick = loadingStartTick
             };
@@ -12799,6 +13005,31 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private static bool TryGetJsonText(JsonElement element, string propertyName, out string value)
+        {
+            value = string.Empty;
+            if (!element.TryGetProperty(propertyName, out JsonElement property))
+            {
+                return false;
+            }
+
+            switch (property.ValueKind)
+            {
+                case JsonValueKind.String:
+                    value = property.GetString() ?? string.Empty;
+                    return true;
+                case JsonValueKind.Number:
+                    value = property.ToString();
+                    return true;
+                case JsonValueKind.True:
+                case JsonValueKind.False:
+                    value = property.GetBoolean().ToString(CultureInfo.InvariantCulture);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private static bool TryGetJsonBoolean(JsonElement element, string propertyName, out bool value)
         {
             value = false;
@@ -12824,7 +13055,123 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out value);
+            if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out value))
+            {
+                return true;
+            }
+
+            return property.ValueKind == JsonValueKind.String
+                && int.TryParse(property.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+        }
+
+        private static bool TryGetJsonDateProperty(JsonElement element, out DateTime value, params string[] propertyNames)
+        {
+            value = default;
+            foreach (string propertyName in propertyNames ?? Array.Empty<string>())
+            {
+                if (TryGetJsonDate(element, propertyName, out value))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetJsonDate(JsonElement element, string propertyName, out DateTime value)
+        {
+            value = default;
+            if (!element.TryGetProperty(propertyName, out JsonElement property))
+            {
+                return false;
+            }
+
+            if (property.ValueKind == JsonValueKind.String
+                && TryParsePacketOwnedEventDate(property.GetString(), out value))
+            {
+                return true;
+            }
+
+            if (property.ValueKind == JsonValueKind.Number)
+            {
+                if (property.TryGetInt64(out long unixValue)
+                    && TryConvertPacketOwnedUnixDate(unixValue, out value))
+                {
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (property.ValueKind == JsonValueKind.Object)
+            {
+                return TryBuildPacketOwnedEventDateFromFields(property, out value);
+            }
+
+            return false;
+        }
+
+        private static bool TryBuildPacketOwnedEventDateFromFields(JsonElement element, out DateTime value)
+        {
+            value = default;
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (TryGetJsonInt32Property(element, out int timestamp, "timestamp", "time", "timeValue", "epoch", "epochMs", "unixTime")
+                && TryConvertPacketOwnedUnixDate(timestamp, out value))
+            {
+                return true;
+            }
+
+            if (TryGetJsonInt32Property(element, out int year, "year", "yyyy")
+                && TryGetJsonInt32Property(element, out int month, "month", "mm")
+                && TryGetJsonInt32Property(element, out int day, "day", "date", "dd")
+                && TryCreatePacketOwnedEventDate(year, month, day, out value))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryConvertPacketOwnedUnixDate(long unixValue, out DateTime value)
+        {
+            value = default;
+            try
+            {
+                DateTimeOffset offset = Math.Abs(unixValue) >= 100000000000L
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(unixValue)
+                    : DateTimeOffset.FromUnixTimeSeconds(unixValue);
+                value = offset.LocalDateTime.Date;
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+        }
+
+        private static bool TryCreatePacketOwnedEventDate(int year, int month, int day, out DateTime value)
+        {
+            value = default;
+            if (year < DateTime.MinValue.Year
+                || year > DateTime.MaxValue.Year
+                || month < 1
+                || month > 12)
+            {
+                return false;
+            }
+
+            int daysInMonth = DateTime.DaysInMonth(year, month);
+            if (day < 1 || day > daysInMonth)
+            {
+                return false;
+            }
+
+            value = new DateTime(year, month, day);
+            return true;
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityCommand(string[] args)

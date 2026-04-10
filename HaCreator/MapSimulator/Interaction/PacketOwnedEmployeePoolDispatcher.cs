@@ -111,6 +111,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
+            if (TryResolveSnapshotByRoutingHint(utcNow, pooledEmployee, runtimeResolver, visibilityResolver, out SocialRoomFieldActorSnapshot scoredSnapshot, out SocialRoomKind scoredKind))
+            {
+                _activeKind = scoredKind;
+                return scoredSnapshot;
+            }
+
             foreach (SocialRoomKind kind in EnumerateKindSearchOrder(visibilityResolver))
             {
                 SocialRoomRuntime runtime = runtimeResolver(kind);
@@ -123,6 +129,61 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return null;
+        }
+
+        private bool TryResolveSnapshotByRoutingHint(
+            DateTime utcNow,
+            SocialRoomEmployeePoolEntryState pooledEmployee,
+            Func<SocialRoomKind, SocialRoomRuntime> runtimeResolver,
+            Func<SocialRoomKind, bool> visibilityResolver,
+            out SocialRoomFieldActorSnapshot snapshot,
+            out SocialRoomKind kind)
+        {
+            snapshot = null;
+            kind = SocialRoomKind.PersonalShop;
+            if (pooledEmployee == null)
+            {
+                return false;
+            }
+
+            SocialRoomEmployeePoolCodec.RoutingHint hint = BuildRoutingHint(pooledEmployee);
+            FieldActorSnapshotCandidate? bestCandidate = null;
+            foreach (SocialRoomKind candidateKind in MerchantKinds)
+            {
+                SocialRoomRuntime runtime = runtimeResolver(candidateKind);
+                if (runtime == null)
+                {
+                    continue;
+                }
+
+                SocialRoomFieldActorSnapshot candidateSnapshot = runtime.GetFieldActorSnapshot(utcNow, pooledEmployee);
+                if (candidateSnapshot == null)
+                {
+                    continue;
+                }
+
+                int score = runtime.ScoreEmployeeRoutingHint(hint);
+                if (score <= 0)
+                {
+                    continue;
+                }
+
+                bool isVisible = visibilityResolver?.Invoke(candidateKind) == true;
+                FieldActorSnapshotCandidate candidate = new(candidateKind, candidateSnapshot, score, isVisible);
+                if (!bestCandidate.HasValue || IsBetterFieldActorSnapshotCandidate(candidate, bestCandidate.Value, _activeKind))
+                {
+                    bestCandidate = candidate;
+                }
+            }
+
+            if (!bestCandidate.HasValue)
+            {
+                return false;
+            }
+
+            snapshot = bestCandidate.Value.Snapshot;
+            kind = bestCandidate.Value.Kind;
+            return true;
         }
 
         internal string DescribeStatus()
@@ -150,13 +211,7 @@ namespace HaCreator.MapSimulator.Interaction
                 yield return _activeKind.Value;
             }
 
-            SocialRoomKind[] merchantKinds =
-            {
-                SocialRoomKind.EntrustedShop,
-                SocialRoomKind.PersonalShop
-            };
-
-            foreach (SocialRoomKind kind in merchantKinds)
+            foreach (SocialRoomKind kind in MerchantKinds)
             {
                 if (_activeKind == kind)
                 {
@@ -169,7 +224,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            foreach (SocialRoomKind kind in merchantKinds)
+            foreach (SocialRoomKind kind in MerchantKinds)
             {
                 if (_activeKind == kind || visibilityResolver?.Invoke(kind) == true)
                 {
@@ -185,6 +240,42 @@ namespace HaCreator.MapSimulator.Interaction
             return kind == SocialRoomKind.PersonalShop || kind == SocialRoomKind.EntrustedShop;
         }
 
+        private static SocialRoomEmployeePoolCodec.RoutingHint BuildRoutingHint(SocialRoomEmployeePoolEntryState pooledEmployee)
+        {
+            return new SocialRoomEmployeePoolCodec.RoutingHint(
+                pooledEmployee?.EmployerId ?? 0,
+                pooledEmployee?.MiniRoomType ?? 0,
+                pooledEmployee?.MiniRoomSerial ?? 0,
+                pooledEmployee?.NameTag ?? string.Empty,
+                pooledEmployee?.BalloonTitle ?? string.Empty);
+        }
+
+        internal static bool IsBetterFieldActorSnapshotCandidate(
+            FieldActorSnapshotCandidate candidate,
+            FieldActorSnapshotCandidate currentBest,
+            SocialRoomKind? preferredKind)
+        {
+            if (candidate.Score != currentBest.Score)
+            {
+                return candidate.Score > currentBest.Score;
+            }
+
+            if (candidate.IsVisible != currentBest.IsVisible)
+            {
+                return candidate.IsVisible;
+            }
+
+            bool candidateMatchesPreferred = preferredKind.HasValue && candidate.Kind == preferredKind.Value;
+            bool currentMatchesPreferred = preferredKind.HasValue && currentBest.Kind == preferredKind.Value;
+            if (candidateMatchesPreferred != currentMatchesPreferred)
+            {
+                return candidateMatchesPreferred;
+            }
+
+            return candidate.Kind == SocialRoomKind.EntrustedShop
+                && currentBest.Kind != SocialRoomKind.EntrustedShop;
+        }
+
         private int ResolveLastKnownEmployerId()
         {
             if (_poolRuntime.TryGetPrimaryEntry(out SocialRoomEmployeePoolEntryState pooledEmployee)
@@ -195,5 +286,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             return Math.Max(0, _poolRuntime.PreferredEmployerId);
         }
+
+        internal readonly record struct FieldActorSnapshotCandidate(
+            SocialRoomKind Kind,
+            SocialRoomFieldActorSnapshot Snapshot,
+            int Score,
+            bool IsVisible);
+
+        private static readonly SocialRoomKind[] MerchantKinds =
+        {
+            SocialRoomKind.EntrustedShop,
+            SocialRoomKind.PersonalShop
+        };
     }
 }

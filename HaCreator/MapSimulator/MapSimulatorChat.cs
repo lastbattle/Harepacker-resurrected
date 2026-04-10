@@ -2001,7 +2001,7 @@ namespace HaCreator.MapSimulator
             out string normalizedTarget)
         {
             normalizedTarget = string.Empty;
-            string rawInput = whisperTarget ?? string.Empty;
+            string rawInput = (whisperTarget ?? string.Empty).Trim();
             if (rawInput.Length == 0)
             {
                 return WhisperTargetValidationResult.Empty;
@@ -2217,6 +2217,18 @@ namespace HaCreator.MapSimulator
         }
 
         internal void ActivateWhisperTargetPickerModalComboFocus()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+        }
+
+        internal void CloseWhisperTargetPickerModalComboDropdown()
         {
             if (!_isWhisperTargetPickerActive
                 || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)

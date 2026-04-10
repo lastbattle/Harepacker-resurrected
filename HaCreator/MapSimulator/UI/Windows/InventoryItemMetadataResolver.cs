@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Combat;
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.ClientLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib;
@@ -78,6 +79,12 @@ namespace HaCreator.MapSimulator.UI
         private const int RewardPreviewLineLimit = 5;
         private const int ConsumeItemRequirementLineLimit = 4;
         private const string StackLimitMetadataPrefix = "Max per Slot:";
+        private const int WeddingInvitationCashCardItemId = 5090100;
+        private const int WeddingInvitationTicketStartItemId = 5251000;
+        private const int WeddingInvitationTicketEndItemId = 5251003;
+        private const int WeddingInvitationTicketItemId = 5251100;
+        private const int WeddingInvitationEtcCardStartGroup = 4211;
+        private const int WeddingInvitationEtcCardEndGroup = 4212;
         private static readonly Regex SkillBookSuccessRateRegex = new(@"(\d+)\s*%\s*chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly (string Key, string Label)[] CurableStatusEffectKeys =
         {
@@ -207,6 +214,19 @@ namespace HaCreator.MapSimulator.UI
         {
             return maxStackSize > 0
                 ? $"{StackLimitMetadataPrefix} {maxStackSize.ToString("N0", CultureInfo.InvariantCulture)}"
+                : string.Empty;
+        }
+
+        public static string BuildRuntimeFallbackStackLimitMetadataLine(int? maxStackSize, IReadOnlyList<string> metadataLines)
+        {
+            if (HasStackLimitMetadataLine(metadataLines))
+            {
+                return string.Empty;
+            }
+
+            int resolvedMaxStackSize = maxStackSize.GetValueOrDefault(1);
+            return resolvedMaxStackSize > 1 && maxStackSize.HasValue
+                ? FormatStackLimitMetadataLine(maxStackSize.Value)
                 : string.Empty;
         }
 
@@ -341,6 +361,14 @@ namespace HaCreator.MapSimulator.UI
             return TryResolveSpecScript(itemProperty?["spec"] as WzSubProperty, out script);
         }
 
+        public static bool TryResolveSpecScripts(int itemId, out IReadOnlyList<string> scripts)
+        {
+            scripts = Array.Empty<string>();
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return TryResolveSpecScripts(itemProperty?["spec"] as WzSubProperty, out scripts);
+        }
+
         public static bool TryResolveSpecNpc(int itemId, out int npcId)
         {
             npcId = 0;
@@ -385,6 +413,20 @@ namespace HaCreator.MapSimulator.UI
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
             return HasAuthoredNpcInteraction(itemProperty);
+        }
+
+        public static bool IsWeddingInvitationItem(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            return IsWeddingInvitationItem(
+                itemId,
+                ResolveInventoryType(itemId),
+                itemName: null,
+                itemDescription: null);
         }
 
         public static bool IsNotConsumedOnUse(int itemId)
@@ -881,14 +923,27 @@ namespace HaCreator.MapSimulator.UI
         internal static bool TryResolveSpecScript(WzSubProperty specProperty, out string script)
         {
             script = null;
-
-            string resolvedScript = (specProperty?["script"] as WzStringProperty)?.Value;
-            if (string.IsNullOrWhiteSpace(resolvedScript))
+            if (!TryResolveSpecScripts(specProperty, out IReadOnlyList<string> scripts)
+                || scripts.Count == 0)
             {
                 return false;
             }
 
-            script = resolvedScript.Trim();
+            script = scripts[0];
+            return true;
+        }
+
+        internal static bool TryResolveSpecScripts(WzSubProperty specProperty, out IReadOnlyList<string> scripts)
+        {
+            scripts = Array.Empty<string>();
+
+            IReadOnlyList<string> resolvedScripts = QuestRuntimeManager.ParseScriptNames(specProperty?["script"]);
+            if (resolvedScripts.Count == 0)
+            {
+                return false;
+            }
+
+            scripts = resolvedScripts;
             return true;
         }
 
@@ -897,11 +952,61 @@ namespace HaCreator.MapSimulator.UI
             return TryResolveSpecScript(specProperty, out script);
         }
 
+        public static bool TryResolveSpecScriptsForTests(WzSubProperty specProperty, out IReadOnlyList<string> scripts)
+        {
+            return TryResolveSpecScripts(specProperty, out scripts);
+        }
+
+        public static bool IsWeddingInvitationItemForTests(
+            int itemId,
+            InventoryType inventoryType,
+            string itemName,
+            string itemDescription)
+        {
+            return IsWeddingInvitationItem(itemId, inventoryType, itemName, itemDescription);
+        }
+
         internal static bool HasAuthoredNpcInteraction(WzSubProperty itemProperty)
         {
             return TryResolveNpcValue(itemProperty?["spec"] as WzSubProperty, out _)
                    || TryResolveNpcValue(itemProperty?["info"] as WzSubProperty, out _)
-                   || TryResolveSpecScript(itemProperty?["spec"] as WzSubProperty, out _);
+                   || TryResolveSpecScripts(itemProperty?["spec"] as WzSubProperty, out _);
+        }
+
+        internal static bool IsWeddingInvitationItem(
+            int itemId,
+            InventoryType inventoryType,
+            string itemName,
+            string itemDescription)
+        {
+            if (itemId <= 0 || inventoryType is not (InventoryType.CASH or InventoryType.ETC))
+            {
+                return false;
+            }
+
+            if (itemId == WeddingInvitationCashCardItemId
+                || itemId == WeddingInvitationTicketItemId
+                || (itemId >= WeddingInvitationTicketStartItemId && itemId <= WeddingInvitationTicketEndItemId))
+            {
+                return true;
+            }
+
+            int itemGroup = itemId / 1000;
+            if (itemGroup >= WeddingInvitationEtcCardStartGroup
+                && itemGroup <= WeddingInvitationEtcCardEndGroup)
+            {
+                return true;
+            }
+
+            if (itemId is 4031377 or 4031395 or 4031406 or 4031407)
+            {
+                return true;
+            }
+
+            return ContainsPhrase(itemName, "wedding invitation")
+                   || ContainsPhrase(itemName, "wedding invitation card")
+                   || ContainsPhrase(itemName, "wedding invitation ticket")
+                   || ContainsPhrase(itemDescription, "wedding invitation");
         }
 
         internal static bool ShouldAutoRunOnPickupInteraction(WzSubProperty itemProperty)
@@ -916,6 +1021,12 @@ namespace HaCreator.MapSimulator.UI
                        itemProperty["specEx"] as WzSubProperty)
                    && HasAuthoredNpcInteraction(itemProperty)
                    && !IsNotConsumedOnUse(itemProperty["info"] as WzSubProperty);
+        }
+
+        private static bool ContainsPhrase(string text, string phrase)
+        {
+            return !string.IsNullOrWhiteSpace(text)
+                   && text.IndexOf(phrase, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         public static bool ShouldAutoRunOnPickupInteractionForTests(WzSubProperty itemProperty)

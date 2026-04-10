@@ -1,9 +1,11 @@
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -20,7 +22,9 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class CookieHouseOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18496;
+        public const ushort DefaultInboundSessionValueOpcode = 93;
         private const string DefaultProcessName = "MapleStory";
+        internal const int ClientSessionPointKeyStringPoolId = 0x11D9;
         private const int RecentPacketCapacity = 8;
         private const int InferencePacketCapacity = 24;
         private const int MinimumInferenceObservations = 2;
@@ -31,6 +35,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly Queue<byte[]> _recentInferencePackets = new();
         private readonly HashSet<int> _mappedInboundPointOpcodes = new();
         private readonly HashSet<int> _inferredInboundPointOpcodes = new();
+        private readonly HashSet<int> _suppressedDefaultInboundPointOpcodes = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -134,6 +139,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _mappedInboundPointOpcodes.Clear();
                 _inferredInboundPointOpcodes.Clear();
+                _suppressedDefaultInboundPointOpcodes.Clear();
                 foreach (int opcode in opcodes ?? Enumerable.Empty<int>())
                 {
                     if (opcode > 0 && opcode <= ushort.MaxValue)
@@ -155,6 +161,14 @@ namespace HaCreator.MapSimulator.Managers
                     status = $"Cookie House official-session bridge requires a positive 16-bit inbound opcode, got {opcode}.";
                     LastStatus = status;
                     return false;
+                }
+
+                _suppressedDefaultInboundPointOpcodes.Remove(opcode);
+                if (opcode == DefaultInboundSessionValueOpcode)
+                {
+                    status = $"Cookie House official-session bridge mapped point opcodes: {DescribeMappedInboundPointOpcodesNoLock()}.";
+                    LastStatus = status;
+                    return true;
                 }
 
                 if (!_mappedInboundPointOpcodes.Add(opcode))
@@ -182,6 +196,16 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
+                if (opcode == DefaultInboundSessionValueOpcode)
+                {
+                    _suppressedDefaultInboundPointOpcodes.Add(opcode);
+                    _mappedInboundPointOpcodes.Remove(opcode);
+                    _inferredInboundPointOpcodes.Remove(opcode);
+                    status = $"Cookie House official-session bridge mapped point opcodes: {DescribeMappedInboundPointOpcodesNoLock()}.";
+                    LastStatus = status;
+                    return true;
+                }
+
                 if (!_mappedInboundPointOpcodes.Remove(opcode))
                 {
                     status = $"Cookie House official-session bridge has no mapped inbound point opcode {opcode}/0x{opcode:X}.";
@@ -202,6 +226,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 _mappedInboundPointOpcodes.Clear();
                 _inferredInboundPointOpcodes.Clear();
+                _suppressedDefaultInboundPointOpcodes.Add(DefaultInboundSessionValueOpcode);
                 LastStatus = "Cookie House official-session bridge cleared mapped point opcodes.";
             }
         }
@@ -256,13 +281,13 @@ namespace HaCreator.MapSimulator.Managers
 
             lock (_sync)
             {
-                mapped = _mappedInboundPointOpcodes.Contains(opcode);
+                mapped = IsMappedInboundPointOpcodeNoLock(opcode);
                 if (!mapped)
                 {
                     RecordInferencePacketNoLock(rawPacket);
                     if (TryPromoteInferredInboundPointOpcodeNoLock(out int inferredOpcode, out string inferenceStatus))
                     {
-                        mapped = _mappedInboundPointOpcodes.Contains(opcode);
+                        mapped = IsMappedInboundPointOpcodeNoLock(opcode);
                         LastStatus = $"Cookie House official-session bridge inferred inbound point opcode {inferredOpcode}/0x{inferredOpcode:X}. {inferenceStatus}";
                     }
                     else if (!string.IsNullOrWhiteSpace(inferenceStatus))
@@ -550,7 +575,13 @@ namespace HaCreator.MapSimulator.Managers
                     return;
                 }
 
-                if (!TryBuildInboundPointMessageFromRawPacket(raw, _mappedInboundPointOpcodes, $"official-session:{pair.RemoteEndpoint}", out CookieHousePointInboxMessage message, out int resolvedOpcode, out string error))
+                HashSet<int> resolvedMappedOpcodes;
+                lock (_sync)
+                {
+                    resolvedMappedOpcodes = BuildResolvedMappedOpcodeSetNoLock();
+                }
+
+                if (!TryBuildInboundPointMessageFromRawPacket(raw, resolvedMappedOpcodes, $"official-session:{pair.RemoteEndpoint}", out CookieHousePointInboxMessage message, out int resolvedOpcode, out string error))
                 {
                     LastStatus = $"Ignored Cookie House live packet opcode {opcode}: {error}";
                     return;
@@ -680,6 +711,22 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (opcode == DefaultInboundSessionValueOpcode)
+            {
+                if (!TryDecodeSessionValuePointPayload(payload, out int sessionPoint, out string sessionKey, out error))
+                {
+                    return false;
+                }
+
+                message = new CookieHousePointInboxMessage(
+                    sessionPoint,
+                    string.IsNullOrWhiteSpace(source) ? "official-session:unknown-remote" : source,
+                    $"packetclientraw {Convert.ToHexString(rawPacket)}",
+                    CookieHousePointInboxPayloadKind.OpcodeFramedSessionValuePoint);
+                error = $"decoded opcode {opcode} Cookie House session value key {sessionKey}";
+                return true;
+            }
+
             if (payload.Length != CookieHousePointInboxManager.ClientContextPointByteLength)
             {
                 error = $"Cookie House live opcode {opcode} payload must be exactly {CookieHousePointInboxManager.ClientContextPointByteLength} bytes for CWvsContext+0x{CookieHousePointInboxManager.ClientContextPointOffset:X}.";
@@ -735,14 +782,45 @@ namespace HaCreator.MapSimulator.Managers
         {
             if (_mappedInboundPointOpcodes.Count == 0)
             {
-                return "none";
+                if (_suppressedDefaultInboundPointOpcodes.Contains(DefaultInboundSessionValueOpcode))
+                {
+                    return "none";
+                }
+
+                return $"{DefaultInboundSessionValueOpcode}/0x{DefaultInboundSessionValueOpcode:X} (default session value)";
             }
 
-            return string.Join(", ", _mappedInboundPointOpcodes
-                .OrderBy(opcode => opcode)
-                .Select(opcode => _inferredInboundPointOpcodes.Contains(opcode)
-                    ? $"{opcode}/0x{opcode:X} (inferred)"
-                    : $"{opcode}/0x{opcode:X}"));
+            IEnumerable<int> resolvedOpcodes = BuildResolvedMappedOpcodeSetNoLock().OrderBy(opcode => opcode);
+            return string.Join(", ", resolvedOpcodes.Select(opcode =>
+            {
+                if (_inferredInboundPointOpcodes.Contains(opcode))
+                {
+                    return $"{opcode}/0x{opcode:X} (inferred)";
+                }
+
+                if (opcode == DefaultInboundSessionValueOpcode)
+                {
+                    return $"{opcode}/0x{opcode:X} (default session value)";
+                }
+
+                return $"{opcode}/0x{opcode:X}";
+            }));
+        }
+
+        private bool IsMappedInboundPointOpcodeNoLock(int opcode)
+        {
+            return BuildResolvedMappedOpcodeSetNoLock().Contains(opcode);
+        }
+
+        private HashSet<int> BuildResolvedMappedOpcodeSetNoLock()
+        {
+            HashSet<int> resolved = new(_mappedInboundPointOpcodes);
+            if (!_suppressedDefaultInboundPointOpcodes.Contains(DefaultInboundSessionValueOpcode))
+            {
+                resolved.Add(DefaultInboundSessionValueOpcode);
+            }
+
+            return resolved;
         }
 
         private string DescribeInferenceStatusNoLock()
@@ -766,6 +844,12 @@ namespace HaCreator.MapSimulator.Managers
         private void RecordInferencePacketNoLock(byte[] rawPacket)
         {
             if (rawPacket == null || rawPacket.Length < CookieHousePointInboxManager.ClientOpcodeFramedPointByteLength)
+            {
+                return;
+            }
+
+            if (TryDecodeOpcode(rawPacket, out int opcode, out _)
+                && opcode == DefaultInboundSessionValueOpcode)
             {
                 return;
             }
@@ -887,6 +971,103 @@ namespace HaCreator.MapSimulator.Managers
                 && left.TransitionCount == right.TransitionCount
                 && left.GradeBucketCount == right.GradeBucketCount
                 && (left.MaximumPoint - left.MinimumPoint) == (right.MaximumPoint - right.MinimumPoint);
+        }
+
+        internal static bool TryDecodeSessionValuePointPayload(
+            byte[] payload,
+            out int point,
+            out string sessionKey,
+            out string error)
+        {
+            point = 0;
+            sessionKey = string.Empty;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload ?? Array.Empty<byte>());
+                string key = reader.ReadMapleString();
+                string value = reader.ReadMapleString();
+                if (reader.Remaining != 0)
+                {
+                    error = "Cookie House opcode 93 payload had trailing bytes after the session value pair.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    error = "Cookie House opcode 93 session key was empty.";
+                    return false;
+                }
+
+                if (!TryDecodeSessionValuePoint(key, value, out point, out error))
+                {
+                    return false;
+                }
+
+                sessionKey = key;
+                return true;
+            }
+            catch (Exception ex) when (ex is ArgumentOutOfRangeException || ex is EndOfStreamException || ex is IOException)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        internal static bool TryDecodeSessionValuePoint(
+            string key,
+            string value,
+            out int point,
+            out string error)
+        {
+            point = 0;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                error = "Cookie House session value key was empty.";
+                return false;
+            }
+
+            bool hasRecoveredClientKey = MapleStoryStringPool.TryGet(ClientSessionPointKeyStringPoolId, out string recoveredClientKey)
+                && IsPlausibleSessionValueKey(recoveredClientKey);
+            if (hasRecoveredClientKey
+                && !string.Equals(key, recoveredClientKey, StringComparison.Ordinal))
+            {
+                error = $"Cookie House session value key {key} did not match the recovered client key {recoveredClientKey}.";
+                return false;
+            }
+
+            if (!hasRecoveredClientKey && !IsPlausibleSessionValueKey(key))
+            {
+                error = $"Cookie House session value key {key} did not resemble a client session-value token.";
+                return false;
+            }
+
+            if (!int.TryParse(value, out int parsedPoint))
+            {
+                error = $"Cookie House session value payload {value} was not a signed integer.";
+                return false;
+            }
+
+            return CookieHousePointInboxManager.TryValidateClientPoint(parsedPoint, out point, out error)
+                && point <= CookieHousePointInboxManager.ClientMaximumDisplayPoint
+                ? true
+                : FailSessionValuePointRange(out error, point);
+        }
+
+        private static bool IsPlausibleSessionValueKey(string key)
+        {
+            return !string.IsNullOrWhiteSpace(key)
+                && key.IndexOfAny(new[] { '/', '\\', '%' }) < 0
+                && key.IndexOf(".img", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private static bool FailSessionValuePointRange(out string error, int point)
+        {
+            error = $"Cookie House session value point {point} exceeds the client-owned three-digit display range.";
+            return false;
         }
 
         private sealed class InboundPointOpcodeCandidateAccumulator

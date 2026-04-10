@@ -806,7 +806,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
 
-            if (_stage == RoomStage.Lobby)
+            if (_stage != RoomStage.Playing)
             {
                 if (playerIndex == 0 || playerIndex == _localPlayerIndex)
                 {
@@ -2922,7 +2922,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private string GetExitButtonLabel()
         {
-            if (_stage == RoomStage.Lobby)
+            if (_stage != RoomStage.Playing)
             {
                 return "End";
             }

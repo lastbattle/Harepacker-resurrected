@@ -361,17 +361,20 @@ namespace HaCreator.MapSimulator.Loaders
                 return Array.Empty<string>();
             }
 
+            IReadOnlyList<WzImageProperty> templateActionSource = ResolveClientTemplateActionSourceActions(actionSets);
+            if (templateActionSource == null || templateActionSource.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
             HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
             var templateActionOrder = new List<string>();
-            foreach (NpcClientActionSetDefinition actionSet in actionSets)
+            foreach (WzImageProperty action in templateActionSource)
             {
-                foreach (WzImageProperty action in actionSet.Actions ?? Array.Empty<WzImageProperty>())
+                string actionName = action?.Name;
+                if (IsClientTemplateExtraActionName(actionName) && yielded.Add(actionName))
                 {
-                    string actionName = action?.Name;
-                    if (IsClientTemplateExtraActionName(actionName) && yielded.Add(actionName))
-                    {
-                        templateActionOrder.Add(actionName);
-                    }
+                    templateActionOrder.Add(actionName);
                 }
             }
 
@@ -416,22 +419,74 @@ namespace HaCreator.MapSimulator.Loaders
                 yield break;
             }
 
-            HashSet<string> yieldedActions = new(StringComparer.OrdinalIgnoreCase);
-            foreach (NpcClientActionSetDefinition actionSet in GetClientActionSets(source))
+            IReadOnlyList<WzImageProperty> templateActionSource = ResolveClientTemplateActionSourceActions(GetClientActionSets(source));
+            if (templateActionSource == null || templateActionSource.Count == 0)
             {
-                foreach (WzImageProperty action in actionSet.Actions ?? Array.Empty<WzImageProperty>())
-                {
-                    if (action == null
-                        || string.IsNullOrWhiteSpace(action.Name)
-                        || action["speak"] == null
-                        || !yieldedActions.Add(action.Name))
-                    {
-                        continue;
-                    }
+                yield break;
+            }
 
-                    yield return action.Name;
+            HashSet<string> yieldedActions = new(StringComparer.OrdinalIgnoreCase);
+            foreach (WzImageProperty action in templateActionSource)
+            {
+                if (action == null
+                    || string.IsNullOrWhiteSpace(action.Name)
+                    || action["speak"] == null
+                    || !yieldedActions.Add(action.Name))
+                {
+                    continue;
+                }
+
+                yield return action.Name;
+            }
+        }
+
+        private static IReadOnlyList<WzImageProperty> ResolveClientTemplateActionSourceActions(
+            IReadOnlyList<NpcClientActionSetDefinition> actionSets)
+        {
+            if (actionSets == null || actionSets.Count == 0)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            NpcClientActionSetDefinition? fallbackSet = null;
+            for (int i = 0; i < actionSets.Count; i++)
+            {
+                NpcClientActionSetDefinition actionSet = actionSets[i];
+                if (actionSet.Actions == null || actionSet.Actions.Count == 0)
+                {
+                    continue;
+                }
+
+                if (actionSet.IsRootSet && HasClientTemplateExtraActions(actionSet.Actions))
+                {
+                    return actionSet.Actions;
+                }
+
+                if (!fallbackSet.HasValue && HasClientTemplateExtraActions(actionSet.Actions))
+                {
+                    fallbackSet = actionSet;
                 }
             }
+
+            return fallbackSet?.Actions ?? Array.Empty<WzImageProperty>();
+        }
+
+        private static bool HasClientTemplateExtraActions(IReadOnlyList<WzImageProperty> actions)
+        {
+            if (actions == null || actions.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < actions.Count; i++)
+            {
+                if (IsClientTemplateExtraActionName(actions[i]?.Name))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static List<NpcClientActionSetDefinition> GetClientActionSets(WzImage source)

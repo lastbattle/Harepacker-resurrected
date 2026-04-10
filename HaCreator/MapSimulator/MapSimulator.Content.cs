@@ -853,6 +853,7 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.WhisperTargetPickerCancelRequested = () => _chat.CancelActiveWhisperTargetPicker();
                 statusBarChatUI.WhisperTargetPickerModalButtonFocusRequested = () => _chat.ActivateWhisperTargetPickerModalButtonFocus();
                 statusBarChatUI.WhisperTargetPickerModalComboFocusRequested = () => _chat.ActivateWhisperTargetPickerModalComboFocus();
+                statusBarChatUI.WhisperTargetPickerModalComboDropdownCloseRequested = () => _chat.CloseWhisperTargetPickerModalComboDropdown();
                 statusBarChatUI.WhisperTargetPickerModalComboDropdownToggleRequested = () => _chat.ToggleWhisperTargetPickerModalComboDropdown();
                 statusBarChatUI.WhisperTargetPickerModalComboDropdownHoverRequested = target => _chat.HighlightWhisperTargetPickerModalComboDropdownCandidate(target);
             }

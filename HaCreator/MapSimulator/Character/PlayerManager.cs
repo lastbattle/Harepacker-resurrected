@@ -1262,22 +1262,21 @@ namespace HaCreator.MapSimulator.Character
                 return primaryLevelData;
             }
 
-            var levelDataEntries = new List<SkillLevelData>
-            {
-                primaryLevelData
-            };
-
+            SkillData primarySkill = null;
             for (int i = 0; i < supportSkills.Length; i++)
             {
-                SkillData supportSkill = supportSkills[i];
-                SkillLevelData supportLevelData = ResolveAffectedAreaSkillLevel(supportSkill, primaryLevelData?.Level ?? 1);
-                if (supportLevelData != null)
+                if (supportSkills[i] != null)
                 {
-                    levelDataEntries.Add(supportLevelData);
+                    primarySkill = supportSkills[i];
+                    break;
                 }
             }
 
-            return RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(levelDataEntries.ToArray()) ?? primaryLevelData;
+            return RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(
+                       primarySkill,
+                       primaryLevelData,
+                       supportSkills)
+                   ?? primaryLevelData;
         }
 
         internal static SkillLevelData ResolveAffectedAreaSkillLevel(SkillData skill, int skillLevel)

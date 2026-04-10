@@ -116,6 +116,7 @@ namespace HaCreator.MapSimulator.Interaction
         Notice18 = 18,
         NoticeNamed = 22,
         Notice29 = 29,
+        Notice37 = 37,
         Refresh = 38,
         LeaderChange = 31,
         Notice32 = 32,
@@ -123,7 +124,9 @@ namespace HaCreator.MapSimulator.Interaction
         Notice34 = 34,
         Notice36 = 36,
         MemberJobLevel = 39,
+        Notice44 = 44,
         NoticeOptionalMessage = 45,
+        TownPortal = 46,
         SearchPacket = 75,
         SearchPacket2 = 76,
         SearchPacket3 = 77,
@@ -655,6 +658,14 @@ namespace HaCreator.MapSimulator.Interaction
                         packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x0153, kind));
                         return true;
 
+                    case SocialListClientPartyResultKind.Notice37:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x017B, kind));
+                        return true;
+
+                    case SocialListClientPartyResultKind.Notice44:
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, ResolvePartyResultNoticeText(0x13D6, kind));
+                        return true;
+
                     case SocialListClientPartyResultKind.NoticeOptionalMessage:
                     {
                         string summary = reader.ReadByte() != 0 && reader.HasRemaining
@@ -664,14 +675,40 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
 
+                    case SocialListClientPartyResultKind.TownPortal:
+                    {
+                        int portalSlot = reader.ReadByte();
+                        int fieldId = reader.ReadInt32();
+                        int skillId = reader.ReadInt32();
+                        int targetFieldId = reader.ReadInt32();
+                        short portalX = reader.ReadInt16();
+                        short portalY = reader.ReadInt16();
+                        string summary =
+                            $"Client OnPartyResult({(byte)kind}) updated party town portal slot {portalSlot} to field {fieldId} -> {targetFieldId} at ({portalX}, {portalY}) with skill {skillId}.";
+                        packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), portalSlot, targetFieldId, skillId, null, summary);
+                        return true;
+                    }
+
                     case SocialListClientPartyResultKind.SearchPacket:
                     case SocialListClientPartyResultKind.SearchPacket2:
                     case SocialListClientPartyResultKind.SearchPacket3:
-                    case SocialListClientPartyResultKind.SearchApply:
                     case SocialListClientPartyResultKind.SearchPacket4:
                     case SocialListClientPartyResultKind.SearchPacket5:
                         packet = new SocialListClientPartyResultPacket(kind, 0, Array.Empty<SocialListClientPartyEntry>(), 0, 0, 0, null, null);
                         return true;
+
+                    case SocialListClientPartyResultKind.SearchApply:
+                    {
+                        int partyId = reader.ReadInt32();
+                        string actorName = reader.ReadMapleString16().Trim();
+                        int fieldId = reader.ReadInt32();
+                        int channelId = reader.ReadInt32();
+                        string summary = string.IsNullOrWhiteSpace(actorName)
+                            ? $"Client OnPartyResult({(byte)kind}) opened a party-search apply prompt for party {partyId}."
+                            : $"Client OnPartyResult({(byte)kind}) opened a party-search apply prompt from {actorName} for party {partyId} at field {fieldId}, channel {channelId}.";
+                        packet = new SocialListClientPartyResultPacket(kind, partyId, Array.Empty<SocialListClientPartyEntry>(), 0, fieldId, channelId, actorName, summary);
+                        return true;
+                    }
 
                     default:
                         error = $"Unsupported client party-result subtype {(byte)kind}.";
@@ -1232,6 +1269,11 @@ namespace HaCreator.MapSimulator.Interaction
                 ushort value = (ushort)(_payload[_offset] | (_payload[_offset + 1] << 8));
                 _offset += 2;
                 return value;
+            }
+
+            public short ReadInt16()
+            {
+                return unchecked((short)ReadUInt16());
             }
 
             public int ReadInt32()

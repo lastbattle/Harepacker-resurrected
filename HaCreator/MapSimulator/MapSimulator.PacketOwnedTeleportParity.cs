@@ -446,6 +446,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedTeleportMovePathAttribute = PacketOwnedTeleportForcedMovePathAttribute;
             _lastPacketOwnedTeleportSetItemBackgroundActive = true;
             _playerManager?.ForceStand();
+            _playerManager?.Player?.Physics?.SetMovePathAttribute(PacketOwnedTeleportForcedMovePathAttribute);
 
             bool effectShown = TryShowPacketOwnedTeleportGeneralEffect(targetX, targetY, currentTime);
             string detachedPassengerMessage = ClearPacketOwnedTeleportPassengerLink();

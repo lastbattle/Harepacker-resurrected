@@ -1440,6 +1440,7 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_highlightTexture, bounds, new Color(30, 38, 52, 225));
 
             GamePadState state = GamePad.GetState(session.GamepadIndex);
+            string joystickName = ResolveClientJoypadName(input, session);
             string connectionText = state.IsConnected
                 ? $"P{(int)session.GamepadIndex + 1} connected"
                 : $"P{(int)session.GamepadIndex + 1} disconnected";
@@ -1453,6 +1454,11 @@ namespace HaCreator.MapSimulator.UI
                 : $"{JoypadDetectionFailedText} Cycle the slot until a live controller is found; movement directions stay reserved while this owner is open.";
             string thresholdText = $"DX {session.LeftStickDeadZoneX:0.00} DY {session.LeftStickDeadZoneY:0.00}  LT/RT {session.LeftTriggerThreshold:0.00}/{session.RightTriggerThreshold:0.00}  {FormatResponseCurve(session.ResponseCurve)}";
 
+            DrawWindowText(
+                sprite,
+                joystickName,
+                new Vector2(Position.X + JoypadClientNameLeft, Position.Y + JoypadClientNameTop),
+                Color.White);
             DrawWindowText(sprite, connectionText, new Vector2(bounds.X + 8, bounds.Y + 3), Color.White);
             DrawWindowText(sprite, calibrationText, new Vector2(bounds.X + 8, bounds.Y + 17), new Color(210, 210, 210));
             DrawJoypadMeter(sprite, new Rectangle(bounds.X + 8, bounds.Y + 28, 60, 8), "LX", NormalizeSignedAxis(state.ThumbSticks.Left.X), session.LeftStickDeadZoneX, session.LeftStickInvertX);
@@ -2940,6 +2946,43 @@ namespace HaCreator.MapSimulator.UI
         private static float NormalizeSignedAxis(float value)
         {
             return Math.Clamp(value, -1f, 1f);
+        }
+
+        private string ResolveClientJoypadName(PlayerInput input, JoypadSessionSnapshot session)
+        {
+            string defaultName = MapleStoryStringPool.GetOrFallback(
+                JoypadClientEmptyButtonNameStringPoolId,
+                "None");
+            string joystickName = input?.GetJoystickName(session?.GamepadIndex ?? PlayerIndex.One);
+            return ClipClientJoypadName(
+                string.IsNullOrWhiteSpace(joystickName) ? defaultName : joystickName.Trim(),
+                JoypadClientNameClipWidth);
+        }
+
+        private string ClipClientJoypadName(string text, float maxWidth)
+        {
+            string value = string.IsNullOrWhiteSpace(text) ? string.Empty : text.Trim();
+            if (string.IsNullOrEmpty(value) || MeasureWindowText(null, value).X <= maxWidth)
+            {
+                return value;
+            }
+
+            const string ellipsis = "...";
+            if (MeasureWindowText(null, ellipsis).X >= maxWidth)
+            {
+                return ellipsis;
+            }
+
+            for (int length = value.Length - 1; length > 0; length--)
+            {
+                string candidate = value[..length].TrimEnd() + ellipsis;
+                if (MeasureWindowText(null, candidate).X <= maxWidth)
+                {
+                    return candidate;
+                }
+            }
+
+            return ellipsis;
         }
 
         private void DrawWrappedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color)

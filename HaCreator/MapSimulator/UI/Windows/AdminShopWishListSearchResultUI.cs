@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class AdminShopWishListSearchResultUI : UIWindowBase
     {
+        internal const int FooterInfoLineCapacity = 3;
         private const int MainTitleBandHeight = 16;
         private const int CloseButtonX = 184;
         private const int CloseButtonY = 6;
@@ -384,25 +385,16 @@ namespace HaCreator.MapSimulator.UI
                 ? _owner?.GetStatusMessage() ?? string.Empty
                 : _statusMessage;
             IReadOnlyList<string> serviceStateDetails = _owner?.GetWishlistSearchServiceStateDetailLines() ?? Array.Empty<string>();
-            if (!string.IsNullOrWhiteSpace(serviceState))
+            IReadOnlyList<(string Text, Color Color)> footerInfoLines = BuildFooterInfoLines(serviceState, serviceStateDetails);
+            int footerInfoStartY = bounds.Y + FooterY - (footerInfoLines.Count * FooterLineHeight);
+            for (int i = 0; i < footerInfoLines.Count; i++)
             {
-                sprite.DrawString(_font, TrimToWidth(serviceState, 404f), new Vector2(bounds.X + HeaderX, bounds.Y + FooterY - (FooterLineHeight * 2)), new Color(214, 223, 236));
-            }
-
-            int detailLineCount = Math.Min(2, serviceStateDetails.Count);
-            for (int i = 0; i < detailLineCount; i++)
-            {
-                string detailLine = serviceStateDetails[i];
-                if (string.IsNullOrWhiteSpace(detailLine))
-                {
-                    continue;
-                }
-
+                (string footerLine, Color footerColor) = footerInfoLines[i];
                 sprite.DrawString(
                     _font,
-                    TrimToWidth(detailLine, 404f),
-                    new Vector2(bounds.X + HeaderX, bounds.Y + FooterY - FooterLineHeight + (i * FooterLineHeight)),
-                    new Color(198, 208, 224));
+                    TrimToWidth(footerLine, 404f),
+                    new Vector2(bounds.X + HeaderX, footerInfoStartY + (i * FooterLineHeight)),
+                    footerColor);
             }
 
             sprite.DrawString(_font, TrimToWidth(status, 404f), new Vector2(bounds.X + HeaderX, bounds.Y + FooterY), new Color(255, 233, 160));
@@ -754,6 +746,37 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpdateButtons();
+        }
+
+        internal static IReadOnlyList<(string Text, Color Color)> BuildFooterInfoLines(
+            string serviceState,
+            IReadOnlyList<string> serviceStateDetails)
+        {
+            List<(string Text, Color Color)> lines = new(FooterInfoLineCapacity);
+            if (!string.IsNullOrWhiteSpace(serviceState))
+            {
+                lines.Add((serviceState, new Color(214, 223, 236)));
+            }
+
+            if (serviceStateDetails != null)
+            {
+                foreach (string detailLine in serviceStateDetails)
+                {
+                    if (string.IsNullOrWhiteSpace(detailLine))
+                    {
+                        continue;
+                    }
+
+                    if (lines.Count >= FooterInfoLineCapacity)
+                    {
+                        break;
+                    }
+
+                    lines.Add((detailLine, new Color(198, 208, 224)));
+                }
+            }
+
+            return lines;
         }
 
         private void DrawDetailLine(SpriteBatch sprite, Rectangle bounds, int lineIndex, string text, Color color)

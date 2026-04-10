@@ -21,7 +21,8 @@ namespace HaCreator.MapSimulator.Interaction
         int GuildLevel,
         string GuildRoleLabel,
         bool CanManageSkills,
-        int? GuildPoints);
+        int? GuildPoints,
+        int? GuildId);
 
     internal sealed class GuildSkillRuntime
     {
@@ -53,6 +54,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _guildFundMeso = DefaultGuildFundMeso;
         private int _guildLevel = DefaultLocalGuildLevel;
         private int _guildPoints;
+        private int _guildId;
         private string _guildName = "Maple GM";
         private string _guildRoleLabel = "Master";
         private bool _isInGuild = true;
@@ -93,6 +95,7 @@ namespace HaCreator.MapSimulator.Interaction
             _guildName = inGuild ? (context.GuildName?.Trim() ?? string.Empty) : "No Guild";
             _guildLevel = inGuild ? ResolveGuildLevel(context.GuildLevel, savedState?.GuildLevel ?? 0) : 0;
             _guildPoints = inGuild ? ResolveGuildPoints(context.GuildPoints, savedState?.GuildPoints ?? 0) : 0;
+            _guildId = inGuild ? Math.Max(0, context.GuildId ?? 0) : 0;
             _guildRoleLabel = inGuild
                 ? NormalizeGuildRoleLabel(context.GuildRoleLabel)
                 : "No Guild";
@@ -134,6 +137,7 @@ namespace HaCreator.MapSimulator.Interaction
                 hasGuildMembership ? ResolveLocalFallbackGuildLevel(GetSavedGuildState(NormalizeGuildStateKey(build?.GuildName))?.GuildLevel ?? 0) : 0,
                 guildRoleLabel,
                 canManageSkills,
+                null,
                 null));
         }
 
@@ -403,6 +407,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (!_isInGuild)
             {
                 return "Ignored client guild-skill record because no guild is currently active.";
+            }
+
+            if (_guildId > 0 && guildId > 0 && guildId != _guildId)
+            {
+                return $"Ignored client guild-skill record for guild {guildId} because the active guild context is {_guildId}.";
             }
 
             SkillDisplayData selectedSkill = _skills.FirstOrDefault(skill => skill?.SkillId == packet.SkillId);

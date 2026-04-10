@@ -250,7 +250,6 @@ namespace HaCreator.MapSimulator.UI {
         private const int OFFBAR_COOLDOWN_TRAY_ROWS = 2;
         private const int OFFBAR_COOLDOWN_TRAY_TOP_MARGIN = COOLDOWN_TRAY_TOP_MARGIN + BUFF_ICON_SIZE + 4;
         private const int OFFBAR_COOLDOWN_TRAY_RIGHT_MARGIN = 8;
-        private const int TOOLTIP_FALLBACK_WIDTH = 320;
         private const int TOOLTIP_PADDING = 10;
         private const int TOOLTIP_ICON_GAP = 8;
         private const int TOOLTIP_TITLE_GAP = 8;
@@ -1034,7 +1033,8 @@ namespace HaCreator.MapSimulator.UI {
                 ResolveBuffTooltipStateLine(buffEntry),
                 secondaryLine,
                 SanitizeTooltipText(buffEntry.Description),
-                iconTexture);
+                iconTexture,
+                useClientSkillLayout: false);
         }
 
         private static string ResolveBuffTooltipStateLine(StatusBarBuffRenderData buffEntry)
@@ -1269,7 +1269,8 @@ namespace HaCreator.MapSimulator.UI {
                 BuildCooldownTooltipStatusLineMarkup(cooldownEntry),
                 BuildCooldownTooltipSecondaryLineMarkup(cooldownEntry),
                 SanitizeTooltipText(cooldownEntry.Description),
-                cooldownEntry.IconTexture);
+                cooldownEntry.IconTexture,
+                useClientSkillLayout: true);
         }
 
         private void DrawCooldownMask(SpriteBatch sprite, Rectangle iconRect, int frameIndex)
@@ -1439,15 +1440,36 @@ namespace HaCreator.MapSimulator.UI {
             string statusLine,
             string secondaryLine,
             string description,
-            Texture2D iconTexture)
+            Texture2D iconTexture,
+            bool useClientSkillLayout)
         {
-            int tooltipWidth = ResolveTooltipWidth();
-            int textLeftOffset = TOOLTIP_PADDING + BUFF_ICON_SIZE + TOOLTIP_ICON_GAP;
-            float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
-            float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
+            int tooltipWidth = useClientSkillLayout
+                ? SkillTooltipFrameLayout.ClientTooltipWidth
+                : ResolveTooltipWidth();
+            int titleXOffset = useClientSkillLayout
+                ? SkillTooltipFrameLayout.ClientTooltipTitleX
+                : TOOLTIP_PADDING;
+            int titleYOffset = useClientSkillLayout
+                ? SkillTooltipFrameLayout.ClientTooltipTitleY
+                : TOOLTIP_PADDING;
+            int iconXOffset = useClientSkillLayout
+                ? SkillTooltipFrameLayout.ClientTooltipIconX
+                : TOOLTIP_PADDING;
+            int textXOffset = useClientSkillLayout
+                ? SkillTooltipFrameLayout.ClientTooltipTextX
+                : TOOLTIP_PADDING + BUFF_ICON_SIZE + TOOLTIP_ICON_GAP;
+            float titleWidth = useClientSkillLayout
+                ? tooltipWidth - SkillTooltipFrameLayout.ClientTooltipTitleX - SkillTooltipFrameLayout.ClientTooltipRightPadding
+                : tooltipWidth - (TOOLTIP_PADDING * 2);
+            float sectionWidth = useClientSkillLayout
+                ? tooltipWidth - SkillTooltipFrameLayout.ClientTooltipTextX - SkillTooltipFrameLayout.ClientTooltipRightPadding
+                : tooltipWidth - textXOffset - TOOLTIP_PADDING;
             string[] wrappedTitle = WrapTooltipText(title, titleWidth);
             StatusBarTooltipLine[] wrappedStatus = WrapTooltipText(statusLine, sectionWidth, Color.White);
-            StatusBarTooltipLine[] wrappedSecondary = WrapTooltipText(secondaryLine, sectionWidth, new Color(181, 224, 255));
+            StatusBarTooltipLine[] wrappedSecondary = WrapTooltipText(
+                secondaryLine,
+                sectionWidth,
+                useClientSkillLayout ? new Color(255, 214, 140) : new Color(181, 224, 255));
             string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
 
             float titleHeight = MeasureLinesHeight(wrappedTitle);
@@ -1471,7 +1493,16 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             float iconBlockHeight = Math.Max(BUFF_ICON_SIZE, contentHeight);
-            int tooltipHeight = (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
+            float baseContentY = useClientSkillLayout
+                ? Math.Max(
+                    SkillTooltipFrameLayout.ClientTooltipTextY,
+                    SkillTooltipFrameLayout.ClientTooltipTitleY + titleHeight + 2f)
+                : TOOLTIP_PADDING + titleHeight + TOOLTIP_TITLE_GAP;
+            int tooltipHeight = useClientSkillLayout
+                ? Math.Max(
+                    SkillTooltipFrameLayout.ClientTooltipBaseHeight,
+                    (int)Math.Ceiling(Math.Max(baseContentY + BUFF_ICON_SIZE, baseContentY + iconBlockHeight) + TOOLTIP_PADDING))
+                : (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
             Point tooltipAnchor = new Point(anchorRect.Right + TOOLTIP_OFFSET_X, anchorRect.Bottom + TOOLTIP_OFFSET_Y);
             Rectangle tooltipRect = ResolveTooltipRect(
                 tooltipAnchor,
@@ -1484,17 +1515,22 @@ namespace HaCreator.MapSimulator.UI {
 
             DrawTooltipBackground(sprite, tooltipRect, tooltipFrameIndex);
 
-            float titleY = tooltipRect.Y + TOOLTIP_PADDING;
-            DrawTooltipLines(sprite, wrappedTitle, tooltipRect.X + TOOLTIP_PADDING, titleY, new Color(255, 238, 155));
+            float titleY = tooltipRect.Y + titleYOffset;
+            DrawTooltipLines(
+                sprite,
+                wrappedTitle,
+                tooltipRect.X + titleXOffset,
+                titleY,
+                useClientSkillLayout ? new Color(255, 220, 120) : new Color(255, 238, 155));
 
-            int contentY = tooltipRect.Y + TOOLTIP_PADDING + (int)Math.Ceiling(titleHeight) + TOOLTIP_TITLE_GAP;
-            int iconX = tooltipRect.X + TOOLTIP_PADDING;
+            int contentY = tooltipRect.Y + (int)Math.Ceiling(baseContentY);
+            int iconX = tooltipRect.X + iconXOffset;
             if (iconTexture != null)
             {
                 sprite.Draw(iconTexture, new Rectangle(iconX, contentY, BUFF_ICON_SIZE, BUFF_ICON_SIZE), Color.White);
             }
 
-            int textX = tooltipRect.X + textLeftOffset;
+            int textX = tooltipRect.X + textXOffset;
             float sectionY = contentY;
             if (statusHeight > 0f)
             {
@@ -1512,70 +1548,18 @@ namespace HaCreator.MapSimulator.UI {
             if (descriptionHeight > 0f)
             {
                 sectionY += (statusHeight > 0f || secondaryHeight > 0f) ? TOOLTIP_SECTION_GAP : 0f;
-                DrawTooltipLines(sprite, wrappedDescription, textX, sectionY, new Color(219, 219, 219));
+                DrawTooltipLines(
+                    sprite,
+                    wrappedDescription,
+                    textX,
+                    sectionY,
+                    useClientSkillLayout ? Color.White : new Color(219, 219, 219));
             }
         }
 
         private int ResolveTooltipWidth()
         {
-            int textureWidth = _tooltipFrames[1]?.Width ?? 0;
-            return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
-        }
-
-        private Rectangle CreateTooltipRectFromAnchor(Point anchorPoint, int tooltipWidth, int tooltipHeight, int tooltipFrameIndex)
-        {
-            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
-                ? _tooltipFrames[tooltipFrameIndex]
-                : null;
-            Point origin = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrameOrigins.Length
-                ? _tooltipFrameOrigins[tooltipFrameIndex]
-                : Point.Zero;
-
-            if (tooltipFrame != null && origin != Point.Zero)
-            {
-                float scaleX = tooltipFrame.Width > 0 ? tooltipWidth / (float)tooltipFrame.Width : 1f;
-                float scaleY = tooltipFrame.Height > 0 ? tooltipHeight / (float)tooltipFrame.Height : 1f;
-                return new Rectangle(
-                    anchorPoint.X - (int)Math.Round(origin.X * scaleX),
-                    anchorPoint.Y - (int)Math.Round(origin.Y * scaleY),
-                    tooltipWidth,
-                    tooltipHeight);
-            }
-
-            return tooltipFrameIndex switch
-            {
-                0 => new Rectangle(anchorPoint.X - tooltipWidth - TOOLTIP_OFFSET_X, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight),
-                2 => new Rectangle(anchorPoint.X, anchorPoint.Y + TOOLTIP_OFFSET_Y, tooltipWidth, tooltipHeight),
-                _ => new Rectangle(anchorPoint.X, anchorPoint.Y - tooltipHeight + 1, tooltipWidth, tooltipHeight)
-            };
-        }
-
-        private static int ComputeTooltipOverflow(Rectangle rect, int renderWidth, int renderHeight)
-        {
-            int overflow = 0;
-            if (rect.Left < TOOLTIP_PADDING)
-                overflow += TOOLTIP_PADDING - rect.Left;
-            if (rect.Top < TOOLTIP_PADDING)
-                overflow += TOOLTIP_PADDING - rect.Top;
-            if (rect.Right > renderWidth - TOOLTIP_PADDING)
-                overflow += rect.Right - (renderWidth - TOOLTIP_PADDING);
-            if (rect.Bottom > renderHeight - TOOLTIP_PADDING)
-                overflow += rect.Bottom - (renderHeight - TOOLTIP_PADDING);
-            return overflow;
-        }
-
-        private static Rectangle ClampTooltipRect(Rectangle rect, int renderWidth, int renderHeight)
-        {
-            int minX = TOOLTIP_PADDING;
-            int minY = TOOLTIP_PADDING;
-            int maxX = Math.Max(minX, renderWidth - TOOLTIP_PADDING - rect.Width);
-            int maxY = Math.Max(minY, renderHeight - TOOLTIP_PADDING - rect.Height);
-
-            return new Rectangle(
-                Math.Clamp(rect.X, minX, maxX),
-                Math.Clamp(rect.Y, minY, maxY),
-                rect.Width,
-                rect.Height);
+            return SkillTooltipFrameLayout.ClientTooltipWidth;
         }
 
         private Rectangle ResolveTooltipRect(
@@ -1587,31 +1571,18 @@ namespace HaCreator.MapSimulator.UI {
             ReadOnlySpan<int> framePreference,
             out int tooltipFrameIndex)
         {
-            Rectangle bestRect = Rectangle.Empty;
-            int bestFrame = framePreference.Length > 0 ? framePreference[0] : 1;
-            int bestOverflow = int.MaxValue;
-
-            for (int i = 0; i < framePreference.Length; i++)
-            {
-                int frameIndex = framePreference[i];
-                Rectangle candidate = CreateTooltipRectFromAnchor(anchorPoint, tooltipWidth, tooltipHeight, frameIndex);
-                int overflow = ComputeTooltipOverflow(candidate, renderWidth, renderHeight);
-                if (overflow == 0)
-                {
-                    tooltipFrameIndex = frameIndex;
-                    return candidate;
-                }
-
-                if (overflow < bestOverflow)
-                {
-                    bestOverflow = overflow;
-                    bestFrame = frameIndex;
-                    bestRect = candidate;
-                }
-            }
-
-            tooltipFrameIndex = bestFrame;
-            return ClampTooltipRect(bestRect, renderWidth, renderHeight);
+            SkillTooltipFrameLayout.FrameGeometry[] frameGeometries =
+                SkillTooltipFrameLayout.BuildFrameGeometries(_tooltipFrames, _tooltipFrameOrigins);
+            return SkillTooltipFrameLayout.ResolveTooltipRect(
+                anchorPoint,
+                tooltipWidth,
+                tooltipHeight,
+                renderWidth,
+                renderHeight,
+                frameGeometries,
+                framePreference,
+                TOOLTIP_PADDING,
+                out tooltipFrameIndex);
         }
 
         private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)

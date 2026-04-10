@@ -856,23 +856,32 @@ namespace HaCreator.MapSimulator.Loaders
                 return allowGenericFallback &&
                        TryAppendGenericFallbackStat(builder, skillEntry, levelNode, commonNode, infoNode, level, statKey);
 
+            string resolvedLabel = definition.Label;
+            Func<int, string> resolvedFormatter = definition.Formatter;
+            TryResolveDescriptionBackedFallbackPresentation(
+                stringEntry,
+                statKey,
+                definition.Label,
+                out resolvedLabel,
+                out resolvedFormatter);
+
             int originalBuilderLength = builder.Length;
             if (definition.IsPercent)
             {
-                AppendPercentStat(builder, definition.Label, skillEntry, levelNode, commonNode, infoNode, level, definition.PropertyName);
+                AppendPercentStat(builder, resolvedLabel, skillEntry, levelNode, commonNode, infoNode, level, definition.PropertyName);
             }
             else
             {
                 AppendIntStat(
                     builder,
-                    definition.Label,
+                    resolvedLabel,
                     skillEntry,
                     levelNode,
                     commonNode,
                     infoNode,
                     level,
                     definition.PropertyName,
-                    definition.Formatter);
+                    resolvedFormatter);
             }
 
             return builder.Length != originalBuilderLength;
@@ -950,6 +959,75 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return false;
+        }
+
+        private static bool TryResolveDescriptionBackedFallbackPresentation(
+            WzSubProperty stringEntry,
+            string statKey,
+            string defaultLabel,
+            out string label,
+            out Func<int, string> formatter)
+        {
+            label = defaultLabel;
+            formatter = null;
+            if (stringEntry == null || string.IsNullOrWhiteSpace(statKey))
+            {
+                return false;
+            }
+
+            string placeholderToken = $"#{statKey.Trim()}";
+            foreach (string clause in EnumeratePlaceholderContextClauses(stringEntry, placeholderToken))
+            {
+                if (!TryResolveDescriptionBackedFallbackPresentation(
+                        clause,
+                        placeholderToken,
+                        defaultLabel,
+                        out label,
+                        out formatter))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            label = defaultLabel;
+            formatter = null;
+            return false;
+        }
+
+        private static bool TryResolveDescriptionBackedFallbackPresentation(
+            string clause,
+            string placeholderToken,
+            string defaultLabel,
+            out string label,
+            out Func<int, string> formatter)
+        {
+            label = defaultLabel;
+            formatter = null;
+            if (string.IsNullOrWhiteSpace(clause) || string.IsNullOrWhiteSpace(placeholderToken))
+            {
+                return false;
+            }
+
+            TryResolveSingleLetterContextLabel(clause, placeholderToken, out string semanticLabel);
+            string preferredLabel = semanticLabel ?? defaultLabel;
+            if (TryExtractAuthoredPlaceholderLabel(clause, placeholderToken, out string authoredLabel) &&
+                ShouldPreferAuthoredPlaceholderLabel(authoredLabel, preferredLabel))
+            {
+                label = authoredLabel;
+            }
+            else if (!string.IsNullOrWhiteSpace(semanticLabel))
+            {
+                label = semanticLabel;
+            }
+
+            formatter = ResolveDescriptionBackedContextFormatter(
+                label,
+                semanticLabel ?? defaultLabel,
+                clause,
+                placeholderToken);
+            return !string.IsNullOrWhiteSpace(label);
         }
 
         internal static bool TryResolveSingleLetterContextPresentation(
@@ -1048,6 +1126,84 @@ namespace HaCreator.MapSimulator.Loaders
         private static bool IsPlaceholderClauseBoundary(char value)
         {
             return value == ',' || value == '\n' || value == '\r' || value == ';' || value == '|';
+        }
+
+        private static bool TryExtractAuthoredPlaceholderLabel(
+            string clause,
+            string placeholderToken,
+            out string label)
+        {
+            label = null;
+            if (string.IsNullOrWhiteSpace(clause) || string.IsNullOrWhiteSpace(placeholderToken))
+            {
+                return false;
+            }
+
+            int tokenIndex = clause.IndexOf(placeholderToken, StringComparison.OrdinalIgnoreCase);
+            if (tokenIndex <= 0)
+            {
+                return false;
+            }
+
+            string prefix = clause[..tokenIndex];
+            int boundaryIndex = prefix.LastIndexOfAny(new[] { ',', '\n', '\r', ';', '|' });
+            if (boundaryIndex >= 0 && boundaryIndex < prefix.Length - 1)
+            {
+                prefix = prefix[(boundaryIndex + 1)..];
+            }
+
+            int colonIndex = prefix.LastIndexOf(':');
+            if (colonIndex > 0)
+            {
+                prefix = prefix[..colonIndex];
+            }
+            else
+            {
+                return false;
+            }
+
+            prefix = Regex.Replace(prefix, "#[A-Za-z0-9_]+", " ");
+            prefix = prefix.Replace('[', ' ').Replace(']', ' ');
+            prefix = Regex.Replace(prefix, @"\s+", " ").Trim();
+            if (string.IsNullOrWhiteSpace(prefix) || prefix.Length > 48)
+            {
+                return false;
+            }
+
+            label = prefix;
+            return true;
+        }
+
+        private static bool ShouldPreferAuthoredPlaceholderLabel(string authoredLabel, string currentLabel)
+        {
+            if (string.IsNullOrWhiteSpace(authoredLabel))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(currentLabel))
+            {
+                return true;
+            }
+
+            if (authoredLabel.IndexOf("drp", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return false;
+            }
+
+            return currentLabel switch
+            {
+                "Attack Count" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Mob Count" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Chance" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Duration" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Interval" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Damage" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "MP Cost" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "HP Cost" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Speed" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                _ => false
+            };
         }
 
         internal static bool TryResolveSingleLetterContextLabel(
@@ -1397,6 +1553,36 @@ namespace HaCreator.MapSimulator.Loaders
                 "Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 _ => null
             };
+        }
+
+        private static Func<int, string> ResolveDescriptionBackedContextFormatter(
+            string label,
+            string semanticLabel,
+            string clause,
+            string placeholderToken)
+        {
+            Func<int, string> formatter = ResolveSingleLetterContextFormatter(
+                semanticLabel ?? label,
+                clause,
+                placeholderToken);
+            if (formatter != null)
+            {
+                return formatter;
+            }
+
+            string fallbackLabel = label ?? semanticLabel;
+            if (string.IsNullOrWhiteSpace(fallbackLabel))
+            {
+                return null;
+            }
+
+            if (fallbackLabel.EndsWith("Duration", StringComparison.Ordinal) ||
+                fallbackLabel.EndsWith("Interval", StringComparison.Ordinal))
+            {
+                return static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec";
+            }
+
+            return null;
         }
 
         private static bool HasAdvancedBlessingFallbackShape(

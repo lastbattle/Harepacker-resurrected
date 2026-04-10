@@ -388,7 +388,7 @@ namespace HaCreator.MapSimulator.Effects
 
             errorMessage = null;
             _lastPacketType = packetType;
-            if (!_isActive)
+            if (!CanApplyPacket(packetType, out bool photoScenePresentationPacket))
             {
                 errorMessage = "Wedding runtime inactive.";
                 return false;
@@ -398,8 +398,20 @@ namespace HaCreator.MapSimulator.Effects
                 switch (packetType)
                 {
                     case PacketTypeWeddingProgress:
+                        if (!_isActive)
+                        {
+                            errorMessage = "Wedding packet owner inactive.";
+                            return false;
+                        }
+
                         return TryApplyWeddingProgressPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeWeddingCeremonyEnd:
+                        if (!_isActive)
+                        {
+                            errorMessage = "Wedding packet owner inactive.";
+                            return false;
+                        }
+
                         return TryApplyWeddingCeremonyEndPacket(payload, currentTimeMs, out errorMessage);
                     case PacketTypeUserEnterField:
                         return TryApplyRemoteSpawnPacket(payload, out errorMessage);
@@ -436,7 +448,9 @@ namespace HaCreator.MapSimulator.Effects
                     case PacketTypeNewYearCardRecordRemove:
                         return TryApplyRemoteRelationshipRecordRemovePacket(packetType, payload, out errorMessage);
                     default:
-                        errorMessage = $"Unsupported wedding packet type: {packetType}";
+                        errorMessage = photoScenePresentationPacket
+                            ? $"Unsupported wedding-photo scene presentation packet type: {packetType}"
+                            : $"Unsupported wedding packet type: {packetType}";
                         return false;
                 }
             }
@@ -444,6 +458,53 @@ namespace HaCreator.MapSimulator.Effects
             {
                 errorMessage = ex.Message;
                 return false;
+            }
+        }
+
+        private bool CanApplyPacket(int packetType, out bool photoScenePresentationPacket)
+        {
+            photoScenePresentationPacket = false;
+            if (_isActive)
+            {
+                return true;
+            }
+
+            if (!IsWeddingPhotoSceneOwnerActive)
+            {
+                return false;
+            }
+
+            photoScenePresentationPacket = IsWeddingPhotoScenePresentationPacket(packetType);
+            return photoScenePresentationPacket;
+        }
+
+        private static bool IsWeddingPhotoScenePresentationPacket(int packetType)
+        {
+            switch (packetType)
+            {
+                case PacketTypeUserEnterField:
+                case PacketTypeUserLeaveField:
+                case PacketTypeUserMoveOfficial:
+                case PacketTypeUserMoveOrChairAlias:
+                case PacketTypeItemEffect:
+                case PacketTypeUserProfile:
+                case PacketTypeSetActivePortableChairLegacy:
+                case PacketTypeAvatarModified:
+                case PacketTypeTemporaryStatSet:
+                case PacketTypeTemporaryStatReset:
+                case PacketTypeGuildNameChanged:
+                case PacketTypeGuildMarkChanged:
+                case PacketTypeCoupleRecordAdd:
+                case PacketTypeCoupleRecordRemove:
+                case PacketTypeFriendRecordAdd:
+                case PacketTypeFriendRecordRemove:
+                case PacketTypeMarriageRecordAdd:
+                case PacketTypeMarriageRecordRemove:
+                case PacketTypeNewYearCardRecordAdd:
+                case PacketTypeNewYearCardRecordRemove:
+                    return true;
+                default:
+                    return false;
             }
         }
         public void SetParticipantPosition(int characterId, Vector2 worldPosition)
@@ -2697,41 +2758,65 @@ namespace HaCreator.MapSimulator.Effects
                 }
             }
 
+            PruneInactiveParticipantActors();
+
+            Vector2? groomPosition = null;
+            Vector2? bridePosition = null;
 
             if (_localPlayerPosition.HasValue)
             {
                 if (LocalParticipantRole == WeddingParticipantRole.Groom)
                 {
-                    _groomPosition = _localPlayerPosition;
+                    groomPosition = _localPlayerPosition;
                 }
                 else if (LocalParticipantRole == WeddingParticipantRole.Bride)
                 {
-                    _bridePosition = _localPlayerPosition;
+                    bridePosition = _localPlayerPosition;
                 }
             }
 
 
             if (_groomId > 0
-                && _participantPositions.TryGetValue(_groomId, out Vector2 groomPosition)
+                && _participantPositions.TryGetValue(_groomId, out Vector2 resolvedGroomPosition)
                 && LocalParticipantRole != WeddingParticipantRole.Groom)
             {
-                _groomPosition = groomPosition;
+                groomPosition = resolvedGroomPosition;
             }
 
 
             if (_brideId > 0
-                && _participantPositions.TryGetValue(_brideId, out Vector2 bridePosition)
+                && _participantPositions.TryGetValue(_brideId, out Vector2 resolvedBridePosition)
                 && LocalParticipantRole != WeddingParticipantRole.Bride)
             {
-                _bridePosition = bridePosition;
+                bridePosition = resolvedBridePosition;
             }
 
+            _groomPosition = groomPosition;
+            _bridePosition = bridePosition;
 
             SyncParticipantActor(_groomId, WeddingParticipantRole.Groom, _groomPosition);
 
             SyncParticipantActor(_brideId, WeddingParticipantRole.Bride, _bridePosition);
             PromoteAudienceActorToParticipant(_groomId, WeddingParticipantRole.Groom, _groomPosition);
             PromoteAudienceActorToParticipant(_brideId, WeddingParticipantRole.Bride, _bridePosition);
+        }
+
+        private void PruneInactiveParticipantActors()
+        {
+            if (_participantActors.Count == 0)
+            {
+                return;
+            }
+
+            foreach (int characterId in _participantActors.Keys.ToArray())
+            {
+                if (characterId == _groomId || characterId == _brideId)
+                {
+                    continue;
+                }
+
+                _participantActors.Remove(characterId);
+            }
         }
 
 
@@ -2783,7 +2868,10 @@ namespace HaCreator.MapSimulator.Effects
                 string viewport = WeddingPhotoSceneViewport.HasValue
                     ? $" viewport={WeddingPhotoSceneViewport.Value.Left},{WeddingPhotoSceneViewport.Value.Top},{WeddingPhotoSceneViewport.Value.Right},{WeddingPhotoSceneViewport.Value.Bottom}"
                     : " viewport=<none>";
-                return $"Wedding photo scene owner map {_mapId}: {WeddingPhotoSceneOwnerDescription}.{viewport} coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, scene={scene}. Packet owner remains CField_WeddingPhoto, not CField_Wedding::OnPacket.";
+                string lastPhotoPacket = _lastPacketType.HasValue
+                    ? DescribePacketType(_lastPacketType.Value)
+                    : "none";
+                return $"Wedding photo scene owner map {_mapId}: {WeddingPhotoSceneOwnerDescription}.{viewport} coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, remoteLoaded={_loadedExternalRemoteActorIds.Count}, remotePending={_pendingExternalRemoteActorLoadIds.Count}, last packet {lastPhotoPacket}, scene={scene}. Packet owner remains CField_WeddingPhoto, not CField_Wedding::OnPacket.";
             }
 
             return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, remoteLoaded={_loadedExternalRemoteActorIds.Count}, remotePending={_pendingExternalRemoteActorLoadIds.Count}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}, last remote packet {lastRemotePacket}.";

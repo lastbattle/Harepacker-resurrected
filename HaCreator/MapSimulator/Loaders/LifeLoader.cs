@@ -927,50 +927,42 @@ namespace HaCreator.MapSimulator.Loaders
                 IsSpecialAttack = InfoTool.GetInt(infoNode["specialAttack"], 0) > 0
             };
 
-            if (explicitInfoHitAttach == int.MinValue
-                && infoAliasHitAttach == int.MinValue)
+            foreach ((int frameIndex, bool attach) in ReadIndexedHitMetadataFlags(
+                         infoHitNode,
+                         "attach",
+                         "bHitAttach",
+                         "hitAttach"))
             {
-                foreach ((int frameIndex, bool attach) in ReadIndexedHitMetadataFlags(
-                             infoHitNode,
-                             "attach",
-                             "bHitAttach",
-                             "hitAttach"))
-                {
-                    metadata.FrameHitAttachOverrides[frameIndex] = attach;
-                }
-
-                foreach ((int frameIndex, bool attach) in ReadIndexedAttackFrameHitMetadataFlags(
-                             attackStateProperty,
-                             "attach",
-                             "bHitAttach",
-                             "hitAttach"))
-                {
-                    metadata.FrameHitAttachOverrides.TryAdd(frameIndex, attach);
-                }
+                metadata.FrameHitAttachOverrides[frameIndex] = attach;
             }
 
-            if (explicitInfoFacingAttach == int.MinValue
-                && infoAliasFacingAttach == int.MinValue)
+            foreach ((int frameIndex, bool attach) in ReadIndexedAttackFrameHitMetadataFlags(
+                         attackStateProperty,
+                         "attach",
+                         "bHitAttach",
+                         "hitAttach"))
             {
-                foreach ((int frameIndex, bool attachFacing) in ReadIndexedHitMetadataFlags(
-                             infoHitNode,
-                             "attachfacing",
-                             "bFacingAttach",
-                             "bFacingAttatch",
-                             "facingAttach"))
-                {
-                    metadata.FrameFacingAttachOverrides[frameIndex] = attachFacing;
-                }
+                metadata.FrameHitAttachOverrides[frameIndex] = attach;
+            }
 
-                foreach ((int frameIndex, bool attachFacing) in ReadIndexedAttackFrameHitMetadataFlags(
-                             attackStateProperty,
-                             "attachfacing",
-                             "bFacingAttach",
-                             "bFacingAttatch",
-                             "facingAttach"))
-                {
-                    metadata.FrameFacingAttachOverrides.TryAdd(frameIndex, attachFacing);
-                }
+            foreach ((int frameIndex, bool attachFacing) in ReadIndexedHitMetadataFlags(
+                         infoHitNode,
+                         "attachfacing",
+                         "bFacingAttach",
+                         "bFacingAttatch",
+                         "facingAttach"))
+            {
+                metadata.FrameFacingAttachOverrides[frameIndex] = attachFacing;
+            }
+
+            foreach ((int frameIndex, bool attachFacing) in ReadIndexedAttackFrameHitMetadataFlags(
+                         attackStateProperty,
+                         "attachfacing",
+                         "bFacingAttach",
+                         "bFacingAttatch",
+                         "facingAttach"))
+            {
+                metadata.FrameFacingAttachOverrides[frameIndex] = attachFacing;
             }
 
             WzSubProperty rangeNode = infoNode["range"] as WzSubProperty;

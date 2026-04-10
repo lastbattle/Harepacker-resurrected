@@ -636,6 +636,7 @@ namespace HaCreator.MapSimulator.Character
             Physics.CurrentAction = snapshot.Action;
             FacingRight = snapshot.FacingRight;
             Physics.FacingRight = snapshot.FacingRight;
+            Physics.SetMovePathAttribute(snapshot.MovePathAttribute, rebuildMovePath: false);
             ApplyPacketOwnedPassiveMoveFootholdState(snapshot, foothold);
             ResetLandingTracking();
             ClearForcedActionName();
@@ -2026,6 +2027,83 @@ namespace HaCreator.MapSimulator.Character
             return currentTime - _animationStartTime;
         }
 
+        private bool TryResolveMountedTransitionCurrentFrame(int currentTime, out AssembledFrame frame)
+        {
+            frame = null;
+            if (Assembler == null
+                || !IsAutomaticTamingMobTransitionAction(CurrentActionName)
+                || State != PlayerState.Attacking)
+            {
+                return false;
+            }
+
+            CharacterPart mountedPart = ResolveMountedStateTamingMobPart();
+            if (!CharacterAssembler.IsTamingMobRenderOwnershipAction(mountedPart, CurrentActionName))
+            {
+                return false;
+            }
+
+            int animationTime = GetRenderAnimationTime(currentTime);
+            int bodyDuration = Assembler.ResolveClientCharacterActionLayerDuration(CurrentActionName);
+            if (!AvatarActionLayerCoordinator.TryResolveMountedTransitionBodyAnimationTime(
+                    CurrentActionName,
+                    animationTime,
+                    bodyDuration,
+                    out int bodyAnimationTime))
+            {
+                return false;
+            }
+
+            string persistentBodyActionName = ResolveMountedTransitionPersistentBodyActionName();
+            if (string.IsNullOrWhiteSpace(persistentBodyActionName)
+                || string.Equals(persistentBodyActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            frame = Assembler.GetMountedFrameAtTime(
+                persistentBodyActionName,
+                bodyAnimationTime,
+                CurrentActionName,
+                animationTime);
+            return frame != null;
+        }
+
+        private string ResolveMountedTransitionPersistentBodyActionName()
+        {
+            if (Physics == null)
+            {
+                return CharacterPart.GetActionString(CharacterAction.Stand1);
+            }
+
+            if (Physics.IsOnLadder())
+            {
+                return CharacterPart.GetActionString(CharacterAction.Ladder);
+            }
+
+            if (Physics.IsOnRope())
+            {
+                return CharacterPart.GetActionString(CharacterAction.Rope);
+            }
+
+            if (Physics.IsInSwimArea && !Physics.IsOnFoothold())
+            {
+                return CharacterPart.GetActionString(CharacterAction.Swim);
+            }
+
+            if (Physics.IsUserFlying() && !Physics.IsOnFoothold())
+            {
+                return CharacterPart.GetActionString(CharacterAction.Fly);
+            }
+
+            if (!Physics.IsOnFoothold())
+            {
+                return CharacterPart.GetActionString(CharacterAction.Jump);
+            }
+
+            return CharacterPart.GetActionString(ResolveClientStandAction());
+        }
+
         private void UpdateFaceExpression(int currentTime)
         {
             string expressionName = "default";
@@ -2379,6 +2457,7 @@ namespace HaCreator.MapSimulator.Character
 
         private void StartAttack(int currentTime)
         {
+            PlayerState previousState = State;
             ClearPortableChair(standUp: false);
             State = PlayerState.Attacking;
             _lastAttackTime = currentTime;
@@ -2387,24 +2466,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Determine attack type based on weapon
             var weapon = Build?.GetWeapon();
-            if (State == PlayerState.Prone)
-            {
-                _currentAttackType = AttackType.ProneStab;
-            }
-            else if (weapon != null)
-            {
-                // Weapon type determines attack animation
-                _currentAttackType = weapon.WeaponType switch
-                {
-                    "bow" or "crossbow" or "gun" => AttackType.Shoot,
-                    "dagger" or "claw" => AttackType.Stab,
-                    _ => AttackType.Swing
-                };
-            }
-            else
-            {
-                _currentAttackType = AttackType.Swing;
-            }
+            _currentAttackType = ResolveClientBasicAttackType(previousState, weapon?.WeaponType);
 
             CurrentAction = GetAttackAction();
             CurrentActionName = CharacterPart.GetActionString(CurrentAction);
@@ -2414,6 +2476,22 @@ namespace HaCreator.MapSimulator.Character
             // Trigger hitbox callback on attack frame
             var hitbox = GetAttackHitbox();
             OnAttackHitbox?.Invoke(this, hitbox);
+        }
+
+        internal static AttackType ResolveClientBasicAttackType(PlayerState previousState, string weaponType)
+        {
+            if (previousState == PlayerState.Prone)
+            {
+                return AttackType.ProneStab;
+            }
+
+            string normalizedWeaponType = weaponType?.Trim().ToLowerInvariant();
+            return normalizedWeaponType switch
+            {
+                "bow" or "crossbow" or "gun" or "double bowgun" or "cannon" => AttackType.Shoot,
+                "dagger" or "claw" => AttackType.Stab,
+                _ => AttackType.Swing
+            };
         }
 
         private CharacterAction GetAttackAction()
@@ -4914,6 +4992,40 @@ namespace HaCreator.MapSimulator.Character
                 currentFacingRight);
         }
 
+        private static int[] CountPreparedMirrorImageSourceLayerParts(IReadOnlyList<MirrorImagePreparedSourceLayer> preparedLayers)
+        {
+            if (preparedLayers == null || preparedLayers.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            int[] counts = new int[preparedLayers.Count];
+            for (int layerIndex = 0; layerIndex < preparedLayers.Count; layerIndex++)
+            {
+                counts[layerIndex] = preparedLayers[layerIndex]?.Parts?.Count ?? 0;
+            }
+
+            return counts;
+        }
+
+        internal static bool ShouldResetMirrorImagePreparedSourceLayersWhenHidden(IReadOnlyList<int> preparedLayerPartCounts)
+        {
+            if (preparedLayerPartCounts == null || preparedLayerPartCounts.Count == 0)
+            {
+                return false;
+            }
+
+            for (int layerIndex = 0; layerIndex < preparedLayerPartCounts.Count; layerIndex++)
+            {
+                if (preparedLayerPartCounts[layerIndex] > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static void RefreshMirrorImagePreparedSourceLayerMetadata(MirrorImagePreparedSourceLayer[] preparedLayers)
         {
             if (preparedLayers == null)
@@ -5752,6 +5864,11 @@ namespace HaCreator.MapSimulator.Character
             {
                 _activeMirrorImage.Visible = false;
                 _activeMirrorImage.CurrentOffsetPx = Point.Zero;
+                if (ShouldResetMirrorImagePreparedSourceLayersWhenHidden(
+                        CountPreparedMirrorImageSourceLayerParts(_activeMirrorImage.PreparedSourceLayers)))
+                {
+                    ResetMirrorImagePreparedSourceLayers();
+                }
                 return;
             }
 
@@ -6919,7 +7036,7 @@ namespace HaCreator.MapSimulator.Character
 
         internal static string ResolvePortableChairActionName(PortableChair chair)
         {
-            if (chair?.SitActionId is int sitActionId && sitActionId >= 0)
+            if (chair?.SitActionId is int sitActionId && sitActionId > 0)
             {
                 return $"sit{sitActionId}";
             }
@@ -7359,6 +7476,11 @@ namespace HaCreator.MapSimulator.Character
 
         internal int TryGetCurrentBodyRelMoveY(int currentTime)
         {
+            return TryGetCurrentBodyRelMoveY(currentTime, 0);
+        }
+
+        internal int TryGetCurrentBodyRelMoveY(int currentTime, int mountedVehicleId)
+        {
             string actionName = CurrentActionName;
             if (string.IsNullOrWhiteSpace(actionName))
             {
@@ -7367,10 +7489,13 @@ namespace HaCreator.MapSimulator.Character
 
             int animationTime = GetRenderAnimationTime(currentTime);
 
-            CharacterPart mountedPart = ResolveMountedStateTamingMobPart();
+            CharacterPart mountedPart = ResolveMountedBodyRelMoveSourceTamingMobPart(mountedVehicleId);
             if (mountedPart?.Slot == EquipSlot.TamingMob)
             {
-                if (TryResolveCurrentMountedClientBodyRelMoveY(actionName, animationTime, out int mountedBodyRelMoveY))
+                bool activeMountedStateMatchesRequestedVehicle = mountedVehicleId <= 0
+                    || MatchesTamingMobItemId(ResolveMountedStateTamingMobPart(), mountedVehicleId);
+                if (activeMountedStateMatchesRequestedVehicle
+                    && TryResolveCurrentMountedClientBodyRelMoveY(actionName, animationTime, out int mountedBodyRelMoveY))
                 {
                     return mountedBodyRelMoveY;
                 }
@@ -7452,6 +7577,45 @@ namespace HaCreator.MapSimulator.Character
                 mountedAnimation.Frames[mountedFrameIndex],
                 FacingRight,
                 out bodyRelMoveY);
+        }
+
+        internal static CharacterPart ResolveMountedBodyRelMoveSourceTamingMobPart(
+            int mountedVehicleId,
+            CharacterPart mountedStatePart,
+            CharacterPart transitionOverridePart,
+            CharacterPart stateDrivenOverridePart,
+            CharacterPart clientOwnedVehicleMount,
+            CharacterPart transformOwnedVehicleMount,
+            CharacterPart equippedMount,
+            CharacterPart observedMount,
+            CharacterPart sharedMechanicMount)
+        {
+            if (mountedVehicleId <= 0)
+            {
+                return mountedStatePart?.Slot == EquipSlot.TamingMob
+                    ? mountedStatePart
+                    : equippedMount?.Slot == EquipSlot.TamingMob
+                        ? equippedMount
+                        : null;
+            }
+
+            return MatchesTamingMobItemId(mountedStatePart, mountedVehicleId)
+                ? mountedStatePart
+                : MatchesTamingMobItemId(transitionOverridePart, mountedVehicleId)
+                    ? transitionOverridePart
+                    : MatchesTamingMobItemId(stateDrivenOverridePart, mountedVehicleId)
+                        ? stateDrivenOverridePart
+                        : MatchesTamingMobItemId(clientOwnedVehicleMount, mountedVehicleId)
+                            ? clientOwnedVehicleMount
+                            : MatchesTamingMobItemId(transformOwnedVehicleMount, mountedVehicleId)
+                                ? transformOwnedVehicleMount
+                                : MatchesTamingMobItemId(equippedMount, mountedVehicleId)
+                                    ? equippedMount
+                                    : MatchesTamingMobItemId(observedMount, mountedVehicleId)
+                                        ? observedMount
+                                        : MatchesTamingMobItemId(sharedMechanicMount, mountedVehicleId)
+                                            ? sharedMechanicMount
+                                            : null;
         }
 
         internal static bool TryResolveMountedClientBodyRelMoveY(
@@ -7553,6 +7717,11 @@ namespace HaCreator.MapSimulator.Character
             }
 
             SyncAssemblerActionLayerContext();
+            if (TryResolveMountedTransitionCurrentFrame(currentTime, out AssembledFrame mountedTransitionFrame))
+            {
+                return mountedTransitionFrame;
+            }
+
             return Assembler.GetFrameAtTime(CurrentActionName, GetRenderAnimationTime(currentTime));
         }
 
@@ -7629,6 +7798,7 @@ namespace HaCreator.MapSimulator.Character
 
         private void UpdateAutomaticTamingMobTransition()
         {
+            int currentTime = Environment.TickCount;
             CharacterPart equippedMount = GetEquippedTamingMobPart();
             CharacterPart activeMount = ResolveAutomaticTamingMobTransitionMount(equippedMount);
             bool clientOwnedMountActive = IsClientOwnedVehicleTamingMobStateActive(activeMount);
@@ -7669,12 +7839,12 @@ namespace HaCreator.MapSimulator.Character
             if (shouldPlayRideTransition
                 && SupportsTamingMobTransitionAction(activeMount, "ride2"))
             {
-                TriggerAutomaticTamingMobTransition(activeMount, "ride2", preserveUnmountedMount: false);
+                TriggerAutomaticTamingMobTransition(activeMount, "ride2", preserveUnmountedMount: false, currentTime);
             }
             else if (shouldPlayGetOffTransition
                      && SupportsTamingMobTransitionAction(_observedTamingMobPart, "getoff2"))
             {
-                TriggerAutomaticTamingMobTransition(_observedTamingMobPart, "getoff2", preserveUnmountedMount: true);
+                TriggerAutomaticTamingMobTransition(_observedTamingMobPart, "getoff2", preserveUnmountedMount: true, currentTime);
             }
             else
             {
@@ -7685,7 +7855,11 @@ namespace HaCreator.MapSimulator.Character
             _observedClientOwnedTamingMobActive = clientOwnedMountActive;
         }
 
-        private void TriggerAutomaticTamingMobTransition(CharacterPart mountPart, string actionName, bool preserveUnmountedMount)
+        private void TriggerAutomaticTamingMobTransition(
+            CharacterPart mountPart,
+            string actionName,
+            bool preserveUnmountedMount,
+            int currentTime)
         {
             if (mountPart?.Slot != EquipSlot.TamingMob || string.IsNullOrWhiteSpace(actionName))
             {
@@ -7693,7 +7867,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             SetTransientTamingMobOverride(preserveUnmountedMount ? mountPart : null);
-            TriggerSkillAnimation(actionName);
+            TriggerSkillAnimation(actionName, currentTime: currentTime);
         }
 
         private CharacterPart GetEquippedTamingMobPart()
@@ -7792,12 +7966,6 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            if (!IsStateDrivenMechanicVehicleAction(CurrentActionName))
-            {
-                SetStateDrivenTamingMobOverride(null);
-                return;
-            }
-
             CharacterPart mechanicMountPart = ResolveMechanicVehicleTamingMobPart();
             if (CharacterAssembler.IsTamingMobRenderOwnershipAction(mechanicMountPart, CurrentActionName))
             {
@@ -7839,6 +8007,36 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return null;
+        }
+
+        private CharacterPart ResolveMountedBodyRelMoveSourceTamingMobPart(int mountedVehicleId)
+        {
+            CharacterPart resolvedPart = ResolveMountedBodyRelMoveSourceTamingMobPart(
+                mountedVehicleId,
+                ResolveMountedStateTamingMobPart(),
+                _transitionTamingMobOverridePart,
+                _stateDrivenTamingMobOverridePart,
+                GetClientOwnedVehicleTamingMobPart(),
+                ResolveClientOwnedVehicleAvatarTransformMountPart(),
+                GetEquippedTamingMobPart(),
+                _observedTamingMobPart,
+                _sharedMechanicTamingMobPart);
+            if (resolvedPart?.Slot == EquipSlot.TamingMob)
+            {
+                return resolvedPart;
+            }
+
+            if (mountedVehicleId == MechanicTamingMobItemId)
+            {
+                return ResolveMechanicVehicleTamingMobPart();
+            }
+
+            CharacterPart loadedMount = _tamingMobLoader?.Invoke(mountedVehicleId);
+            return MatchesTamingMobItemId(loadedMount, mountedVehicleId)
+                ? loadedMount
+                : mountedVehicleId <= 0
+                    ? ResolveMountedStateTamingMobPart()
+                    : null;
         }
 
         private CharacterPart ResolveAutomaticTamingMobTransitionMount(CharacterPart equippedMount)
@@ -7899,6 +8097,12 @@ namespace HaCreator.MapSimulator.Character
                 && mountPart.ItemId == MechanicTamingMobItemId;
         }
 
+        private static bool MatchesTamingMobItemId(CharacterPart mountPart, int mountedVehicleId)
+        {
+            return mountPart?.Slot == EquipSlot.TamingMob
+                && mountPart.ItemId == mountedVehicleId;
+        }
+
         private bool HasPortableChairBlockedMountState()
         {
             return _clientOwnedVehicleTamingMobActive || IsMechanicTamingMobStateActive();
@@ -7914,11 +8118,6 @@ namespace HaCreator.MapSimulator.Character
             return SkillManager.SupportsClientOwnedVehicleMountedStateForCurrentAction(
                 mountPart,
                 actionName);
-        }
-
-        private static bool IsStateDrivenMechanicVehicleAction(string actionName)
-        {
-            return ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(actionName, includeTransformStates: true);
         }
 
         private static bool SameTamingMob(CharacterPart left, CharacterPart right)
@@ -9252,7 +9451,7 @@ namespace HaCreator.MapSimulator.Character
             using var stream = new MemoryStream();
             using var writer = new BinaryWriter(stream);
 
-            writer.Write((byte)1);
+            writer.Write((byte)2);
             WriteSnapshot(writer, PassivePosition);
             writer.Write(MovePath.Count);
 
@@ -9276,18 +9475,18 @@ namespace HaCreator.MapSimulator.Character
             using var reader = new BinaryReader(stream);
 
             byte version = reader.ReadByte();
-            if (version != 1)
+            if (version != 1 && version != 2)
             {
                 throw new InvalidDataException($"Unsupported movement snapshot version: {version}");
             }
 
-            PassivePositionSnapshot passivePosition = ReadSnapshot(reader);
+            PassivePositionSnapshot passivePosition = ReadSnapshot(reader, version);
             int count = reader.ReadInt32();
             var movePath = new System.Collections.Generic.List<MovePathElement>(count);
 
             for (int i = 0; i < count; i++)
             {
-                movePath.Add(ReadElement(reader));
+                movePath.Add(ReadElement(reader, version));
             }
 
             return new PlayerMovementSyncSnapshot(passivePosition, movePath);
@@ -9338,7 +9537,8 @@ namespace HaCreator.MapSimulator.Character
                     Action = t < 1f ? start.Action : end.Action,
                     FootholdId = t < 1f ? start.FootholdId : end.FootholdId,
                     TimeStamp = currentTime,
-                    FacingRight = t < 0.5f ? start.FacingRight : end.FacingRight
+                    FacingRight = t < 0.5f ? start.FacingRight : end.FacingRight,
+                    MovePathAttribute = t < 0.5f ? start.MovePathAttribute : end.MovePathAttribute
                 };
             }
 
@@ -9355,11 +9555,12 @@ namespace HaCreator.MapSimulator.Character
             writer.Write(snapshot.FootholdId);
             writer.Write(snapshot.TimeStamp);
             writer.Write(snapshot.FacingRight);
+            writer.Write(snapshot.MovePathAttribute);
         }
 
-        private static PassivePositionSnapshot ReadSnapshot(BinaryReader reader)
+        private static PassivePositionSnapshot ReadSnapshot(BinaryReader reader, byte version)
         {
-            return new PassivePositionSnapshot
+            PassivePositionSnapshot snapshot = new PassivePositionSnapshot
             {
                 X = reader.ReadInt32(),
                 Y = reader.ReadInt32(),
@@ -9370,6 +9571,13 @@ namespace HaCreator.MapSimulator.Character
                 TimeStamp = reader.ReadInt32(),
                 FacingRight = reader.ReadBoolean()
             };
+
+            if (version >= 2)
+            {
+                snapshot.MovePathAttribute = reader.ReadInt32();
+            }
+
+            return snapshot;
         }
 
         private static void WriteElement(BinaryWriter writer, MovePathElement element)
@@ -9384,11 +9592,12 @@ namespace HaCreator.MapSimulator.Character
             writer.Write(element.Duration);
             writer.Write(element.FacingRight);
             writer.Write(element.StatChanged);
+            writer.Write(element.MovePathAttribute);
         }
 
-        private static MovePathElement ReadElement(BinaryReader reader)
+        private static MovePathElement ReadElement(BinaryReader reader, byte version = 2)
         {
-            return new MovePathElement
+            MovePathElement element = new MovePathElement
             {
                 X = reader.ReadInt32(),
                 Y = reader.ReadInt32(),
@@ -9401,6 +9610,13 @@ namespace HaCreator.MapSimulator.Character
                 FacingRight = reader.ReadBoolean(),
                 StatChanged = reader.ReadBoolean()
             };
+
+            if (version >= 2)
+            {
+                element.MovePathAttribute = reader.ReadInt32();
+            }
+
+            return element;
         }
 
         private static PassivePositionSnapshot ToPassivePosition(MovePathElement element)
@@ -9414,7 +9630,8 @@ namespace HaCreator.MapSimulator.Character
                 Action = element.Action,
                 FootholdId = element.FootholdId,
                 TimeStamp = element.TimeStamp,
-                FacingRight = element.FacingRight
+                FacingRight = element.FacingRight,
+                MovePathAttribute = element.MovePathAttribute
             };
         }
 

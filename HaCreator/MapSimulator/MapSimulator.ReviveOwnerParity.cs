@@ -12,6 +12,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
@@ -24,6 +25,14 @@ namespace HaCreator.MapSimulator
         private const int ReviveOwnerUpgradeTombEffectOpcode = 58;
         private const int ReviveOwnerUpgradeTombItemId = 5510000;
         private const byte ReviveOwnerSyntheticFieldKey = 0;
+        private static readonly string[][] ReviveOwnerMapInfoPropertyAliases =
+        {
+            new[] { "noResurection", "noResurrection" },
+            new[] { "reviveCurField" },
+            new[] { "ReviveCurFieldOfNoTransfer" },
+            new[] { "ReviveCurFieldOfNoTransferPoint" },
+            new[] { "forceReturnOnDead" },
+        };
 
         private readonly ReviveOwnerRuntime _reviveOwnerRuntime = new();
         private ReviveOwnerTransferRequest? _pendingReviveOwnerTransferRequest;
@@ -416,10 +425,45 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            property = FindReviveOwnerPropertyCandidate(mapInfo.Image?["info"]?.WzProperties, propertyName)
-                ?? FindReviveOwnerPropertyCandidate(mapInfo.unsupportedInfoProperties, propertyName)
-                ?? FindReviveOwnerPropertyCandidate(mapInfo.additionalProps, propertyName);
+            foreach (string candidateName in EnumerateReviveOwnerPropertyNameCandidates(propertyName))
+            {
+                property = FindReviveOwnerPropertyCandidate(mapInfo.Image?["info"]?.WzProperties, candidateName)
+                    ?? FindReviveOwnerPropertyCandidate(mapInfo.unsupportedInfoProperties, candidateName)
+                    ?? FindReviveOwnerPropertyCandidate(mapInfo.additionalProps, candidateName)
+                    ?? FindReviveOwnerNestedInfoPropertyCandidate(mapInfo.unsupportedInfoProperties, candidateName)
+                    ?? FindReviveOwnerNestedInfoPropertyCandidate(mapInfo.additionalProps, candidateName);
+                if (property != null)
+                {
+                    return true;
+                }
+            }
+
+            property = null;
             return property != null;
+        }
+
+        private static IEnumerable<string> EnumerateReviveOwnerPropertyNameCandidates(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                yield break;
+            }
+
+            yield return propertyName;
+            foreach (string[] aliasGroup in ReviveOwnerMapInfoPropertyAliases)
+            {
+                if (!aliasGroup.Any(candidate => string.Equals(candidate, propertyName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                foreach (string alias in aliasGroup.Where(alias => !string.Equals(alias, propertyName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    yield return alias;
+                }
+
+                yield break;
+            }
         }
 
         private static WzImageProperty FindReviveOwnerPropertyCandidate(
@@ -433,6 +477,33 @@ namespace HaCreator.MapSimulator
 
             return properties.FirstOrDefault(
                 candidate => string.Equals(candidate?.Name, propertyName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static WzImageProperty FindReviveOwnerNestedInfoPropertyCandidate(
+            IEnumerable<WzImageProperty> properties,
+            string propertyName)
+        {
+            if (properties == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty infoCandidate in properties.Where(
+                candidate => string.Equals(candidate?.Name, "info", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (infoCandidate is not WzSubProperty infoProperty)
+                {
+                    continue;
+                }
+
+                WzImageProperty property = FindReviveOwnerPropertyCandidate(infoProperty.WzProperties, propertyName);
+                if (property != null)
+                {
+                    return property;
+                }
+            }
+
+            return null;
         }
 
         private static WzImageProperty FindReviveOwnerChildProperty(WzSubProperty property, string childName)

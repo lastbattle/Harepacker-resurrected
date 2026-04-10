@@ -287,27 +287,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 StopInternal(clearPending: true);
 
-                try
-                {
-                    RemoteHost = resolvedRemoteHost;
-                    RemotePort = remotePort;
-                    _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
-                    _listener.Start();
-                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
-                    _passiveEstablishedSession = null;
-                    _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Dojo official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
-                    status = LastStatus;
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    StopInternal(clearPending: true);
-                    LastStatus = $"Dojo official-session bridge failed to start: {ex.Message}";
-                    status = LastStatus;
-                    return false;
-                }
+                return TryStartProxyListener(requestedListenPort, autoSelectListenPort, resolvedRemoteHost, remotePort, clearPassiveEstablishedSession: true, out status);
             }
         }
 
@@ -417,6 +397,78 @@ namespace HaCreator.MapSimulator.Managers
                 LastStatus =
                     $"Observed already-established Mu Lung Dojo Maple socket pair {DescribeEstablishedSession(candidate)}. " +
                     "This passive attach keeps the live socket pair visible to the Dojo ownership seam, but it still cannot decrypt inbound Dojo traffic after the Maple handshake; reconnect through the localhost proxy for live packet ownership.";
+                status = LastStatus;
+                return true;
+            }
+        }
+
+        public bool TryAttachEstablishedSessionAndStartProxy(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            return TryAttachEstablishedSessionAndStartProxy(listenPort, candidate, out status);
+        }
+
+        public bool TryAttachEstablishedSessionAndStartProxy(int listenPort, SessionDiscoveryCandidate candidate, out string status)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
+            {
+                status = "Dojo official-session proxy attach requires an established Maple client socket pair.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (listenPort < 0 || listenPort > ushort.MaxValue)
+            {
+                status = "Dojo official-session proxy attach listen port must be 0 or a valid TCP port.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (HasAttachedClient)
+                {
+                    status = $"Dojo official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before preparing an already-established socket pair for reconnect.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                StopInternal(clearPending: true);
+                _passiveEstablishedSession = candidate;
+
+                bool autoSelectListenPort = listenPort <= 0;
+                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+                if (!TryStartProxyListener(
+                        requestedListenPort,
+                        autoSelectListenPort,
+                        candidate.RemoteEndpoint.Address.ToString(),
+                        candidate.RemoteEndpoint.Port,
+                        clearPassiveEstablishedSession: false,
+                        out string startStatus))
+                {
+                    LastStatus = $"Observed already-established Mu Lung Dojo Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
+                    status = LastStatus;
+                    return false;
+                }
+
+                LastStatus =
+                    $"Observed already-established Mu Lung Dojo Maple socket pair {DescribeEstablishedSession(candidate)}. " +
+                    $"Armed localhost proxy on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}; reconnect Maple through this proxy to recover Dojo decrypt ownership and live packet inference through the existing bridge seam.";
                 status = LastStatus;
                 return true;
             }
@@ -592,6 +644,41 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 StopInternal(clearPending: true);
+            }
+        }
+
+        private bool TryStartProxyListener(
+            int requestedListenPort,
+            bool autoSelectListenPort,
+            string resolvedRemoteHost,
+            int remotePort,
+            bool clearPassiveEstablishedSession,
+            out string status)
+        {
+            try
+            {
+                RemoteHost = resolvedRemoteHost;
+                RemotePort = remotePort;
+                _listenerCancellation = new CancellationTokenSource();
+                _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
+                _listener.Start();
+                ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
+                if (clearPassiveEstablishedSession)
+                {
+                    _passiveEstablishedSession = null;
+                }
+
+                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
+                LastStatus = $"Dojo official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                status = LastStatus;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                StopInternal(clearPending: true);
+                LastStatus = $"Dojo official-session bridge failed to start: {ex.Message}";
+                status = LastStatus;
+                return false;
             }
         }
 
@@ -1358,7 +1445,7 @@ namespace HaCreator.MapSimulator.Managers
             string reconnectTarget = listenPort.HasValue && listenPort.Value > 0
                 ? $"127.0.0.1:{listenPort.Value}"
                 : "the configured localhost listen port";
-            return $"Discovery identifies established Maple sockets. Use `/dojo session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or reconnect Maple through {reconnectTarget} so the bridge can recover Dojo traffic through the localhost proxy.";
+            return $"Discovery identifies established Maple sockets. Use `/dojo session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or `/dojo session attachproxy ...` to arm a reconnect proxy so Maple can reconnect through {reconnectTarget} and recover Dojo traffic through the localhost proxy.";
         }
 
         private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)

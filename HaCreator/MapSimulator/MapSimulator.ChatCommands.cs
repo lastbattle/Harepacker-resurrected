@@ -3165,7 +3165,7 @@ namespace HaCreator.MapSimulator
                                 || !int.TryParse(args[2], out int discoverRemotePort)
                                 || discoverRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session discover <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.DiscoverUsage);
                             }
 
 
@@ -3175,7 +3175,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session discover <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.DiscoverUsage);
                                 }
 
 
@@ -3196,12 +3196,11 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 5
-                                || !int.TryParse(args[2], out int listenPort)
-                                || listenPort < 0
+                                || !GuildBossSessionCommandParsing.TryParseProxyListenPort(args[2], out int listenPort)
                                 || !int.TryParse(args[4], out int remotePort)
                                 || remotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session start <listenPort|0> <serverHost> <serverPort>");
+                                return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.StartUsage);
                             }
 
 
@@ -3219,7 +3218,7 @@ namespace HaCreator.MapSimulator
                                 || !int.TryParse(args[2], out int attachRemotePort)
                                 || attachRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session attach <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.AttachUsage);
                             }
 
 
@@ -3229,7 +3228,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[4], out int parsedAttachLocalPort) || parsedAttachLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session attach <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.AttachUsage);
                                 }
 
 
@@ -3254,12 +3253,11 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "attachproxy", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 4
-                                || !int.TryParse(args[2], out int attachProxyListenPort)
-                                || attachProxyListenPort < 0
+                                || !GuildBossSessionCommandParsing.TryParseProxyListenPort(args[2], out int attachProxyListenPort)
                                 || !int.TryParse(args[3], out int attachProxyRemotePort)
                                 || attachProxyRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.AttachProxyUsage);
                             }
 
 
@@ -3269,7 +3267,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[5], out int parsedAttachProxyLocalPort) || parsedAttachProxyLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.AttachProxyUsage);
                                 }
 
 
@@ -3294,12 +3292,11 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 4
-                                || !int.TryParse(args[2], out int autoListenPort)
-                                || autoListenPort < 0
+                                || !GuildBossSessionCommandParsing.TryParseProxyListenPort(args[2], out int autoListenPort)
                                 || !int.TryParse(args[3], out int autoRemotePort)
                                 || autoRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.StartAutoUsage);
                             }
 
 
@@ -3309,7 +3306,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.StartAutoUsage);
                                 }
 
 
@@ -3332,7 +3329,7 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]");
+                        return ChatCommandHandler.CommandResult.Error(GuildBossSessionCommandParsing.SessionUsage);
 
                     }
 
@@ -8151,6 +8148,7 @@ namespace HaCreator.MapSimulator
 
 
                     int actionIndex = args.Length >= 2 && string.Equals(args[1], "packet", StringComparison.OrdinalIgnoreCase) ? 2 : 1;
+                    bool packetMode = actionIndex == 2;
                     if (args.Length <= actionIndex)
                     {
                         return ChatCommandHandler.CommandResult.Info(runtime.DescribeStatus());
@@ -8249,6 +8247,42 @@ namespace HaCreator.MapSimulator
                     bool Dispatch(SocialRoomPacketType packetType, out string packetMessage, int itemId = 0, int quantity = 1, int meso = 0, int itemIndex = -1, string actorName = null)
                     {
                         return runtime.TryDispatchPacket(packetType, out packetMessage, itemId, quantity, meso, itemIndex, actorName);
+                    }
+
+                    bool DispatchTradingRoomPacketOwnedItem(bool remoteParty, int itemId, int quantity, out string packetMessage)
+                    {
+                        string packetOwnerName = remoteParty ? runtime.RemoteTraderName : runtime.OwnerName;
+                        int nextPacketSlot = runtime.Items
+                            .Where(entry => string.Equals(entry.OwnerName, packetOwnerName, StringComparison.OrdinalIgnoreCase))
+                            .Select(entry => entry.PacketSlotIndex ?? 0)
+                            .DefaultIfEmpty(0)
+                            .Max() + 1;
+                        return runtime.TryDispatchTradingRoomPacketOwnedItem(
+                            remoteParty ? 1 : 0,
+                            Math.Clamp(nextPacketSlot, 1, 9),
+                            itemId,
+                            quantity,
+                            currTickCount,
+                            out packetMessage);
+                    }
+
+                    bool DispatchTradingRoomPacketOwnedMeso(bool remoteParty, int mesoAmount, out string packetMessage)
+                    {
+                        return runtime.TryDispatchTradingRoomPacketOwnedMeso(
+                            remoteParty ? 1 : 0,
+                            mesoAmount,
+                            currTickCount,
+                            out packetMessage);
+                    }
+
+                    bool DispatchTradingRoomPacketOwnedTrade(out string packetMessage)
+                    {
+                        return runtime.TryDispatchTradingRoomPacketOwnedTrade(currTickCount, out packetMessage);
+                    }
+
+                    bool DispatchTradingRoomPacketOwnedExceedLimit(out string packetMessage)
+                    {
+                        return runtime.TryDispatchTradingRoomPacketOwnedExceedLimit(currTickCount, out packetMessage);
                     }
 
 
@@ -8486,7 +8520,9 @@ namespace HaCreator.MapSimulator
 
 
                                     int tradeQty = args.Length > actionIndex + 2 && int.TryParse(args[actionIndex + 2], out int parsedTradeQty) ? parsedTradeQty : 1;
-                                    return Dispatch(SocialRoomPacketType.OfferTradeItem, out string tradeItemMessage, itemId: tradeItemId, quantity: tradeQty)
+                                    return (packetMode
+                                            ? DispatchTradingRoomPacketOwnedItem(remoteParty: false, tradeItemId, tradeQty, out string tradeItemMessage)
+                                            : Dispatch(SocialRoomPacketType.OfferTradeItem, out tradeItemMessage, itemId: tradeItemId, quantity: tradeQty))
                                         ? ChatCommandHandler.CommandResult.Ok(tradeItemMessage)
                                         : ChatCommandHandler.CommandResult.Error(tradeItemMessage);
                                 case "offermeso":
@@ -8496,7 +8532,9 @@ namespace HaCreator.MapSimulator
                                     }
 
 
-                                    return Dispatch(SocialRoomPacketType.OfferTradeMeso, out string tradeMesoMessage, meso: tradeMeso)
+                                    return (packetMode
+                                            ? DispatchTradingRoomPacketOwnedMeso(remoteParty: false, tradeMeso, out string tradeMesoMessage)
+                                            : Dispatch(SocialRoomPacketType.OfferTradeMeso, out tradeMesoMessage, meso: tradeMeso))
                                         ? ChatCommandHandler.CommandResult.Ok(tradeMesoMessage)
                                         : ChatCommandHandler.CommandResult.Error(tradeMesoMessage);
                                 case "lock":
@@ -8515,7 +8553,9 @@ namespace HaCreator.MapSimulator
 
 
                                     int remoteTradeQty = args.Length > actionIndex + 2 && int.TryParse(args[actionIndex + 2], out int parsedRemoteTradeQty) ? parsedRemoteTradeQty : 1;
-                                    return runtime.TryOfferRemoteTradeItem(remoteTradeItemId, remoteTradeQty, out string remoteTradeItemMessage)
+                                    return (packetMode
+                                            ? DispatchTradingRoomPacketOwnedItem(remoteParty: true, remoteTradeItemId, remoteTradeQty, out string remoteTradeItemMessage)
+                                            : runtime.TryOfferRemoteTradeItem(remoteTradeItemId, remoteTradeQty, out remoteTradeItemMessage))
                                         ? ChatCommandHandler.CommandResult.Ok(remoteTradeItemMessage)
                                         : ChatCommandHandler.CommandResult.Error(remoteTradeItemMessage);
                                 case "remoteoffermeso":
@@ -8525,11 +8565,15 @@ namespace HaCreator.MapSimulator
                                     }
 
 
-                                    return runtime.TryOfferRemoteTradeMeso(remoteTradeMeso, out string remoteTradeMesoMessage)
+                                    return (packetMode
+                                            ? DispatchTradingRoomPacketOwnedMeso(remoteParty: true, remoteTradeMeso, out string remoteTradeMesoMessage)
+                                            : runtime.TryOfferRemoteTradeMeso(remoteTradeMeso, out remoteTradeMesoMessage))
                                         ? ChatCommandHandler.CommandResult.Ok(remoteTradeMesoMessage)
                                         : ChatCommandHandler.CommandResult.Error(remoteTradeMesoMessage);
                                 case "remotelock":
-                                    return runtime.ToggleTradeLock(out string remoteLockMessage, remoteParty: true)
+                                    return (packetMode
+                                            ? DispatchTradingRoomPacketOwnedTrade(out string remoteLockMessage)
+                                            : runtime.ToggleTradeLock(out remoteLockMessage, remoteParty: true))
                                         ? ChatCommandHandler.CommandResult.Ok(remoteLockMessage)
                                         : ChatCommandHandler.CommandResult.Error(remoteLockMessage);
                                 case "remoteaccept":
@@ -8579,12 +8623,18 @@ namespace HaCreator.MapSimulator
                                     return Dispatch(SocialRoomPacketType.CompleteTrade, out string completeMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(completeMessage)
                                         : ChatCommandHandler.CommandResult.Error(completeMessage);
+                                case "exceedlimit":
+                                    return (packetMode
+                                            ? DispatchTradingRoomPacketOwnedExceedLimit(out string exceedLimitMessage)
+                                            : DispatchTradingRoomPacketOwnedExceedLimit(out exceedLimitMessage))
+                                        ? ChatCommandHandler.CommandResult.Ok(exceedLimitMessage)
+                                        : ChatCommandHandler.CommandResult.Error(exceedLimitMessage);
                                 case "reset":
                                     return Dispatch(SocialRoomPacketType.ResetTrade, out string resetMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(resetMessage)
                                         : ChatCommandHandler.CommandResult.Error(resetMessage);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|exceedlimit|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
                     }

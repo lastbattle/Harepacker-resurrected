@@ -327,7 +327,8 @@ namespace HaCreator.MapSimulator.Interaction
                     isMembershopAvatar ? "Member Shop Avatar" : "Avatar Selection",
                     rawText,
                     entry.Pages.Count > 0 ? entry.Pages[0].Text : string.Empty,
-                    choices));
+                    choices,
+                    previewItemIds: optionItemIds));
         }
 
         private static PacketScriptDecodeResult DecodeAskQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -710,7 +711,8 @@ namespace HaCreator.MapSimulator.Interaction
                         isPetAll ? "Pet Selection (All)" : "Pet Selection",
                         rawText,
                         entryText,
-                        choices));
+                        choices,
+                        previewItemIds: selectablePets.Select(static pet => pet?.ItemId ?? 0).ToArray()));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
@@ -868,8 +870,8 @@ namespace HaCreator.MapSimulator.Interaction
                         buttonInfo,
                         entry.Pages.Count > 0 ? entry.Pages[0].Text : string.Empty,
                         entry.Pages.Count > 0 ? entry.Pages[0].Choices : Array.Empty<NpcInteractionChoice>(),
-                        slideMenuType,
-                        initialSelectionId));
+                        mode: slideMenuType,
+                        initialSelectionId: initialSelectionId));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
@@ -1649,6 +1651,7 @@ namespace HaCreator.MapSimulator.Interaction
             string promptText,
             string detailText,
             IReadOnlyList<NpcInteractionChoice> choices,
+            IReadOnlyList<int> previewItemIds = null,
             int mode = 0,
             int initialSelectionId = 0)
         {
@@ -1658,6 +1661,7 @@ namespace HaCreator.MapSimulator.Interaction
                 promptText ?? string.Empty,
                 detailText ?? string.Empty,
                 choices ?? Array.Empty<NpcInteractionChoice>(),
+                previewItemIds ?? Array.Empty<int>(),
                 mode,
                 initialSelectionId);
         }
@@ -1758,6 +1762,7 @@ namespace HaCreator.MapSimulator.Interaction
             string PromptText,
             string DetailText,
             IReadOnlyList<NpcInteractionChoice> Choices,
+            IReadOnlyList<int> PreviewItemIds,
             int Mode,
             int InitialSelectionId);
 

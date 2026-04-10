@@ -866,7 +866,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            _completedCharacterEquipmentPacketRequests.Remove(payload.RequestId);
+            if (ShouldRefreshCompletedCharacterPacketRequestRetention(payload.ResultKind))
+            {
+                completedEnvelope.CompletedAtTick = currTickCount;
+            }
+
+            if (ShouldRemoveCompletedCharacterPacketRequestAfterLateResult(payload.ResultKind))
+            {
+                _completedCharacterEquipmentPacketRequests.Remove(payload.RequestId);
+            }
+
             message = $"Reconciled late packet-authored character equipment result for request {payload.RequestId}.";
             return true;
         }
@@ -881,6 +890,16 @@ namespace HaCreator.MapSimulator
             return completedAtTick > 0
                    && retentionMs > 0
                    && unchecked(currentTick - completedAtTick) <= retentionMs;
+        }
+
+        internal static bool ShouldRefreshCompletedCharacterPacketRequestRetention(CharacterEquipmentAuthorityResultKind resultKind)
+        {
+            return resultKind == CharacterEquipmentAuthorityResultKind.AuthoritativeStateAccept;
+        }
+
+        internal static bool ShouldRemoveCompletedCharacterPacketRequestAfterLateResult(CharacterEquipmentAuthorityResultKind resultKind)
+        {
+            return resultKind == CharacterEquipmentAuthorityResultKind.Reject;
         }
 
         internal static bool ShouldReplaceQueuedCharacterPacketResult(

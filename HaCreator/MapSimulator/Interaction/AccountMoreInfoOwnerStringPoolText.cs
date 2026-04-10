@@ -64,17 +64,18 @@ namespace HaCreator.MapSimulator.Interaction
         {
             List<string> candidates = new();
 
+            AddDistinctCandidate(candidates, MapleStoryStringPool.GetOrNull(BackgroundStringPoolId));
+
             // The generated table in this workspace currently resolves 0x16AE to
             // `UI/UIWindow.img/UserInfo/backgrnd8`, while older reverse-engineered
             // notes pinned a FriendRecommendations path that is absent from the
-            // active mounted UI set. Keep both in the recovery list, but let the
-            // WZ-backed mounted `UserInfo` shells lead the order.
+            // active mounted UI set. Try the explicit client-authored StringPool
+            // path first, then fall back to mounted `UserInfo` shells that are
+            // actually present in the active UI set.
             foreach (string candidate in BackgroundRecoveryCandidates)
             {
                 AddDistinctCandidate(candidates, candidate);
             }
-
-            AddDistinctCandidate(candidates, MapleStoryStringPool.GetOrNull(BackgroundStringPoolId));
 
             return candidates;
         }

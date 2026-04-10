@@ -281,10 +281,15 @@ namespace HaCreator.MapSimulator.Character
 
         internal int ResolveClientActionLayerDuration(string actionName)
         {
-            int assembledDuration = ResolveAssembledAnimationDuration(GetAnimation(actionName));
-            return TryResolveMountedOneTimeActionDuration(actionName, out int tamingMobDuration)
-                ? Math.Max(assembledDuration, tamingMobDuration)
-                : assembledDuration;
+            int bodyDuration = ResolveClientCharacterActionLayerDuration(actionName);
+            return TryResolveClientTamingMobActionLayerDuration(actionName, out int tamingMobDuration)
+                ? Math.Max(bodyDuration, tamingMobDuration)
+                : bodyDuration;
+        }
+
+        internal int ResolveClientCharacterActionLayerDuration(string actionName)
+        {
+            return ResolveAssembledAnimationDuration(GetAnimation(actionName));
         }
 
         /// <summary>
@@ -314,6 +319,22 @@ namespace HaCreator.MapSimulator.Character
                 return null;
 
             return ResolveDynamicPortableChairFrame(GetFrameAtTime(frames, timeMs), timeMs);
+        }
+
+        internal AssembledFrame GetMountedFrameAtTime(
+            string bodyActionName,
+            int bodyTimeMs,
+            string tamingMobActionName,
+            int tamingMobTimeMs)
+        {
+            AssembledFrame mountedFrame = TryResolveMountedFrameAtTime(
+                bodyActionName,
+                bodyTimeMs,
+                tamingMobActionName,
+                tamingMobTimeMs);
+            return mountedFrame == null
+                ? null
+                : ResolveDynamicPortableChairFrame(mountedFrame, tamingMobTimeMs);
         }
 
         public int GetFrameIndexAtTime(string actionName, int timeMs)
@@ -624,12 +645,21 @@ namespace HaCreator.MapSimulator.Character
 
         private AssembledFrame TryResolveMountedFrameAtTime(string actionName, int timeMs)
         {
+            return TryResolveMountedFrameAtTime(actionName, timeMs, actionName, timeMs);
+        }
+
+        private AssembledFrame TryResolveMountedFrameAtTime(
+            string bodyActionName,
+            int bodyTimeMs,
+            string tamingMobActionName,
+            int tamingMobTimeMs)
+        {
             if (_overrideAvatarPart != null)
             {
                 return null;
             }
 
-            string preparedActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(actionName, isMorphAvatar: false);
+            string preparedActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(bodyActionName, isMorphAvatar: false);
             CharacterLoader.CharacterActionMergeInput mergeInput =
                 CharacterLoader.PrepareActionMergeInput(_build, preparedActionName, GetActiveTamingMobPart());
             string resolvedActionName = mergeInput?.ActionName ?? preparedActionName;
@@ -642,14 +672,18 @@ namespace HaCreator.MapSimulator.Character
 
             CharacterAnimation bodyAnimation = _build.Body?.GetAnimation(CharacterPart.ParseActionString(resolvedActionName))
                                            ?? _build.Body?.GetAnimation(CharacterAction.Stand1);
-            CharacterAnimation tamingMobAnimation = GetPartAnimation(activeTamingMob, resolvedActionName);
+            string preparedTamingMobActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(
+                tamingMobActionName,
+                isMorphAvatar: false);
+            CharacterAnimation tamingMobAnimation = GetPartAnimation(activeTamingMob, preparedTamingMobActionName)
+                                                ?? GetPartAnimation(activeTamingMob, resolvedActionName);
             if (bodyAnimation?.Frames?.Count <= 0 || tamingMobAnimation?.Frames?.Count <= 0)
             {
                 return null;
             }
 
-            CharacterFrame bodyFrame = bodyAnimation.GetFrameAtTime(timeMs, out int bodyFrameIndex);
-            CharacterFrame tamingMobFrame = tamingMobAnimation.GetFrameAtTime(timeMs, out _);
+            CharacterFrame bodyFrame = bodyAnimation.GetFrameAtTime(Math.Max(0, bodyTimeMs), out int bodyFrameIndex);
+            CharacterFrame tamingMobFrame = tamingMobAnimation.GetFrameAtTime(Math.Max(0, tamingMobTimeMs), out _);
             if (bodyFrame == null || tamingMobFrame == null)
             {
                 return null;
@@ -662,7 +696,7 @@ namespace HaCreator.MapSimulator.Character
                 tamingMobFrame);
         }
 
-        private bool TryResolveMountedOneTimeActionDuration(string actionName, out int durationMs)
+        internal bool TryResolveClientTamingMobActionLayerDuration(string actionName, out int durationMs)
         {
             durationMs = 0;
             if (_overrideAvatarPart != null)
@@ -1195,7 +1229,7 @@ namespace HaCreator.MapSimulator.Character
         {
             return tamingMobPart?.Type == CharacterPartType.TamingMob
                    && tamingMobPart.ItemId == MechanicTamingMobItemId
-                   && (IsMechanicVehicleAction(tamingMobPart, actionName)
+                   && (IsMechanicMountedRenderOwnershipSignal(tamingMobPart, actionName)
                        || IsMechanicMountedSitFallbackAction(tamingMobPart, actionName));
         }
 
@@ -1203,14 +1237,18 @@ namespace HaCreator.MapSimulator.Character
         {
             return tamingMobPart?.Type == CharacterPartType.TamingMob
                    && tamingMobPart.ItemId == MechanicTamingMobItemId
-                   && (ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(actionName, includeTransformStates: true)
-                       || ClientOwnedVehicleSkillClassifier.IsExplicitMechanicVehiclePresentationActionName(actionName));
+                   && ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                       tamingMobPart.ItemId,
+                       actionName);
         }
 
-        private static bool IsMechanicVehicleAction(CharacterPart tamingMobPart, string actionName)
+        private static bool IsMechanicMountedRenderOwnershipSignal(CharacterPart tamingMobPart, string actionName)
         {
-            return ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(actionName, includeTransformStates: true)
-                   || IsMechanicMountOnlyAction(tamingMobPart, actionName);
+            return SupportsTamingMobAction(tamingMobPart, actionName)
+                   && (ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
+                           MechanicTamingMobItemId,
+                           actionName)
+                       || IsMechanicMountOnlyAction(tamingMobPart, actionName));
         }
 
         private static bool IsMechanicMountOnlyAction(CharacterPart tamingMobPart, string actionName)

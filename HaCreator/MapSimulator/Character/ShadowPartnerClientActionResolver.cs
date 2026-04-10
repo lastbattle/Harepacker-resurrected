@@ -237,6 +237,13 @@ namespace HaCreator.MapSimulator.Character
                     ("alert", 0, -300),
                     ("alert", 1, 300),
                     ("alert", 2, 300)),
+                ["alert6"] = CreateIndexedPieces(
+                    ("alert", 0, 330),
+                    ("alert", 1, 330),
+                    ("alert", 2, 330)),
+                ["alert7"] = CreateIndexedPieces(
+                    ("alert", 0, 360),
+                    ("alert", 1, 300)),
                 // The mounted character action table also keeps `ladder2` and `rope2`
                 // as two-step helper rows instead of a single frame remap.
                 ["ladder2"] = CreateIndexedPieces(
@@ -322,13 +329,19 @@ namespace HaCreator.MapSimulator.Character
             // helper branch without a recovered multi-piece action row of their own.
         };
 
+        private static readonly HashSet<string> GenericHelperSurfaceActionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "alert2",
+            "alert3",
+            "alert4",
+            "alert5",
+            "alert6",
+            "alert7"
+        };
+
         private static readonly IReadOnlyDictionary<string, string> SupportedRawActionCanonicalNames =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["alert2"] = "alert2",
-                ["alert3"] = "alert3",
-                ["alert4"] = "alert4",
-                ["alert5"] = "alert5",
                 ["swingO1"] = "swingO1",
                 ["avenger"] = "avenger",
                 ["assaulter"] = "assaulter",
@@ -713,6 +726,52 @@ namespace HaCreator.MapSimulator.Character
             foreach (string actionName in LoaderSynthesizedRemappedActionNames)
             {
                 yield return actionName;
+            }
+        }
+
+        internal static IEnumerable<string> EnumerateCharacterOwnedMountedActionCandidateNames(
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string actionName in EnumeratePiecedShadowPartnerActionNames())
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            foreach (string actionName in EnumerateRemappedShadowPartnerActionNames())
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            if (supportedRawActionNames == null || supportedRawActionNames.Count == 0)
+            {
+                yield break;
+            }
+
+            foreach (string actionName in supportedRawActionNames)
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            foreach ((string actionName, string canonicalActionName) in SupportedRawActionCanonicalNames)
+            {
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && !string.IsNullOrWhiteSpace(canonicalActionName)
+                    && supportedRawActionNames.Contains(canonicalActionName)
+                    && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
             }
         }
 
@@ -1449,6 +1508,11 @@ namespace HaCreator.MapSimulator.Character
             if (string.IsNullOrWhiteSpace(actionName)
                 || supportedRawActionNames == null
                 || supportedRawActionNames.Count == 0)
+            {
+                return true;
+            }
+
+            if (GenericHelperSurfaceActionNames.Contains(actionName))
             {
                 return true;
             }

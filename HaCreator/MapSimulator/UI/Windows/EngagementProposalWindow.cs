@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
             _assets = assets ?? throw new ArgumentNullException(nameof(assets));
             _device = device ?? throw new ArgumentNullException(nameof(device));
             _pixel = CreateFilledTexture(device, 1, 1, Color.White);
+            BeforeShow = _ => CenterOnViewport();
             RefreshLayout(new EngagementProposalSnapshot());
         }
 
@@ -90,9 +91,14 @@ namespace HaCreator.MapSimulator.UI
         internal void CenterOnViewport()
         {
             Viewport viewport = _device.Viewport;
-            Position = new Point(
-                Math.Max(0, (viewport.Width - FrameWidth) / 2),
-                Math.Max(0, (viewport.Height - _frameHeight) / 2));
+            Position = CalculateCenteredPosition(viewport.Width, viewport.Height, FrameWidth, _frameHeight);
+        }
+
+        internal static Point CalculateCenteredPosition(int viewportWidth, int viewportHeight, int frameWidth, int frameHeight)
+        {
+            return new Point(
+                Math.Max(0, (viewportWidth - frameWidth) / 2),
+                Math.Max(0, (viewportHeight - frameHeight) / 2));
         }
 
         public override void Update(GameTime gameTime)

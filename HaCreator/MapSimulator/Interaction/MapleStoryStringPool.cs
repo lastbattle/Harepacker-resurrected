@@ -32,10 +32,40 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0F9E] = "The message was successfully sent.",
             [0x0F9F] = "The waiting line is longer than an hour. \r\nPlease try using it at a later time.",
             [0x0FA0] = "You've entered the wrong user name.",
+            // Recovered from MapleStory.exe v95 `CUserLocal::OnMesoGive_Succeeded`,
+            // `CUserLocal::OnMesoGive_Failed`, `CUserLocal::OnRandomMesobag_Succeeded`,
+            // `CUserLocal::OnRandomMesobag_Failed`, `CUIRandomMesoBag::CUIRandomMesoBag`,
+            // `CUIRandomMesoBag::OnCreate`, and `CUtilDlg::OnCreate`. Keep the reward-result
+            // owner text and resource ids explicit here so this packet-owned family stays on
+            // the client-confirmed StringPool seam even if regenerated key ordering drifts.
+            [0x032E] = "You have received %d mesos.",
+            [0x032F] = "You have failed to use the meso bag.",
+            [0x03D0] = "UI/UIWindow2.img/UtilDlgEx/notice",
             // Recovered from MapleStory.exe v95 `CUtilDlg::SetUtilDlg`. When callers do not
             // pass an explicit sound name, the client resolves string-pool id 1272 before
             // playing the notice-owner UI sound.
             [0x04F8] = "Sound/UI.img/DlgNotice",
+            [0x1961] = "UI/UIWindow2.img/UtilDlgEx/BtClose",
+            [0x1963] = "UI/UIWindow2.img/UtilDlgEx/BtOK",
+            [0x1965] = "UI/UIWindow2.img/UtilDlgEx/line",
+            [0x1966] = "UI/UIWindow2.img/UtilDlgEx/c",
+            [0x1967] = "UI/UIWindow2.img/UtilDlgEx/s",
+            [0x196F] = "UI/UIWindow2.img/UtilDlgEx/t",
+            [0x17A9] = "UI/UIWindow.img/RandomMesoBag/Back1",
+            [0x17AA] = "UI/UIWindow.img/RandomMesoBag/Back2",
+            [0x17AB] = "UI/UIWindow.img/RandomMesoBag/Back3",
+            [0x17AC] = "UI/UIWindow.img/RandomMesoBag/Back4",
+            [0x17AD] = "UI/UIWindow.img/RandomMesoBag/BtOk",
+            [0x17AF] = "A small amount of mesos!",
+            [0x17B0] = "An adequate amount of mesos!",
+            [0x17B1] = "A large amount of mesos!",
+            [0x17B2] = "A huge amount of mesos!",
+            [0x17B3] = "You have failed to use the Random Meso Sack.",
+            [0x17B4] = "You obtained %d mesos from the Random Meso Sack.",
+            [0x17B6] = "Sound/Item.img/02000010/Use",
+            [0x17B7] = "Sound/Item.img/02000011/Use",
+            [0x17B8] = "Sound/Item.img/02022108/Use",
+            [0x17B9] = "Sound/Item.img/02022109/Use",
             // Recovered from MapleStory.exe v95 `CReactorPool::LoadReactorLayer`. Reactor-hit
             // layer rebuild formats the per-state hit sound through string-pool id 2121 before
             // dispatching `play_reactor_sound`, so keep the template explicit here rather than
@@ -261,6 +291,15 @@ namespace HaCreator.MapSimulator.Interaction
             [0x1031] = "UI/UIWindow.img/MonsterCarnival/BtSide",
             [0x1032] = "UI/UIWindow.img/MonsterCarnival/Tab/enabled",
             [0x1033] = "UI/UIWindow.img/MonsterCarnival/Tab/disabled",
+            // Recovered from MapleStory.exe v95 `CField_CookieHouse::Init`,
+            // `CField_CookieHouse::Update`, and `CWvsContext::OnSessionValue`. The current
+            // generated table keeps the Cookie House WZ ids stable, but the session-value key
+            // slot at 0x11D9 still drifts in this workspace, so keep the client-owned Cookie
+            // House block explicit here before the live-session bridge resolves opcode 93.
+            [0x13FB] = "Map/Obj/etc.img/eventPointCount/backgrnd",
+            [0x13FC] = "Map/Obj/etc.img/eventPointCount",
+            [0x14F7] = "minus",
+            [0x14FA] = "plus",
             // Recovered from MapleStory.exe v95 `CTimerboard_Massacre::OnCreate`,
             // `CField_Massacre::Update`, `CField_Massacre::Init`, and
             // `CField_MassacreResult::OnMassacreResult`. The generated table drifts across

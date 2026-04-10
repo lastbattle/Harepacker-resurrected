@@ -28,5 +28,7 @@ namespace HaCreator.MapSimulator
         LogoutGiftCompletion = 23,
         SetFamilyPrecept = 24,
         ExecuteFamilyPrivilegeTarget = 25,
+        EntrustedShopBlacklistAdd = 26,
+        EntrustedShopBlacklistNotice = 27,
     }
 }

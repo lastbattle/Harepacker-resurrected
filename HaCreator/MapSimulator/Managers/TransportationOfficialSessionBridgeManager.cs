@@ -547,9 +547,10 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryQueueRawPacket(byte[] rawPacket, out string status)
         {
-            if (HasPassiveEstablishedSocketPair && !IsRunning)
+            if (HasPassiveEstablishedSocketPair
+                && !IsRunning
+                && !TryArmReconnectProxyForPassiveAttach(out status))
             {
-                status = $"Transport official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Deferred outbound queueing only applies to sessions that reconnect through the localhost proxy.";
                 LastStatus = status;
                 return false;
             }
@@ -571,6 +572,48 @@ namespace HaCreator.MapSimulator.Managers
                 : $"Queued outbound {DescribeOutboundPacket(opcode, clonedPacket)} for deferred live-session injection.";
             LastStatus = status;
             return true;
+        }
+
+        private bool TryArmReconnectProxyForPassiveAttach(out string status)
+        {
+            status = "Transport official-session bridge has no passive Maple socket pair to arm for deferred queueing.";
+
+            SessionDiscoveryCandidate? passiveCandidate = _passiveEstablishedSession;
+            if (!passiveCandidate.HasValue)
+            {
+                return false;
+            }
+
+            SessionDiscoveryCandidate candidate = passiveCandidate.Value;
+            string resolvedRemoteHost = candidate.RemoteEndpoint.Address.ToString();
+            int resolvedRemotePort = candidate.RemoteEndpoint.Port;
+            int requestedListenPort = ListenPort > 0 ? ListenPort : DefaultListenPort;
+
+            lock (_sync)
+            {
+                if (_activePair != null)
+                {
+                    status = $"Transport official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before arming a different reconnect proxy.";
+                    return false;
+                }
+
+                if (IsRunning)
+                {
+                    status = $"Transport official-session bridge is already armed on 127.0.0.1:{ListenPort} for deferred reconnects.";
+                    return true;
+                }
+
+                if (!TryStartProxyListener(requestedListenPort, resolvedRemoteHost, resolvedRemotePort, out string startStatus))
+                {
+                    status = $"Observed already-established transport Maple socket pair {DescribeEstablishedSession(candidate)}, but automatic reconnect-proxy arming failed. {startStatus}";
+                    return false;
+                }
+
+                _passiveEstablishedSession = candidate;
+                status = $"Observed already-established transport Maple socket pair {DescribeEstablishedSession(candidate)}. {startStatus} Deferred outbound queueing is now armed for reconnects through 127.0.0.1:{ListenPort}.";
+                LastStatus = status;
+                return true;
+            }
         }
 
         public static bool TryParseOutboundRawPacketHex(string rawPacketHex, out byte[] rawPacket, out string status)

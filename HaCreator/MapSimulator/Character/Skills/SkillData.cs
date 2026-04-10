@@ -203,6 +203,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int X { get; set; }                   // Generic value X
         public int Y { get; set; }                   // Generic value Y
         public int Z { get; set; }                   // Generic value Z
+        public int U { get; set; }                   // Generic value U
+        public int V { get; set; }                   // Generic value V
+        public int W { get; set; }                   // Generic value W
 
         // Projectile
         public int BulletCount { get; set; } = 1;    // Projectiles per attack
@@ -1997,6 +2000,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int BulletItemId { get; init; }
         public bool HasAfterimage { get; init; }
         public SkillAnimation Animation { get; init; }
+        public SkillAnimation EffectAnimation { get; init; }
     }
 
     public sealed class ActiveBulletAnimationOwner

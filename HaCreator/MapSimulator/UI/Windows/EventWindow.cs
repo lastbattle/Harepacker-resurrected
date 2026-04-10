@@ -681,6 +681,12 @@ namespace HaCreator.MapSimulator.UI
                 return priorityComparison;
             }
 
+            int statusComparison = ResolveEventEntryStatusRank(left.Status).CompareTo(ResolveEventEntryStatusRank(right.Status));
+            if (statusComparison != 0)
+            {
+                return statusComparison;
+            }
+
             int leftTick = left.SourceTick == int.MinValue ? int.MinValue : left.SourceTick;
             int rightTick = right.SourceTick == int.MinValue ? int.MinValue : right.SourceTick;
             int tickComparison = rightTick.CompareTo(leftTick);
@@ -689,13 +695,19 @@ namespace HaCreator.MapSimulator.UI
                 return tickComparison;
             }
 
-            int statusComparison = left.Status.CompareTo(right.Status);
-            if (statusComparison != 0)
-            {
-                return statusComparison;
-            }
-
             return left.SortOrder.CompareTo(right.SortOrder);
+        }
+
+        private static int ResolveEventEntryStatusRank(EventEntryStatus status)
+        {
+            return status switch
+            {
+                EventEntryStatus.InProgress => 0,
+                EventEntryStatus.Start => 1,
+                EventEntryStatus.Clear => 2,
+                EventEntryStatus.Upcoming => 3,
+                _ => 4
+            };
         }
 
         private void MoveRowSelection(int direction)

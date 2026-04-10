@@ -117,6 +117,9 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBalloonInlineIconSize = 16;
         private const int PacketOwnedBalloonInlineIconSpacing = 2;
         private const float PacketOwnedBalloonEmphasisOffsetX = 1f;
+        private const float PacketOwnedBalloonBaseFontSize = 12f;
+        private const float PacketOwnedBalloonMinFontScale = 0.75f;
+        private const float PacketOwnedBalloonMaxFontScale = 1.75f;
         private const string PacketOwnedBalloonItemIconMarkerPrefix = "{{ITEMICON:";
         private const string PacketOwnedBalloonItemIconMarkerSuffix = "}}";
         private const string PacketOwnedBalloonUiCanvasMarkerPrefix = "{{UICANVAS:";
@@ -744,7 +747,7 @@ namespace HaCreator.MapSimulator
             }
 
             Color baseColor = _packetOwnedBalloonSkin?.TextColor ?? Color.Black;
-            PacketOwnedBalloonTextStyle style = new(baseColor, false);
+            PacketOwnedBalloonTextStyle style = new(baseColor, false, 1f);
             var glyphs = new List<PacketOwnedBalloonGlyph>(text.Length);
             string sanitized = PacketOwnedBalloonTextFormatter.Format(
                 text,
@@ -824,23 +827,126 @@ namespace HaCreator.MapSimulator
                 case PacketOwnedBalloonFontControlKind.FontSize:
                     if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int fontSize))
                     {
-                        style = style with { Emphasis = fontSize > 0 };
+                        style = style with { Scale = ResolvePacketOwnedBalloonFontScale(fontSize) };
                     }
                     return;
 
                 case PacketOwnedBalloonFontControlKind.FontTable:
-                    if (string.IsNullOrWhiteSpace(value)
-                        || value == "0"
-                        || value.Equals("basic", StringComparison.OrdinalIgnoreCase))
+                    if (TryResolvePacketOwnedBalloonFontTableStyle(value, baseColor, out PacketOwnedBalloonTextStyle fontTableStyle))
                     {
-                        style = new PacketOwnedBalloonTextStyle(baseColor, false);
+                        style = fontTableStyle;
                     }
                     return;
 
                 case PacketOwnedBalloonFontControlKind.FontName:
+                    if (TryResolvePacketOwnedBalloonFontNameStyle(value, style, out PacketOwnedBalloonTextStyle fontNameStyle))
+                    {
+                        style = fontNameStyle;
+                    }
+                    return;
+
                 default:
                     return;
             }
+        }
+
+        private static float ResolvePacketOwnedBalloonFontScale(int fontSize)
+        {
+            if (fontSize <= 0)
+            {
+                return 1f;
+            }
+
+            float relativeScale = fontSize / PacketOwnedBalloonBaseFontSize;
+            return Math.Clamp(relativeScale, PacketOwnedBalloonMinFontScale, PacketOwnedBalloonMaxFontScale);
+        }
+
+        private static bool TryResolvePacketOwnedBalloonFontTableStyle(
+            string value,
+            Color baseColor,
+            out PacketOwnedBalloonTextStyle style)
+        {
+            style = new PacketOwnedBalloonTextStyle(baseColor, false, 1f);
+            string normalized = value?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized)
+                || normalized.Equals("0", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("basic", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals("summary", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            int tableId;
+            if (!int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out tableId))
+            {
+                tableId = normalized.ToLowerInvariant() switch
+                {
+                    "select" => 3,
+                    "reward" => 8,
+                    "prob" => 6,
+                    _ => -1
+                };
+            }
+
+            if (tableId < 0 || tableId > 11)
+            {
+                return false;
+            }
+
+            Color resolvedColor = tableId switch
+            {
+                0 or 1 => baseColor,
+                2 or 3 => PacketOwnedBalloonMarkupRed,
+                4 or 5 => PacketOwnedBalloonMarkupPurple,
+                6 or 7 => PacketOwnedBalloonMarkupBlue,
+                8 or 9 => PacketOwnedBalloonMarkupGreen,
+                10 or 11 => baseColor,
+                _ => baseColor
+            };
+
+            style = new PacketOwnedBalloonTextStyle(
+                resolvedColor,
+                tableId % 2 == 1,
+                tableId >= 8 ? 0.92f : 1f);
+            return true;
+        }
+
+        private static bool TryResolvePacketOwnedBalloonFontNameStyle(
+            string value,
+            PacketOwnedBalloonTextStyle currentStyle,
+            out PacketOwnedBalloonTextStyle style)
+        {
+            style = currentStyle;
+            string normalized = value?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return false;
+            }
+
+            float scale = currentStyle.Scale;
+            bool emphasis = currentStyle.Emphasis;
+            string lowered = normalized.ToLowerInvariant();
+            if (lowered.Contains("small", StringComparison.Ordinal)
+                || lowered.Contains("mini", StringComparison.Ordinal))
+            {
+                scale = Math.Max(PacketOwnedBalloonMinFontScale, currentStyle.Scale * 0.9f);
+            }
+            else if (lowered.Contains("large", StringComparison.Ordinal)
+                     || lowered.Contains("big", StringComparison.Ordinal)
+                     || lowered.Contains("headline", StringComparison.Ordinal))
+            {
+                scale = Math.Min(PacketOwnedBalloonMaxFontScale, currentStyle.Scale * 1.15f);
+            }
+
+            if (lowered.Contains("bold", StringComparison.Ordinal)
+                || lowered.Contains("black", StringComparison.Ordinal)
+                || lowered.Contains("heavy", StringComparison.Ordinal))
+            {
+                emphasis = true;
+            }
+
+            style = currentStyle with { Scale = scale, Emphasis = emphasis };
+            return style != currentStyle;
         }
 
         private static bool TryParsePacketOwnedBalloonItemIconMarker(string text, int startIndex, out int itemId, out int markerLength)
@@ -951,7 +1057,7 @@ namespace HaCreator.MapSimulator
                     return true;
 
                 case 'n':
-                    style = new PacketOwnedBalloonTextStyle(baseColor, false);
+                    style = new PacketOwnedBalloonTextStyle(baseColor, false, 1f);
                     consumedCharacters = 1;
                     return true;
 
@@ -1141,7 +1247,7 @@ namespace HaCreator.MapSimulator
 
                     runs.Add(new PacketOwnedBalloonTextRun(string.Empty, glyph.Style, glyph.ItemIconId.Value));
                     currentStyle = glyph.Style;
-                    lineWidth += MeasurePacketOwnedBalloonGlyph(glyph);
+                lineWidth += MeasurePacketOwnedBalloonGlyph(glyph);
                     continue;
                 }
 
@@ -1171,7 +1277,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 builder.Append(glyph.Character);
-                lineWidth += MeasurePacketOwnedBalloonGlyph(glyph.Character);
+                lineWidth += MeasurePacketOwnedBalloonGlyph(glyph.Character, glyph.Style.Scale);
             }
 
             if (builder.Length > 0)
@@ -1196,17 +1302,17 @@ namespace HaCreator.MapSimulator
                 return ResolvePacketOwnedBalloonInlineVisualWidth(glyph.UiCanvasPath);
             }
 
-            return MeasurePacketOwnedBalloonGlyph(glyph.Character);
+            return MeasurePacketOwnedBalloonGlyph(glyph.Character, glyph.Style.Scale);
         }
 
-        private int MeasurePacketOwnedBalloonGlyph(char character)
+        private int MeasurePacketOwnedBalloonGlyph(char character, float scale = 1f)
         {
             if (character == '\t')
             {
-                return MeasurePacketOwnedBalloonGlyph(' ') * 4;
+                return MeasurePacketOwnedBalloonGlyph(' ', scale) * 4;
             }
 
-            return (int)Math.Ceiling(MeasureChatTextWithFallback(character.ToString()).X);
+            return (int)Math.Ceiling(MeasurePacketOwnedBalloonText(character.ToString(), scale).X);
         }
 
         private float MeasurePacketOwnedBalloonRun(in PacketOwnedBalloonTextRun run)
@@ -1221,7 +1327,7 @@ namespace HaCreator.MapSimulator
                 return ResolvePacketOwnedBalloonInlineVisualWidth(run.UiCanvasPath);
             }
 
-            return MeasureChatTextWithFallback(run.Text).X;
+            return MeasurePacketOwnedBalloonText(run.Text, run.Style.Scale).X;
         }
 
         private void DrawPacketOwnedBalloonRun(in PacketOwnedBalloonTextRun run, Vector2 position, float alpha)
@@ -1250,17 +1356,79 @@ namespace HaCreator.MapSimulator
             }
 
             Color drawColor = run.Style.Color * alpha;
-            DrawChatTextWithFallback(spriteBatch, run.Text, position, drawColor);
+            DrawPacketOwnedBalloonText(spriteBatch, run.Text, position, drawColor, run.Style.Scale);
             if (run.Style.Emphasis)
             {
-                DrawChatTextWithFallback(spriteBatch, run.Text, new Vector2(position.X + PacketOwnedBalloonEmphasisOffsetX, position.Y), drawColor);
+                DrawPacketOwnedBalloonText(
+                    spriteBatch,
+                    run.Text,
+                    new Vector2(position.X + PacketOwnedBalloonEmphasisOffsetX, position.Y),
+                    drawColor,
+                    run.Style.Scale);
             }
         }
 
-        private int ResolvePacketOwnedBalloonLineHeight()
+        private int ResolvePacketOwnedBalloonLineHeight(PacketOwnedBalloonWrappedLine[] lines)
         {
-            Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
+            float maxScale = 1f;
+            if (lines != null)
+            {
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    PacketOwnedBalloonWrappedLine line = lines[i];
+                    for (int runIndex = 0; runIndex < line.Runs.Length; runIndex++)
+                    {
+                        maxScale = Math.Max(maxScale, line.Runs[runIndex].Style.Scale);
+                    }
+                }
+            }
+
+            Vector2 lineMeasure = MeasurePacketOwnedBalloonText("Ay", maxScale);
             return Math.Max(PacketOwnedBalloonInlineIconSize, (int)Math.Ceiling(lineMeasure.Y));
+        }
+
+        private Vector2 MeasurePacketOwnedBalloonText(string text, float scale)
+        {
+            Vector2 measure = MeasureChatTextWithFallback(text);
+            return scale == 1f
+                ? measure
+                : measure * scale;
+        }
+
+        private void DrawPacketOwnedBalloonText(SpriteBatch spriteBatch, string text, Vector2 position, Color color, float scale)
+        {
+            if (spriteBatch == null || _fontChat == null || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            string normalizedText = NormalizeSpriteFontPunctuation(text);
+            if (!ContainsUnsupportedChatGlyphs(normalizedText))
+            {
+                spriteBatch.DrawString(_fontChat, normalizedText, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                return;
+            }
+
+            Texture2D texture = GetOrCreateChatFallbackTexture(normalizedText);
+            if (texture == null || texture.IsDisposed)
+            {
+                return;
+            }
+
+            if (scale == 1f)
+            {
+                spriteBatch.Draw(texture, position, color);
+                return;
+            }
+
+            spriteBatch.Draw(
+                texture,
+                new Rectangle(
+                    (int)Math.Round(position.X),
+                    (int)Math.Round(position.Y),
+                    Math.Max(1, (int)Math.Round(texture.Width * scale)),
+                    Math.Max(1, (int)Math.Round(texture.Height * scale))),
+                color);
         }
 
         private int ResolvePacketOwnedBalloonInlineVisualWidth(string uiCanvasPath)
@@ -1381,7 +1549,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            int lineHeight = ResolvePacketOwnedBalloonLineHeight();
+            int lineHeight = ResolvePacketOwnedBalloonLineHeight(lines);
             int contentWidth = ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth);
             int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
@@ -1685,7 +1853,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int lineHeight = ResolvePacketOwnedBalloonLineHeight();
+            int lineHeight = ResolvePacketOwnedBalloonLineHeight(lines);
             int contentWidth = ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth);
             int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
@@ -4344,7 +4512,7 @@ namespace HaCreator.MapSimulator
             LocalOverlayBalloonArrowSprite ArrowSprite,
             Rectangle ArrowBounds,
             Texture2D VisualTexture);
-        private readonly record struct PacketOwnedBalloonTextStyle(Color Color, bool Emphasis);
+        private readonly record struct PacketOwnedBalloonTextStyle(Color Color, bool Emphasis, float Scale);
         private readonly record struct PacketOwnedBalloonGlyph(char Character, PacketOwnedBalloonTextStyle Style, int? ItemIconId = null, string UiCanvasPath = null);
         private readonly record struct PacketOwnedBalloonTextRun(string Text, PacketOwnedBalloonTextStyle Style, int? ItemIconId = null, string UiCanvasPath = null);
         private readonly record struct PacketOwnedBalloonWrappedLine(PacketOwnedBalloonTextRun[] Runs, int Width, bool PreservesLineHeight)

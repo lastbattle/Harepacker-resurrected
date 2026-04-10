@@ -90,6 +90,7 @@ namespace HaCreator.MapSimulator.UI
         private PendingPrompt _pendingPrompt;
         private int _pendingPromptVisibleReplyIndex = -1;
         private bool _ignorePromptMouseRelease;
+        private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
 
         private Func<GuildBbsSnapshot> _snapshotProvider;
         private Action<int> _selectThreadHandler;
@@ -285,6 +286,20 @@ namespace HaCreator.MapSimulator.UI
             _compositionText = string.Empty;
             _compositionClauseOffsets = Array.Empty<int>();
             _compositionCursorPosition = -1;
+            ClearImeCandidateList();
+        }
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
+                ? state
+                : ImeCandidateListState.Empty;
+            UpdateImePresentationPlacement();
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _candidateListState = ImeCandidateListState.Empty;
         }
 
         public override void RefreshImePresentationPlacement()
@@ -517,6 +532,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawPromptOverlay(sprite);
+            DrawImeCandidateWindow(sprite);
         }
 
         private void ConfigureButton(UIObject button, Action action)
@@ -2847,7 +2863,120 @@ namespace HaCreator.MapSimulator.UI
                 useClauseAnchor,
                 clauseAnchorWidth,
                 clauseWidth);
-            WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+            if (WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement, _candidateListState, out ImeCandidateListState refreshedCandidateState))
+            {
+                _candidateListState = refreshedCandidateState;
+            }
+        }
+
+        private void DrawImeCandidateWindow(SpriteBatch sprite)
+        {
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return;
+            }
+
+            Rectangle bounds = GetImeCandidateWindowBounds(sprite.GraphicsDevice.Viewport);
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixel, bounds, new Color(252, 246, 228, 240));
+            DrawOutline(sprite, bounds, new Color(111, 93, 55, 220));
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            int rowHeight = Math.Max(_font.LineSpacing + 1, 16);
+            int numberWidth = (int)Math.Ceiling(ClientTextDrawing.Measure((GraphicsDevice)null, $"{count}.", 1.0f, _font).X);
+            for (int i = 0; i < count; i++)
+            {
+                int candidateIndex = start + i;
+                Rectangle rowBounds = new(bounds.X + 2, bounds.Y + 2 + (i * rowHeight), bounds.Width - 4, rowHeight);
+                bool selected = candidateIndex == _candidateListState.Selection;
+                if (selected)
+                {
+                    sprite.Draw(_pixel, rowBounds, new Color(105, 123, 157, 220));
+                }
+
+                ClientTextDrawing.Draw(
+                    sprite,
+                    $"{i + 1}.",
+                    new Vector2(rowBounds.X + 4, rowBounds.Y),
+                    selected ? Color.White : new Color(115, 95, 57),
+                    1.0f,
+                    _font);
+                ClientTextDrawing.Draw(
+                    sprite,
+                    _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                    new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y),
+                    selected ? Color.White : new Color(67, 54, 34),
+                    1.0f,
+                    _font);
+            }
+        }
+
+        private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
+        {
+            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState))
+            {
+                return Rectangle.Empty;
+            }
+
+            int visibleCount = GetVisibleCandidateCount();
+            if (visibleCount <= 0 || _font == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle inputBounds = ResolveImePlacementBounds();
+            if (inputBounds.IsEmpty)
+            {
+                return Rectangle.Empty;
+            }
+
+            int widestEntryWidth = 0;
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int candidateIndex = Math.Clamp(_candidateListState.PageStart + i, 0, _candidateListState.Candidates.Count - 1);
+                string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                int entryWidth = (int)Math.Ceiling(
+                    ClientTextDrawing.Measure((GraphicsDevice)null, $"{i + 1}.", 1.0f, _font).X
+                    + ClientTextDrawing.Measure((GraphicsDevice)null, candidateText, 1.0f, _font).X)
+                    + 16;
+                widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
+            }
+
+            int width = Math.Max(96, widestEntryWidth + 14);
+            int height = (visibleCount * Math.Max(_font.LineSpacing + 1, 16)) + 4;
+            int x = Math.Clamp(inputBounds.X, 0, Math.Max(0, viewport.Width - width));
+            int y = inputBounds.Bottom + 2;
+            if (y + height > viewport.Height)
+            {
+                y = Math.Max(0, inputBounds.Y - height - 2);
+            }
+
+            return new Rectangle(x, y, width, height);
+        }
+
+        private int GetVisibleCandidateCount()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int pageSize = _candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count;
+            return Math.Max(0, Math.Min(pageSize, _candidateListState.Candidates.Count - start));
+        }
+
+        private void DrawOutline(SpriteBatch sprite, Rectangle bounds, Color color)
+        {
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), color);
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), color);
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), color);
+            sprite.Draw(_pixel, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), color);
         }
 
         private Rectangle ResolveImePlacementBounds()

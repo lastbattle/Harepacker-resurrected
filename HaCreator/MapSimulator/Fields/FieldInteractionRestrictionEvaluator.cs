@@ -4,6 +4,7 @@ using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzStructure;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -19,13 +20,6 @@ namespace HaCreator.MapSimulator.Fields
         private const int PetReviveItemGroup = 518;
         private const int PetSkillItemGroup = 519;
         private const int NearestTownPortalScrollItemId = 2030000;
-        private const int WeddingInvitationCardItemGroup = 4211;
-        private const int WeddingInvitationPremiumItemGroup = 4212;
-        private const int WeddingInvitationCashCardItemId = 5090100;
-        private const int WeddingInvitationTicketStartItemId = 5251000;
-        private const int WeddingInvitationTicketEndItemId = 5251003;
-        private const int WeddingInvitationTicketItemId = 5251100;
-        private const int WeddingInvitationEtcCardItemId = 4150000;
         private const int NpcSummonScriptItemId = 2430011;
         private const int NpcSummonQuestItemId = 4032363;
         private const string SummonEventNpcScriptName = "summonEventNpc";
@@ -540,31 +534,19 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool IsWeddingInvitationItem(InventoryType inventoryType, int itemId, string itemName, string itemDescription)
         {
-            if (inventoryType is not (InventoryType.CASH or InventoryType.ETC))
-            {
-                return false;
-            }
-
-            int itemGroup = itemId / 1000;
-            if (itemId is WeddingInvitationCashCardItemId or WeddingInvitationTicketItemId or WeddingInvitationEtcCardItemId
-                || (itemId >= WeddingInvitationTicketStartItemId && itemId <= WeddingInvitationTicketEndItemId)
-                || itemGroup is WeddingInvitationCardItemGroup or WeddingInvitationPremiumItemGroup
-                || itemId is 4031377 or 4031395 or 4031406 or 4031407)
-            {
-                return true;
-            }
-
-            return ContainsPhrase(itemName, "wedding invitation")
-                   || ContainsPhrase(itemName, "wedding invitation card")
-                   || ContainsPhrase(itemName, "wedding invitation ticket")
-                   || ContainsPhrase(itemDescription, "wedding invitation");
+            return InventoryItemMetadataResolver.IsWeddingInvitationItem(
+                itemId,
+                inventoryType,
+                itemName,
+                itemDescription);
         }
 
         private static bool IsNpcSummonItem(int itemId, string itemName, string itemDescription)
         {
             bool hasNpcReference = InventoryItemMetadataResolver.TryResolveNpcReference(itemId, out int npcId) && npcId > 0;
-            bool hasSummonScript = InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out string scriptName)
-                                   && string.Equals(scriptName, SummonEventNpcScriptName, StringComparison.OrdinalIgnoreCase);
+            bool hasSummonScript = InventoryItemMetadataResolver.TryResolveSpecScripts(itemId, out IReadOnlyList<string> scriptNames)
+                                   && scriptNames.Any(scriptName =>
+                                       string.Equals(scriptName, SummonEventNpcScriptName, StringComparison.OrdinalIgnoreCase));
             return IsNpcSummonItem(
                 itemId is NpcSummonScriptItemId or NpcSummonQuestItemId,
                 hasNpcReference,

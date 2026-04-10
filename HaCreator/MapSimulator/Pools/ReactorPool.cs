@@ -202,6 +202,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly Dictionary<int, int> _reactorIndicesByPacketObjectId = new Dictionary<int, int>();
         private readonly Dictionary<int, int> _reactorsOnLocalUser = new Dictionary<int, int>();
         private readonly Queue<ReactorTouchStateChange> _pendingPacketTouchStateChanges = new Queue<ReactorTouchStateChange>();
+        private readonly Queue<int> _pendingPacketTouchRequestRemovalObjectIds = new Queue<int>();
         private readonly List<ReactorSpawnPoint> _spawnPoints = new List<ReactorSpawnPoint>();
         #endregion
 
@@ -627,6 +628,26 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return changes;
+        }
+
+        public List<int> DrainPendingPacketTouchRequestRemovalObjectIds()
+        {
+            if (_pendingPacketTouchRequestRemovalObjectIds.Count == 0)
+            {
+                return new List<int>();
+            }
+
+            HashSet<int> objectIds = new();
+            while (_pendingPacketTouchRequestRemovalObjectIds.Count > 0)
+            {
+                int objectId = _pendingPacketTouchRequestRemovalObjectIds.Dequeue();
+                if (objectId > 0)
+                {
+                    objectIds.Add(objectId);
+                }
+            }
+
+            return objectIds.ToList();
         }
 
         /// <summary>
@@ -1738,7 +1759,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int previousVisualState = data.VisualState;
+            int previousVisualState = ResolvePacketVisualOwnershipSourceState(data);
             bool wasAnimationClockRunning = IsPacketAnimationClockRunning(data);
             bool previousLeavePending = data.PacketLeavePending;
             int previousHitStartTime = data.PacketHitStartTime;
@@ -1873,7 +1894,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int previousVisualState = data.VisualState;
+            int previousVisualState = ResolvePacketVisualOwnershipSourceState(data);
             int remainingCurrentAnimationDuration = reactor.GetRemainingAnimationDuration(currentTick);
             ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick, applyAnimationState: false);
             data.PacketLeavePending = true;
@@ -2874,6 +2895,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            int? previousPacketObjectId = data.PacketObjectId;
             int previousTouchObjectId = ResolveLocalTouchObjectId(data);
             bool wasLocallyTouched = previousTouchObjectId != 0
                 && _reactorsOnLocalUser.TryGetValue(previousTouchObjectId, out int touchedIndex)
@@ -2890,6 +2912,13 @@ namespace HaCreator.MapSimulator.Pools
                 spawnPoint.PacketObjectId = packetObjectId;
                 spawnPoint.IsPacketOwned = true;
                 spawnPoint.CanRespawn = canRespawn;
+            }
+
+            if (previousPacketObjectId.HasValue
+                && previousPacketObjectId.Value > 0
+                && previousPacketObjectId.Value != packetObjectId)
+            {
+                _pendingPacketTouchRequestRemovalObjectIds.Enqueue(previousPacketObjectId.Value);
             }
 
             if (previousTouchObjectId != packetObjectId && wasLocallyTouched)
@@ -3544,6 +3573,18 @@ namespace HaCreator.MapSimulator.Pools
                 : data.VisualState;
         }
 
+        internal static int ResolvePacketVisualOwnershipSourceState(ReactorRuntimeData data)
+        {
+            if (data == null)
+            {
+                return 0;
+            }
+
+            // `CReactorPool::LoadReactorLayer` rebuilds packet-owned layers from `nOldState`,
+            // which is the currently visible owner state until the handoff actually commits.
+            return ResolveRenderableReactorState(data);
+        }
+
         internal static bool ShouldPreservePacketAnimationSourceState(ReactorRuntimeData data)
         {
             if (data == null || !data.IsPacketOwned || data.PacketAnimationSourceState < 0)
@@ -3562,6 +3603,7 @@ namespace HaCreator.MapSimulator.Pools
         internal static bool ShouldApplyPendingPacketVisualStateOnStateEnd(ReactorRuntimeData data, int currentTick)
         {
             return data != null
+                && data.PacketPendingVisualState >= 0
                 && data.PacketStateEndTime > 0
                 && currentTick >= data.PacketStateEndTime
                 && data.State == ReactorState.Activated
@@ -3573,6 +3615,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             return data != null
                 && data.State == ReactorState.Activated
+                && data.PacketPendingVisualState < 0
                 && data.PacketStateEndTime > currentTick;
         }
 

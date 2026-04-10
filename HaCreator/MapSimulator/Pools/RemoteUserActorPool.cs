@@ -64,6 +64,10 @@ namespace HaCreator.MapSimulator.Pools
             int Delta,
             int CurrentTime,
             byte GuardType = 0);
+        public readonly record struct RemoteFieldSoundPresentation(
+            int CharacterId,
+            string SoundPath,
+            int CurrentTime);
         public readonly record struct RemoteStringEffectPresentation(
             int CharacterId,
             byte EffectType,
@@ -205,6 +209,7 @@ namespace HaCreator.MapSimulator.Pools
         private const float RemoteDragonKeyDownBarHalfWidth = 36f;
         private const float RemoteDragonKeyDownBarVerticalGap = 30f;
         private const int MechanicTamingMobItemId = 1932016;
+        private const int PaladinDamageReactiveSpecialSkillId = 1220006;
         private const float CarryItemEffectOrbitRadiusX = 26f;
         private const float CarryItemEffectOrbitRadiusY = 16f;
         private const float CarryItemEffectBaseVerticalOffset = -46f;
@@ -344,6 +349,7 @@ namespace HaCreator.MapSimulator.Pools
         public event Action<RemoteGenericUserStatePresentation> GenericUserStateRegistered;
         public event Action<RemoteItemMakePresentation> ItemMakeRegistered;
         public event Action<RemoteHitFeedbackPresentation> HitFeedbackRegistered;
+        public event Action<RemoteFieldSoundPresentation> FieldSoundRegistered;
         public event Action<RemoteStringEffectPresentation> StringEffectRegistered;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
@@ -2036,14 +2042,35 @@ namespace HaCreator.MapSimulator.Pools
                     packet.IncDecType));
             }
 
+            int damageReactiveSkillId = 0;
+            bool registeredDamageReactiveSkillEffect = false;
             if (packet.SkillId is > 0)
             {
                 RegisterRemoteHitSpecialSkillUseEffect(actor, packet.SkillId.Value, currentTime);
             }
+            else if (TryResolveRemoteHitDamageReactiveSpecialEffectSkillId(
+                         actor?.Build?.Job ?? 0,
+                         actor?.TemporaryStats.KnownState ?? default,
+                         skillId => _skillLoader?.LoadSkill(skillId),
+                         randomRollPercent: null,
+                         out damageReactiveSkillId))
+            {
+                registeredDamageReactiveSkillEffect = true;
+                RegisterRemoteHitSpecialSkillUseEffect(actor, damageReactiveSkillId, currentTime);
+            }
 
-            message = packet.SkillId is > 0
-                ? $"Remote user {packet.CharacterId} hit packet stored and registered special skill effect {packet.SkillId.Value}."
-                : $"Remote user {packet.CharacterId} hit packet stored.";
+            if (packet.SkillId is > 0)
+            {
+                message = $"Remote user {packet.CharacterId} hit packet stored and registered special skill effect {packet.SkillId.Value}.";
+            }
+            else if (registeredDamageReactiveSkillEffect)
+            {
+                message = $"Remote user {packet.CharacterId} hit packet stored and registered damage-reactive special skill effect {damageReactiveSkillId}.";
+            }
+            else
+            {
+                message = $"Remote user {packet.CharacterId} hit packet stored.";
+            }
             return true;
         }
 
@@ -2074,6 +2101,107 @@ namespace HaCreator.MapSimulator.Pools
                 > 3309 and <= 3312 => 33101006,
                 _ => 0
             };
+        }
+
+        internal static bool TryResolveRemoteHitDamageReactiveSpecialEffectSkillId(
+            int jobId,
+            RemoteUserTemporaryStatKnownState knownState,
+            Func<int, SkillData> loadSkill,
+            int? randomRollPercent,
+            out int skillId)
+        {
+            skillId = 0;
+            if (loadSkill == null)
+            {
+                return false;
+            }
+
+            foreach (int candidateSkillId in EnumerateRemoteHitDamageReactiveSkillCandidateIds(jobId, knownState))
+            {
+                SkillData skill = loadSkill(candidateSkillId);
+                if (!SkillManager.IsDamageReactiveSpecialSkillUseEffectCandidate(
+                        skill,
+                        HasRemoteDamageReactiveSpecialAnimation(skill)))
+                {
+                    continue;
+                }
+
+                int prop = ResolveRemoteHitDamageReactiveProp(skill);
+                if (!SkillManager.ShouldTriggerDamageReactiveSpecialEffect(prop, randomRollPercent))
+                {
+                    continue;
+                }
+
+                skillId = candidateSkillId;
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static IReadOnlyList<int> EnumerateRemoteHitDamageReactiveSkillCandidateIds(
+            int jobId,
+            RemoteUserTemporaryStatKnownState knownState)
+        {
+            var candidateSkillIds = new List<int>(8);
+            var seen = new HashSet<int>();
+
+            void TryAddCandidate(int candidateSkillId)
+            {
+                if (candidateSkillId > 0 && seen.Add(candidateSkillId))
+                {
+                    candidateSkillIds.Add(candidateSkillId);
+                }
+            }
+
+            if (knownState.HasBlessingArmor)
+            {
+                if (jobId is >= 1220 and <= 1222)
+                {
+                    TryAddCandidate(PaladinDamageReactiveSpecialSkillId);
+                }
+
+                TryAddCandidate(knownState.ResolveBlessingArmorSkillId(jobId) ?? 0);
+            }
+
+            TryAddCandidate(knownState.MagicShieldSkillId ?? 0);
+            TryAddCandidate(knownState.FinalCutSkillId ?? 0);
+            TryAddCandidate(knownState.ChargeSkillId ?? 0);
+            TryAddCandidate(knownState.RepeatEffectSkillId ?? 0);
+            TryAddCandidate(knownState.ActiveAuraSkillId ?? 0);
+
+            return candidateSkillIds;
+        }
+
+        private static bool HasRemoteDamageReactiveSpecialAnimation(SkillData skill)
+        {
+            return skill?.AvatarOverlayEffect?.Frames?.Count > 0
+                   || skill?.AvatarUnderFaceEffect?.Frames?.Count > 0;
+        }
+
+        private static int ResolveRemoteHitDamageReactiveProp(SkillData skill)
+        {
+            if (skill?.Levels == null || skill.Levels.Count == 0)
+            {
+                return 0;
+            }
+
+            if (skill.Levels.TryGetValue(1, out SkillLevelData levelOneData))
+            {
+                return levelOneData?.Prop ?? 0;
+            }
+
+            foreach (SkillLevelData levelData in skill.Levels
+                         .OrderBy(static pair => pair.Key)
+                         .Select(static pair => pair.Value))
+            {
+                if (levelData != null)
+                {
+                    return levelData.Prop;
+                }
+            }
+
+            return 0;
         }
 
         private void RegisterRemoteHitSpecialSkillUseEffect(RemoteUserActor actor, int skillId, int currentTime)
@@ -2169,6 +2297,20 @@ namespace HaCreator.MapSimulator.Pools
                         currentTime,
                         packet.KnownSubtype == RemoteUserEffectSubtype.CarnivalReservedEffect));
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered packet-owned string effect {packet.StringValue}.";
+                    return true;
+
+                case RemoteUserEffectSubtype.FieldSound:
+                    if (string.IsNullOrWhiteSpace(packet.StringValue))
+                    {
+                        message = $"Remote user {packet.CharacterId} field-sound descriptor is empty.";
+                        return false;
+                    }
+
+                    FieldSoundRegistered?.Invoke(new RemoteFieldSoundPresentation(
+                        packet.CharacterId,
+                        packet.StringValue,
+                        currentTime));
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered field sound {packet.StringValue}.";
                     return true;
 
                 case RemoteUserEffectSubtype.IncDecHp:
@@ -2950,7 +3092,6 @@ namespace HaCreator.MapSimulator.Pools
             if (ownerRawActionCode.HasValue
                 && DragonActionLoader.TryGetClientActionNameFromRawActionCode(ownerRawActionCode.Value, out string rawActionName))
             {
-                bool isExplicitOwnerAction = IsExplicitRemoteDragonAction(rawActionName);
                 foreach (string candidate in EnumerateRemoteDragonActionCandidates(rawActionName))
                 {
                     if (!metadata.HasAction(candidate))
@@ -2959,20 +3100,19 @@ namespace HaCreator.MapSimulator.Pools
                     }
 
                     actionName = candidate;
-                    useOwnerActionTimeline = isExplicitOwnerAction;
+                    useOwnerActionTimeline = IsExplicitRemoteDragonAction(candidate);
                     return true;
                 }
 
                 return false;
             }
 
-            bool isExplicitRequestedAction = IsExplicitRemoteDragonAction(ownerActionName);
             foreach (string candidate in EnumerateRemoteDragonActionCandidates(ownerActionName))
             {
                 if (metadata.HasAction(candidate))
                 {
                     actionName = candidate;
-                    useOwnerActionTimeline = isExplicitRequestedAction;
+                    useOwnerActionTimeline = IsExplicitRemoteDragonAction(candidate);
                     return true;
                 }
             }
@@ -3074,22 +3214,11 @@ namespace HaCreator.MapSimulator.Pools
 
             yield return normalized;
 
-            if (string.Equals(normalized, "stand1", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "stand2", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "alert", StringComparison.OrdinalIgnoreCase))
+            string aliasedActionName = DragonActionLoader.NormalizeClientActionName(normalized);
+            if (!string.IsNullOrWhiteSpace(aliasedActionName)
+                && !string.Equals(aliasedActionName, normalized, StringComparison.OrdinalIgnoreCase))
             {
-                yield return "stand";
-                yield break;
-            }
-
-            if (string.Equals(normalized, "walk1", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "walk2", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "jump", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "fly", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "ladder", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "rope", StringComparison.OrdinalIgnoreCase))
-            {
-                yield return "move";
+                yield return aliasedActionName;
             }
         }
 

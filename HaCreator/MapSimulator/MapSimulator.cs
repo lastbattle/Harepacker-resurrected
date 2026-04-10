@@ -2532,7 +2532,10 @@ namespace HaCreator.MapSimulator
 
 
             _activeMemoAttachmentId = memoId;
-            if (!TryOpenFieldRestrictedWindow(MapSimulatorWindowNames.MemoGet, out string restrictionMessage))
+            if (!TryOpenFieldRestrictedWindow(
+                    MapSimulatorWindowNames.MemoGet,
+                    out string restrictionMessage,
+                    inheritDirectionModeOwner: true))
             {
                 ShowUtilityFeedbackMessage(restrictionMessage ?? "Parcel package windows cannot be opened in this map.");
             }
@@ -5136,6 +5139,11 @@ namespace HaCreator.MapSimulator
             roomWindow.Runtime.BindInventory(inventoryWindow);
             roomWindow.Runtime.AvatarBuildResolver = CreateMiniRoomAvatarBuild;
             roomWindow.Runtime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
+            if (roomWindow.Runtime.Kind == SocialRoomKind.EntrustedShop)
+            {
+                roomWindow.Runtime.EntrustedBlacklistPromptRequested = ShowEntrustedShopBlacklistPrompt;
+                roomWindow.Runtime.EntrustedBlacklistNoticeRequested = ShowEntrustedShopBlacklistNotice;
+            }
 
             roomWindow.SetFont(_fontChat);
             ConfigureSocialRoomPersistence(roomWindow.Runtime);
@@ -5881,7 +5889,10 @@ namespace HaCreator.MapSimulator
 
             bool hasNpcReference = InventoryItemMetadataResolver.TryResolveNpcReference(itemId, out int npcId)
                                    && npcId > 0;
-            bool hasScript = InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out string scriptName);
+            bool hasScript = InventoryItemMetadataResolver.TryResolveSpecScripts(itemId, out IReadOnlyList<string> scriptNames);
+            string scriptName = hasScript && scriptNames.Count > 0
+                ? scriptNames[0]
+                : null;
             if (!hasNpcReference && !hasScript)
             {
                 return false;
@@ -5899,7 +5910,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryOpenItemAuthoredInventoryInteraction(itemId, npcId, scriptName))
+            if (!TryOpenItemAuthoredInventoryInteraction(itemId, npcId, scriptName, scriptNames))
             {
                 return false;
             }
@@ -5917,10 +5928,14 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryOpenItemAuthoredInventoryInteraction(int itemId, int npcId, string scriptName)
+        private bool TryOpenItemAuthoredInventoryInteraction(
+            int itemId,
+            int npcId,
+            string scriptName,
+            IReadOnlyList<string> publishedItemScriptNames = null)
         {
             IReadOnlyList<string> publishedScriptNames =
-                BuildItemAuthoredInteractionPublishedScriptNames(npcId, scriptName);
+                BuildItemAuthoredInteractionPublishedScriptNames(npcId, publishedItemScriptNames, scriptName);
             if (publishedScriptNames.Count > 0)
             {
                 PublishDynamicObjectTagStatesForScriptNames(publishedScriptNames, currTickCount);
@@ -5962,7 +5977,8 @@ namespace HaCreator.MapSimulator
 
         internal static IReadOnlyList<string> BuildItemAuthoredInteractionPublishedScriptNames(
             int npcId,
-            string scriptName,
+            IEnumerable<string> scriptNames,
+            string primaryScriptName = null,
             Func<int, IReadOnlyList<string>> npcScriptNameResolver = null)
         {
             IEnumerable<string> npcScriptNames = Array.Empty<string>();
@@ -5972,7 +5988,35 @@ namespace HaCreator.MapSimulator
                 npcScriptNames = npcScriptNameResolver(npcId) ?? Array.Empty<string>();
             }
 
-            return QuestRuntimeManager.BuildPublishedScriptNames(npcScriptNames, scriptName);
+            List<string> additionalRawScriptNames = scriptNames?
+                .Where(script => !string.IsNullOrWhiteSpace(script))
+                .Select(script => script.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+                ?? new List<string>();
+            if (!string.IsNullOrWhiteSpace(primaryScriptName)
+                && !additionalRawScriptNames.Contains(primaryScriptName, StringComparer.OrdinalIgnoreCase))
+            {
+                additionalRawScriptNames.Add(primaryScriptName.Trim());
+            }
+
+            return QuestRuntimeManager.BuildPublishedScriptNames(
+                npcScriptNames,
+                additionalRawScriptNames.ToArray());
+        }
+
+        internal static IReadOnlyList<string> BuildItemAuthoredInteractionPublishedScriptNames(
+            int npcId,
+            string scriptName,
+            Func<int, IReadOnlyList<string>> npcScriptNameResolver = null)
+        {
+            return BuildItemAuthoredInteractionPublishedScriptNames(
+                npcId,
+                string.IsNullOrWhiteSpace(scriptName)
+                    ? Array.Empty<string>()
+                    : new[] { scriptName },
+                scriptName,
+                npcScriptNameResolver);
         }
 
         private string ResolveItemAuthoredInteractionNpcName(int npcId)
@@ -13722,6 +13766,54 @@ namespace HaCreator.MapSimulator
             return $"Opened CUtilDlgEx family-precept input (StringPool 0x{ClientFamilyPreceptPromptStringPoolId:X}, min {ClientFamilyPreceptInputMinLength}, max {ClientFamilyPreceptInputMaxLength}).";
         }
 
+        private bool ShowEntrustedShopBlacklistPrompt(EntrustedShopBlacklistPromptRequest request)
+        {
+            if (request == null)
+            {
+                return false;
+            }
+
+            ShowLoginUtilityDialog(
+                string.Empty,
+                request.PromptText ?? string.Empty,
+                LoginUtilityDialogButtonLayout.YesNo,
+                LoginUtilityDialogAction.EntrustedShopBlacklistAdd,
+                primaryLabel: "OK",
+                secondaryLabel: "Cancel",
+                inputPlaceholder: request.PromptText,
+                inputMaxLength: request.MaximumLength,
+                inputValue: string.IsNullOrEmpty(request.CurrentText) ? request.DefaultText : request.CurrentText,
+                softKeyboardType: SoftKeyboardKeyboardType.FreeText,
+                inputBoundsOverride: CreateLoginUtilityInputBoundsOverride(),
+                returnWindowName: MapSimulatorWindowNames.EntrustedShop,
+                trackDirectionModeOwner: true);
+            return true;
+        }
+
+        private void ShowEntrustedShopBlacklistNotice(EntrustedShopNoticeSnapshot notice)
+        {
+            if (notice == null)
+            {
+                return;
+            }
+
+            ShowLoginUtilityDialog(
+                string.Empty,
+                notice.Text ?? string.Empty,
+                LoginUtilityDialogButtonLayout.Ok,
+                LoginUtilityDialogAction.EntrustedShopBlacklistNotice,
+                noticeTextIndex: notice.StringPoolId >= 0 ? notice.StringPoolId : null,
+                returnWindowName: MapSimulatorWindowNames.EntrustedShop,
+                trackDirectionModeOwner: true);
+        }
+
+        private bool TryGetEntrustedShopRuntimeForUtilityDialog(out SocialRoomRuntime runtime)
+        {
+            runtime = null;
+            return TryGetSocialRoomRuntime(SocialRoomKind.EntrustedShop, out runtime) &&
+                runtime.Kind == SocialRoomKind.EntrustedShop;
+        }
+
         private static bool IsLoginUtilityDialogActionAllowedOutsideLogin(LoginUtilityDialogAction action)
         {
             return action is LoginUtilityDialogAction.ConfirmApspEvent
@@ -13733,7 +13825,9 @@ namespace HaCreator.MapSimulator
                 or LoginUtilityDialogAction.RetryTrunkPic
                 or LoginUtilityDialogAction.RetryTrunkSpw
                 or LoginUtilityDialogAction.LogoutGiftCompletion
-                or LoginUtilityDialogAction.SetFamilyPrecept;
+                or LoginUtilityDialogAction.SetFamilyPrecept
+                or LoginUtilityDialogAction.EntrustedShopBlacklistAdd
+                or LoginUtilityDialogAction.EntrustedShopBlacklistNotice;
         }
 
         private LoginUtilityDialogFrameVariant ResolveLoginUtilityDialogFrameVariant(
@@ -16703,6 +16797,7 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.GenericUserStateRegistered += HandleRemoteGenericUserStateEffect;
             _remoteUserPool.ItemMakeRegistered += HandleRemoteItemMakeEffect;
             _remoteUserPool.HitFeedbackRegistered += HandleRemoteHitFeedback;
+            _remoteUserPool.FieldSoundRegistered += HandleRemoteFieldSoundEffect;
             _remoteUserPool.StringEffectRegistered += HandleRemoteStringEffect;
             _mapTransferDestinations = new MapTransferDestinationStore();
             _mapTransferRuntime = new MapTransferRuntimeManager(_mapTransferDestinations);
@@ -20691,6 +20786,27 @@ namespace HaCreator.MapSimulator
                    && TryApplyQuestBuffItemReward(itemId);
         }
 
+        internal static int ResolvePickupRunOnPickupInventoryRemainder(
+            int pickedQuantity,
+            bool interactionOpened,
+            bool consumeOnUse)
+        {
+            int normalizedQuantity = Math.Max(0, pickedQuantity);
+            if (normalizedQuantity == 0)
+            {
+                return 0;
+            }
+
+            if (!interactionOpened)
+            {
+                return normalizedQuantity;
+            }
+
+            return consumeOnUse
+                ? Math.Max(0, normalizedQuantity - 1)
+                : normalizedQuantity;
+        }
+
 
 
         private string ResolveQuestSkillName(int skillId)
@@ -21360,6 +21476,18 @@ namespace HaCreator.MapSimulator
                     if (remainingQuantity > 0)
                     {
                         AddItemToInventoryWindow(drop.ItemId, remainingQuantity);
+                    }
+                }
+                else if (autoRunPickedUpItem)
+                {
+                    bool interactionOpened = TryApplyPickedUpItemRuntime(itemId, currentTime);
+                    int remainderQuantity = ResolvePickupRunOnPickupInventoryRemainder(
+                        Math.Max(1, drop.Quantity),
+                        interactionOpened,
+                        consumeOnUse: !InventoryItemMetadataResolver.IsNotConsumedOnUse(itemId));
+                    if (remainderQuantity > 0)
+                    {
+                        AddItemToInventoryWindow(drop.ItemId, remainderQuantity);
                     }
                 }
                 else if (!autoHandlePickedUpItem || !TryApplyPickedUpItemRuntime(itemId, currentTime))
@@ -23119,9 +23247,16 @@ namespace HaCreator.MapSimulator
 
         internal static string ResolvePickupItemTypeName(int itemId, InventoryType inventoryType)
         {
-            _ = inventoryType;
-            return InventoryItemMetadataResolver.TryResolveItemTypeName(itemId, out string itemTypeName)
-                ? itemTypeName
+            InventoryType? clientInventoryType = InventoryTypeExtensions.GetByType((byte)(Math.Max(0, itemId) / 1000000));
+            if (clientInventoryType.HasValue
+                && QuestClientPacketResultNoticeText.TryResolveInventoryCategoryLabel(clientInventoryType.Value, out string label, out _)
+                && !string.IsNullOrWhiteSpace(label))
+            {
+                return label;
+            }
+
+            return QuestClientPacketResultNoticeText.TryResolveInventoryCategoryLabel(inventoryType, out string fallbackLabel, out _)
+                ? fallbackLabel
                 : null;
         }
 
@@ -23742,6 +23877,23 @@ namespace HaCreator.MapSimulator
             if (tooltipProperty is WzStringProperty stringProperty)
             {
                 return stringProperty.GetString();
+            }
+
+            if (tooltipProperty is WzSubProperty subProperty)
+            {
+                if (subProperty["Title"] is WzStringProperty titleProperty)
+                {
+                    return titleProperty.GetString();
+                }
+
+                foreach (WzImageProperty childProperty in subProperty.WzProperties)
+                {
+                    if (childProperty is WzStringProperty nestedStringProperty
+                        && !string.IsNullOrWhiteSpace(nestedStringProperty.GetString()))
+                    {
+                        return nestedStringProperty.GetString();
+                    }
+                }
             }
 
             return null;
@@ -26411,10 +26563,24 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            return ShouldCancelPassiveTransferFieldRequestFromHorizontalKeyDown(
+                input,
+                _passiveTransferRequestPending);
+        }
+
+        internal static bool ShouldCancelPassiveTransferFieldRequestFromHorizontalKeyDown(
+            PlayerInput input,
+            bool hasPendingRequest)
+        {
+            if (input == null)
+            {
+                return false;
+            }
+
             return PassiveTransferFieldReadinessEvaluator.ShouldCancelQueuedRetryOnHorizontalKeyDown(
-                _passiveTransferRequestPending,
-                input.IsKeyPressed(Keys.Left) || input.IsKeyPressed(Keys.A),
-                input.IsKeyPressed(Keys.Right) || input.IsKeyPressed(Keys.D));
+                hasPendingRequest,
+                input.IsPressed(InputAction.MoveLeft),
+                input.IsPressed(InputAction.MoveRight));
         }
 
         private PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision EvaluatePassiveTransferFieldQueuedRetryDecision()
@@ -27019,6 +27185,7 @@ namespace HaCreator.MapSimulator
             }
 
             double horizontalImpact = ResolveCollisionVerticalJumpHorizontalImpact(player.HorizontalInputDirection, player.FacingRight);
+            player.Physics.SetMovePathAttribute(CollisionVerticalJumpMovePathAttribute);
             player.Physics.SetImpactNext(horizontalImpact, CollisionVerticalJumpVelocityY);
             _lastCollisionVerticalJumpMovePathAttribute = CollisionVerticalJumpMovePathAttribute;
             TryRegisterCollisionVerticalJumpEffect(currentTime);
@@ -29949,8 +30116,14 @@ namespace HaCreator.MapSimulator
         {
             if (state == null ||
                 state.PrimaryAction != QuestWindowActionKind.Track ||
-                uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestAlarm) is not QuestAlarmWindow questAlarmWindow ||
-                !questAlarmWindow.IsQuestTracked(state.QuestId))
+                uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestAlarm) is not QuestAlarmWindow questAlarmWindow)
+            {
+                return state;
+            }
+
+            bool isTracked = questAlarmWindow.IsQuestTracked(state.QuestId);
+            bool canTrack = questAlarmWindow.CanTrackQuest(state.QuestId);
+            if (!isTracked && canTrack)
             {
                 return state;
             }
@@ -29972,8 +30145,8 @@ namespace HaCreator.MapSimulator
                 TotalProgress = state.TotalProgress,
                 PrimaryAction = state.PrimaryAction,
                 PrimaryActionEnabled = false,
-                PrimaryActionSelected = true,
-                PrimaryActionLabel = "Tracked",
+                PrimaryActionSelected = isTracked,
+                PrimaryActionLabel = isTracked ? "Tracked" : state.PrimaryActionLabel,
                 SecondaryAction = state.SecondaryAction,
                 SecondaryActionEnabled = state.SecondaryActionEnabled,
                 SecondaryActionLabel = state.SecondaryActionLabel,

@@ -1739,9 +1739,14 @@ namespace HaCreator.MapSimulator.UI
 
         private List<AdminShopDialogUI.WishlistSearchResult> GetLiveWishlistSearchResultSessionResults()
         {
-            if (_sourceDialog == null || _searchResultSessionEntryKeys.Count == 0)
+            if (_sourceDialog == null)
             {
-                ClearWishlistSearchResultSession();
+                ClearWishlistSearchResultSessionIfNeeded();
+                return new List<AdminShopDialogUI.WishlistSearchResult>();
+            }
+
+            if (_searchResultSessionEntryKeys.Count == 0)
+            {
                 return new List<AdminShopDialogUI.WishlistSearchResult>();
             }
 
@@ -1802,6 +1807,20 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return liveResults;
+        }
+
+        private void ClearWishlistSearchResultSessionIfNeeded()
+        {
+            if (_searchResultSessionEntryKeys.Count == 0
+                && _searchResultSessionPageIndex == 0
+                && string.IsNullOrWhiteSpace(_searchResultSessionSelectedEntryKey)
+                && string.IsNullOrWhiteSpace(_searchResultSessionCatalogSignature)
+                && string.IsNullOrWhiteSpace(_searchResultSessionServiceSignature))
+            {
+                return;
+            }
+
+            ClearWishlistSearchResultSession();
         }
 
         private void ResetWishlistSearchResultSessionForCatalogChange()

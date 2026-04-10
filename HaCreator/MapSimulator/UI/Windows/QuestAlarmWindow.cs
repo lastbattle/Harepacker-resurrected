@@ -258,6 +258,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             EnsurePersistedStateLoaded();
+            RefreshFilteredSnapshot();
             bool alreadyTracked = _trackedQuestIds.Contains(questId);
             if (!alreadyTracked && _trackedQuestIds.Count >= MaxVisibleEntries)
             {
@@ -553,6 +554,17 @@ namespace HaCreator.MapSimulator.UI
 
             EnsurePersistedStateLoaded();
             return _trackedQuestIds.Contains(questId);
+        }
+
+        internal bool CanTrackQuest(int questId)
+        {
+            if (questId <= 0)
+            {
+                return false;
+            }
+
+            EnsurePersistedStateLoaded();
+            return _trackedQuestIds.Contains(questId) || _trackedQuestIds.Count < MaxVisibleEntries;
         }
 
         internal bool RemoveQuestFromPacketAlarmList(int questId)
@@ -1375,11 +1387,7 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
             SavePersistedState();
             QuestDeleted?.Invoke();
-
-            if (!string.IsNullOrWhiteSpace(questTitle))
-            {
-                StatusMessageRequested?.Invoke(QuestAlarmOwnerStringPoolText.FormatDeleteNotice(questTitle));
-            }
+            StatusMessageRequested?.Invoke(QuestAlarmOwnerStringPoolText.FormatDeleteNotice(questTitle));
         }
 
         private void DismissAll(QuestAlarmSnapshot snapshot)

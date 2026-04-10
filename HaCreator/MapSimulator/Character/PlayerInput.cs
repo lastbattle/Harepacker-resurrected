@@ -362,6 +362,17 @@ namespace HaCreator.MapSimulator.Character
             return _gamepadIndex;
         }
 
+        public string GetJoystickName(PlayerIndex index)
+        {
+            GamePadState state = GamePad.GetState(index);
+            if (!state.IsConnected)
+            {
+                return string.Empty;
+            }
+
+            return $"Controller {((int)index) + 1}";
+        }
+
         public float GetLeftStickDeadZone()
         {
             return (_leftStickDeadZoneX + _leftStickDeadZoneY) * 0.5f;

@@ -931,6 +931,32 @@ namespace HaCreator.MapSimulator.Character.Skills
                        || currentTime < summon.OneTimeActionFallbackEndTime);
         }
 
+        internal static bool CanInitiateTeslaCoilAttack(ActiveSummon summon, int teslaCoilSkillId)
+        {
+            return summon != null
+                   && !summon.IsPendingRemoval
+                   && summon.SkillId == teslaCoilSkillId
+                   && summon.TeslaCoilState == 1;
+        }
+
+        internal static byte ResolveTeslaCoilIdleRuntimeState(byte currentState, bool hasActiveOneTimeActionPlayback)
+        {
+            return currentState == 2 && !hasActiveOneTimeActionPlayback
+                ? (byte)1
+                : currentState;
+        }
+
+        internal static void RearmTeslaCoilForRefresh(ActiveSummon summon, int teslaCoilSkillId)
+        {
+            if (summon?.SkillId != teslaCoilSkillId)
+            {
+                return;
+            }
+
+            summon.TeslaCoilState = 1;
+            summon.TeslaTrianglePoints = Array.Empty<Point>();
+        }
+
         internal static int? ResolveBeholderBuffBranchIndex(
             SkillData skill,
             SkillLevelData buffLevelData,

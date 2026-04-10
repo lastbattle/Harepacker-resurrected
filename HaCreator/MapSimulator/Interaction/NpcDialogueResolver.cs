@@ -13,9 +13,11 @@ namespace HaCreator.MapSimulator.Interaction
             string npcDescription = npc?.NpcInstance?.NpcInfo?.StringFunc;
 
             var pages = new List<NpcInteractionPage>();
+            var seenTexts = new HashSet<string>(System.StringComparer.Ordinal);
             string formattedDescription = NpcDialogueTextFormatter.Format(npcDescription, formattingContext);
 
-            if (!string.IsNullOrWhiteSpace(npcDescription))
+            if (!string.IsNullOrWhiteSpace(formattedDescription) &&
+                seenTexts.Add(formattedDescription))
             {
                 pages.Add(new NpcInteractionPage
                 {
@@ -32,7 +34,7 @@ namespace HaCreator.MapSimulator.Interaction
                     string rawLine = idleSpeechLines[i];
                     string line = NpcDialogueTextFormatter.Format(rawLine, formattingContext);
                     if (string.IsNullOrWhiteSpace(line) ||
-                        (!string.IsNullOrWhiteSpace(formattedDescription) && string.Equals(line, formattedDescription, System.StringComparison.Ordinal)))
+                        !seenTexts.Add(line))
                     {
                         continue;
                     }

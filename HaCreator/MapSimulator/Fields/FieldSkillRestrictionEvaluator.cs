@@ -56,6 +56,13 @@ namespace HaCreator.MapSimulator.Fields
             3120010
         };
 
+        private static readonly HashSet<int> ClientFacingIrregularFirstJobRoots = new HashSet<int>
+        {
+            2001,
+            2002,
+            3001
+        };
+
         public static bool CanUseSkill(MapInfo mapInfo, SkillData skill)
         {
             return CanUseSkill(mapInfo, skill, 0);
@@ -535,7 +542,7 @@ namespace HaCreator.MapSimulator.Fields
                 return 1;
             }
 
-            if (jobId == 2001)
+            if (ClientFacingIrregularFirstJobRoots.Contains(jobId))
             {
                 return 1;
             }

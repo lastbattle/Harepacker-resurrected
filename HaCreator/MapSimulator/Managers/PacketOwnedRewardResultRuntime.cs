@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         private const int MesoGiveSucceededStringPoolId = 0x32E;
         private const int MesoGiveFailedStringPoolId = 0x32F;
+        private const int UtilDlgNoticeBackgroundStringPoolId = 0x03D0;
         private const int UtilDlgDefaultSoundStringPoolId = 0x04F8;
         private const int UtilDlgCloseButtonStringPoolId = 0x1961;
         private const int UtilDlgOkButtonStringPoolId = 0x1963;
@@ -119,6 +120,13 @@ namespace HaCreator.MapSimulator.Managers
                 "Sound/UI.img/DlgNotice");
         }
 
+        public static string GetUtilDlgNoticeBackgroundResourcePath()
+        {
+            return ResolveAssetPath(
+                UtilDlgNoticeBackgroundStringPoolId,
+                "UI/UIWindow2.img/UtilDlgEx/notice");
+        }
+
         public static string GetUtilDlgNoticeTopResourcePath()
         {
             return ResolveAssetPath(
@@ -190,7 +198,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public static string GetRandomMesoBagOkButtonResourcePath()
         {
-            return ResolvePlainText(
+            return ResolveAssetPath(
                 RandomMesoBagOkButtonStringPoolId,
                 "UI/UIWindow.img/RandomMesoBag/BtOk");
         }

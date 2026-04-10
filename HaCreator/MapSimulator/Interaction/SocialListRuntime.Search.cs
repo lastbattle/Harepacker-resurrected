@@ -639,10 +639,33 @@ namespace HaCreator.MapSimulator.Interaction
                 "job" => entries.OrderBy(entry => entry.PrimaryText, StringComparer.OrdinalIgnoreCase),
                 _ => entries
             };
-            _searchEntriesByTab[tab] = ordered.ToList();
+            _searchEntriesByTab[tab] = RecomposeSortedSearchEntries(tab, ordered);
             _searchSortByTab[tab] = sortKey;
             ClampSearchSelection(tab);
             return $"{tab} search sorted by {sortKey}.";
+        }
+
+        private static List<SocialSearchEntryState> RecomposeSortedSearchEntries(
+            SocialSearchTab tab,
+            IEnumerable<SocialSearchEntryState> orderedEntries)
+        {
+            List<SocialSearchEntryState> sortedEntries = orderedEntries?.ToList() ?? new List<SocialSearchEntryState>();
+            if (tab != SocialSearchTab.PartyMember || sortedEntries.Count == 0)
+            {
+                return sortedEntries;
+            }
+
+            List<SocialSearchEntryState> pinnedEntries = sortedEntries
+                .Where(entry => entry.IsCharacterInfoOwned)
+                .ToList();
+            if (pinnedEntries.Count == 0)
+            {
+                return sortedEntries;
+            }
+
+            sortedEntries.RemoveAll(entry => entry.IsCharacterInfoOwned);
+            pinnedEntries.AddRange(sortedEntries);
+            return pinnedEntries;
         }
 
         private string RequestSelectedParty()

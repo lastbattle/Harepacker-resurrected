@@ -122,6 +122,7 @@ namespace HaCreator.MapSimulator
             Expedition = 11,
             SpouseWhisper = 12,
             QuestAlarm = 13,
+            CashShop = 14,
         }
 
         internal enum PacketOwnedRawChatOwner
@@ -1345,6 +1346,9 @@ namespace HaCreator.MapSimulator
                     TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.QuestAlarm, () =>
                         ShowUtilityWindow(MapSimulatorWindowNames.QuestAlarm, "packet-owned-funckey:20"));
                     return true;
+                case PacketOwnedRawFunctionOwner.CashShop:
+                    ShowPacketOwnedCashShopWindow();
+                    return true;
                 default:
                     break;
             }
@@ -1420,6 +1424,11 @@ namespace HaCreator.MapSimulator
             _socialListRuntime.OpenSearchWindow(SocialSearchTab.Expedition);
             WireSocialSearchWindowData();
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
+        }
+
+        private void ShowPacketOwnedCashShopWindow()
+        {
+            OpenCashServiceOwnerFamily(UI.CashServiceStageKind.CashShop, resetStageSession: false);
         }
 
         private void OpenPacketOwnedSpouseWhisperOwner(int currentTime)
@@ -1551,6 +1560,7 @@ namespace HaCreator.MapSimulator
                 24 => PacketOwnedRawFunctionOwner.PartySearch,
                 25 => PacketOwnedRawFunctionOwner.Family,
                 21 => PacketOwnedRawFunctionOwner.SpouseWhisper,
+                22 => PacketOwnedRawFunctionOwner.CashShop,
                 27 => PacketOwnedRawFunctionOwner.Expedition,
                 29 => PacketOwnedRawFunctionOwner.Profession,
                 31 => PacketOwnedRawFunctionOwner.Event,

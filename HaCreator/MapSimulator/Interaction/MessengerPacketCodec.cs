@@ -37,6 +37,22 @@ namespace HaCreator.MapSimulator.Interaction
         bool IsActivityPulse,
         bool ActivityEnabled);
 
+    internal readonly record struct MessengerClientInviteRequestPacket(string ContactName);
+
+    internal readonly record struct MessengerClientAcceptInviteRequestPacket(int InviteSequence);
+
+    internal readonly record struct MessengerClientClaimRequestPacket(
+        string TargetCharacterName,
+        byte ClaimType,
+        string Context,
+        string ChatLog,
+        bool IncludesChatLog);
+
+    internal readonly record struct MessengerClientBlockedAutoRejectPacket(
+        string InviterName,
+        string LocalCharacterName,
+        bool Blocked);
+
     internal readonly record struct MessengerMemberInfoPacket(
         string ContactName,
         bool IsOnline,
@@ -325,6 +341,82 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        public static bool TryDescribeClientRequest(
+            int opcode,
+            ReadOnlySpan<byte> payload,
+            out string summary)
+        {
+            summary = null;
+            switch (opcode)
+            {
+                case ClientMessengerRequestOpcode:
+                    if (payload.Length == 0)
+                    {
+                        summary = "messenger request <empty>";
+                        return true;
+                    }
+
+                    byte requestType = payload[0];
+                    ReadOnlySpan<byte> requestBody = payload[1..];
+                    switch (requestType)
+                    {
+                        case 0:
+                            if (TryParseClientAcceptInviteRequest(requestBody, out MessengerClientAcceptInviteRequestPacket acceptPacket, out _))
+                            {
+                                summary = $"messenger request accept invite sequence={acceptPacket.InviteSequence}";
+                                return true;
+                            }
+
+                            summary = "messenger request accept invite";
+                            return true;
+                        case 3:
+                            if (TryParseClientInviteRequest(requestBody, out MessengerClientInviteRequestPacket invitePacket, out _))
+                            {
+                                summary = $"messenger request invite {invitePacket.ContactName}";
+                                return true;
+                            }
+
+                            summary = "messenger request invite";
+                            return true;
+                        case 5:
+                            if (TryParseClientBlockedAutoRejectRequest(requestBody, out MessengerClientBlockedAutoRejectPacket blockedPacket, out _))
+                            {
+                                summary = $"messenger request blocked-auto-reject inviter={blockedPacket.InviterName} local={blockedPacket.LocalCharacterName} blocked={blockedPacket.Blocked}";
+                                return true;
+                            }
+
+                            summary = "messenger request blocked-auto-reject";
+                            return true;
+                        case 6:
+                            if (TryParseClientChatRequest(requestBody, out MessengerChatPacket chatPacket, out _))
+                            {
+                                summary = $"messenger request room-chat {chatPacket.ContactName}: {chatPacket.Message}";
+                                return true;
+                            }
+
+                            summary = "messenger request room-chat";
+                            return true;
+                        default:
+                            summary = $"messenger request type={requestType}";
+                            return true;
+                    }
+
+                case 118:
+                    if (TryParseClientClaimRequest(payload, out MessengerClientClaimRequestPacket claimPacket, out _))
+                    {
+                        summary = claimPacket.IncludesChatLog
+                            ? $"claim request target={claimPacket.TargetCharacterName} type={claimPacket.ClaimType} context={claimPacket.Context} chatLog={claimPacket.ChatLog}"
+                            : $"claim request target={claimPacket.TargetCharacterName} type={claimPacket.ClaimType} context={claimPacket.Context}";
+                        return true;
+                    }
+
+                    summary = "claim request";
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private static void WriteString8(PacketWriter writer, string value)
         {
             string normalized = NormalizeText(value);
@@ -587,6 +679,150 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public static bool TryParseClientInviteRequest(ReadOnlySpan<byte> payload, out MessengerClientInviteRequestPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload.ToArray());
+                string contactName = reader.ReadMapleString().Trim();
+                if (string.IsNullOrWhiteSpace(contactName))
+                {
+                    error = "Messenger client invite request contact name is empty.";
+                    return false;
+                }
+
+                packet = new MessengerClientInviteRequestPacket(contactName);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"Messenger client invite request payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        public static bool TryParseClientAcceptInviteRequest(ReadOnlySpan<byte> payload, out MessengerClientAcceptInviteRequestPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            if (payload.Length < sizeof(int))
+            {
+                error = "Messenger client accept-invite request payload is missing the invite sequence.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload.ToArray());
+                packet = new MessengerClientAcceptInviteRequestPacket(reader.ReadInt());
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"Messenger client accept-invite request payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        public static bool TryParseClientChatRequest(ReadOnlySpan<byte> payload, out MessengerChatPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload.ToArray());
+                string value = reader.ReadMapleString().Trim();
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    error = "Messenger client chat request payload is empty.";
+                    return false;
+                }
+
+                int separatorIndex = value.IndexOf(ChatSeparator, StringComparison.Ordinal);
+                if (separatorIndex < 0)
+                {
+                    packet = new MessengerChatPacket(string.Empty, value);
+                    return true;
+                }
+
+                string contactName = value[..separatorIndex].Trim();
+                string message = value[(separatorIndex + ChatSeparator.Length)..].Trim();
+                packet = new MessengerChatPacket(contactName, message);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"Messenger client chat request payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        public static bool TryParseClientClaimRequest(ReadOnlySpan<byte> payload, out MessengerClientClaimRequestPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload.ToArray());
+                bool includesChatLog = reader.ReadByte() != 0;
+                string targetCharacterName = reader.ReadMapleString().Trim();
+                byte claimType = reader.ReadByte();
+                string context = reader.ReadMapleString().Trim();
+                string chatLog = includesChatLog ? reader.ReadMapleString().Trim() : string.Empty;
+                if (string.IsNullOrWhiteSpace(targetCharacterName))
+                {
+                    error = "Messenger claim request target name is empty.";
+                    return false;
+                }
+
+                packet = new MessengerClientClaimRequestPacket(
+                    targetCharacterName,
+                    claimType,
+                    context,
+                    chatLog,
+                    includesChatLog);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"Messenger claim request payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        public static bool TryParseClientBlockedAutoRejectRequest(ReadOnlySpan<byte> payload, out MessengerClientBlockedAutoRejectPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload.ToArray());
+                string inviterName = reader.ReadMapleString().Trim();
+                string localCharacterName = reader.ReadMapleString().Trim();
+                bool blocked = reader.ReadByte() != 0;
+                if (string.IsNullOrWhiteSpace(inviterName))
+                {
+                    error = "Messenger blocked-auto-reject inviter name is empty.";
+                    return false;
+                }
+
+                packet = new MessengerClientBlockedAutoRejectPacket(inviterName, localCharacterName, blocked);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"Messenger blocked-auto-reject request payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
         public static bool TryParseLeaveSlot(ReadOnlySpan<byte> payload, out MessengerLeaveSlotPacket packet, out string error)
         {
             packet = default;
@@ -789,6 +1025,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return value;
             }
 
+            public int ReadInt()
+            {
+                return ReadInt32();
+            }
+
             public string ReadString8()
             {
                 int length = ReadByte();
@@ -799,6 +1040,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 int length = ReadInt16();
                 return ReadString(length);
+            }
+
+            public string ReadMapleString()
+            {
+                return ReadString16();
             }
 
             public bool TryReadAvatarLook(out LoginAvatarLook avatarLook, out string error)

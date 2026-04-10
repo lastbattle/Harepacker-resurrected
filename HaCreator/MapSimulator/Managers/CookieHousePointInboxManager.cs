@@ -12,7 +12,8 @@ namespace HaCreator.MapSimulator.Managers
     {
         TextPoint,
         RawContextPoint,
-        OpcodeFramedRawContextPoint
+        OpcodeFramedRawContextPoint,
+        OpcodeFramedSessionValuePoint
     }
 
         public sealed class CookieHousePointInboxMessage
@@ -363,6 +364,7 @@ namespace HaCreator.MapSimulator.Managers
                         {
                             CookieHousePointInboxPayloadKind.RawContextPoint => "raw context point",
                             CookieHousePointInboxPayloadKind.OpcodeFramedRawContextPoint => "opcode-framed raw context point",
+                            CookieHousePointInboxPayloadKind.OpcodeFramedSessionValuePoint => "opcode-framed session value point",
                             _ => "point"
                         };
                         LastStatus = $"Queued Cookie House {payloadLabel} {point} from {remoteEndpoint}.";

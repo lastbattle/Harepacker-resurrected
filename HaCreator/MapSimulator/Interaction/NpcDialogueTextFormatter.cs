@@ -22,7 +22,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal static class NpcDialogueTextFormatter
     {
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        private static readonly Regex SelectionRegex = new(@"#L\d+#", RegexOptions.Compiled);
+        private static readonly Regex SelectionRegex = new(@"#L-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemCountRegex = new(@"#c(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex NpcRegex = new(@"#p(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemNameRegex = new(@"#t(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -397,7 +397,9 @@ namespace HaCreator.MapSimulator.Interaction
             string rawText = !string.IsNullOrWhiteSpace(page.RawText) ? page.RawText : page.Text;
             string text = Format(rawText, context);
             IReadOnlyList<NpcInteractionChoice> choices = FormatChoices(page.Choices, context);
-            if (string.IsNullOrWhiteSpace(text) && choices.Count == 0)
+            if (string.IsNullOrWhiteSpace(text) &&
+                choices.Count == 0 &&
+                page.InputRequest == null)
             {
                 return null;
             }

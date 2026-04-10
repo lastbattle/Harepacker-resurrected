@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
@@ -203,7 +204,6 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _chat?.AddClientChatMessage($"[System] {message}", currTickCount, 12);
             ShowConnectionNoticePrompt(new LoginPacketDialogPromptConfiguration
             {
                 Owner = LoginPacketDialogOwner.ConnectionNotice,
@@ -229,6 +229,16 @@ namespace HaCreator.MapSimulator
 
             ShowUtilityFeedbackMessage($"Played packet-owned field sound {resolvedDescriptor}.");
             return true;
+        }
+
+        private void HandleRemoteFieldSoundEffect(RemoteUserActorPool.RemoteFieldSoundPresentation presentation)
+        {
+            if (string.IsNullOrWhiteSpace(presentation.SoundPath))
+            {
+                return;
+            }
+
+            TryPlayPacketOwnedFieldFeedbackSound(presentation.SoundPath);
         }
 
         private bool TryPlayPacketOwnedSummonEffectSound(byte effectId)
@@ -1783,15 +1793,12 @@ namespace HaCreator.MapSimulator
             string key,
             PacketOwnedRewardRouletteLayerRole layerRole)
         {
-            bool isAnchoredToWindowOrigin = layerRole == PacketOwnedRewardRouletteLayerRole.Job;
             return new PacketOwnedUiRegistration(
                 PacketOwnedUiAnchorMode.WindowTopLeft,
-                isAnchoredToWindowOrigin
+                layerRole == PacketOwnedRewardRouletteLayerRole.Job
                     ? 0
                     : ScalePacketOwnedUiOffset(PacketOwnedRewardRouletteOffsetX, renderWidth, PacketOwnedUiReferenceWidth),
-                isAnchoredToWindowOrigin
-                    ? 0
-                    : ScalePacketOwnedUiOffset(PacketOwnedRewardRouletteOffsetY, renderHeight, PacketOwnedUiReferenceHeight),
+                ScalePacketOwnedUiOffset(PacketOwnedRewardRouletteOffsetY, renderHeight, PacketOwnedUiReferenceHeight),
                 key,
                 layerRole switch
                 {

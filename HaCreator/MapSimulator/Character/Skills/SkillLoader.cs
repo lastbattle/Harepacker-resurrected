@@ -2404,6 +2404,31 @@ namespace HaCreator.MapSimulator.Character.Skills
                     actionAnimations[actionName] = piecedAnimation;
                 }
             }
+
+            readOnlyActionAnimations =
+                actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+
+            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateCharacterOwnedMountedActionCandidateNames(supportedRawActionNames))
+            {
+                if (string.IsNullOrWhiteSpace(actionName)
+                    || actionAnimations.ContainsKey(actionName)
+                    || !TryGetShadowPartnerClientActionPieces(actionName, out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
+                {
+                    continue;
+                }
+
+                SkillAnimation piecedAnimation = ShadowPartnerClientActionResolver.TryBuildPiecedShadowPartnerActionAnimation(
+                    readOnlyActionAnimations,
+                    actionName,
+                    supportedRawActionNames,
+                    piecePlanOverride: piecePlan,
+                    requireSupportedRawActionName: false);
+                if (piecedAnimation?.Frames.Count > 0)
+                {
+                    actionAnimations[actionName] = piecedAnimation;
+                }
+            }
         }
 
         private bool TryGetShadowPartnerClientActionPieces(
@@ -4693,7 +4718,36 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            return TryResolveSummonSourcePropertyFromSkillNode(candidateNode, out summonNode);
+            if (TryResolveSummonSourcePropertyFromSkillNode(candidateNode, out summonNode))
+            {
+                return true;
+            }
+
+            return TryResolveVisibleSummonSourcePropertyFromClientSummonedUolPath(normalizedPath, out summonNode);
+        }
+
+        private bool TryResolveVisibleSummonSourcePropertyFromClientSummonedUolPath(
+            string summonedUolPath,
+            out WzImageProperty summonNode)
+        {
+            summonNode = null;
+            foreach (int linkedSkillId in EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPath(
+                         summonedUolPath,
+                         LoadSummonSourceCandidateSkillMetadata,
+                         FindVisibleSummonSourceParentIds))
+            {
+                if (!TryGetSkillNode(linkedSkillId, out WzImageProperty linkedSkillNode))
+                {
+                    continue;
+                }
+
+                if (TryResolveSummonSourcePropertyFromSkillNode(linkedSkillNode, out summonNode))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private bool TryResolveSkillPropertyPath(string normalizedPath, out WzImageProperty property)
@@ -4769,6 +4823,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             return NormalizeClientSummonedUolPath(summonedUolPath);
         }
 
+        internal static IEnumerable<int> EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPathForTest(
+            string summonedUolPath,
+            Func<int, SkillData> linkedSkillResolver = null,
+            Func<int, IReadOnlyList<int>> reverseAffectedSkillResolver = null)
+        {
+            return EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPath(
+                summonedUolPath,
+                linkedSkillResolver,
+                reverseAffectedSkillResolver);
+        }
+
         internal static bool TryParseNormalizedSkillAnimationPathForTest(
             string normalizedSkillAssetPath,
             out string imageName,
@@ -4821,6 +4886,63 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return string.Join("/", parts);
+        }
+
+        private static IEnumerable<int> EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPath(
+            string summonedUolPath,
+            Func<int, SkillData> linkedSkillResolver = null,
+            Func<int, IReadOnlyList<int>> reverseAffectedSkillResolver = null)
+        {
+            string normalizedPath = NormalizeClientSummonedUolPath(summonedUolPath);
+            if (!TryParseClientSummonedUolRootSkillId(normalizedPath, out int resolvedSkillId))
+            {
+                yield break;
+            }
+
+            SkillData resolvedSkill = linkedSkillResolver?.Invoke(resolvedSkillId);
+            if (resolvedSkill == null)
+            {
+                yield break;
+            }
+
+            foreach (int linkedSkillId in EnumerateSummonSourceCandidateSkillIds(
+                         resolvedSkill,
+                         linkedSkillResolver,
+                         reverseAffectedSkillResolver))
+            {
+                if (linkedSkillId > 0 && linkedSkillId != resolvedSkillId)
+                {
+                    yield return linkedSkillId;
+                }
+            }
+        }
+
+        private static bool TryParseClientSummonedUolRootSkillId(string normalizedPath, out int skillId)
+        {
+            skillId = 0;
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return false;
+            }
+
+            string[] parts = normalizedPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 3
+                || !parts[0].Equals("Skill", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            for (int i = 2; i < parts.Length; i++)
+            {
+                if (TryParseRequiredSkillId(parts[i], out skillId))
+                {
+                    return true;
+                }
+            }
+
+            skillId = 0;
+            return false;
         }
 
         private static bool TryParseNormalizedSkillAnimationPath(
@@ -5169,6 +5291,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     || frameNode["lt"] != null
                     || frameNode["rb"] != null
                     || frameNode["z"] != null
+                    || frameNode["a0"] != null
+                    || frameNode["a1"] != null
                     || frameNode["z0"] != null
                     || frameNode["z1"] != null))
             {
@@ -6116,6 +6240,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.X = GetInt(node, "x", 0, level);
             levelData.Y = GetInt(node, "y", 0, level);
             levelData.Z = GetInt(node, "z", 0, level);
+            levelData.U = GetInt(node, "u", 0, level);
+            levelData.V = GetInt(node, "v", 0, level);
+            levelData.W = GetInt(node, "w", 0, level);
 
             levelData.BulletCount = GetInt(node, "bulletCount", 1, level);
             levelData.BulletConsume = GetInt(node, "bulletConsume", 0, level);
@@ -6567,7 +6694,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             [
                 ("#x", levelData.X),
                 ("#y", levelData.Y),
-                ("#z", levelData.Z)
+                ("#z", levelData.Z),
+                ("#u", levelData.U),
+                ("#v", levelData.V),
+                ("#w", levelData.W)
             ];
 
             foreach ((string placeholderToken, int aliasValue) in placeholders)

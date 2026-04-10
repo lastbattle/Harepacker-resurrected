@@ -83,10 +83,9 @@ namespace HaCreator.MapSimulator.UI
             string title = ResolveDisplayText(slot.ItemName, metadata.ItemName);
             string typeLine = ResolveDisplayText(slot.ItemTypeName, ResolveDisplayText(metadata.TypeName, inventoryType.ToString()));
             string quantityLine = slot.Quantity > 1 ? $"Quantity: {slot.Quantity}" : string.Empty;
-            string stackLine = !InventoryItemMetadataResolver.HasStackLimitMetadataLine(metadata.MetadataLines)
-                               && slot.MaxStackSize.GetValueOrDefault(1) > 1
-                ? InventoryItemMetadataResolver.FormatStackLimitMetadataLine(slot.MaxStackSize.Value)
-                : string.Empty;
+            string stackLine = InventoryItemMetadataResolver.BuildRuntimeFallbackStackLimitMetadataLine(
+                slot.MaxStackSize,
+                metadata.MetadataLines);
             string description = ResolveDisplayText(slot.Description, metadata.Description);
             Texture2D itemTexture = ResolveSlotItemTexture(sprite.GraphicsDevice, slot);
             Texture2D cashLabelTexture = metadata.IsCashItem ? _equipTooltipAssets?.CashLabel : null;
@@ -672,13 +671,15 @@ namespace HaCreator.MapSimulator.UI
 
             if (quantity > 1)
             {
-                string quantityLine = $"Quantity: {quantity}";
-                if (maxStackSize.GetValueOrDefault(1) > 1)
-                {
-                    quantityLine += $"  Stack Max: {maxStackSize.Value}";
-                }
+                sections.Add(new TooltipSection($"Quantity: {quantity}", Color.White));
+            }
 
-                sections.Add(new TooltipSection(quantityLine, Color.White));
+            string stackLine = InventoryItemMetadataResolver.BuildRuntimeFallbackStackLimitMetadataLine(
+                maxStackSize,
+                metadataLines: null);
+            if (!string.IsNullOrWhiteSpace(stackLine))
+            {
+                sections.Add(new TooltipSection(stackLine, new Color(180, 255, 210)));
             }
 
             string eligibilityLine = BuildEquipmentEligibilityLine(part);

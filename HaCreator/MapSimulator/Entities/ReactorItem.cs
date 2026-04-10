@@ -1270,6 +1270,7 @@ namespace HaCreator.MapSimulator.Entities
                 .ThenBy(transition => GetSelectorPriority(transition, request))
                 .ThenBy(transition => GetSelectorLookaheadPriority(transition, request))
                 .ThenBy(transition => GetHitPriorityLookaheadPriority(transition, request))
+                .ThenBy(transition => GetSameTypeDescendantLookaheadPriority(transition, request))
                 .ThenBy(transition => transition.Order)
                 .ToArray();
 
@@ -1466,6 +1467,65 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return bestPriority;
+        }
+
+        private int GetSameTypeDescendantLookaheadPriority(AuthoredStateTransition transition, ReactorTransitionRequest request)
+        {
+            if (request.ActivationType == ReactorActivationType.None
+                || request.ActivationType == ReactorActivationType.Quest
+                || request.ActivationType == ReactorActivationType.Hit)
+            {
+                return 0;
+            }
+
+            int resolvedTargetState = ResolveState(transition.TargetState);
+            return HasDescendantActivationTypeMatch(
+                resolvedTargetState,
+                request.ActivationType,
+                new HashSet<int> { resolvedTargetState })
+                ? 0
+                : 1;
+        }
+
+        private bool HasDescendantActivationTypeMatch(
+            int state,
+            ReactorActivationType activationType,
+            HashSet<int> visitedStates)
+        {
+            int resolvedState = ResolveState(state);
+            if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (AuthoredStateTransition transition in transitions)
+            {
+                if (!MatchesAuthoredEventType(transition.EventType, activationType)
+                    || transition.TargetState == resolvedState
+                    || !_stateFrames.ContainsKey(transition.TargetState))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            foreach (AuthoredStateTransition transition in transitions.Where(static transition => transition.SelectorValues.Length == 0))
+            {
+                int nextState = ResolveState(transition.TargetState);
+                if (!visitedStates.Add(nextState))
+                {
+                    continue;
+                }
+
+                if (HasDescendantActivationTypeMatch(nextState, activationType, visitedStates))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool ShouldRejectSelectorDrivenTransitionWithoutSelector(ReactorActivationType activationType)

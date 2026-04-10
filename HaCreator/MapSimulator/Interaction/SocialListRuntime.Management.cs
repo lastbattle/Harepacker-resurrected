@@ -56,6 +56,11 @@ namespace HaCreator.MapSimulator.Interaction
             _guildManageEditing = false;
             _guildManageDraft = string.Empty;
             _guildManageSelectedRankIndex = Math.Clamp(_guildManageSelectedRankIndex, 0, Math.Max(0, _guildRankTitles.Count - 1));
+            NotifyGuildManageTabObserved();
+            if (_guildManageCurrentTab == GuildManageTab.Position)
+            {
+                NotifyGuildManageRankObserved();
+            }
         }
 
         internal GuildManageSnapshot BuildGuildManageSnapshot()
@@ -201,7 +206,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (!CanToggleGuildAdmission())
             {
-                return $"Guild admission is read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.";
+                return NotifySocialEditorPrompt($"Guild admission is read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.");
             }
 
             _guildManageRequiresApproval = requiresApproval;
@@ -217,6 +222,7 @@ namespace HaCreator.MapSimulator.Interaction
             _allianceEditorEditing = false;
             _allianceEditorDraft = string.Empty;
             _allianceSelectedRankIndex = Math.Clamp(_allianceSelectedRankIndex, 0, Math.Max(0, _allianceRankTitles.Count - 1));
+            NotifyAllianceEditorFocusObserved();
         }
 
         internal AllianceEditorSnapshot BuildAllianceEditorSnapshot()
@@ -256,7 +262,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal void FocusAllianceNotice()
         {
             _allianceEditorFocus = AllianceEditorFocus.Notice;
-            NotifySocialEditorPrompt("Alliance editor focus: notice text.");
+            NotifyAllianceEditorFocusObserved();
         }
 
         internal string BeginAllianceEdit()
@@ -476,6 +482,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             int rankIndex = Math.Clamp(_allianceSelectedRankIndex, 0, _allianceRankTitles.Count - 1);
             NotifySocialEditorPrompt($"Alliance rank title {rankIndex + 1} selected: {_allianceRankTitles[rankIndex]}.");
+        }
+
+        private void NotifyAllianceEditorFocusObserved()
+        {
+            if (_allianceEditorFocus == AllianceEditorFocus.Notice)
+            {
+                NotifySocialEditorPrompt("Alliance editor focus: notice text.");
+                return;
+            }
+
+            NotifyAllianceRankObserved();
         }
 
         private IReadOnlyList<string> BuildAllianceEditorSummary(string selectedTitle)

@@ -188,6 +188,9 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCollectionValueLaneLeft = ClientCollectionTextLaneWidthInt - ClientCollectionValueLaneWidth;
         private const int ClientCollectionLabelLaneLeft = ClientCollectionTextLaneLeft;
         private const int ClientCollectionLabelLaneWidth = ClientCollectionValueLaneLeft - ClientCollectionLabelLaneLeft - 6;
+        private const int ClientCollectionDetailPairLaneGap = 6;
+        private const int ClientCollectionDetailPairLaneWidth = (ClientCollectionTextLaneWidthInt - ClientCollectionDetailPairLaneGap) / 2;
+        private const int ClientCollectionDetailPairRightLaneLeft = ClientCollectionTextLaneWidthInt - ClientCollectionDetailPairLaneWidth;
         private const int BookFontObjectStringPoolId = 0x5AF;
         private const int BookFontFamilyStringPoolId = 0x1A25;
         private const int BookFontStyleStringPoolId = 0x5B0;
@@ -560,8 +563,8 @@ namespace HaCreator.MapSimulator.UI
 
             int headlineBottom = AddEntryHeadlineRecords(records, entry, top, measureTextWidth);
             int detailTop = GetFollowingAnalyzedTextTop(top, headlineBottom);
-            AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, detailTop, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
-            int detailBottom = GetOptionalWrappedRecordBottom(entry.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, headlineBottom, measureTextWidth);
+            AddEntryDetailRecords(records, entry, detailTop, measureTextWidth);
+            int detailBottom = GetEntryDetailBottom(entry, detailTop, headlineBottom, measureTextWidth);
             int ruleTop = Math.Max(headlineBottom, detailBottom) + ClientCollectionAnalyzedBlockCarry;
             records.Add(CreateClientRuleRecord(ruleTop));
             return ruleTop + 5;
@@ -576,8 +579,8 @@ namespace HaCreator.MapSimulator.UI
 
             int headlineBottom = AddEntryHeadlineRecords(records, entry, top, measureTextWidth);
             int detailTop = GetFollowingAnalyzedTextTop(top, headlineBottom);
-            AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, detailTop, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
-            int detailBottom = GetOptionalWrappedRecordBottom(entry.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, headlineBottom, measureTextWidth);
+            AddEntryDetailRecords(records, entry, detailTop, measureTextWidth);
+            int detailBottom = GetEntryDetailBottom(entry, detailTop, headlineBottom, measureTextWidth);
             int ruleTop = Math.Max(headlineBottom, detailBottom) + ClientCollectionAnalyzedBlockCarry;
             records.Add(CreateClientRuleRecord(ruleTop));
             return ruleTop + 3;
@@ -592,7 +595,7 @@ namespace HaCreator.MapSimulator.UI
 
             int headlineBottom = AddEntryHeadlineRecords(records, entry, top, measureTextWidth);
             int detailTop = GetStandardEntryDetailTop(top, entry, measureTextWidth, headlineBottom);
-            AddWrappedTextRecords(records, entry.Detail, ClientCollectionTextLaneLeft, detailTop, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Left, CollectionBookRecordRole.Detail, measureTextWidth);
+            AddEntryDetailRecords(records, entry, detailTop, measureTextWidth);
         }
 
         private static int AddEntryHeadlineRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top, Func<string, int, float> measureTextWidth = null)
@@ -707,7 +710,7 @@ namespace HaCreator.MapSimulator.UI
         {
             int headlineBottom = GetEntryHeadlineBottom(entry, top, measureTextWidth);
             int detailTop = GetStandardEntryDetailTop(top, entry, measureTextWidth, headlineBottom);
-            int detailBottom = GetOptionalWrappedRecordBottom(entry?.Detail, detailTop, ClientCollectionTextLaneWidthInt, 10, headlineBottom, measureTextWidth);
+            int detailBottom = GetEntryDetailBottom(entry, detailTop, headlineBottom, measureTextWidth);
             return Math.Max(headlineBottom, detailBottom) + ClientCollectionAnalyzedBlockCarry;
         }
 
@@ -754,6 +757,77 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return top;
+        }
+
+        private static void AddEntryDetailRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top, Func<string, int, float> measureTextWidth = null)
+        {
+            AddDetailRecords(records, entry?.Detail, ResolveEntryDetailStyleIndex(entry), top, measureTextWidth);
+        }
+
+        private static void AddDetailRecords(List<CollectionBookRecordSnapshot> records, string detail, int styleIndex, int top, Func<string, int, float> measureTextWidth = null)
+        {
+            if (records == null || string.IsNullOrWhiteSpace(detail))
+            {
+                return;
+            }
+
+            if (TryResolveCompactDetailPair(detail, out string leftClause, out string rightClause))
+            {
+                AddWrappedTextRecords(
+                    records,
+                    leftClause,
+                    ClientCollectionTextLaneLeft,
+                    top,
+                    ClientCollectionDetailPairLaneWidth,
+                    styleIndex,
+                    CollectionBookTextAlignment.Left,
+                    CollectionBookRecordRole.Detail,
+                    measureTextWidth);
+                AddWrappedTextRecords(
+                    records,
+                    rightClause,
+                    ClientCollectionDetailPairRightLaneLeft,
+                    top,
+                    ClientCollectionDetailPairLaneWidth,
+                    styleIndex,
+                    CollectionBookTextAlignment.Right,
+                    CollectionBookRecordRole.Detail,
+                    measureTextWidth);
+                return;
+            }
+
+            AddWrappedTextRecords(
+                records,
+                detail,
+                ClientCollectionTextLaneLeft,
+                top,
+                ClientCollectionTextLaneWidthInt,
+                styleIndex,
+                CollectionBookTextAlignment.Left,
+                CollectionBookRecordRole.Detail,
+                measureTextWidth);
+        }
+
+        private static int GetEntryDetailBottom(CollectionBookEntrySnapshot entry, int top, int fallbackBottom, Func<string, int, float> measureTextWidth = null)
+        {
+            return GetDetailRecordBottom(entry?.Detail, ResolveEntryDetailStyleIndex(entry), top, fallbackBottom, measureTextWidth);
+        }
+
+        private static int GetDetailRecordBottom(string detail, int styleIndex, int top, int fallbackBottom, Func<string, int, float> measureTextWidth = null)
+        {
+            if (string.IsNullOrWhiteSpace(detail))
+            {
+                return fallbackBottom;
+            }
+
+            if (TryResolveCompactDetailPair(detail, out string leftClause, out string rightClause))
+            {
+                int leftBottom = GetWrappedRecordBottom(leftClause, top, ClientCollectionDetailPairLaneWidth, styleIndex, measureTextWidth);
+                int rightBottom = GetWrappedRecordBottom(rightClause, top, ClientCollectionDetailPairLaneWidth, styleIndex, measureTextWidth);
+                return Math.Max(leftBottom, rightBottom);
+            }
+
+            return GetWrappedRecordBottom(detail, top, ClientCollectionTextLaneWidthInt, styleIndex, measureTextWidth);
         }
 
         private static void AddWrappedTextRecords(
@@ -947,6 +1021,36 @@ namespace HaCreator.MapSimulator.UI
         private static int ResolveEntryValueStyleIndex(CollectionBookEntrySnapshot entry)
         {
             return ResolveEntryStyleIndex(entry?.Tone ?? CollectionBookEntryTone.Normal);
+        }
+
+        private static int ResolveEntryDetailStyleIndex(CollectionBookEntrySnapshot entry)
+        {
+            return 10;
+        }
+
+        private static bool TryResolveCompactDetailPair(string detail, out string leftClause, out string rightClause)
+        {
+            leftClause = string.Empty;
+            rightClause = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(detail))
+            {
+                return false;
+            }
+
+            string[] clauses = detail
+                .Split(new[] { "  " }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(clause => clause.Trim())
+                .Where(clause => !string.IsNullOrWhiteSpace(clause))
+                .ToArray();
+            if (clauses.Length != 2)
+            {
+                return false;
+            }
+
+            leftClause = clauses[0];
+            rightClause = clauses[1];
+            return true;
         }
 
         private static CollectionBookOwnerContextSnapshot CreateDefaultOwnerContext(CharacterBuild build)
@@ -1226,10 +1330,15 @@ namespace HaCreator.MapSimulator.UI
         public string Subtitle { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
         public string NavigationCaption { get; init; } = string.Empty;
+        public string NavigationSeedText { get; init; } = string.Empty;
         public string NavigateUrl { get; init; } = string.Empty;
         public string NavigationHostText { get; init; } = string.Empty;
         public string NavigationRequestText { get; init; } = string.Empty;
         public string NavigationStateText { get; init; } = string.Empty;
+        public string ServerHost { get; init; } = string.Empty;
+        public int TemplateId { get; init; }
+        public int? WorldId { get; init; }
+        public int? CharacterId { get; init; }
         public bool? IsLoading { get; init; }
         public int LoadingStartTick { get; init; } = int.MinValue;
 
@@ -1237,10 +1346,15 @@ namespace HaCreator.MapSimulator.UI
             !string.IsNullOrWhiteSpace(Subtitle)
             || !string.IsNullOrWhiteSpace(StatusText)
             || !string.IsNullOrWhiteSpace(NavigationCaption)
+            || !string.IsNullOrWhiteSpace(NavigationSeedText)
             || !string.IsNullOrWhiteSpace(NavigateUrl)
             || !string.IsNullOrWhiteSpace(NavigationHostText)
             || !string.IsNullOrWhiteSpace(NavigationRequestText)
             || !string.IsNullOrWhiteSpace(NavigationStateText)
+            || !string.IsNullOrWhiteSpace(ServerHost)
+            || TemplateId > 0
+            || WorldId.HasValue
+            || CharacterId.HasValue
             || IsLoading.HasValue
             || LoadingStartTick != int.MinValue;
     }

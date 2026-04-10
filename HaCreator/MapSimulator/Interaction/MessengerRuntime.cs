@@ -551,6 +551,57 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryBuildClientAcceptInviteRequestPayload(
+            string contactName,
+            out byte[] payload,
+            out string resolvedContactName,
+            out int inviteSequence,
+            out string status)
+        {
+            payload = null;
+            resolvedContactName = null;
+            inviteSequence = 0;
+            status = null;
+
+            if (_incomingInvite == null)
+            {
+                status = "No Messenger invite is waiting for CUIMessenger::TryNew.";
+                return false;
+            }
+
+            string expectedName = NormalizeParticipantName(contactName);
+            if (expectedName != null
+                && !string.Equals(_incomingInvite.ContactName, expectedName, StringComparison.OrdinalIgnoreCase))
+            {
+                status = $"Incoming Messenger invite targets {_incomingInvite.ContactName}, not {expectedName}.";
+                return false;
+            }
+
+            if (!_contacts.TryGetValue(_incomingInvite.ContactName, out MessengerContactState contact))
+            {
+                status = $"Invite target {_incomingInvite.ContactName} is no longer available.";
+                return false;
+            }
+
+            if (!contact.IsOnline)
+            {
+                status = $"{contact.Name} is offline, so the Messenger invite expired.";
+                return false;
+            }
+
+            if (_participants.Count > 1)
+            {
+                status = $"Cannot join {contact.Name}'s Messenger while another room is active.";
+                return false;
+            }
+
+            resolvedContactName = contact.Name;
+            inviteSequence = _incomingInvite.InviteSequence;
+            payload = MessengerPacketCodec.BuildAcceptInviteRequestPayload(inviteSequence);
+            status = $"Built CUIMessenger::TryNew join request payload for {contact.Name}.";
+            return true;
+        }
+
         internal string QueueSessionOwnedInviteRequest(string contactName)
         {
             if (!TryResolveInviteRequestContact(contactName, allowNextContact: false, out MessengerContactState contact, out string message))
@@ -559,6 +610,31 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return QueueInvite(contact, sessionOwned: true);
+        }
+
+        internal string QueueSessionOwnedIncomingInviteAccept(string contactName)
+        {
+            if (_incomingInvite == null)
+            {
+                return "No Messenger invite is waiting for CUIMessenger::TryNew.";
+            }
+
+            string expectedName = NormalizeParticipantName(contactName);
+            if (expectedName != null
+                && !string.Equals(_incomingInvite.ContactName, expectedName, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"Incoming Messenger invite targets {_incomingInvite.ContactName}, not {expectedName}.";
+            }
+
+            PendingMessengerInviteState incomingInvite = _incomingInvite;
+            _incomingInvite = null;
+            NotifyIncomingInvitePromptChanged();
+
+            _lastActionSummary = $"Queued live Messenger join #{incomingInvite.InviteSequence} for {incomingInvite.ContactName} and waiting for CUIMessenger::OnSelfEnterResult.";
+            AddSystemLog($"Live Messenger join requested for {incomingInvite.ContactName}.");
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary($"Mirrored CUIMessenger::TryNew request (opcode 0x8F/0) for {incomingInvite.ContactName} with join serial {incomingInvite.InviteSequence}.");
+            return _lastActionSummary;
         }
 
         internal bool TryBuildPacketAvatarPayload(

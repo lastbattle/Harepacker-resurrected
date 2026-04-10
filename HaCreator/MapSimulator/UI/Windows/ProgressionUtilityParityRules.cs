@@ -119,17 +119,45 @@ namespace HaCreator.MapSimulator.UI
                 return fallback;
             }
 
+            string serverHost = ownerState.ServerHost?.Trim() ?? string.Empty;
+            int templateId = ownerState.TemplateId > 0 ? ownerState.TemplateId : 0xAA2;
+            int? worldId = ownerState.WorldId;
+            int? characterId = ownerState.CharacterId;
+            string composedNavigateUrl = !string.IsNullOrWhiteSpace(ownerState.NavigateUrl)
+                ? ownerState.NavigateUrl.Trim()
+                : !string.IsNullOrWhiteSpace(serverHost) && worldId.HasValue && characterId.HasValue
+                    ? ResolveRankingLandingUrl(serverHost, templateId, worldId.Value, characterId.Value, out _)
+                    : string.Empty;
+            string composedCaption = !string.IsNullOrWhiteSpace(ownerState.NavigationCaption)
+                ? ownerState.NavigationCaption.Trim()
+                : templateId > 0
+                    ? FormatRankingLandingTemplateSeed(templateId, out _)
+                    : string.Empty;
+            string composedSeedText = !string.IsNullOrWhiteSpace(ownerState.NavigationSeedText)
+                ? ownerState.NavigationSeedText.Trim()
+                : !string.IsNullOrWhiteSpace(composedNavigateUrl)
+                    ? $"NavigateUrl => {composedNavigateUrl}"
+                    : string.Empty;
+            string composedHostText = !string.IsNullOrWhiteSpace(ownerState.NavigationHostText)
+                ? ownerState.NavigationHostText.Trim()
+                : !string.IsNullOrWhiteSpace(serverHost)
+                    ? $"get_server_string_0 => {serverHost}"
+                    : string.Empty;
+            string composedRequestText = !string.IsNullOrWhiteSpace(ownerState.NavigationRequestText)
+                ? ownerState.NavigationRequestText.Trim()
+                : worldId.HasValue && characterId.HasValue
+                    ? FormatRankingRequestParameters(worldId.Value, characterId.Value)
+                    : string.Empty;
+
             return new RankingWindowSnapshot
             {
                 Title = fallback.Title,
                 Subtitle = ChooseOwnerText(ownerState.Subtitle, fallback.Subtitle),
                 StatusText = ChooseOwnerText(ownerState.StatusText, fallback.StatusText),
-                NavigationCaption = ChooseOwnerText(ownerState.NavigationCaption, fallback.NavigationCaption),
-                NavigationSeedText = string.IsNullOrWhiteSpace(ownerState.NavigateUrl)
-                    ? fallback.NavigationSeedText
-                    : $"NavigateUrl => {ownerState.NavigateUrl.Trim()}",
-                NavigationHostText = ChooseOwnerText(ownerState.NavigationHostText, fallback.NavigationHostText),
-                NavigationRequestText = ChooseOwnerText(ownerState.NavigationRequestText, fallback.NavigationRequestText),
+                NavigationCaption = ChooseOwnerText(composedCaption, fallback.NavigationCaption),
+                NavigationSeedText = ChooseOwnerText(composedSeedText, fallback.NavigationSeedText),
+                NavigationHostText = ChooseOwnerText(composedHostText, fallback.NavigationHostText),
+                NavigationRequestText = ChooseOwnerText(composedRequestText, fallback.NavigationRequestText),
                 NavigationStateText = ChooseOwnerText(ownerState.NavigationStateText, fallback.NavigationStateText),
                 IsLoading = ownerState.IsLoading ?? fallback.IsLoading,
                 LoadingStartTick = ownerState.LoadingStartTick != int.MinValue

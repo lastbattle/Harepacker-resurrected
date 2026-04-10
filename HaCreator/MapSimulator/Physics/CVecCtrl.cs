@@ -416,6 +416,11 @@ namespace HaCreator.MapSimulator.Physics
         public bool IsRecordingPath { get; set; }
 
         /// <summary>
+        /// Latest client-owned move-path attribute recorded on this controller.
+        /// </summary>
+        public int CurrentMovePathAttribute { get; private set; }
+
+        /// <summary>
         /// Total time currently gathered in the active move-path batch.
         /// Mirrors the client-side gather-duration gate used before flush.
         /// </summary>
@@ -1590,8 +1595,43 @@ namespace HaCreator.MapSimulator.Physics
                 TimeStamp = timeStampMs ?? Environment.TickCount,
                 Duration = 0,
                 FacingRight = FacingRight,
+                MovePathAttribute = CurrentMovePathAttribute,
                 StatChanged = false
             };
+        }
+
+        /// <summary>
+        /// Record a client-owned move-path attribute transition on the active path.
+        /// </summary>
+        public void SetMovePathAttribute(int attribute, bool rebuildMovePath = true)
+        {
+            CurrentMovePathAttribute = attribute;
+            if (!rebuildMovePath || !IsRecordingPath)
+            {
+                return;
+            }
+
+            int currentTimeMs = Environment.TickCount;
+            if (_movePath.Count == 0)
+            {
+                _movePath.Add(MakeNewMovePathElem(currentTimeMs));
+                _lastPathFlushTime = currentTimeMs;
+                return;
+            }
+
+            int lastIndex = _movePath.Count - 1;
+            MovePathElement previous = _movePath[lastIndex];
+            int durationMs = Math.Max(0, currentTimeMs - previous.TimeStamp);
+            previous.Duration = ClampPathDuration(durationMs);
+            _movePath[lastIndex] = previous;
+            _pathGatherDurationMs += durationMs;
+            _movePath.Add(MakeNewMovePathElem(currentTimeMs));
+            _lastPathFlushTime = currentTimeMs;
+
+            while (_movePath.Count > 50)
+            {
+                _movePath.RemoveAt(0);
+            }
         }
 
         private static short ClampPathDuration(int durationMs)
@@ -1806,7 +1846,8 @@ namespace HaCreator.MapSimulator.Physics
                 Action = CurrentAction,
                 FootholdId = CurrentFoothold?.num ?? 0,
                 TimeStamp = timeStampMs ?? Environment.TickCount,
-                FacingRight = FacingRight
+                FacingRight = FacingRight,
+                MovePathAttribute = CurrentMovePathAttribute
             };
         }
 
@@ -1986,6 +2027,11 @@ namespace HaCreator.MapSimulator.Physics
         public bool FacingRight;
 
         /// <summary>
+        /// Client-owned move-path attribute captured for this element.
+        /// </summary>
+        public int MovePathAttribute;
+
+        /// <summary>
         /// Stat changed flag (for server validation)
         /// </summary>
         public bool StatChanged;
@@ -2004,6 +2050,7 @@ namespace HaCreator.MapSimulator.Physics
         public int FootholdId;
         public int TimeStamp;
         public bool FacingRight;
+        public int MovePathAttribute;
     }
 
     /// <summary>

@@ -753,10 +753,31 @@ namespace HaCreator.MapSimulator
         private PacketOwnedLogoutGiftOwnerAvailability ResolveCurrentPacketOwnedLogoutGiftOwnerAvailability()
         {
             return ResolvePacketOwnedLogoutGiftOwnerAvailability(
-                _gameState?.IsLoginMap == true,
-                _gameState?.IsCashShopMap == true,
+                IsPacketOwnedLogoutGiftFieldStageActive(),
                 _packetOwnedLogoutGiftHasPredictQuitFlag,
                 _packetOwnedLogoutGiftPredictQuitRawValue);
+        }
+
+        private bool IsPacketOwnedLogoutGiftFieldStageActive()
+        {
+            if (_gameState?.IsLoginMap == true || _gameState?.IsCashShopMap == true)
+            {
+                return false;
+            }
+
+            return !HasVisiblePacketOwnedLogoutGiftNonFieldStage();
+        }
+
+        private bool HasVisiblePacketOwnedLogoutGiftNonFieldStage()
+        {
+            return IsPacketOwnedLogoutGiftStageWindowVisible(MapSimulatorWindowNames.CashShopStage)
+                || IsPacketOwnedLogoutGiftStageWindowVisible(MapSimulatorWindowNames.MtsStatus);
+        }
+
+        private bool IsPacketOwnedLogoutGiftStageWindowVisible(string windowName)
+        {
+            return !string.IsNullOrWhiteSpace(windowName)
+                && uiWindowManager?.GetWindow(windowName)?.IsVisible == true;
         }
 
         internal static string ResolvePacketOwnedLogoutGiftDialogFrameResourcePath()
@@ -933,12 +954,11 @@ namespace HaCreator.MapSimulator
         }
 
         internal static PacketOwnedLogoutGiftOwnerAvailability ResolvePacketOwnedLogoutGiftOwnerAvailability(
-            bool isLoginMap,
-            bool isCashShopMap,
+            bool isFieldStageActive,
             bool hasPredictQuitFlag,
             int predictQuitRawValue)
         {
-            if (isLoginMap || isCashShopMap)
+            if (!isFieldStageActive)
             {
                 return PacketOwnedLogoutGiftOwnerAvailability.StageNotField;
             }

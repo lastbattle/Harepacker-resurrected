@@ -187,6 +187,7 @@ namespace HaCreator.MapSimulator.Companions
                 ["what"] = new[] { "what", "question", "confuse", "surprise", "bewildered", "donno", "complain" },
                 ["question"] = new[] { "question", "what", "confuse", "surprise", "bewildered", "donno", "complain" },
                 ["confuse"] = new[] { "confuse", "bewildered", "what", "surprise", "donno", "nothing" },
+                ["panic"] = new[] { "panic", "surprise", "what", "question", "confuse", "bewildered", "alert" },
                 ["good"] = new[] { "good", "goodboy", "happy", "ok", "yes", "smile", "love" },
                 ["goodboy"] = new[] { "goodboy", "good", "happy", "ok", "yes", "smile", "love" },
                 ["happy"] = new[] { "happy", "good", "goodboy", "ok", "yes", "smile", "love" },

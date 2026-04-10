@@ -512,11 +512,42 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                BeginRemoval(state, currentTime, reason: 0);
-                removedCount++;
+                if (TryCancelLocalOwnerSummonByClientRequest(state, currentTime))
+                {
+                    removedCount++;
+                }
             }
 
             return removedCount > 0;
+        }
+
+        private bool TryCancelLocalOwnerSummonByClientRequest(PacketOwnedSummonState state, int currentTime)
+        {
+            if (state?.Summon == null || state.Summon.IsPendingRemoval)
+            {
+                return false;
+            }
+
+            if (ShouldUseNaturalExpiryPlaybackOnClientCancel(state.Summon, currentTime))
+            {
+                if (TryBeginSelfDestructRemoval(state, currentTime, requiresNaturalExpiry: true))
+                {
+                    return true;
+                }
+
+                if (TryTriggerExpiredSelfDestructAction(state, currentTime))
+                {
+                    return true;
+                }
+
+                if (TryBeginNaturalExpiryRemoval(state, currentTime))
+                {
+                    return true;
+                }
+            }
+
+            BeginRemoval(state, currentTime, reason: 0);
+            return true;
         }
 
         public bool TryPrimeLocalOwnerSummonNaturalExpiry(int summonedObjectId, int currentTime)
@@ -2061,6 +2092,14 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return true;
+        }
+
+        internal static bool ShouldUseNaturalExpiryPlaybackOnClientCancel(ActiveSummon summon, int currentTime)
+        {
+            return summon != null
+                   && !summon.IsPendingRemoval
+                   && !summon.ExpiryActionTriggered
+                   && summon.HasReachedNaturalExpiry(currentTime);
         }
 
         private static int ResolveSummonMaxHealth(SkillLevelData levelData)
@@ -4543,7 +4582,7 @@ namespace HaCreator.MapSimulator.Pools
 
             bool hasLiveHitFrames = liveHitEffectEntry?.Frames?.Count > 0;
             bool needsTemplateAttackInfo = hasLiveHitFrames && liveAttackInfo == null;
-            bool needsTemplateSoundKey = !HasLivePacketMobAttackSound(mob, damageSoundIndex);
+            bool needsTemplateSoundKey = !HasRequestedLivePacketMobAttackSound(mob, damageSoundIndex);
             MobAnimationSet templateAnimationSet = null;
             MobAnimationSet.AttackInfoMetadata templateAttackInfo = null;
             if (needsTemplateAttackInfo || !hasLiveHitFrames)
@@ -4607,23 +4646,22 @@ namespace HaCreator.MapSimulator.Pools
                 templateCharDamSoundKey);
         }
 
-        private static bool HasLivePacketMobAttackSound(MobItem mob, int damageSoundIndex)
+        private static bool HasRequestedLivePacketMobAttackSound(MobItem mob, int damageSoundIndex)
         {
-            return HasLivePacketMobAttackSound(
+            return HasRequestedLivePacketMobAttackSound(
                 mob?.CharDam1SE,
                 mob?.CharDam2SE,
                 damageSoundIndex);
         }
 
-        private static bool HasLivePacketMobAttackSound(
+        internal static bool HasRequestedLivePacketMobAttackSound(
             string liveCharDam1SoundKey,
             string liveCharDam2SoundKey,
             int damageSoundIndex)
         {
             if (damageSoundIndex >= 2)
             {
-                return !string.IsNullOrWhiteSpace(liveCharDam2SoundKey)
-                    || !string.IsNullOrWhiteSpace(liveCharDam1SoundKey);
+                return !string.IsNullOrWhiteSpace(liveCharDam2SoundKey);
             }
 
             return !string.IsNullOrWhiteSpace(liveCharDam1SoundKey);
@@ -4699,6 +4737,11 @@ namespace HaCreator.MapSimulator.Pools
                 if (!string.IsNullOrWhiteSpace(liveCharDam2SoundKey))
                 {
                     return liveCharDam2SoundKey;
+                }
+
+                if (!string.IsNullOrWhiteSpace(templateCharDamSoundKey))
+                {
+                    return templateCharDamSoundKey;
                 }
 
                 if (!string.IsNullOrWhiteSpace(liveCharDam1SoundKey))

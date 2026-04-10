@@ -959,7 +959,7 @@ namespace HaCreator.MapSimulator.Companions
             float nextY = deltaY >= 0f
                 ? Math.Min(targetY, currentY + verticalStep)
                 : Math.Max(targetY, currentY - verticalStep);
-            followingState = Math.Abs(targetY - nextY) <= PassiveArrivalDistance ? -1 : 1;
+            followingState = nextY == targetY ? -1 : 1;
             velocityY = deltaY >= 0f ? 1d : -1d;
             return nextY;
         }

@@ -90,7 +90,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _submitButton;
         private LayoutProfile _layout;
         private MouseState _previousMouseState;
-        private int _answerCount;
+        private int _firstAttemptFlag;
         private int _expiresAt = int.MinValue;
         private bool _softKeyboardActive;
         private int _lastManagedInputClickTick = int.MinValue;
@@ -233,7 +233,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        public void Configure(Texture2D challengeTexture, int expiresAt, int answerCount, string statusText)
+        public void Configure(Texture2D challengeTexture, int expiresAt, int firstAttemptFlag, string statusText)
         {
             if (!ReferenceEquals(_challengeTexture, challengeTexture))
             {
@@ -242,7 +242,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _expiresAt = expiresAt;
-            _answerCount = Math.Max(0, answerCount);
+            _firstAttemptFlag = firstAttemptFlag;
             _statusText = statusText ?? string.Empty;
             _editControl.Reset();
             _nativeEditHost.Reset();
@@ -256,7 +256,7 @@ namespace HaCreator.MapSimulator.UI
             _challengeTexture?.Dispose();
             _challengeTexture = null;
             _expiresAt = int.MinValue;
-            _answerCount = 0;
+            _firstAttemptFlag = 0;
             _statusText = string.Empty;
             _editControl.Clear();
             _nativeEditHost.Reset();
@@ -668,7 +668,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawAttemptMessage(SpriteBatch sprite, Rectangle bounds)
         {
-            string attemptMessage = AntiMacroOwnerStringPoolText.FormatAttemptMessageFromClientCounter(_answerCount, _attemptMessageFormat);
+            string attemptMessage = AntiMacroOwnerStringPoolText.FormatAttemptMessageFromClientFirstFlag(_firstAttemptFlag, _attemptMessageFormat);
             ClientTextDrawing.Draw(
                 sprite,
                 attemptMessage,

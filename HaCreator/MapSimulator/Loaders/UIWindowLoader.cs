@@ -850,7 +850,7 @@ namespace HaCreator.MapSimulator.Loaders
             int height = 132)
         {
             Texture2D noticeTexture = LoadCanvasTexture(utilDialogProperty, "notice", device)
-                ?? LoadTextureFromUiPath("UI/UIWindow2.img/UtilDlgEx/notice", device, uiWindow2Image, uiWindowImage);
+                ?? LoadTextureFromUiPath(PacketOwnedRewardResultRuntime.GetUtilDlgNoticeBackgroundResourcePath(), device, uiWindow2Image, uiWindowImage);
             Texture2D topTexture = LoadCanvasTexture(utilDialogProperty, "t", device)
                 ?? LoadTextureFromUiPath(PacketOwnedRewardResultRuntime.GetUtilDlgNoticeTopResourcePath(), device, uiWindow2Image, uiWindowImage);
             Texture2D centerTexture = LoadCanvasTexture(utilDialogProperty, "c", device)

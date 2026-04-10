@@ -724,6 +724,7 @@ namespace HaCreator.MapSimulator.Pools
         private Func<string, IReadOnlyList<IDXObject>> _packetItemVisualResolver;
         private Action<DropItem, int> _onPacketEnterSoundRequested;
         private Action<DropItem, int> _onPacketExploded;
+        private Func<DropItem, int, bool> _onPacketRemoveFadeRequested;
         private Func<DateTime> _packetExpireTimeUtcResolver = () => DateTime.UtcNow;
 
         // Ground level lookup function
@@ -762,6 +763,7 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnRemoteOtherPickedUp(Action<DropItem, int, string> callback) => _onRemoteOtherPickedUp = callback;
         public void SetOnPacketEnterSoundRequested(Action<DropItem, int> callback) => _onPacketEnterSoundRequested = callback;
         public void SetOnPacketExploded(Action<DropItem, int> callback) => _onPacketExploded = callback;
+        public void SetOnPacketRemoveFadeRequested(Func<DropItem, int, bool> callback) => _onPacketRemoveFadeRequested = callback;
 
         // Pet pickup events
         private Action<DropItem, int> _onPetPickedUp;          // (drop, petId)
@@ -2490,6 +2492,13 @@ namespace HaCreator.MapSimulator.Pools
                     if (drop.IsPacketControlled)
                     {
                         drop.SnapToTargetPosition();
+
+                        if (drop.Type != DropType.Meso
+                            && _onPacketRemoveFadeRequested?.Invoke(drop, currentTime) == true)
+                        {
+                            RemoveDrop(drop);
+                            return true;
+                        }
                     }
 
                     drop.ScheduleRemoval(currentTime, 0, fadeOut: true);

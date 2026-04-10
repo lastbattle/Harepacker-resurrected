@@ -82,6 +82,17 @@ namespace HaCreator.MapSimulator.UI
             public IReadOnlyList<OwnerEntrySnapshot> VisibleEntries { get; init; } = Array.Empty<OwnerEntrySnapshot>();
         }
 
+        public sealed class CommodityPurchaseVariantSnapshot
+        {
+            public int SerialNumber { get; init; }
+            public int ItemId { get; init; }
+            public int Count { get; init; } = 1;
+            public long Price { get; init; }
+            public int PeriodDays { get; init; }
+            public bool OnSale { get; init; }
+            public string Label { get; init; } = string.Empty;
+        }
+
         public sealed class LockerOwnerSnapshot
         {
             public string AccountLabel { get; init; } = string.Empty;
@@ -1642,6 +1653,58 @@ namespace HaCreator.MapSimulator.UI
             count = Math.Max(1, commodity.Count);
             onSale = commodity.OnSale;
             return itemId > 0;
+        }
+
+        public static IReadOnlyList<CommodityPurchaseVariantSnapshot> GetCommodityPurchaseVariants(int commoditySerialNumber)
+        {
+            if (commoditySerialNumber <= 0 || !TryGetCommodityBySerialNumber(commoditySerialNumber, out AdminShopCommodityData selectedCommodity) || selectedCommodity == null)
+            {
+                return Array.Empty<CommodityPurchaseVariantSnapshot>();
+            }
+
+            EnsureCommodityCache();
+            if (_commodityBySerialNumber == null)
+            {
+                return Array.Empty<CommodityPurchaseVariantSnapshot>();
+            }
+
+            return _commodityBySerialNumber.Values
+                .Where(candidate => candidate != null && candidate.ItemId == selectedCommodity.ItemId)
+                .GroupBy(candidate => candidate.SerialNumber)
+                .Select(group => group.First())
+                .OrderByDescending(candidate => candidate.SerialNumber == commoditySerialNumber)
+                .ThenByDescending(candidate => candidate.OnSale)
+                .ThenByDescending(candidate => candidate.Count)
+                .ThenByDescending(candidate => candidate.PeriodDays)
+                .ThenBy(candidate => candidate.Price)
+                .ThenBy(candidate => candidate.SerialNumber)
+                .Select(candidate => new CommodityPurchaseVariantSnapshot
+                {
+                    SerialNumber = candidate.SerialNumber,
+                    ItemId = candidate.ItemId,
+                    Count = Math.Max(1, candidate.Count),
+                    Price = Math.Max(0L, candidate.Price),
+                    PeriodDays = Math.Max(0, candidate.PeriodDays),
+                    OnSale = candidate.OnSale,
+                    Label = BuildCommodityPurchaseVariantLabel(candidate)
+                })
+                .ToArray();
+        }
+
+        private static string BuildCommodityPurchaseVariantLabel(AdminShopCommodityData commodity)
+        {
+            if (commodity == null)
+            {
+                return string.Empty;
+            }
+
+            string quantity = Math.Max(1, commodity.Count).ToString(CultureInfo.InvariantCulture);
+            string period = commodity.PeriodDays > 0
+                ? $"{commodity.PeriodDays.ToString(CultureInfo.InvariantCulture)}d"
+                : "permanent";
+            string price = Math.Max(0L, commodity.Price).ToString("N0", CultureInfo.InvariantCulture);
+            string sale = commodity.OnSale ? "on sale" : "unavailable";
+            return $"{quantity} / {period} / {price} mesos / {sale}";
         }
 
         public override void Update(GameTime gameTime)

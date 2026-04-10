@@ -262,13 +262,23 @@ namespace HaCreator.MapSimulator.Character
                 ["noiseWave"] = new[] { "doublefire" },
                 ["noiseWave_pre"] = new[] { "doublefire" },
                 ["noiseWave_ing"] = new[] { "doublefire" },
+                // Later Mercedes dual-vulcan body actions in Character/00002000.img still
+                // collapse onto generic `shoot1` / `shoot2` roots, while Morph/*.img
+                // continues to publish only generic `shoot*` plus authored `windshot`.
+                ["dualVulcanPrep"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
+                ["dualVulcanLoop"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
+                ["dualVulcanEnd"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
                 // Support-family client raw actions like `smokeshell`, `holyshield`, and
                 // `resurrection` still come from WZ skill rows, but the checked morph
                 // templates only publish the alert-family surface rather than those verbatim
                 // support roots.
                 ["smokeshell"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["holyshield"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
-                ["resurrection"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" }
+                ["resurrection"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                // Later Demon / Mercedes support roots still resolve through the same
+                // alert-family body surface in Character/00002000.img.
+                ["demonGravity"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["blessOfGaia"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedGenericMorphFallbackAliases =
@@ -287,6 +297,43 @@ namespace HaCreator.MapSimulator.Character
                 ["brandish2"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["blast"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["sanctuary"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                // Additional warrior / aran melee rows still publish raw action requests
+                // like `souldriver`, `firestrike`, `blade`, `chargeBlow`,
+                // `doubleSwing`, `tripleSwing`, `finalCharge`, `finalToss`,
+                // `finalBlow`, `comboSmash`, `comboFenrir`, `fullSwing*`,
+                // `overSwing*`, `rollingSpin`, `comboTempest`, and
+                // `comboJudgement`, while checked morph images still expose only
+                // generic `swingT*` plus fallback stab roots instead of those
+                // verbatim branches.
+                ["souldriver"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["firestrike"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["blade"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["chargeBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["braveslash1"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["braveslash2"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["braveslash3"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["braveslash4"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["doubleSwing"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["tripleSwing"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["finalCharge"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["finalToss"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["finalBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["comboSmash"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["comboFenrir"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["fullSwingDouble"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["fullSwingTriple"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["overSwingDouble"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["overSwingTriple"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["rollingSpin"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["comboTempest"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["comboJudgement"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                // Resistance melee skill rows also keep publishing `tripleBlow`,
+                // `quadBlow`, `deathBlow`, and `finishBlow`, while checked morph
+                // templates still expose only generic swing/stab combat roots.
+                ["tripleBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["quadBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["deathBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["finishBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 // WZ still publishes no verbatim `assaulter` / `assassination*` branches in
                 // Morph/*.img, while skill-side rows like 4211002 and 4221001 still request
                 // those raw action names. Keep them on the same generic melee surface.
@@ -318,6 +365,24 @@ namespace HaCreator.MapSimulator.Character
                 ["finishAttack"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["finishAttack_link"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["finishAttack_link2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                // Later Demon / Mercedes / Resistance body actions in
+                // Character/00002000.img still collapse onto generic swing/stab families
+                // rather than unique morph roots.
+                ["demonSlasher"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["bluntSmash"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["demonTrace"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["elfrush"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["elfrush2"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["elfrush_final"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["elfrush_final2"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["deathDraw"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["dealingRush"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["elfTornado"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["devilCry"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["movebind"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["darkSpin"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["darkThrust"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["healingAttack"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 // The client raw table still exposes dual-blade swing-family names while
                 // archer morphs such as 1003/1103 only publish generic swingT branches.
                 ["swingC1"] = new[] { "swingT1", "swingT3" },
@@ -1352,38 +1417,10 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            // CAvatar morph action requests still include legacy raw names
-            // like "savage" and later warrior/thief melee roots that Morph/*.img
-            // still does not commonly publish verbatim.
-            return string.Equals(actionName, "savage", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "rush", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "rush2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "brandish1", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "brandish2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "blast", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "sanctuary", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "showdown", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "assaulter", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "flyingAssaulter", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "stabD1", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "tripleStab", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "fatalBlow", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "slashStorm1", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "slashStorm2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "bloodyStorm", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "upperStab", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "chainPull", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "chainAttack", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "tornadoRush", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "finalCutPrepare", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "finalCut", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "phantomBlow", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "bladeFury", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "finishAttack", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "finishAttack_link", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "finishAttack_link2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "assassination", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "assassinationS", StringComparison.OrdinalIgnoreCase);
+            // Keep this in sync with the client-confirmed generic melee alias map so
+            // newly evidenced raw requests stay inside the morph-owned melee fallback
+            // surface without duplicating the action-name list in two places.
+            return ClientPublishedGenericMorphFallbackAliases.ContainsKey(actionName);
         }
 
         private static bool IsPublishedGenericMeleeAttackAlias(string actionName)

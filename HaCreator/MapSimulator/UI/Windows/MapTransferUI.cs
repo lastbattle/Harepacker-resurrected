@@ -264,24 +264,24 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
-        public void SetSelectedMapId(int mapId)
+        public bool SetSelectedDestinationFocus(int mapId, int savedSlotIndex = -1)
         {
-            if (mapId <= 0 || _destinations.Count == 0)
-            {
-                return;
-            }
-
-            int index = _destinations.FindIndex(entry => entry.MapId == mapId);
+            int index = FindDestinationIndex(_destinations, mapId, savedSlotIndex);
             if (index < 0)
             {
-                return;
+                return false;
             }
-
             _selectedIndex = index;
             _editTargetFocused = false;
             ClampScrollOffset();
             UpdateRowButtons();
             UpdateButtonStates();
+            return true;
+        }
+
+        public void SetSelectedMapId(int mapId)
+        {
+            SetSelectedDestinationFocus(mapId);
         }
 
         public override void Update(GameTime gameTime)
@@ -996,6 +996,43 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return resolvedLabel.Trim();
+        }
+
+        internal static int FindDestinationIndex(
+            IReadOnlyList<DestinationEntry> destinations,
+            int mapId,
+            int savedSlotIndex = -1)
+        {
+            if (destinations == null || destinations.Count == 0)
+            {
+                return -1;
+            }
+
+            if (savedSlotIndex >= 0)
+            {
+                for (int index = 0; index < destinations.Count; index++)
+                {
+                    if (destinations[index]?.SavedSlotIndex == savedSlotIndex)
+                    {
+                        return index;
+                    }
+                }
+            }
+
+            if (mapId <= 0)
+            {
+                return -1;
+            }
+
+            for (int index = 0; index < destinations.Count; index++)
+            {
+                if (destinations[index]?.MapId == mapId)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
         }
 
         private string TrimPromptLabelToWidth(string text)

@@ -199,7 +199,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolveEffectiveGuildLevel(),
                 GetEffectiveGuildRoleLabelForUi(),
                 CanManageGuildSkills(),
-                TryGetEffectiveGuildPoints());
+                TryGetEffectiveGuildPoints(),
+                null);
         }
 
         internal SocialListSnapshot BuildSnapshot()

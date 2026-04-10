@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using System;
 
 namespace HaCreator.MapSimulator.UI
@@ -6,6 +7,15 @@ namespace HaCreator.MapSimulator.UI
     internal static class SkillTooltipFrameLayout
     {
         internal readonly record struct FrameGeometry(int Width, int Height, Point Origin);
+        internal const int ClientTooltipWidth = 320;
+        internal const int ClientTooltipBaseHeight = 114;
+        internal const int ClientTooltipTitleX = 10;
+        internal const int ClientTooltipTitleY = 10;
+        internal const int ClientTooltipIconX = 10;
+        internal const int ClientTooltipIconY = 32;
+        internal const int ClientTooltipTextX = 87;
+        internal const int ClientTooltipTextY = 32;
+        internal const int ClientTooltipRightPadding = 20;
         private const int MountedSkillTooltipFrameWidth = 193;
         private const int MountedSkillTooltipFrameHeight = 102;
 
@@ -71,6 +81,30 @@ namespace HaCreator.MapSimulator.UI
 
             tooltipFrameIndex = bestFrame;
             return ClampTooltipRect(bestRect, renderWidth, renderHeight, edgePadding);
+        }
+
+        internal static FrameGeometry[] BuildFrameGeometries(
+            Texture2D[] frames,
+            Point[] origins)
+        {
+            int frameCount = Math.Max(frames?.Length ?? 0, origins?.Length ?? 0);
+            if (frameCount <= 0)
+            {
+                return Array.Empty<FrameGeometry>();
+            }
+
+            FrameGeometry[] geometries = new FrameGeometry[frameCount];
+            for (int i = 0; i < frameCount; i++)
+            {
+                Texture2D frame = frames != null && i < frames.Length ? frames[i] : null;
+                Point origin = origins != null && i < origins.Length ? origins[i] : Point.Zero;
+                geometries[i] = new FrameGeometry(
+                    frame?.Width ?? 0,
+                    frame?.Height ?? 0,
+                    origin);
+            }
+
+            return geometries;
         }
 
         private static Rectangle CreateTooltipRectFromAnchor(

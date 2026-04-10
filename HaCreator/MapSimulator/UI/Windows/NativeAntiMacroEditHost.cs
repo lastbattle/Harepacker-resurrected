@@ -668,6 +668,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 ForwardKeyToParent(WmKeyDown, wParam, lParam);
             }
+            else if (msg == WmKeyDown)
+            {
+                // `CCtrlEdit::OnKey` falls through to the parent owner for every
+                // unhandled key-down after the edit consumes its own branch.
+                ForwardKeyToParent(WmKeyDown, wParam, lParam);
+            }
             else if (msg == WmKeyUp)
             {
                 bool wasClientOwnedKeyDown = _clientOwnedKeyDowns.Remove(virtualKey);
@@ -839,16 +845,8 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldForwardClientOwnedKeyUpToParent(int virtualKey, bool wasClientOwnedKeyDown)
         {
-            // `CCtrlEdit::OnKey` forwards every key-up into the parent path before
-            // its switch handles down-only edit behavior; track consumed downs so
-            // hosted EDIT key-up no longer stops at arrow keys alone.
-            if (wasClientOwnedKeyDown)
-            {
-                return true;
-            }
-
-            return virtualKey is VkLeft or VkRight or VkUp or VkDown
-                || IsStagePassthroughVirtualKey(virtualKey);
+            // `CCtrlEdit::OnKey` jumps straight to the parent path on every key-up.
+            return true;
         }
 
         internal static bool ShouldDeferDownKeyToIme(bool controlHeld, bool shiftHeld, bool imeCompositionActive)

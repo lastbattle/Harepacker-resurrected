@@ -179,10 +179,9 @@ namespace HaCreator.MapSimulator.UI
             string ownerState = null,
             AdminShopPacketOwnedOwnerVisibilityState visibilityState = AdminShopPacketOwnedOwnerVisibilityState.Hidden)
         {
-            bool shouldRefreshOwnerState = IsActive || IsOwnerSurfaceVisible;
             IsOwnerSurfaceVisible = false;
             OwnerVisibilityState = visibilityState;
-            if (shouldRefreshOwnerState && !string.IsNullOrWhiteSpace(ownerState))
+            if (!string.IsNullOrWhiteSpace(ownerState))
             {
                 LastOwnerState = ownerState;
             }

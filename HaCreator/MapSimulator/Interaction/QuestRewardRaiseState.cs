@@ -33,6 +33,59 @@ namespace HaCreator.MapSimulator.Interaction
         public Dictionary<int, int> SelectedItemsByGroup { get; } = new Dictionary<int, int>();
         public List<QuestRewardRaisePlacedPiece> PlacedPieces { get; } = new List<QuestRewardRaisePlacedPiece>();
 
+        internal void SyncSelectionProgressFromPayload(QuestRewardRaisePacketPayload payload)
+        {
+            if (payload?.SelectedItemsByGroup == null || payload.SelectedItemsByGroup.Count == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, int> selectedItem in payload.SelectedItemsByGroup)
+            {
+                if (selectedItem.Key <= 0 || selectedItem.Value <= 0)
+                {
+                    continue;
+                }
+
+                SelectedItemsByGroup[selectedItem.Key] = selectedItem.Value;
+            }
+
+            if (DisplayMode == QuestRewardRaiseWindowMode.PiecePlacement
+                || Prompt?.Groups == null
+                || Prompt.Groups.Count == 0)
+            {
+                return;
+            }
+
+            GroupIndex = ResolveNextSelectionGroupIndex(Prompt, SelectedItemsByGroup);
+        }
+
+        private static int ResolveNextSelectionGroupIndex(
+            QuestRewardChoicePrompt prompt,
+            IReadOnlyDictionary<int, int> selectedItemsByGroup)
+        {
+            if (prompt?.Groups == null || prompt.Groups.Count == 0)
+            {
+                return 0;
+            }
+
+            for (int i = 0; i < prompt.Groups.Count; i++)
+            {
+                QuestRewardChoiceGroup group = prompt.Groups[i];
+                if (group == null || group.GroupKey <= 0)
+                {
+                    return i;
+                }
+
+                if (!selectedItemsByGroup.TryGetValue(group.GroupKey, out int selectedItemId) || selectedItemId <= 0)
+                {
+                    return i;
+                }
+            }
+
+            return prompt.Groups.Count;
+        }
+
         public QuestRewardRaiseState CloneShallow()
         {
             QuestRewardRaiseState clone = new()
