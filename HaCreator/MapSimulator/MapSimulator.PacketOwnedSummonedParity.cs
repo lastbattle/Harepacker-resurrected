@@ -276,7 +276,7 @@ namespace HaCreator.MapSimulator
 
         internal static int RouteLocalPacketOwnedSummonExpiryBatchToClientCancel(
             PacketOwnedSummonTimerExpiration[] expirations,
-            Action<int, int> primeLocalNaturalExpirySummon,
+            Func<int, int, bool> tryPrimeLocalNaturalExpirySummon,
             Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds,
             Func<int, int, bool> requestClientSkillCancel)
         {
@@ -289,6 +289,7 @@ namespace HaCreator.MapSimulator
 
             int routedCount = 0;
             HashSet<int> routedCancelFamilies = new();
+            HashSet<int> primedSummonedObjectIds = new();
             foreach (PacketOwnedSummonTimerExpiration expiration in expirations)
             {
                 if (!expiration.OwnerIsLocal || expiration.SkillId <= 0)
@@ -296,13 +297,21 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                primeLocalNaturalExpirySummon?.Invoke(expiration.SummonedObjectId, expiration.CurrentTime);
+                if (tryPrimeLocalNaturalExpirySummon != null
+                    && !tryPrimeLocalNaturalExpirySummon(expiration.SummonedObjectId, expiration.CurrentTime))
+                {
+                    continue;
+                }
+
+                primedSummonedObjectIds.Add(expiration.SummonedObjectId);
             }
 
             for (int i = 0; i < expirations.Length; i++)
             {
                 PacketOwnedSummonTimerExpiration expiration = expirations[i];
-                if (!expiration.OwnerIsLocal || expiration.SkillId <= 0)
+                if (!expiration.OwnerIsLocal
+                    || expiration.SkillId <= 0
+                    || !primedSummonedObjectIds.Contains(expiration.SummonedObjectId))
                 {
                     continue;
                 }

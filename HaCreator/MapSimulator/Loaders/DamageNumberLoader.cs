@@ -59,6 +59,12 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>Special text origins</summary>
         public Dictionary<string, Point> SpecialOrigins { get; } = new Dictionary<string, Point>();
 
+        /// <summary>Special text widths</summary>
+        public Dictionary<string, int> SpecialWidths { get; } = new Dictionary<string, int>();
+
+        /// <summary>Special text heights</summary>
+        public Dictionary<string, int> SpecialHeights { get; } = new Dictionary<string, int>();
+
         /// <summary>Critical effect sprite (for NoCri1)</summary>
         public Texture2D CriticalEffectTexture { get; set; }
 
@@ -237,6 +243,8 @@ namespace HaCreator.MapSimulator.Loaders
                     var bitmap = specialCanvas.GetLinkedWzCanvasBitmap();
                     if (bitmap != null)
                     {
+                        digitSet.SpecialWidths[specialName] = bitmap.Width;
+                        digitSet.SpecialHeights[specialName] = bitmap.Height;
                         digitSet.SpecialTextures[specialName] = bitmap.ToTexture2DAndDispose(device);
 
                         var originProp = specialCanvas["origin"] as WzVectorProperty;

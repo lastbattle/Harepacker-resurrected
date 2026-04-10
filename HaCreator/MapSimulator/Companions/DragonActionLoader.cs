@@ -75,7 +75,7 @@ namespace HaCreator.MapSimulator.Companions
             _device = device ?? throw new ArgumentNullException(nameof(device));
         }
 
-        public string ResolveClientActionName(string requestedActionName)
+        internal static string NormalizeClientActionName(string requestedActionName)
         {
             if (string.IsNullOrWhiteSpace(requestedActionName))
             {
@@ -89,6 +89,11 @@ namespace HaCreator.MapSimulator.Companions
             return IsClientTableActionName(resolvedActionName)
                 ? resolvedActionName
                 : requestedActionName;
+        }
+
+        public string ResolveClientActionName(string requestedActionName)
+        {
+            return NormalizeClientActionName(requestedActionName);
         }
 
         public SkillAnimation GetOrLoadAnimation(int dragonJob, string requestedActionName)

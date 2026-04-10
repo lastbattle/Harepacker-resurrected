@@ -194,6 +194,7 @@ namespace HaCreator.MapSimulator.Effects
         public bool IsWeddingPhotoSceneOwnerActive { get; private set; }
         public string WeddingPhotoSceneOwnerDescription { get; private set; }
         public Rectangle? WeddingPhotoSceneViewport { get; private set; }
+        public string WeddingPhotoSceneBackgroundMusicPath { get; private set; }
         public int CurrentStep => _currentStep;
         public bool IsBlessEffectActive => _blessEffectActive;
         public bool IsCeremonyTextOverlayActive => _ceremonyTextOverlayActive;
@@ -242,10 +243,16 @@ namespace HaCreator.MapSimulator.Effects
 
         public void Enable(int mapId)
         {
+            if (IsWeddingPhotoSceneOwnerActive)
+            {
+                _clearBgmOverride?.Invoke();
+            }
+
             _isActive = true;
             IsWeddingPhotoSceneOwnerActive = false;
             WeddingPhotoSceneOwnerDescription = null;
             WeddingPhotoSceneViewport = null;
+            WeddingPhotoSceneBackgroundMusicPath = null;
             _mapId = mapId;
             _currentStep = 0;
 
@@ -287,16 +294,23 @@ namespace HaCreator.MapSimulator.Effects
         }
 
 
-        public void BindWeddingPhotoSceneOwner(int mapId, string sourceDescription, Rectangle? viewport)
+        public void BindWeddingPhotoSceneOwner(int mapId, string sourceDescription, Rectangle? viewport, string backgroundMusicPath = null)
         {
             if (_isActive)
             {
                 return;
             }
 
+            bool ownerChanged =
+                !IsWeddingPhotoSceneOwnerActive
+                || _mapId != mapId
+                || WeddingPhotoSceneViewport != viewport
+                || !string.Equals(WeddingPhotoSceneBackgroundMusicPath, backgroundMusicPath, StringComparison.Ordinal);
+
             IsWeddingPhotoSceneOwnerActive = true;
             WeddingPhotoSceneOwnerDescription = sourceDescription ?? "CField_WeddingPhoto scene owner";
             WeddingPhotoSceneViewport = viewport;
+            WeddingPhotoSceneBackgroundMusicPath = string.IsNullOrWhiteSpace(backgroundMusicPath) ? null : backgroundMusicPath;
             _mapId = mapId;
             _currentStep = 0;
             _blessEffectActive = false;
@@ -309,14 +323,25 @@ namespace HaCreator.MapSimulator.Effects
             _ceremonyHearts.Clear();
             _lastPacketResponse = null;
             _lastPacketType = null;
+
+            if (ownerChanged && !string.IsNullOrWhiteSpace(WeddingPhotoSceneBackgroundMusicPath))
+            {
+                _requestBgmOverride?.Invoke(WeddingPhotoSceneBackgroundMusicPath);
+            }
         }
 
 
         public void ClearWeddingPhotoSceneOwner()
         {
+            if (IsWeddingPhotoSceneOwnerActive && !_isActive)
+            {
+                _clearBgmOverride?.Invoke();
+            }
+
             IsWeddingPhotoSceneOwnerActive = false;
             WeddingPhotoSceneOwnerDescription = null;
             WeddingPhotoSceneViewport = null;
+            WeddingPhotoSceneBackgroundMusicPath = null;
         }
 
 
@@ -3113,6 +3138,16 @@ namespace HaCreator.MapSimulator.Effects
                 .ThenBy(entry => entry.Role)
                 .ThenBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase))
             {
+                if (!ShouldDrawParticipantInternally(participant))
+                {
+                    continue;
+                }
+
+                if (!ShouldDrawParticipantLikeClient(participant))
+                {
+                    continue;
+                }
+
                 AssembledFrame frame = participant.Assembler.GetFrameAtTime(participant.ActionName, tickCount)
                     ?? participant.Assembler.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), tickCount);
                 if (frame == null)
@@ -3120,11 +3155,6 @@ namespace HaCreator.MapSimulator.Effects
                     continue;
                 }
 
-
-                if (!ShouldDrawParticipantInternally(participant))
-                {
-                    continue;
-                }
                 int screenX = (int)MathF.Round(participant.Position.X) - mapShiftX + centerX;
                 int screenY = (int)MathF.Round(participant.Position.Y) - mapShiftY + centerY;
 
@@ -3191,11 +3221,15 @@ namespace HaCreator.MapSimulator.Effects
             }
         }
 
+        internal static bool ShouldDrawParticipantLikeClient(WeddingRemoteParticipant participant)
+        {
+            return participant?.TemporaryStats.KnownState.IsHiddenLikeClient != true;
+        }
 
         internal static IReadOnlyList<string> BuildParticipantLabelLines(WeddingRemoteParticipant participant)
         {
             List<string> lines = new();
-            if (participant == null)
+            if (participant == null || !ShouldDrawParticipantLikeClient(participant))
             {
                 return lines;
             }
@@ -3764,6 +3798,7 @@ namespace HaCreator.MapSimulator.Effects
             IsWeddingPhotoSceneOwnerActive = false;
             WeddingPhotoSceneOwnerDescription = null;
             WeddingPhotoSceneViewport = null;
+            WeddingPhotoSceneBackgroundMusicPath = null;
             _currentStep = 0;
             _blessEffectActive = false;
             _ceremonyTextOverlayActive = false;

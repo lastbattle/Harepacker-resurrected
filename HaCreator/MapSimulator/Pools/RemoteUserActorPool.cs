@@ -50,6 +50,9 @@ namespace HaCreator.MapSimulator.Pools
             int ItemId,
             Vector2 Position,
             int CurrentTime);
+        public readonly record struct RemoteGenericUserStatePresentation(
+            int CharacterId,
+            int CurrentTime);
         public readonly record struct RemoteHitFeedbackPresentation(
             int CharacterId,
             Vector2 Position,
@@ -173,7 +176,6 @@ namespace HaCreator.MapSimulator.Pools
             int Priority,
             float Score);
 
-        private const int MinimumMeleeAfterImageFadeDurationMs = 60;
         private const float FollowDriverGroundHorizontalOffset = 50f;
         private const float FollowDriverLadderRopeVerticalOffset = 30f;
         private const float RemoteDragonGroundSideOffset = 42f;
@@ -325,6 +327,7 @@ namespace HaCreator.MapSimulator.Pools
         public IEnumerable<RemoteUserActor> Actors => _actorsById.Values;
         public event Action<RemoteSkillUsePresentation> SkillUseRegistered;
         public event Action<RemoteUpgradeTombPresentation> UpgradeTombEffectRegistered;
+        public event Action<RemoteGenericUserStatePresentation> GenericUserStateRegistered;
         public event Action<RemoteHitFeedbackPresentation> HitFeedbackRegistered;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
@@ -2003,6 +2006,13 @@ namespace HaCreator.MapSimulator.Pools
 
             switch (packet.KnownSubtype)
             {
+                case RemoteUserEffectSubtype.GenericUserState:
+                    GenericUserStateRegistered?.Invoke(new RemoteGenericUserStatePresentation(
+                        packet.CharacterId,
+                        currentTime));
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered generic user-state presentation.";
+                    return true;
+
                 case RemoteUserEffectSubtype.IncDecHp:
                     int delta = packet.Int32Value.GetValueOrDefault();
                     HitFeedbackRegistered?.Invoke(new RemoteHitFeedbackPresentation(
@@ -2596,16 +2606,22 @@ namespace HaCreator.MapSimulator.Pools
             int standOriginX = 79;
             int moveOriginX = standOriginX;
 
-            foreach (string actionName in DragonActionLoader.EnumerateRenderableImageActionNames(image))
+            foreach (string enumeratedActionName in DragonActionLoader.EnumerateRenderableImageActionNames(image))
             {
-                WzSubProperty actionNode = DragonActionLoader.FindActionNode(image, actionName);
+                string actionName = DragonActionLoader.NormalizeClientActionName(enumeratedActionName)
+                    ?? enumeratedActionName;
+                WzSubProperty actionNode = DragonActionLoader.FindActionNode(image, enumeratedActionName);
                 if (actionNode == null
                     || !TryReadRemoteDragonFrameMetrics(actionNode, out int originX, out RemoteDragonHudAnimationTimeline timeline))
                 {
                     continue;
                 }
 
-                actionTimelines[actionName] = timeline;
+                if (!actionTimelines.ContainsKey(actionName))
+                {
+                    actionTimelines[actionName] = timeline;
+                }
+
                 if (string.Equals(actionName, "stand", StringComparison.OrdinalIgnoreCase))
                 {
                     standOriginX = originX;
@@ -2951,7 +2967,8 @@ namespace HaCreator.MapSimulator.Pools
                     actor.HelperMarkerType,
                     hasFriendshipOverlay,
                     hasCoupleOverlay,
-                    hasMarriageOverlay);
+                    hasMarriageOverlay,
+                    actor.BattlefieldTeamId);
 
                 MinimapUI.TrackedUserMarker marker = GetOrCreateHelperMarker(_helperMarkerCount++);
                 marker.WorldX = actor.Position.X;
@@ -2979,15 +2996,21 @@ namespace HaCreator.MapSimulator.Pools
             MinimapUI.HelperMarkerType? explicitHelperMarkerType,
             bool hasFriendshipOverlay,
             bool hasCoupleOverlay,
-            bool hasMarriageOverlay)
+            bool hasMarriageOverlay,
+            int? battlefieldTeamId)
         {
             if (explicitHelperMarkerType.HasValue)
             {
                 return explicitHelperMarkerType.Value;
             }
 
-            return hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay
-                ? MinimapUI.HelperMarkerType.Friend
+            if (hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay)
+            {
+                return MinimapUI.HelperMarkerType.Friend;
+            }
+
+            return battlefieldTeamId.HasValue
+                ? MinimapUI.HelperMarkerType.Match
                 : MinimapUI.HelperMarkerType.Another;
         }
 
@@ -7240,7 +7263,9 @@ namespace HaCreator.MapSimulator.Pools
                         weaponType,
                         actor.BaseActionRawCode,
                         weaponType,
-                        actor.BaseActionRawCode))
+                        actor.BaseActionRawCode,
+                        actor.TemporaryStatShadowPartnerSkill?.ShadowPartnerSupportedRawActionNames,
+                        actor.TemporaryStatShadowPartnerSkill?.ShadowPartnerSupportedRawActionNames))
                 {
                     return true;
                 }
@@ -7252,7 +7277,9 @@ namespace HaCreator.MapSimulator.Pools
                 weaponType,
                 actor.BaseActionRawCode,
                 weaponType,
-                actor.BaseActionRawCode);
+                actor.BaseActionRawCode,
+                actor.TemporaryStatShadowPartnerSkill?.ShadowPartnerSupportedRawActionNames,
+                actor.TemporaryStatShadowPartnerSkill?.ShadowPartnerSupportedRawActionNames);
         }
 
         internal static bool ShadowPartnerHelperActionFamiliesMatch(
@@ -7261,26 +7288,38 @@ namespace HaCreator.MapSimulator.Pools
             string leftWeaponType = null,
             int? leftRawActionCode = null,
             string rightWeaponType = null,
-            int? rightRawActionCode = null)
+            int? rightRawActionCode = null,
+            IReadOnlySet<string> leftSupportedRawActionNames = null,
+            IReadOnlySet<string> rightSupportedRawActionNames = null)
         {
             if (string.IsNullOrWhiteSpace(leftActionName) || string.IsNullOrWhiteSpace(rightActionName))
             {
                 return false;
             }
 
-            var leftCandidates = CollectShadowPartnerHelperActionIdentityCandidates(leftActionName, leftWeaponType, leftRawActionCode);
-            var rightCandidates = CollectShadowPartnerHelperActionIdentityCandidates(rightActionName, rightWeaponType, rightRawActionCode);
+            var leftCandidates = CollectShadowPartnerHelperActionIdentityCandidates(
+                leftActionName,
+                leftWeaponType,
+                leftRawActionCode,
+                leftSupportedRawActionNames);
+            var rightCandidates = CollectShadowPartnerHelperActionIdentityCandidates(
+                rightActionName,
+                rightWeaponType,
+                rightRawActionCode,
+                rightSupportedRawActionNames);
             return leftCandidates.Overlaps(rightCandidates);
         }
 
         private static HashSet<string> CollectShadowPartnerHelperActionIdentityCandidates(
             string actionName,
             string weaponType = null,
-            int? rawActionCode = null)
+            int? rawActionCode = null,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string normalizedActionName = NormalizeActionName(actionName, allowSitFallback: false);
             if (!string.IsNullOrWhiteSpace(normalizedActionName)
+                && ShadowPartnerClientActionResolver.IsSupportedRawActionForFamily(normalizedActionName, supportedRawActionNames)
                 && !ShadowPartnerClientActionResolver.ShouldSuppressRawBackedGenericAttackIdentityCandidate(
                     normalizedActionName,
                     rawActionCode))
@@ -7293,7 +7332,8 @@ namespace HaCreator.MapSimulator.Pools
                          actionName,
                          state,
                          weaponType,
-                         rawActionCode))
+                         rawActionCode,
+                         supportedRawActionNames))
             {
                 string normalizedCandidate = NormalizeActionName(candidate, allowSitFallback: false);
                 if (!string.IsNullOrWhiteSpace(normalizedCandidate))
@@ -7466,8 +7506,7 @@ namespace HaCreator.MapSimulator.Pools
                         afterImageAction,
                         currentTime,
                         actor.FacingRight,
-                        GetActionDuration(actor.Assembler, actionName),
-                        GetAfterImageFadeDuration(actor.Assembler, actionName));
+                        GetActionDuration(actor.Assembler, actionName));
                     return;
                 }
 
@@ -7487,8 +7526,7 @@ namespace HaCreator.MapSimulator.Pools
                 afterImageAction,
                 currentTime,
                 actor.FacingRight,
-                GetActionDuration(actor.Assembler, actionName),
-                GetAfterImageFadeDuration(actor.Assembler, actionName));
+                GetActionDuration(actor.Assembler, actionName));
         }
 
         private static void ApplyRemotePreparedSkillRelease(
@@ -7778,11 +7816,6 @@ namespace HaCreator.MapSimulator.Pools
             return duration;
         }
 
-        private static int GetAfterImageFadeDuration(CharacterAssembler assembler, string actionName)
-        {
-            return Math.Max(MinimumMeleeAfterImageFadeDurationMs, GetActionDuration(assembler, actionName) / 4);
-        }
-
         private static void DrawMeleeAfterImage(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -7806,6 +7839,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 int animationTime = Math.Max(0, currentTime - state.AnimationStartTime);
                 int lastFrameIndex = state.LastFrameIndex;
+                int lastFrameElapsedMs = state.LastFrameElapsedMs;
                 IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = state.LastResolvedLayers;
                 MeleeAfterimagePlaybackResolver.RefreshSnapshotCache(
                     actor.Assembler,
@@ -7813,29 +7847,32 @@ namespace HaCreator.MapSimulator.Pools
                     state.AfterImageAction,
                     animationTime,
                     ref lastFrameIndex,
+                    ref lastFrameElapsedMs,
                     ref lastResolvedLayers);
                 state.LastFrameIndex = lastFrameIndex;
+                state.LastFrameElapsedMs = lastFrameElapsedMs;
                 state.LastResolvedLayers = lastResolvedLayers;
                 frameIndex = state.LastFrameIndex;
                 layers = state.LastResolvedLayers;
+            }
+            else if (state.FadeStartTime >= 0)
+            {
+                int fadeElapsed = Math.Max(0, currentTime - state.FadeStartTime);
+                layers = MeleeAfterimagePlaybackResolver.ResolveFadingRenderableLayers(
+                    state.AfterImageAction,
+                    frameIndex,
+                    state.LastFrameElapsedMs,
+                    fadeElapsed);
+                if (layers.Count == 0)
+                {
+                    actor.ClearMeleeAfterImage();
+                    return;
+                }
             }
 
             if (layers == null || layers.Count == 0)
             {
                 return;
-            }
-
-            float fadeAlpha = 1f;
-            if (!activeAction && state.FadeStartTime >= 0)
-            {
-                int fadeElapsed = Math.Max(0, currentTime - state.FadeStartTime);
-                if (fadeElapsed >= state.FadeDuration)
-                {
-                    actor.ClearMeleeAfterImage();
-                    return;
-                }
-
-                fadeAlpha = 1f - (fadeElapsed / (float)Math.Max(1, state.FadeDuration));
             }
 
             foreach (AfterimageRenderableLayer layer in layers)
@@ -7846,7 +7883,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                  Color tint = Color.White * MathHelper.Clamp(layer.Alpha * fadeAlpha, 0f, 1f);
+                  Color tint = Color.White * MathHelper.Clamp(layer.Alpha, 0f, 1f);
                   bool shouldFlip = state.FacingRight ^ frame.Flip;
                   float zoom = MathHelper.Clamp(layer.Zoom, 0.01f, 10f);
                   int drawWidth = Math.Max(1, (int)Math.Round(frame.Texture.Width * zoom));
@@ -8179,8 +8216,7 @@ namespace HaCreator.MapSimulator.Pools
             MeleeAfterImageAction afterImageAction,
             int currentTime,
             bool facingRight,
-            int actionDuration,
-            int fadeDuration)
+            int actionDuration)
         {
             if (afterImageAction == null
                 || string.IsNullOrWhiteSpace(actionName)
@@ -8200,8 +8236,7 @@ namespace HaCreator.MapSimulator.Pools
                     afterImageAction,
                     Assembler?.GetAnimation(actionName)),
                 FacingRight = facingRight,
-                ActionDuration = actionDuration,
-                FadeDuration = Math.Max(60, fadeDuration)
+                ActionDuration = actionDuration
             };
         }
 
@@ -8213,6 +8248,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int lastFrameIndex = MeleeAfterImage.LastFrameIndex;
+            int lastFrameElapsedMs = MeleeAfterImage.LastFrameElapsedMs;
             IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = MeleeAfterImage.LastResolvedLayers;
             MeleeAfterimagePlaybackResolver.CaptureFadeSnapshotOrClearCache(
                 Assembler,
@@ -8220,8 +8256,10 @@ namespace HaCreator.MapSimulator.Pools
                 MeleeAfterImage.AfterImageAction,
                 Math.Max(0, currentTime - MeleeAfterImage.AnimationStartTime),
                 ref lastFrameIndex,
+                ref lastFrameElapsedMs,
                 ref lastResolvedLayers);
             MeleeAfterImage.LastFrameIndex = lastFrameIndex;
+            MeleeAfterImage.LastFrameElapsedMs = lastFrameElapsedMs;
             MeleeAfterImage.LastResolvedLayers = lastResolvedLayers;
 
             MeleeAfterImage.FadeStartTime = currentTime;
@@ -8248,7 +8286,12 @@ namespace HaCreator.MapSimulator.Pools
 
             if (MeleeAfterImage.FadeStartTime >= 0)
             {
-                if (currentTime - MeleeAfterImage.FadeStartTime >= MeleeAfterImage.FadeDuration)
+                IReadOnlyList<AfterimageRenderableLayer> fadingLayers = MeleeAfterimagePlaybackResolver.ResolveFadingRenderableLayers(
+                    MeleeAfterImage.AfterImageAction,
+                    MeleeAfterImage.LastFrameIndex,
+                    MeleeAfterImage.LastFrameElapsedMs,
+                    currentTime - MeleeAfterImage.FadeStartTime);
+                if (fadingLayers.Count == 0)
                 {
                     MeleeAfterImage = null;
                 }
@@ -8310,9 +8353,9 @@ namespace HaCreator.MapSimulator.Pools
             public int ActivationStartTime { get; init; }
             public bool FacingRight { get; init; }
             public int ActionDuration { get; init; }
-            public int FadeDuration { get; init; }
             public int FadeStartTime { get; set; } = -1;
             public int LastFrameIndex { get; set; } = -1;
+            public int LastFrameElapsedMs { get; set; }
             public IReadOnlyList<AfterimageRenderableLayer> LastResolvedLayers { get; set; } = Array.Empty<AfterimageRenderableLayer>();
         }
 

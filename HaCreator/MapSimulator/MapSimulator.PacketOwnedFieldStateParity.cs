@@ -421,7 +421,8 @@ namespace HaCreator.MapSimulator
                 payload = relayedPayload;
             }
 
-            if (packetType == PartyRaidField.ClientSessionValuePacketType)
+            if (packetType == PartyRaidField.ClientSessionValuePacketType
+                || packetType == PartyRaidField.ClientFieldSetVariablePacketType)
             {
                 if (!TryDecodeMapleStringPairPayload(payload, out string key, out string value, out error))
                 {
@@ -440,12 +441,50 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
+                if (!TryNormalizePortalSessionValueImpactPairs(pairs, out pairs))
+                {
+                    error = "Portal session-value impact packet did not contain any usable session or field key/value pairs.";
+                    return false;
+                }
+
                 error = $"decoded field-specific packet header size {headerSize}";
                 return true;
             }
 
             error = $"Packet type {packetType} does not carry portal session-value impact pairs.";
             return false;
+        }
+
+        private static bool TryNormalizePortalSessionValueImpactPairs(
+            IReadOnlyList<KeyValuePair<string, string>> pairs,
+            out IReadOnlyList<KeyValuePair<string, string>> normalizedPairs)
+        {
+            normalizedPairs = Array.Empty<KeyValuePair<string, string>>();
+            if (pairs == null || pairs.Count == 0)
+            {
+                return false;
+            }
+
+            List<KeyValuePair<string, string>> normalized = new(pairs.Count);
+            foreach (KeyValuePair<string, string> pair in pairs)
+            {
+                string key = pair.Key;
+                _ = PacketFieldSpecificDataCodec.ResolveOwnerHint(ref key);
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                normalized.Add(new KeyValuePair<string, string>(key, pair.Value));
+            }
+
+            if (normalized.Count == 0)
+            {
+                return false;
+            }
+
+            normalizedPairs = normalized;
+            return true;
         }
 
         internal static bool TryDecodeMapleStringPairPayload(

@@ -163,8 +163,7 @@ namespace HaCreator.MapSimulator.Pools
             bool packetFacingLeft,
             bool fallbackFacingRight)
         {
-            if (ShouldUseMoveActionFacingForAttack(summon)
-                && moveActionRaw != 0)
+            if (ShouldUseMoveActionFacingForAttack(summon))
             {
                 return (moveActionRaw & 1) == 0;
             }

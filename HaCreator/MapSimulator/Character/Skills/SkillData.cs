@@ -1075,6 +1075,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Level data
         public Dictionary<int, SkillLevelData> Levels { get; set; } = new();
+        public Dictionary<int, SkillLevelData> PvpLevels { get; set; } = new();
 
         // Animations
         public IDXObject Icon { get; set; }
@@ -1096,6 +1097,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation HitEffect { get; set; }        // Effect on target
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
         public SkillAnimation AffectedSecondaryEffect { get; set; } // Secondary buff/affected branch (e.g. affected0)
+        public SkillAnimation SpecialAffectedEffect { get; set; } // One-time buff/heal start branch (e.g. specialAffected)
         public SkillAnimation SummonSpawnAnimation { get; set; } // Initial summon spawn sequence
         public SkillAnimation SummonAnimation { get; set; }  // Summon body/effect
         public SkillAnimation SummonAttackPrepareAnimation { get; set; } // Optional summon windup before the main attack branch
@@ -1295,6 +1297,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             level = Math.Clamp(level, 1, MaxLevel);
             return Levels.TryGetValue(level, out var data) ? data : null;
+        }
+
+        public SkillLevelData GetPvpLevel(int level)
+        {
+            level = Math.Clamp(level, 1, MaxLevel);
+            return PvpLevels.TryGetValue(level, out var data) ? data : null;
         }
 
         /// <summary>
@@ -1945,6 +1953,27 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation Animation { get; init; }
     }
 
+    public sealed class ActiveBulletAnimationOwner
+    {
+        public int Id { get; set; }
+        public int ProjectileId { get; set; }
+        public BulletAnimationPresentation Presentation { get; init; }
+        public Vector2 CurrentPosition { get; set; }
+        public Vector2 PreviousPosition { get; set; }
+        public bool FacingRight { get; set; }
+        public int? StopTime { get; set; }
+        public int LastAfterimageUpdateTime { get; set; } = int.MinValue;
+        public List<ProjectileAfterimageLayer> AfterimageLayers { get; } = new();
+
+        public bool CanDrawMainAnimation(int currentTime)
+        {
+            return Presentation != null
+                   && !StopTime.HasValue
+                   && currentTime >= Presentation.StartTime
+                   && currentTime < Presentation.EndTime;
+        }
+    }
+
     public sealed class ProjectileAfterimageLayer
     {
         public SkillFrame Frame { get; init; }
@@ -2021,6 +2050,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool ForceCritical { get; set; }
         public bool IsQueuedFinalAttack { get; set; }
         public bool IsQueuedSparkAttack { get; set; }
+        public int BulletAnimationOwnerId { get; set; }
         public BulletAnimationPresentation BulletAnimation { get; set; }
         public List<ProjectileAfterimageLayer> AfterimageLayers { get; } = new();
         public int LastAfterimageUpdateTime { get; set; } = int.MinValue;

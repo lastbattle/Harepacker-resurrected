@@ -58,9 +58,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (string.Equals(_currentStagePeriod, packet.StagePeriod, StringComparison.Ordinal)
-                && _currentMode == packet.Mode)
+            bool isAlreadyCurrent = callbacks.IsStagePeriodCurrent?.Invoke(packet)
+                ?? string.Equals(_currentStagePeriod, packet.StagePeriod, StringComparison.Ordinal)
+                && _currentMode == packet.Mode;
+            if (isAlreadyCurrent)
             {
+                _currentStagePeriod = packet.StagePeriod;
+                _currentMode = packet.Mode;
                 _status = $"CWvsContext::OnStageChange decoded '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)}, but the live stage-period cache was already current.";
                 message = _status;
                 return true;
@@ -148,6 +152,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class ContextOwnedStagePeriodCallbacks
     {
         internal Func<PacketStagePeriodChangePacket, int, string> ApplyStagePeriodChange { get; init; }
+        internal Func<PacketStagePeriodChangePacket, bool> IsStagePeriodCurrent { get; init; }
         internal Func<PacketStagePeriodChangePacket, ContextOwnedStagePeriodValidationResult> ValidateStagePeriodChange { get; init; }
     }
 

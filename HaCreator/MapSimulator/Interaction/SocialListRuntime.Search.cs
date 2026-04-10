@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Character;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,6 +22,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<SocialSearchTab, string> _searchSortByTab = new();
         private readonly List<GuildSearchEntryState> _guildSearchEntries = new();
         private readonly HashSet<string> _guildSearchWatchlist = new(StringComparer.OrdinalIgnoreCase);
+        private CharacterInfoSearchLaunchState? _characterInfoSearchLaunch;
         private int _guildSearchSelectedIndex;
         private int _guildSearchPage;
         private bool _searchSeeded;
@@ -33,8 +35,39 @@ namespace HaCreator.MapSimulator.Interaction
         internal void OpenSearchWindow(SocialSearchTab initialTab)
         {
             EnsureSearchSeedData();
+            ClearCharacterInfoSearchLaunch();
             _searchCurrentTab = initialTab;
             ClampSearchSelection(initialTab);
+        }
+
+        internal void OpenSearchWindowFromCharacterInfo(
+            string characterName,
+            CharacterBuild build,
+            string locationSummary,
+            int channel,
+            bool isRemoteTarget)
+        {
+            EnsureSearchSeedData();
+            ClearCharacterInfoSearchLaunch();
+
+            if (isRemoteTarget && !string.IsNullOrWhiteSpace(characterName))
+            {
+                _characterInfoSearchLaunch = new CharacterInfoSearchLaunchState(
+                    characterName.Trim(),
+                    ResolveCharacterInfoSearchPrimaryText(build),
+                    ResolveCharacterInfoSearchSecondaryText(build),
+                    ResolveCharacterInfoSearchLocation(locationSummary),
+                    Math.Max(1, channel));
+                ApplyCharacterInfoSearchLaunch();
+                _searchCurrentTab = SocialSearchTab.PartyMember;
+                _searchSelectedIndexByTab[SocialSearchTab.PartyMember] = 0;
+            }
+            else
+            {
+                _searchCurrentTab = SocialSearchTab.Party;
+            }
+
+            ClampSearchSelection(_searchCurrentTab);
         }
 
         internal void OpenGuildSearchWindow()
@@ -339,7 +372,91 @@ namespace HaCreator.MapSimulator.Interaction
                 return entries.ToArray();
             }
 
-            return entries.Where(entry => IsEntryNearLocalLevel(entry.SecondaryText)).ToArray();
+            return entries.Where(entry => entry.IsCharacterInfoOwned || IsEntryNearLocalLevel(entry.SecondaryText)).ToArray();
+        }
+
+        private void ApplyCharacterInfoSearchLaunch()
+        {
+            if (!_characterInfoSearchLaunch.HasValue)
+            {
+                return;
+            }
+
+            List<SocialSearchEntryState> entries = _searchEntriesByTab[SocialSearchTab.PartyMember];
+            entries.RemoveAll(entry => entry.IsCharacterInfoOwned);
+
+            CharacterInfoSearchLaunchState launch = _characterInfoSearchLaunch.Value;
+            int existingIndex = entries.FindIndex(entry => string.Equals(entry.Title, launch.Name, StringComparison.OrdinalIgnoreCase));
+            SocialSearchEntryState mergedEntry = existingIndex >= 0
+                ? MergeCharacterInfoSearchEntry(entries[existingIndex], launch)
+                : new SocialSearchEntryState(
+                    launch.Name,
+                    launch.PrimaryText,
+                    launch.SecondaryText,
+                    "Available",
+                    launch.LocationSummary,
+                    launch.Channel,
+                    "Character-info target handoff.")
+                {
+                    IsCharacterInfoOwned = true
+                };
+
+            if (existingIndex >= 0)
+            {
+                entries.RemoveAt(existingIndex);
+            }
+
+            entries.Insert(0, mergedEntry);
+        }
+
+        private void ClearCharacterInfoSearchLaunch()
+        {
+            _characterInfoSearchLaunch = null;
+            if (_searchEntriesByTab.TryGetValue(SocialSearchTab.PartyMember, out List<SocialSearchEntryState> entries))
+            {
+                entries.RemoveAll(entry => entry.IsCharacterInfoOwned);
+            }
+        }
+
+        private static SocialSearchEntryState MergeCharacterInfoSearchEntry(
+            SocialSearchEntryState existingEntry,
+            CharacterInfoSearchLaunchState launch)
+        {
+            return new SocialSearchEntryState(
+                launch.Name,
+                string.IsNullOrWhiteSpace(existingEntry?.PrimaryText) ? launch.PrimaryText : existingEntry.PrimaryText,
+                string.IsNullOrWhiteSpace(existingEntry?.SecondaryText) ? launch.SecondaryText : existingEntry.SecondaryText,
+                string.IsNullOrWhiteSpace(existingEntry?.CapacityText) ? "Available" : existingEntry.CapacityText,
+                string.IsNullOrWhiteSpace(launch.LocationSummary) ? existingEntry?.LocationSummary : launch.LocationSummary,
+                launch.Channel > 0 ? launch.Channel : Math.Max(1, existingEntry?.Channel ?? 1),
+                "Character-info target handoff.")
+            {
+                IsCharacterInfoOwned = true
+            };
+        }
+
+        private static string ResolveCharacterInfoSearchPrimaryText(CharacterBuild build)
+        {
+            if (!string.IsNullOrWhiteSpace(build?.JobName))
+            {
+                return build.JobName.Trim();
+            }
+
+            return "Job unavailable";
+        }
+
+        private static string ResolveCharacterInfoSearchSecondaryText(CharacterBuild build)
+        {
+            return build != null && build.Level > 0
+                ? $"Lv. {build.Level}"
+                : "Level unavailable";
+        }
+
+        private static string ResolveCharacterInfoSearchLocation(string locationSummary)
+        {
+            return string.IsNullOrWhiteSpace(locationSummary)
+                ? "Location unknown"
+                : locationSummary.Trim();
         }
 
         private bool IsEntryNearLocalLevel(string levelText)
@@ -740,6 +857,30 @@ namespace HaCreator.MapSimulator.Interaction
             public int Channel { get; }
             public string StatusText { get; }
             public bool IsIntermediaryOwned { get; init; }
+            public bool IsCharacterInfoOwned { get; init; }
+        }
+
+        private readonly struct CharacterInfoSearchLaunchState
+        {
+            public CharacterInfoSearchLaunchState(
+                string name,
+                string primaryText,
+                string secondaryText,
+                string locationSummary,
+                int channel)
+            {
+                Name = name ?? string.Empty;
+                PrimaryText = primaryText ?? string.Empty;
+                SecondaryText = secondaryText ?? string.Empty;
+                LocationSummary = locationSummary ?? string.Empty;
+                Channel = channel;
+            }
+
+            public string Name { get; }
+            public string PrimaryText { get; }
+            public string SecondaryText { get; }
+            public string LocationSummary { get; }
+            public int Channel { get; }
         }
 
         private sealed class GuildSearchEntryState

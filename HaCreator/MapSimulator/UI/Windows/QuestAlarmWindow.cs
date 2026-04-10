@@ -76,6 +76,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<QuestAlarmSnapshot> _snapshotProvider;
         private Func<int, Texture2D> _itemIconProvider;
         private Func<CharacterBuild> _characterBuildProvider;
+        private Action<IEnumerable<int>> _autoRegisterActivityPrimer;
         private QuestAlarmStore _stateStore;
         private UIObject _autoButton;
         private UIObject _questButton;
@@ -154,6 +155,11 @@ namespace HaCreator.MapSimulator.UI
             _stateStore = stateStore;
             _characterBuildProvider = characterBuildProvider;
             _loadedStateCharacterKey = string.Empty;
+        }
+
+        internal void SetAutoRegisterActivityPrimer(Action<IEnumerable<int>> primer)
+        {
+            _autoRegisterActivityPrimer = primer;
         }
 
         internal void SetTooltipDescription(string tooltipDescription)
@@ -471,8 +477,19 @@ namespace HaCreator.MapSimulator.UI
         {
             EnsurePersistedStateLoaded();
             _autoTrackEnabled = !_autoTrackEnabled;
+            if (_autoTrackEnabled)
+            {
+                QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
+                _autoRegisterActivityPrimer?.Invoke(snapshot.Entries
+                    .Where(static entry => entry.IsAutoRegisterCandidate)
+                    .Select(static entry => entry.QuestId)
+                    .ToArray());
+                _currentSnapshot = RefreshFilteredSnapshot();
+            }
+
             UpdateButtonStates();
             SavePersistedState();
+            StatusMessageRequested?.Invoke(QuestAlarmOwnerStringPoolText.GetAutoRegisterToggleNotice(_autoTrackEnabled));
         }
 
         private void OpenQuestLog()
@@ -672,7 +689,9 @@ namespace HaCreator.MapSimulator.UI
                         break;
                     }
 
-                    if (_trackedQuestIds.Contains(entry.QuestId) || _hiddenAutoQuestIds.Contains(entry.QuestId))
+                    if (_trackedQuestIds.Contains(entry.QuestId) ||
+                        _hiddenAutoQuestIds.Contains(entry.QuestId) ||
+                        !entry.IsAutoRegisterActive)
                     {
                         continue;
                     }

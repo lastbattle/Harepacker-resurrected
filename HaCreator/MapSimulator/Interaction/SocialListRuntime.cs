@@ -745,7 +745,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private int ResolveEffectiveGuildLevel()
         {
-            return _packetGuildUiState?.GuildLevel ?? 0;
+            return _packetGuildUiState?.GuildLevel ?? _packetGuildLevel;
         }
 
         private IReadOnlyList<SocialEntryState> GetFilteredEntries(SocialListTab tab)

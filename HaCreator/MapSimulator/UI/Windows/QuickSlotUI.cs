@@ -265,13 +265,13 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_skillManager != null)
             {
-                _skillManager.HotkeysChanged -= InvalidateQuickSlotValidationCache;
+                _skillManager.HotkeysChanged -= InvalidateQuickSlotBindingValidationCache;
             }
 
             _skillManager = skillManager;
             if (_skillManager != null)
             {
-                _skillManager.HotkeysChanged += InvalidateQuickSlotValidationCache;
+                _skillManager.HotkeysChanged += InvalidateQuickSlotBindingValidationCache;
             }
 
             InvalidateQuickSlotValidationCache();
@@ -1437,7 +1437,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 // Right-click to clear slot
                 _skillManager?.ClearHotkey(absoluteSlot);
-                InvalidateQuickSlotValidationCache();
+                InvalidateQuickSlotBindingValidationCache();
                 OnSlotCleared?.Invoke(absoluteSlot);
             }
             else if (leftButton)
@@ -1546,7 +1546,7 @@ namespace HaCreator.MapSimulator.UI
             if (_skillManager?.TrySetHotkey(absoluteSlot, skillId) != true)
                 return false;
 
-            InvalidateQuickSlotValidationCache();
+            InvalidateQuickSlotBindingValidationCache();
             OnSkillDropped?.Invoke(absoluteSlot, skillId);
             return true;
         }
@@ -1561,7 +1561,7 @@ namespace HaCreator.MapSimulator.UI
             if (_skillManager?.TrySetMacroHotkey(absoluteSlot, macroIndex) != true)
                 return false;
 
-            InvalidateQuickSlotValidationCache();
+            InvalidateQuickSlotBindingValidationCache();
             return true;
         }
         #endregion
@@ -1675,16 +1675,21 @@ namespace HaCreator.MapSimulator.UI
 
             if (assigned)
             {
-                InvalidateQuickSlotValidationCache();
+                InvalidateQuickSlotBindingValidationCache();
             }
 
             return assigned;
         }
 
-        private void InvalidateQuickSlotValidationCache()
+        private void InvalidateQuickSlotBindingValidationCache()
         {
             _lastQuickSlotValidationTime = int.MinValue;
             _lastQuickSlotValidationBar = -1;
+        }
+
+        private void InvalidateQuickSlotValidationCache()
+        {
+            InvalidateQuickSlotBindingValidationCache();
             _primaryQuickSlotSurfaceDirty = true;
         }
 
@@ -1903,26 +1908,26 @@ namespace HaCreator.MapSimulator.UI
             if (skillId > 0)
             {
                 _skillManager?.TrySetHotkey(slotIndex, skillId);
-                InvalidateQuickSlotValidationCache();
+                InvalidateQuickSlotBindingValidationCache();
                 return;
             }
 
             if (macroIndex >= 0)
             {
                 _skillManager?.TrySetMacroHotkey(slotIndex, macroIndex);
-                InvalidateQuickSlotValidationCache();
+                InvalidateQuickSlotBindingValidationCache();
                 return;
             }
 
             if (itemId > 0)
             {
                 _skillManager?.TrySetItemHotkey(slotIndex, itemId, inventoryType);
-                InvalidateQuickSlotValidationCache();
+                InvalidateQuickSlotBindingValidationCache();
                 return;
             }
 
             _skillManager?.ClearHotkey(slotIndex);
-            InvalidateQuickSlotValidationCache();
+            InvalidateQuickSlotBindingValidationCache();
         }
 
         private bool IsCurrentDragBindingStillValid()

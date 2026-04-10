@@ -463,6 +463,10 @@ namespace HaCreator.MapSimulator.UI
                 windows.Remove(window);
                 windows.Add(window);
                 _focusedWindow = window;
+                if (window.IsVisible && window.CapturesKeyboardInput)
+                {
+                    window.RefreshImePresentationPlacement();
+                }
             }
         }
 

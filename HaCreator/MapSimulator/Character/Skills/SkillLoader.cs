@@ -168,6 +168,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<int, int[]> _affectedSkillParentCache = new();
         private readonly Dictionary<int, int[]> _dummySkillParentCache = new();
         private readonly Dictionary<int, int[]> _requiredSkillParentCache = new();
+        private readonly Dictionary<int, int[]> _passiveSkillParentCache = new();
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterChargeAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
@@ -893,6 +894,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                     skill.Levels[level] = levelData;
                 }
             }
+
+            var pvpCommonNode = skillNode["PVPcommon"];
+            if (pvpCommonNode != null)
+            {
+                int maxLevel = Math.Max(1, GetInt(pvpCommonNode, "maxLevel", skill.MaxLevel > 0 ? skill.MaxLevel : 1));
+                skill.MaxLevel = Math.Max(skill.MaxLevel, maxLevel);
+
+                for (int level = 1; level <= maxLevel; level++)
+                {
+                    var levelData = CreateLevelData(skill, pvpCommonNode, level);
+                    if (eventTamingMobId > 0 && levelData.ItemConNo <= 0)
+                    {
+                        levelData.ItemConNo = eventTamingMobId;
+                    }
+
+                    skill.PvpLevels[level] = levelData;
+                }
+            }
         }
 
         #endregion
@@ -995,6 +1014,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             skill.AffectedSecondaryEffect = LoadOptionalSkillAnimation(skillNode, "affected0", loop: false);
+            skill.SpecialAffectedEffect = LoadOptionalSkillAnimation(skillNode, "specialAffected", loop: false);
 
             LoadPersistentAvatarEffects(skill, skillNode);
             LoadShadowPartnerActionAnimations(skill, skillNode);
@@ -3093,6 +3113,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            if (skill.PassiveLinkedSkillIds != null)
+            {
+                foreach (int linkedSkillId in skill.PassiveLinkedSkillIds)
+                {
+                    if (linkedSkillId > 0)
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+
             if (skill.DummySkillParents != null)
             {
                 foreach (int linkedSkillId in skill.DummySkillParents)
@@ -3196,6 +3227,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             var parentSkillIds = new SortedSet<int>();
             AddParentSkillIds(parentSkillIds, FindAffectedSkillParentIds(linkedSkillId));
+            AddParentSkillIds(parentSkillIds, FindPassiveSkillParentIds(linkedSkillId));
             AddParentSkillIds(parentSkillIds, FindDummySkillParentIds(linkedSkillId));
             AddParentSkillIds(parentSkillIds, FindRequiredSkillParentIds(linkedSkillId));
 
@@ -3268,6 +3300,57 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int[] resolvedParentIds = parentSkillIds.ToArray();
             _dummySkillParentCache[dummySkillId] = resolvedParentIds;
+            return resolvedParentIds;
+        }
+
+        internal IReadOnlyList<int> FindPassiveSkillParentIds(int passiveLinkedSkillId)
+        {
+            if (passiveLinkedSkillId <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            if (_passiveSkillParentCache.TryGetValue(passiveLinkedSkillId, out int[] cachedParentIds))
+            {
+                return cachedParentIds;
+            }
+
+            var parentSkillIds = new SortedSet<int>();
+            foreach (int jobId in EnumerateAffectedSkillParentCandidateJobIds(passiveLinkedSkillId))
+            {
+                WzImage jobImage = GetSkillImage($"{jobId}.img");
+                if (jobImage == null)
+                {
+                    continue;
+                }
+
+                jobImage.ParseImage();
+                WzImageProperty skillRoot = jobImage["skill"];
+                if (skillRoot?.WzProperties == null)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty candidateSkillNode in skillRoot.WzProperties)
+                {
+                    if (candidateSkillNode == null
+                        || !int.TryParse(candidateSkillNode.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parentSkillId)
+                        || parentSkillId <= 0
+                        || parentSkillId == passiveLinkedSkillId)
+                    {
+                        continue;
+                    }
+
+                    int[] linkedPassiveSkillIds = ParseLinkedSkillIds(candidateSkillNode["psdSkill"]);
+                    if (Array.IndexOf(linkedPassiveSkillIds, passiveLinkedSkillId) >= 0)
+                    {
+                        parentSkillIds.Add(parentSkillId);
+                    }
+                }
+            }
+
+            int[] resolvedParentIds = parentSkillIds.ToArray();
+            _passiveSkillParentCache[passiveLinkedSkillId] = resolvedParentIds;
             return resolvedParentIds;
         }
 

@@ -194,6 +194,16 @@ namespace HaCreator.MapSimulator.Effects
             return _eventItemInfo.TryGetValue((fieldId, itemId), out info);
         }
 
+        public void ClearEventItemInfo()
+        {
+            _eventItemInfo.Clear();
+        }
+
+        public bool ClearEventItemInfo(int fieldId, int itemId)
+        {
+            return _eventItemInfo.Remove((fieldId, itemId));
+        }
+
         public void OpenItemInfo()
         {
             CloseItemInfo();
@@ -277,6 +287,31 @@ namespace HaCreator.MapSimulator.Effects
             return $"{EventOwnerName}: {activeText}; {timerText}; {itemInfoText}; timerAssets=[{TownUiRootPath}; {TimerRootPath}; font={TimerFontPath} via StringPool 0x{TimerboardFontStringPoolId:X}]; itemInfoAssets=[{ItemInfoRootPath}]";
         }
 
+        public string DescribeOrderedItemInfoRows()
+        {
+            List<string> rows = new(ItemInfoRowCount);
+            for (int i = 0; i < ItemInfoRowCount; i++)
+            {
+                int fieldId = ItemInfoFieldIds[i];
+                int itemId = ItemInfoItemIds[i];
+                int rowPercent = 0;
+                int rowEventStatus = 0;
+                int rowWinnerTeam = 0;
+
+                if (TryGetEventItemInfo(fieldId, itemId, out CakePieEventItemInfo info))
+                {
+                    rowPercent = Math.Clamp(info.Percentage, 0, 100);
+                    rowEventStatus = info.EventStatus;
+                    rowWinnerTeam = info.WinnerTeam;
+                }
+
+                rows.Add(
+                    $"{fieldId}:{FormatItemId(itemId)}={rowPercent}%/status{rowEventStatus}/winner{rowWinnerTeam}");
+            }
+
+            return string.Join(", ", rows);
+        }
+
         public void Reset()
         {
             _isActive = false;
@@ -330,6 +365,29 @@ namespace HaCreator.MapSimulator.Effects
                     return true;
                 default:
                     return false;
+            }
+        }
+
+        public static bool TryParseItemToken(string token, out int itemId)
+        {
+            itemId = 0;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "cake":
+                case "0":
+                    itemId = CakeItemId;
+                    return true;
+                case "pie":
+                case "1":
+                    itemId = PieItemId;
+                    return true;
+                default:
+                    return int.TryParse(token, out itemId);
             }
         }
 
@@ -667,6 +725,16 @@ namespace HaCreator.MapSimulator.Effects
             int minutes = Math.Max(0, remainingSeconds) / 60;
             int seconds = Math.Max(0, remainingSeconds) % 60;
             return $"{minutes:00}:{seconds:00}";
+        }
+
+        private static string FormatItemId(int itemId)
+        {
+            return itemId switch
+            {
+                CakeItemId => "cake",
+                PieItemId => "pie",
+                _ => itemId.ToString()
+            };
         }
     }
 }

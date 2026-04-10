@@ -2,10 +2,12 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using HaCreator.MapSimulator.Interaction;
+using MapleLib.Img;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -457,29 +459,7 @@ namespace HaCreator.MapSimulator.Managers
                 Dictionary<int, string> areaGroups = new();
                 Dictionary<int, IReadOnlyDictionary<int, string>> areaDetails = new();
                 Dictionary<int, IReadOnlyList<int>> areaDetailItemParams = new();
-                WzImage countryNameImage = HaCreator.Program.FindImage("Etc", "CountryName.img");
-                if (countryNameImage != null)
-                {
-                    countryNameImage.ParseImage();
-                    IReadOnlyDictionary<int, string> groupLookup = BuildCountryNameLookup(countryNameImage);
-                    foreach (KeyValuePair<int, string> entry in groupLookup)
-                    {
-                        areaGroups[entry.Key] = entry.Value;
-                    }
-
-                    foreach (WzImageProperty child in countryNameImage.WzProperties)
-                    {
-                        if (child is not IPropertyContainer container
-                            || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int areaGroup))
-                        {
-                            continue;
-                        }
-
-                        IReadOnlyDictionary<int, string> detailLookup = BuildCountryNameLookup(container);
-                        areaDetails[areaGroup] = detailLookup;
-                        areaDetailItemParams[areaGroup] = BuildClientSortedCountryNameItemParams(detailLookup);
-                    }
-                }
+                TryPopulateCountryNameCatalog(areaGroups, areaDetails, areaDetailItemParams);
 
                 if (!areaGroups.ContainsKey(0))
                 {
@@ -493,6 +473,127 @@ namespace HaCreator.MapSimulator.Managers
                 _areaDetailItemParams = areaDetailItemParams;
                 _countryNameCatalogLoaded = true;
             }
+        }
+
+        private static void TryPopulateCountryNameCatalog(
+            IDictionary<int, string> areaGroups,
+            IDictionary<int, IReadOnlyDictionary<int, string>> areaDetails,
+            IDictionary<int, IReadOnlyList<int>> areaDetailItemParams)
+        {
+            if (areaGroups == null || areaDetails == null || areaDetailItemParams == null)
+            {
+                return;
+            }
+
+            WzImage countryNameImage = HaCreator.Program.FindImage("Etc", "CountryName.img");
+            if (TryPopulateCountryNameCatalogFromImage(countryNameImage, areaGroups, areaDetails, areaDetailItemParams))
+            {
+                return;
+            }
+
+            string currentDirectoryPath = HaCreator.Program.DataSource?.VersionInfo?.DirectoryPath;
+            foreach (string candidateDirectory in EnumerateFallbackCountryNameDataSourceDirectories(currentDirectoryPath))
+            {
+                try
+                {
+                    using ImgFileSystemDataSource fallbackDataSource = new(candidateDirectory);
+                    WzImage fallbackImage = fallbackDataSource.GetImage("Etc", "CountryName.img");
+                    if (TryPopulateCountryNameCatalogFromImage(fallbackImage, areaGroups, areaDetails, areaDetailItemParams))
+                    {
+                        return;
+                    }
+                }
+                catch
+                {
+                    // Ignore malformed or incompatible sibling data sources and keep searching.
+                }
+            }
+        }
+
+        private static bool TryPopulateCountryNameCatalogFromImage(
+            WzImage countryNameImage,
+            IDictionary<int, string> areaGroups,
+            IDictionary<int, IReadOnlyDictionary<int, string>> areaDetails,
+            IDictionary<int, IReadOnlyList<int>> areaDetailItemParams)
+        {
+            if (countryNameImage == null)
+            {
+                return false;
+            }
+
+            countryNameImage.ParseImage();
+            IReadOnlyDictionary<int, string> groupLookup = BuildCountryNameLookup(countryNameImage);
+            foreach (KeyValuePair<int, string> entry in groupLookup)
+            {
+                areaGroups[entry.Key] = entry.Value;
+            }
+
+            foreach (WzImageProperty child in countryNameImage.WzProperties)
+            {
+                if (child is not IPropertyContainer container
+                    || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int areaGroup))
+                {
+                    continue;
+                }
+
+                IReadOnlyDictionary<int, string> detailLookup = BuildCountryNameLookup(container);
+                areaDetails[areaGroup] = detailLookup;
+                areaDetailItemParams[areaGroup] = BuildClientSortedCountryNameItemParams(detailLookup);
+            }
+
+            return areaGroups.Count > 1;
+        }
+
+        internal static IReadOnlyList<string> EnumerateFallbackCountryNameDataSourceDirectories(string currentDirectoryPath)
+        {
+            if (string.IsNullOrWhiteSpace(currentDirectoryPath) || !Directory.Exists(currentDirectoryPath))
+            {
+                return Array.Empty<string>();
+            }
+
+            DirectoryInfo parentDirectory = Directory.GetParent(currentDirectoryPath);
+            if (parentDirectory == null || !parentDirectory.Exists)
+            {
+                return Array.Empty<string>();
+            }
+
+            string normalizedCurrentPath = Path.GetFullPath(currentDirectoryPath);
+            string preferredPrefix = ExtractComparableVersionPrefix(Path.GetFileName(normalizedCurrentPath));
+            return parentDirectory
+                .EnumerateDirectories()
+                .Where(directory => !string.Equals(
+                    Path.GetFullPath(directory.FullName),
+                    normalizedCurrentPath,
+                    StringComparison.OrdinalIgnoreCase))
+                .Where(directory => File.Exists(Path.Combine(directory.FullName, "manifest.json")))
+                .Where(directory => File.Exists(Path.Combine(directory.FullName, "Etc", "CountryName.img")))
+                .OrderByDescending(directory => HasComparableVersionPrefix(directory.Name, preferredPrefix))
+                .ThenBy(directory => directory.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(directory => directory.FullName)
+                .ToArray();
+        }
+
+        private static string ExtractComparableVersionPrefix(string directoryName)
+        {
+            if (string.IsNullOrWhiteSpace(directoryName))
+            {
+                return string.Empty;
+            }
+
+            int separatorIndex = directoryName.IndexOfAny(new[] { '_', '-', ' ' });
+            return separatorIndex >= 0
+                ? directoryName.Substring(0, separatorIndex)
+                : directoryName;
+        }
+
+        private static bool HasComparableVersionPrefix(string directoryName, string preferredPrefix)
+        {
+            if (string.IsNullOrWhiteSpace(directoryName) || string.IsNullOrWhiteSpace(preferredPrefix))
+            {
+                return false;
+            }
+
+            return directoryName.StartsWith(preferredPrefix, StringComparison.OrdinalIgnoreCase);
         }
 
         private static int AdjustAreaGroup(int currentAreaGroup, int delta)

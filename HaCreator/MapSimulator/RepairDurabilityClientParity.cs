@@ -89,30 +89,52 @@ namespace HaCreator.MapSimulator
             IEnumerable<string> availableActions,
             IEnumerable<string> speakFallbackActions)
         {
-            int clientActionId = shopActionId.GetValueOrDefault();
-            if (clientActionId <= 0)
-            {
-                clientActionId = 1;
-            }
-
-            string resolvedAction = NpcClientActionSetLoader.ResolveClientActionName(
-                clientActionId,
-                availableActions,
-                speakFallbackActions);
-            if (!string.IsNullOrWhiteSpace(resolvedAction))
-            {
-                return resolvedAction;
-            }
-
             List<string> availableActionOrder = availableActions?
                 .Where(static action => !string.IsNullOrWhiteSpace(action))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList() ?? new List<string>();
+            var availableActionMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (string action in availableActionOrder)
             {
-                if (action.IndexOf("shop", StringComparison.OrdinalIgnoreCase) >= 0
-                    || action.IndexOf("say", StringComparison.OrdinalIgnoreCase) >= 0
-                    || action.IndexOf("speak", StringComparison.OrdinalIgnoreCase) >= 0)
+                availableActionMap[action] = action;
+            }
+
+            if (shopActionId.GetValueOrDefault() > 0)
+            {
+                foreach (string candidate in NpcClientActionSetLoader.EnumerateClientActionNameCandidates(
+                             shopActionId.Value,
+                             availableActionOrder))
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate)
+                        && availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
+                    {
+                        return resolvedCandidate;
+                    }
+                }
+            }
+
+            foreach (string candidate in ExplicitNpcActionFallbacks)
+            {
+                if (availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
+                {
+                    return resolvedCandidate;
+                }
+            }
+
+            foreach (string candidate in speakFallbackActions?
+                         .Where(static action => !string.IsNullOrWhiteSpace(action))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                     ?? Array.Empty<string>())
+            {
+                if (availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
+                {
+                    return resolvedCandidate;
+                }
+            }
+
+            foreach (string action in availableActionOrder)
+            {
+                if (action.StartsWith(AnimationKeys.Stand, StringComparison.OrdinalIgnoreCase))
                 {
                     return action;
                 }
@@ -299,6 +321,11 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
+            if (TryDecodeLengthPrefixedStatusText(payload, out string lengthPrefixedText))
+            {
+                return lengthPrefixedText;
+            }
+
             if (LooksLikeUtf16Le(payload))
             {
                 int terminatorIndex = FindUtf16LeTerminator(payload);
@@ -324,6 +351,33 @@ namespace HaCreator.MapSimulator
             }
 
             return Encoding.UTF8.GetString(payload).Trim();
+        }
+
+        private static bool TryDecodeLengthPrefixedStatusText(ReadOnlySpan<byte> payload, out string statusText)
+        {
+            statusText = string.Empty;
+            if (payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort lengthPrefix = BinaryPrimitives.ReadUInt16LittleEndian(payload);
+            ReadOnlySpan<byte> encodedText = payload[sizeof(ushort)..];
+            if (lengthPrefix == encodedText.Length)
+            {
+                statusText = DecodeResultStatusText(encodedText);
+                return true;
+            }
+
+            if (encodedText.Length > 0
+                && (lengthPrefix * sizeof(char)) == encodedText.Length
+                && LooksLikeUtf16Le(encodedText))
+            {
+                statusText = DecodeResultStatusText(encodedText);
+                return true;
+            }
+
+            return false;
         }
 
         private static int FindUtf16LeTerminator(ReadOnlySpan<byte> payload)

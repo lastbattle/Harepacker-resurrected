@@ -129,6 +129,7 @@ namespace HaCreator.MapSimulator.Managers
         /// </summary>
         public bool ShouldInheritDirectionModeOwner(
             bool npcInteractionVisible,
+            bool trackedOwnerVisible,
             bool scriptedOwnerActive,
             bool weddingDialogVisible,
             bool cakePieItemInfoVisible,
@@ -139,6 +140,7 @@ namespace HaCreator.MapSimulator.Managers
             bool speedQuizVisible)
         {
             return npcInteractionVisible
+                   || trackedOwnerVisible
                    || DirectionModeActive
                    || StandAloneModeActive
                    || scriptedOwnerActive

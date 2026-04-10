@@ -709,10 +709,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 ["mhpR"] = "Max HP",
                 ["mhpX"] = "Max HP",
+                ["emhp"] = "Max HP",
                 ["indieMhp"] = "Max HP",
                 ["indieMhpR"] = "Max HP",
                 ["mmpR"] = "Max MP",
                 ["mmpX"] = "Max MP",
+                ["emmp"] = "Max MP",
                 ["indieMmp"] = "Max MP",
                 ["indieMmpR"] = "Max MP",
                 ["indiePad"] = "Physical Attack",
@@ -785,6 +787,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Active state
         private readonly List<ActiveProjectile> _projectiles = new();
+        private readonly List<ActiveBulletAnimationOwner> _bulletAnimationOwners = new();
         private readonly List<ActiveBuff> _buffs = new();
         private readonly HashSet<int> _externalAreaSupportBuffIds = new();
         private readonly HashSet<int> _affectedSkillSupportBuffIds = new();
@@ -970,7 +973,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static int RouteExpiredLocalSummonTimerBatchToClientCancel(
             IReadOnlyList<ClientSkillTimerExpiration> expirations,
-            Action<int, int> primeExpiredLocalSummon,
+            Func<int, int, bool> tryPrimeExpiredLocalSummon,
             Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds,
             Func<int, int, bool> requestClientSkillCancel)
         {
@@ -989,9 +992,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                if (tryPrimeExpiredLocalSummon != null
+                    && !tryPrimeExpiredLocalSummon(expiration.TimerKey, expiration.ExpireTime))
+                {
+                    continue;
+                }
+
                 summonExpirations ??= new List<ClientSkillTimerExpiration>();
                 summonExpirations.Add(expiration);
-                primeExpiredLocalSummon?.Invoke(expiration.TimerKey, expiration.ExpireTime);
             }
 
             if (summonExpirations == null || requestClientSkillCancel == null)
@@ -1840,6 +1848,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly List<PendingProjectileSpawn> _pendingProjectileSpawns = new();
         private readonly List<QueuedSummonAttack> _queuedSummonAttacks = new();
         private long _nextQueuedSummonAttackSequenceId = 1;
+        private int _nextBulletAnimationOwnerId = 1;
         private readonly Dictionary<int, bool> _animationDisplayerSpecialBranchCache = new();
         private QueuedSerialAttack _queuedSerialAttack;
         private QueuedSparkAttack _queuedSparkAttack;
@@ -5355,7 +5364,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (skill.IsHeal)
                 {
-                    ApplyHeal(skill, level);
+                    ApplyHeal(skill, level, currentTime);
                 }
 
                 if (skill.IsSummon)
@@ -5499,6 +5508,51 @@ namespace HaCreator.MapSimulator.Character.Skills
                 FollowOwnerFacing = false,
                 DelayRateOverride = ResolveSharedSkillUseDelayRate(skill.SkillId)
             });
+        }
+
+        private void TryRequestExplicitSpecialAffectedSkillUseEffect(
+            SkillData skill,
+            int currentTime)
+        {
+            if (OnClientSkillEffectRequested == null
+                || !TryCreateSpecialAffectedSkillUseEffectRequest(
+                    skill,
+                    currentTime,
+                    ResolveSharedSkillUseDelayRate,
+                    out SkillUseEffectRequest request))
+            {
+                return;
+            }
+
+            OnClientSkillEffectRequested.Invoke(request);
+        }
+
+        internal static bool TryCreateSpecialAffectedSkillUseEffectRequest(
+            SkillData skill,
+            int currentTime,
+            Func<int, int> resolveDelayRate,
+            out SkillUseEffectRequest request)
+        {
+            request = null;
+            if (skill?.SkillId <= 0
+                || resolveDelayRate == null
+                || skill.SpecialAffectedEffect?.Frames == null
+                || skill.SpecialAffectedEffect.Frames.Count <= 0)
+            {
+                return false;
+            }
+
+            request = new SkillUseEffectRequest
+            {
+                EffectSkillId = skill.SkillId,
+                SourceSkillId = skill.SkillId,
+                RequestTime = currentTime,
+                BranchNames = new[] { skill.SpecialAffectedEffect.Name },
+                FollowOwnerPosition = true,
+                FollowOwnerFacing = false,
+                DelayRateOverride = resolveDelayRate(skill.SkillId)
+            };
+            return true;
         }
 
         private bool HasAnimationDisplayerSpecialBranch(int skillId)
@@ -6789,7 +6843,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool IsClientMovingShootShootAttackActionType(int attackActionType)
         {
             return attackActionType == MovingShootAttackActionTypeShoot
-                   || attackActionType is 3 or 4 or 9;
+                   || attackActionType is 3 or 4 or 9 or 11 or 12;
         }
 
         private static ClientRandomMovingShootActionFamily ResolveClientRandomMovingShootActionFamily(
@@ -9034,7 +9088,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                         continue;
                     }
 
+                    RefreshQueuedProjectileFireTimePresentation(pending.Projectile);
                     _projectiles.Add(pending.Projectile);
+                    ActivateBulletAnimationOwner(pending.Projectile);
                 }
             }
         }
@@ -9181,6 +9237,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             return resolved;
         }
 
+        private void RefreshQueuedProjectileFireTimePresentation(ActiveProjectile projectile)
+        {
+            if (projectile == null)
+            {
+                return;
+            }
+
+            SkillData skill = GetSkillData(projectile.SkillId);
+            if (skill == null || (!projectile.IsQueuedFinalAttack && !projectile.IsQueuedSparkAttack))
+            {
+                return;
+            }
+
+            projectile.BulletAnimation = RegisterBulletAnimationOwner(skill, projectile, projectile.SpawnTime);
+        }
+
         internal static bool TryResolveQueuedProjectileFireTimeWeaponContext(
             ActiveProjectile projectile,
             int liveWeaponCode,
@@ -9274,7 +9346,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            if (!HasRocketBoosterStartupActionCompleted(_rocketBoosterState, currentTime))
+            if (!CanAdvanceRocketBoosterTouchdownState(
+                    _rocketBoosterState?.LaunchStartTime ?? 0,
+                    _rocketBoosterState?.StartupActionDurationMs ?? 0,
+                    currentTime,
+                    _player?.IsPlayingClientOwnedOneTimeAction == true))
             {
                 return;
             }
@@ -9489,14 +9565,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             return -Math.Max(0f, upwardSpeed);
         }
 
-        private static bool HasRocketBoosterStartupActionCompleted(RocketBoosterState state, int currentTime)
+        internal static bool CanAdvanceRocketBoosterTouchdownState(
+            int launchStartTime,
+            int startupActionDurationMs,
+            int currentTime,
+            bool hasActiveClientOwnedOneTimeAction)
         {
-            if (state == null || state.StartupActionDurationMs <= 0)
+            if (startupActionDurationMs > 0
+                && currentTime - launchStartTime < startupActionDurationMs)
             {
-                return true;
+                return false;
             }
 
-            return currentTime - state.LaunchStartTime >= state.StartupActionDurationMs;
+            return !hasActiveClientOwnedOneTimeAction;
         }
 
         private int GetRocketBoosterLaunchDelayMs(SkillData skill, string startupActionName = null)
@@ -11473,6 +11554,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (spawnTime <= currentTime)
                 {
                     _projectiles.Add(proj);
+                    ActivateBulletAnimationOwner(proj);
                 }
                 else
                 {
@@ -11605,6 +11687,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
         }
 
+        private void ActivateBulletAnimationOwner(ActiveProjectile projectile)
+        {
+            if (projectile == null
+                || projectile.BulletAnimationOwnerId > 0
+                || projectile.BulletAnimation == null)
+            {
+                return;
+            }
+
+            var owner = new ActiveBulletAnimationOwner
+            {
+                Id = _nextBulletAnimationOwnerId++,
+                ProjectileId = projectile.Id,
+                Presentation = projectile.BulletAnimation,
+                CurrentPosition = new Vector2(projectile.X, projectile.Y),
+                PreviousPosition = new Vector2(projectile.PreviousX, projectile.PreviousY),
+                FacingRight = ResolveQueuedProjectilePresentationFacing(projectile)
+            };
+
+            projectile.BulletAnimationOwnerId = owner.Id;
+            _bulletAnimationOwners.Add(owner);
+        }
+
         internal static BulletAnimationOwnerKind ResolveBulletAnimationOwnerKind(
             SkillData skill,
             int bulletItemId,
@@ -11653,6 +11758,56 @@ namespace HaCreator.MapSimulator.Character.Skills
             return new Vector2(
                 projectile.X + projectile.VelocityX * lifetimeSeconds,
                 projectile.Y + projectile.VelocityY * lifetimeSeconds);
+        }
+
+        internal static Vector2 ResolveBulletAnimationInterpolatedPosition(
+            BulletAnimationPresentation presentation,
+            int currentTime)
+        {
+            if (presentation == null)
+            {
+                return Vector2.Zero;
+            }
+
+            int duration = Math.Max(1, presentation.EndTime - presentation.StartTime);
+            float progress = MathHelper.Clamp(
+                (currentTime - presentation.StartTime) / (float)duration,
+                0f,
+                1f);
+            return Vector2.Lerp(
+                presentation.SourcePoint,
+                presentation.DestinationPoint,
+                progress);
+        }
+
+        internal static bool ResolveBulletAnimationFacing(
+            BulletAnimationPresentation presentation,
+            Vector2 currentPosition,
+            Vector2 previousPosition,
+            bool fallbackFacingRight)
+        {
+            Vector2 delta = currentPosition - previousPosition;
+            if (Math.Abs(delta.X) > 0.001f)
+            {
+                return delta.X >= 0f;
+            }
+
+            if (presentation != null)
+            {
+                Vector2 targetDelta = presentation.TargetPoint - presentation.SourcePoint;
+                if (Math.Abs(targetDelta.X) > 0.001f)
+                {
+                    return targetDelta.X >= 0f;
+                }
+
+                Vector2 destinationDelta = presentation.DestinationPoint - presentation.SourcePoint;
+                if (Math.Abs(destinationDelta.X) > 0.001f)
+                {
+                    return destinationDelta.X >= 0f;
+                }
+            }
+
+            return fallbackFacingRight;
         }
 
         private static int ResolveBulletAnimationZ(SkillAnimation animation)
@@ -11868,7 +12023,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 var proj = _projectiles[i];
                 UpdateProjectileBehavior(proj, currentTime);
                 proj.Update(deltaTime, currentTime);
-                UpdateBulletAnimationOwner(proj, currentTime);
 
                 // Check for expired
                 if (proj.IsExpired)
@@ -11887,6 +12041,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     CheckProjectileCollisions(proj, currentTime);
                 }
             }
+
+            UpdateBulletAnimationOwners(currentTime);
         }
 
         private void UpdateProjectileBehavior(ActiveProjectile proj, int currentTime)
@@ -12613,41 +12769,135 @@ namespace HaCreator.MapSimulator.Character.Skills
             return new Vector2(proj.VelocityX, proj.VelocityY);
         }
 
-        private void UpdateBulletAnimationOwner(ActiveProjectile projectile, int currentTime)
+        private void UpdateBulletAnimationOwners(int currentTime)
         {
-            if (projectile?.BulletAnimation?.HasAfterimage != true || projectile.IsExploding)
+            for (int i = _bulletAnimationOwners.Count - 1; i >= 0; i--)
+            {
+                ActiveBulletAnimationOwner owner = _bulletAnimationOwners[i];
+                ActiveProjectile projectile = FindActiveProjectile(owner?.ProjectileId ?? 0);
+
+                SyncBulletAnimationOwner(owner, projectile, currentTime);
+                UpdateBulletAnimationOwnerAfterimages(owner, currentTime);
+
+                bool hasAfterimages = owner?.AfterimageLayers?.Count > 0;
+                bool beforeStart = owner?.Presentation != null && currentTime < owner.Presentation.StartTime;
+                bool finished = owner?.Presentation == null
+                    || (owner.StopTime.HasValue || currentTime >= owner.Presentation.EndTime);
+                if (!beforeStart && finished && !hasAfterimages)
+                {
+                    _bulletAnimationOwners.RemoveAt(i);
+                }
+            }
+        }
+
+        private ActiveProjectile FindActiveProjectile(int projectileId)
+        {
+            if (projectileId <= 0)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < _projectiles.Count; i++)
+            {
+                if (_projectiles[i]?.Id == projectileId)
+                {
+                    return _projectiles[i];
+                }
+            }
+
+            return null;
+        }
+
+        private bool HasActiveBulletAnimationOwner(ActiveProjectile projectile)
+        {
+            if (projectile?.BulletAnimationOwnerId <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _bulletAnimationOwners.Count; i++)
+            {
+                if (_bulletAnimationOwners[i]?.Id == projectile.BulletAnimationOwnerId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void SyncBulletAnimationOwner(
+            ActiveBulletAnimationOwner owner,
+            ActiveProjectile projectile,
+            int currentTime)
+        {
+            if (owner?.Presentation == null)
             {
                 return;
             }
 
-            for (int i = projectile.AfterimageLayers.Count - 1; i >= 0; i--)
+            owner.PreviousPosition = owner.CurrentPosition;
+
+            if (projectile != null && !projectile.IsExpired && !projectile.IsExploding)
             {
-                if (projectile.AfterimageLayers[i]?.IsExpired(currentTime) != false)
+                owner.CurrentPosition = new Vector2(projectile.X, projectile.Y);
+                owner.FacingRight = ResolveQueuedProjectilePresentationFacing(projectile);
+                return;
+            }
+
+            if (projectile?.IsExploding == true || projectile?.IsExpired == true)
+            {
+                owner.StopTime ??= currentTime;
+            }
+
+            owner.CurrentPosition = ResolveBulletAnimationInterpolatedPosition(
+                owner.Presentation,
+                currentTime);
+            owner.FacingRight = ResolveBulletAnimationFacing(
+                owner.Presentation,
+                owner.CurrentPosition,
+                owner.PreviousPosition,
+                owner.FacingRight);
+        }
+
+        private void UpdateBulletAnimationOwnerAfterimages(ActiveBulletAnimationOwner owner, int currentTime)
+        {
+            if (owner?.AfterimageLayers != null)
+            {
+                for (int i = owner.AfterimageLayers.Count - 1; i >= 0; i--)
                 {
-                    projectile.AfterimageLayers.RemoveAt(i);
+                    if (owner.AfterimageLayers[i]?.IsExpired(currentTime) != false)
+                    {
+                        owner.AfterimageLayers.RemoveAt(i);
+                    }
                 }
             }
 
-            SkillAnimation animation = projectile.BulletAnimation.Animation;
-            if (animation?.TryGetFrameAtTime(currentTime - projectile.SpawnTime, out SkillFrame frame, out _) != true
+            if (owner?.Presentation?.HasAfterimage != true || !owner.CanDrawMainAnimation(currentTime))
+            {
+                return;
+            }
+
+            SkillAnimation animation = owner.Presentation.Animation;
+            if (animation?.TryGetFrameAtTime(currentTime - owner.Presentation.StartTime, out SkillFrame frame, out _) != true
                 || frame?.Texture == null)
             {
                 return;
             }
 
             int updateInterval = ResolveBulletAfterimageUpdateInterval(frame);
-            if (projectile.LastAfterimageUpdateTime != int.MinValue
-                && currentTime - projectile.LastAfterimageUpdateTime < updateInterval)
+            if (owner.LastAfterimageUpdateTime != int.MinValue
+                && currentTime - owner.LastAfterimageUpdateTime < updateInterval)
             {
                 return;
             }
 
-            projectile.LastAfterimageUpdateTime = currentTime;
-            projectile.AfterimageLayers.Add(new ProjectileAfterimageLayer
+            owner.LastAfterimageUpdateTime = currentTime;
+            owner.AfterimageLayers.Add(new ProjectileAfterimageLayer
             {
                 Frame = frame,
-                Position = new Vector2(projectile.X, projectile.Y),
-                Flip = ResolveProjectileFrameShouldFlip(projectile, frame),
+                Position = owner.CurrentPosition,
+                Flip = owner.FacingRight ^ frame.Flip,
                 StartTime = currentTime,
                 Duration = Math.Max(updateInterval, DefaultBulletAfterimageDurationMs),
                 AlphaStart = ResolveBulletAfterimageStartAlpha(frame),
@@ -13001,6 +13251,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                if (ShouldPollSitdownHealingSupportSeparately(summon, currentTime))
+                {
+                    summon.ActorState = ResolveIdleSummonActorState(summon, currentTime);
+                    continue;
+                }
+
                 if (summon.AssistType == SummonAssistType.TargetedAttack)
                 {
                     summon.ActorState = SummonActorState.Idle;
@@ -13034,12 +13290,58 @@ namespace HaCreator.MapSimulator.Character.Skills
                 TryResolveSelfDestructSummon(summon, currentTime);
             }
 
-            UpdateExternalSupportSummons(currentTime);
+            IReadOnlyList<ActiveSummon> externalSupportSummons = _externalFriendlySupportSummonsProvider?.Invoke();
+            UpdateSitdownHealingSupportSummons(currentTime, externalSupportSummons);
+            UpdateExternalSupportSummons(currentTime, externalSupportSummons);
         }
 
-        private void UpdateExternalSupportSummons(int currentTime)
+        private void UpdateSitdownHealingSupportSummons(
+            int currentTime,
+            IReadOnlyList<ActiveSummon> externalSupportSummons)
         {
-            IReadOnlyList<ActiveSummon> externalSupportSummons = _externalFriendlySupportSummonsProvider?.Invoke();
+            if (_player?.State != PlayerState.Sitting)
+            {
+                return;
+            }
+
+            IReadOnlyList<ActiveSummon> pollOrder = BuildSitdownHealingPollOrder(
+                _summons,
+                externalSupportSummons,
+                currentTime);
+            if (pollOrder.Count == 0)
+            {
+                return;
+            }
+
+            foreach (ActiveSummon summon in pollOrder)
+            {
+                if (summon?.SkillData == null
+                    || summon.LevelData == null
+                    || summon.IsPendingRemoval
+                    || summon.IsExpired(currentTime)
+                    || summon.AssistType != SummonAssistType.Support
+                    || !SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData)
+                    || SummonRuntimeRules.HasActiveOneTimeActionPlayback(summon, currentTime)
+                    || IsSupportSummonSuspended(summon, currentTime)
+                    || !HasSummonActionIntervalElapsed(summon, currentTime)
+                    || IsSummonAttackBlockedByOwnerState(summon))
+                {
+                    continue;
+                }
+
+                if (!ProcessSummonSupport(summon, currentTime))
+                {
+                    continue;
+                }
+
+                summon.LastAttackTime = currentTime;
+            }
+        }
+
+        private void UpdateExternalSupportSummons(
+            int currentTime,
+            IReadOnlyList<ActiveSummon> externalSupportSummons)
+        {
             if (externalSupportSummons == null || externalSupportSummons.Count == 0)
             {
                 return;
@@ -13051,7 +13353,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     || summon.LevelData == null
                     || summon.IsPendingRemoval
                     || summon.IsExpired(currentTime)
-                    || summon.AssistType != SummonAssistType.Support)
+                    || summon.AssistType != SummonAssistType.Support
+                    || SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData))
                 {
                     continue;
                 }
@@ -16077,6 +16380,116 @@ namespace HaCreator.MapSimulator.Character.Skills
             return currentTime - summon.LastAttackTime >= GetSummonAttackInterval(summon.SkillData, summon.Level);
         }
 
+        private static bool ShouldPollSitdownHealingSupportSeparately(ActiveSummon summon, int currentTime)
+        {
+            return IsSitdownHealingPollCandidate(summon, currentTime);
+        }
+
+        internal static ActiveSummon SelectPreferredSitdownHealingPollSummonForTesting(
+            IEnumerable<ActiveSummon> summons,
+            int currentTime)
+        {
+            return SelectPreferredSitdownHealingPollSummon(summons, currentTime);
+        }
+
+        internal static IReadOnlyList<ActiveSummon> BuildSitdownHealingPollOrderForTesting(
+            IEnumerable<ActiveSummon> localSummons,
+            IReadOnlyList<ActiveSummon> externalSupportSummons,
+            int currentTime)
+        {
+            return BuildSitdownHealingPollOrder(localSummons, externalSupportSummons, currentTime);
+        }
+
+        private static IReadOnlyList<ActiveSummon> BuildSitdownHealingPollOrder(
+            IEnumerable<ActiveSummon> localSummons,
+            IReadOnlyList<ActiveSummon> externalSupportSummons,
+            int currentTime)
+        {
+            List<ActiveSummon> result = new();
+
+            ActiveSummon localSummon = SelectPreferredSitdownHealingPollSummon(localSummons, currentTime);
+            if (localSummon != null)
+            {
+                result.Add(localSummon);
+            }
+
+            if (externalSupportSummons != null)
+            {
+                foreach (ActiveSummon summon in externalSupportSummons)
+                {
+                    if (IsSitdownHealingPollCandidate(summon, currentTime))
+                    {
+                        result.Add(summon);
+                    }
+                }
+            }
+
+            return result.Count > 0
+                ? result
+                : Array.Empty<ActiveSummon>();
+        }
+
+        private static ActiveSummon SelectPreferredSitdownHealingPollSummon(
+            IEnumerable<ActiveSummon> summons,
+            int currentTime)
+        {
+            if (summons == null)
+            {
+                return null;
+            }
+
+            ActiveSummon preferred = null;
+            foreach (ActiveSummon summon in summons)
+            {
+                if (!IsSitdownHealingPollCandidate(summon, currentTime))
+                {
+                    continue;
+                }
+
+                if (IsPreferredSitdownHealingPollSummon(summon, preferred, currentTime))
+                {
+                    preferred = summon;
+                }
+            }
+
+            return preferred;
+        }
+
+        private static bool IsSitdownHealingPollCandidate(ActiveSummon summon, int currentTime)
+        {
+            return summon?.SkillData != null
+                   && summon.LevelData != null
+                   && summon.AssistType == SummonAssistType.Support
+                   && !summon.IsPendingRemoval
+                   && !summon.IsExpired(currentTime)
+                   && SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData);
+        }
+
+        private static bool IsPreferredSitdownHealingPollSummon(
+            ActiveSummon candidate,
+            ActiveSummon existing,
+            int currentTime)
+        {
+            if (candidate == null)
+            {
+                return false;
+            }
+
+            if (existing == null)
+            {
+                return true;
+            }
+
+            bool candidateSuspended = IsSupportSummonSuspended(candidate, currentTime);
+            bool existingSuspended = IsSupportSummonSuspended(existing, currentTime);
+            if (candidateSuspended != existingSuspended)
+            {
+                return !candidateSuspended;
+            }
+
+            return SummonedPool.IsPreferredSitdownHealingSupportSummon(candidate, existing);
+        }
+
         private bool IsMobInSummonAttackRange(ActiveSummon summon, Rectangle mobHitbox)
         {
             if (summon?.SkillData == null || mobHitbox.IsEmpty)
@@ -17707,6 +18120,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             _player.ApplySkillAvatarEffect(activeBuff.SkillId, activeBuff.SkillData, currentTime);
         }
 
+        internal int? GetActiveDeferredAvatarEffectSkillIdForParity()
+        {
+            return _activeEnergyChargeRuntime?.IsFullyCharged == true
+                ? _activeEnergyChargeRuntime.SkillId
+                : null;
+        }
+
         private static bool ShouldApplyBuffAvatarEffectOnActivation(SkillData skill)
         {
             return skill != null
@@ -18412,7 +18832,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         internal static IReadOnlyList<RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState> BuildAnimationDisplayerTemporaryStatAvatarEffectStatesForParity(
-            IEnumerable<ActiveBuff> activeBuffs)
+            IEnumerable<ActiveBuff> activeBuffs,
+            int? activeDeferredAvatarEffectSkillId = null)
         {
             if (activeBuffs == null)
             {
@@ -18425,6 +18846,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (TryCreateAnimationDisplayerTemporaryStatAvatarEffectStateForParity(
                         activeBuff,
+                        activeDeferredAvatarEffectSkillId,
                         out RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state,
                         out int primaryPriority,
                         out int sortOrder))
@@ -18445,6 +18867,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool TryCreateAnimationDisplayerTemporaryStatAvatarEffectStateForParity(
             ActiveBuff activeBuff,
+            int? activeDeferredAvatarEffectSkillId,
             out RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState state,
             out int primaryPriority,
             out int sortOrder)
@@ -18455,6 +18878,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             SkillData sourceSkill = activeBuff?.SkillData;
             if (sourceSkill == null)
+            {
+                return false;
+            }
+
+            if (!ShouldPresentAnimationDisplayerTemporaryStatAvatarEffectForParity(
+                    sourceSkill,
+                    activeDeferredAvatarEffectSkillId))
             {
                 return false;
             }
@@ -18520,6 +18950,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 AnimationStartTime = activeBuff.StartTime
             };
             return true;
+        }
+
+        internal static bool ShouldPresentAnimationDisplayerTemporaryStatAvatarEffectForParity(
+            SkillData skill,
+            int? activeDeferredAvatarEffectSkillId)
+        {
+            if (!UsesDeferredEnergyChargeAvatarEffect(skill))
+            {
+                return true;
+            }
+
+            return activeDeferredAvatarEffectSkillId.HasValue
+                   && activeDeferredAvatarEffectSkillId.Value == skill.SkillId;
         }
 
         private static bool HasExplicitDamageReductionTemporaryStatOwner(SkillLevelData levelData)
@@ -18964,8 +19407,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            return includeIndependentStats
-                && propertyName.StartsWith("indie", StringComparison.OrdinalIgnoreCase);
+            if (includeIndependentStats
+                && propertyName.StartsWith("indie", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return !IsDirectBuffIconFamilyProperty(propertyName)
+                && AuthoredPropertyTemporaryStatLabels.ContainsKey(propertyName);
         }
 
         private static void TrackRepresentedLabels(
@@ -19631,7 +20080,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         #region Heal
 
-        private void ApplyHeal(SkillData skill, int level)
+        private void ApplyHeal(SkillData skill, int level, int currentTime)
         {
             var levelData = skill.GetLevel(level);
             if (levelData == null)
@@ -19649,6 +20098,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Apply heal
             _player.Recover(hpHeal, mpHeal);
+            TryRequestExplicitSpecialAffectedSkillUseEffect(skill, currentTime);
         }
 
         #endregion
@@ -19673,6 +20123,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (level <= 0)
                     continue;
 
+                if (!ShouldExposePassiveStatBonusOnStatWindow(skill))
+                {
+                    continue;
+                }
+
                 var levelData = skill.GetLevel(level);
                 if (levelData == null)
                     continue;
@@ -19686,6 +20141,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return total;
+        }
+
+        internal static bool ShouldExposePassiveStatBonusOnStatWindow(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            // WZ `info/dummyOf` marks skill-specific enhancer books that piggyback on another
+            // skill's runtime owner instead of publishing a general character stat surface.
+            // Mechanic `35100008 Heavy Weapon Mastery` is the parity case here:
+            // `skill/3510.img/skill/35100008/info/dummyOf = 35101009&&35101010`.
+            return skill.DummySkillParents == null || skill.DummySkillParents.Length == 0;
         }
 
         /// <summary>
@@ -21571,7 +22040,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             OnClientSkillTimersExpiredBatch?.Invoke(expirations);
             RouteExpiredLocalSummonTimerBatchToClientCancel(
                 expirations,
-                static (_, _) => { },
+                TryPrimeExpiredLocalSummonNaturalExpiry,
                 ResolveClientCancelRequestSkillIds,
                 (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
 
@@ -22271,10 +22740,69 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void DrawProjectiles(SpriteBatch spriteBatch, int mapShiftX, int mapShiftY,
             int centerX, int centerY, int currentTime)
         {
+            foreach (ActiveBulletAnimationOwner owner in _bulletAnimationOwners)
+            {
+                DrawBulletAnimationOwner(spriteBatch, owner, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+            }
+
             foreach (var proj in _projectiles)
             {
+                if (!proj.IsExploding && HasActiveBulletAnimationOwner(proj))
+                {
+                    continue;
+                }
+
                 DrawProjectile(spriteBatch, proj, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             }
+        }
+
+        private void DrawBulletAnimationOwner(
+            SpriteBatch spriteBatch,
+            ActiveBulletAnimationOwner owner,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime)
+        {
+            if (owner?.Presentation?.Animation == null)
+            {
+                return;
+            }
+
+            DrawProjectileAfterimages(
+                spriteBatch,
+                owner.AfterimageLayers,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                currentTime);
+
+            if (!owner.CanDrawMainAnimation(currentTime))
+            {
+                return;
+            }
+
+            SkillFrame frame = owner.Presentation.Animation.GetFrameAtTime(currentTime - owner.Presentation.StartTime);
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            int screenX = (int)owner.CurrentPosition.X - mapShiftX + centerX;
+            int screenY = (int)owner.CurrentPosition.Y - mapShiftY + centerY;
+            bool shouldFlip = owner.FacingRight ^ frame.Flip;
+
+            frame.Texture.DrawBackground(
+                spriteBatch,
+                null,
+                null,
+                GetFrameDrawX(screenX, frame, shouldFlip),
+                screenY - frame.Origin.Y,
+                Color.White,
+                shouldFlip,
+                null);
         }
 
         private void DrawProjectile(SpriteBatch spriteBatch, ActiveProjectile proj,
@@ -22301,7 +22829,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (frame?.Texture == null)
                 return;
 
-            DrawProjectileAfterimages(spriteBatch, proj, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+            DrawProjectileAfterimages(
+                spriteBatch,
+                proj.AfterimageLayers,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                currentTime);
 
             int screenX = (int)proj.X - mapShiftX + centerX;
             int screenY = (int)proj.Y - mapShiftY + centerY;
@@ -22315,6 +22850,16 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private SkillAnimation ResolveProjectilePresentationAnimation(ActiveProjectile projectile)
         {
+            int resolvedVisualItemId = ResolveProjectileVisualItemId(projectile);
+            if (ShouldPreferQueuedProjectileResolvedVisual(projectile, resolvedVisualItemId))
+            {
+                SkillAnimation refreshedQueuedVisual = ResolveProjectileVisualAnimation(projectile);
+                if (refreshedQueuedVisual?.Frames?.Count > 0)
+                {
+                    return refreshedQueuedVisual;
+                }
+            }
+
             if (projectile?.BulletAnimation?.Animation?.Frames?.Count > 0)
             {
                 return projectile.BulletAnimation.Animation;
@@ -22329,21 +22874,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             return projectile?.Data?.Animation;
         }
 
+        internal static bool ShouldPreferQueuedProjectileResolvedVisual(ActiveProjectile projectile, int resolvedVisualItemId)
+        {
+            return projectile != null
+                   && (projectile.IsQueuedFinalAttack || projectile.IsQueuedSparkAttack)
+                   && resolvedVisualItemId > 0
+                   && projectile.BulletAnimation?.BulletItemId != resolvedVisualItemId;
+        }
+
         private void DrawProjectileAfterimages(
             SpriteBatch spriteBatch,
-            ActiveProjectile projectile,
+            IReadOnlyList<ProjectileAfterimageLayer> afterimageLayers,
             int mapShiftX,
             int mapShiftY,
             int centerX,
             int centerY,
             int currentTime)
         {
-            if (projectile?.AfterimageLayers == null || projectile.AfterimageLayers.Count == 0)
+            if (afterimageLayers == null || afterimageLayers.Count == 0)
             {
                 return;
             }
 
-            foreach (ProjectileAfterimageLayer layer in projectile.AfterimageLayers)
+            foreach (ProjectileAfterimageLayer layer in afterimageLayers)
             {
                 if (layer?.Frame?.Texture == null || layer.IsExpired(currentTime))
                 {
@@ -23435,6 +23988,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void Clear()
         {
             _projectiles.Clear();
+            _bulletAnimationOwners.Clear();
+            _nextBulletAnimationOwnerId = 1;
             _queuedFollowUpAttacks.Clear();
             _queuedSummonAttacks.Clear();
             _queuedSerialAttack = null;
@@ -23504,6 +24059,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void ClearMapState()
         {
             _projectiles.Clear();
+            _bulletAnimationOwners.Clear();
+            _nextBulletAnimationOwnerId = 1;
             _queuedFollowUpAttacks.Clear();
             _queuedSummonAttacks.Clear();
             _queuedSerialAttack = null;
@@ -23569,6 +24126,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void ClearActiveSkillState(bool clearBuffs)
         {
             _projectiles.Clear();
+            _bulletAnimationOwners.Clear();
+            _nextBulletAnimationOwnerId = 1;
             _queuedFollowUpAttacks.Clear();
             _queuedSummonAttacks.Clear();
             _queuedSerialAttack = null;

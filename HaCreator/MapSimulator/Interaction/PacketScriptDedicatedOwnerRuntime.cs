@@ -74,6 +74,41 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryGetSelectedChoice(out NpcInteractionChoice choice)
+        {
+            choice = null;
+            if (_activeOwner?.Choices == null || _activeOwner.Choices.Count == 0)
+            {
+                return false;
+            }
+
+            int index = NormalizeChoiceIndex(_activeOwner, _selectedChoiceIndex);
+            if (index < 0 || index >= _activeOwner.Choices.Count)
+            {
+                return false;
+            }
+
+            choice = _activeOwner.Choices[index];
+            return choice != null;
+        }
+
+        internal string DescribeStatus()
+        {
+            if (_activeOwner == null)
+            {
+                return "Packet-script dedicated owner idle.";
+            }
+
+            int selectedIndex = NormalizeChoiceIndex(_activeOwner, _selectedChoiceIndex);
+            string selectedLabel =
+                selectedIndex >= 0 && selectedIndex < _activeOwner.Choices.Count
+                    ? _activeOwner.Choices[selectedIndex]?.Label ?? "(null)"
+                    : "(none)";
+            return
+                $"Packet-script dedicated owner {_activeOwner.Kind}: title=\"{_activeOwner.Title}\", " +
+                $"choices={_activeOwner.Choices.Count}, selected={selectedIndex}, label=\"{selectedLabel}\".";
+        }
+
         private static int ResolveInitialSelectionIndex(PacketScriptMessageRuntime.PacketScriptDedicatedOwnerRequest owner)
         {
             if (owner?.Choices == null || owner.Choices.Count == 0)

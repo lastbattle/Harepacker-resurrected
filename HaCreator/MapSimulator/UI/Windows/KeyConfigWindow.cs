@@ -616,14 +616,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 Rectangle iconBounds = new(bounds.X + 6, bounds.Y + 3, 18, 18);
                 sprite.Draw(_highlightTexture, iconBounds, new Color(54, 66, 88, 215));
-                if (paletteTexture != null)
-                {
-                    sprite.Draw(paletteTexture, new Vector2(iconBounds.X + 1, iconBounds.Y + 1), null, Color.White, 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
-                }
-                else
-                {
-                    DrawShortcutVisualIcon(sprite, iconBounds, shortcutVisualState, compact: true);
-                }
+                DrawMainPageShortcutVisual(sprite, iconBounds, paletteTexture, shortcutVisualState);
 
                 labelX = iconBounds.Right + 6;
             }
@@ -813,20 +806,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 Rectangle previewBounds = new(infoBounds.X + 6, infoBounds.Y + 49, 40, 40);
                 sprite.Draw(_highlightTexture, previewBounds, new Color(56, 68, 92, 215));
-                if (selectedPaletteTexture != null)
-                {
-                    Vector2 previewPosition = new(
-                        previewBounds.Center.X - (selectedPaletteTexture.Width * 0.55f * 0.5f),
-                        previewBounds.Center.Y - (selectedPaletteTexture.Height * 0.55f * 0.5f));
-                    sprite.Draw(selectedPaletteTexture, previewPosition, null, Color.White, 0f, Vector2.Zero, 0.55f, SpriteEffects.None, 0f);
-                }
-                else if (selectedShortcutVisual.HasVisual)
-                {
-                    DrawShortcutVisualIcon(sprite, previewBounds, selectedShortcutVisual, compact: false);
-                }
+                DrawMainPageShortcutPreview(sprite, previewBounds, selectedPaletteTexture, selectedShortcutVisual);
 
                 string paletteSlotText = selectedPaletteSlotId >= 0
-                    ? $"Palette slot {selectedPaletteSlotId}: {GetPaletteSlotLabel(selectedPaletteSlotId)}"
+                    ? selectedShortcutVisual.HasDetails
+                        ? $"Palette slot {selectedPaletteSlotId}: {GetPaletteSlotLabel(selectedPaletteSlotId)} plus live {selectedShortcutVisual.Title}"
+                        : $"Palette slot {selectedPaletteSlotId}: {GetPaletteSlotLabel(selectedPaletteSlotId)}"
                     : selectedShortcutVisual.HasDetails
                         ? $"Live shortcut visual: {selectedShortcutVisual.Title}"
                         : "No recovered palette slot for this staged row.";
@@ -909,6 +894,64 @@ namespace HaCreator.MapSimulator.UI
             return _paletteTexturesBySlot.TryGetValue(paletteSlotId, out Texture2D texture)
                 ? texture
                 : null;
+        }
+
+        private void DrawMainPageShortcutVisual(
+            SpriteBatch sprite,
+            Rectangle bounds,
+            Texture2D paletteTexture,
+            ShortcutVisualState shortcutVisualState)
+        {
+            if (paletteTexture != null)
+            {
+                DrawPaletteTexture(sprite, bounds, paletteTexture, 0.5f);
+                if (shortcutVisualState.HasVisual)
+                {
+                    Rectangle overlayBounds = new(bounds.Right - 11, bounds.Bottom - 11, 10, 10);
+                    sprite.Draw(_highlightTexture, overlayBounds, new Color(18, 24, 35, 235));
+                    DrawShortcutVisualIcon(sprite, overlayBounds, shortcutVisualState, compact: true);
+                }
+
+                return;
+            }
+
+            if (shortcutVisualState.HasVisual)
+            {
+                DrawShortcutVisualIcon(sprite, bounds, shortcutVisualState, compact: true);
+            }
+        }
+
+        private void DrawMainPageShortcutPreview(
+            SpriteBatch sprite,
+            Rectangle bounds,
+            Texture2D paletteTexture,
+            ShortcutVisualState shortcutVisualState)
+        {
+            if (paletteTexture != null)
+            {
+                DrawPaletteTexture(sprite, bounds, paletteTexture, 0.55f);
+                if (shortcutVisualState.HasVisual)
+                {
+                    Rectangle overlayBounds = new(bounds.Right - 18, bounds.Bottom - 18, 16, 16);
+                    sprite.Draw(_highlightTexture, overlayBounds, new Color(18, 24, 35, 235));
+                    DrawShortcutVisualIcon(sprite, overlayBounds, shortcutVisualState, compact: true);
+                }
+
+                return;
+            }
+
+            if (shortcutVisualState.HasVisual)
+            {
+                DrawShortcutVisualIcon(sprite, bounds, shortcutVisualState, compact: false);
+            }
+        }
+
+        private static void DrawPaletteTexture(SpriteBatch sprite, Rectangle bounds, Texture2D paletteTexture, float scale)
+        {
+            Vector2 previewPosition = new(
+                bounds.Center.X - (paletteTexture.Width * scale * 0.5f),
+                bounds.Center.Y - (paletteTexture.Height * scale * 0.5f));
+            sprite.Draw(paletteTexture, previewPosition, null, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 
         private static string GetPaletteSlotLabel(int paletteSlotId)

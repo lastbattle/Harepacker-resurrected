@@ -70,6 +70,18 @@ namespace HaCreator.MapSimulator.Interaction
         public bool ClientPremiumFlag { get; }
     }
 
+    internal readonly struct ReviveOwnerRespawnPointResolution
+    {
+        public ReviveOwnerRespawnPointResolution(Vector2 point, ReviveOwnerRespawnPointSource source)
+        {
+            Point = point;
+            Source = source;
+        }
+
+        public Vector2 Point { get; }
+        public ReviveOwnerRespawnPointSource Source { get; }
+    }
+
     internal sealed class ReviveOwnerSnapshot
     {
         public bool IsOpen { get; init; }

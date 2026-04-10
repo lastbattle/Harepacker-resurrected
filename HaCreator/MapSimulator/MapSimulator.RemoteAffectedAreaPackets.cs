@@ -161,6 +161,7 @@ namespace HaCreator.MapSimulator
             int currentTime,
             System.Collections.Generic.ISet<int> activeProjectedSupportAreaIds)
         {
+            bool preferPvpLevelData = ShouldUseRemoteAffectedAreaPvpLevelData();
             SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
             if (skill == null)
             {
@@ -168,8 +169,8 @@ namespace HaCreator.MapSimulator
             }
 
             SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
-            SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
-            SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, supportSkills);
+            SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel, preferPvpLevelData);
+            SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, preferPvpLevelData, supportSkills);
             SkillLevelData effectiveLevelData = supportLevelData ?? levelData;
             if (effectiveLevelData == null)
             {
@@ -185,13 +186,20 @@ namespace HaCreator.MapSimulator
                 activeProjectedSupportAreaIds);
 
             RemoteAffectedAreaSkillRuntime[] hostileSkillRuntimes =
-                ResolveRemoteAffectedAreaHostileSkillRuntimes(skill, levelData, area.SkillLevel, supportSkills);
+                ResolveRemoteAffectedAreaHostileSkillRuntimes(skill, levelData, area.SkillLevel, preferPvpLevelData, supportSkills);
             if (hostileSkillRuntimes.Length == 0)
             {
                 return;
             }
 
-            if (_mobPool?.ActiveMobs == null || _mobPool.ActiveMobs.Count == 0)
+            PlayerCharacter player = _playerManager?.Player;
+            bool canAffectLocalPlayer =
+                player != null
+                && player.IsAlive
+                && area.Contains(player.X, player.Y)
+                && IsAffectedAreaOwnerEnemyInPvpContext(area.OwnerId);
+            bool canAffectMobs = _mobPool?.ActiveMobs != null && _mobPool.ActiveMobs.Count > 0;
+            if (!canAffectLocalPlayer && !canAffectMobs)
             {
                 return;
             }
@@ -204,7 +212,17 @@ namespace HaCreator.MapSimulator
             }
 
             SkillManager skillManager = _playerManager?.Skills;
-            if (skillManager == null)
+            if (skillManager == null && canAffectLocalPlayer)
+            {
+                return;
+            }
+
+            if (canAffectLocalPlayer)
+            {
+                ApplyRemoteHostileAffectedAreaDamageToLocalPlayer(hostileSkillRuntimes, currentTime);
+            }
+
+            if (!canAffectMobs || skillManager == null)
             {
                 return;
             }
@@ -380,6 +398,7 @@ namespace HaCreator.MapSimulator
 
         private static SkillLevelData ResolveRemoteAffectedAreaSupportLevelData(
             SkillLevelData primaryLevelData,
+            bool preferPvpLevelData,
             params SkillData[] supportSkills)
         {
             if (supportSkills == null || supportSkills.Length == 0)
@@ -400,7 +419,10 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(supportSkill, primaryLevelData?.Level ?? 1);
+                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(
+                    supportSkill,
+                    primaryLevelData?.Level ?? 1,
+                    preferPvpLevelData);
                 if (supportLevelData != null)
                 {
                     levelDataEntries.Add(supportLevelData);
@@ -423,7 +445,10 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(supportSkill, primaryLevelData?.Level ?? 1);
+                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(
+                    supportSkill,
+                    primaryLevelData?.Level ?? 1,
+                    preferPvpLevelData);
                 derivedDamageReductionRate = Math.Max(
                     derivedDamageReductionRate,
                     RemoteAffectedAreaSupportResolver.ResolveDerivedProjectedDamageReductionRate(supportSkill, supportLevelData));
@@ -443,6 +468,7 @@ namespace HaCreator.MapSimulator
             SkillData primarySkill,
             SkillLevelData primaryLevelData,
             int skillLevel,
+            bool preferPvpLevelData,
             params SkillData[] supportSkills)
         {
             var skillEntries = new System.Collections.Generic.List<(SkillData Skill, SkillLevelData LevelData)>();
@@ -461,7 +487,10 @@ namespace HaCreator.MapSimulator
                         continue;
                     }
 
-                    SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(supportSkill, skillLevel);
+                    SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(
+                        supportSkill,
+                        skillLevel,
+                        preferPvpLevelData);
                     if (supportLevelData != null)
                     {
                         skillEntries.Add((supportSkill, supportLevelData));
@@ -485,29 +514,15 @@ namespace HaCreator.MapSimulator
             return hostileRuntimes;
         }
 
-        private static SkillLevelData ResolveRemoteAffectedAreaSkillLevel(SkillData skill, int level)
+        private static SkillLevelData ResolveRemoteAffectedAreaSkillLevel(
+            SkillData skill,
+            int level,
+            bool preferPvpLevelData)
         {
-            if (skill == null)
-            {
-                return null;
-            }
-
-            SkillLevelData levelData = skill.GetLevel(Math.Max(1, level));
-            if (levelData != null)
-            {
-                return levelData;
-            }
-
-            for (int i = 1; i <= Math.Max(1, skill.MaxLevel); i++)
-            {
-                levelData = skill.GetLevel(i);
-                if (levelData != null)
-                {
-                    return levelData;
-                }
-            }
-
-            return null;
+            return RemoteAffectedAreaSupportResolver.ResolveRemoteAffectedAreaSkillLevel(
+                skill,
+                level,
+                preferPvpLevelData);
         }
 
         private static int ResolveRemoteAffectedAreaFallbackDamage(SkillData skill, SkillLevelData levelData)
@@ -561,6 +576,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            bool preferPvpLevelData = ShouldUseRemoteAffectedAreaPvpLevelData();
             int localPlayerId = player.Build?.Id ?? 0;
             foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas)
             {
@@ -573,8 +589,8 @@ namespace HaCreator.MapSimulator
 
                 SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
                 SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
-                SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
-                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, supportSkills);
+                SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel, preferPvpLevelData);
+                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, preferPvpLevelData, supportSkills);
                 SkillLevelData effectiveLevelData = supportLevelData ?? levelData;
                 if (!RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill)
                     || !RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
@@ -593,6 +609,37 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private void ApplyRemoteHostileAffectedAreaDamageToLocalPlayer(
+            RemoteAffectedAreaSkillRuntime[] hostileSkillRuntimes,
+            int currentTime)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            SkillManager skillManager = _playerManager?.Skills;
+            if (player == null || !player.IsAlive || skillManager == null || hostileSkillRuntimes == null || hostileSkillRuntimes.Length == 0)
+            {
+                return;
+            }
+
+            int incomingDamage = 0;
+            for (int i = 0; i < hostileSkillRuntimes.Length; i++)
+            {
+                incomingDamage += ResolveRemoteAffectedAreaFallbackDamage(
+                    hostileSkillRuntimes[i].Skill,
+                    hostileSkillRuntimes[i].LevelData);
+            }
+
+            if (incomingDamage <= 0)
+            {
+                return;
+            }
+
+            int resolvedDamage = skillManager.ResolveIncomingDamageAfterActiveBuffs(incomingDamage, currentTime);
+            if (resolvedDamage > 0)
+            {
+                player.TakeDamage(resolvedDamage, 0f, 0f);
+            }
         }
 
         private void ApplyRemoteAffectedAreaDamageShareToOwner(int areaObjectId, int sharedDamage, int currentTime)
@@ -652,6 +699,41 @@ namespace HaCreator.MapSimulator
                 && carnival.TryResolveCharacterTeam(actor.Name, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
             {
                 return ownerCarnivalTeam == carnival.LocalTeam;
+            }
+
+            return false;
+        }
+
+        private bool ShouldUseRemoteAffectedAreaPvpLevelData()
+        {
+            return _specialFieldRuntime?.SpecialEffects?.Battlefield?.IsActive == true
+                   || _specialFieldRuntime?.Minigames?.MonsterCarnival?.IsVisible == true;
+        }
+
+        private bool IsAffectedAreaOwnerEnemyInPvpContext(int ownerId)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            int localPlayerId = player?.Build?.Id ?? 0;
+            if (ownerId <= 0 || localPlayerId <= 0 || ownerId == localPlayerId)
+            {
+                return false;
+            }
+
+            Effects.BattlefieldField battlefield = _specialFieldRuntime?.SpecialEffects?.Battlefield;
+            if (battlefield?.IsActive == true
+                && battlefield.LocalTeamId.HasValue
+                && battlefield.TryGetAssignedTeamId(ownerId, out int ownerBattlefieldTeamId))
+            {
+                return ownerBattlefieldTeamId != battlefield.LocalTeamId.Value;
+            }
+
+            Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            if (carnival?.IsVisible == true
+                && _remoteUserPool.TryGetActor(ownerId, out RemoteUserActor actor)
+                && !string.IsNullOrWhiteSpace(actor?.Name)
+                && carnival.TryResolveCharacterTeam(actor.Name, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
+            {
+                return ownerCarnivalTeam != carnival.LocalTeam;
             }
 
             return false;

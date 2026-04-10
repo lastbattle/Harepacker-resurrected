@@ -15,6 +15,9 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public sealed class InGameConfirmDialogWindow : UIWindowBase
     {
+        private const int MessengerInviteAnchorX = 389;
+        private const int MessengerInviteBottomOffset = 113;
+        private const int MessengerInviteStackStep = 5;
         private const int TextOffsetX = 17;
         private const int TitleOffsetY = 13;
         private const int BodyStartY = 31;
@@ -30,7 +33,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly int _screenHeight;
         private readonly UIObject _confirmButton;
         private readonly UIObject _cancelButton;
+        private readonly IDXObject _defaultFrame;
         private readonly Texture2D _defaultIcon;
+        private readonly IDXObject _messengerInviteFrame;
+        private readonly Texture2D _messengerInviteIcon;
         private readonly List<string> _wrappedLines = new();
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
@@ -46,6 +52,8 @@ namespace HaCreator.MapSimulator.UI
             UIObject confirmButton,
             UIObject cancelButton,
             Texture2D defaultIcon,
+            IDXObject messengerInviteFrame,
+            Texture2D messengerInviteIcon,
             int screenWidth,
             int screenHeight)
             : base(frame ?? throw new ArgumentNullException(nameof(frame)))
@@ -55,7 +63,10 @@ namespace HaCreator.MapSimulator.UI
             _screenHeight = screenHeight;
             _confirmButton = RegisterButton(confirmButton, isConfirm: true);
             _cancelButton = RegisterButton(cancelButton, isConfirm: false);
+            _defaultFrame = frame;
             _defaultIcon = defaultIcon;
+            _messengerInviteFrame = messengerInviteFrame ?? frame;
+            _messengerInviteIcon = messengerInviteIcon ?? defaultIcon;
             ConfigureButtons();
             CenterFrame();
         }
@@ -79,9 +90,22 @@ namespace HaCreator.MapSimulator.UI
             _body = body ?? string.Empty;
             _footer = footer ?? string.Empty;
             _presentation = presentation ?? InGameConfirmDialogPresentation.Default;
+            Frame = _presentation.Frame ?? _defaultFrame;
             _icon = _presentation.Icon ?? (_presentation.ShowIcon ? _defaultIcon : null);
             CenterFrame();
             ConfigureButtons();
+        }
+
+        public InGameConfirmDialogPresentation CreateMessengerInvitePresentation(int stackIndex = 0)
+        {
+            int resolvedStackIndex = Math.Max(0, stackIndex);
+            return new InGameConfirmDialogPresentation(
+                InGameConfirmDialogAnchorMode.BottomLeft,
+                MessengerInviteAnchorX,
+                MessengerInviteBottomOffset + (resolvedStackIndex * MessengerInviteStackStep),
+                ShowIcon: true,
+                Icon: _messengerInviteIcon ?? _defaultIcon,
+                Frame: _messengerInviteFrame ?? _defaultFrame);
         }
 
         public override void Show()
@@ -329,7 +353,8 @@ namespace HaCreator.MapSimulator.UI
         int AnchorX,
         int BottomOffset,
         bool ShowIcon = false,
-        Texture2D Icon = null)
+        Texture2D Icon = null,
+        IDXObject Frame = null)
     {
         public static InGameConfirmDialogPresentation Default { get; } = new(InGameConfirmDialogAnchorMode.Center, 0, 0);
     }

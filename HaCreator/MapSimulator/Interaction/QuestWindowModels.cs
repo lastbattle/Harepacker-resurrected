@@ -259,6 +259,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsReadyToComplete { get; init; }
         public bool IsRecentlyUpdated { get; init; }
         public bool IsAutoRegisterCandidate { get; init; }
+        public bool IsAutoRegisterActive { get; init; }
         public IReadOnlyList<QuestLogLineSnapshot> RequirementLines { get; init; } = Array.Empty<QuestLogLineSnapshot>();
         public IReadOnlyList<string> IssueLines { get; init; } = Array.Empty<string>();
         public string DemandText { get; init; } = string.Empty;

@@ -48,6 +48,11 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ParcelMemoLength = ParcelFixedBodyLength - ParcelMemoOffset;
         private const int MinimumMemoCandidateLength = 4;
         private const int MinimumAttachmentBodyLength = sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long) + sizeof(long);
+        private const byte ParcelStateReadFlag = 1 << 0;
+        private const byte ParcelStateKeepFlag = 1 << 1;
+        private const byte ParcelStateClaimedFlag = 1 << 2;
+        private const byte ParcelStateHasItemFlag = 1 << 3;
+        private const byte ParcelStateHasMesoFlag = 1 << 4;
 
         internal static bool TryDecodeSessionPayload(ReadOnlySpan<byte> payload, out PacketOwnedParcelSessionDecodeResult result, out string error)
         {
@@ -128,8 +133,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             byte[] parcelBytes = reader.ReadBytes(ParcelFixedBodyLength);
-            byte postBodyItemPresenceFlag = reader.ReadByte();
-            bool hasItemAttachment = postBodyItemPresenceFlag != 0;
+            byte stateFlags = reader.ReadByte();
+            bool isRead = HasStateFlag(stateFlags, ParcelStateReadFlag);
+            bool isKept = HasStateFlag(stateFlags, ParcelStateKeepFlag);
+            bool isAttachmentClaimed = HasStateFlag(stateFlags, ParcelStateClaimedFlag);
+            bool hasItemAttachment = HasStateFlag(stateFlags, ParcelStateHasItemFlag);
+            bool hasMesoAttachment = HasStateFlag(stateFlags, ParcelStateHasMesoFlag);
 
             int itemId = 0;
             int quantity = 0;
@@ -150,7 +159,6 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentMeso = parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
                 ? Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(ParcelMesoOffset, sizeof(int))))
                 : 0;
-            bool hasMesoAttachment = attachmentMeso > 0;
             if (!hasMesoAttachment)
             {
                 attachmentMeso = 0;
@@ -166,8 +174,11 @@ namespace HaCreator.MapSimulator.Interaction
                 MemoText = memoText,
                 IsQuickDelivery = isQuickDelivery,
                 ExpirationTimestampUtc = expirationTimestampUtc,
-                StateFlags = 0,
-                PostBodyItemPresenceFlag = postBodyItemPresenceFlag,
+                IsRead = isRead,
+                IsKept = isKept,
+                IsAttachmentClaimed = isAttachmentClaimed,
+                StateFlags = stateFlags,
+                PostBodyItemPresenceFlag = stateFlags,
                 HasItemAttachment = hasItemAttachment,
                 HasMesoAttachment = hasMesoAttachment,
                 AttachmentItemId = Math.Max(0, itemId),
@@ -176,6 +187,11 @@ namespace HaCreator.MapSimulator.Interaction
                 HasUndecodedItemAttachment = hasUndecodedItemAttachment
             };
             return true;
+        }
+
+        private static bool HasStateFlag(byte stateFlags, byte flag)
+        {
+            return (stateFlags & flag) != 0;
         }
 
         private static bool TryReadItemAttachment(BinaryReader reader, out int itemId, out int quantity, out string error)

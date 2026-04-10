@@ -362,6 +362,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, string> _questRecordValues = new();
         private readonly Dictionary<int, int> _trackedItems = new();
         private readonly Dictionary<int, long> _questAlarmUpdateTicks = new();
+        private readonly Dictionary<int, long> _questAlarmAutoRegisterTicks = new();
         private readonly Dictionary<int, string> _questMateNames = new();
         private readonly HashSet<int> _packetOwnedAutoStartQuestRegistrations = new();
         private int _recentlyViewedQuestId;
@@ -390,6 +391,7 @@ namespace HaCreator.MapSimulator.Interaction
         private Func<int, IReadOnlyList<int>> _npcMapIdsProvider;
         private bool _definitionsLoaded;
         private const long QuestAlarmRecentUpdateWindowMs = 8000;
+        private const long QuestAlarmAutoRegisterActiveWindowMs = 10L * 60L * 1000L;
         private const int QuestDeliveryAcceptCashItemId = 5660000;
         private const int QuestDeliveryCompleteCashItemId = 5660001;
 
@@ -614,6 +616,23 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsPacketOwnedAutoStartQuestRegistered(int questId)
         {
             return questId > 0 && _packetOwnedAutoStartQuestRegistrations.Contains(questId);
+        }
+
+        public void PrimeQuestAlarmAutoRegisterActivity(IEnumerable<int> questIds)
+        {
+            if (questIds == null)
+            {
+                return;
+            }
+
+            long now = Environment.TickCount64;
+            foreach (int questId in questIds)
+            {
+                if (questId > 0)
+                {
+                    _questAlarmAutoRegisterTicks[questId] = now;
+                }
+            }
         }
 
         public void RecordMobKill(MobInstance mobInstance)
@@ -987,6 +1006,50 @@ namespace HaCreator.MapSimulator.Interaction
         public bool HasNpcClientActionSelectionContext()
         {
             return _progress.Count > 0 || _questRecordValues.Count > 0;
+        }
+
+        public int GetNpcClientActionSelectionContextStamp(CharacterGender? localPlayerGender = null)
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = (hash * 31) + (HasNpcClientActionSelectionContext() ? 1 : 0);
+                hash = (hash * 31) + (int)(localPlayerGender ?? 0);
+                hash = (hash * 31) + _progress.Count;
+                hash = (hash * 31) + _questRecordValues.Count;
+
+                foreach ((int questId, QuestProgress progress) in _progress.OrderBy(static pair => pair.Key))
+                {
+                    hash = (hash * 31) + questId;
+                    hash = (hash * 31) + (int)(progress?.State ?? QuestStateType.Not_Started);
+                }
+
+                foreach ((int questId, string recordValue) in _questRecordValues.OrderBy(static pair => pair.Key))
+                {
+                    hash = (hash * 31) + questId;
+                    hash = AppendOrdinalStringHash(hash, recordValue);
+                }
+
+                return hash;
+            }
+        }
+
+        private static int AppendOrdinalStringHash(int hash, string value)
+        {
+            unchecked
+            {
+                if (string.IsNullOrEmpty(value))
+                {
+                    return (hash * 31) + 1;
+                }
+
+                for (int i = 0; i < value.Length; i++)
+                {
+                    hash = (hash * 31) + value[i];
+                }
+
+                return hash;
+            }
         }
 
         public IReadOnlyList<QuestDeliveryEntrySnapshot> BuildQuestDeliverySnapshot(
@@ -1659,6 +1722,7 @@ namespace HaCreator.MapSimulator.Interaction
                     build,
                     messages,
                     out string actionFailureMessage,
+                    questId: questId,
                     rewardResolution.GrantedItems,
                     definition.StartPetRequirements,
                     definition.StartPetRecallLimit,
@@ -1684,7 +1748,9 @@ namespace HaCreator.MapSimulator.Interaction
                 StateChanged = true,
                 QuestId = questId,
                 Messages = messages,
-                PublishedScriptNames = definition.StartScriptNames
+                PublishedScriptNames = BuildPublishedScriptNames(
+                    definition.StartScriptNames,
+                    definition.StartActions?.NpcActionName)
             };
         }
 
@@ -1723,7 +1789,9 @@ namespace HaCreator.MapSimulator.Interaction
                 StateChanged = true,
                 QuestId = questId,
                 Messages = messages,
-                PublishedScriptNames = definition.EndScriptNames
+                PublishedScriptNames = BuildPublishedScriptNames(
+                    definition.EndScriptNames,
+                    definition.EndActions?.NpcActionName)
             };
         }
 
@@ -1821,6 +1889,7 @@ namespace HaCreator.MapSimulator.Interaction
                     build,
                     messages,
                     out string actionFailureMessage,
+                    questId: questId,
                     rewardResolution.GrantedItems,
                     definition.EndPetRequirements,
                     definition.EndPetRecallLimit,
@@ -1927,6 +1996,7 @@ namespace HaCreator.MapSimulator.Interaction
                         IsReadyToComplete = issues.Count == 0,
                         IsRecentlyUpdated = IsQuestAlarmRecentlyUpdated(item.Definition.QuestId),
                         IsAutoRegisterCandidate = HasClientQuestAlarmAutoRegisterProgress(item.Definition, progress),
+                        IsAutoRegisterActive = IsQuestAlarmAutoRegisterActive(item.Definition, progress),
                         RequirementLines = BuildRequirementLines(item.Definition, build, QuestStateType.Started),
                         IssueLines = issues,
                         DemandText = NpcDialogueTextFormatter.Format(item.Definition.DemandSummary, CreateDialogueFormattingContext(questId: item.Definition.QuestId))
@@ -2548,6 +2618,7 @@ namespace HaCreator.MapSimulator.Interaction
                         build,
                         messages,
                         out string actionFailureMessage,
+                        questId: questId,
                         rewardResolution.GrantedItems,
                         definition.StartPetRequirements,
                         definition.StartPetRecallLimit,
@@ -2573,7 +2644,9 @@ namespace HaCreator.MapSimulator.Interaction
                     PreferredQuestId = questId,
                     NpcActionName = definition.StartActions?.NpcActionName ?? string.Empty,
                     Messages = messages,
-                    PublishedScriptNames = definition.StartScriptNames
+                    PublishedScriptNames = BuildPublishedScriptNames(
+                        definition.StartScriptNames,
+                        definition.StartActions?.NpcActionName)
                 };
             }
 
@@ -2648,6 +2721,7 @@ namespace HaCreator.MapSimulator.Interaction
                         build,
                         messages,
                         out string actionFailureMessage,
+                        questId: questId,
                         rewardResolution.GrantedItems,
                         definition.EndPetRequirements,
                         definition.EndPetRecallLimit,
@@ -2671,7 +2745,9 @@ namespace HaCreator.MapSimulator.Interaction
                     PreferredQuestId = definition.EndActions?.NextQuestId,
                     NpcActionName = definition.EndActions?.NpcActionName ?? string.Empty,
                     Messages = messages,
-                    PublishedScriptNames = definition.EndScriptNames
+                    PublishedScriptNames = BuildPublishedScriptNames(
+                        definition.EndScriptNames,
+                        definition.EndActions?.NpcActionName)
                 };
             }
 
@@ -2781,7 +2857,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext(build, definition.QuestId);
-            string noticeText = BuildClientPacketQuestResultActionNoticeText(actions, build);
+            string noticeText = BuildClientPacketQuestResultActionNoticeText(actions, build, definition.QuestId);
             IReadOnlyList<NpcInteractionPage> fallbackPages = ResolveConversationPages(
                 definition,
                 completionPhase ? QuestStateType.Started : QuestStateType.Not_Started,
@@ -5222,6 +5298,7 @@ namespace HaCreator.MapSimulator.Interaction
             CharacterBuild build,
             ICollection<string> messages,
             out string failureMessage,
+            int questId = 0,
             IReadOnlyList<QuestRewardItem> resolvedGrantedItems = null,
             IReadOnlyList<QuestPetRequirement> petRequirements = null,
             int? petRecallLimit = null,
@@ -5348,7 +5425,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             for (int i = 0; i < actions.Messages.Count; i++)
             {
-                string actionMessage = NormalizeQuestActionMessage(actions.Messages[i], CreateDialogueFormattingContext(build));
+                string actionMessage = NormalizeQuestActionMessage(actions.Messages[i], CreateDialogueFormattingContext(build, questId));
                 if (!string.IsNullOrWhiteSpace(actionMessage))
                 {
                     messages.Add(actionMessage);
@@ -5991,7 +6068,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            _questAlarmUpdateTicks[questId] = Environment.TickCount64;
+            long now = Environment.TickCount64;
+            _questAlarmUpdateTicks[questId] = now;
+            _questAlarmAutoRegisterTicks[questId] = now;
         }
 
         private void MarkQuestAlarmUpdatedForTrackedItem(int itemId)
@@ -6580,6 +6659,30 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 names.Add(parsedNames[i]);
             }
+        }
+
+        internal static IReadOnlyList<string> BuildPublishedScriptNames(
+            IEnumerable<string> scriptNames,
+            params string[] additionalRawScriptNames)
+        {
+            var publishedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (scriptNames != null)
+            {
+                foreach (string scriptName in scriptNames)
+                {
+                    AddParsedScriptNames(publishedNames, scriptName);
+                }
+            }
+
+            if (additionalRawScriptNames != null)
+            {
+                for (int i = 0; i < additionalRawScriptNames.Length; i++)
+                {
+                    AddParsedScriptNames(publishedNames, additionalRawScriptNames[i]);
+                }
+            }
+
+            return publishedNames.Count == 0 ? Array.Empty<string>() : publishedNames.ToArray();
         }
 
         internal static IReadOnlyList<string> ParseScriptNames(string value)
@@ -9625,10 +9728,10 @@ namespace HaCreator.MapSimulator.Interaction
             QuestActionBundle actions = state == QuestStateType.Not_Started
                 ? definition.StartActions
                 : definition.EndActions;
-            return BuildClientPacketQuestResultActionNoticeText(actions, build);
+            return BuildClientPacketQuestResultActionNoticeText(actions, build, definition.QuestId);
         }
 
-        internal string BuildClientPacketQuestResultActionNoticeText(QuestActionBundle actions, CharacterBuild build)
+        internal string BuildClientPacketQuestResultActionNoticeText(QuestActionBundle actions, CharacterBuild build, int questId = 0)
         {
             if (actions == null)
             {
@@ -9636,7 +9739,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
-            IReadOnlyList<string> supplementalLines = BuildClientPacketQuestResultSupplementalActionLines(actions, build);
+            IReadOnlyList<string> supplementalLines = BuildClientPacketQuestResultSupplementalActionLines(actions, build, questId);
             string noticeSummary = string.IsNullOrWhiteSpace(summaryText)
                 ? string.Empty
                 : actions.MesoReward < 0
@@ -9660,7 +9763,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         private List<string> BuildClientPacketQuestResultSupplementalActionLines(
             QuestActionBundle actions,
-            CharacterBuild build)
+            CharacterBuild build,
+            int questId)
         {
             var lines = new List<string>();
             if (actions == null)
@@ -9668,7 +9772,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return lines;
             }
 
-            NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, questId: 0);
+            NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, questId);
             bool actionApplies = MatchesActionJobFilter(actions, build);
 
             lines.AddRange(BuildVisibleQuestActionMetadataLines(actions));
@@ -10650,6 +10754,39 @@ namespace HaCreator.MapSimulator.Interaction
                    (endMobDemandCount > 0 && hasDemandMobProgress) ||
                    (endMesoDemand > 0 && hasCurrentMeso) ||
                    (endQuestDemandCount > 0 && hasPrecedeQuestRecordOrComplete);
+        }
+
+        internal static bool IsQuestAlarmAutoRegisterActiveForTesting(
+            bool hasAutoRegisterProgress,
+            long elapsedSinceActivityMs)
+        {
+            if (!hasAutoRegisterProgress)
+            {
+                return false;
+            }
+
+            if (elapsedSinceActivityMs < 0)
+            {
+                return true;
+            }
+
+            return elapsedSinceActivityMs <= QuestAlarmAutoRegisterActiveWindowMs;
+        }
+
+        private bool IsQuestAlarmAutoRegisterActive(QuestDefinition definition, QuestProgress progress)
+        {
+            if (!HasClientQuestAlarmAutoRegisterProgress(definition, progress))
+            {
+                return false;
+            }
+
+            if (!_questAlarmAutoRegisterTicks.TryGetValue(definition.QuestId, out long lastActivityTick))
+            {
+                return false;
+            }
+
+            long elapsed = Environment.TickCount64 - lastActivityTick;
+            return IsQuestAlarmAutoRegisterActiveForTesting(hasAutoRegisterProgress: true, elapsed);
         }
 
         private static string ResolveNpcName(int npcId)

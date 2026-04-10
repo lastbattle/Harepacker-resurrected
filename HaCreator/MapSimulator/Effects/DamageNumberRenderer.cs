@@ -622,20 +622,34 @@ namespace HaCreator.MapSimulator.Effects
             if (isMiss)
             {
                 PreparedSpriteDrawInfo? missSprite = null;
+                int canvasWidth = 0;
+                int canvasHeight = ResolveCompositeCanvasHeight();
 
                 if (smallDigitSet.SpecialOrigins.TryGetValue(damageString, out Point missOrigin))
                 {
-                    missSprite = new PreparedSpriteDrawInfo(damageString, -missOrigin.X, -missOrigin.Y);
+                    canvasWidth = ResolveSpecialTextWidth(smallDigitSet, damageString);
+                    int canvasOffsetX = canvasWidth > 0
+                        ? (canvasWidth / 2) - missOrigin.X
+                        : -missOrigin.X;
+                    missSprite = new PreparedSpriteDrawInfo(
+                        damageString,
+                        canvasOffsetX,
+                        DamageNumberConstants.COMPOSITE_PLACEMENT_OFFSET_Y - missOrigin.Y);
                 }
 
                 return new PreparedDamageNumberVisual(
                     damageString,
-                    0,
-                    DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX,
+                    canvasWidth,
+                    canvasHeight,
                     Array.Empty<PreparedDigitDrawInfo>(),
                     missSprite,
                     null,
-                    CreateEmptyCompositionTrace());
+                    BuildRecoveredSpecialTextCompositionTrace(
+                        damageString,
+                        canvasWidth,
+                        canvasHeight,
+                        missSprite,
+                        smallDigitSet));
             }
 
             (DigitLayoutEntry[] layoutEntries, int totalWidth) = BuildDigitLayout(
@@ -734,6 +748,81 @@ namespace HaCreator.MapSimulator.Effects
                 insertCommands,
                 criticalBanner.HasValue,
                 criticalBanner);
+        }
+
+        private static PreparedDamageNumberCompositionTrace BuildRecoveredSpecialTextCompositionTrace(
+            string spriteName,
+            int canvasWidth,
+            int canvasHeight,
+            PreparedSpriteDrawInfo? specialSprite,
+            DamageNumberDigitSet digitSet)
+        {
+            if (!specialSprite.HasValue)
+            {
+                return new PreparedDamageNumberCompositionTrace(
+                    new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                    Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
+                    KeepsCriticalBannerOnSeparateLayer: false,
+                    CriticalBannerLayerSprite: null);
+            }
+
+            Point sourceOrigin = digitSet?.SpecialOrigins.TryGetValue(spriteName, out Point origin) == true
+                ? origin
+                : Point.Zero;
+            int sourceWidth = ResolveSpecialTextWidth(digitSet, spriteName);
+            int sourceHeight = ResolveSpecialTextHeight(digitSet, spriteName);
+            PreparedDamageNumberCompositionInsertCommand insertCommand = new(
+                digitSet?.Name ?? string.Empty,
+                spriteName ?? string.Empty,
+                UseLargeDigitSet: false,
+                sourceOrigin,
+                sourceWidth,
+                sourceHeight,
+                new Point(specialSprite.Value.DrawOffsetX, specialSprite.Value.DrawOffsetY));
+
+            return new PreparedDamageNumberCompositionTrace(
+                new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
+                new[] { insertCommand },
+                KeepsCriticalBannerOnSeparateLayer: false,
+                CriticalBannerLayerSprite: null);
+        }
+
+        private static int ResolveSpecialTextWidth(DamageNumberDigitSet digitSet, string spriteName)
+        {
+            if (digitSet != null
+                && !string.IsNullOrWhiteSpace(spriteName))
+            {
+                if (digitSet.SpecialWidths.TryGetValue(spriteName, out int width))
+                {
+                    return width;
+                }
+
+                if (digitSet.SpecialTextures.TryGetValue(spriteName, out Texture2D texture))
+                {
+                    return texture?.Width ?? 0;
+                }
+            }
+
+            return 0;
+        }
+
+        private static int ResolveSpecialTextHeight(DamageNumberDigitSet digitSet, string spriteName)
+        {
+            if (digitSet != null
+                && !string.IsNullOrWhiteSpace(spriteName))
+            {
+                if (digitSet.SpecialHeights.TryGetValue(spriteName, out int height))
+                {
+                    return height;
+                }
+
+                if (digitSet.SpecialTextures.TryGetValue(spriteName, out Texture2D texture))
+                {
+                    return texture?.Height ?? 0;
+                }
+            }
+
+            return 0;
         }
 
         internal static int ResolveCompositeCanvasHeight()

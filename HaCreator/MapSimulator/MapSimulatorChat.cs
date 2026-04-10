@@ -1124,6 +1124,22 @@ namespace HaCreator.MapSimulator
 
         public void SelectWhisperTargetPickerCandidate(string whisperTarget, int tickCount)
         {
+            if (_isWhisperTargetPickerActive
+                && _whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal)
+            {
+                string normalizedTarget = NormalizeChatSpeakerCandidate(whisperTarget);
+                if (string.IsNullOrWhiteSpace(normalizedTarget))
+                {
+                    return;
+                }
+
+                _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+                _isWhisperTargetPickerComboDropdownOpen = false;
+                SetInputText(normalizedTarget);
+                SyncWhisperTargetPickerSelectionFromInput();
+                return;
+            }
+
             OpenWhisperTargetPicker(tickCount, whisperTarget, _whisperTargetPickerPresentation);
             ConfirmWhisperTargetPicker(tickCount);
         }

@@ -5,6 +5,14 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
+    internal enum AdminShopPacketOwnedOwnerVisibilityState
+    {
+        Hidden,
+        StagedButHidden,
+        Visible,
+        HiddenByCashShopFamily
+    }
+
     internal sealed class AdminShopPacketOwnedSessionContract
     {
         public bool IsActive { get; private set; }
@@ -33,6 +41,8 @@ namespace HaCreator.MapSimulator.UI
         public string LastOutboundSummary { get; private set; } = string.Empty;
         public string LastOwnerState { get; private set; } = string.Empty;
         public bool AskItemWishlist { get; private set; }
+        public AdminShopPacketOwnedOwnerVisibilityState OwnerVisibilityState { get; private set; }
+            = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
 
         public void BeginOpen(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string ownerState = null)
         {
@@ -46,6 +56,7 @@ namespace HaCreator.MapSimulator.UI
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
+            OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
             NpcTemplateId = snapshot.NpcTemplateId;
             DecodedItemCount = snapshot.CommodityCount;
             TrailingByteCount = snapshot.TrailingByteCount;
@@ -65,6 +76,7 @@ namespace HaCreator.MapSimulator.UI
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
+            OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily;
             DecodedItemCount = 0;
             NpcTemplateId = 0;
             TrailingByteCount = 0;
@@ -87,6 +99,7 @@ namespace HaCreator.MapSimulator.UI
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
             WouldDisconnect = false;
+            OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
             AskItemWishlist = snapshot.AskItemWishlist;
             NpcTemplateId = Math.Max(0, snapshot.NpcTemplateId);
             DecodedItemCount = Math.Max(0, snapshot.CommodityCount);
@@ -151,16 +164,20 @@ namespace HaCreator.MapSimulator.UI
         public void RecordOwnerSurfaceShown(string ownerState = null)
         {
             IsOwnerSurfaceVisible = true;
+            OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.Visible;
             if (!string.IsNullOrWhiteSpace(ownerState))
             {
                 LastOwnerState = ownerState;
             }
         }
 
-        public void RecordOwnerSurfaceHidden(string ownerState = null)
+        public void RecordOwnerSurfaceHidden(
+            string ownerState = null,
+            AdminShopPacketOwnedOwnerVisibilityState visibilityState = AdminShopPacketOwnedOwnerVisibilityState.Hidden)
         {
             bool shouldRefreshOwnerState = IsActive || IsOwnerSurfaceVisible;
             IsOwnerSurfaceVisible = false;
+            OwnerVisibilityState = visibilityState;
             if (shouldRefreshOwnerState && !string.IsNullOrWhiteSpace(ownerState))
             {
                 LastOwnerState = ownerState;
@@ -202,6 +219,7 @@ namespace HaCreator.MapSimulator.UI
                 AskItemWishlist ? "1" : "0",
                 LastSubtype,
                 LastResultCode,
+                ((int)OwnerVisibilityState).ToString(),
                 LastNotice ?? string.Empty,
                 LastOutboundSummary ?? string.Empty,
                 LastOwnerState ?? string.Empty);
@@ -244,11 +262,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<string> lines = new(3);
-            string visibilityText = IsOwnerSurfaceVisible
-                ? "owner visible"
-                : IsActive
-                    ? "owner staged"
-                    : "owner hidden";
+            string visibilityText = DescribeOwnerVisibility();
             string blockedText = BlockedByOwnerCount > 0
                 ? $", blocked {BlockedByOwnerCount}"
                 : string.Empty;
@@ -305,11 +319,7 @@ namespace HaCreator.MapSimulator.UI
             string waitText = IsWaitingForResult
                 ? ", waiting for packet 366"
                 : string.Empty;
-            string visibilityText = IsOwnerSurfaceVisible
-                ? "owner surface visible"
-                : IsActive
-                    ? "owner surface staged but hidden"
-                    : "owner surface hidden";
+            string visibilityText = DescribeOwnerVisibility();
             string ownerText = string.IsNullOrWhiteSpace(LastOwnerState)
                 ? "owner state unresolved"
                 : LastOwnerState;
@@ -341,6 +351,17 @@ namespace HaCreator.MapSimulator.UI
             return WouldDisconnect
                 ? "disconnect hazard recorded"
                 : "no disconnect hazard";
+        }
+
+        private string DescribeOwnerVisibility()
+        {
+            return OwnerVisibilityState switch
+            {
+                AdminShopPacketOwnedOwnerVisibilityState.Visible => "owner surface visible",
+                AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden => "owner surface staged but hidden",
+                AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily => "owner surface hidden by Cash Shop family",
+                _ => "owner surface hidden"
+            };
         }
 
         private string DescribeWishlistSearchPhase()

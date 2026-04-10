@@ -439,9 +439,40 @@ namespace HaCreator.MapSimulator.Fields
         private static int GetClientJobClassGrade(int jobId)
         {
             // WZ noSkill/class entries are authored as advancement tiers, not full job ids.
+            jobId = Math.Abs(jobId);
             if (jobId < 100)
             {
                 return 0;
+            }
+
+            if (jobId >= 800 && jobId < 1000)
+            {
+                return 1;
+            }
+
+            if (jobId == 2001)
+            {
+                return 1;
+            }
+
+            if (jobId >= 430 && jobId <= 434)
+            {
+                return Math.Min(4, (jobId - 430) + 2);
+            }
+
+            if (jobId >= 2200 && jobId <= 2218)
+            {
+                if (jobId == 2200)
+                {
+                    return 1;
+                }
+
+                if (jobId == 2210)
+                {
+                    return 2;
+                }
+
+                return Math.Min(4, (jobId - 2210) + 2);
             }
 
             int branchDigit = jobId % 10;

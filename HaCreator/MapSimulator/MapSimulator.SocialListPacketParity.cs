@@ -246,6 +246,8 @@ namespace HaCreator.MapSimulator
                 _socialListOfficialSessionBridge.TryRefreshFromDiscovery(
                     _socialListOfficialSessionBridgeConfiguredListenPort,
                     _socialListOfficialSessionBridgeConfiguredRemotePort,
+                    SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode,
+                    SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode,
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
                     _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode,
                     _socialListOfficialSessionBridgeConfiguredProcessSelector,
@@ -284,6 +286,8 @@ namespace HaCreator.MapSimulator
                 _socialListOfficialSessionBridgeConfiguredListenPort,
                 _socialListOfficialSessionBridgeConfiguredRemoteHost,
                 _socialListOfficialSessionBridgeConfiguredRemotePort,
+                SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode,
+                SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode);
         }
@@ -305,6 +309,8 @@ namespace HaCreator.MapSimulator
             _socialListOfficialSessionBridge.TryRefreshFromDiscovery(
                 _socialListOfficialSessionBridgeConfiguredListenPort,
                 _socialListOfficialSessionBridgeConfiguredRemotePort,
+                SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode,
+                SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredProcessSelector,
@@ -445,6 +451,8 @@ namespace HaCreator.MapSimulator
                     return _socialListOfficialSessionBridge.TryRefreshFromDiscovery(
                         discoverListenPort,
                         discoverRemotePort,
+                        SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode,
+                        SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode,
                         discoverOpcode,
                         discoverOpcode,
                         discoverProcessSelector,

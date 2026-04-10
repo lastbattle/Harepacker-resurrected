@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.UI;
 using MapleLib.PacketLib;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -859,6 +861,52 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class MapleTvMediaIndexResolver
     {
+        internal static int TryResolveConfiguredDefaultMediaIndex(string configuredPathOrToken, IEnumerable<int> availableMediaIndices)
+        {
+            if (string.IsNullOrWhiteSpace(configuredPathOrToken))
+            {
+                return -1;
+            }
+
+            HashSet<int> availableSet = availableMediaIndices?
+                .Where(index => index >= 0)
+                .ToHashSet()
+                ?? new HashSet<int>();
+            if (availableSet.Count == 0)
+            {
+                return -1;
+            }
+
+            string normalized = configuredPathOrToken.Trim().Replace('\\', '/');
+            string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return -1;
+            }
+
+            for (int i = segments.Length - 1; i >= 0; i--)
+            {
+                if (int.TryParse(segments[i], out int directIndex) && availableSet.Contains(directIndex))
+                {
+                    return directIndex;
+                }
+            }
+
+            int tvMediaSegment = Array.FindLastIndex(
+                segments,
+                segment => string.Equals(segment, "TVmedia", StringComparison.OrdinalIgnoreCase));
+            if (tvMediaSegment >= 0 && tvMediaSegment + 1 < segments.Length)
+            {
+                string candidateSegment = segments[tvMediaSegment + 1];
+                if (int.TryParse(candidateSegment, out int branchIndex) && availableSet.Contains(branchIndex))
+                {
+                    return branchIndex;
+                }
+            }
+
+            return -1;
+        }
+
         internal static IReadOnlyList<int> NormalizeAvailableMediaIndices(IReadOnlyList<int> availableMediaIndices, int fallbackDefaultMediaIndex)
         {
             List<int> normalizedIndices = availableMediaIndices?
@@ -932,6 +980,16 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return 1;
+        }
+
+        internal static Rectangle ResolveChatBounds(int mediaIndex, int defaultMediaIndex, IReadOnlyList<int> availableMediaIndices)
+        {
+            return ResolveChatVariantKey(mediaIndex, defaultMediaIndex, availableMediaIndices) switch
+            {
+                0 => MapleTvWindow.StarChatTextBounds,
+                2 => MapleTvWindow.HeartChatTextBounds,
+                _ => MapleTvWindow.DefaultChatTextBounds
+            };
         }
     }
 

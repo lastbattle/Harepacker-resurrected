@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.Interaction
         private PacketGuildUiState? _packetGuildUiState;
         private GuildMarkSelection? _packetGuildMarkSelection;
         private int _packetGuildPoints;
+        private int _packetGuildLevel;
         private readonly List<GuildRankingSeedEntry> _packetGuildRankingEntries = [];
         private GuildDialogPendingRequest? _pendingGuildDialogRequest;
         private int _guildDialogMesoBalance = 10_000_000;
@@ -100,6 +101,7 @@ namespace HaCreator.MapSimulator.Interaction
                     _packetGuildUiState = null;
                     _packetGuildMarkSelection = null;
                     _packetGuildPoints = 0;
+                    _packetGuildLevel = 0;
                 }
             }
 
@@ -429,17 +431,18 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SetPacketGuildPointsAndLevel(int guildPoints, int guildLevel, int guildId)
         {
             _packetGuildPoints = Math.Max(0, guildPoints);
+            _packetGuildLevel = Math.Max(0, guildLevel);
             _packetGuildPointsAndLevelRevision = AdvanceGuildDialogRevision(_packetGuildPointsAndLevelRevision);
             if (_packetGuildUiState.HasValue)
             {
                 PacketGuildUiState guildUi = _packetGuildUiState.Value;
-                _packetGuildUiState = guildUi with { GuildLevel = Math.Max(0, guildLevel) };
+                _packetGuildUiState = guildUi with { GuildLevel = _packetGuildLevel };
             }
 
             _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
-                $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) refreshed guild points={_packetGuildPoints}, level={Math.Max(0, guildLevel)}.";
+                $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) refreshed guild points={_packetGuildPoints}, level={_packetGuildLevel}.";
             TryFinalizePendingGuildDialogRequestFromPacket();
-            return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) refreshed guild {guildId} to Lv. {Math.Max(0, guildLevel)} with {_packetGuildPoints} point(s).";
+            return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) refreshed guild {guildId} to Lv. {_packetGuildLevel} with {_packetGuildPoints} point(s).";
         }
 
         internal string SubmitLocalGuildMarkSelection(GuildMarkSelection selection)
@@ -637,7 +640,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal int? TryGetEffectiveGuildPoints()
         {
-            return _packetGuildUiState.HasValue ? Math.Max(0, _packetGuildPoints) : null;
+            if (_packetGuildUiState.HasValue)
+            {
+                return Math.Max(0, _packetGuildPoints);
+            }
+
+            return _packetGuildPointsAndLevelRevision > 0 ? Math.Max(0, _packetGuildPoints) : null;
         }
 
         private void SyncPacketGuildUiStateFromRoster(SocialListTab tab)
@@ -661,7 +669,7 @@ namespace HaCreator.MapSimulator.Interaction
             _packetGuildUiState = new PacketGuildUiState(
                 hasGuildMembership,
                 hasGuildMembership ? guildName : "No Guild",
-                _packetGuildUiState?.GuildLevel ?? 0);
+                _packetGuildUiState?.GuildLevel ?? _packetGuildLevel);
             _packetGuildRosterRevision = AdvanceGuildDialogRevision(_packetGuildRosterRevision);
             TryFinalizePendingGuildDialogRequestFromPacket();
         }

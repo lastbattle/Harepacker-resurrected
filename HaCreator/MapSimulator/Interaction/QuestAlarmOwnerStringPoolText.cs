@@ -6,11 +6,19 @@ namespace HaCreator.MapSimulator.Interaction
     {
         internal const int TitleFormatStringPoolId = 0xE4C;
         internal const int DeleteNoticeStringPoolId = 0x106F;
+        internal const int AutoRegisterEnabledNoticeStringPoolId = 0x107A;
+        internal const int AutoRegisterDisabledNoticeStringPoolId = 0x107B;
+        internal const int AutoRegisterEnabledTooltipStringPoolId = 0x107C;
+        internal const int AutoRegisterDisabledTooltipStringPoolId = 0x107D;
         internal const int EmptyMaximizeNoticeStringPoolId = 0x18EC;
         internal const int RecentUpdateTooltipStringPoolId = 0x18A8;
 
         private const string TitleFormatFallback = "Quest Helper ({0}/5)";
         private const string DeleteNoticeFallback = "[{0}] It has been excluded from the auto alarm and it will not be automatically reigstered until you re log-on";
+        private const string AutoRegisterEnabledNoticeFallback = "Auto Alarm on";
+        private const string AutoRegisterDisabledNoticeFallback = "Auto Alarm off";
+        private const string AutoRegisterEnabledTooltipFallback = "When you click it, quests in progress will register automatically and if it is not in progress for 10 minutes, it will disappear.";
+        private const string AutoRegisterDisabledTooltipFallback = "When you click it, the quest will not register automatically even when the quest is in progress.";
         private const string EmptyMaximizeNoticeFallback = "There are no quests in the quest helper.";
         private const string RecentUpdateTooltipFallback = "This quest has recent progress updates.";
 
@@ -56,6 +64,22 @@ namespace HaCreator.MapSimulator.Interaction
             return appendFallbackSuffix
                 ? $"{RecentUpdateTooltipFallback} ({MapleStoryStringPool.FormatFallbackLabel(RecentUpdateTooltipStringPoolId)} fallback)"
                 : RecentUpdateTooltipFallback;
+        }
+
+        public static string GetAutoRegisterToggleNotice(bool enabled, bool appendFallbackSuffix = false)
+        {
+            return GetResolvedPlainTextOrFallback(
+                enabled ? AutoRegisterEnabledNoticeStringPoolId : AutoRegisterDisabledNoticeStringPoolId,
+                enabled ? AutoRegisterEnabledNoticeFallback : AutoRegisterDisabledNoticeFallback,
+                appendFallbackSuffix);
+        }
+
+        public static string GetAutoRegisterTooltip(bool enabled, bool appendFallbackSuffix = false)
+        {
+            return GetResolvedPlainTextOrFallback(
+                enabled ? AutoRegisterEnabledTooltipStringPoolId : AutoRegisterDisabledTooltipStringPoolId,
+                enabled ? AutoRegisterEnabledTooltipFallback : AutoRegisterDisabledTooltipFallback,
+                appendFallbackSuffix);
         }
 
         internal static bool IsPlausibleTitleFormat(string text)
@@ -135,9 +159,16 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        private static string GetResolvedOrFallback(int stringPoolId, string fallbackText, bool appendFallbackSuffix)
+        private static string GetResolvedPlainTextOrFallback(int stringPoolId, string fallbackText, bool appendFallbackSuffix)
         {
-            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText, appendFallbackSuffix);
+            if (TryResolve(stringPoolId, out string resolvedText) && IsPlausibleQuestAlarmText(resolvedText))
+            {
+                return resolvedText.Trim();
+            }
+
+            return appendFallbackSuffix
+                ? $"{fallbackText} ({MapleStoryStringPool.FormatFallbackLabel(stringPoolId)} fallback)"
+                : fallbackText;
         }
 
         private static bool IsPlausibleQuestAlarmText(string text)

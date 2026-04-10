@@ -342,7 +342,7 @@ namespace HaCreator.MapSimulator
                 navigationStateText = $"{navigationStateText} {_lastPacketOwnedRankingSummary}";
             }
 
-            return new RankingWindowSnapshot
+            RankingWindowSnapshot snapshot = new RankingWindowSnapshot
             {
                 Title = "Ranking",
                 Subtitle = subtitle,
@@ -356,6 +356,10 @@ namespace HaCreator.MapSimulator
                 LoadingStartTick = _lastRankingOpenTick,
                 Entries = entries
             };
+
+            return ProgressionUtilityParityRules.ApplyPacketOwnedRankingOwnerState(
+                snapshot,
+                _packetOwnedRankingOwnerState);
         }
 
         internal static bool ResolveRankingOwnerRequestPending(bool hasActiveRequest, int lastRankingNavigateTick, int packetOwnedEntryCount)

@@ -2041,6 +2041,18 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public bool TryRollVegaRequestSuccess(EquipSlot slot, int modifierItemId, out bool success)
+        {
+            success = false;
+            if (!TryGetVegaRequestPreview(slot, modifierItemId, out VegaRequestPreview preview))
+            {
+                return false;
+            }
+
+            success = _random.NextDouble() < preview.ModifiedSuccessRate;
+            return true;
+        }
+
         private EnhancementConsumable ResolveModifier(EnhancementConsumable consumable)
         {
             if (_inventory == null || !_preferredModifierItemId.HasValue || consumable == null)

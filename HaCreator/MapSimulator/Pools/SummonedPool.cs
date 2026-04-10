@@ -93,6 +93,12 @@ namespace HaCreator.MapSimulator.Pools
         MobAnimationSet.AttackHitEffectEntry HitEffectEntry,
         string CharDamSoundKey);
 
+    internal readonly record struct PacketOwnedHitMobCandidate(
+        bool IsAlive,
+        bool MatchesObservedAttack,
+        bool MatchesCurrentAttack,
+        int ObservedFrameIndex);
+
     public sealed class SummonedPool
     {
         private const int TeslaCoilSkillId = 35111002;
@@ -811,8 +817,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            ClearPacketOwnedOneTimeAction(state);
-            ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
+            PreparePacketOwnedSkillActionOwner(state);
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state);
             ArmPacketOwnedOneTimeAction(state, currentTime, state.LastSkillAction, isSkillAction: true);
@@ -833,6 +838,7 @@ namespace HaCreator.MapSimulator.Pools
             foreach (PacketOwnedSummonState teslaState in EnumerateOwnerSummonStates(state.OwnerCharacterId)
                          .Where(static candidate => candidate?.Summon?.SkillId == TeslaCoilSkillId && !candidate.Summon.IsPendingRemoval))
             {
+                PreparePacketOwnedSkillActionOwner(teslaState);
                 teslaState.Summon.CurrentAnimationBranchName = state.Summon.CurrentAnimationBranchName;
                 teslaState.Summon.LastAttackAnimationStartTime = currentTime;
                 ArmPacketOwnedOneTimeAction(teslaState, currentTime, state.LastSkillAction, isSkillAction: true);
@@ -841,6 +847,17 @@ namespace HaCreator.MapSimulator.Pools
                     : SummonActorState.Attack;
                 teslaState.Summon.LastStateChangeTime = currentTime;
             }
+        }
+
+        private void PreparePacketOwnedSkillActionOwner(PacketOwnedSummonState state)
+        {
+            if (state?.Summon == null)
+            {
+                return;
+            }
+
+            ClearPacketOwnedOneTimeAction(state);
+            ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
         }
 
         private static void ArmPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
@@ -4282,7 +4299,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string attackAction = $"attack{packet.AttackIndex + 1}";
-            MobItem mob = ResolvePacketHitMob(packet);
+            MobItem mob = ResolvePacketHitMob(packet, attackAction, currentTime);
             PacketOwnedMobAttackFeedbackPresentation presentation = ResolvePacketMobAttackFeedbackPresentation(
                 mob,
                 packet.MobTemplateId,
@@ -4312,7 +4329,7 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private MobItem ResolvePacketHitMob(SummonedHitPacket packet)
+        private MobItem ResolvePacketHitMob(SummonedHitPacket packet, string attackAction, int currentTime)
         {
             if (_mobPool == null || packet.MobTemplateId is not int mobTemplateId || mobTemplateId <= 0)
             {
@@ -4320,9 +4337,92 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string mobTypeId = mobTemplateId.ToString();
-            return _mobPool.GetMobsByType(mobTypeId)
-                .FirstOrDefault(static candidate => candidate?.AI?.IsDead != true)
-                ?? _mobPool.GetMobsByType(mobTypeId).FirstOrDefault();
+            MobItem[] candidates = _mobPool.GetMobsByType(mobTypeId)
+                .ToArray();
+            if (candidates == null || candidates.Length == 0)
+            {
+                return null;
+            }
+
+            int bestCandidateIndex = SelectPacketHitMobCandidateIndex(
+                candidates.Select(candidate => BuildPacketHitMobCandidate(candidate, attackAction, currentTime)).ToArray());
+            return bestCandidateIndex >= 0 && bestCandidateIndex < candidates.Length
+                ? candidates[bestCandidateIndex]
+                : null;
+        }
+
+        internal static PacketOwnedHitMobCandidate BuildPacketHitMobCandidate(
+            MobItem mob,
+            string attackAction,
+            int currentTime)
+        {
+            bool isAlive = mob?.AI?.IsDead != true;
+            bool matchesCurrentAttack = mob != null
+                && !string.IsNullOrWhiteSpace(attackAction)
+                && string.Equals(mob.CurrentAction, attackAction, StringComparison.OrdinalIgnoreCase);
+            int observedFrameIndex = -1;
+            bool matchesObservedAttack = mob?.TryGetRecentAttackFrameIndex(
+                attackAction,
+                currentTime,
+                PacketOwnedHitRetainedAttackFrameWindowMs,
+                out observedFrameIndex) == true;
+            return new PacketOwnedHitMobCandidate(
+                isAlive,
+                matchesObservedAttack,
+                matchesCurrentAttack,
+                matchesObservedAttack ? Math.Max(0, observedFrameIndex) : -1);
+        }
+
+        internal static int SelectPacketHitMobCandidateIndex(IReadOnlyList<PacketOwnedHitMobCandidate> candidates)
+        {
+            if (candidates == null || candidates.Count == 0)
+            {
+                return -1;
+            }
+
+            int bestIndex = -1;
+            PacketOwnedHitMobCandidate bestCandidate = default;
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                PacketOwnedHitMobCandidate candidate = candidates[i];
+                if (bestIndex < 0 || ComparePacketHitMobCandidate(candidate, bestCandidate) > 0)
+                {
+                    bestIndex = i;
+                    bestCandidate = candidate;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        private static int ComparePacketHitMobCandidate(
+            PacketOwnedHitMobCandidate left,
+            PacketOwnedHitMobCandidate right)
+        {
+            int comparison = CompareBool(left.MatchesObservedAttack, right.MatchesObservedAttack);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+
+            comparison = CompareBool(left.IsAlive, right.IsAlive);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+
+            comparison = left.ObservedFrameIndex.CompareTo(right.ObservedFrameIndex);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+
+            return CompareBool(left.MatchesCurrentAttack, right.MatchesCurrentAttack);
+        }
+
+        private static int CompareBool(bool left, bool right)
+        {
+            return left == right ? 0 : left ? 1 : -1;
         }
 
         private void SpawnPacketMobAttackHitEffect(

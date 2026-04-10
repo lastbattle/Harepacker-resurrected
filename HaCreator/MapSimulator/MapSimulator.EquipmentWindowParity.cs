@@ -30,6 +30,10 @@ namespace HaCreator.MapSimulator
             public int MechanicPacketAuthorityDeadlineAtTick { get; set; }
         }
 
+        private readonly record struct CharacterAuthoritySlotParts(
+            CharacterPart VisiblePart,
+            CharacterPart HiddenPart);
+
         private EquipmentChangeSubmission SubmitEquipmentChangeRequest(EquipmentChangeRequest request)
         {
             if (request == null)
@@ -430,26 +434,233 @@ namespace HaCreator.MapSimulator
                 return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, staleReject, out message);
             }
 
-            if (payload.ResultKind != CharacterEquipmentAuthorityResultKind.LocalRequestAccept)
+            if (!TryCreatePacketOwnedCharacterAuthorityResult(request, build, payload, out EquipmentChangeResult acceptedResult, out string rejectReason))
             {
-                message = $"Character equipment authority result kind {payload.ResultKind} is unsupported.";
+                EquipmentChangeResult rejectResult = EquipmentChangeResult.Reject(rejectReason)
+                    .WithCompletionMetadata(
+                        payload.RequestId,
+                        payload.RequestedAtTick,
+                        currTickCount,
+                        payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken());
+                return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, rejectResult, out message);
+            }
+
+            return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, acceptedResult, out message);
+        }
+
+        private bool TryCreatePacketOwnedCharacterAuthorityResult(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            CharacterEquipmentAuthorityPayload payload,
+            out EquipmentChangeResult result,
+            out string rejectReason)
+        {
+            result = null;
+            rejectReason = null;
+            if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.LocalRequestAccept)
+            {
+                result = request.Kind switch
+                {
+                    EquipmentChangeRequestKind.InventoryToCharacter => HandleInventoryToCharacterChange(request, build),
+                    EquipmentChangeRequestKind.CharacterToCharacter => HandleCharacterToCharacterChange(request, build),
+                    EquipmentChangeRequestKind.CharacterToInventory => HandleCharacterToInventoryChange(request, build),
+                    _ => EquipmentChangeResult.Reject("Unsupported character equipment authority request kind.")
+                };
+
+                if (!result.Accepted)
+                {
+                    rejectReason = result.RejectReason;
+                    return false;
+                }
+
+                result = result.WithCompletionMetadata(
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    currTickCount,
+                    payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken());
+                return true;
+            }
+
+            return request.Kind switch
+            {
+                EquipmentChangeRequestKind.InventoryToCharacter => TryCreatePacketOwnedInventoryToCharacterAuthorityResult(
+                    request,
+                    build,
+                    payload,
+                    out result,
+                    out rejectReason),
+                EquipmentChangeRequestKind.CharacterToCharacter => TryCreatePacketOwnedCharacterToCharacterAuthorityResult(
+                    request,
+                    build,
+                    payload,
+                    out result,
+                    out rejectReason),
+                EquipmentChangeRequestKind.CharacterToInventory => TryCreatePacketOwnedCharacterToInventoryAuthorityResult(
+                    request,
+                    build,
+                    payload,
+                    out result,
+                    out rejectReason),
+                _ => FailPacketOwnedCharacterAuthorityResult("Unsupported character equipment authority request kind.", out result, out rejectReason)
+            };
+        }
+
+        private bool TryCreatePacketOwnedInventoryToCharacterAuthorityResult(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            CharacterEquipmentAuthorityPayload payload,
+            out EquipmentChangeResult result,
+            out string rejectReason)
+        {
+            result = null;
+            rejectReason = null;
+            if (!request.TargetEquipSlot.HasValue)
+            {
+                rejectReason = "Packet authority result did not target a character equipment slot.";
                 return false;
             }
 
-            EquipmentChangeResult acceptedResult = request.Kind switch
+            if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
             {
-                EquipmentChangeRequestKind.InventoryToCharacter => HandleInventoryToCharacterChange(request, build),
-                EquipmentChangeRequestKind.CharacterToCharacter => HandleCharacterToCharacterChange(request, build),
-                EquipmentChangeRequestKind.CharacterToInventory => HandleCharacterToInventoryChange(request, build),
-                _ => EquipmentChangeResult.Reject("Unsupported character equipment authority request kind.")
-            };
+                rejectReason = "Inventory runtime is unavailable.";
+                return false;
+            }
 
-            acceptedResult = acceptedResult.WithCompletionMetadata(
-                payload.RequestId,
-                payload.RequestedAtTick,
-                currTickCount,
-                payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken());
-            return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, acceptedResult, out message);
+            IReadOnlyList<InventorySlotData> liveSlots = inventoryWindow.GetSlots(request.SourceInventoryType);
+            if (request.SourceInventoryIndex < 0 || request.SourceInventoryIndex >= liveSlots.Count)
+            {
+                rejectReason = "The source inventory slot changed before the equipment request completed.";
+                return false;
+            }
+
+            InventorySlotData liveSlot = liveSlots[request.SourceInventoryIndex];
+            if (EquipmentChangeRequestValidator.TryGetInventorySourceRejectReason(request, liveSlot, out rejectReason))
+            {
+                return false;
+            }
+
+            EquipSlot targetSlot = request.TargetEquipSlot.Value;
+            HashSet<EquipSlot> affectedSlots = new() { targetSlot };
+            Dictionary<EquipSlot, CharacterAuthoritySlotParts> beforeParts = CaptureCharacterAuthoritySlotParts(build, affectedSlots);
+            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState = CharacterEquipmentPacketParity.CaptureAuthoritySlotStates(build, affectedSlots);
+            if (!TryValidatePacketOwnedCharacterAuthorityScope(request, beforeState, payload, out rejectReason))
+            {
+                return false;
+            }
+
+            if (!CharacterEquipmentPacketParity.TryApplyAuthoritativeState(build, payload.AuthoritySlotStates, out rejectReason))
+            {
+                return false;
+            }
+
+            IReadOnlyList<CharacterPart> displacedParts = ResolvePacketOwnedAuthorityDisplacedParts(beforeParts, payload, targetSlot);
+            result = EquipmentChangeResult.Accept(displacedParts: displacedParts)
+                .WithCompletionMetadata(
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    currTickCount,
+                    payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken());
+            return true;
+        }
+
+        private bool TryCreatePacketOwnedCharacterToCharacterAuthorityResult(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            CharacterEquipmentAuthorityPayload payload,
+            out EquipmentChangeResult result,
+            out string rejectReason)
+        {
+            result = null;
+            rejectReason = null;
+            if (!request.SourceEquipSlot.HasValue || !request.TargetEquipSlot.HasValue)
+            {
+                rejectReason = "Packet authority result did not identify the moved character equipment slots.";
+                return false;
+            }
+
+            CharacterPart liveSourcePart = EquipSlotStateResolver.ResolveDisplayedPart(build, request.SourceEquipSlot.Value);
+            if (liveSourcePart == null || liveSourcePart.ItemId != request.ItemId)
+            {
+                rejectReason = "The equipped item changed before the move request completed.";
+                return false;
+            }
+
+            HashSet<EquipSlot> affectedSlots = new() { request.SourceEquipSlot.Value, request.TargetEquipSlot.Value };
+            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState = CharacterEquipmentPacketParity.CaptureAuthoritySlotStates(build, affectedSlots);
+            if (!TryValidatePacketOwnedCharacterAuthorityScope(request, beforeState, payload, out rejectReason))
+            {
+                return false;
+            }
+
+            if (!CharacterEquipmentPacketParity.TryApplyAuthoritativeState(build, payload.AuthoritySlotStates, out rejectReason))
+            {
+                return false;
+            }
+
+            result = EquipmentChangeResult.Accept()
+                .WithCompletionMetadata(
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    currTickCount,
+                    payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken());
+            return true;
+        }
+
+        private bool TryCreatePacketOwnedCharacterToInventoryAuthorityResult(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            CharacterEquipmentAuthorityPayload payload,
+            out EquipmentChangeResult result,
+            out string rejectReason)
+        {
+            result = null;
+            rejectReason = null;
+            if (!request.SourceEquipSlot.HasValue)
+            {
+                rejectReason = "Packet authority result did not identify the removed character equipment slot.";
+                return false;
+            }
+
+            if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                rejectReason = "Inventory runtime is unavailable.";
+                return false;
+            }
+
+            CharacterPart liveSourcePart = EquipSlotStateResolver.ResolveDisplayedPart(build, request.SourceEquipSlot.Value);
+            if (liveSourcePart == null || liveSourcePart.ItemId != request.ItemId)
+            {
+                rejectReason = "The equipped item changed before the unequip request completed.";
+                return false;
+            }
+
+            InventoryType inventoryType = EquipmentChangeClientParity.ResolveCharacterEquipmentInventoryType(liveSourcePart);
+            if (!inventoryWindow.CanAcceptItem(inventoryType, liveSourcePart.ItemId, 1, maxStackSize: 1))
+            {
+                string inventoryLabel = inventoryType == InventoryType.CASH ? "cash" : "equipment";
+                rejectReason = $"There is no free {inventoryLabel} inventory slot for this item.";
+                return false;
+            }
+
+            HashSet<EquipSlot> affectedSlots = new() { request.SourceEquipSlot.Value };
+            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState = CharacterEquipmentPacketParity.CaptureAuthoritySlotStates(build, affectedSlots);
+            if (!TryValidatePacketOwnedCharacterAuthorityScope(request, beforeState, payload, out rejectReason))
+            {
+                return false;
+            }
+
+            if (!CharacterEquipmentPacketParity.TryApplyAuthoritativeState(build, payload.AuthoritySlotStates, out rejectReason))
+            {
+                return false;
+            }
+
+            result = EquipmentChangeResult.Accept(returnedPart: liveSourcePart.Clone())
+                .WithCompletionMetadata(
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    currTickCount,
+                    payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken());
+            return true;
         }
 
         private bool TryQueueCharacterEquipmentPacketResult(
@@ -487,6 +698,238 @@ namespace HaCreator.MapSimulator
                 ? $"Queued packet-authored character equipment result for request {requestId}."
                 : $"Queued packet-authored character equipment rejection for request {requestId}.";
             return true;
+        }
+
+        internal static bool TryValidatePacketOwnedCharacterAuthorityScope(
+            EquipmentChangeRequest request,
+            IReadOnlyDictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState,
+            CharacterEquipmentAuthorityPayload payload,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null)
+            {
+                rejectReason = "Character equipment request is missing.";
+                return false;
+            }
+
+            if (!CharacterEquipmentPacketParity.HasExplicitAuthorityState(payload))
+            {
+                rejectReason = "Character equipment authority result did not include a usable character state.";
+                return false;
+            }
+
+            HashSet<EquipSlot> affectedSlots = request.Kind switch
+            {
+                EquipmentChangeRequestKind.InventoryToCharacter when request.TargetEquipSlot.HasValue
+                    => new() { request.TargetEquipSlot.Value },
+                EquipmentChangeRequestKind.CharacterToCharacter when request.SourceEquipSlot.HasValue && request.TargetEquipSlot.HasValue
+                    => new() { request.SourceEquipSlot.Value, request.TargetEquipSlot.Value },
+                EquipmentChangeRequestKind.CharacterToInventory when request.SourceEquipSlot.HasValue
+                    => new() { request.SourceEquipSlot.Value },
+                _ => null
+            };
+            if (affectedSlots == null || affectedSlots.Count == 0)
+            {
+                rejectReason = "Character equipment authority result did not match the request scope.";
+                return false;
+            }
+
+            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> finalStates = new();
+            for (int i = 0; i < payload.AuthoritySlotStates.Count; i++)
+            {
+                CharacterEquipmentAuthoritySlotState state = payload.AuthoritySlotStates[i];
+                if (!affectedSlots.Contains(state.Slot))
+                {
+                    rejectReason = "Packet-authored character authority changed slots outside the active request.";
+                    return false;
+                }
+
+                finalStates[state.Slot] = state;
+            }
+
+            foreach (EquipSlot slot in affectedSlots)
+            {
+                if (!finalStates.ContainsKey(slot))
+                {
+                    rejectReason = "Packet-authored character authority did not return the full slot state for the active request.";
+                    return false;
+                }
+            }
+
+            return request.Kind switch
+            {
+                EquipmentChangeRequestKind.InventoryToCharacter => ValidatePacketOwnedInventoryToCharacterScope(
+                    request,
+                    finalStates[request.TargetEquipSlot!.Value],
+                    out rejectReason),
+                EquipmentChangeRequestKind.CharacterToCharacter => ValidatePacketOwnedCharacterToCharacterScope(
+                    request,
+                    finalStates[request.SourceEquipSlot!.Value],
+                    finalStates[request.TargetEquipSlot!.Value],
+                    out rejectReason),
+                EquipmentChangeRequestKind.CharacterToInventory => ValidatePacketOwnedCharacterToInventoryScope(
+                    request,
+                    finalStates[request.SourceEquipSlot!.Value],
+                    out rejectReason),
+                _ => FailPacketOwnedCharacterAuthorityResult("Unsupported character equipment authority request kind.", out rejectReason)
+            };
+        }
+
+        private static bool ValidatePacketOwnedInventoryToCharacterScope(
+            EquipmentChangeRequest request,
+            CharacterEquipmentAuthoritySlotState targetState,
+            out string rejectReason)
+        {
+            if (!SlotStateContainsItem(targetState, request.ItemId))
+            {
+                rejectReason = "Packet-authored character authority did not place the requested item into the target slot.";
+                return false;
+            }
+
+            rejectReason = null;
+            return true;
+        }
+
+        private static bool ValidatePacketOwnedCharacterToCharacterScope(
+            EquipmentChangeRequest request,
+            CharacterEquipmentAuthoritySlotState sourceState,
+            CharacterEquipmentAuthoritySlotState targetState,
+            out string rejectReason)
+        {
+            if (SlotStateContainsItem(sourceState, request.ItemId))
+            {
+                rejectReason = "Packet-authored character authority left the moved item in the source slot.";
+                return false;
+            }
+
+            if (!SlotStateContainsItem(targetState, request.ItemId))
+            {
+                rejectReason = "Packet-authored character authority did not place the moved item into the target slot.";
+                return false;
+            }
+
+            rejectReason = null;
+            return true;
+        }
+
+        private static bool ValidatePacketOwnedCharacterToInventoryScope(
+            EquipmentChangeRequest request,
+            CharacterEquipmentAuthoritySlotState sourceState,
+            out string rejectReason)
+        {
+            if (SlotStateContainsItem(sourceState, request.ItemId))
+            {
+                rejectReason = "Packet-authored character authority did not clear the requested equipment slot.";
+                return false;
+            }
+
+            rejectReason = null;
+            return true;
+        }
+
+        private static bool SlotStateContainsItem(CharacterEquipmentAuthoritySlotState state, int itemId)
+        {
+            return itemId > 0 && (state.VisibleItemId == itemId || state.HiddenItemId == itemId);
+        }
+
+        private static Dictionary<EquipSlot, CharacterAuthoritySlotParts> CaptureCharacterAuthoritySlotParts(
+            CharacterBuild build,
+            IEnumerable<EquipSlot> slots)
+        {
+            Dictionary<EquipSlot, CharacterAuthoritySlotParts> snapshot = new();
+            if (build == null || slots == null)
+            {
+                return snapshot;
+            }
+
+            foreach (EquipSlot slot in slots)
+            {
+                build.Equipment.TryGetValue(slot, out CharacterPart visiblePart);
+                build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart);
+                snapshot[slot] = new CharacterAuthoritySlotParts(visiblePart?.Clone(), hiddenPart?.Clone());
+            }
+
+            return snapshot;
+        }
+
+        private static IReadOnlyList<CharacterPart> ResolvePacketOwnedAuthorityDisplacedParts(
+            IReadOnlyDictionary<EquipSlot, CharacterAuthoritySlotParts> beforeParts,
+            CharacterEquipmentAuthorityPayload payload,
+            EquipSlot slot)
+        {
+            if (beforeParts == null
+                || payload.AuthoritySlotStates == null
+                || !beforeParts.TryGetValue(slot, out CharacterAuthoritySlotParts parts))
+            {
+                return Array.Empty<CharacterPart>();
+            }
+
+            CharacterEquipmentAuthoritySlotState? finalState = null;
+            for (int i = 0; i < payload.AuthoritySlotStates.Count; i++)
+            {
+                if (payload.AuthoritySlotStates[i].Slot == slot)
+                {
+                    finalState = payload.AuthoritySlotStates[i];
+                    break;
+                }
+            }
+
+            if (!finalState.HasValue)
+            {
+                return Array.Empty<CharacterPart>();
+            }
+
+            List<int> retainedItemIds = new();
+            if (finalState.Value.VisibleItemId > 0)
+            {
+                retainedItemIds.Add(finalState.Value.VisibleItemId);
+            }
+
+            if (finalState.Value.HiddenItemId > 0)
+            {
+                retainedItemIds.Add(finalState.Value.HiddenItemId);
+            }
+
+            List<CharacterPart> displacedParts = new();
+            AddDisplacedPart(parts.VisiblePart, retainedItemIds, displacedParts);
+            AddDisplacedPart(parts.HiddenPart, retainedItemIds, displacedParts);
+            return displacedParts.Count == 0
+                ? Array.Empty<CharacterPart>()
+                : displacedParts.AsReadOnly();
+        }
+
+        private static void AddDisplacedPart(CharacterPart candidate, List<int> retainedItemIds, List<CharacterPart> displacedParts)
+        {
+            if (candidate == null)
+            {
+                return;
+            }
+
+            int retainedIndex = retainedItemIds.IndexOf(candidate.ItemId);
+            if (retainedIndex >= 0)
+            {
+                retainedItemIds.RemoveAt(retainedIndex);
+                return;
+            }
+
+            displacedParts.Add(candidate.Clone());
+        }
+
+        private static bool FailPacketOwnedCharacterAuthorityResult(
+            string rejectReason,
+            out EquipmentChangeResult result,
+            out string message)
+        {
+            result = null;
+            message = rejectReason;
+            return false;
+        }
+
+        private static bool FailPacketOwnedCharacterAuthorityResult(string rejectReason, out string message)
+        {
+            message = rejectReason;
+            return false;
         }
 
         private static bool FailPacketOwnedCharacterAuthorityPayload(string rejectReason, out string message)

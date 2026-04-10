@@ -202,6 +202,15 @@ namespace HaCreator.MapSimulator.Companions
                 ["warp"] = new[] { "warp", "transform", "transformaction", "change" }
             };
 
+        private static readonly IReadOnlyDictionary<string, string> CanonicalLookupKeys = LookupCandidates.Keys
+            .Select(static key => new KeyValuePair<string, string>(NormalizeActionName(key), key))
+            .Where(static pair => !string.IsNullOrWhiteSpace(pair.Key))
+            .GroupBy(static pair => pair.Key, StringComparer.Ordinal)
+            .ToDictionary(
+                static group => group.Key,
+                static group => group.First().Value,
+                StringComparer.Ordinal);
+
         internal static IEnumerable<string> EnumerateCandidates(string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
@@ -209,16 +218,40 @@ namespace HaCreator.MapSimulator.Companions
                 yield break;
             }
 
-            if (!LookupCandidates.TryGetValue(actionName, out string[] candidates))
+            if (LookupCandidates.TryGetValue(actionName, out string[] candidates))
             {
-                yield return actionName;
+                for (int i = 0; i < candidates.Length; i++)
+                {
+                    yield return candidates[i];
+                }
+
                 yield break;
             }
 
-            for (int i = 0; i < candidates.Length; i++)
+            string normalizedActionName = NormalizeActionName(actionName);
+            if (!string.IsNullOrWhiteSpace(normalizedActionName) &&
+                CanonicalLookupKeys.TryGetValue(normalizedActionName, out string canonicalActionName) &&
+                !string.Equals(canonicalActionName, actionName, StringComparison.OrdinalIgnoreCase) &&
+                LookupCandidates.TryGetValue(canonicalActionName, out candidates))
             {
-                yield return candidates[i];
+                var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < candidates.Length; i++)
+                {
+                    if (yielded.Add(candidates[i]))
+                    {
+                        yield return candidates[i];
+                    }
+                }
+
+                if (yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+
+                yield break;
             }
+
+            yield return actionName;
         }
 
         internal static IEnumerable<string> EnumerateKnownActions()

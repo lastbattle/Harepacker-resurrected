@@ -29,6 +29,12 @@ namespace HaCreator.MapSimulator.Managers
         private const int MesoGiveSucceededStringPoolId = 0x32E;
         private const int MesoGiveFailedStringPoolId = 0x32F;
         private const int UtilDlgDefaultSoundStringPoolId = 0x04F8;
+        private const int UtilDlgCloseButtonStringPoolId = 0x1961;
+        private const int UtilDlgOkButtonStringPoolId = 0x1963;
+        private const int UtilDlgSeparatorStringPoolId = 0x1965;
+        private const int UtilDlgCenterStringPoolId = 0x1966;
+        private const int UtilDlgBottomStringPoolId = 0x1967;
+        private const int UtilDlgTopStringPoolId = 0x196F;
         private const int RandomMesoBagDialogRank1StringPoolId = 0x17A9;
         private const int RandomMesoBagDialogRank2StringPoolId = 0x17AA;
         private const int RandomMesoBagDialogRank3StringPoolId = 0x17AB;
@@ -108,9 +114,51 @@ namespace HaCreator.MapSimulator.Managers
 
         public static string GetUtilDlgNoticeSoundDescriptor()
         {
-            return ResolvePlainText(
+            return ResolveAssetPath(
                 UtilDlgDefaultSoundStringPoolId,
                 "Sound/UI.img/DlgNotice");
+        }
+
+        public static string GetUtilDlgNoticeTopResourcePath()
+        {
+            return ResolveAssetPath(
+                UtilDlgTopStringPoolId,
+                "UI/UIWindow.img/UtilDlgEx/t");
+        }
+
+        public static string GetUtilDlgNoticeCenterResourcePath()
+        {
+            return ResolveAssetPath(
+                UtilDlgCenterStringPoolId,
+                "UI/UIWindow.img/UtilDlgEx/c");
+        }
+
+        public static string GetUtilDlgNoticeBottomResourcePath()
+        {
+            return ResolveAssetPath(
+                UtilDlgBottomStringPoolId,
+                "UI/UIWindow.img/UtilDlgEx/s");
+        }
+
+        public static string GetUtilDlgNoticeSeparatorResourcePath()
+        {
+            return ResolveAssetPath(
+                UtilDlgSeparatorStringPoolId,
+                "UI/UIWindow.img/UtilDlgEx/line");
+        }
+
+        public static string GetUtilDlgNoticeOkButtonResourcePath()
+        {
+            return ResolveAssetPath(
+                UtilDlgOkButtonStringPoolId,
+                "UI/UIWindow.img/UtilDlgEx/BtOK");
+        }
+
+        public static string GetUtilDlgNoticeCloseButtonResourcePath()
+        {
+            return ResolveAssetPath(
+                UtilDlgCloseButtonStringPoolId,
+                "UI/UIWindow.img/UtilDlgEx/BtClose");
         }
 
         public static PacketOwnedRandomMesoBagPresentation CreateRandomMesoBagPresentation(byte rank, int mesoAmount)
@@ -157,7 +205,7 @@ namespace HaCreator.MapSimulator.Managers
                 _ => RandomMesoBagDialogRank1StringPoolId
             };
 
-            return ResolvePlainText(
+            return ResolveAssetPath(
                 stringPoolId,
                 $"UI/UIWindow.img/RandomMesoBag/Back{Math.Clamp(rank, 1, 4)}");
         }
@@ -220,7 +268,7 @@ namespace HaCreator.MapSimulator.Managers
                 _ => "Sound/Item.img/02000010/Use"
             };
 
-            return ResolvePlainText(stringPoolId, fallback);
+            return ResolveAssetPath(stringPoolId, fallback);
         }
 
         private static string ResolveTextFormat(int stringPoolId, string fallbackFormat, int maxPlaceholderCount)
@@ -241,6 +289,17 @@ namespace HaCreator.MapSimulator.Managers
             return LooksLikeAssetPath(resolved)
                 ? fallbackText
                 : resolved;
+        }
+
+        private static string ResolveAssetPath(int stringPoolId, string fallbackPath)
+        {
+            string resolved = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackPath);
+            if (string.IsNullOrWhiteSpace(resolved) || !LooksLikeAssetPath(resolved))
+            {
+                return fallbackPath;
+            }
+
+            return resolved.Replace('\\', '/');
         }
 
         private static string FormatInvariant(string format, params object[] values)

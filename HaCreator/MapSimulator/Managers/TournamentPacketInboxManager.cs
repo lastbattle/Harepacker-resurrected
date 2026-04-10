@@ -87,6 +87,12 @@ namespace HaCreator.MapSimulator.Managers
 
         public void EnqueueLocal(int packetType, byte[] payload, string source)
         {
+            if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            }
+
             _pendingMessages.Enqueue(new TournamentPacketInboxMessage(packetType, payload, source, $"{packetType}"));
         }
 
@@ -157,7 +163,8 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 payload = Convert.FromHexString(compactHex);
-                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
                 return true;
             }
             catch (FormatException)
@@ -201,9 +208,10 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                packetType = opcode;
-                payload = rawPacket.Skip(sizeof(ushort)).ToArray();
-                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(
+                    opcode,
+                    rawPacket.Skip(sizeof(ushort)).ToArray());
+                packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
                 return true;
             }
             catch (FormatException)
@@ -309,6 +317,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType switch
             {
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode => $"relay (CField::OnPacket {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode})",
                 374 => "notice (374)",
                 375 => "matchtable (375)",
                 376 => "setprize (376)",

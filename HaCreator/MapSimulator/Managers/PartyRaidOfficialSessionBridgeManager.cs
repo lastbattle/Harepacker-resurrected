@@ -428,7 +428,12 @@ namespace HaCreator.MapSimulator.Managers
                     return;
                 }
 
-                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref opcode, ref payload);
+                if (opcode != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+                {
+                    payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
+                    opcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+                }
+
                 _pendingMessages.Enqueue(new PartyRaidPacketInboxMessage(opcode, payload, $"official-session:{pair.RemoteEndpoint}", $"packetraw {Convert.ToHexString(raw)}"));
                 ReceivedCount++;
                 LastStatus = $"Queued Party Raid opcode {SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode} relay from live session {pair.RemoteEndpoint}.";

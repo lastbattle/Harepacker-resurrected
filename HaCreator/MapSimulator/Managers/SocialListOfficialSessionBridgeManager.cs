@@ -14,6 +14,8 @@ namespace HaCreator.MapSimulator.Managers
 {
     public enum SocialListOfficialSessionBridgePayloadKind
     {
+        FriendResult,
+        PartyResult,
         GuildResult,
         AllianceResult
     }
@@ -32,9 +34,13 @@ namespace HaCreator.MapSimulator.Managers
         public string Source { get; }
         public int Opcode { get; }
         public SocialListOfficialSessionBridgePayloadKind Kind { get; }
-        public string ResultLabel => Kind == SocialListOfficialSessionBridgePayloadKind.AllianceResult
-            ? "alliance-result"
-            : "guild-result";
+        public string ResultLabel => Kind switch
+        {
+            SocialListOfficialSessionBridgePayloadKind.FriendResult => "friend-result",
+            SocialListOfficialSessionBridgePayloadKind.PartyResult => "party-result",
+            SocialListOfficialSessionBridgePayloadKind.AllianceResult => "alliance-result",
+            _ => "guild-result"
+        };
     }
 
     /// <summary>
@@ -45,6 +51,10 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class SocialListOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18504;
+        public const ushort ClientPartyResultOpcode = 62;
+        public const ushort ClientFriendResultOpcode = 65;
+        public const ushort ClientGuildResultOpcode = 67;
+        public const ushort ClientAllianceResultOpcode = 68;
         private const string DefaultProcessName = "MapleStory";
 
         private readonly ConcurrentQueue<SocialListOfficialSessionBridgeMessage> _pendingMessages = new();
@@ -99,6 +109,8 @@ namespace HaCreator.MapSimulator.Managers
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
+        public ushort FriendResultOpcode { get; private set; }
+        public ushort PartyResultOpcode { get; private set; }
         public ushort GuildResultOpcode { get; private set; }
         public ushort AllianceResultOpcode { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
@@ -116,12 +128,17 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            string guildOpcode = GuildResultOpcode > 0 ? GuildResultOpcode.ToString() : "unset";
-            string allianceOpcode = AllianceResultOpcode > 0 ? AllianceResultOpcode.ToString() : "unset";
-            return $"Social-list official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; guildResultOpcode={guildOpcode}; allianceResultOpcode={allianceOpcode}. {LastStatus}";
+            return $"Social-list official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; {DescribeConfiguredOpcodes(FriendResultOpcode, PartyResultOpcode, GuildResultOpcode, AllianceResultOpcode)}. {LastStatus}";
         }
 
-        public void Start(int listenPort, string remoteHost, int remotePort, ushort guildResultOpcode, ushort allianceResultOpcode)
+        public void Start(
+            int listenPort,
+            string remoteHost,
+            int remotePort,
+            ushort friendResultOpcode,
+            ushort partyResultOpcode,
+            ushort guildResultOpcode,
+            ushort allianceResultOpcode)
         {
             lock (_sync)
             {
@@ -133,13 +150,15 @@ namespace HaCreator.MapSimulator.Managers
                     ListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
                     RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
                     RemotePort = remotePort;
+                    FriendResultOpcode = friendResultOpcode;
+                    PartyResultOpcode = partyResultOpcode;
                     GuildResultOpcode = guildResultOpcode;
                     AllianceResultOpcode = allianceResultOpcode;
                     _listenerCancellation = new CancellationTokenSource();
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
                     _listener.Start();
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Social-list official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering {DescribeConfiguredOpcodes(guildResultOpcode, allianceResultOpcode)}.";
+                    LastStatus = $"Social-list official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering {DescribeConfiguredOpcodes(friendResultOpcode, partyResultOpcode, guildResultOpcode, allianceResultOpcode)}.";
                 }
                 catch (Exception ex)
                 {
@@ -149,7 +168,16 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public bool TryRefreshFromDiscovery(int listenPort, int remotePort, ushort guildResultOpcode, ushort allianceResultOpcode, string processSelector, int? localPort, out string status)
+        public bool TryRefreshFromDiscovery(
+            int listenPort,
+            int remotePort,
+            ushort friendResultOpcode,
+            ushort partyResultOpcode,
+            ushort guildResultOpcode,
+            ushort allianceResultOpcode,
+            string processSelector,
+            int? localPort,
+            out string status)
         {
             if (HasAttachedClient)
             {
@@ -179,19 +207,30 @@ namespace HaCreator.MapSimulator.Managers
                     ListenPort,
                     RemoteHost,
                     RemotePort,
+                    FriendResultOpcode,
+                    PartyResultOpcode,
                     GuildResultOpcode,
                     AllianceResultOpcode,
                     resolvedListenPort,
                     candidate.RemoteEndpoint,
+                    friendResultOpcode,
+                    partyResultOpcode,
                     guildResultOpcode,
                     allianceResultOpcode))
             {
-                status = $"Social-list official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} using {DescribeConfiguredOpcodes(guildResultOpcode, allianceResultOpcode)}.";
+                status = $"Social-list official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} using {DescribeConfiguredOpcodes(friendResultOpcode, partyResultOpcode, guildResultOpcode, allianceResultOpcode)}.";
                 LastStatus = status;
                 return true;
             }
 
-            Start(resolvedListenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, guildResultOpcode, allianceResultOpcode);
+            Start(
+                resolvedListenPort,
+                candidate.RemoteEndpoint.Address.ToString(),
+                candidate.RemoteEndpoint.Port,
+                friendResultOpcode,
+                partyResultOpcode,
+                guildResultOpcode,
+                allianceResultOpcode);
             status = $"Social-list official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
             LastStatus = status;
             return true;
@@ -251,6 +290,8 @@ namespace HaCreator.MapSimulator.Managers
         private static bool TryDecodeInboundResultPacket(
             byte[] rawPacket,
             string source,
+            ushort friendResultOpcode,
+            ushort partyResultOpcode,
             ushort guildResultOpcode,
             ushort allianceResultOpcode,
             out SocialListOfficialSessionBridgeMessage message)
@@ -263,7 +304,15 @@ namespace HaCreator.MapSimulator.Managers
 
             int opcode = BitConverter.ToUInt16(rawPacket, 0);
             SocialListOfficialSessionBridgePayloadKind kind;
-            if (guildResultOpcode > 0 && opcode == guildResultOpcode)
+            if (friendResultOpcode > 0 && opcode == friendResultOpcode)
+            {
+                kind = SocialListOfficialSessionBridgePayloadKind.FriendResult;
+            }
+            else if (partyResultOpcode > 0 && opcode == partyResultOpcode)
+            {
+                kind = SocialListOfficialSessionBridgePayloadKind.PartyResult;
+            }
+            else if (guildResultOpcode > 0 && opcode == guildResultOpcode)
             {
                 kind = SocialListOfficialSessionBridgePayloadKind.GuildResult;
             }
@@ -372,7 +421,14 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
 
-                if (!TryDecodeInboundResultPacket(raw, $"official-session:{pair.RemoteEndpoint}", GuildResultOpcode, AllianceResultOpcode, out SocialListOfficialSessionBridgeMessage message))
+                if (!TryDecodeInboundResultPacket(
+                        raw,
+                        $"official-session:{pair.RemoteEndpoint}",
+                        FriendResultOpcode,
+                        PartyResultOpcode,
+                        GuildResultOpcode,
+                        AllianceResultOpcode,
+                        out SocialListOfficialSessionBridgeMessage message))
                 {
                     return;
                 }
@@ -520,10 +576,14 @@ namespace HaCreator.MapSimulator.Managers
             int listenPort,
             string remoteHost,
             int remotePort,
+            ushort friendOpcode,
+            ushort partyOpcode,
             ushort opcode,
             ushort allianceOpcode,
             int desiredListenPort,
             IPEndPoint desiredRemoteEndpoint,
+            ushort desiredFriendOpcode,
+            ushort desiredPartyOpcode,
             ushort desiredOpcode,
             ushort desiredAllianceOpcode)
         {
@@ -534,16 +594,24 @@ namespace HaCreator.MapSimulator.Managers
 
             return listenPort == desiredListenPort
                 && remotePort == desiredRemoteEndpoint.Port
+                && friendOpcode == desiredFriendOpcode
+                && partyOpcode == desiredPartyOpcode
                 && opcode == desiredOpcode
                 && allianceOpcode == desiredAllianceOpcode
                 && string.Equals(remoteHost, desiredRemoteEndpoint.Address.ToString(), StringComparison.OrdinalIgnoreCase);
         }
 
-        private static string DescribeConfiguredOpcodes(ushort guildResultOpcode, ushort allianceResultOpcode)
+        private static string DescribeConfiguredOpcodes(
+            ushort friendResultOpcode,
+            ushort partyResultOpcode,
+            ushort guildResultOpcode,
+            ushort allianceResultOpcode)
         {
+            string friendOpcode = friendResultOpcode > 0 ? friendResultOpcode.ToString() : "unset";
+            string partyOpcode = partyResultOpcode > 0 ? partyResultOpcode.ToString() : "unset";
             string guildOpcode = guildResultOpcode > 0 ? guildResultOpcode.ToString() : "unset";
             string allianceOpcode = allianceResultOpcode > 0 ? allianceResultOpcode.ToString() : "unset";
-            return $"guild-result opcode {guildOpcode} and alliance-result opcode {allianceOpcode}";
+            return $"friend-result opcode {friendOpcode}, party-result opcode {partyOpcode}, guild-result opcode {guildOpcode}, and alliance-result opcode {allianceOpcode}";
         }
 
         private static bool TryResolveDiscoveryCandidate(

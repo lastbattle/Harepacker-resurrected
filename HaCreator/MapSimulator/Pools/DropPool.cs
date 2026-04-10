@@ -2295,8 +2295,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 if ((packet.EnterType == 1 || packet.EnterType == 2) && !existingDrop.IsReal)
                 {
-                    existingDrop.IsReal = true;
-                    existingDrop.PacketEnterType = packet.EnterType;
+                    PromoteClientFakeDrop(existingDrop, packet, currentTime);
                 }
 
                 return true;
@@ -2378,6 +2377,54 @@ namespace HaCreator.MapSimulator.Pools
             _dropById[drop.PoolId] = drop;
             _onDropSpawned?.Invoke(drop);
             return true;
+        }
+
+        private void PromoteClientFakeDrop(DropItem drop, RemoteDropEnterPacket packet, int currentTime)
+        {
+            if (drop == null)
+            {
+                return;
+            }
+
+            drop.IsReal = true;
+            drop.PacketEnterType = packet.EnterType;
+            drop.OwnerId = packet.OwnerId;
+            drop.OwnershipType = packet.OwnershipType;
+            drop.SourceId = packet.SourceId;
+            drop.AllowPetPickup = packet.AllowPetPickup;
+            drop.DrawOnElevatedLayer = packet.ElevateLayer;
+            drop.OwnerExpireTime = packet.OwnerId > 0 ? currentTime + OWNER_PRIORITY_DURATION : 0;
+            drop.ExpireTime = ResolvePacketExpireTime(
+                currentTime,
+                packet.IsMoney,
+                packet.ExpireRaw,
+                _packetExpireTimeUtcResolver?.Invoke() ?? DateTime.UtcNow);
+            drop.HoverAmplitude = packet.IsMoney ? 3f : 2f;
+            drop.HoverFrequency = packet.EnterType == 4 ? 0.6f : 1f;
+            drop.PacketEnterAlphaRampDurationMs = packet.EnterType == 3
+                ? DropItem.PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION
+                : 0;
+            drop.PacketEnterAlphaRampStartTime = currentTime;
+
+            if (packet.IsMoney)
+            {
+                drop.MesoAmount = Math.Max(0, packet.Info);
+                drop.Icon = _mesoIcon;
+                ApplyMesoVisuals(drop, packetControlled: true);
+            }
+            else if (string.Equals(drop.ItemId, packet.Info.ToString("D8"), StringComparison.Ordinal))
+            {
+                if (!TryApplyPacketItemVisuals(drop, drop.ItemId)
+                    && _itemIcons.TryGetValue(drop.ItemId, out IDXObject icon))
+                {
+                    drop.Icon = icon;
+                }
+            }
+
+            if (packet.EnterType == 2)
+            {
+                SnapDropToPacketIdle(drop, currentTime);
+            }
         }
 
         public bool ApplyPacketLeave(

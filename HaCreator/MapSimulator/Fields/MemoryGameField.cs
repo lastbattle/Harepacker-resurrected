@@ -328,6 +328,12 @@ namespace HaCreator.MapSimulator.Fields
             CloseRoom
         }
 
+        private enum MemoryGamePrimaryButtonMode
+        {
+            Ready,
+            Start
+        }
+
         private readonly struct MemoryGamePromptState
         {
             public MemoryGamePromptState(MemoryGamePromptType type, int stringPoolId, int playerIndex, string text)
@@ -1162,15 +1168,30 @@ namespace HaCreator.MapSimulator.Fields
                 case 0:
                         return HandlePrimarySidebarAction(tickCount, out message);
                     case 1:
+                        if (!CanUseTieButton(out message))
+                        {
+                            return true;
+                        }
+
                         TryPromptTieRequest(out message);
                         return true;
                     case 2:
+                        if (!CanUseGiveUpButton(out message))
+                        {
+                            return true;
+                        }
+
                         TryPromptGiveUp(_localPlayerIndex, out message);
                         return true;
                     case 3:
                         TryRequestRoomExit(_localPlayerIndex, out message);
                         return true;
                     case 4:
+                        if (!CanUseBanButton(out message))
+                        {
+                            return true;
+                        }
+
                         TryPromptBanParticipant(out message);
                         return true;
                 }
@@ -2522,22 +2543,25 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool HandlePrimarySidebarAction(int tickCount, out string message)
         {
-            if (_stage == RoomStage.Lobby && !_readyStates[_localPlayerIndex])
+            if (!IsPrimaryButtonEnabled(out message))
             {
-                TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: true);
                 return true;
             }
 
-
-            if (_stage == RoomStage.Lobby)
+            if (_stage != RoomStage.Lobby)
             {
-                TryDispatchPacket(MemoryGamePacketType.StartGame, tickCount, out message);
+                message = "The primary Memory Game button is only available from the lobby.";
                 return true;
             }
 
+            if (ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready)
+            {
+                bool nextReadyState = !_readyStates[_localPlayerIndex];
+                TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: nextReadyState);
+                return true;
+            }
 
-            message = "The primary Memory Game button is only available from the lobby.";
-
+            TryDispatchPacket(MemoryGamePacketType.StartGame, tickCount, out message);
             return true;
 
         }
@@ -2546,7 +2570,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private string GetPrimaryButtonLabel()
         {
-            if (_stage == RoomStage.Lobby && !_readyStates[_localPlayerIndex])
+            if (ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready)
             {
                 return "Ready";
             }
@@ -2554,6 +2578,84 @@ namespace HaCreator.MapSimulator.Fields
 
             return "Start";
 
+        }
+
+        private MemoryGamePrimaryButtonMode ResolvePrimaryButtonMode()
+        {
+            return _localPlayerIndex == 0
+                ? MemoryGamePrimaryButtonMode.Start
+                : MemoryGamePrimaryButtonMode.Ready;
+        }
+
+        private bool IsPrimaryButtonEnabled(out string message)
+        {
+            message = null;
+            if (_stage != RoomStage.Lobby)
+            {
+                message = "The primary Memory Game button is only available from the lobby.";
+                return false;
+            }
+
+            if (ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready)
+            {
+                return true;
+            }
+
+            if (_miniRoomRuntime?.Occupants.Count <= 1 && !_miniRoomParticipants.ContainsKey(1))
+            {
+                message = "Start is unavailable until an opponent joins the Match Cards room.";
+                return false;
+            }
+
+            if (!_readyStates[1])
+            {
+                message = $"{ResolveParticipantName(1)} is not ready yet.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool CanUseTieButton(out string message)
+        {
+            if (_stage == RoomStage.Playing)
+            {
+                message = null;
+                return true;
+            }
+
+            message = "Tie is only available during an active Match Cards round.";
+            return false;
+        }
+
+        private bool CanUseGiveUpButton(out string message)
+        {
+            if (_stage == RoomStage.Playing)
+            {
+                message = null;
+                return true;
+            }
+
+            message = "Give Up is only available during an active Match Cards round.";
+            return false;
+        }
+
+        private bool CanUseBanButton(out string message)
+        {
+            if (_stage != RoomStage.Lobby)
+            {
+                message = "Ban is only available while the Match Cards room is in the lobby.";
+                return false;
+            }
+
+            if (_localPlayerIndex != 0)
+            {
+                message = "Only the Match Cards room owner can ban a participant.";
+                return false;
+            }
+
+            message = null;
+            return true;
         }
 
         private bool TryOpenPrompt(MemoryGamePromptType type, int stringPoolId, int playerIndex, string text, out string message)
@@ -2844,11 +2946,11 @@ namespace HaCreator.MapSimulator.Fields
             boardArea = new Rectangle(dialogX + ClientBoardLeft, dialogY + ClientBoardTop, ClientBoardWidth, ClientBoardHeight);
             sidebar = new Rectangle(dialogX + ClientRecordPanelX, dialogY + ClientRecordPanelY, 300, 132);
             buttonRects = new Rectangle[5];
-            buttonRects[0] = CreateButtonRect(dialogX + ClientReadyButtonX, dialogY + ClientReadyButtonY, _readyStates[_localPlayerIndex] ? _startButtonTexture : _readyButtonTexture, 96, 29);
-            buttonRects[1] = CreateButtonRect(dialogX + ClientTieButtonX, dialogY + ClientTieButtonY, _tieButtonTexture, 43, 18);
-            buttonRects[2] = CreateButtonRect(dialogX + ClientGiveUpButtonX, dialogY + ClientGiveUpButtonY, _giveUpButtonTexture, 43, 18);
+            buttonRects[0] = CreateButtonRect(dialogX + ClientReadyButtonX, dialogY + ClientReadyButtonY, GetPrimaryButtonTexture(), 96, 29);
+            buttonRects[1] = CreateButtonRect(dialogX + ClientTieButtonX, dialogY + ClientTieButtonY, GetTieButtonTexture(), 43, 18);
+            buttonRects[2] = CreateButtonRect(dialogX + ClientGiveUpButtonX, dialogY + ClientGiveUpButtonY, GetGiveUpButtonTexture(), 43, 18);
             buttonRects[3] = CreateButtonRect(dialogX + ClientEndButtonX, dialogY + ClientEndButtonY, _endButtonTexture, 43, 18);
-            buttonRects[4] = CreateButtonRect(dialogX + ClientBanButtonX, dialogY + ClientBanButtonY, _banButtonTexture, 11, 11);
+            buttonRects[4] = CreateButtonRect(dialogX + ClientBanButtonX, dialogY + ClientBanButtonY, GetBanButtonTexture(), 11, 11);
         }
 
 
@@ -2916,11 +3018,11 @@ namespace HaCreator.MapSimulator.Fields
 
         private void DrawClientButtons(SpriteBatch spriteBatch, Texture2D pixel, SpriteFont font, int dialogX, int dialogY)
         {
-            DrawButton(spriteBatch, pixel, font, dialogX + ClientReadyButtonX, dialogY + ClientReadyButtonY, _readyStates[_localPlayerIndex] ? _startButtonTexture : _readyButtonTexture, GetPrimaryButtonLabel());
-            DrawButton(spriteBatch, pixel, font, dialogX + ClientTieButtonX, dialogY + ClientTieButtonY, _tieButtonTexture, "Tie");
-            DrawButton(spriteBatch, pixel, font, dialogX + ClientGiveUpButtonX, dialogY + ClientGiveUpButtonY, _giveUpButtonTexture, "Give Up");
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientReadyButtonX, dialogY + ClientReadyButtonY, GetPrimaryButtonTexture(), GetPrimaryButtonLabel());
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientTieButtonX, dialogY + ClientTieButtonY, GetTieButtonTexture(), "Tie");
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientGiveUpButtonX, dialogY + ClientGiveUpButtonY, GetGiveUpButtonTexture(), "Give Up");
             DrawButton(spriteBatch, pixel, font, dialogX + ClientEndButtonX, dialogY + ClientEndButtonY, _endButtonTexture, GetExitButtonLabel());
-            DrawButton(spriteBatch, pixel, font, dialogX + ClientBanButtonX, dialogY + ClientBanButtonY, _banButtonTexture, string.Empty);
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientBanButtonX, dialogY + ClientBanButtonY, GetBanButtonTexture(), string.Empty);
         }
 
 
@@ -3070,11 +3172,17 @@ namespace HaCreator.MapSimulator.Fields
             _loseTexture = LoadCanvasTexture(commonProperty?["lose"] as WzCanvasProperty);
             _drawTexture = LoadCanvasTexture(commonProperty?["draw"] as WzCanvasProperty);
             _readyButtonTexture = LoadButtonTexture(commonProperty, "btReady");
+            _readyButtonDisabledTexture = LoadButtonTexture(commonProperty, "btReady", "disabled");
             _startButtonTexture = LoadButtonTexture(commonProperty, "btStart");
+            _startButtonDisabledTexture = LoadButtonTexture(commonProperty, "btStart", "disabled");
             _tieButtonTexture = LoadButtonTexture(commonProperty, "btDraw");
+            _tieButtonDisabledTexture = LoadButtonTexture(commonProperty, "btDraw", "disabled");
             _giveUpButtonTexture = LoadButtonTexture(commonProperty, "btAbsten");
+            _giveUpButtonDisabledTexture = LoadButtonTexture(commonProperty, "btAbsten", "disabled");
             _endButtonTexture = LoadButtonTexture(commonProperty, "btExit");
+            _endButtonDisabledTexture = LoadButtonTexture(commonProperty, "btExit", "disabled");
             _banButtonTexture = LoadButtonTexture(commonProperty, "btBan");
+            _banButtonDisabledTexture = LoadButtonTexture(commonProperty, "btBan", "disabled");
 
 
             WzImageProperty numberProperty = memoryGameProperty?["number"];
@@ -3119,9 +3227,45 @@ namespace HaCreator.MapSimulator.Fields
 
 
 
-        private Texture2D LoadButtonTexture(WzSubProperty commonProperty, string buttonName)
+        private Texture2D LoadButtonTexture(WzSubProperty commonProperty, string buttonName, string state = "normal")
         {
-            return LoadCanvasTexture(commonProperty?[buttonName]?["normal"]?["0"] as WzCanvasProperty);
+            return LoadCanvasTexture(commonProperty?[buttonName]?[state]?["0"] as WzCanvasProperty);
+        }
+
+        private Texture2D GetPrimaryButtonTexture()
+        {
+            bool enabled = IsPrimaryButtonEnabled(out _);
+            if (ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready)
+            {
+                return enabled
+                    ? _readyButtonTexture
+                    : _readyButtonDisabledTexture ?? _readyButtonTexture;
+            }
+
+            return enabled
+                ? _startButtonTexture
+                : _startButtonDisabledTexture ?? _startButtonTexture;
+        }
+
+        private Texture2D GetTieButtonTexture()
+        {
+            return CanUseTieButton(out _)
+                ? _tieButtonTexture
+                : _tieButtonDisabledTexture ?? _tieButtonTexture;
+        }
+
+        private Texture2D GetGiveUpButtonTexture()
+        {
+            return CanUseGiveUpButton(out _)
+                ? _giveUpButtonTexture
+                : _giveUpButtonDisabledTexture ?? _giveUpButtonTexture;
+        }
+
+        private Texture2D GetBanButtonTexture()
+        {
+            return CanUseBanButton(out _)
+                ? _banButtonTexture
+                : _banButtonDisabledTexture ?? _banButtonTexture;
         }
 
 

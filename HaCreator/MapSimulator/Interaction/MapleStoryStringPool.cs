@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Interaction
             // Recovered from MapleStory.exe v95 StringPool::GetString. The generated table
             // in this workspace uses the decoded storage order, not the client key lookup,
             // so direct index resolution for these MapleTV result ids is incorrect.
+            [0x0F8D] = "UI/MapleTV.img/TVmedia",
             [0x0F9E] = "The message was successfully sent.",
             [0x0F9F] = "The waiting line is longer than an hour. \r\nPlease try using it at a later time.",
             [0x0FA0] = "You've entered the wrong user name.",
@@ -294,6 +295,10 @@ namespace HaCreator.MapSimulator.Interaction
             // string-pool order drifts again.
             [0x0E4C] = "Quest Helper (%d/5)",
             [0x106F] = "[%s] It has been excluded from the auto alarm and it will not be automatically reigstered until you re log-on",
+            [0x107A] = "Auto Alarm on",
+            [0x107B] = "Auto Alarm off",
+            [0x107C] = "When you click it%2C quests in progress will register automatically and if it is not in progress for 10 minutes%2C it will disappear.",
+            [0x107D] = "When you click it%2C the quest will not register automatically even when the quest is in progress.",
             [0x18EC] = "There are no quests in the quest helper.",
             // Recovered from MapleStory.exe v95 `CEngageDlg` and the surrounding
             // CWvsContext engagement result handlers. The generated table in this

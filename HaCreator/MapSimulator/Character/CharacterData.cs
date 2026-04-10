@@ -1273,7 +1273,9 @@ namespace HaCreator.MapSimulator.Character
             GunShoot,
             HybridOneHandedMagic,
             KnuckleHybrid,
-            KataraSubWeapon
+            KataraSubWeapon,
+            DualBowgunHybrid,
+            CannonHybrid
         }
 
         public int AttackSpeed { get; set; } = 6;       // Attack speed modifier
@@ -1405,6 +1407,20 @@ namespace HaCreator.MapSimulator.Character
                     }
 
                     yield break;
+                case ClientAttackActionFamily.DualBowgunHybrid:
+                    foreach (string candidate in EnumerateDualBowgunCandidates(fallbackAttackType))
+                    {
+                        yield return candidate;
+                    }
+
+                    yield break;
+                case ClientAttackActionFamily.CannonHybrid:
+                    foreach (string candidate in EnumerateCannonCandidates(fallbackAttackType))
+                    {
+                        yield return candidate;
+                    }
+
+                    yield break;
             }
 
             yield return CharacterPart.GetActionString(ResolveFallbackAttackAction(fallbackAttackType));
@@ -1426,6 +1442,8 @@ namespace HaCreator.MapSimulator.Character
                 8 => ClientAttackActionFamily.KnuckleHybrid,
                 9 => ClientAttackActionFamily.GunShoot,
                 10 when normalizedWeaponType == "katara" => ClientAttackActionFamily.KataraSubWeapon,
+                11 when normalizedWeaponType == "double bowgun" => ClientAttackActionFamily.DualBowgunHybrid,
+                12 when normalizedWeaponType == "cannon" => ClientAttackActionFamily.CannonHybrid,
                 _ => ClientAttackActionFamily.None
             };
         }
@@ -1518,6 +1536,81 @@ namespace HaCreator.MapSimulator.Character
                 CharacterAction.SwingOF,
                 CharacterAction.StabT1,
                 CharacterAction.SwingPF);
+        }
+
+        private static IEnumerable<string> EnumerateDualBowgunCandidates(AttackType fallbackAttackType)
+        {
+            if (fallbackAttackType == AttackType.Shoot)
+            {
+                foreach (string candidate in EnumerateActionNames(
+                             CharacterAction.Shoot2,
+                             CharacterAction.Shoot1,
+                             CharacterAction.ShootF))
+                {
+                    yield return candidate;
+                }
+            }
+
+            foreach (string candidate in EnumerateOneHandedMeleeCandidates(fallbackAttackType))
+            {
+                yield return candidate;
+            }
+
+            foreach (string candidate in EnumerateActionNames(
+                         CharacterAction.SwingT1,
+                         CharacterAction.SwingT2,
+                         CharacterAction.SwingT3,
+                         CharacterAction.SwingTF,
+                         CharacterAction.StabT1,
+                         CharacterAction.StabT2,
+                         CharacterAction.StabTF,
+                         CharacterAction.SwingP1,
+                         CharacterAction.SwingP2,
+                         CharacterAction.SwingPF))
+            {
+                yield return candidate;
+            }
+
+            if (fallbackAttackType != AttackType.Shoot)
+            {
+                foreach (string candidate in EnumerateActionNames(
+                             CharacterAction.Shoot2,
+                             CharacterAction.Shoot1,
+                             CharacterAction.ShootF))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateCannonCandidates(AttackType fallbackAttackType)
+        {
+            if (fallbackAttackType == AttackType.Shoot)
+            {
+                yield return CharacterPart.GetActionString(CharacterAction.ShootF);
+            }
+
+            foreach (string candidate in EnumerateActionNames(
+                         CharacterAction.SwingT1,
+                         CharacterAction.SwingT2,
+                         CharacterAction.SwingT3,
+                         CharacterAction.SwingTF,
+                         CharacterAction.SwingP2,
+                         CharacterAction.SwingP1,
+                         CharacterAction.SwingPF,
+                         CharacterAction.StabO1,
+                         CharacterAction.StabO2,
+                         CharacterAction.SwingO2,
+                         CharacterAction.SwingO3,
+                         CharacterAction.SwingOF))
+            {
+                yield return candidate;
+            }
+
+            if (fallbackAttackType != AttackType.Shoot)
+            {
+                yield return CharacterPart.GetActionString(CharacterAction.ShootF);
+            }
         }
 
         private static IEnumerable<string> EnumerateActionNames(params CharacterAction[] actions)

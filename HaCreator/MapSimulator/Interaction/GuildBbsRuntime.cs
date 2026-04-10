@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int DefaultBasicEmoticonCount = 3;
         private const int DefaultCashEmoticonCount = ClientVisibleCashEmoticonCount;
         internal const int ClientVisibleCashEmoticonCount = 7;
+        internal const int ClientInventoryCashEmoticonItemCount = 7;
         private const int CashEmoticonItemIdStart = 5290000;
         private const int ClientCashEmoticonIdStart = 100;
         private const GuildBbsPermissionMask SupportedPermissionMask =
@@ -817,7 +818,7 @@ namespace HaCreator.MapSimulator.Interaction
             string threadSummary = selectedThread == null
                 ? "none"
                 : $"#{selectedThread.ThreadId} \"{selectedThread.Title}\" ({selectedThread.Comments.Count} comment(s))";
-            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, authority={AuthoritySourceLabel} [{DescribePermissionMask(EffectivePermissionMask)}], cashEmoticons={OwnedCashEmoticonCount}/{_cashEmoticonCount} ({CashOwnershipSourceLabel})";
+            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, listStart={ResolveClientListStart()}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, authority={AuthoritySourceLabel} [{DescribePermissionMask(EffectivePermissionMask)}], cashEmoticons={OwnedCashEmoticonCount}/{_cashEmoticonCount} ({CashOwnershipSourceLabel})";
         }
 
         public string BuildClientRegisterRequestPreview()
@@ -888,6 +889,24 @@ namespace HaCreator.MapSimulator.Interaction
             EncodeInt32(payload, selectedThread.ThreadId);
             EncodeString(payload, replyBody);
             return FormatClientPacketPreview("comment", payload);
+        }
+
+        public string BuildClientLoadListRequestPreview()
+        {
+            var payload = new List<byte>();
+            EncodeByte(payload, 2);
+            EncodeInt32(payload, ResolveClientListStart());
+            return FormatClientPacketPreview("load-list", payload);
+        }
+
+        public string BuildClientSubmitSequencePreview()
+        {
+            return $"{BuildClientRegisterRequestPreview()} {BuildClientLoadListRequestPreview()}";
+        }
+
+        public string BuildClientReplySequencePreview()
+        {
+            return $"{BuildClientCommentRequestPreview()} {BuildClientLoadListRequestPreview()}";
         }
 
         private GuildBbsComposeState CreateDraftFromContext()
@@ -1075,6 +1094,11 @@ namespace HaCreator.MapSimulator.Interaction
                 GuildBbsEmoticonKind.Cash => $"Cash {(slotIndex / ClientVisibleCashEmoticonCount) + 1}-{(slotIndex % ClientVisibleCashEmoticonCount) + 1}",
                 _ => "None"
             };
+        }
+
+        private int ResolveClientListStart()
+        {
+            return Math.Max(0, _threadPageIndex * VisibleThreadCount);
         }
 
         private static int ResolveClientEmoticonId(GuildBbsEmoticonKind kind, int slotIndex)

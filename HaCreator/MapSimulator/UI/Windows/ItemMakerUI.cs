@@ -1623,7 +1623,6 @@ namespace HaCreator.MapSimulator.UI
             _craftingRecipeIndex = -1;
             _launchContextLabel = null;
             _launchFilter = MakerLaunchFilter.None;
-            ClearPendingPacketOwnedRequest();
         }
 
         private string BuildHiddenRecipeLockHint(ItemMakerRecipe recipe)

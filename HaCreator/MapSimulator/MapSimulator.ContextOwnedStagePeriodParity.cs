@@ -51,9 +51,17 @@ namespace HaCreator.MapSimulator
         {
             return new ContextOwnedStagePeriodCallbacks
             {
+                IsStagePeriodCurrent = IsContextOwnedStagePeriodAlreadyCurrent,
                 ValidateStagePeriodChange = ValidateContextOwnedStagePeriodChange,
                 ApplyStagePeriodChange = ApplyContextOwnedStagePeriodChange
             };
+        }
+
+        private bool IsContextOwnedStagePeriodAlreadyCurrent(PacketStagePeriodChangePacket packet)
+        {
+            return packet.StagePeriod != null
+                && _contextOwnedStagePeriodCache.TryGetValue(packet.StagePeriod, out byte cachedMode)
+                && cachedMode == packet.Mode;
         }
 
         private ContextOwnedStagePeriodValidationResult ValidateContextOwnedStagePeriodChange(PacketStagePeriodChangePacket packet)

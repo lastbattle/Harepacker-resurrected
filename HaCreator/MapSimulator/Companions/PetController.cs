@@ -438,6 +438,13 @@ namespace HaCreator.MapSimulator.Companions
             return TryApplyDialogFeedback(Definition.SlangFeedback, success: true, currentTime: currentTime);
         }
 
+        internal bool CanTriggerSlangFeedback()
+        {
+            return Definition?.SlangFeedback != null
+                && ((Definition.SlangFeedback.SuccessLines?.Length ?? 0) > 0
+                    || (Definition.SlangFeedback.FailureLines?.Length ?? 0) > 0);
+        }
+
         public bool TryTriggerFoodFeedback(int variant, bool success, int currentTime)
         {
             if (variant < 1 || variant > 4 ||
@@ -1127,7 +1134,7 @@ namespace HaCreator.MapSimulator.Companions
             for (int i = 0; i < _activePets.Count; i++)
             {
                 PetRuntime pet = _activePets[i];
-                if (pet == null || pet.HasActiveSpeech)
+                if (pet == null || pet.HasActiveSpeech || !pet.CanTriggerSlangFeedback())
                 {
                     continue;
                 }
@@ -1140,14 +1147,20 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            PetRuntime selectedPet = eligiblePets[_specialistSpeechRandom.Next(eligiblePets.Count)];
-            if (!selectedPet.TryTriggerSlangFeedback(currentTime))
+            int startIndex = eligiblePets.Count > 1 ? _specialistSpeechRandom.Next(eligiblePets.Count) : 0;
+            for (int offset = 0; offset < eligiblePets.Count; offset++)
             {
-                return false;
+                PetRuntime selectedPet = eligiblePets[(startIndex + offset) % eligiblePets.Count];
+                if (!selectedPet.TryTriggerSlangFeedback(currentTime))
+                {
+                    continue;
+                }
+
+                _lastSpecialistSpeechTick = currentTime;
+                return true;
             }
 
-            _lastSpecialistSpeechTick = currentTime;
-            return true;
+            return false;
         }
 
         public bool TryTriggerSpeechEvent(PetAutoSpeechEvent eventType, int currentTime, int? slotIndex = null)

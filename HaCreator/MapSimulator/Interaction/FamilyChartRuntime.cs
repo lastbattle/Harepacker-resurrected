@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -463,7 +464,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal FamilyEntitlementUseResult ExecuteSelectedEntitlement(int currentTick, Vector2 localPlayerPosition)
         {
-            FamilyMemberState selectedMember = GetSelectedMember();
+            return ExecuteSelectedEntitlement(currentTick, localPlayerPosition, null);
+        }
+
+        internal FamilyEntitlementUseResult ExecuteSelectedEntitlement(int currentTick, Vector2 localPlayerPosition, string targetName)
+        {
+            FamilyMemberState selectedMember = ResolveEntitlementTarget(targetName, out FamilyEntitlementUseResult? resolutionFailure);
+            if (resolutionFailure.HasValue)
+            {
+                return resolutionFailure.Value;
+            }
+
             FamilyMemberState localPlayer = GetMember(LocalPlayerId) ?? selectedMember;
             int specialCost = GetSpecialReputationCost(localPlayer);
             int specialUseCount = GetEntitlementUseCount(_entitlementType);
@@ -549,6 +560,28 @@ namespace HaCreator.MapSimulator.Interaction
                 default:
                     return new FamilyEntitlementUseResult("That family entitlement is not modeled yet.");
             }
+        }
+
+        internal bool SelectedEntitlementRequiresTargetInput()
+        {
+            return _entitlementType is FamilyEntitlementType.MoveToMember or FamilyEntitlementType.SummonMember;
+        }
+
+        internal bool TryApplyResultPacketPayload(byte[] payload, out string message)
+        {
+            message = string.Empty;
+            if (!FamilyPacketCodec.TryDecodeResultPayload(payload, out FamilyResultPacket packet, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            if (!TryApplyResultPacket(packet, out message))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         internal void SetSelectedEntitlement(FamilyEntitlementType entitlementType)
@@ -1037,6 +1070,30 @@ namespace HaCreator.MapSimulator.Interaction
                 && (selectedMember.Id == LocalPlayerId || selectedMember.IsOnline);
         }
 
+        private FamilyMemberState ResolveEntitlementTarget(string targetName, out FamilyEntitlementUseResult? failureResult)
+        {
+            failureResult = null;
+            if (!SelectedEntitlementRequiresTargetInput() || string.IsNullOrWhiteSpace(targetName))
+            {
+                return GetSelectedMember();
+            }
+
+            string normalizedTargetName = targetName.Trim();
+            FamilyMemberState resolvedMember = _members.Values.FirstOrDefault(member =>
+                !string.IsNullOrWhiteSpace(member.Name) &&
+                string.Equals(member.Name.Trim(), normalizedTargetName, StringComparison.OrdinalIgnoreCase));
+            if (resolvedMember == null)
+            {
+                failureResult = new FamilyEntitlementUseResult(
+                    $"Family member `{normalizedTargetName}` is not present in the current simulator roster.");
+                return null;
+            }
+
+            _selectedMemberId = resolvedMember.Id;
+            _selectedEmptyTreeSlot = -1;
+            return resolvedMember;
+        }
+
         private bool CanUseCompactEntitlement(FamilyMemberState selectedMember, int specialCost, int specialUseCount, int specialUseLimit)
         {
             return CanUsePrivileges()
@@ -1074,6 +1131,67 @@ namespace HaCreator.MapSimulator.Interaction
         private string BuildAuthorityBlockedMessage(string action)
         {
             return $"Family authority does not permit this client seam to {action}. Current profile: {_authorityState.SourceLabel}.";
+        }
+
+        private bool TryApplyResultPacket(FamilyResultPacket packet, out string message)
+        {
+            message = packet.Type switch
+            {
+                1 => FormatFamilyResultMessage(
+                    0x121B,
+                    "Family result {0} completed.",
+                    GetSelectedMember()?.Name ?? "member"),
+                64 => ResolveFamilyResultNotice(0x1206, packet.Type),
+                65 => ResolveFamilyResultNotice(0x1205, packet.Type),
+                66 => ResolveFamilyResultNotice(0x1207, packet.Type),
+                67 => ResolveFamilyResultNotice(0x1208, packet.Type),
+                69 => ResolveFamilyResultNotice(0x120A, packet.Type),
+                70 => ResolveFamilyResultNotice(0x120B, packet.Type),
+                71 => ResolveFamilyResultNotice(0x120C, packet.Type),
+                72 => ResolveFamilyResultNotice(0x120D, packet.Type),
+                73 => ResolveFamilyResultNotice(0x120F, packet.Type),
+                74 => ResolveFamilyResultNotice(0x1210, packet.Type),
+                75 => ResolveFamilyResultNotice(0x1212, packet.Type),
+                76 => ResolveFamilyResultNotice(0x1213, packet.Type),
+                77 => ResolveFamilyResultNotice(0x120E, packet.Type),
+                78 => ResolveFamilyResultNotice(0x13AD, packet.Type),
+                79 => ResolveFamilyResultNotice(0x13AC, packet.Type),
+                80 => FormatFamilyResultMessage(0x1484, "Family result {0}: {1}", packet.Type, packet.Value),
+                81 => FormatFamilyResultMessage(0x1485, "Family result {0}: {1}", packet.Type, packet.Value),
+                82 => string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} {1}",
+                    ResolveFamilyResultNotice(0x155A, packet.Type),
+                    ResolveFamilyResultNotice(0x13AD, packet.Type)),
+                _ => null
+            };
+
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                message = $"Family result packet type {packet.Type} is not modeled yet.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static string ResolveFamilyResultNotice(int stringPoolId, int resultType)
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                stringPoolId,
+                $"Family result {resultType}",
+                appendFallbackSuffix: true,
+                minimumHexWidth: 4);
+        }
+
+        private static string FormatFamilyResultMessage(int stringPoolId, string fallbackFormat, params object[] arguments)
+        {
+            string compositeFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                arguments?.Length ?? 0,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, compositeFormat, arguments ?? Array.Empty<object>());
         }
 
         private void CollectBranchMemberIds(int memberId, List<int> results)

@@ -105,15 +105,17 @@ namespace HaCreator.MapSimulator.Fields
             public bool IsActive;
             // Visual
             public List<IDXObject> Frames;
+            public Dictionary<int, List<IDXObject>> StateFrames;
             public int FrameIndex;
             public int LastFrameTime;
             public float Rotation;
             public float Scale = 1f;
+            public bool UsesAuthoredStatePresentation => StateFrames != null && StateFrames.Count > 0;
             public void Update(int tickCount, float gravity, int groundY)
             {
                 if (!IsActive)
                     return;
-                if (State == CoconutState.Falling)
+                if (!UsesAuthoredStatePresentation && State == CoconutState.Falling)
                 {
                     bool onGround = Position.Y >= groundY && Velocity.Y >= 0f;
                     if (!onGround)
@@ -196,7 +198,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<IDXObject> _loseFrames = new();
         private readonly Dictionary<char, IDXObject> _scoreFont = new();
         private readonly Dictionary<char, IDXObject> _timeFont = new();
-        private readonly Dictionary<string, IDXObject> _objectFrameCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, List<IDXObject>> _objectFrameCache = new(StringComparer.OrdinalIgnoreCase);
         private SoundManager _soundManager;
         private IDXObject _boardBackground;
         private List<IDXObject> _activeResultFrames;
@@ -312,8 +314,9 @@ namespace HaCreator.MapSimulator.Fields
                     Velocity = Vector2.Zero,
                     Team = -1,
                     IsActive = true,
-                    Frames = CreateFramesForObject(instance)
+                    StateFrames = CreateStateFramesForObject(instance)
                 });
+                _coconuts[i].Frames = ResolveFramesForState(_coconuts[i], (int)CoconutState.OnTree);
             }
         }
         public void Initialize(int coconutCount, Rectangle treeArea, int groundY)
@@ -951,42 +954,88 @@ namespace HaCreator.MapSimulator.Fields
         private void ApplyPacketState(Coconut coconut, CoconutState newState)
         {
             coconut.State = newState;
+            ApplyAuthoredStateFrames(coconut, (int)newState);
             switch (newState)
             {
                 case CoconutState.OnTree:
                     coconut.Team = -1;
                     coconut.HitCount = 0;
+                    coconut.Position = coconut.InitialPosition;
                     coconut.Velocity = Vector2.Zero;
                     coconut.IsActive = true;
                     coconut.Rotation = 0f;
                     break;
                 case CoconutState.Falling:
                     coconut.HitCount = 0;
+                    if (coconut.UsesAuthoredStatePresentation)
+                    {
+                        coconut.Position = coconut.InitialPosition;
+                        coconut.Velocity = Vector2.Zero;
+                        coconut.Rotation = 0f;
+                    }
                     coconut.IsActive = true;
                     break;
                 case CoconutState.Team0Claimed:
                     coconut.Team = 0;
                     coconut.HitCount = 0;
+                    coconut.Position = coconut.InitialPosition;
                     coconut.Velocity = Vector2.Zero;
                     coconut.IsActive = true;
+                    coconut.Rotation = 0f;
                     break;
                 case CoconutState.Team1Claimed:
                     coconut.Team = 1;
                     coconut.HitCount = 0;
+                    coconut.Position = coconut.InitialPosition;
                     coconut.Velocity = Vector2.Zero;
                     coconut.IsActive = true;
+                    coconut.Rotation = 0f;
                     break;
                 case CoconutState.Scored:
                     coconut.HitCount = 0;
+                    coconut.Position = coconut.InitialPosition;
                     coconut.Velocity = Vector2.Zero;
                     coconut.IsActive = true;
+                    coconut.Rotation = 0f;
                     break;
                 case CoconutState.Destroyed:
                     coconut.HitCount = 0;
+                    coconut.Position = coconut.InitialPosition;
                     coconut.Velocity = Vector2.Zero;
                     coconut.IsActive = false;
+                    coconut.Rotation = 0f;
                     break;
             }
+        }
+
+        private static List<IDXObject> ResolveFramesForState(Coconut coconut, int stateId)
+        {
+            if (coconut?.StateFrames == null || coconut.StateFrames.Count == 0)
+            {
+                return coconut?.Frames;
+            }
+
+            if (coconut.StateFrames.TryGetValue(stateId, out List<IDXObject> authoredFrames) && authoredFrames?.Count > 0)
+            {
+                return authoredFrames;
+            }
+
+            return coconut.StateFrames.TryGetValue(0, out List<IDXObject> defaultFrames)
+                ? defaultFrames
+                : coconut.Frames;
+        }
+
+        private static void ApplyAuthoredStateFrames(Coconut coconut, int stateId)
+        {
+            List<IDXObject> resolvedFrames = ResolveFramesForState(coconut, stateId);
+            if (resolvedFrames == null || ReferenceEquals(coconut?.Frames, resolvedFrames))
+            {
+                return;
+            }
+
+            coconut.Frames = resolvedFrames;
+            coconut.FrameIndex = 0;
+            coconut.LastFrameTime = 0;
         }
         private void ShowMessage(string message, int durationMs, int currentTick)
         {
@@ -1604,6 +1653,20 @@ namespace HaCreator.MapSimulator.Fields
             _authoredTotalCoconutCount = ResolveAuthoredTotalCoconutCount(countFalling, countBombing, countStopped);
             _eventObjectName = string.IsNullOrWhiteSpace(eventObjectName) ? "Coconut" : eventObjectName.Trim();
         }
+
+        internal void ConfigureAuthoredObjectStateFramesForTesting(int coconutId, IDictionary<int, List<IDXObject>> stateFrames)
+        {
+            if (coconutId < 0 || coconutId >= _coconuts.Count)
+            {
+                return;
+            }
+
+            Coconut coconut = _coconuts[coconutId];
+            coconut.StateFrames = stateFrames == null
+                ? null
+                : new Dictionary<int, List<IDXObject>>(stateFrames);
+            ApplyAuthoredStateFrames(coconut, (int)coconut.State);
+        }
         internal static int ResolveAuthoredTotalCoconutCount(int countFalling, int countBombing, int countStopped)
         {
             long total = Math.Max(0, countFalling) + (long)Math.Max(0, countBombing) + Math.Max(0, countStopped);
@@ -1670,20 +1733,91 @@ namespace HaCreator.MapSimulator.Fields
 
             return WzInfoTools.GetRealProperty(current);
         }
-        private List<IDXObject> CreateFramesForObject(ObjectInstance instance)
+        private Dictionary<int, List<IDXObject>> CreateStateFramesForObject(ObjectInstance instance)
         {
-            if (_graphicsDevice == null || instance?.BaseInfo is not ObjectInfo objectInfo || objectInfo.Image == null)
+            if (_graphicsDevice == null || instance?.BaseInfo is not ObjectInfo objectInfo)
             {
                 return null;
             }
+
+            Dictionary<int, List<IDXObject>> stateFrames = new();
+            WzImage objectSet = global::HaCreator.Program.InfoManager?.GetObjectSet(objectInfo.oS);
+            WzImageProperty objectRoot = objectSet?[objectInfo.l0]?[objectInfo.l1]?[objectInfo.l2];
+            if (objectRoot != null)
+            {
+                if (TryLoadObjectStateFrames(objectInfo, WzInfoTools.GetRealProperty(objectRoot["0"]), $"{objectInfo.oS}/{objectInfo.l0}/{objectInfo.l1}/{objectInfo.l2}/0", out List<IDXObject> defaultFrames))
+                {
+                    stateFrames[0] = defaultFrames;
+                }
+
+                for (int stateId = 1; stateId <= 8; stateId++)
+                {
+                    string branchName = $"s{stateId}";
+                    if (!TryLoadObjectStateFrames(objectInfo, WzInfoTools.GetRealProperty(objectRoot[branchName]), $"{objectInfo.oS}/{objectInfo.l0}/{objectInfo.l1}/{objectInfo.l2}/{branchName}", out List<IDXObject> branchFrames))
+                    {
+                        continue;
+                    }
+
+                    stateFrames[stateId] = branchFrames;
+                }
+            }
+
+            if (stateFrames.Count > 0)
+            {
+                return stateFrames;
+            }
+
+            if (objectInfo.Image == null)
+            {
+                return null;
+            }
+
             string cacheKey = $"{objectInfo.oS}/{objectInfo.l0}/{objectInfo.l1}/{objectInfo.l2}";
-            if (!_objectFrameCache.TryGetValue(cacheKey, out IDXObject frame))
+            if (!_objectFrameCache.TryGetValue(cacheKey, out List<IDXObject> fallbackFrames))
             {
                 Texture2D texture = objectInfo.Image.ToTexture2D(_graphicsDevice);
-                frame = new DXObject(-objectInfo.Origin.X, -objectInfo.Origin.Y, texture, 100);
-                _objectFrameCache[cacheKey] = frame;
+                fallbackFrames = new List<IDXObject> { new DXObject(-objectInfo.Origin.X, -objectInfo.Origin.Y, texture, 100) };
+                _objectFrameCache[cacheKey] = fallbackFrames;
             }
-            return new List<IDXObject> { frame };
+
+            return new Dictionary<int, List<IDXObject>> { [0] = fallbackFrames };
+        }
+
+        private bool TryLoadObjectStateFrames(ObjectInfo objectInfo, WzImageProperty stateProperty, string cacheKey, out List<IDXObject> frames)
+        {
+            frames = null;
+            if (_graphicsDevice == null || objectInfo == null || stateProperty == null)
+            {
+                return false;
+            }
+
+            if (_objectFrameCache.TryGetValue(cacheKey, out List<IDXObject> cachedFrames))
+            {
+                frames = cachedFrames;
+                return cachedFrames?.Count > 0;
+            }
+
+            List<IDXObject> loadedFrames = new();
+            if (stateProperty is WzCanvasProperty canvas)
+            {
+                if (TryCreateDxObject(canvas, out IDXObject singleFrame))
+                {
+                    loadedFrames.Add(singleFrame);
+                }
+            }
+            else if (stateProperty is WzSubProperty)
+            {
+                LoadAnimatedFrames(stateProperty, loadedFrames);
+            }
+
+            if (loadedFrames.Count == 0)
+            {
+                return false;
+            }
+
+            _objectFrameCache[cacheKey] = loadedFrames;
+            frames = loadedFrames;
+            return true;
         }
         private static Rectangle GetObjectBounds(IReadOnlyList<ObjectInstance> coconutObjects)
         {

@@ -284,6 +284,7 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserActiveEffectItemPacket(int CharacterId, int? ItemId);
     public enum RemoteUserEffectSubtype : byte
     {
+        GenericUserState = 0,
         IncDecHp = 29,
         QuestDeliveryStart = 30,
         QuestDeliveryEnd = 31
@@ -297,6 +298,7 @@ namespace HaCreator.MapSimulator.Pools
     {
         public RemoteUserEffectSubtype? KnownSubtype => EffectType switch
         {
+            (byte)RemoteUserEffectSubtype.GenericUserState => RemoteUserEffectSubtype.GenericUserState,
             (byte)RemoteUserEffectSubtype.IncDecHp => RemoteUserEffectSubtype.IncDecHp,
             (byte)RemoteUserEffectSubtype.QuestDeliveryStart => RemoteUserEffectSubtype.QuestDeliveryStart,
             (byte)RemoteUserEffectSubtype.QuestDeliveryEnd => RemoteUserEffectSubtype.QuestDeliveryEnd,
@@ -1283,6 +1285,16 @@ namespace HaCreator.MapSimulator.Pools
                 int? int32Value = null;
                 switch ((RemoteUserEffectSubtype)effectType)
                 {
+                    case RemoteUserEffectSubtype.GenericUserState:
+                    case RemoteUserEffectSubtype.QuestDeliveryEnd:
+                        if (effectPayload.Length != 0)
+                        {
+                            error = $"Remote user effect subtype {effectType} expects no trailing payload but received {effectPayload.Length} bytes.";
+                            return false;
+                        }
+
+                        break;
+
                     case RemoteUserEffectSubtype.IncDecHp:
                     case RemoteUserEffectSubtype.QuestDeliveryStart:
                         if (effectPayload.Length != sizeof(int))
@@ -1292,15 +1304,6 @@ namespace HaCreator.MapSimulator.Pools
                         }
 
                         int32Value = BinaryPrimitives.ReadInt32LittleEndian(effectPayload);
-                        break;
-
-                    case RemoteUserEffectSubtype.QuestDeliveryEnd:
-                        if (effectPayload.Length != 0)
-                        {
-                            error = $"Remote user effect subtype {effectType} expects no trailing payload but received {effectPayload.Length} bytes.";
-                            return false;
-                        }
-
                         break;
                 }
 

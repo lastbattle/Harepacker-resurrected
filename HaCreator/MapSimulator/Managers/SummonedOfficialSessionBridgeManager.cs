@@ -23,6 +23,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18486;
         private const string DefaultProcessName = "MapleStory";
         private const string OfficialSessionTraceSourcePrefix = "official-session:";
+        private const string SimulatorSg88TemplateReplaySourcePrefix = "simulator:sg88-template:";
+        private const string SimulatorTeslaTemplateReplaySourcePrefix = "simulator:tesla-template:";
         private const int MaxRecentOutboundPackets = 32;
         private const int MaxRecentSg88ManualAttackRequests = 16;
         private const int Sg88ManualAttackCaptureGraceMs = 120;
@@ -1286,43 +1288,69 @@ namespace HaCreator.MapSimulator.Managers
         private void UpdateLearnedSg88ManualAttackTemplateResolution(Sg88ManualAttackCapture capture)
         {
             if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
-                || capture.TargetMobIds.Length <= 0
-                || !_learnedSg88ManualAttackTemplates.TryGetValue(capture.TargetMobIds.Length, out List<LearnedSg88ManualAttackTemplate> templates))
+                || capture.TargetMobIds.Length <= 0)
             {
                 return;
             }
 
-            foreach (LearnedSg88ManualAttackTemplate template in templates)
+            if (_learnedSg88ManualAttackTemplates.TryGetValue(capture.TargetMobIds.Length, out List<LearnedSg88ManualAttackTemplate> templates))
             {
-                if (template.RequestedAt == capture.RequestedAt
-                    && template.ObservedAt == requestPacket.ObservedAt
-                    && template.PrimaryTargetMobId == capture.PrimaryTargetMobId
-                    && template.TargetMobIds.SequenceEqual(capture.TargetMobIds))
+                foreach (LearnedSg88ManualAttackTemplate template in templates)
                 {
-                    template.ResolutionSource = capture.ResolutionSource;
+                    if (template.RequestedAt == capture.RequestedAt
+                        && template.ObservedAt == requestPacket.ObservedAt
+                        && template.PrimaryTargetMobId == capture.PrimaryTargetMobId
+                        && template.TargetMobIds.SequenceEqual(capture.TargetMobIds))
+                    {
+                        template.ResolutionSource = capture.ResolutionSource;
+                    }
                 }
             }
+
+            PromoteLearnedSg88ManualAttackTemplate(
+                capture,
+                requestPacket,
+                new Sg88ManualAttackTraceBinding(
+                    false,
+                    false,
+                    false,
+                    0,
+                    capture.RequestPacketScore,
+                    string.IsNullOrWhiteSpace(capture.RequestPacketEvidence) ? "window-only" : capture.RequestPacketEvidence));
         }
 
         private void UpdateLearnedTeslaAttackTemplateResolution(Sg88ManualAttackCapture capture)
         {
             if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
-                || capture.TargetMobIds.Length <= 0
-                || !_learnedTeslaAttackTemplates.TryGetValue(capture.TargetMobIds.Length, out List<LearnedSg88ManualAttackTemplate> templates))
+                || capture.TargetMobIds.Length <= 0)
             {
                 return;
             }
 
-            foreach (LearnedSg88ManualAttackTemplate template in templates)
+            if (_learnedTeslaAttackTemplates.TryGetValue(capture.TargetMobIds.Length, out List<LearnedSg88ManualAttackTemplate> templates))
             {
-                if (template.RequestedAt == capture.RequestedAt
-                    && template.ObservedAt == requestPacket.ObservedAt
-                    && template.PrimaryTargetMobId == capture.PrimaryTargetMobId
-                    && template.TargetMobIds.SequenceEqual(capture.TargetMobIds))
+                foreach (LearnedSg88ManualAttackTemplate template in templates)
                 {
-                    template.ResolutionSource = capture.ResolutionSource;
+                    if (template.RequestedAt == capture.RequestedAt
+                        && template.ObservedAt == requestPacket.ObservedAt
+                        && template.PrimaryTargetMobId == capture.PrimaryTargetMobId
+                        && template.TargetMobIds.SequenceEqual(capture.TargetMobIds))
+                    {
+                        template.ResolutionSource = capture.ResolutionSource;
+                    }
                 }
             }
+
+            PromoteLearnedTeslaAttackTemplate(
+                capture,
+                requestPacket,
+                new Sg88ManualAttackTraceBinding(
+                    false,
+                    false,
+                    false,
+                    0,
+                    capture.RequestPacketScore,
+                    string.IsNullOrWhiteSpace(capture.RequestPacketEvidence) ? "window-only" : capture.RequestPacketEvidence));
         }
 
         internal static Sg88ManualAttackTraceBinding EvaluateSg88ManualAttackTraceBinding(
@@ -1453,7 +1481,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (!IsEligibleSg88TemplateEvidenceSource(trace.Source))
+            if (!CanCandidateTemplateEvidenceSource(trace.Source))
             {
                 return;
             }
@@ -1757,7 +1785,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
                     || capture.TargetMobIds.Length != targetCount
-                    || !IsEligibleSg88TemplateEvidenceSource(requestPacket.Source))
+                    || !IsEligibleSg88TemplateEvidenceSource(requestPacket.Source, capture.ResolutionSource))
                 {
                     return false;
                 }
@@ -1895,7 +1923,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
                     || capture.TargetMobIds.Length != targetCount
-                    || !IsEligibleSg88TemplateEvidenceSource(requestPacket.Source))
+                    || !IsEligibleTeslaTemplateEvidenceSource(requestPacket.Source, capture.ResolutionSource))
                 {
                     return false;
                 }
@@ -2006,10 +2034,44 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
-        private static bool IsEligibleSg88TemplateEvidenceSource(string source)
+        private static bool CanCandidateTemplateEvidenceSource(string source)
         {
             return !string.IsNullOrWhiteSpace(source)
-                && source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase);
+                && (source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase)
+                    || source.StartsWith(SimulatorSg88TemplateReplaySourcePrefix, StringComparison.OrdinalIgnoreCase)
+                    || source.StartsWith(SimulatorTeslaTemplateReplaySourcePrefix, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsEligibleSg88TemplateEvidenceSource(string source, string resolutionSource)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return false;
+            }
+
+            if (source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return source.StartsWith(SimulatorSg88TemplateReplaySourcePrefix, StringComparison.OrdinalIgnoreCase)
+                && GetSg88TemplateResolutionRank(resolutionSource) >= GetSg88TemplateResolutionRank("0x119-target-cover");
+        }
+
+        private static bool IsEligibleTeslaTemplateEvidenceSource(string source, string resolutionSource)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return false;
+            }
+
+            if (source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return source.StartsWith(SimulatorTeslaTemplateReplaySourcePrefix, StringComparison.OrdinalIgnoreCase)
+                && GetTeslaTemplateResolutionRank(resolutionSource) >= GetTeslaTemplateResolutionRank("0x119-target-cover");
         }
 
         private static int GetSg88TemplateResolutionRank(string resolutionSource)
@@ -2083,7 +2145,7 @@ namespace HaCreator.MapSimulator.Managers
             Sg88ManualAttackTraceBinding binding)
         {
             if (capture?.RequestPacket is not OutboundPacketTrace requestPacket
-                || !IsEligibleSg88TemplateEvidenceSource(trace.Source))
+                || !IsEligibleSg88TemplateEvidenceSource(trace.Source, capture.ResolutionSource))
             {
                 return;
             }
@@ -2165,6 +2227,7 @@ namespace HaCreator.MapSimulator.Managers
             string error = null;
             if (capture?.TargetMobIds == null
                 || capture.TargetMobIds.Length == 0
+                || !IsEligibleTeslaTemplateEvidenceSource(trace.Source, capture.ResolutionSource)
                 || !TryCreateSg88ManualAttackRequestTemplate(
                     trace,
                     capture.SummonObjectId,

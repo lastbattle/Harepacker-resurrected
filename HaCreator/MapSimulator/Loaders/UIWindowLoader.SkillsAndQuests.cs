@@ -2688,6 +2688,7 @@ namespace HaCreator.MapSimulator.Loaders
                 null,
                 null,
                 null,
+                null,
                 device)
             {
                 Position = new Point(

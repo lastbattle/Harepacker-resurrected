@@ -453,7 +453,12 @@ namespace HaCreator.MapSimulator.Managers
 
                 int packetType = BinaryPrimitives.ReadUInt16LittleEndian(rawPacket);
                 byte[] payload = rawPacket.Length == sizeof(short) ? Array.Empty<byte>() : rawPacket[sizeof(short)..];
-                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
+                if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+                {
+                    payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                    packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+                }
+
                 message = new MassacrePacketInboxMessage(MassacrePacketInboxMessageKind.Packet, "massacre-inbox", trimmed, packetType: packetType, payload: payload);
                 return true;
             }
@@ -466,7 +471,12 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
+                if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+                {
+                    payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                    packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+                }
+
                 message = new MassacrePacketInboxMessage(MassacrePacketInboxMessageKind.Packet, "massacre-inbox", trimmed, packetType: packetType, payload: payload);
                 return true;
             }
@@ -482,7 +492,12 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref barePacketType, ref barePayload);
+            if (barePacketType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                barePayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(barePacketType, barePayload);
+                barePacketType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            }
+
             message = new MassacrePacketInboxMessage(MassacrePacketInboxMessageKind.Packet, "massacre-inbox", trimmed, packetType: barePacketType, payload: barePayload);
             return true;
         }

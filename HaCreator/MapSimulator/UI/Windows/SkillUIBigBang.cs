@@ -719,6 +719,36 @@ namespace HaCreator.MapSimulator.UI
             _displaySkillRootByTab[tabIndex] = Math.Max(0, skillRootId);
         }
 
+        public void ResetSkillRootTab(int tab)
+        {
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
+            if (_displaySkillRootByTab.TryGetValue(tabIndex, out int previousSkillRootId) &&
+                _recommendedSkillsBySkillRootId.TryGetValue(previousSkillRootId, out List<SkillDataLoader.RecommendedSkillEntry> entries))
+            {
+                entries.Clear();
+            }
+
+            if (skillsByTab.TryGetValue(tabIndex, out List<SkillDisplayData> skills))
+            {
+                skills.Clear();
+            }
+
+            skillPointsByTab[tabIndex] = 0;
+            _displaySkillRootByTab[tabIndex] = 0;
+            _jobIconsByTab[tabIndex] = null;
+            _jobNamesByTab[tabIndex] = GetDefaultTabJobName(tabIndex);
+
+            if (_currentTab == tabIndex)
+            {
+                _hoveredSkillIndex = -1;
+                _hoveredSpUpSkillIndex = -1;
+                _hoveredSkillPointDisplay = false;
+                _pressedSpUpSkillIndex = -1;
+                _selectedSkillIndex = -1;
+                _scrollOffset = 0;
+            }
+        }
+
         public bool TryGetDisplayedSkillRootId(int tab, out int skillRootId)
         {
             int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
@@ -1231,12 +1261,12 @@ namespace HaCreator.MapSimulator.UI
             int nextLevel = Math.Min(skill.MaxLevel, previewLevel + (currentLevel > 0 ? 1 : 0));
             string skillName = SanitizeFontText(skill.SkillName);
             string description = SanitizeFontText(skill.FormattedDescriptionOrDefault);
-            string currentLevelHeader = currentLevel > 0 ? $"Current Level: {currentLevel}" : string.Empty;
+            string currentLevelHeader = currentLevel > 0 ? SkillTooltipClientText.FormatCurrentLevelHeader(currentLevel) : string.Empty;
             string currentLevelDescription = currentLevel > 0
                 ? SanitizeFontText(skill.GetFormattedLevelDescription(currentLevel))
                 : string.Empty;
             bool showNextLevel = nextLevel > 0 && nextLevel <= skill.MaxLevel && nextLevel != currentLevel;
-            string nextLevelHeader = showNextLevel ? $"Next Level: {nextLevel}" : string.Empty;
+            string nextLevelHeader = showNextLevel ? SkillTooltipClientText.FormatNextLevelHeader(nextLevel) : string.Empty;
             string nextLevelDescription = showNextLevel
                 ? SanitizeFontText(skill.GetFormattedLevelDescription(nextLevel))
                 : string.Empty;
@@ -1415,7 +1445,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawTooltipText(
                 sprite,
-                ResolveRequiredSkillHeaderText(),
+                SkillTooltipClientText.ResolveRequiredSkillHeaderText(),
                 new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_HEADER_X, sectionY + CLIENT_TOOLTIP_REQUIREMENT_HEADER_Y_OFFSET),
                 new Color(255, 204, 120));
 
@@ -1454,21 +1484,10 @@ namespace HaCreator.MapSimulator.UI
                     Color.White);
                 DrawTooltipText(
                     sprite,
-                    FormatRequiredSkillLevelText(requirement.RequiredLevel),
+                    SkillTooltipClientText.FormatRequiredSkillLevelText(requirement.RequiredLevel),
                     new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_LEVEL_X, rowY + CLIENT_TOOLTIP_REQUIREMENT_LEVEL_Y),
                     new Color(210, 210, 210));
             }
-        }
-
-        private static string ResolveRequiredSkillHeaderText()
-        {
-            return MapleStoryStringPool.GetOrFallback(0x801, "Required Skill");
-        }
-
-        private static string FormatRequiredSkillLevelText(int requiredLevel)
-        {
-            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(0x800, "Lv. {0}+", 1, out _);
-            return string.Format(format, Math.Max(1, requiredLevel));
         }
 
         private int ResolveHoveredTooltipWidth()
@@ -2284,6 +2303,21 @@ namespace HaCreator.MapSimulator.UI
             _hoveredSkillPointDisplay = false;
             _pressedSpUpSkillIndex = -1;
             _selectedSkillIndex = -1;
+        }
+
+        private static string GetDefaultTabJobName(int tabIndex)
+        {
+            return tabIndex switch
+            {
+                TAB_BEGINNER => "Beginner",
+                TAB_1ST => "1st Job",
+                TAB_2ND => "2nd Job",
+                TAB_3RD => "3rd Job",
+                TAB_4TH => "4th Job",
+                TAB_DUAL_5TH => "5th Tab",
+                TAB_DUAL_6TH => "6th Tab",
+                _ => "Beginner"
+            };
         }
 
         private int CoerceVisibleTab(int requestedTab)

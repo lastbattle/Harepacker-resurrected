@@ -95,6 +95,12 @@ namespace HaCreator.MapSimulator.Managers
 
         public void EnqueueLocal(int packetType, byte[] payload, string source)
         {
+            if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            }
+
             _pendingMessages.Enqueue(new MonsterCarnivalPacketInboxMessage(packetType, payload, source, $"{packetType}"));
         }
 
@@ -165,7 +171,8 @@ namespace HaCreator.MapSimulator.Managers
             try
             {
                 payload = Convert.FromHexString(compactHex);
-                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
                 return true;
             }
             catch (FormatException)
@@ -312,6 +319,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType switch
             {
+                SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode => $"CField::OnPacket relay ({SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode})",
                 PacketTypeEnter => "enter (346)",
                 PacketTypePersonalCp => "personalcp (347)",
                 PacketTypeTeamCp => "teamcp (348)",

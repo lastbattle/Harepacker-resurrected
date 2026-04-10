@@ -355,6 +355,7 @@ namespace HaCreator.MapSimulator
             {
                 bool initialQuizMouseConsumed = HandleInitialQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
                 bool speedQuizMouseConsumed = HandleSpeedQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
+                bool dedicatedOwnerMouseConsumed = HandlePacketScriptDedicatedOwnerMouse(newMouseState, _oldMouseState, currTickCount);
                 NpcInteractionOverlayResult npcOverlayResult = _npcInteractionOverlay != null
                     ? _npcInteractionOverlay.HandleMouse(newMouseState, _oldMouseState, _renderParams.RenderWidth, _renderParams.RenderHeight)
                     : default;
@@ -370,6 +371,7 @@ namespace HaCreator.MapSimulator
 
                 if (!initialQuizMouseConsumed &&
                     !speedQuizMouseConsumed &&
+                    !dedicatedOwnerMouseConsumed &&
                     !npcOverlayResult.Consumed &&
                     uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
                     _specialFieldRuntime.Minigames.Tournament.HandleMatchTableDialogMouse(
@@ -390,6 +392,7 @@ namespace HaCreator.MapSimulator
 
                 if (!initialQuizMouseConsumed &&
                     !speedQuizMouseConsumed &&
+                    !dedicatedOwnerMouseConsumed &&
                     !npcOverlayResult.Consumed &&
                     !tournamentMatchTableMouseConsumed &&
                     newMouseState.LeftButton == ButtonState.Released &&
@@ -411,6 +414,7 @@ namespace HaCreator.MapSimulator
 
 
                 if (!initialQuizMouseConsumed &&
+                    !dedicatedOwnerMouseConsumed &&
                     !npcOverlayResult.Consumed &&
                     !memoryGameMouseConsumed &&
                     !tournamentMatchTableMouseConsumed)
@@ -494,10 +498,12 @@ namespace HaCreator.MapSimulator
 
             bool initialQuizKeyboardConsumed = isWindowActive && HandleInitialQuizOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
             bool speedQuizKeyboardConsumed = isWindowActive && HandleSpeedQuizOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
+            bool dedicatedOwnerKeyboardConsumed = isWindowActive && HandlePacketScriptDedicatedOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
             bool uiCapturesKeyboard = uiWindowManager?.CapturesKeyboardInput == true
                 || _npcInteractionOverlay?.CapturesKeyboardInput == true
                 || initialQuizKeyboardConsumed
-                || speedQuizKeyboardConsumed;
+                || speedQuizKeyboardConsumed
+                || dedicatedOwnerKeyboardConsumed;
             bool chatConsumedInput = isWindowActive &&
 
                                      !uiCapturesKeyboard &&

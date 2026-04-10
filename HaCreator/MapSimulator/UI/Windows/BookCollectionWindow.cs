@@ -3084,6 +3084,20 @@ namespace HaCreator.MapSimulator.UI
                 useClauseAnchor,
                 clauseAnchorWidth,
                 clauseWidth);
+            if (SkillMacroImeWindowPlacementLayout.TryResolveCandidateWindowFormPlacement(
+                _candidateListState?.WindowForm,
+                out Point nativeCandidatePoint,
+                out Rectangle nativeCandidateArea,
+                out uint nativeCandidateStyle))
+            {
+                placement = placement with
+                {
+                    CandidatePoint = nativeCandidatePoint,
+                    CandidateExcludeArea = nativeCandidateArea,
+                    CandidateStyle = nativeCandidateStyle
+                };
+            }
+
             WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
         }
 

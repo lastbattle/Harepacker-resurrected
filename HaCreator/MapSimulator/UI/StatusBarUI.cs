@@ -90,6 +90,7 @@ namespace HaCreator.MapSimulator.UI {
         public int MaskFrameIndex { get; set; } = 15;
         public string CounterText { get; set; }
         public string TooltipStateText { get; set; }
+        public string TooltipCostLineMarkup { get; set; }
         public bool SuppressProgressOverlay { get; set; }
         public bool SuppressCounterText { get; set; }
     }
@@ -1251,7 +1252,7 @@ namespace HaCreator.MapSimulator.UI {
                 renderHeight,
                 SanitizeTooltipText(cooldownEntry.SkillName),
                 BuildCooldownTooltipStatusLineMarkup(cooldownEntry),
-                string.Empty,
+                BuildCooldownTooltipSecondaryLineMarkup(cooldownEntry),
                 SanitizeTooltipText(cooldownEntry.Description),
                 cooldownEntry.IconTexture);
         }
@@ -1953,7 +1954,7 @@ namespace HaCreator.MapSimulator.UI {
                 .Replace("\t", " ");
         }
 
-        private static string BuildCooldownTooltipStatusLineMarkup(StatusBarCooldownRenderData cooldownEntry)
+        internal static string BuildCooldownTooltipStatusLineMarkup(StatusBarCooldownRenderData cooldownEntry)
         {
             if (cooldownEntry == null)
             {
@@ -1963,6 +1964,11 @@ namespace HaCreator.MapSimulator.UI {
             return SkillCooldownTooltipText.FormatTooltipStateLineMarkup(
                 cooldownEntry.RemainingMs,
                 cooldownEntry.TooltipStateText);
+        }
+
+        internal static string BuildCooldownTooltipSecondaryLineMarkup(StatusBarCooldownRenderData cooldownEntry)
+        {
+            return cooldownEntry?.TooltipCostLineMarkup ?? string.Empty;
         }
 
         private string ClipTextToWidth(string text, float maxWidth, float scale, ClientTextRasterizer rasterizer = null)

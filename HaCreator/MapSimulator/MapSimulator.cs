@@ -346,6 +346,7 @@ namespace HaCreator.MapSimulator
         private readonly FieldMessageBoxRuntime _fieldMessageBoxRuntime = new FieldMessageBoxRuntime();
         private readonly PacketFieldStateRuntime _packetFieldStateRuntime = new PacketFieldStateRuntime();
         private readonly PacketScriptMessageRuntime _packetScriptMessageRuntime = new PacketScriptMessageRuntime();
+        private readonly PacketScriptDedicatedOwnerRuntime _packetScriptDedicatedOwnerRuntime = new PacketScriptDedicatedOwnerRuntime();
         private readonly InitialQuizTimerRuntime _initialQuizTimerRuntime = new InitialQuizTimerRuntime();
         private readonly SpeedQuizOwnerRuntime _speedQuizOwnerRuntime = new SpeedQuizOwnerRuntime();
         private readonly PacketScriptReplyTransportManager _packetScriptReplyTransport = new PacketScriptReplyTransportManager();
@@ -366,6 +367,7 @@ namespace HaCreator.MapSimulator
         private bool _npcQuestAlertIconsLoaded;
         private readonly NpcFeedbackBalloonQueue _npcQuestFeedback = new();
         private string _activeNpcQuestFeedbackActionName;
+        private int _lastNpcClientActionSelectionContextStamp = int.MinValue;
         private const int NpcQuestAlertVerticalGap = 4;
         private readonly Random _npcIdleSpeechRandom = new();
         private int _nextNpcIdleSpeechTick;
@@ -1594,6 +1596,7 @@ namespace HaCreator.MapSimulator
                 request,
                 out MapTransferRuntimeResponse response,
                 out string dispatchStatus);
+            bool awaitingOfficialResult = _mapTransferOfficialSessionBridge.HasConnectedSession && requestDispatched;
 
             if (!_mapTransferOfficialSessionBridge.HasConnectedSession &&
                 !requestDispatched &&
@@ -1610,7 +1613,7 @@ namespace HaCreator.MapSimulator
 
 
             if (_mapTransferManualDestination?.MapId == targetMapId
-                && (response.Applied || response.FocusMapId == targetMapId))
+                && (response.Applied || (!awaitingOfficialResult && response.FocusMapId == targetMapId)))
             {
                 _mapTransferManualDestination = null;
             }
@@ -2777,8 +2780,10 @@ namespace HaCreator.MapSimulator
         }
         private bool ShouldTrackInheritedDirectionModeOwner()
         {
+            bool trackedOwnerVisible = _scriptedDirectionModeWindows.HasVisibleOwnedWindow(IsWindowVisible);
             return _gameState.ShouldInheritDirectionModeOwner(
                 _npcInteractionOverlay?.IsVisible == true,
+                trackedOwnerVisible,
                 _scriptedDirectionModeOwnerActive,
                 _specialFieldRuntime.SpecialEffects.Wedding.HasActiveScriptedDialog,
                 _specialFieldRuntime.SpecialEffects.CakePie.IsItemInfoVisible,
@@ -3511,7 +3516,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            int maxItemId = 5290000 + Math.Max(1, slotCount) - 1;
+            int maxItemId = 5290000 + Math.Min(Math.Max(1, slotCount), GuildBbsRuntime.ClientInventoryCashEmoticonItemCount) - 1;
             for (int itemId = 5290000; itemId <= maxItemId; itemId++)
             {
                 if (inventory.GetItemCount(InventoryType.CASH, itemId) > 0)
@@ -3530,7 +3535,11 @@ namespace HaCreator.MapSimulator
             }
 
 
-            _mapleTvRuntime.ConfigureDefaultMedia(0, "Maple TV", mapleTvWindow.DefaultMediaIndex);
+            _mapleTvRuntime.ConfigureDefaultMedia(
+                0,
+                "Maple TV",
+                mapleTvWindow.DefaultMediaIndex,
+                mapleTvWindow.AvailableMediaIndices);
             _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
             mapleTvWindow.SetSnapshotProvider(() => _mapleTvRuntime.BuildSnapshot(currTickCount));
             mapleTvWindow.SetActionHandlers(
@@ -5579,7 +5588,7 @@ namespace HaCreator.MapSimulator
 
             bool hasNpcReference = InventoryItemMetadataResolver.TryResolveNpcReference(itemId, out int npcId)
                                    && npcId > 0;
-            bool hasScript = InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out _);
+            bool hasScript = InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out string scriptName);
             if (!hasNpcReference && !hasScript)
             {
                 return false;
@@ -5597,8 +5606,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            NpcItem npcPreview = CreateNpcPreview(npcId, includeTooltips: false);
-            if (npcPreview == null)
+            if (!TryOpenItemAuthoredInventoryInteraction(itemId, npcId, scriptName))
             {
                 return false;
             }
@@ -5610,11 +5618,156 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            OpenNpcInteraction(npcPreview);
             _fieldRuleRuntime?.RegisterSuccessfulItemUse(
                 ShouldTrackFieldConsumeItemCooldown(inventoryType, default, default),
                 currentTime);
             return true;
+        }
+
+        private bool TryOpenItemAuthoredInventoryInteraction(int itemId, int npcId, string scriptName)
+        {
+            NpcItem npcPreview = CreateNpcPreview(npcId, includeTooltips: false);
+            if (npcPreview != null)
+            {
+                OpenNpcInteraction(npcPreview);
+                return true;
+            }
+
+            if (_npcInteractionOverlay == null)
+            {
+                return false;
+            }
+
+            string itemName = ResolvePickupItemName(itemId);
+            string npcName = ResolveItemAuthoredInteractionNpcName(npcId);
+            NpcInteractionState interactionState = CreateItemAuthoredInventoryInteractionState(
+                itemId,
+                itemName,
+                npcId,
+                npcName,
+                scriptName);
+            if (interactionState == null)
+            {
+                return false;
+            }
+
+            _gameState.EnterDirectionMode();
+            _scriptedDirectionModeOwnerActive = true;
+            _activeNpcInteractionNpc = null;
+            _activeNpcInteractionNpcId = npcId;
+
+            if (npcId > 0)
+            {
+                PublishDynamicObjectTagStatesForNpc(npcId, currTickCount);
+            }
+
+            _npcInteractionOverlay.Open(interactionState);
+            return true;
+        }
+
+        private string ResolveItemAuthoredInteractionNpcName(int npcId)
+        {
+            if (npcId <= 0)
+            {
+                return string.Empty;
+            }
+
+            if (Program.InfoManager?.NpcNameCache != null
+                && Program.InfoManager.NpcNameCache.TryGetValue(npcId.ToString(CultureInfo.InvariantCulture), out Tuple<string, string> npcInfo)
+                && !string.IsNullOrWhiteSpace(npcInfo?.Item1))
+            {
+                return npcInfo.Item1.Trim();
+            }
+
+            NpcInfo info = NpcInfo.Get(npcId.ToString(CultureInfo.InvariantCulture));
+            return string.IsNullOrWhiteSpace(info?.StringName)
+                ? string.Empty
+                : info.StringName.Trim();
+        }
+
+        internal static NpcInteractionState CreateItemAuthoredInventoryInteractionState(
+            int itemId,
+            string itemName,
+            int npcId,
+            string npcName,
+            string scriptName)
+        {
+            string trimmedItemName = string.IsNullOrWhiteSpace(itemName)
+                ? $"Item {itemId}"
+                : itemName.Trim();
+            string trimmedNpcName = string.IsNullOrWhiteSpace(npcName)
+                ? string.Empty
+                : npcName.Trim();
+            string trimmedScriptName = string.IsNullOrWhiteSpace(scriptName)
+                ? string.Empty
+                : scriptName.Trim();
+            if (itemId <= 0
+                && npcId <= 0
+                && string.IsNullOrWhiteSpace(trimmedItemName)
+                && string.IsNullOrWhiteSpace(trimmedNpcName)
+                && string.IsNullOrWhiteSpace(trimmedScriptName))
+            {
+                return null;
+            }
+
+            string speakerName = !string.IsNullOrWhiteSpace(trimmedNpcName)
+                ? trimmedNpcName
+                : trimmedItemName;
+            string subtitle = !string.IsNullOrWhiteSpace(trimmedScriptName)
+                ? $"Item script: {trimmedScriptName}"
+                : npcId > 0
+                    ? $"Item-authored NPC service ({npcId})"
+                    : "Item-authored interaction";
+
+            List<string> pageLines = new()
+            {
+                "This inventory item opens an authored NPC or script interaction through the shared item-use seam."
+            };
+
+            if (itemId > 0)
+            {
+                pageLines.Add($"Item: {trimmedItemName} ({itemId})");
+            }
+
+            if (npcId > 0)
+            {
+                pageLines.Add(string.IsNullOrWhiteSpace(trimmedNpcName)
+                    ? $"NPC template: {npcId}"
+                    : $"NPC template: {trimmedNpcName} ({npcId})");
+            }
+
+            if (!string.IsNullOrWhiteSpace(trimmedScriptName))
+            {
+                pageLines.Add($"Script: {trimmedScriptName}");
+            }
+
+            pageLines.Add("The client owns the exact branch after launch; the simulator preserves the authored route instead of rejecting the item use.");
+            string body = string.Join("\n", pageLines);
+
+            return new NpcInteractionState
+            {
+                NpcName = speakerName,
+                SpeakerTemplateId = npcId,
+                SelectedEntryId = Math.Max(itemId, 1),
+                Entries = new[]
+                {
+                    new NpcInteractionEntry
+                    {
+                        EntryId = Math.Max(itemId, 1),
+                        Kind = NpcInteractionEntryKind.Utility,
+                        Title = trimmedItemName,
+                        Subtitle = subtitle,
+                        Pages = new[]
+                        {
+                            new NpcInteractionPage
+                            {
+                                RawText = body,
+                                Text = body
+                            }
+                        }
+                    }
+                }
+            };
         }
 
         private void ShowCashShopWindow()
@@ -6643,6 +6796,29 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void ShowMinimapOwnerNoticeDialog(string message, int stringPoolId)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is LoginUtilityDialogWindow)
+            {
+                ShowLoginUtilityDialog(
+                    "World Map",
+                    message,
+                    LoginUtilityDialogButtonLayout.Ok,
+                    LoginUtilityDialogAction.DismissOnly,
+                    noticeTextIndex: stringPoolId,
+                    frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
+                    trackDirectionModeOwner: true);
+                return;
+            }
+
+            ShowUtilityFeedbackMessage(message);
+        }
+
         private void HandleMinimapWorldMapRequested()
         {
             _worldMapRequestMode = WorldMapRequestMode.DirectTransfer;
@@ -6658,7 +6834,9 @@ namespace HaCreator.MapSimulator
             int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
             if (currentMapId <= 0 || !worldMapWindow.CanPresentMapId(currentMapId))
             {
-                ShowUtilityFeedbackMessage(MinimapOwnerStringPoolText.GetCreateWorldMapFailureNotice());
+                ShowMinimapOwnerNoticeDialog(
+                    MinimapOwnerStringPoolText.GetCreateWorldMapFailureNotice(),
+                    MinimapOwnerStringPoolText.CreateWorldMapFailureStringPoolId);
                 return;
             }
 
@@ -13221,6 +13399,7 @@ namespace HaCreator.MapSimulator
             return action is LoginUtilityDialogAction.ConfirmApspEvent
                 or LoginUtilityDialogAction.ConfirmFollowCharacterRequest
                 or LoginUtilityDialogAction.ConfirmUtilityQuit
+                or LoginUtilityDialogAction.DismissOnly
                 or LoginUtilityDialogAction.VerifyTrunkPic
                 or LoginUtilityDialogAction.VerifyTrunkSpw
                 or LoginUtilityDialogAction.RetryTrunkPic
@@ -16189,6 +16368,7 @@ namespace HaCreator.MapSimulator
             this._spawnPortalName = spawnPortalName;
             _remoteUserPool.SkillUseRegistered += HandleRemoteAnimationDisplayerSkillUse;
             _remoteUserPool.UpgradeTombEffectRegistered += HandleRemoteUpgradeTombEffect;
+            _remoteUserPool.GenericUserStateRegistered += HandleRemoteGenericUserStateEffect;
             _remoteUserPool.HitFeedbackRegistered += HandleRemoteHitFeedback;
             _mapTransferDestinations = new MapTransferDestinationStore();
             _mapTransferRuntime = new MapTransferRuntimeManager(_mapTransferDestinations);
@@ -23562,6 +23742,11 @@ namespace HaCreator.MapSimulator
                 return MinimapUI.HelperMarkerType.Friend;
             }
 
+            if (state.BattlefieldTeamId.HasValue)
+            {
+                return MinimapUI.HelperMarkerType.Match;
+            }
+
 
             return MinimapUI.HelperMarkerType.Another;
 
@@ -25398,6 +25583,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (!ShouldSpawnSimulatorOwnedMobDeathDrops(_mapBoard?.MapInfo))
+            {
+                return;
+            }
+
             float mobX = mob.MovementInfo.X;
 
             float mobY = mob.MovementInfo.Y;
@@ -25461,6 +25651,11 @@ namespace HaCreator.MapSimulator
                     isRare: true);
             }
 
+        }
+
+        internal static bool ShouldSpawnSimulatorOwnedMobDeathDrops(MapInfo mapInfo)
+        {
+            return FieldInteractionRestrictionEvaluator.CanSpawnDrops(mapInfo?.fieldLimit ?? 0);
         }
 
         private void AwardMobKillExperience(MobItem mob)
@@ -25600,33 +25795,32 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void HandlePortalUpInteract(int currentTime)
         {
-            if (!CanAttemptPortalInteract(currentTime))
+            PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision queuedRetryDecision =
+                EvaluatePassiveTransferFieldQueuedRetryDecision();
+
+            if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.ReplayHandleUpKeyDown)
             {
-                if (!_passiveTransferRequestPending || !ShouldKeepPassiveTransferFieldRequestPending())
+                if (CanReplayPassiveTransferFieldUpKeyPath(currentTime))
                 {
-                    ClearPassiveTransferRequest();
+                    TryHandlePortalInteractCore(currentTime);
                 }
 
+                ClearPassiveTransferRequest();
+                return;
+            }
+
+            if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.Clear)
+            {
+                ClearPassiveTransferRequest();
+            }
+
+            if (!CanAttemptPortalInteract(currentTime))
+            {
                 return;
             }
 
 
             bool interactPressed = _playerManager.Input.IsPressed(InputAction.Interact);
-
-            if (_passiveTransferRequestPending)
-            {
-                if (CanProcessPassiveTransferFieldRequest())
-                {
-                    if (CanReplayPassiveTransferFieldUpKeyPath(currentTime))
-                    {
-                        TryHandlePortalInteractCore(currentTime);
-                    }
-
-                    ClearPassiveTransferRequest();
-                    return;
-                }
-            }
-
 
             if (!interactPressed)
 
@@ -25674,6 +25868,22 @@ namespace HaCreator.MapSimulator
             _passiveTransferRequestPending = false;
         }
 
+        private PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision EvaluatePassiveTransferFieldQueuedRetryDecision()
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            bool hasLiveFieldInterface = HasPassiveTransferFieldInterface();
+            return PassiveTransferFieldReadinessEvaluator.EvaluateQueuedRetryDecision(
+                new PassiveTransferFieldQueuedRetryDecisionState(
+                    HasPendingRequest: _passiveTransferRequestPending,
+                    HasOneTimeActionCompleted: player?.IsPlayingClientOwnedOneTimeAction != true,
+                    HasReadyFieldInterface: player?.IsPlayingClientOwnedOneTimeAction != true
+                                            && ResolvePassiveTransferFieldReadyState(),
+                    HasLiveFieldInterface: hasLiveFieldInterface,
+                    HasPendingMapChange: _gameState.PendingMapChange,
+                    HasBoundPlayer: player != null,
+                    IsPlayerActive: _playerManager?.IsPlayerActive == true));
+        }
+
         private bool ResolvePassiveTransferFieldReadyState()
         {
             return PassiveTransferFieldReadinessEvaluator.CanRetryFromLiveFieldInterface(
@@ -25712,27 +25922,6 @@ namespace HaCreator.MapSimulator
         {
             return _packetOwnedTeleportRequestActive
                    || _pendingCrossMapTeleportTarget != null;
-        }
-
-        private bool CanProcessPassiveTransferFieldRequest()
-        {
-            PlayerCharacter player = _playerManager?.Player;
-            if (player == null || player.IsPlayingClientOwnedOneTimeAction)
-            {
-                return false;
-            }
-
-            return ResolvePassiveTransferFieldReadyState();
-        }
-
-        private bool ShouldKeepPassiveTransferFieldRequestPending()
-        {
-            return PassiveTransferFieldReadinessEvaluator.ShouldKeepQueuedRetryPending(
-                new PassiveTransferFieldQueuedRetryState(
-                    HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
-                    HasPendingMapChange: _gameState.PendingMapChange,
-                    HasBoundPlayer: _playerManager?.Player != null,
-                    IsPlayerActive: _playerManager?.IsPlayerActive == true));
         }
 
         private bool CanReplayPassiveTransferFieldUpKeyPath(int currentTime)
@@ -26611,6 +26800,8 @@ namespace HaCreator.MapSimulator
             }
 
             miniMapUi?.SetNpcMarkers(_npcsArray);
+            _lastNpcClientActionSelectionContextStamp =
+                _questRuntime?.GetNpcClientActionSelectionContextStamp(_playerManager?.Player?.Build?.Gender) ?? int.MinValue;
 
 
 
@@ -28454,6 +28645,7 @@ namespace HaCreator.MapSimulator
             {
                 questAlarmWindow.SetFont(_fontChat);
                 questAlarmWindow.SetSnapshotProvider(() => _questRuntime.BuildQuestAlarmSnapshot(_playerManager?.Player?.Build));
+                questAlarmWindow.SetAutoRegisterActivityPrimer(_questRuntime.PrimeQuestAlarmAutoRegisterActivity);
                 questAlarmWindow.SetItemIconProvider(LoadInventoryItemIcon);
                 questAlarmWindow.ConfigurePersistence(_questAlarmStore, () => _playerManager?.Player?.Build);
                 questAlarmWindow.QuestRequested += OpenQuestFromAlarmWindow;
@@ -28553,9 +28745,106 @@ namespace HaCreator.MapSimulator
 
         private void RefreshQuestUiState()
         {
+            RefreshNpcClientActionSelectionIfNeeded();
+
             if (_activeQuestDetailQuestId != 0 && uiWindowManager.QuestDetailWindow?.IsVisible == true)
             {
                 UpdateQuestDetailWindow();
+            }
+        }
+
+        private void RefreshNpcClientActionSelectionIfNeeded()
+        {
+            if (_npcsArray == null || _npcsArray.Length == 0 || _mapBoard?.BoardItems?.NPCs == null)
+            {
+                _lastNpcClientActionSelectionContextStamp = _questRuntime?.GetNpcClientActionSelectionContextStamp(_playerManager?.Player?.Build?.Gender) ?? int.MinValue;
+                return;
+            }
+
+            int currentStamp = _questRuntime?.GetNpcClientActionSelectionContextStamp(_playerManager?.Player?.Build?.Gender) ?? int.MinValue;
+            if (currentStamp == _lastNpcClientActionSelectionContextStamp)
+            {
+                return;
+            }
+
+            RebuildNpcClientActionSelections();
+            _lastNpcClientActionSelectionContextStamp = currentStamp;
+        }
+
+        private void RebuildNpcClientActionSelections()
+        {
+            if (_mapBoard?.BoardItems?.NPCs == null || _texturePool == null || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            Dictionary<int, NpcItem> previousNpcsById = _npcsById.Count > 0
+                ? new Dictionary<int, NpcItem>(_npcsById)
+                : null;
+            var rebuiltNpcs = new List<NpcItem>(_mapBoard.BoardItems.NPCs.Count);
+            var usedProps = new ConcurrentBag<WzObject>();
+
+            foreach (NpcInstance npc in _mapBoard.BoardItems.NPCs)
+            {
+                if (npc == null || npc.Hide)
+                {
+                    continue;
+                }
+
+                NpcItem rebuiltNpc = MapSimulatorLoader.CreateNpcFromProperty(
+                    _texturePool,
+                    npc,
+                    UserScreenScaleFactor,
+                    GraphicsDevice,
+                    usedProps,
+                    _playerManager?.Player?.Build?.Gender,
+                    _questRuntime.HasNpcClientActionSelectionContext(),
+                    _questRuntime.GetCurrentState,
+                    questId => _questRuntime.TryGetQuestRecordValue(questId, out string value) ? value : string.Empty);
+                if (rebuiltNpc == null)
+                {
+                    continue;
+                }
+
+                if (int.TryParse(rebuiltNpc.NpcInstance?.NpcInfo?.ID, out int npcId) &&
+                    previousNpcsById != null &&
+                    previousNpcsById.TryGetValue(npcId, out NpcItem previousNpc) &&
+                    previousNpc != null)
+                {
+                    rebuiltNpc.IdleActionCyclingEnabled = previousNpc.IdleActionCyclingEnabled;
+                    string previousAction = previousNpc.CurrentAction;
+                    if (!string.IsNullOrWhiteSpace(previousAction) && rebuiltNpc.HasAction(previousAction))
+                    {
+                        rebuiltNpc.SetAction(previousAction);
+                    }
+                }
+
+                rebuiltNpcs.Add(rebuiltNpc);
+            }
+
+            _npcsArray = rebuiltNpcs.ToArray();
+            _npcsById.Clear();
+            for (int i = 0; i < _npcsArray.Length; i++)
+            {
+                NpcItem npc = _npcsArray[i];
+                if (npc?.NpcInstance?.NpcInfo == null || !int.TryParse(npc.NpcInstance.NpcInfo.ID, out int npcId))
+                {
+                    continue;
+                }
+
+                _npcsById[npcId] = npc;
+            }
+
+            if (_activeNpcInteractionNpcId > 0)
+            {
+                _activeNpcInteractionNpc = FindNpcById(_activeNpcInteractionNpcId);
+            }
+
+            miniMapUi?.SetNpcMarkers(_npcsArray);
+
+            if (_npcQuestFeedback.ActiveNpcId > 0)
+            {
+                ApplyNpcQuestFeedbackAnimation(currTickCount);
             }
         }
 
@@ -30659,6 +30948,7 @@ namespace HaCreator.MapSimulator
                 StatusBarCooldownRenderData renderData = renderIndex < _statusBarCooldownRenderCache.Count
                     ? _statusBarCooldownRenderCache[renderIndex]
                     : CreateAndAppendStatusBarCooldownRenderData(_statusBarCooldownRenderCache);
+                SkillLevelData levelData = skill?.GetLevel(_playerManager.Skills.GetSkillLevel(skillId));
                 renderData.SkillId = skillId;
                 renderData.SkillName = skill?.Name;
                 renderData.Description = skill?.Description;
@@ -30669,6 +30959,11 @@ namespace HaCreator.MapSimulator
                 renderData.MaskFrameIndex = maskFrameIndex;
                 renderData.CounterText = counterText;
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
+                renderData.TooltipCostLineMarkup = SkillCooldownTooltipText.FormatTooltipCostLineMarkup(
+                    levelData,
+                    includeCooldownState: false,
+                    cooldownState.RemainingMs,
+                    cooldownState.TooltipStateText);
                 renderData.SuppressProgressOverlay = cooldownState.SuppressProgressOverlay;
                 renderData.SuppressCounterText = cooldownState.SuppressCounterText;
                 _statusBarCooldownSortBuffer.Add((renderData, cooldownStartTime, hotkey.Key));
@@ -30745,6 +31040,7 @@ namespace HaCreator.MapSimulator
                 StatusBarCooldownRenderData renderData = renderIndex < _statusBarOffBarCooldownRenderCache.Count
                     ? _statusBarOffBarCooldownRenderCache[renderIndex]
                     : CreateAndAppendStatusBarCooldownRenderData(_statusBarOffBarCooldownRenderCache);
+                SkillLevelData levelData = skill?.GetLevel(_playerManager.Skills.GetSkillLevel(skillId));
                 renderData.SkillId = skillId;
                 renderData.SkillName = skill?.Name ?? $"Skill {skillId}";
                 renderData.Description = skill?.Description ?? string.Empty;
@@ -30755,6 +31051,11 @@ namespace HaCreator.MapSimulator
                 renderData.MaskFrameIndex = maskFrameIndex;
                 renderData.CounterText = counterText;
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
+                renderData.TooltipCostLineMarkup = SkillCooldownTooltipText.FormatTooltipCostLineMarkup(
+                    levelData,
+                    includeCooldownState: false,
+                    cooldownState.RemainingMs,
+                    cooldownState.TooltipStateText);
                 renderData.SuppressProgressOverlay = cooldownState.SuppressProgressOverlay;
                 renderData.SuppressCounterText = cooldownState.SuppressCounterText;
                 _statusBarOffBarCooldownSortBuffer.Add((renderData, cooldownStartTime, skillId));
@@ -34405,8 +34706,12 @@ namespace HaCreator.MapSimulator
 
         private bool TryDispatchCurrentWrapperPacketIngress(int packetType, byte[] payload, int currentTickCount, out string message)
         {
-            SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
-            return _specialFieldRuntime.TryDispatchCurrentWrapperRelayPayload(payload, currentTickCount, out message);
+            if (packetType == SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                return _specialFieldRuntime.TryDispatchCurrentWrapperRelayPayload(payload, currentTickCount, out message);
+            }
+
+            return _specialFieldRuntime.TryDispatchCurrentWrapperPacketRelay(packetType, payload, currentTickCount, out message);
         }
 
         private void DrainTournamentPacketInbox(int currentTickCount)

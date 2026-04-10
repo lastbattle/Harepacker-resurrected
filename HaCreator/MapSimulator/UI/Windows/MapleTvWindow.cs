@@ -29,9 +29,9 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle ReceiverNameBounds = new(44, 68, 150, 14);
         // The MapleTV chat and media canvases carry non-zero WZ origins, so these bounds stay
         // frame-local and are resolved from the selected frame's actual top-left at draw time.
-        private static readonly Rectangle DefaultChatTextBounds = new(20, 17, 200, 58);
-        private static readonly Rectangle StarChatTextBounds = new(18, 16, 224, 72);
-        private static readonly Rectangle HeartChatTextBounds = new(18, 16, 224, 72);
+        internal static readonly Rectangle DefaultChatTextBounds = new(20, 17, 200, 58);
+        internal static readonly Rectangle StarChatTextBounds = new(18, 16, 224, 72);
+        internal static readonly Rectangle HeartChatTextBounds = new(18, 16, 224, 72);
         private static readonly Point ItemNamePosition = new(39, 70);
         private static readonly Point PreviewAnchor = new(224, 8);
         private static readonly Point IdlePreviewOffset = new(0, 45);
@@ -247,7 +247,10 @@ namespace HaCreator.MapSimulator.UI
                 sprite,
                 snapshot.DisplayLines,
                 ResolveFamilyTopLeft(overlayOrigin, ResolveCompositeBounds(240, 90, chatFrames)),
-                ResolveChatBounds(snapshot.ResolvedMediaIndex),
+                MapleTvMediaIndexResolver.ResolveChatBounds(
+                    snapshot.ResolvedMediaIndex,
+                    _visualAssets.DefaultMediaIndex,
+                    _visualAssets.AvailableMediaIndices),
                 Color.White,
                 0.39f,
                 4,
@@ -409,7 +412,10 @@ namespace HaCreator.MapSimulator.UI
                     sprite,
                     snapshot.DisplayLines,
                     ResolveFamilyTopLeft(previewOrigin, ResolveCompositeBounds(240, 90, chatFrames)),
-                    ResolveChatBounds(snapshot.ResolvedMediaIndex),
+                    MapleTvMediaIndexResolver.ResolveChatBounds(
+                        snapshot.ResolvedMediaIndex,
+                        _visualAssets.DefaultMediaIndex,
+                        _visualAssets.AvailableMediaIndices),
                     Color.White,
                     0.4f,
                     4,
@@ -655,16 +661,6 @@ namespace HaCreator.MapSimulator.UI
             return Math.Max(8, (int)(width / glyphWidth));
         }
 
-        private static Rectangle ResolveChatBounds(int mediaIndex)
-        {
-            return mediaIndex switch
-            {
-                0 => StarChatTextBounds,
-                2 => HeartChatTextBounds,
-                _ => DefaultChatTextBounds
-            };
-        }
-
         private static Rectangle ResolveMessageTextBounds(MapleTvSnapshot snapshot)
         {
             return snapshot.MessageType == 1 ? SenderOnlyDraftMessageTextBounds : DraftMessageTextBounds;
@@ -744,12 +740,16 @@ namespace HaCreator.MapSimulator.UI
 
         internal IReadOnlyList<MapleTvAnimationFrame> GetChatFrames(int mediaIndex)
         {
-            if (ChatFrames.TryGetValue(mediaIndex, out IReadOnlyList<MapleTvAnimationFrame> frames) && frames.Count > 0)
+            int variantKey = MapleTvMediaIndexResolver.ResolveChatVariantKey(
+                mediaIndex,
+                DefaultMediaIndex,
+                AvailableMediaIndices);
+            if (ChatFrames.TryGetValue(variantKey, out IReadOnlyList<MapleTvAnimationFrame> frames) && frames.Count > 0)
             {
                 return frames;
             }
 
-            if (ChatFrames.TryGetValue(DefaultMediaIndex, out frames) && frames.Count > 0)
+            if (ChatFrames.TryGetValue(1, out frames) && frames.Count > 0)
             {
                 return frames;
             }

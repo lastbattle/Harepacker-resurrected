@@ -268,17 +268,24 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            string animationKey = GetPacketOwnedScreenEffectAnimationKey(descriptor);
             string cacheKey = $"screen:{descriptor.Trim()}";
             if (!TryGetOrCreatePacketOwnedUiLayers(cacheKey, () => ResolvePacketOwnedScreenEffectLayers(descriptor), out IReadOnlyList<PacketOwnedCachedUiLayer> layers))
             {
                 return false;
             }
 
+            ClearPacketOwnedUiAnimations(animationKey);
             foreach (PacketOwnedCachedUiLayer layer in layers)
             {
                 EnqueuePacketOwnedUiAnimation(
                     layer.Frames,
-                    ResolvePacketOwnedScreenEffectRegistration(_renderParams.RenderWidth, Height, layer.LayerOrder),
+                    ResolvePacketOwnedScreenEffectRegistration(
+                        _renderParams.RenderWidth,
+                        Height,
+                        animationKey,
+                        layer.LayerOrder,
+                        layer.Repeat),
                     currTickCount);
             }
 
@@ -968,7 +975,8 @@ namespace HaCreator.MapSimulator
             {
                 layers.Add(new PacketOwnedCachedUiLayer(
                     directFrames,
-                    ComposePacketOwnedUiLayerOrder(ResolvePacketOwnedAnimationLayerZ(sourceProperty), discoveryOrder)));
+                    ComposePacketOwnedUiLayerOrder(ResolvePacketOwnedAnimationLayerZ(sourceProperty), discoveryOrder),
+                    ResolvePacketOwnedAnimationRepeat(sourceProperty)));
                 return;
             }
 
@@ -1571,16 +1579,22 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static PacketOwnedUiRegistration ResolvePacketOwnedScreenEffectRegistration(int renderWidth, int renderHeight, int layerOrder = 0)
+        private static PacketOwnedUiRegistration ResolvePacketOwnedScreenEffectRegistration(
+            int renderWidth,
+            int renderHeight,
+            string key,
+            int layerOrder = 0,
+            bool repeat = false)
         {
             return new PacketOwnedUiRegistration(
                 PacketOwnedUiAnchorMode.WindowCenter,
                 0,
                 ScalePacketOwnedUiOffset(PacketOwnedScreenEffectYOffset, renderHeight, PacketOwnedUiReferenceHeight),
-                string.Empty,
+                key ?? string.Empty,
                 PacketOwnedUiDrawOrder.ScreenEffect,
                 PacketOwnedUiClientAlpha,
-                layerOrder);
+                layerOrder,
+                repeat);
         }
 
         private static PacketOwnedUiRegistration ResolvePacketOwnedRewardRouletteRegistration(
@@ -1606,7 +1620,8 @@ namespace HaCreator.MapSimulator
                     _ => PacketOwnedUiDrawOrder.RewardRouletteLevel
                 },
                 PacketOwnedUiClientAlpha,
-                LayerOrder: 0);
+                LayerOrder: 0,
+                Repeat: false);
         }
 
         private static int ScalePacketOwnedUiOffset(int referenceOffset, int actualSize, int referenceSize)
@@ -1720,8 +1735,34 @@ namespace HaCreator.MapSimulator
             int renderWidth,
             int renderHeight)
         {
-            PacketOwnedUiRegistration registration = ResolvePacketOwnedScreenEffectRegistration(renderWidth, renderHeight);
+            PacketOwnedUiRegistration registration = ResolvePacketOwnedScreenEffectRegistration(
+                renderWidth,
+                renderHeight,
+                "screen:test");
             return (registration.AnchorMode, registration.OffsetX, registration.OffsetY, registration.DrawOrder, registration.Alpha);
+        }
+
+        internal static string GetPacketOwnedScreenEffectAnimationKey(string descriptor)
+        {
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                return "screen:";
+            }
+
+            string normalized = descriptor
+                .Replace('\\', '/')
+                .Trim()
+                .Trim('/');
+            return $"screen:{normalized}";
+        }
+
+        internal static bool GetPacketOwnedScreenEffectRegistrationRepeatForTest(bool repeat)
+        {
+            return ResolvePacketOwnedScreenEffectRegistration(
+                PacketOwnedUiReferenceWidth,
+                PacketOwnedUiReferenceHeight,
+                "screen:test",
+                repeat: repeat).Repeat;
         }
 
         internal static int GetPacketOwnedUiLayerOrderForTest(int? zHint, int discoveryOrder)
@@ -2012,7 +2053,8 @@ namespace HaCreator.MapSimulator
             string Key,
             PacketOwnedUiDrawOrder DrawOrder,
             byte Alpha,
-            int LayerOrder);
+            int LayerOrder,
+            bool Repeat);
 
         private readonly record struct PacketOwnedFieldClockLayout(
             PacketOwnedUiAnchorMode AnchorMode,
@@ -2039,7 +2081,8 @@ namespace HaCreator.MapSimulator
 
         private readonly record struct PacketOwnedCachedUiLayer(
             IReadOnlyList<PacketOwnedUiFrame> Frames,
-            int LayerOrder);
+            int LayerOrder,
+            bool Repeat);
 
         private enum PacketOwnedRewardRouletteLayerRole
         {
@@ -2081,7 +2124,8 @@ namespace HaCreator.MapSimulator
 
             public bool IsComplete(int currentTickCount)
             {
-                return _frames.Count == 0 || currentTickCount - StartedAtTick >= _durationMs;
+                return _frames.Count == 0
+                    || (!_registration.Repeat && currentTickCount - StartedAtTick >= _durationMs);
             }
 
             public PacketOwnedUiFrameState ResolveFrameState(int currentTickCount)
@@ -2092,6 +2136,11 @@ namespace HaCreator.MapSimulator
                 }
 
                 int elapsed = Math.Max(0, currentTickCount - StartedAtTick);
+                if (_registration.Repeat && _durationMs > 0)
+                {
+                    elapsed %= _durationMs;
+                }
+
                 int cursor = 0;
                 foreach (PacketOwnedUiFrame frame in _frames)
                 {
@@ -2208,6 +2257,12 @@ namespace HaCreator.MapSimulator
             }
 
             return null;
+        }
+
+        private static bool ResolvePacketOwnedAnimationRepeat(WzImageProperty sourceProperty)
+        {
+            sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
+            return sourceProperty?["repeat"]?.GetInt() > 0;
         }
 
         private static int ComposePacketOwnedUiLayerOrder(int? zHint, int discoveryOrder)

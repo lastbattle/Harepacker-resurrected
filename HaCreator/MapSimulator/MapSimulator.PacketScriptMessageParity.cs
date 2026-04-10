@@ -138,6 +138,8 @@ namespace HaCreator.MapSimulator
             if (request.CloseExistingDialog || request.State == null)
             {
                 _npcInteractionOverlay.Close();
+                _packetScriptDedicatedOwnerRuntime.Clear();
+                ClearPacketScriptDedicatedOwnerVisualState();
                 ClearAnimationDisplayerLocalQuestDeliveryOwner();
                 _activeNpcInteractionNpc = null;
                 _activeNpcInteractionNpcId = 0;
@@ -159,6 +161,16 @@ namespace HaCreator.MapSimulator
 
             PublishDynamicObjectTagStatesForNpc(publishedScriptTemplateId, currTickCount, npc);
 
+            if (request.DedicatedOwner != null)
+            {
+                _npcInteractionOverlay.Close();
+                _packetScriptDedicatedOwnerRuntime.Open(request.DedicatedOwner);
+                ClearPacketScriptDedicatedOwnerVisualState();
+                return DispatchPacketOwnedScriptAutoResponse(request.AutoResponse);
+            }
+
+            _packetScriptDedicatedOwnerRuntime.Clear();
+            ClearPacketScriptDedicatedOwnerVisualState();
             _npcInteractionOverlay.Open(request.State);
             return DispatchPacketOwnedScriptAutoResponse(request.AutoResponse);
         }

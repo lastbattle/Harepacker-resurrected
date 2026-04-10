@@ -1893,8 +1893,7 @@ namespace HaCreator.MapSimulator.UI
             WzSubProperty infoProperty,
             WzSubProperty specProperty)
         {
-            int targetMobId = GetIntOrStringValue(specProperty?["mobID"]);
-            if (targetMobId > 0)
+            if (TryResolveTargetMobIdForTooltip(infoProperty, specProperty, out int targetMobId))
             {
                 metadataLines.Add($"Target Mob: {ResolveMobTooltipLabel(targetMobId)}");
             }
@@ -1945,6 +1944,58 @@ namespace HaCreator.MapSimulator.UI
 
             metadataLines.Add(
                 $"Capture Area: X {left.ToString(CultureInfo.InvariantCulture)} to {right.ToString(CultureInfo.InvariantCulture)}, Y {top.ToString(CultureInfo.InvariantCulture)} to {bottom.ToString(CultureInfo.InvariantCulture)}");
+        }
+
+        internal static bool TryResolveTargetMobIdForTooltip(
+            WzSubProperty infoProperty,
+            WzSubProperty specProperty,
+            out int targetMobId)
+        {
+            targetMobId = GetIntOrStringValue(specProperty?["mobID"]);
+            if (targetMobId > 0)
+            {
+                return true;
+            }
+
+            int infoMobId = GetIntOrStringValue(infoProperty?["mob"]);
+            if (infoMobId <= 0 || !HasInfoOwnedTargetedMobTooltipMetadata(infoProperty, specProperty))
+            {
+                return false;
+            }
+
+            targetMobId = infoMobId;
+            return true;
+        }
+
+        internal static bool HasInfoOwnedTargetedMobTooltipMetadata(
+            WzSubProperty infoProperty,
+            WzSubProperty specProperty)
+        {
+            if (GetIntOrStringValue(specProperty?["mobID"]) > 0
+                || GetIntOrStringValue(specProperty?["mobHp"]) > 0
+                || GetIntOrStringValue(infoProperty?["mobHP"]) > 0
+                || GetIntOrStringValue(infoProperty?["useDelay"]) > 0
+                || GetIntOrStringValue(infoProperty?["bridleMsgType"]) > 0)
+            {
+                return true;
+            }
+
+            string delayMessage = NormalizeTooltipText((infoProperty?["delayMsg"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(delayMessage))
+            {
+                return true;
+            }
+
+            string noMobMessage = NormalizeTooltipText((infoProperty?["nomobMsg"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(noMobMessage))
+            {
+                return true;
+            }
+
+            return TryGetSignedInt(infoProperty?["left"], out _)
+                   && TryGetSignedInt(infoProperty?["right"], out _)
+                   && TryGetSignedInt(infoProperty?["top"], out _)
+                   && TryGetSignedInt(infoProperty?["bottom"], out _);
         }
 
         private static void AppendCaptureChanceMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)

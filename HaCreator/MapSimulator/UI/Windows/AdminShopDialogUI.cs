@@ -686,6 +686,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            AdminShopPacketOwnedOpenViewState reopenViewState = AdminShopPacketOwnedOpenViewParity.CaptureForSetAdminShopDlg(
+                _packetOwnedAdminShopSession.IsActive,
+                (int)_activePane,
+                (int)_activeBrowseMode,
+                (int)_activeCategory);
             _packetOwnedAdminShopSession.BeginOpen(
                 snapshot,
                 "CAdminShopDlg::OnPacket reused the admin-shop unique-modeless owner surface.");
@@ -693,7 +698,14 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopRows.AddRange(snapshot.Rows);
             ClearPendingPacketOwnedUserSellSnapshot();
             ResetMode(AdminShopServiceMode.CashShop);
-            ResetPacketOwnedAdminShopSelectionState();
+            if (reopenViewState.PreserveView)
+            {
+                RestorePacketOwnedOpenViewState(reopenViewState);
+            }
+            else
+            {
+                ResetPacketOwnedAdminShopSelectionState();
+            }
             _footerMessage = _packetOwnedAdminShopSession.NpcTemplateId > 0
                 ? $"CAdminShopDlg::SetAdminShopDlg opened the packet-owned admin-shop owner for NPC {_packetOwnedAdminShopSession.NpcTemplateId} with {_packetOwnedAdminShopSession.DecodedItemCount} decoded row(s); wishlist prompt={(_packetOwnedAdminShopSession.AskItemWishlist ? "on" : "off")}."
                 : $"CAdminShopDlg::SetAdminShopDlg opened the packet-owned admin-shop owner with {_packetOwnedAdminShopSession.DecodedItemCount} decoded row(s); wishlist prompt={(_packetOwnedAdminShopSession.AskItemWishlist ? "on" : "off")}.";
@@ -2278,7 +2290,7 @@ namespace HaCreator.MapSimulator.UI
             UpdateModalButtons();
         }
 
-        private void ApplyFilters()
+        private void ApplyFilters(bool preserveActivePane = false)
         {
             foreach (AdminShopPane pane in Enum.GetValues(typeof(AdminShopPane)))
             {
@@ -2318,7 +2330,7 @@ namespace HaCreator.MapSimulator.UI
                 PersistBrowseSurfaceState(pane);
             }
 
-            if (_paneStates[_activePane].Entries.Count == 0)
+            if (!preserveActivePane && _paneStates[_activePane].Entries.Count == 0)
             {
                 if (_paneStates[AdminShopPane.Npc].Entries.Count > 0)
                 {
@@ -4981,6 +4993,27 @@ namespace HaCreator.MapSimulator.UI
                 AdminShopPaneState paneState = _paneStates[pane];
                 paneState.SelectedIndex = -1;
                 paneState.ScrollOffset = 0;
+                PersistBrowseSurfaceState(pane);
+            }
+
+            UpdateRowButtons();
+        }
+
+        private void RestorePacketOwnedOpenViewState(AdminShopPacketOwnedOpenViewState viewState)
+        {
+            _activePane = AdminShopPacketOwnedOpenViewParity.ClampPaneIndex(viewState.ActivePaneIndex) == AdminShopPacketOwnedOpenViewParity.UserPaneIndex
+                ? AdminShopPane.User
+                : AdminShopPane.Npc;
+            _activeBrowseMode = (AdminShopBrowseMode)AdminShopPacketOwnedOpenViewParity.ClampBrowseModeIndex(viewState.BrowseModeIndex);
+            _activeCategory = (AdminShopCategory)AdminShopPacketOwnedOpenViewParity.ClampCategoryIndex(viewState.CategoryIndex);
+            ApplyFilters(preserveActivePane: true);
+
+            foreach (AdminShopPane pane in Enum.GetValues(typeof(AdminShopPane)))
+            {
+                AdminShopPaneState paneState = _paneStates[pane];
+                paneState.SelectedIndex = -1;
+                paneState.ScrollOffset = 0;
+                ClampPaneState(paneState);
                 PersistBrowseSurfaceState(pane);
             }
 

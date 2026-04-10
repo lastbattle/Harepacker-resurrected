@@ -266,6 +266,7 @@ namespace HaCreator.MapSimulator.Animation
                 return false;
             }
 
+            ClearCashGachaponTags();
             _owner.RegisterOneTime(
                 MapSimulatorWindowNames.CashShopStage,
                 ResolveCashGachaponTag(isCopyResult, isJackpot),
@@ -317,6 +318,14 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return isJackpot ? CashGachaponJackpotTag : CashGachaponNormalTag;
+        }
+
+        private void ClearCashGachaponTags()
+        {
+            _owner.RemoveTag(MapSimulatorWindowNames.CashShopStage, CashGachaponNormalTag);
+            _owner.RemoveTag(MapSimulatorWindowNames.CashShopStage, CashGachaponJackpotTag);
+            _owner.RemoveTag(MapSimulatorWindowNames.CashShopStage, CashGachaponCopyNormalTag);
+            _owner.RemoveTag(MapSimulatorWindowNames.CashShopStage, CashGachaponCopyJackpotTag);
         }
     }
 }

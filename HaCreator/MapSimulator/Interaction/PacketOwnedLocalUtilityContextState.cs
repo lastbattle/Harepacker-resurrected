@@ -248,6 +248,35 @@ namespace HaCreator.MapSimulator.Interaction
             RecordRadioCreateLayerMutation("runtime-character-reset", int.MinValue);
         }
 
+        public void RestoreRadioCreateLayerState(
+            int boundCharacterId,
+            bool hasOverride,
+            bool bLeft,
+            int mutationSequence,
+            string mutationSource,
+            int runtimeCharacterId)
+        {
+            int resolvedBoundCharacterId = NormalizeCharacterId(boundCharacterId);
+            ObserveRadioCreateLayerRuntimeCharacterId(runtimeCharacterId);
+            RadioCreateLayerBoundCharacterId = resolvedBoundCharacterId;
+            HasRadioCreateLayerLeftContextValue = hasOverride;
+            RadioCreateLayerLeftContextValue = hasOverride && bLeft;
+            RadioCreateLayerMutationSequence = Math.Max(0, mutationSequence);
+            RadioCreateLayerLastMutationSource = string.IsNullOrWhiteSpace(mutationSource)
+                ? "persisted-restore"
+                : mutationSource.Trim();
+            RadioCreateLayerLastMutationTick = int.MinValue;
+            _recentRadioCreateLayerMutations.Clear();
+            string value = HasRadioCreateLayerLeftContextValue
+                ? (RadioCreateLayerLeftContextValue ? "1" : "0")
+                : "unset";
+            string runtimeCharacter = RadioCreateLayerLastObservedRuntimeCharacterId > 0
+                ? RadioCreateLayerLastObservedRuntimeCharacterId.ToString()
+                : "unset";
+            _recentRadioCreateLayerMutations.Add(
+                $"seq={RadioCreateLayerMutationSequence} value={value} source={RadioCreateLayerLastMutationSource} tick=persisted boundCharacter={resolvedBoundCharacterId} runtimeCharacter={runtimeCharacter}");
+        }
+
         public void SetRadioCreateLayerLeftContextValue(bool enabled, string source, int currentTick, int runtimeCharacterId)
         {
             EnsureRadioCreateLayerInitializedFromRuntime(runtimeCharacterId);

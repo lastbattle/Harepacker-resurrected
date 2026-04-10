@@ -84,7 +84,7 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
 
             _snapshot = _snapshotProvider?.Invoke() ?? new LogoutGiftOwnerSnapshot();
-            _pendingSelectionIndex = ClampSelectionIndex(_pendingSelectionIndex);
+            _pendingSelectionIndex = ClampSelectionIndex(_snapshot.SelectedIndex);
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
             _currentMouseState = mouseState;
@@ -138,7 +138,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < _snapshot.Entries.Count; i++)
             {
                 Rectangle slotBounds = GetSlotBounds(i);
-                Rectangle buttonBounds = GetClientSelectButtonBounds(Position, i);
+                Rectangle buttonBounds = GetClientSelectButtonBounds(Position, i, _buttonSkin);
                 if (buttonBounds.Contains(mouseState.Position))
                 {
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
@@ -182,15 +182,19 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            DrawPanel(sprite);
+            if (!_hasAuthoredFrameTexture)
+            {
+                DrawPanel(sprite);
+            }
+
             if (!CanDrawWindowText)
             {
                 return;
             }
 
-            DrawWindowText(sprite, _snapshot.Title, new Vector2(Position.X + 16, Position.Y + 14), new Color(63, 40, 23), 0.48f);
             if (!_hasAuthoredFrameTexture)
             {
+                DrawWindowText(sprite, _snapshot.Title, new Vector2(Position.X + 16, Position.Y + 14), new Color(63, 40, 23), 0.48f);
                 DrawMissingArtNotice(sprite);
             }
 
@@ -221,7 +225,7 @@ namespace HaCreator.MapSimulator.UI
         {
             Rectangle slotBounds = GetSlotBounds(index);
             Rectangle iconBounds = GetClientIconBounds(Position, index);
-            Rectangle buttonBounds = GetClientSelectButtonBounds(Position, index);
+            Rectangle buttonBounds = GetClientSelectButtonBounds(Position, index, _buttonSkin);
             bool selected = index == _pendingSelectionIndex;
             bool buttonHovered = buttonBounds.Contains(_currentMouseState.Position);
             bool buttonPressed = buttonHovered && _currentMouseState.LeftButton == ButtonState.Pressed;
@@ -326,7 +330,7 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetSlotBounds(int index)
         {
             Rectangle iconBounds = GetClientIconBounds(Position, index);
-            Rectangle buttonBounds = GetClientSelectButtonBounds(Position, index);
+            Rectangle buttonBounds = GetClientSelectButtonBounds(Position, index, _buttonSkin);
             int left = Math.Min(iconBounds.Left, buttonBounds.Left) - ClientSelectionHighlightPadding;
             int top = Math.Min(iconBounds.Top, buttonBounds.Top) - ClientSelectionHighlightPadding;
             int right = Math.Max(iconBounds.Right, buttonBounds.Right) + ClientSelectionHighlightPadding;
@@ -343,10 +347,10 @@ namespace HaCreator.MapSimulator.UI
                 ClientItemIconSize);
         }
 
-        internal static Rectangle GetClientSelectButtonBounds(Point origin, int index)
+        internal static Rectangle GetClientSelectButtonBounds(Point origin, int index, LogoutGiftButtonSkin skin = null)
         {
             Point buttonAnchor = GetClientSelectButtonAnchor(index);
-            Point buttonSize = LogoutGiftButtonSkin.ResolveFrameSize(null);
+            Point buttonSize = LogoutGiftButtonSkin.ResolveFrameSize(skin);
             return new Rectangle(
                 origin.X + buttonAnchor.X,
                 origin.Y + buttonAnchor.Y,

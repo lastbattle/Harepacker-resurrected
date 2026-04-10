@@ -1476,9 +1476,26 @@ namespace HaCreator.MapSimulator.Interaction
                     OpaquePreMapTransferFlags = opaquePreMapTransferFlags,
                     OpaquePreMapTransferSectionByteCount = opaquePreMapTransferBytes?.Length ?? 0,
                     OpaquePreMapTransferSectionBytes = opaquePreMapTransferBytes ?? Array.Empty<byte>(),
+                    OpaqueInt16ValueRecordByteCount = 0,
+                    OpaqueInt16ValueRecordCount = 0,
+                    OpaqueInt16ValueRecords = null,
                     Int16ValueRecordCount = 0,
                     Int16ValueRecords = null
                 };
+
+                if (!decodeInt16ValueRecords &&
+                    TryReadOpaqueCharacterDataInt16ValueRecords(
+                        opaquePreMapTransferBytes,
+                        out int opaqueInt16ValueRecordByteCount,
+                        out IReadOnlyDictionary<int, int> opaqueInt16ValueRecords))
+                {
+                    decoratedSnapshot = decoratedSnapshot with
+                    {
+                        OpaqueInt16ValueRecordByteCount = opaqueInt16ValueRecordByteCount,
+                        OpaqueInt16ValueRecordCount = opaqueInt16ValueRecords.Count,
+                        OpaqueInt16ValueRecords = opaqueInt16ValueRecords
+                    };
+                }
 
                 if (decodeInt16ValueRecords)
                 {
@@ -1581,6 +1598,34 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 reader.BaseStream.Position = startPosition;
                 decoratedSnapshot = snapshot;
+                return false;
+            }
+        }
+
+        private static bool TryReadOpaqueCharacterDataInt16ValueRecords(
+            byte[] opaqueBytes,
+            out int consumedByteCount,
+            out IReadOnlyDictionary<int, int> records)
+        {
+            consumedByteCount = 0;
+            records = null;
+            if (opaqueBytes == null || opaqueBytes.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(opaqueBytes, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                records = ReadCharacterDataInt16ValueRecords(reader);
+                consumedByteCount = checked((int)stream.Position);
+                return consumedByteCount >= sizeof(ushort);
+            }
+            catch (Exception) when (opaqueBytes.Length > 0)
+            {
+                consumedByteCount = 0;
+                records = null;
                 return false;
             }
         }
@@ -2444,6 +2489,9 @@ namespace HaCreator.MapSimulator.Interaction
         ulong OpaquePreMapTransferFlags = 0,
         int OpaquePreMapTransferSectionByteCount = 0,
         byte[] OpaquePreMapTransferSectionBytes = null,
+        int OpaqueInt16ValueRecordByteCount = 0,
+        int OpaqueInt16ValueRecordCount = 0,
+        IReadOnlyDictionary<int, int> OpaqueInt16ValueRecords = null,
         IReadOnlyList<int> RegularMapTransferFields = null,
         IReadOnlyList<int> ContinentMapTransferFields = null,
         int MiniGameRecordCount = 0,

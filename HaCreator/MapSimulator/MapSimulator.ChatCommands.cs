@@ -7041,7 +7041,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Guild BBS runtime",
 
-                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|packet <authority|cash> <payloadhex=..|payloadb64=..>|packetraw <authority|cash> <hex>|packet clear <authority|cash|all>]",
+                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|submit|reply>|packet <authority|cash> <payloadhex=..|payloadb64=..>|packetraw <authority|cash> <hex>|packet clear <authority|cash|all>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -7148,6 +7148,38 @@ namespace HaCreator.MapSimulator
 
                             _guildBbsRuntime.SelectThread(threadId);
                             return ChatCommandHandler.CommandResult.Ok($"Selected Guild BBS thread #{threadId}.");
+                        case "preview":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs preview <register|comment|list|submit|reply>");
+                            }
+
+                            if (string.Equals(args[1], "register", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientRegisterRequestPreview());
+                            }
+
+                            if (string.Equals(args[1], "comment", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientCommentRequestPreview());
+                            }
+
+                            if (string.Equals(args[1], "list", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientLoadListRequestPreview());
+                            }
+
+                            if (string.Equals(args[1], "submit", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientSubmitSequencePreview());
+                            }
+
+                            if (string.Equals(args[1], "reply", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientReplySequencePreview());
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs preview <register|comment|list|submit|reply>");
                         case "packet":
                             if (args.Length < 2)
                             {
@@ -7225,7 +7257,7 @@ namespace HaCreator.MapSimulator
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|packet <authority|cash> <payloadhex=..|payloadb64=..>|packetraw <authority|cash> <hex>|packet clear <authority|cash|all>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|submit|reply>|packet <authority|cash> <payloadhex=..|payloadb64=..>|packetraw <authority|cash> <hex>|packet clear <authority|cash|all>]");
                     }
 
                 });
@@ -9047,7 +9079,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutility",
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
-                "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|teleport|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|hpdec|hazardresult|skillcooltime|193|231|232|234|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|366|367|1011|1012|1013|1014|1026|classcompetition|questguide|deliveryquest|adminshopopen|adminshopresult> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|teleport|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|hpdec|hazardresult|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|adminshopopen|adminshopresult|193|231|232|234|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|366|367|1011|1012|1013|1014|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
+"/localutility [status|inbox [status|start [port]|stop|packet <sitresult|teleport|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|hpdec|hazardresult|skillcooltime|193|231|232|234|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|291|366|367|1011|1012|1013|1014|1026|classcompetition|classcompetitionauth|questguide|deliveryquest|adminshopopen|adminshopresult> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|teleport|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|passivemove|hpdec|hazardresult|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|classcompetitionauth|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|adminshopopen|adminshopresult|193|231|232|234|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|273|274|275|276|291|366|367|1011|1012|1013|1014|1026> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "expedition",
@@ -9071,7 +9103,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutilitypacket",
                 "Inspect or inject packet-owned local utility and event dispatch payloads through the loopback inbox",
-                "/localutilitypacket [status|start [port]|stop|packet <sitresult|teleport|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|hpdec|skillcooltime|193|231|234|242|243|246|247|250|251|252|262|263|264|265|266|267|268|269|270|273|274|275|276|366|367|1011|1012|1013|1014|classcompetition|questguide|deliveryquest|adminshopopen|adminshopresult> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]",
+"/localutilitypacket [status|start [port]|stop|packet <sitresult|teleport|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|hpdec|skillcooltime|193|231|234|242|243|246|247|250|251|252|262|263|264|265|266|267|268|269|270|273|274|275|276|291|366|367|1011|1012|1013|1014|classcompetition|classcompetitionauth|questguide|deliveryquest|adminshopopen|adminshopresult> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "npcutility",
@@ -10452,7 +10484,7 @@ namespace HaCreator.MapSimulator
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info(
-                            $"{_packetScriptMessageRuntime.DescribeStatus()}{Environment.NewLine}{_initialQuizTimerRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{_speedQuizOwnerRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{_packetScriptReplyTransport.LastStatus}{Environment.NewLine}{DescribePacketScriptOfficialSessionBridgeStatus()}");
+                            $"{_packetScriptMessageRuntime.DescribeStatus()}{Environment.NewLine}{_initialQuizTimerRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{_speedQuizOwnerRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{_packetScriptDedicatedOwnerRuntime.DescribeStatus()}{Environment.NewLine}{_packetScriptReplyTransport.LastStatus}{Environment.NewLine}{DescribePacketScriptOfficialSessionBridgeStatus()}");
                     }
 
 

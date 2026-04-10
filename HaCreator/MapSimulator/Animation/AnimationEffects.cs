@@ -77,7 +77,7 @@ namespace HaCreator.MapSimulator.Animation
 
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
             anim.Initialize(frames, x, y, flip, currentTimeMs, zOrder);
-            _oneTimeAnimations.Add(anim);
+            InsertOneTimeAnimation(anim);
         }
 
         internal void AddOneTimeAttached(
@@ -94,7 +94,7 @@ namespace HaCreator.MapSimulator.Animation
 
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
             anim.Initialize(frames, fallbackX, fallbackY, fallbackFlip, currentTimeMs, zOrder, getPosition, getFlip);
-            _oneTimeAnimations.Add(anim);
+            InsertOneTimeAnimation(anim);
         }
 
         /// <summary>
@@ -107,7 +107,7 @@ namespace HaCreator.MapSimulator.Animation
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
             anim.Initialize(frames, x, y, flip, currentTimeMs, zOrder);
             anim.Tint = tint;
-            _oneTimeAnimations.Add(anim);
+            InsertOneTimeAnimation(anim);
         }
 
         /// <summary>
@@ -120,7 +120,23 @@ namespace HaCreator.MapSimulator.Animation
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
             anim.Initialize(frames, x, y, flip, currentTimeMs, zOrder);
             anim.FadeOut = true;
-            _oneTimeAnimations.Add(anim);
+            InsertOneTimeAnimation(anim);
+        }
+
+        private void InsertOneTimeAnimation(OneTimeAnimation animation)
+        {
+            if (animation == null)
+            {
+                return;
+            }
+
+            int insertIndex = _oneTimeAnimations.Count;
+            while (insertIndex > 0 && _oneTimeAnimations[insertIndex - 1].ZOrder > animation.ZOrder)
+            {
+                insertIndex--;
+            }
+
+            _oneTimeAnimations.Insert(insertIndex, animation);
         }
 
         internal void RegisterOneTimeCanvasLayer(
@@ -983,15 +999,16 @@ namespace HaCreator.MapSimulator.Animation
             Vector2 emissionOffset,
             int angleDegrees,
             Vector2 randomOffset,
-            bool useEmissionBox)
+            bool useEmissionBox,
+            bool mirrorHorizontal)
         {
-            float travelDistance = ResolveFollowParticleTravelDistance(randomOffset, useEmissionBox);
-            if (travelDistance <= float.Epsilon)
+            Vector2 travelOffset = ResolveFollowParticleTravelOffset(randomOffset, angleDegrees, useEmissionBox, mirrorHorizontal);
+            if (travelOffset.LengthSquared() <= float.Epsilon)
             {
                 return emissionOffset;
             }
 
-            return emissionOffset + ResolvePolarFollowOffset(travelDistance, angleDegrees);
+            return emissionOffset + travelOffset;
         }
 
         internal static Vector2 ResolveFollowParticleEndOffset(
@@ -1023,7 +1040,7 @@ namespace HaCreator.MapSimulator.Animation
         {
             if (useEmissionBox)
             {
-                return Math.Abs(randomOffset.Y);
+                return randomOffset.Length();
             }
 
             float distance = randomOffset.Length();
@@ -1033,6 +1050,25 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return Math.Max(Math.Abs(randomOffset.X), Math.Abs(randomOffset.Y));
+        }
+
+        internal static Vector2 ResolveFollowParticleTravelOffset(
+            Vector2 randomOffset,
+            int angleDegrees,
+            bool useEmissionBox,
+            bool mirrorHorizontal)
+        {
+            if (useEmissionBox)
+            {
+                return new Vector2(
+                    mirrorHorizontal ? -randomOffset.X : randomOffset.X,
+                    randomOffset.Y);
+            }
+
+            float travelDistance = ResolveFollowParticleTravelDistance(randomOffset, useEmissionBox: false);
+            return travelDistance <= float.Epsilon
+                ? Vector2.Zero
+                : ResolvePolarFollowOffset(travelDistance, angleDegrees);
         }
 
         internal static Vector2 ResolveFollowSpawnAnchorPosition(
@@ -1485,6 +1521,7 @@ namespace HaCreator.MapSimulator.Animation
         public Color Tint { get; set; } = Color.White;
         public bool FadeOut { get; set; } = false;
         public float Alpha { get; private set; } = 1f;
+        public int ZOrder => _zOrder;
 
         public void Initialize(List<IDXObject> frames, float x, float y, bool flip, int currentTimeMs, int zOrder)
         {
@@ -1984,11 +2021,15 @@ namespace HaCreator.MapSimulator.Animation
                             Vector2 particleEndOffset;
                             if (useClientOffsetPath)
                             {
+                                bool mirrorHorizontalTravel = _spawnUsesEmissionBox
+                                    && !_suppressTargetFlip
+                                    && (_getTargetFlip?.Invoke() ?? false);
                                 particleEndOffset = AnimationEffects.ResolveFollowParticleEndOffset(
                                     particleStartOffset,
                                     particleAngleDegrees,
                                     randomOffset,
-                                    _spawnUsesEmissionBox);
+                                    _spawnUsesEmissionBox,
+                                    mirrorHorizontalTravel);
                             }
                             else
                             {

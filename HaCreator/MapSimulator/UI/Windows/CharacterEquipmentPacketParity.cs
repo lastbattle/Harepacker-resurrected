@@ -1,5 +1,7 @@
+using HaCreator.MapSimulator.Character;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace HaCreator.MapSimulator.UI
@@ -278,9 +280,126 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        internal static bool HasExplicitAuthorityState(CharacterEquipmentAuthorityPayload payload)
+        {
+            return payload.ResultKind == CharacterEquipmentAuthorityResultKind.AuthoritativeStateAccept
+                   && payload.AuthoritySlotStates?.Count > 0;
+        }
+
+        internal static Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> CaptureAuthoritySlotStates(
+            CharacterBuild build,
+            IEnumerable<EquipSlot> slots)
+        {
+            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> states = new();
+            if (build == null || slots == null)
+            {
+                return states;
+            }
+
+            foreach (EquipSlot slot in slots)
+            {
+                int visibleItemId = build.Equipment.TryGetValue(slot, out CharacterPart visiblePart) && visiblePart != null
+                    ? visiblePart.ItemId
+                    : 0;
+                int hiddenItemId = build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart) && hiddenPart != null
+                    ? hiddenPart.ItemId
+                    : 0;
+                states[slot] = new CharacterEquipmentAuthoritySlotState(slot, visibleItemId, hiddenItemId);
+            }
+
+            return states;
+        }
+
+        internal static bool TryApplyAuthoritativeState(
+            CharacterBuild build,
+            IReadOnlyList<CharacterEquipmentAuthoritySlotState> slotStates,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (build == null)
+            {
+                rejectReason = "Character equipment runtime is unavailable.";
+                return false;
+            }
+
+            if (slotStates == null || slotStates.Count == 0)
+            {
+                rejectReason = "Character equipment authority result did not include a usable character state.";
+                return false;
+            }
+
+            for (int i = 0; i < slotStates.Count; i++)
+            {
+                CharacterEquipmentAuthoritySlotState state = slotStates[i];
+                if (!TryResolveAuthorityPart(build, state.Slot, state.VisibleItemId, out CharacterPart visiblePart, out rejectReason)
+                    || !TryResolveAuthorityPart(build, state.Slot, state.HiddenItemId, out CharacterPart hiddenPart, out rejectReason))
+                {
+                    return false;
+                }
+
+                if (hiddenPart != null && visiblePart?.IsCash != true)
+                {
+                    rejectReason = "Character equipment authority state cannot keep a hidden item without a visible cash item.";
+                    return false;
+                }
+
+                if (visiblePart == null)
+                {
+                    build.Equipment.Remove(state.Slot);
+                }
+                else
+                {
+                    build.Equipment[state.Slot] = visiblePart;
+                }
+
+                if (hiddenPart == null)
+                {
+                    build.HiddenEquipment.Remove(state.Slot);
+                }
+                else
+                {
+                    build.HiddenEquipment[state.Slot] = hiddenPart;
+                }
+            }
+
+            return true;
+        }
+
         private static void WriteOptionalEquipSlot(BinaryWriter writer, HaCreator.MapSimulator.Character.EquipSlot? slot)
         {
             writer.Write(slot.HasValue ? (int)slot.Value : -1);
+        }
+
+        private static bool TryResolveAuthorityPart(
+            CharacterBuild build,
+            EquipSlot slot,
+            int itemId,
+            out CharacterPart part,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            part = null;
+            if (itemId <= 0)
+            {
+                return true;
+            }
+
+            if (build?.EquipmentPartLoader == null)
+            {
+                rejectReason = $"Character equipment loader is unavailable for authoritative item {itemId}.";
+                return false;
+            }
+
+            CharacterPart loadedPart = build.EquipmentPartLoader.Invoke(itemId)?.Clone();
+            if (loadedPart == null)
+            {
+                rejectReason = $"Character equipment authority could not load item {itemId}.";
+                return false;
+            }
+
+            loadedPart.Slot = slot;
+            part = loadedPart;
+            return true;
         }
 
         private static bool TryReadOptionalEquipSlot(

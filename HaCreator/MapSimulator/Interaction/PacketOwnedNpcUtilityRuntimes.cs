@@ -1263,7 +1263,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 StoreBankItemEntry item = _decodedItems[i];
                 string primaryText = ResolveOwnerPrimaryText(item.ItemName, item.ClientDisplayName);
-                string secondaryText = string.Empty;
+                string secondaryText = BuildOwnerSecondaryText(item);
 
                 rows[i] = new StoreBankOwnerRowSnapshot(
                     i,
@@ -1299,6 +1299,45 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(itemName)
                 ? string.Empty
                 : itemName;
+        }
+
+        private static string BuildOwnerSecondaryText(StoreBankItemEntry item)
+        {
+            if (item == null)
+            {
+                return string.Empty;
+            }
+
+            List<string> parts = new();
+            if (!string.IsNullOrWhiteSpace(item.MetadataSummary))
+            {
+                parts.Add(item.MetadataSummary);
+            }
+
+            if (item.CashSerialNumber > 0)
+            {
+                parts.Add($"CashSN {item.CashSerialNumber.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (item.ItemSerialNumber > 0
+                && (item.EquipData != null || item.BundleData != null)
+                && item.CashSerialNumber <= 0)
+            {
+                parts.Add($"SN {item.ItemSerialNumber.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (item.EquipData != null && item.EquipData.PreviousBonusExpRate != 0)
+            {
+                parts.Add($"PrevBonusEXP {item.EquipData.PreviousBonusExpRate.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            string expiration = FormatFileTime(item.BaseExpirationTime);
+            if (!string.IsNullOrWhiteSpace(expiration))
+            {
+                parts.Add($"Expire {expiration}");
+            }
+
+            return string.Join(" | ", parts);
         }
 
         internal static int ResolveOwnerRowIndex(IReadOnlyList<StoreBankOwnerRowSnapshot> rows, StoreBankOwnerSelectionAnchor anchor)
@@ -1979,6 +2018,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (item.WasRetainedFromPreviousSnapshot)
             {
                 parts.Add("retained");
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.MetadataSummary))
+            {
+                parts.Add(item.MetadataSummary);
             }
 
             string bodyDetails = BuildDecodedItemBodyDetails(item);

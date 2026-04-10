@@ -178,6 +178,7 @@ namespace HaCreator.MapSimulator
         private readonly MessengerOfficialSessionBridgeManager _messengerOfficialSessionBridge = new();
         private readonly LocalUtilityPacketTransportManager _localUtilityPacketOutbox = new();
         private readonly List<PacketOwnedItemMakerHiddenRecipeUnlockEntry> _pendingPacketOwnedItemMakerHiddenUnlocks = new();
+        private readonly List<PacketOwnedItemMakerResult> _pendingPacketOwnedItemMakerResults = new();
         private static readonly Lazy<HashSet<int>> PacketOwnedTimeBombSkillIdCatalog = new(CreatePacketOwnedTimeBombSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedVengeanceSkillIdCatalog = new(CreatePacketOwnedVengeanceSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedExJablinSkillIdCatalog = new(CreatePacketOwnedExJablinSkillIdCatalog);
@@ -185,6 +186,7 @@ namespace HaCreator.MapSimulator
         private static readonly Lazy<IReadOnlyDictionary<string, int>> PacketOwnedVisiblePotentialItemOptionIdsByLine = new(CreatePacketOwnedVisiblePotentialItemOptionIdsByLine);
         private static readonly Lazy<HashSet<int>> PacketOwnedVisiblePotentialItemOptionIds = new(CreatePacketOwnedVisiblePotentialItemOptionIdSet);
         private static readonly Lazy<IReadOnlyDictionary<int, int[]>> PacketOwnedSkillIdAliasCandidates = new(CreatePacketOwnedSkillIdAliasCandidates);
+        private static readonly Lazy<int[]> PacketOwnedAuthoredTimeBombSkillIdCandidates = new(CreatePacketOwnedAuthoredTimeBombSkillIdCandidates);
         private LocalOverlayBalloonSkin _packetOwnedTutorBalloonSkin;
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedTutorCueFramesByIndex = new();
         private readonly HashSet<int> _packetOwnedTutorTrackedSummonObjectIds = new();
@@ -2835,8 +2837,9 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is not ItemMakerUI itemMakerWindow)
             {
-                message = "Maker-result packet arrived and emitted its client-like feedback lines, but the Item Maker window is unavailable.";
-                return false;
+                _pendingPacketOwnedItemMakerResults.Add(packetResult);
+                message = $"Stored packet-owned maker result for the next Item Maker launch. Pending results: {_pendingPacketOwnedItemMakerResults.Count}.";
+                return true;
             }
 
             return itemMakerWindow.TryApplyPacketOwnedResult(packetResult, out message);
@@ -3023,6 +3026,7 @@ namespace HaCreator.MapSimulator
                 itemMakerWindow.TryApplyPacketOwnedSessionState(_packetOwnedItemMakerSessionState, out _);
             }
 
+            TryApplyStoredPacketOwnedItemMakerResults(itemMakerWindow, out _);
             TryApplyStoredPacketOwnedItemMakerHiddenUnlocks(itemMakerWindow, out _);
         }
 
@@ -3064,6 +3068,32 @@ namespace HaCreator.MapSimulator
             return PacketOwnedItemMakerHiddenRecipeUnlockRuntime.MergePendingEntries(
                 _pendingPacketOwnedItemMakerHiddenUnlocks,
                 packetUnlock);
+        }
+
+        private bool TryApplyStoredPacketOwnedItemMakerResults(ItemMakerUI itemMakerWindow, out string message)
+        {
+            message = null;
+            if (itemMakerWindow == null || _pendingPacketOwnedItemMakerResults.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _pendingPacketOwnedItemMakerResults.Count; i++)
+            {
+                PacketOwnedItemMakerResult packetResult = _pendingPacketOwnedItemMakerResults[i];
+                if (!itemMakerWindow.TryApplyPacketOwnedResult(packetResult, out message))
+                {
+                    if (i > 0)
+                    {
+                        _pendingPacketOwnedItemMakerResults.RemoveRange(0, i);
+                    }
+
+                    return false;
+                }
+            }
+
+            _pendingPacketOwnedItemMakerResults.Clear();
+            return true;
         }
 
         private bool TryApplyStoredPacketOwnedItemMakerHiddenUnlocks(ItemMakerUI itemMakerWindow, out string message)
@@ -5917,10 +5947,10 @@ namespace HaCreator.MapSimulator
 
                 _packetOwnedLocalUtilityContext.ResetRadioCreateLayerForCharacter(runtimeCharacterId);
                 ResetPacketOwnedRadioCreateLayerSessionState();
-                return;
             }
 
             _packetOwnedLocalUtilityContext.EnsureRadioCreateLayerInitializedFromRuntime(runtimeCharacterId);
+            RestorePersistedPacketOwnedRadioCreateLayerContextIfNeeded(runtimeCharacterId);
         }
 
         private void CapturePacketOwnedRadioCreateLayerSessionState()
@@ -6055,6 +6085,7 @@ namespace HaCreator.MapSimulator
                 source: source,
                 currentTick: Environment.TickCount,
                 runtimeCharacterId: runtimeCharacterId);
+            PersistPacketOwnedRadioCreateLayerContextState(runtimeCharacterId);
             return $"Set packet-owned local utility CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] (radio bLeft) to {(bLeft ? 1 : 0)}.";
         }
 
@@ -6070,7 +6101,101 @@ namespace HaCreator.MapSimulator
                 source: source,
                 currentTick: Environment.TickCount,
                 runtimeCharacterId: runtimeCharacterId);
+            PersistPacketOwnedRadioCreateLayerContextState(runtimeCharacterId);
             return $"Cleared packet-owned local utility CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] (radio bLeft) override.";
+        }
+
+        private void RestorePersistedPacketOwnedRadioCreateLayerContextIfNeeded(int runtimeCharacterId)
+        {
+            if (!ShouldRestorePersistedPacketOwnedRadioCreateLayerContext(
+                    runtimeCharacterId,
+                    _packetOwnedLocalUtilityContext.RadioCreateLayerBoundCharacterId,
+                    _packetOwnedLocalUtilityContext.HasRadioCreateLayerLeftContextValue,
+                    _packetOwnedLocalUtilityContext.RadioCreateLayerMutationSequence,
+                    _packetOwnedLocalUtilityContext.RadioCreateLayerLastMutationSource))
+            {
+                return;
+            }
+
+            LoginCharacterAccountStore.LoginCharacterAccountEntryState storedEntry =
+                ResolveStoredPacketOwnedRadioCreateLayerEntry(runtimeCharacterId);
+            if (storedEntry == null || !HasPersistedPacketOwnedRadioCreateLayerContext(storedEntry))
+            {
+                return;
+            }
+
+            _packetOwnedLocalUtilityContext.RestoreRadioCreateLayerState(
+                runtimeCharacterId,
+                storedEntry.HasPacketOwnedRadioCreateLayerLeftContextValue,
+                storedEntry.PacketOwnedRadioCreateLayerLeftContextValue,
+                storedEntry.PacketOwnedRadioCreateLayerMutationSequence,
+                string.IsNullOrWhiteSpace(storedEntry.PacketOwnedRadioCreateLayerLastMutationSource)
+                    ? "persisted-radioctx"
+                    : storedEntry.PacketOwnedRadioCreateLayerLastMutationSource,
+                runtimeCharacterId);
+        }
+
+        internal static bool ShouldRestorePersistedPacketOwnedRadioCreateLayerContext(
+            int runtimeCharacterId,
+            int boundCharacterId,
+            bool hasOverride,
+            int mutationSequence,
+            string mutationSource)
+        {
+            return runtimeCharacterId > 0
+                && boundCharacterId == runtimeCharacterId
+                && !hasOverride
+                && mutationSequence <= 0
+                && string.Equals(mutationSource ?? string.Empty, "fallback", StringComparison.Ordinal);
+        }
+
+        private LoginCharacterAccountStore.LoginCharacterAccountEntryState ResolveStoredPacketOwnedRadioCreateLayerEntry(int runtimeCharacterId)
+        {
+            if (runtimeCharacterId <= 0)
+            {
+                return null;
+            }
+
+            CharacterBuild runtimeBuild = _playerManager?.Player?.Build;
+            if (runtimeBuild != null && runtimeBuild.Id == runtimeCharacterId)
+            {
+                return ResolveStoredLoginCharacterAccountEntry(runtimeBuild);
+            }
+
+            LoginCharacterAccountStore.LoginCharacterAccountState storedState = _loginCharacterAccountStore.GetState(
+                ResolveLoginRosterAccountName(),
+                ResolveLoginRosterWorldId(),
+                ResolveLoginRosterAccountId());
+            return storedState?.Entries?.FirstOrDefault(entry => entry?.CharacterId == runtimeCharacterId);
+        }
+
+        private bool PersistPacketOwnedRadioCreateLayerContextState(int runtimeCharacterId)
+        {
+            int persistedCharacterId = runtimeCharacterId > 0
+                ? runtimeCharacterId
+                : _packetOwnedLocalUtilityContext.RadioCreateLayerBoundCharacterId;
+            if (persistedCharacterId <= 0)
+            {
+                return false;
+            }
+
+            return _loginCharacterAccountStore.UpdatePacketOwnedRadioCreateLayerState(
+                ResolveLoginRosterAccountName(),
+                ResolveLoginRosterWorldId(),
+                persistedCharacterId,
+                _packetOwnedLocalUtilityContext.HasRadioCreateLayerLeftContextValue,
+                _packetOwnedLocalUtilityContext.RadioCreateLayerLeftContextValue,
+                _packetOwnedLocalUtilityContext.RadioCreateLayerMutationSequence,
+                _packetOwnedLocalUtilityContext.RadioCreateLayerLastMutationSource,
+                ResolveLoginRosterAccountId());
+        }
+
+        private static bool HasPersistedPacketOwnedRadioCreateLayerContext(LoginCharacterAccountStore.LoginCharacterAccountEntryState entry)
+        {
+            return entry != null &&
+                   (entry.HasPacketOwnedRadioCreateLayerLeftContextValue ||
+                    entry.PacketOwnedRadioCreateLayerMutationSequence > 0 ||
+                    !string.IsNullOrWhiteSpace(entry.PacketOwnedRadioCreateLayerLastMutationSource));
         }
 
         private string OverridePacketOwnedApspReceiveContextToken(int receiveContextToken)
@@ -8616,7 +8741,7 @@ namespace HaCreator.MapSimulator
             return ResolvePacketOwnedDedicatedFamilyFallbackSkillId(
                 packetSkillId,
                 packetSkillLevel,
-                EnumeratePacketOwnedSkillIdCandidates(PacketOwnedCurrentTimeBombSkillId),
+                PacketOwnedAuthoredTimeBombSkillIdCandidates.Value,
                 static candidateSkillId => candidateSkillId > 0,
                 candidateSkillId => _playerManager?.Skills?.GetSkillLevel(candidateSkillId) ?? 0);
         }
@@ -8720,6 +8845,55 @@ namespace HaCreator.MapSimulator
                 EnumeratePacketOwnedSkillDescriptionsFromStringCatalog());
         }
 
+        internal static bool IsPacketOwnedTimeBombAuthoredSkillCandidate(bool hasAction, bool hasPrepare, bool hasSpecial)
+        {
+            return hasAction && hasPrepare && hasSpecial;
+        }
+
+        internal static int[] CollectPacketOwnedTimeBombAuthoredSkillIds(
+            IEnumerable<(int SkillId, bool HasAction, bool HasPrepare, bool HasSpecial)> candidates)
+        {
+            if (candidates == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            return candidates
+                .Where(static candidate => candidate.SkillId > 0
+                    && IsPacketOwnedTimeBombAuthoredSkillCandidate(
+                        candidate.HasAction,
+                        candidate.HasPrepare,
+                        candidate.HasSpecial))
+                .Select(static candidate => candidate.SkillId)
+                .Distinct()
+                .OrderBy(static skillId => skillId)
+                .ToArray();
+        }
+
+        internal static int[] CreatePacketOwnedAuthoredTimeBombSkillIdCandidates(
+            IEnumerable<int> candidateSkillIds,
+            Func<int, (bool HasAction, bool HasPrepare, bool HasSpecial)> getBranchCoverage)
+        {
+            int[] authoredSkillIds = CollectPacketOwnedTimeBombAuthoredSkillIds(
+                candidateSkillIds?.Select(skillId =>
+                {
+                    (bool HasAction, bool HasPrepare, bool HasSpecial) coverage = getBranchCoverage?.Invoke(skillId) ?? default;
+                    return (skillId, coverage.HasAction, coverage.HasPrepare, coverage.HasSpecial);
+                }));
+
+            return PacketOwnedSkillAliasCatalog.BuildPreferredAliasCandidates(
+                authoredSkillIds,
+                PacketOwnedCurrentTimeBombSkillId,
+                0);
+        }
+
+        private static int[] CreatePacketOwnedAuthoredTimeBombSkillIdCandidates()
+        {
+            return CreatePacketOwnedAuthoredTimeBombSkillIdCandidates(
+                PacketOwnedTimeBombSkillIdCatalog.Value,
+                TryResolvePacketOwnedTimeBombAuthoredBranchCoverage);
+        }
+
         internal static HashSet<int> CreatePacketOwnedExJablinSkillIdCatalog(
             IEnumerable<KeyValuePair<int, string>> skillNames,
             IEnumerable<KeyValuePair<int, string>> skillDescriptions)
@@ -8779,6 +8953,27 @@ namespace HaCreator.MapSimulator
         private static IEnumerable<KeyValuePair<int, string>> EnumeratePacketOwnedSkillDescriptionsFromStringCatalog()
         {
             return EnumeratePacketOwnedSkillStringsFromStringCatalog("desc", "pdesc");
+        }
+
+        private static (bool HasAction, bool HasPrepare, bool HasSpecial) TryResolvePacketOwnedTimeBombAuthoredBranchCoverage(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return default;
+            }
+
+            WzImage skillImage = Program.FindImage("Skill", ResolvePacketOwnedTutorSkillImageName(skillId));
+            if (skillImage == null)
+            {
+                return default;
+            }
+
+            skillImage.ParseImage();
+            WzImageProperty skillRoot = skillImage["skill"]?[skillId.ToString(CultureInfo.InvariantCulture)] as WzImageProperty;
+            return (
+                HasAction: skillRoot?["action"] != null,
+                HasPrepare: skillRoot?["prepare"] != null,
+                HasSpecial: skillRoot?["special"] != null);
         }
 
         private static IEnumerable<KeyValuePair<int, string>> EnumeratePacketOwnedSkillStringsFromStringCatalog(params string[] propertyNames)
@@ -8903,12 +9098,52 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedNoticePayload(byte[] payload, out string message)
         {
-            return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedNoticeMessage, "Notice payload is missing.", out message);
+            return TryApplyPacketOwnedNoticePayload(payload, requireExactClientPayload: false, out message);
         }
 
         private bool TryApplyPacketOwnedNoticePayload(byte[] payload, bool requireExactClientPayload, out string message)
         {
-            return TryApplyPacketOwnedNoticePayload(payload, out message);
+            if (!TryDecodePacketOwnedNoticePayload(payload, requireExactClientPayload, out string noticeText, out message))
+            {
+                return false;
+            }
+
+            message = ApplyPacketOwnedNoticeMessage(noticeText);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedNoticePayload(
+            byte[] payload,
+            bool requireExactClientPayload,
+            out string noticeText,
+            out string message)
+        {
+            noticeText = null;
+            message = "Notice payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (requireExactClientPayload)
+            {
+                if (!TryDecodeExactPacketOwnedMapleString(payload, out noticeText))
+                {
+                    message = "Notice client payload must match CUserLocal::OnNoticeMsg: exactly one DecodeStr body.";
+                    return false;
+                }
+
+                message = "Decoded packet-owned notice payload.";
+                return true;
+            }
+
+            if (!TryDecodePacketOwnedStringPayload(payload, out noticeText))
+            {
+                return false;
+            }
+
+            message = "Decoded packet-owned notice payload.";
+            return true;
         }
 
         private bool TryApplyPacketOwnedTutorHirePayload(byte[] payload, out string message)
@@ -9105,10 +9340,87 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedChatPayload(byte[] payload, out string message)
         {
-            message = null;
+            return TryApplyPacketOwnedChatPayload(payload, requireExactClientPayload: false, out message);
+        }
+
+        private bool TryApplyPacketOwnedChatPayload(byte[] payload, bool requireExactClientPayload, out string message)
+        {
+            if (!TryDecodePacketOwnedChatPayload(
+                    payload,
+                    requireExactClientPayload,
+                    out ushort chatLogType,
+                    out string chatText,
+                    out bool hasChannelId,
+                    out int channelId,
+                    out message))
+            {
+                return false;
+            }
+
+            message = hasChannelId
+                ? ApplyPacketOwnedChatMessage(chatText, chatLogType, channelId: channelId)
+                : chatLogType > 0
+                    ? ApplyPacketOwnedChatMessage(chatText, chatLogType)
+                    : ApplyPacketOwnedChatMessage(chatText);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedChatPayload(
+            byte[] payload,
+            bool requireExactClientPayload,
+            out ushort chatLogType,
+            out string chatText,
+            out bool hasChannelId,
+            out int channelId,
+            out string message)
+        {
+            chatLogType = 0;
+            chatText = null;
+            hasChannelId = false;
+            channelId = -1;
+            message = "Chat payload is missing.";
             if (payload == null || payload.Length == 0)
             {
-                message = "Chat payload is missing.";
+                return false;
+            }
+
+            if (TryDecodePacketOwnedTypedChatPayload(payload, out chatLogType, out chatText))
+            {
+                message = "Decoded packet-owned chat payload.";
+                return true;
+            }
+
+            if (requireExactClientPayload)
+            {
+                message = "Chat client payload must match CUserLocal::OnChatMsg: Decode2 chatLogType followed by one DecodeStr body.";
+                return false;
+            }
+
+            if (TryDecodePacketOwnedChannelChatPayload(payload, out chatLogType, out channelId, out chatText))
+            {
+                hasChannelId = true;
+                message = "Decoded packet-owned channel chat payload.";
+                return true;
+            }
+
+            if (!TryDecodePacketOwnedStringPayload(payload, out chatText))
+            {
+                return false;
+            }
+
+            message = "Decoded packet-owned chat payload.";
+            return true;
+        }
+
+        private static bool TryDecodePacketOwnedTypedChatPayload(
+            byte[] payload,
+            out ushort chatLogType,
+            out string chatText)
+        {
+            chatLogType = 0;
+            chatText = null;
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
                 return false;
             }
 
@@ -9116,50 +9428,112 @@ namespace HaCreator.MapSimulator
             {
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream);
-                ushort chatLogType = reader.ReadUInt16();
-                string chatText = ReadPacketOwnedMapleString(reader);
-                if (reader.BaseStream.Position == reader.BaseStream.Length && !string.IsNullOrWhiteSpace(chatText))
+                chatLogType = reader.ReadUInt16();
+                string decodedText = ReadPacketOwnedMapleString(reader);
+                if (reader.BaseStream.Position != reader.BaseStream.Length || string.IsNullOrWhiteSpace(decodedText))
                 {
-                    message = ApplyPacketOwnedChatMessage(chatText, chatLogType);
-                    return true;
+                    return false;
                 }
+
+                chatText = decodedText.Trim();
+                return true;
             }
             catch
             {
+                return false;
+            }
+        }
+
+        private static bool TryDecodePacketOwnedChannelChatPayload(
+            byte[] payload,
+            out ushort chatLogType,
+            out int channelId,
+            out string chatText)
+        {
+            chatLogType = 0;
+            channelId = -1;
+            chatText = null;
+            if (payload == null || payload.Length < sizeof(ushort) + sizeof(int))
+            {
+                return false;
             }
 
             try
             {
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream);
-                ushort chatLogType = reader.ReadUInt16();
-                int channelId = reader.ReadInt32();
-                string chatText = ReadPacketOwnedMapleString(reader);
-                if (reader.BaseStream.Position == reader.BaseStream.Length && !string.IsNullOrWhiteSpace(chatText))
+                chatLogType = reader.ReadUInt16();
+                channelId = reader.ReadInt32();
+                string decodedText = ReadPacketOwnedMapleString(reader);
+                if (reader.BaseStream.Position != reader.BaseStream.Length || string.IsNullOrWhiteSpace(decodedText))
                 {
-                    message = ApplyPacketOwnedChatMessage(chatText, chatLogType, channelId: channelId);
-                    return true;
+                    return false;
                 }
+
+                chatText = decodedText.Trim();
+                return true;
             }
             catch
             {
+                return false;
             }
-
-            return TryApplyPacketOwnedStringPayload(payload, value => ApplyPacketOwnedChatMessage(value), "Chat payload is missing.", out message);
-        }
-
-        private bool TryApplyPacketOwnedChatPayload(byte[] payload, bool requireExactClientPayload, out string message)
-        {
-            return TryApplyPacketOwnedChatPayload(payload, out message);
         }
 
         private bool TryApplyPacketOwnedEventSoundPayload(byte[] payload, bool minigame, bool requireExactClientPayload, out string message)
         {
-            return TryApplyPacketOwnedStringPayload(
-                payload,
-                descriptor => ApplyPacketOwnedEventSound(descriptor, minigame),
-                minigame ? "Minigame-sound payload is missing." : "Event-sound payload is missing.",
-                out message);
+            if (!TryDecodePacketOwnedEventSoundPayload(
+                    payload,
+                    requireExactClientPayload,
+                    minigame,
+                    out string descriptor,
+                    out message))
+            {
+                return false;
+            }
+
+            message = ApplyPacketOwnedEventSound(descriptor, minigame);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedEventSoundPayload(
+            byte[] payload,
+            bool requireExactClientPayload,
+            bool minigame,
+            out string descriptor,
+            out string message)
+        {
+            descriptor = null;
+            message = minigame ? "Minigame-sound payload is missing." : "Event-sound payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (requireExactClientPayload)
+            {
+                if (!TryDecodeExactPacketOwnedMapleString(payload, out descriptor))
+                {
+                    message = minigame
+                        ? "Minigame-sound client payload must match CUserLocal::OnPlayMinigameSound: exactly one DecodeStr body."
+                        : "Event-sound client payload must match CUserLocal::OnPlayEventSound: exactly one DecodeStr body.";
+                    return false;
+                }
+
+                message = minigame
+                    ? "Decoded packet-owned minigame-sound payload."
+                    : "Decoded packet-owned event-sound payload.";
+                return true;
+            }
+
+            if (!TryDecodePacketOwnedStringPayload(payload, out descriptor))
+            {
+                return false;
+            }
+
+            message = minigame
+                ? "Decoded packet-owned minigame-sound payload."
+                : "Decoded packet-owned event-sound payload.";
+            return true;
         }
 
         private bool TryApplyPacketOwnedOpenUiWithOptionPayload(byte[] payload, bool requireExactClientPayload, out string message)
@@ -10120,6 +10494,33 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool TryDecodeExactPacketOwnedMapleString(byte[] payload, out string text)
+        {
+            text = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                string mapleString = ReadPacketOwnedMapleString(reader);
+                if (reader.BaseStream.Position != reader.BaseStream.Length || string.IsNullOrWhiteSpace(mapleString))
+                {
+                    return false;
+                }
+
+                text = mapleString.Trim();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private bool TryApplyPacketOwnedEventAlarmTextPayload(byte[] payload, out string message)

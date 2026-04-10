@@ -7,10 +7,19 @@ namespace HaCreator.MapSimulator.UI
         Point CompositionPoint,
         Rectangle CompositionExcludeArea,
         Point CandidatePoint,
-        Rectangle CandidateExcludeArea);
+        Rectangle CandidateExcludeArea,
+        uint CompositionStyle,
+        uint CandidateStyle);
 
     internal static class SkillMacroImeWindowPlacementLayout
     {
+        internal const uint ImeWindowStyleDefault = 0x0000;
+        internal const uint ImeWindowStyleRect = 0x0001;
+        internal const uint ImeWindowStylePoint = 0x0002;
+        internal const uint ImeWindowStyleForcePosition = 0x0020;
+        internal const uint ImeWindowStyleCandidatePosition = 0x0040;
+        internal const uint ImeWindowStyleExclude = 0x0080;
+
         internal static SkillMacroImeWindowPlacement Resolve(
             Rectangle nameFieldBounds,
             int textInsetX,
@@ -18,7 +27,9 @@ namespace HaCreator.MapSimulator.UI
             int compositionCaretWidth,
             bool useClauseAnchor,
             int clauseAnchorWidth,
-            int clauseWidth)
+            int clauseWidth,
+            uint compositionStyle = ImeWindowStyleExclude,
+            uint candidateStyle = ImeWindowStyleExclude)
         {
             int safeInsetX = Math.Max(0, textInsetX);
             int safeLineSpacing = Math.Max(0, lineSpacing);
@@ -34,7 +45,9 @@ namespace HaCreator.MapSimulator.UI
                     new Point(compositionX, baselineY),
                     compositionExcludeArea,
                     new Point(compositionX, baselineY),
-                    compositionExcludeArea);
+                    compositionExcludeArea,
+                    compositionStyle,
+                    candidateStyle);
             }
 
             int candidateX = ClampToField(textOriginX + Math.Max(0, clauseAnchorWidth), nameFieldBounds);
@@ -43,7 +56,73 @@ namespace HaCreator.MapSimulator.UI
                 new Point(compositionX, baselineY),
                 compositionExcludeArea,
                 new Point(candidateX, baselineY),
-                candidateExcludeArea);
+                candidateExcludeArea,
+                compositionStyle,
+                candidateStyle);
+        }
+
+        internal static bool TryResolveCandidateWindowFormPlacement(
+            ImeCandidateWindowForm windowForm,
+            out Point point,
+            out Rectangle area,
+            out uint style)
+        {
+            point = Point.Zero;
+            area = Rectangle.Empty;
+            style = ImeWindowStyleDefault;
+            if (windowForm == null || !windowForm.HasPlacementData)
+            {
+                return false;
+            }
+
+            uint normalizedStyle = NormalizeCandidateWindowStyle(windowForm.Style);
+            Rectangle normalizedArea = new(
+                windowForm.AreaX,
+                windowForm.AreaY,
+                Math.Max(0, windowForm.AreaWidth),
+                Math.Max(0, windowForm.AreaHeight));
+
+            if ((normalizedStyle & (ImeWindowStyleExclude | ImeWindowStyleRect)) != 0
+                && (normalizedArea.Width <= 0 || normalizedArea.Height <= 0))
+            {
+                return false;
+            }
+
+            if (normalizedStyle == ImeWindowStyleDefault)
+            {
+                return false;
+            }
+
+            point = new Point(windowForm.CurrentX, windowForm.CurrentY);
+            area = normalizedArea;
+            style = normalizedStyle;
+            return true;
+        }
+
+        private static uint NormalizeCandidateWindowStyle(uint style)
+        {
+            uint normalized = style & (ImeWindowStyleRect
+                | ImeWindowStylePoint
+                | ImeWindowStyleForcePosition
+                | ImeWindowStyleCandidatePosition
+                | ImeWindowStyleExclude);
+
+            if ((normalized & ImeWindowStyleExclude) != 0)
+            {
+                return ImeWindowStyleExclude;
+            }
+
+            if ((normalized & ImeWindowStyleRect) != 0)
+            {
+                return ImeWindowStyleRect;
+            }
+
+            if ((normalized & (ImeWindowStyleForcePosition | ImeWindowStyleCandidatePosition | ImeWindowStylePoint)) != 0)
+            {
+                return normalized & (ImeWindowStyleForcePosition | ImeWindowStyleCandidatePosition | ImeWindowStylePoint);
+            }
+
+            return ImeWindowStyleDefault;
         }
 
         private static int ClampToField(int x, Rectangle bounds)

@@ -214,9 +214,9 @@ namespace HaCreator.MapSimulator.Character
             public int ActivationStartTime { get; init; }
             public bool FacingRight { get; init; }
             public int ActionDuration { get; init; }
-            public int FadeDuration { get; init; }
             public int FadeStartTime { get; set; } = -1;
             public int LastFrameIndex { get; set; } = -1;
+            public int LastFrameElapsedMs { get; set; }
             public IReadOnlyList<AfterimageRenderableLayer> LastResolvedLayers { get; set; } = Array.Empty<AfterimageRenderableLayer>();
         }
 
@@ -328,7 +328,6 @@ namespace HaCreator.MapSimulator.Character
 
         #region Constants
 
-        private const int MinimumMeleeAfterImageFadeDurationMs = 60;
         // ============================================================
         // Physics constants loaded from Map.wz/Physics.img at runtime
         // See PhysicsConstants.cs for the loader
@@ -655,6 +654,7 @@ namespace HaCreator.MapSimulator.Character
                 _ => PlayerState.Standing
             };
 
+            string newActionName = ResolvePacketOwnedPassiveMoveActionName(newState, snapshot.Action);
             CharacterAction newAction = newState switch
             {
                 PlayerState.Walking => ResolveClientWalkAction(),
@@ -666,8 +666,6 @@ namespace HaCreator.MapSimulator.Character
                 PlayerState.Dead => CharacterAction.Dead,
                 _ => ResolveClientStandAction()
             };
-
-            string newActionName = CharacterPart.GetActionString(newAction);
             if (State != newState
                 || CurrentAction != newAction
                 || !string.Equals(CurrentActionName, newActionName, StringComparison.Ordinal))
@@ -678,6 +676,29 @@ namespace HaCreator.MapSimulator.Character
             State = newState;
             CurrentAction = newAction;
             CurrentActionName = newActionName;
+        }
+
+        private string ResolvePacketOwnedPassiveMoveActionName(PlayerState newState, MoveAction moveAction)
+        {
+            if (Build?.ActivePortableChair != null)
+            {
+                return CharacterPart.GetActionString(CharacterAction.Sit);
+            }
+
+            return moveAction switch
+            {
+                MoveAction.Walk => CharacterPart.GetActionString(ResolveClientWalkAction()),
+                MoveAction.Jump or MoveAction.Fall => CharacterPart.GetActionString(CharacterAction.Jump),
+                MoveAction.Ladder => CharacterPart.GetActionString(CharacterAction.Ladder),
+                MoveAction.Rope => CharacterPart.GetActionString(CharacterAction.Rope),
+                MoveAction.Swim => CharacterPart.GetActionString(CharacterAction.Swim),
+                MoveAction.Fly => CharacterPart.GetActionString(CharacterAction.Fly),
+                MoveAction.Attack or MoveAction.Hit => CharacterPart.GetActionString(CharacterAction.Alert),
+                MoveAction.Die => CharacterPart.GetActionString(CharacterAction.Dead),
+                _ => CharacterPart.GetActionString(newState == PlayerState.Walking
+                    ? ResolveClientWalkAction()
+                    : ResolveClientStandAction())
+            };
         }
 
         private void ApplyPacketOwnedPassiveMoveFootholdState(PassivePositionSnapshot snapshot, FootholdLine foothold)
@@ -1943,7 +1964,7 @@ namespace HaCreator.MapSimulator.Character
             string newActionName;
             if (State == PlayerState.Attacking && !string.IsNullOrWhiteSpace(_forcedActionName))
             {
-                newActionName = _forcedActionName;
+                newActionName = ResolveAvatarActionLayerCoordinatorActionName(_forcedActionName) ?? _forcedActionName;
             }
             else if (State == PlayerState.Sitting)
             {
@@ -1951,7 +1972,9 @@ namespace HaCreator.MapSimulator.Character
             }
             else
             {
-                newActionName = GetSkillTransformActionName(State) ?? CharacterPart.GetActionString(newAction);
+                newActionName = ResolveAvatarActionLayerCoordinatorActionName(
+                    GetSkillTransformActionName(State) ?? CharacterPart.GetActionString(newAction))
+                    ?? CharacterPart.GetActionString(newAction);
             }
 
             bool isFloatAction = IsFloatAnimationAction(newAction);
@@ -1970,6 +1993,7 @@ namespace HaCreator.MapSimulator.Character
                 CurrentSkillAnimationStartTime = int.MinValue;
             }
             _isFloatAnimationMoving = isFloatMoving;
+            SyncAssemblerActionLayerContext();
         }
 
         private bool IsFloatAnimationAction(CharacterAction action)
@@ -2439,6 +2463,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (Assembler == null)
                 return new Rectangle((int)X - 50, (int)Y - 50, 100, 50);
+            SyncAssemblerActionLayerContext();
             return Assembler.GetAttackHitbox(CurrentAction, _attackFrame, FacingRight);
         }
 
@@ -2453,6 +2478,7 @@ namespace HaCreator.MapSimulator.Character
             _sustainedSkillAnimation = false;
 
             actionName = ResolveActiveSkillSpecificActionName(actionName);
+            actionName = ResolveAvatarActionLayerCoordinatorActionName(actionName) ?? actionName;
 
             if (string.IsNullOrEmpty(actionName))
                 actionName = "attack1";
@@ -2466,6 +2492,7 @@ namespace HaCreator.MapSimulator.Character
 
             _attackFrame = 0;
             _animationStartTime = Environment.TickCount; // Set animation start time for completion check
+            SyncAssemblerActionLayerContext();
 
             System.Diagnostics.Debug.WriteLine($"[TriggerSkillAnimation] actionName={actionName}, CurrentAction={CurrentActionName}, State={State}");
         }
@@ -2476,6 +2503,7 @@ namespace HaCreator.MapSimulator.Character
                 actionName = "attack1";
 
             ClearPortableChair(standUp: false);
+            actionName = ResolveAvatarActionLayerCoordinatorActionName(actionName) ?? actionName;
 
             bool isSameAction = _sustainedSkillAnimation
                 && State == PlayerState.Attacking
@@ -2495,6 +2523,8 @@ namespace HaCreator.MapSimulator.Character
                 _attackFrame = 0;
                 _animationStartTime = Environment.TickCount;
             }
+
+            SyncAssemblerActionLayerContext();
         }
 
         public void EndSustainedSkillAnimation()
@@ -2522,8 +2552,7 @@ namespace HaCreator.MapSimulator.Character
                     afterImageAction,
                     Assembler?.GetAnimation(actionName)),
                 FacingRight = FacingRight,
-                ActionDuration = GetMeleeAfterImageActionDuration(actionName),
-                FadeDuration = GetMeleeAfterImageFadeDuration(actionName)
+                ActionDuration = GetMeleeAfterImageActionDuration(actionName)
             };
 
             PlayEffectiveWeaponSfx();
@@ -2552,6 +2581,7 @@ namespace HaCreator.MapSimulator.Character
 
             int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
             int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
+            int lastFrameElapsedMs = _activeMeleeAfterImage.LastFrameElapsedMs;
             IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = _activeMeleeAfterImage.LastResolvedLayers;
             MeleeAfterimagePlaybackResolver.CaptureFadeSnapshotOrClearCache(
                 Assembler,
@@ -2559,8 +2589,10 @@ namespace HaCreator.MapSimulator.Character
                 _activeMeleeAfterImage.AfterImageAction,
                 animationTime,
                 ref lastFrameIndex,
+                ref lastFrameElapsedMs,
                 ref lastResolvedLayers);
             _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
+            _activeMeleeAfterImage.LastFrameElapsedMs = lastFrameElapsedMs;
             _activeMeleeAfterImage.LastResolvedLayers = lastResolvedLayers;
 
             _activeMeleeAfterImage.FadeStartTime = currentTime;
@@ -2581,11 +2613,6 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return duration;
-        }
-
-        private int GetMeleeAfterImageFadeDuration(string actionName)
-        {
-            return Math.Max(MinimumMeleeAfterImageFadeDurationMs, GetMeleeAfterImageActionDuration(actionName) / 4);
         }
 
         public bool ApplySkillAvatarTransform(int skillId, string actionName, int morphTemplateId = 0)
@@ -3597,6 +3624,8 @@ namespace HaCreator.MapSimulator.Character
             if (Assembler == null)
                 return;
 
+            SyncAssemblerActionLayerContext();
+
             // Get current frame
             int animTime = GetRenderAnimationTime(currentTime);
 
@@ -4100,6 +4129,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
                 int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
+                int lastFrameElapsedMs = _activeMeleeAfterImage.LastFrameElapsedMs;
                 IReadOnlyList<AfterimageRenderableLayer> lastResolvedLayers = _activeMeleeAfterImage.LastResolvedLayers;
                 MeleeAfterimagePlaybackResolver.RefreshSnapshotCache(
                     Assembler,
@@ -4107,28 +4137,32 @@ namespace HaCreator.MapSimulator.Character
                     _activeMeleeAfterImage.AfterImageAction,
                     animationTime,
                     ref lastFrameIndex,
+                    ref lastFrameElapsedMs,
                     ref lastResolvedLayers);
                 _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
+                _activeMeleeAfterImage.LastFrameElapsedMs = lastFrameElapsedMs;
                 _activeMeleeAfterImage.LastResolvedLayers = lastResolvedLayers;
                 frameIndex = _activeMeleeAfterImage.LastFrameIndex;
                 layers = _activeMeleeAfterImage.LastResolvedLayers;
             }
-            if (layers == null || layers.Count == 0)
-            {
-                return;
-            }
-
-            float fadeAlpha = 1f;
-            if (!activeAction && _activeMeleeAfterImage.FadeStartTime >= 0)
+            else if (_activeMeleeAfterImage.FadeStartTime >= 0)
             {
                 int fadeElapsed = Math.Max(0, currentTime - _activeMeleeAfterImage.FadeStartTime);
-                if (fadeElapsed >= _activeMeleeAfterImage.FadeDuration)
+                layers = MeleeAfterimagePlaybackResolver.ResolveFadingRenderableLayers(
+                    _activeMeleeAfterImage.AfterImageAction,
+                    frameIndex,
+                    _activeMeleeAfterImage.LastFrameElapsedMs,
+                    fadeElapsed);
+                if (layers.Count == 0)
                 {
                     _activeMeleeAfterImage = null;
                     return;
                 }
+            }
 
-                fadeAlpha = 1f - (fadeElapsed / (float)Math.Max(1, _activeMeleeAfterImage.FadeDuration));
+            if (layers == null || layers.Count == 0)
+            {
+                return;
             }
 
             foreach (AfterimageRenderableLayer layer in layers)
@@ -4139,7 +4173,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                Color frameTint = tint * MathHelper.Clamp(layer.Alpha * fadeAlpha, 0f, 1f);
+                Color frameTint = tint * MathHelper.Clamp(layer.Alpha, 0f, 1f);
                 bool shouldFlip = _activeMeleeAfterImage.FacingRight ^ frame.Flip;
                 float zoom = MathHelper.Clamp(layer.Zoom, 0.01f, 10f);
                 int drawWidth = Math.Max(1, (int)Math.Round(frame.Texture.Width * zoom));
@@ -5957,9 +5991,11 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private static IEnumerable<string> EnumerateShadowPartnerClientActionAliases(string playerActionName)
+        private IEnumerable<string> EnumerateShadowPartnerClientActionAliases(string playerActionName)
         {
-            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientActionAliases(playerActionName))
+            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientActionAliases(
+                         playerActionName,
+                         _activeShadowPartner?.SupportedRawActionNames))
             {
                 yield return candidate;
             }
@@ -7133,13 +7169,27 @@ namespace HaCreator.MapSimulator.Character
 
         internal int TryGetCurrentBodyRelMoveY(int currentTime)
         {
-            if (Assembler == null)
+            string actionName = CurrentActionName;
+            if (string.IsNullOrWhiteSpace(actionName))
             {
                 return 0;
             }
 
-            string actionName = CurrentActionName;
-            if (string.IsNullOrWhiteSpace(actionName))
+            int animationTime = GetRenderAnimationTime(currentTime);
+
+            CharacterPart mountedPart = ResolveMountedStateTamingMobPart();
+            if (mountedPart?.Slot == EquipSlot.TamingMob)
+            {
+                CharacterAnimation mountedAnimation = CharacterAssembler.GetPartAnimation(mountedPart, actionName);
+                if (mountedAnimation?.Frames?.Count > 0)
+                {
+                    int mountedFrameIndex;
+                    mountedAnimation.GetFrameAtTime(animationTime, out mountedFrameIndex);
+                    return ResolveClientBodyRelMoveY(mountedAnimation.Frames, mountedFrameIndex);
+                }
+            }
+
+            if (Assembler == null)
             {
                 return 0;
             }
@@ -7150,9 +7200,36 @@ namespace HaCreator.MapSimulator.Character
                 return 0;
             }
 
-            int animationTime = GetRenderAnimationTime(currentTime);
             int frameIndex = Assembler.GetFrameIndexAtTime(actionName, animationTime);
             return ResolveClientBodyRelMoveY(frames, frameIndex);
+        }
+
+        internal static int ResolveClientBodyRelMoveY(IReadOnlyList<CharacterFrame> frames, int frameIndex)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            if ((uint)frameIndex >= (uint)frames.Count)
+            {
+                frameIndex = 0;
+            }
+
+            CharacterFrame baseFrame = frames[0];
+            CharacterFrame currentFrame = frames[frameIndex];
+            if (baseFrame == null || currentFrame == null)
+            {
+                return 0;
+            }
+
+            if (baseFrame.Map?.TryGetValue("navel", out Point baseNavel) == true
+                && currentFrame.Map?.TryGetValue("navel", out Point currentNavel) == true)
+            {
+                return currentNavel.Y - baseNavel.Y;
+            }
+
+            return currentFrame.Origin.Y - baseFrame.Origin.Y;
         }
 
         internal static int ResolveClientBodyRelMoveY(IReadOnlyList<AssembledFrame> frames, int frameIndex)
@@ -7190,6 +7267,7 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
+            SyncAssemblerActionLayerContext();
             return Assembler.GetFrameAtTime(CurrentActionName, GetRenderAnimationTime(currentTime));
         }
 
@@ -8209,18 +8287,30 @@ namespace HaCreator.MapSimulator.Character
                 SourceId = skillId,
                 StandActionNames = CreateActionVariants(standActionName),
                 WalkActionNames = CreateActionVariants(walkActionName, standActionName),
-                JumpActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "jump"), standActionName),
+                JumpActionNames = CreateMechanicPublishedActionVariants(standActionName),
                 SitActionNames = CreateActionVariants(standActionName),
                 ProneActionNames = CreateActionVariants(proneActionName, standActionName),
                 AttackActionNames = CreateActionVariants(attackActionName, standActionName),
-                LadderActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "ladder"), GetActionFamilyVariant(standActionName, "rope"), standActionName),
-                RopeActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "rope"), GetActionFamilyVariant(standActionName, "ladder"), standActionName),
-                FlyActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "fly"), GetActionFamilyVariant(standActionName, "swim"), standActionName),
-                SwimActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "swim"), GetActionFamilyVariant(standActionName, "fly"), standActionName),
-                HitActionNames = CreateActionVariants(GetActionFamilyVariant(standActionName, "hit"), standActionName),
+                LadderActionNames = CreateMechanicPublishedClimbActionVariants(standActionName, preferRope: false),
+                RopeActionNames = CreateMechanicPublishedClimbActionVariants(standActionName, preferRope: true),
+                FlyActionNames = CreateMechanicPublishedActionVariants(standActionName),
+                SwimActionNames = CreateMechanicPublishedActionVariants(standActionName),
+                HitActionNames = CreateMechanicPublishedActionVariants(standActionName),
                 ExitActionName = exitActionName,
                 LocksMovement = locksMovement
             };
+        }
+
+        private static IReadOnlyList<string> CreateMechanicPublishedActionVariants(string standActionName)
+        {
+            return CreateActionVariants(standActionName);
+        }
+
+        private static IReadOnlyList<string> CreateMechanicPublishedClimbActionVariants(string standActionName, bool preferRope)
+        {
+            return preferRope
+                ? CreateActionVariants("rope2", "ladder2", standActionName)
+                : CreateActionVariants("ladder2", "rope2", standActionName);
         }
 
         private static SkillAvatarTransformState CreateSingleActionTransform(int skillId, string actionName, string exitActionName)
@@ -8765,22 +8855,38 @@ namespace HaCreator.MapSimulator.Character
             {
                 Assembler.OverrideAvatarPart = GetActiveAvatarTransform()?.AvatarPart;
             }
+
+            SyncAssemblerActionLayerContext();
         }
 
-        private static string GetActionFamilyVariant(string standActionName, string variantSuffix)
+        private void SyncAssemblerActionLayerContext()
         {
-            if (string.IsNullOrWhiteSpace(standActionName) || string.IsNullOrWhiteSpace(variantSuffix))
+            if (Assembler == null)
             {
-                return null;
+                return;
             }
 
-            return standActionName switch
+            Assembler.PreparedActionSpeedDegree = Build?.GetEffectiveWeaponAttackSpeed() ?? 6;
+            Assembler.PreparedWalkSpeed = (int)Math.Round(Build?.Speed ?? 100f);
+            Assembler.HeldActionFrameDelay = _sustainedSkillAnimation;
+            Assembler.CurrentFacingRight = FacingRight;
+        }
+
+        private string ResolveAvatarActionLayerCoordinatorActionName(string actionName)
+        {
+            string resolvedActionName = actionName;
+            int activeTransformSkillId = GetActiveAvatarTransform()?.SkillId ?? 0;
+            string mechanicResolvedActionName = AvatarActionLayerCoordinator.ResolveMechanicTankOneTimeActionName(
+                resolvedActionName,
+                activeTransformSkillId);
+            if (mechanicResolvedActionName != null)
             {
-                "tank_stand" => $"tank_{variantSuffix}",
-                "siege_stand" => $"siege_{variantSuffix}",
-                "tank_siegestand" => $"tank_siege{variantSuffix}",
-                _ => null
-            };
+                resolvedActionName = mechanicResolvedActionName;
+            }
+
+            return AvatarActionLayerCoordinator.ResolvePreparedActionName(
+                resolvedActionName,
+                HasActiveMorphTransform);
         }
 
         /// <summary>

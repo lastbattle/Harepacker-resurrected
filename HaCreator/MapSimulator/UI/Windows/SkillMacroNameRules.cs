@@ -462,7 +462,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool IsAllowedMacroNameRune(Rune rune)
         {
-            if (rune.Value == '-' || rune.Value == '_')
+            if (rune.Value == '-' || rune.Value == '_' || rune.Value == ' ')
             {
                 return true;
             }
@@ -478,7 +478,6 @@ namespace HaCreator.MapSimulator.UI
                 UnicodeCategory.DecimalDigitNumber => true,
                 UnicodeCategory.LetterNumber => true,
                 UnicodeCategory.OtherNumber => true,
-                UnicodeCategory.SpaceSeparator => true,
                 UnicodeCategory.NonSpacingMark => true,
                 UnicodeCategory.SpacingCombiningMark => true,
                 UnicodeCategory.EnclosingMark => true,

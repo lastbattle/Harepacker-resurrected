@@ -119,6 +119,12 @@ namespace HaCreator.MapSimulator.Managers
 
         public void EnqueuePacket(int packetType, byte[] payload, string source)
         {
+            if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            }
+
             _pendingMessages.Enqueue(new PartyRaidPacketInboxMessage(packetType, payload, source, $"packet {packetType}"));
         }
 
@@ -243,7 +249,12 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
+                if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+                {
+                    payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                    packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+                }
+
                 return true;
             }
 
@@ -265,7 +276,12 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
+            if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
+            {
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
+                packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            }
+
             return true;
         }
 

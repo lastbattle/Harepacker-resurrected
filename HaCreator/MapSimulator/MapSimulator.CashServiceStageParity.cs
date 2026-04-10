@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator
         private readonly CashServicePacketInboxManager _cashServicePacketInbox = new();
         private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
         private const int CashShopOneADayHistorySlotCount = 10;
+        private int _lastPlayedCashGachaponAnimationSequence;
 
         private sealed class CashInventoryPacketFocusSnapshot
         {
@@ -1512,6 +1513,7 @@ namespace HaCreator.MapSimulator
                 if (applied)
                 {
                     TryOpenCashShopModalOwnerForPacket(cashShopStageWindow, packetType);
+                    TryPlayCashGachaponOwnerAnimation(cashShopStageWindow, currTickCount);
                 }
 
                 message = CombineCashServicePacketMessages(message, storageMessage, balanceMessage);
@@ -1549,8 +1551,33 @@ namespace HaCreator.MapSimulator
 
             if (packetType == 384 && stageWindow.CashItemResultSubtype == 90 && stageWindow.CashGiftPacketEntries.Count > 0)
             {
-                ShowCashReceiveGiftDialog(stageWindow);
+                ShowCashReceiveGiftDialog(stageWindow, 0);
             }
+        }
+
+        private void TryPlayCashGachaponOwnerAnimation(CashServiceStageWindow stageWindow, int currentTimeMs)
+        {
+            if (stageWindow == null || uiWindowManager == null)
+            {
+                return;
+            }
+
+            int animationSequence = stageWindow.CashGachaponAnimationSequence;
+            if (animationSequence < _lastPlayedCashGachaponAnimationSequence)
+            {
+                _lastPlayedCashGachaponAnimationSequence = 0;
+            }
+
+            if (animationSequence <= 0 || animationSequence == _lastPlayedCashGachaponAnimationSequence)
+            {
+                return;
+            }
+
+            _lastPlayedCashGachaponAnimationSequence = animationSequence;
+            uiWindowManager.ProductionEnhancementAnimationDisplayer.PlayCashGachaponResult(
+                stageWindow.CashGachaponAnimationIsCopyResult,
+                stageWindow.CashGachaponAnimationIsJackpot,
+                currentTimeMs);
         }
 
         private string ShowCashCouponDialog()
@@ -1571,7 +1598,8 @@ namespace HaCreator.MapSimulator
                 new[]
                 {
                     stageWindow.CashCouponLastSummary,
-                    "Client evidence: edit control 1001 at (12,53), 32 character limit."
+                    "WZ: UIWindow2.img/Coupon/backgrnd (218x158).",
+                    "Client evidence: control 1001 at (12,53,200,15) with focus on create and a 32-character limit."
                 },
                 new[]
                 {
@@ -1606,9 +1634,11 @@ namespace HaCreator.MapSimulator
                 $"Confirm purchase for {selectedEntry.Title}.",
                 new[]
                 {
+                    $"{listSnapshot?.PaneLabel} | {listSnapshot?.BrowseModeLabel} | {listSnapshot?.CategoryLabel}",
                     $"{selectedEntry.Seller} | {selectedEntry.PriceLabel}",
+                    selectedEntry.Detail,
                     selectedEntry.StateLabel,
-                    "Client evidence: dedicated purchase owner creates payment checkboxes and OK/Cancel buttons."
+                    "Client evidence: Maple Point, Prepaid Cash, and Nexon Cash checkboxes plus an optional package combo box."
                 },
                 new[]
                 {
@@ -1619,31 +1649,41 @@ namespace HaCreator.MapSimulator
             return $"CConfirmPurchaseDlg opened for {selectedEntry.Title}.";
         }
 
-        private void ShowCashReceiveGiftDialog(CashServiceStageWindow stageWindow)
+        private void ShowCashReceiveGiftDialog(CashServiceStageWindow stageWindow, int giftIndex)
         {
-            if (!TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashReceiveGiftDialog, out CashServiceModalOwnerWindow modalWindow))
+            if (stageWindow == null
+                || giftIndex < 0
+                || giftIndex >= stageWindow.CashGiftPacketEntries.Count
+                || !TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashReceiveGiftDialog, out CashServiceModalOwnerWindow modalWindow))
             {
                 return;
             }
 
+            CashServiceStageWindow.PacketCatalogEntry entry = stageWindow.CashGiftPacketEntries[giftIndex];
+            int totalGiftCount = stageWindow.CashGiftPacketEntries.Count;
+            string sender = string.IsNullOrWhiteSpace(entry.Seller) ? "Unknown sender" : entry.Seller;
             modalWindow.Configure(
                 "CUIReceiveGift",
-                "Accept one packet-owned gift row from the Cash Shop gift inbox.",
+                $"Review gift row {(giftIndex + 1).ToString(CultureInfo.InvariantCulture)} of {totalGiftCount.ToString(CultureInfo.InvariantCulture)} before the next CDialog::DoModal pass.",
                 new[]
                 {
-                    stageWindow.CashGiftLastSummary,
-                    "Client evidence: OnCashItemResLoadGiftDone allocates CUIReceiveGift and runs CDialog::DoModal per row."
+                    $"{entry.Title} | {sender}",
+                    entry.Detail,
+                    string.IsNullOrWhiteSpace(entry.PriceLabel) ? string.Empty : entry.PriceLabel,
+                    string.IsNullOrWhiteSpace(entry.StateLabel) ? string.Empty : entry.StateLabel,
+                    "Client evidence: OnCashItemResLoadGiftDone allocates one CUIReceiveGift per decoded GW_GiftList row and advances after each modal closes."
                 },
                 new[]
                 {
                     new CashServiceModalOwnerWindow.ActionButtonState { Label = "Accept", IsPrimary = true },
                     new CashServiceModalOwnerWindow.ActionButtonState { Label = "Cancel" }
                 },
+                footer: totalGiftCount > 1
+                    ? $"{Math.Max(0, totalGiftCount - giftIndex - 1).ToString(CultureInfo.InvariantCulture)} later gift row(s) remain in this packet-owned modal sequence."
+                    : "This is the last staged gift row in the current packet-owned modal sequence.",
                 inputPlaceholder: "Reply message",
                 inputActive: true,
-                inputMaxLength: 64,
-                giftRows: stageWindow.CashGiftPacketEntries.Select(entry => $"{entry.Title} | {entry.Seller}"),
-                selectedGiftIndex: 0);
+                inputMaxLength: 64);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
         }
 
@@ -1659,6 +1699,7 @@ namespace HaCreator.MapSimulator
                 "Confirm the name-change license notice before returning to the Cash Shop stage.",
                 new[]
                 {
+                    $"Request id: {stageWindow.CashNameChangePossibleResult.RequestId.ToString(CultureInfo.InvariantCulture)}.",
                     $"Birth date payload: {stageWindow.CashNameChangePossibleResult.BirthDate.ToString(CultureInfo.InvariantCulture)}.",
                     "WZ: CashShop.img/CSChangeName/Base/backgrndnotice."
                 },
@@ -1681,6 +1722,7 @@ namespace HaCreator.MapSimulator
                 "Confirm the transfer-world license notice before returning to the Cash Shop stage.",
                 new[]
                 {
+                    $"Request id: {stageWindow.CashTransferWorldPossibleResult.RequestId.ToString(CultureInfo.InvariantCulture)}.",
                     $"Birth date payload: {stageWindow.CashTransferWorldPossibleResult.BirthDate.ToString(CultureInfo.InvariantCulture)}.",
                     $"Decoded world list: {stageWindow.CashTransferWorldPossibleResult.WorldNames.Count.ToString(CultureInfo.InvariantCulture)} world(s).",
                     "WZ: CashShop.img/CSTransferWorld/Base/backgrndnotice."
@@ -1746,15 +1788,17 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            int selectedGiftIndex = Math.Clamp(modalWindow.SelectedGiftIndex, 0, Math.Max(0, stageWindow.CashGiftPacketEntries.Count - 1));
             string message = buttonIndex == 0
-                ? stageWindow.CompleteReceiveGiftDialog(modalWindow.SelectedGiftIndex, modalWindow.InputValue)
-                : "CUIReceiveGift left the decoded gift row staged in the Cash Shop inbox.";
+                ? stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, modalWindow.InputValue)
+                : "CUIReceiveGift skipped the current decoded gift row and advanced to the next modal-owner pass without sending the accept packet.";
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
             _chat?.AddSystemMessage(message, currTickCount);
 
-            if (buttonIndex == 0 && stageWindow.CashGiftPacketEntries.Count > 0)
+            int nextGiftIndex = buttonIndex == 0 ? selectedGiftIndex : selectedGiftIndex + 1;
+            if (nextGiftIndex < stageWindow.CashGiftPacketEntries.Count)
             {
-                ShowCashReceiveGiftDialog(stageWindow);
+                ShowCashReceiveGiftDialog(stageWindow, nextGiftIndex);
             }
         }
 

@@ -936,7 +936,8 @@ namespace HaCreator.MapSimulator.Character
                 return cached;
             }
 
-            if (InventoryItemMetadataResolver.ResolveInventoryType(itemId) != MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.SETUP
+            if (!IsPortableChairItemId(itemId)
+                || InventoryItemMetadataResolver.ResolveInventoryType(itemId) != MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.SETUP
                 || !InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
             {
                 return null;
@@ -986,6 +987,11 @@ namespace HaCreator.MapSimulator.Character
 
             _portableChairCache[itemId] = chair;
             return chair;
+        }
+
+        internal static bool IsPortableChairItemId(int itemId)
+        {
+            return itemId > 0 && itemId / 10000 == 301;
         }
 
         public ItemEffectAnimationSet LoadItemEffectAnimationSet(int itemId)

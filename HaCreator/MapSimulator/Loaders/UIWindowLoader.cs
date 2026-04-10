@@ -101,6 +101,61 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static WzSubProperty ResolveUiSubPropertyFromStringPoolPath(int stringPoolId, params string[] fallbackPathSegments)
+        {
+            string path = MapleStoryStringPool.GetOrNull(stringPoolId);
+            WzSubProperty resolvedProperty = ResolveUiSubPropertyFromStringPath(path);
+            return resolvedProperty ?? ResolveUiSubPropertyFromSegments(fallbackPathSegments);
+        }
+
+        private static WzSubProperty ResolveUiSubPropertyFromStringPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            string[] segments = path
+                .Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(segment => !string.Equals(segment, "UI", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            return ResolveUiSubPropertyFromSegments(segments);
+        }
+
+        private static WzSubProperty ResolveUiSubPropertyFromSegments(params string[] segments)
+        {
+            if (segments == null || segments.Length == 0)
+            {
+                return null;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage("ui", segments[0]);
+            if (image == null)
+            {
+                return null;
+            }
+
+            object current = image;
+            for (int i = 1; i < segments.Length; i++)
+            {
+                string segment = segments[i];
+                if (current is WzImage wzImage)
+                {
+                    current = wzImage[segment];
+                }
+                else if (current is WzSubProperty wzSubProperty)
+                {
+                    current = wzSubProperty[segment];
+                }
+                else
+                {
+                    return null;
+                }
+            }
+
+            return current as WzSubProperty;
+        }
+
         private static UIObject LoadIndexedButton(
             WzSubProperty buttonProperty,
             WzBinaryProperty clickSound,
@@ -470,6 +525,34 @@ namespace HaCreator.MapSimulator.Loaders
                     LoadWindowOverlayFrames(hammerProperty["EffectP"] as WzSubProperty, device),
                     LoadWindowOverlayFrames(hammerProperty["EffectE"] as WzSubProperty, device));
             }
+        }
+
+        private static void ConfigureCashGachaponAnimationDisplayer(
+            UIWindowManager manager,
+            GraphicsDevice device)
+        {
+            ProductionEnhancementAnimationDisplayer animationDisplayer = manager?.ProductionEnhancementAnimationDisplayer;
+            if (animationDisplayer == null || device == null)
+            {
+                return;
+            }
+
+            WzImage uiWindowImage = global::HaCreator.Program.FindImage("ui", "UIWindow.img");
+            if (uiWindowImage == null)
+            {
+                return;
+            }
+
+            string openWindowPath = MapleStoryStringPool.ResolveCashGachaponWindowPropertyPath(isCopyResult: false);
+            string copyWindowPath = MapleStoryStringPool.ResolveCashGachaponWindowPropertyPath(isCopyResult: true);
+            WzSubProperty openWindowProperty = uiWindowImage[openWindowPath] as WzSubProperty;
+            WzSubProperty copyWindowProperty = uiWindowImage[copyWindowPath] as WzSubProperty;
+
+            animationDisplayer.ConfigureCashGachapon(
+                LoadWindowOverlayFrames(openWindowProperty?["EffectNormal"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(openWindowProperty?["EffectJackpot"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(copyWindowProperty?["EffectNormal"] as WzSubProperty, device),
+                LoadWindowOverlayFrames(copyWindowProperty?["EffectJackpot"] as WzSubProperty, device));
         }
 
         private static SelectorAnimatedOverlay LoadSelectorAnimatedOverlay(WzImageProperty property, GraphicsDevice device, int fallbackFrameDelayMs = 100)
@@ -2084,6 +2167,8 @@ namespace HaCreator.MapSimulator.Loaders
                 confirmButton,
                 cancelButton,
                 defaultIcon,
+                null,
+                null,
                 screenWidth,
                 screenHeight);
             manager.RegisterCustomWindow(window);
@@ -2493,6 +2578,7 @@ namespace HaCreator.MapSimulator.Loaders
                 storageRuntime);
             RegisterCashServiceStageWindow(manager, device, MapSimulatorWindowNames.CashShopStage, CashServiceWindowStageKind.CashShop,
                 new Point(x + cascade, y + cascade));
+            ConfigureCashGachaponAnimationDisplayer(manager, device);
             RegisterCashShopStageChildWindows(manager, basicImage, soundUIImage, device,
                 new Point(x + cascade, y + cascade));
             RegisterCashServiceModalOwnerWindows(manager, uiWindow1Image, uiWindow2Image, device, screenWidth, screenHeight);
@@ -4613,10 +4699,16 @@ namespace HaCreator.MapSimulator.Loaders
                     break;
                 case MapSimulatorWindowNames.CashShopOneADay:
                     window.SetContentBounds(new Rectangle(275, 95, 412, 430));
+                    WzSubProperty oneADayProperty = ResolveUiSubPropertyFromSegments("OneADay.img", "CSOneADay");
+                    AttachCanvasLayer(window, oneADayProperty, "Base01", device, new Point(275, 95), useOneADayVisibility: true);
+                    AttachCanvasLayer(window, oneADayProperty, "ItemBox", device, new Point(275, 95), useOneADayVisibility: true);
+                    AttachCanvasLayer(window, oneADayProperty, "ItemBoxBig", device, new Point(275, 95), useOneADayVisibility: true);
                     AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem", device, new Point(279, 152), useOneADayVisibility: true);
                     AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem0", device, new Point(279, 152), useOneADayVisibility: true);
                     AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem1", device, new Point(279, 152), useOneADayVisibility: true);
                     AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "ShortcutHelp", device, new Point(279, 152), useOneADayVisibility: true);
+                    RegisterCashShopStageChildButton(window, oneADayProperty, "BtBuy", clickSound, overSound, device, 560, 346, "CCSWnd_OneADay previewed the dedicated buy button owner.");
+                    RegisterCashShopStageChildButton(window, oneADayProperty, "BtItemBox", clickSound, overSound, device, 516, 346, "CCSWnd_OneADay previewed the dedicated item-box button owner.");
                     RegisterCashShopStageChildButton(window, (picturePlateImage?["PicturePlate"] as WzSubProperty), "BtJoin", clickSound, overSound, device, 560, 346, "CCSWnd_OneADay previewed the join button owner.");
                     RegisterCashShopStageChildButton(window, (picturePlateImage?["PicturePlate"] as WzSubProperty), "BtShortcut", clickSound, overSound, device, 516, 346, "CCSWnd_OneADay previewed the shortcut button owner.");
                     RegisterCashShopStageChildButton(window, (picturePlateImage?["PicturePlate"] as WzSubProperty), "BtClose", clickSound, overSound, device, 670, 104, "CCSWnd_OneADay previewed the close button owner.");
@@ -7684,6 +7776,14 @@ namespace HaCreator.MapSimulator.Loaders
                 return 1;
             }
 
+            string clientDefaultPath = MapleStoryStringPool.GetOrFallback(0x0F8D, "UI/MapleTV.img/TVmedia");
+            int configuredIndex = MapleTvMediaIndexResolver.TryResolveConfiguredDefaultMediaIndex(
+                clientDefaultPath,
+                mediaFrames.Keys);
+            if (configuredIndex >= 0)
+            {
+                return configuredIndex;
+            }
 
             // WZ ships branch 1 as the neutral, non-episode splash, so prefer it when present.
             if (mediaFrames.ContainsKey(1))

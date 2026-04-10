@@ -281,6 +281,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<WhisperPickerButtonHitRegion> _whisperPickerButtonHitRegions = new List<WhisperPickerButtonHitRegion>();
 
         internal const float ClientChatTextFontPixelSize = 11f;
+        internal const int ClientChatTextFontFaceStringPoolId = 0x1A25;
+        internal const string ClientChatTextFontFallbackFamily = "Arial";
         private const int ChatMessageDisplayTime = 10000;
         private const int ChatMessageFadeTime = 2000;
         private const int ChatMaxVisibleLines = 8;
@@ -368,9 +370,20 @@ namespace HaCreator.MapSimulator.UI
             {
                 _clientTextRasterizer = new ClientTextRasterizer(
                     graphicsDevice,
+                    fontFamily: ResolveClientChatFontFamily(),
                     basePointSize: ClientChatTextFontPixelSize,
-                    preferEmbeddedPrivateFontSources: true);
+                    preferEmbeddedPrivateFontSources: false);
             }
+        }
+
+        internal static string ResolveClientChatFontFamily()
+        {
+            string resolvedFamily = MapleStoryStringPool.GetOrFallback(
+                ClientChatTextFontFaceStringPoolId,
+                ClientChatTextFontFallbackFamily);
+            return string.IsNullOrWhiteSpace(resolvedFamily)
+                ? ClientChatTextFontFallbackFamily
+                : resolvedFamily.Trim();
         }
 
         public void SetChatEnterTexture(Texture2D chatEnterTexture)

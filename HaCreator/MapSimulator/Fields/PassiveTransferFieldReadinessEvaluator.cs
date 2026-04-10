@@ -18,6 +18,15 @@ namespace HaCreator.MapSimulator.Fields
         bool HasBoundPlayer,
         bool IsPlayerActive);
 
+    public readonly record struct PassiveTransferFieldQueuedRetryDecisionState(
+        bool HasPendingRequest,
+        bool HasOneTimeActionCompleted,
+        bool HasReadyFieldInterface,
+        bool HasLiveFieldInterface,
+        bool HasPendingMapChange,
+        bool HasBoundPlayer,
+        bool IsPlayerActive);
+
     public readonly record struct PassiveTransferFieldReplayState(
         bool HasOneTimeActionCompleted,
         bool IsImmovable,
@@ -26,6 +35,13 @@ namespace HaCreator.MapSimulator.Fields
 
     public static class PassiveTransferFieldReadinessEvaluator
     {
+        public enum QueuedRetryDecision
+        {
+            Clear = 0,
+            KeepPending = 1,
+            ReplayHandleUpKeyDown = 2
+        }
+
         public static bool CanRetryFromLiveFieldInterface(PassiveTransferFieldInterfaceState state)
         {
             return state.HasLiveFieldInterface
@@ -46,6 +62,28 @@ namespace HaCreator.MapSimulator.Fields
                    && !state.HasPendingMapChange
                    && state.HasBoundPlayer
                    && state.IsPlayerActive;
+        }
+
+        public static QueuedRetryDecision EvaluateQueuedRetryDecision(PassiveTransferFieldQueuedRetryDecisionState state)
+        {
+            if (!state.HasPendingRequest)
+            {
+                return QueuedRetryDecision.Clear;
+            }
+
+            if (state.HasOneTimeActionCompleted && state.HasReadyFieldInterface)
+            {
+                return QueuedRetryDecision.ReplayHandleUpKeyDown;
+            }
+
+            return ShouldKeepQueuedRetryPending(
+                new PassiveTransferFieldQueuedRetryState(
+                    state.HasLiveFieldInterface,
+                    state.HasPendingMapChange,
+                    state.HasBoundPlayer,
+                    state.IsPlayerActive))
+                ? QueuedRetryDecision.KeepPending
+                : QueuedRetryDecision.Clear;
         }
 
         public static bool CanReplayHandleUpKeyDown(PassiveTransferFieldReplayState state)

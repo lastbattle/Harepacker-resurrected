@@ -3,6 +3,7 @@ using MapleLib.PacketLib;
 using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -22,7 +23,7 @@ namespace HaCreator.MapSimulator.Managers
         private const string DefaultProcessName = "MapleStory";
 
         private readonly ConcurrentQueue<ReactorPoolPacketInboxMessage> _pendingMessages = new();
-        private readonly ConcurrentQueue<PendingTouchRequest> _pendingTouchRequests = new();
+        private readonly Queue<PendingTouchRequest> _pendingTouchRequests = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -93,7 +94,16 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public int InjectedTouchRequestCount { get; private set; }
-        public int QueuedTouchRequestCount => _pendingTouchRequests.Count;
+        public int QueuedTouchRequestCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _pendingTouchRequests.Count;
+                }
+            }
+        }
         public int? LastInjectedTouchObjectId { get; private set; }
         public bool? LastInjectedTouchFlag { get; private set; }
         public byte[] LastInjectedTouchPacket { get; private set; } = Array.Empty<byte>();
@@ -127,29 +137,28 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            BridgePair pair;
             lock (_sync)
             {
-                pair = _activePair;
-            }
+                BridgePair pair = _activePair;
+                if (pair?.InitCompleted != true)
+                {
+                    status = "Reactor official-session bridge has no connected Maple session for touch injection.";
+                    LastStatus = status;
+                    return false;
+                }
 
-            if (pair?.InitCompleted != true)
-            {
-                status = "Reactor official-session bridge has no connected Maple session for touch injection.";
-                LastStatus = status;
-                return false;
+                RemoveQueuedTouchRequestsUnsafe(objectId);
+                FlushQueuedTouchRequestsUnsafe(pair);
+                byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
+                pair.ServerSession.SendPacket(packet);
+                InjectedTouchRequestCount++;
+                LastInjectedTouchObjectId = objectId;
+                LastInjectedTouchFlag = isTouching;
+                LastInjectedTouchPacket = packet;
+                LastStatus = $"Injected reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) into live session {pair.RemoteEndpoint}.";
+                status = LastStatus;
+                return true;
             }
-
-            FlushQueuedTouchRequests(pair);
-            byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
-            pair.ServerSession.SendPacket(packet);
-            InjectedTouchRequestCount++;
-            LastInjectedTouchObjectId = objectId;
-            LastInjectedTouchFlag = isTouching;
-            LastInjectedTouchPacket = packet;
-            LastStatus = $"Injected reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) into live session {pair.RemoteEndpoint}.";
-            status = LastStatus;
-            return true;
         }
 
         public bool TryQueueTouchRequest(int objectId, bool isTouching, out string status)
@@ -162,7 +171,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
-            _pendingTouchRequests.Enqueue(new PendingTouchRequest(objectId, isTouching, packet));
+            lock (_sync)
+            {
+                EnqueueOrReplaceTouchRequestUnsafe(new PendingTouchRequest(objectId, isTouching, packet));
+            }
+
             LastQueuedTouchObjectId = objectId;
             LastQueuedTouchFlag = isTouching;
             LastQueuedTouchPacket = packet;
@@ -173,7 +186,10 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool HasQueuedTouchRequest(int objectId, bool isTouching)
         {
-            return _pendingTouchRequests.Any(packet => packet.ObjectId == objectId && packet.IsTouching == isTouching);
+            lock (_sync)
+            {
+                return _pendingTouchRequests.Any(packet => packet.ObjectId == objectId && packet.IsTouching == isTouching);
+            }
         }
 
         public bool WasLastInjectedTouchRequest(int objectId, bool isTouching)
@@ -525,21 +541,27 @@ namespace HaCreator.MapSimulator.Managers
 
         private void FlushQueuedTouchRequests(BridgePair pair)
         {
+            lock (_sync)
+            {
+                FlushQueuedTouchRequestsUnsafe(pair);
+            }
+        }
+
+        private void FlushQueuedTouchRequestsUnsafe(BridgePair pair)
+        {
             if (pair?.InitCompleted != true)
             {
                 return;
             }
 
             int flushed = 0;
-            while (_pendingTouchRequests.TryPeek(out PendingTouchRequest pending))
+            while (_pendingTouchRequests.Count > 0)
             {
                 try
                 {
+                    PendingTouchRequest pending = _pendingTouchRequests.Peek();
                     pair.ServerSession.SendPacket(pending.Packet);
-                    if (!_pendingTouchRequests.TryDequeue(out PendingTouchRequest dequeued))
-                    {
-                        break;
-                    }
+                    PendingTouchRequest dequeued = _pendingTouchRequests.Dequeue();
 
                     InjectedTouchRequestCount++;
                     flushed++;
@@ -558,6 +580,30 @@ namespace HaCreator.MapSimulator.Managers
             {
                 LastStatus = $"Flushed {flushed} queued reactor touch request(s) into live session {pair.RemoteEndpoint}.";
             }
+        }
+
+        private void RemoveQueuedTouchRequestsUnsafe(int objectId)
+        {
+            if (objectId <= 0 || _pendingTouchRequests.Count == 0)
+            {
+                return;
+            }
+
+            int pendingCount = _pendingTouchRequests.Count;
+            for (int i = 0; i < pendingCount; i++)
+            {
+                PendingTouchRequest pending = _pendingTouchRequests.Dequeue();
+                if (pending.ObjectId != objectId)
+                {
+                    _pendingTouchRequests.Enqueue(pending);
+                }
+            }
+        }
+
+        private void EnqueueOrReplaceTouchRequestUnsafe(PendingTouchRequest next)
+        {
+            RemoveQueuedTouchRequestsUnsafe(next.ObjectId);
+            _pendingTouchRequests.Enqueue(next);
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

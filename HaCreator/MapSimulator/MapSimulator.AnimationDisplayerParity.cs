@@ -21,6 +21,7 @@ namespace HaCreator.MapSimulator
             RelationshipOverlayClientStringPoolText.ResolveNewYearCardEffectPath();
         private const string AnimationDisplayerFireCrackerEffectUol = "Effect/OnUserEff.img/itemEffect/firework/5680024";
         private const string AnimationDisplayerGenericUserStateEffectUol = "Effect/OnUserEff.img/character";
+        private const string AnimationDisplayerGenericUserStateSingleEffectUol = "Effect/OnUserEff.img/character/0";
         private const int AnimationDisplayerSkillBookSuccessFrontStringPoolId = 0x0FF1;
         private const int AnimationDisplayerSkillBookSuccessBackStringPoolId = 0x0FF2;
         private const int AnimationDisplayerSkillBookFailureFrontStringPoolId = 0x0FF3;
@@ -386,7 +387,9 @@ namespace HaCreator.MapSimulator
             if (ownerCharacterId > 0
                 && ownerCharacterId == localCharacterId
                 && TryResolveAnimationDisplayerSpecificUserStateFrames(
-                    SkillManager.BuildAnimationDisplayerTemporaryStatAvatarEffectStatesForParity(_playerManager?.Skills?.ActiveBuffs),
+                    SkillManager.BuildAnimationDisplayerTemporaryStatAvatarEffectStatesForParity(
+                        _playerManager?.Skills?.ActiveBuffs,
+                        _playerManager?.Skills?.GetActiveDeferredAvatarEffectSkillIdForParity()),
                     out _,
                     out startFrames,
                     out repeatFrames,
@@ -789,6 +792,49 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private void HandleRemoteGenericUserStateEffect(RemoteUserActorPool.RemoteGenericUserStatePresentation presentation)
+        {
+            if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor actor) != true
+                || actor == null
+                || !actor.IsVisibleInWorld
+                || !TryGetAnimationDisplayerFrames(
+                    "userstate:generic:single",
+                    AnimationDisplayerGenericUserStateSingleEffectUol,
+                    out List<IDXObject> frames))
+            {
+                return;
+            }
+
+            Vector2 fallbackPosition = actor.Position;
+            bool fallbackFacingRight = actor.FacingRight;
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                () =>
+                {
+                    if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                        && liveActor != null)
+                    {
+                        return liveActor.Position;
+                    }
+
+                    return fallbackPosition;
+                },
+                () =>
+                {
+                    if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                        && liveActor != null)
+                    {
+                        return liveActor.FacingRight;
+                    }
+
+                    return fallbackFacingRight;
+                },
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFacingRight,
+                presentation.CurrentTime);
+        }
+
         private void SyncAnimationDisplayerRemoteUserState(int characterId)
         {
             if (characterId <= 0)
@@ -964,7 +1010,8 @@ namespace HaCreator.MapSimulator
                 buff.SkillData,
                 buff.StartTime,
                 buff.SkillData.AffectedEffect,
-                buff.SkillData.AffectedSecondaryEffect);
+                buff.SkillData.AffectedSecondaryEffect,
+                requestedBranchNames: BuildAnimationDisplayerBuffAppliedRequestedBranchNames(buff.SkillData));
             TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
@@ -1093,6 +1140,7 @@ namespace HaCreator.MapSimulator
                 ?? getOwnerPosition?.Invoke()
                 ?? Vector2.Zero;
             bool fallbackFacingRight = getOwnerFacingRight?.Invoke() ?? presentation.FacingRight;
+            TryRememberRemoteTownPortalSkillCastObservation(presentation.CharacterId, presentation.SkillId, fallbackPosition);
             int delayRate = presentation.DelayRateOverride is > 0
                 ? presentation.DelayRateOverride.Value
                 : ResolveAnimationDisplayerSkillUseDelayRate(presentation.ActionSpeed);
@@ -1111,6 +1159,24 @@ namespace HaCreator.MapSimulator
                     getOwnerPosition,
                     getOwnerFacingRight);
             }
+        }
+
+        private void TryRememberRemoteTownPortalSkillCastObservation(int characterId, int skillId, Vector2 position)
+        {
+            if (characterId <= 0 || !IsRemoteTownPortalSkillCastSkillId(skillId))
+            {
+                return;
+            }
+
+            RememberRemoteTownPortalOwnerFieldObservation(
+                (uint)characterId,
+                position,
+                Fields.TemporaryPortalField.RemoteTownPortalObservationSource.SkillCast);
+        }
+
+        private static bool IsRemoteTownPortalSkillCastSkillId(int skillId)
+        {
+            return skillId == 2311002 || skillId == 8001;
         }
 
         private bool TryRegisterAnimationDisplayerSkillUseBranch(
@@ -1871,6 +1937,15 @@ namespace HaCreator.MapSimulator
             List<string> resolvedBranchNames = null;
             TryAddAnimationDisplayerRequestedBranchName(effectAnimation?.Name, ref resolvedBranchNames);
             TryAddAnimationDisplayerRequestedBranchName(secondaryEffectAnimation?.Name, ref resolvedBranchNames);
+            return resolvedBranchNames;
+        }
+
+        internal static IReadOnlyList<string> BuildAnimationDisplayerBuffAppliedRequestedBranchNames(SkillData skillData)
+        {
+            List<string> resolvedBranchNames = null;
+            TryAddAnimationDisplayerRequestedBranchName(skillData?.AffectedEffect?.Name, ref resolvedBranchNames);
+            TryAddAnimationDisplayerRequestedBranchName(skillData?.AffectedSecondaryEffect?.Name, ref resolvedBranchNames);
+            TryAddAnimationDisplayerRequestedBranchName(skillData?.SpecialAffectedEffect?.Name, ref resolvedBranchNames);
             return resolvedBranchNames;
         }
 

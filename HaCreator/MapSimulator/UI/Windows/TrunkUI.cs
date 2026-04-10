@@ -87,6 +87,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _withdrawButton;
         private readonly UIObject _depositButton;
         private readonly UIObject _sortButton;
+        private readonly UIObject _expandSlotsButton;
         private readonly UIObject _withdrawMesoButton;
         private readonly UIObject _depositMesoButton;
         private readonly Texture2D _scrollBaseEnabledTexture;
@@ -233,6 +234,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject depositButton,
             UIObject sortButton,
             UIObject exitButton,
+            UIObject expandSlotsButton,
             UIObject withdrawMesoButton,
             UIObject depositMesoButton,
             Texture2D scrollPrevNormalTexture,
@@ -259,6 +261,7 @@ namespace HaCreator.MapSimulator.UI
             _withdrawButton = withdrawButton;
             _depositButton = depositButton;
             _sortButton = sortButton;
+            _expandSlotsButton = expandSlotsButton;
             _withdrawMesoButton = withdrawMesoButton;
             _depositMesoButton = depositMesoButton;
             _scrollPrevNormalTexture = scrollPrevNormalTexture;
@@ -284,7 +287,7 @@ namespace HaCreator.MapSimulator.UI
             Array.Fill(_storageSelectedIndicesByTab, -1);
             Array.Fill(_inventorySelectedIndicesByTab, -1);
 
-            InitializeActionButtons(withdrawButton, depositButton, sortButton, exitButton, withdrawMesoButton, depositMesoButton);
+            InitializeActionButtons(withdrawButton, depositButton, sortButton, exitButton, expandSlotsButton, withdrawMesoButton, depositMesoButton);
             InitializeRowButtons(device);
             UpdateButtonStates();
         }
@@ -641,6 +644,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject depositButton,
             UIObject sortButton,
             UIObject exitButton,
+            UIObject expandSlotsButton,
             UIObject withdrawMesoButton,
             UIObject depositMesoButton)
         {
@@ -665,6 +669,12 @@ namespace HaCreator.MapSimulator.UI
             if (exitButton != null)
             {
                 InitializeCloseButton(exitButton);
+            }
+
+            if (expandSlotsButton != null)
+            {
+                AddButton(expandSlotsButton);
+                expandSlotsButton.ButtonClickReleased += _ => ExpandStorageSlots();
             }
 
             if (withdrawMesoButton != null)
@@ -998,6 +1008,11 @@ namespace HaCreator.MapSimulator.UI
                 CanAcceptStorageItem(inventoryType, inventoryRows[_inventorySelectedIndex]));
 
             _sortButton?.SetEnabled(!promptActive && hasStorageAccess && storageRows.Count > 1);
+            _expandSlotsButton?.SetEnabled(
+                !promptActive &&
+                _storageRuntime != null &&
+                _storageRuntime.CanCurrentCharacterAccess &&
+                _storageRuntime.CanExpandSlotLimit());
             _withdrawMesoButton?.SetEnabled(!promptActive && hasStorageAccess && _inventory != null && GetStorageMesoCount() > 0);
             _depositMesoButton?.SetEnabled(!promptActive && hasStorageAccess && _inventory != null && _inventory.GetMesoCount() > 0);
 
@@ -1898,6 +1913,12 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (!_storageRuntime.IsClientAccountAuthorityVerified)
+            {
+                BeginSecondaryPasswordEntry();
+                return false;
+            }
+
             if (_storageRuntime.IsSecondaryPasswordVerified)
             {
                 return true;
@@ -1905,6 +1926,40 @@ namespace HaCreator.MapSimulator.UI
 
             BeginSecondaryPasswordEntry();
             return false;
+        }
+
+        private void ExpandStorageSlots()
+        {
+            if (_storageRuntime == null)
+            {
+                _statusMessage = "Storage runtime is unavailable for capacity updates.";
+                UpdateButtonStates();
+                return;
+            }
+
+            if (!EnsureStorageAccess())
+            {
+                UpdateButtonStates();
+                return;
+            }
+
+            if (!_storageRuntime.CanExpandSlotLimit())
+            {
+                _statusMessage = $"Trunk storage is already at the simulator cap ({_storageRuntime.GetSlotLimit()} slots).";
+                UpdateButtonStates();
+                return;
+            }
+
+            if (!_storageRuntime.TryExpandSlotLimit())
+            {
+                _statusMessage = "The trunk expansion request reached the owner path, but the slot limit did not advance.";
+                UpdateButtonStates();
+                return;
+            }
+
+            _statusMessage = $"BtCoin expanded trunk storage to {_storageRuntime.GetSlotLimit()} slots.";
+            ClampSelection();
+            UpdateButtonStates();
         }
 
         private bool TryRequestExternalAccountSecurityPrompt()

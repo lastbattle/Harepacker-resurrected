@@ -7,7 +7,6 @@ namespace HaCreator.MapSimulator
     internal static class WindowsImePresentationBridge
     {
         private const uint ImeDefaultStyle = 0x0000;
-        private const uint ImeExcludeStyle = 0x0080;
         private const int NotifyCloseCandidate = 0x0011;
         private const int NotifyCompositionString = 0x0015;
         private const uint CancelComposition = 0x0004;
@@ -30,7 +29,7 @@ namespace HaCreator.MapSimulator
             {
                 COMPOSITIONFORM compositionForm = new()
                 {
-                    dwStyle = ImeExcludeStyle,
+                    dwStyle = placement.CompositionStyle,
                     ptCurrentPos = CreatePoint(placement.CompositionPoint),
                     rcArea = CreateRect(placement.CompositionExcludeArea)
                 };
@@ -41,7 +40,7 @@ namespace HaCreator.MapSimulator
                     CANDIDATEFORM candidateForm = new()
                     {
                         dwIndex = index,
-                        dwStyle = ImeExcludeStyle,
+                        dwStyle = placement.CandidateStyle,
                         ptCurrentPos = CreatePoint(placement.CandidatePoint),
                         rcArea = CreateRect(placement.CandidateExcludeArea)
                     };

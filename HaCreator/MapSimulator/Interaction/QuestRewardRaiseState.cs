@@ -14,8 +14,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class QuestRewardRaiseState
     {
-        public QuestRewardRaiseSourceKind Source { get; init; }
-        public QuestRewardChoicePrompt Prompt { get; init; }
+        public QuestRewardRaiseSourceKind Source { get; set; }
+        public QuestRewardChoicePrompt Prompt { get; set; }
         public int GroupIndex { get; set; }
         public int ManagerSessionId { get; set; }
         public int RequestId { get; set; }

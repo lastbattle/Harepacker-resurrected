@@ -147,6 +147,13 @@ namespace HaCreator.MapSimulator.Interaction
             return writer.ToArray();
         }
 
+        public static byte[] BuildClientChatPayload(string contactName, string message)
+        {
+            PacketWriter writer = new();
+            writer.WriteMapleString($"{NormalizeText(contactName)}{ChatSeparator}{NormalizeText(message)}");
+            return writer.ToArray();
+        }
+
         public static byte[] BuildMemberInfoPayload(
             string contactName,
             bool isOnline,
@@ -198,11 +205,26 @@ namespace HaCreator.MapSimulator.Interaction
             return writer.ToArray();
         }
 
+        public static byte[] BuildBlockedPayload(string contactName, bool blocked)
+        {
+            PacketWriter writer = new();
+            writer.WriteMapleString(NormalizeText(contactName));
+            writer.WriteByte(blocked ? (byte)1 : (byte)0);
+            return writer.ToArray();
+        }
+
         public static byte[] BuildInviteResultPayload(string contactName, bool inviteSent)
         {
             PacketWriter writer = new();
             writer.WriteMapleString(NormalizeText(contactName));
             writer.WriteByte(inviteSent ? (byte)1 : (byte)0);
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildLeaveSlotPayload(int slotIndex)
+        {
+            PacketWriter writer = new();
+            writer.WriteByte((byte)Math.Clamp(slotIndex, 0, byte.MaxValue));
             return writer.ToArray();
         }
 

@@ -249,6 +249,11 @@ namespace HaCreator.MapSimulator.UI
             return ResolveCastingDuration();
         }
 
+        public int GetResultPreludeDurationMs()
+        {
+            return ResolveResultPreludeDuration();
+        }
+
         public void StartSpellCast(string statusMessage)
         {
             _state = VegaAnimationState.Casting;

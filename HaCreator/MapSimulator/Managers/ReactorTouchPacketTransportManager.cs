@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -71,8 +72,9 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         private readonly object _listenerLock = new();
+        private readonly object _queueLock = new();
         private readonly ConcurrentDictionary<int, ConnectedClient> _clients = new();
-        private readonly ConcurrentQueue<PendingTouchRequest> _pendingOutboundPackets = new();
+        private readonly Queue<PendingTouchRequest> _pendingOutboundPackets = new();
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
@@ -83,7 +85,16 @@ namespace HaCreator.MapSimulator.Managers
         public int ConnectedClientCount => _clients.Count;
         public int SentCount { get; private set; }
         public int QueuedCount { get; private set; }
-        public int PendingPacketCount => _pendingOutboundPackets.Count;
+        public int PendingPacketCount
+        {
+            get
+            {
+                lock (_queueLock)
+                {
+                    return _pendingOutboundPackets.Count;
+                }
+            }
+        }
         public int? LastSentObjectId { get; private set; }
         public bool? LastSentTouchFlag { get; private set; }
         public byte[] LastSentRawPacket { get; private set; } = Array.Empty<byte>();
@@ -147,7 +158,6 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendTouchRequest(int objectId, bool isTouching, out string status)
         {
-            FlushQueuedOutboundPackets();
             ConnectedClient[] clients = _clients.Values.ToArray();
             if (clients.Length == 0)
             {
@@ -161,6 +171,12 @@ namespace HaCreator.MapSimulator.Managers
                 status = "Reactor touch outbox requires a positive reactor object id.";
                 LastStatus = status;
                 return false;
+            }
+
+            lock (_queueLock)
+            {
+                RemoveQueuedTouchRequestsUnsafe(objectId);
+                FlushQueuedOutboundPacketsUnsafe(clients);
             }
 
             byte[] rawPacket = ReactorPoolOfficialSessionBridgeManager.BuildTouchRequestPacket(objectId, isTouching);
@@ -211,7 +227,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] rawPacket = ReactorPoolOfficialSessionBridgeManager.BuildTouchRequestPacket(objectId, isTouching);
-            _pendingOutboundPackets.Enqueue(new PendingTouchRequest(objectId, isTouching, rawPacket));
+            lock (_queueLock)
+            {
+                EnqueueOrReplaceTouchRequestUnsafe(new PendingTouchRequest(objectId, isTouching, rawPacket));
+            }
+
             QueuedCount++;
             LastQueuedObjectId = objectId;
             LastQueuedTouchFlag = isTouching;
@@ -223,7 +243,10 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool HasQueuedTouchRequest(int objectId, bool isTouching)
         {
-            return _pendingOutboundPackets.Any(packet => packet.ObjectId == objectId && packet.IsTouching == isTouching);
+            lock (_queueLock)
+            {
+                return _pendingOutboundPackets.Any(packet => packet.ObjectId == objectId && packet.IsTouching == isTouching);
+            }
         }
 
         public bool WasLastSentTouchRequest(int objectId, bool isTouching)
@@ -310,14 +333,23 @@ namespace HaCreator.MapSimulator.Managers
         private int FlushQueuedOutboundPackets()
         {
             ConnectedClient[] clients = _clients.Values.ToArray();
+            lock (_queueLock)
+            {
+                return FlushQueuedOutboundPacketsUnsafe(clients);
+            }
+        }
+
+        private int FlushQueuedOutboundPacketsUnsafe(ConnectedClient[] clients)
+        {
             if (clients.Length == 0)
             {
                 return 0;
             }
 
             int flushed = 0;
-            while (_pendingOutboundPackets.TryPeek(out PendingTouchRequest packet))
+            while (_pendingOutboundPackets.Count > 0)
             {
+                PendingTouchRequest packet = _pendingOutboundPackets.Peek();
                 string line = $"packetoutraw {Convert.ToHexString(packet.RawPacket)}";
                 int sent = 0;
 
@@ -343,10 +375,7 @@ namespace HaCreator.MapSimulator.Managers
                     break;
                 }
 
-                if (!_pendingOutboundPackets.TryDequeue(out PendingTouchRequest dequeued))
-                {
-                    break;
-                }
+                PendingTouchRequest dequeued = _pendingOutboundPackets.Dequeue();
 
                 SentCount++;
                 flushed++;
@@ -356,6 +385,30 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return flushed;
+        }
+
+        private void RemoveQueuedTouchRequestsUnsafe(int objectId)
+        {
+            if (objectId <= 0 || _pendingOutboundPackets.Count == 0)
+            {
+                return;
+            }
+
+            int pendingCount = _pendingOutboundPackets.Count;
+            for (int i = 0; i < pendingCount; i++)
+            {
+                PendingTouchRequest pending = _pendingOutboundPackets.Dequeue();
+                if (pending.ObjectId != objectId)
+                {
+                    _pendingOutboundPackets.Enqueue(pending);
+                }
+            }
+        }
+
+        private void EnqueueOrReplaceTouchRequestUnsafe(PendingTouchRequest next)
+        {
+            RemoveQueuedTouchRequestsUnsafe(next.ObjectId);
+            _pendingOutboundPackets.Enqueue(next);
         }
 
         private void RemoveClient(int clientId, string status)

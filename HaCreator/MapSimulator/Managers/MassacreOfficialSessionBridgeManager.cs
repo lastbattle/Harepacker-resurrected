@@ -640,7 +640,12 @@ namespace HaCreator.MapSimulator.Managers
                 return TryBuildMappedInboundMessage(opcode, mappedKind, payload, source, rawPacket, out message);
             }
 
-            SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref opcode, ref payload);
+            if (opcode != CurrentWrapperRelayOpcode)
+            {
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
+                opcode = CurrentWrapperRelayOpcode;
+            }
+
             message = new MassacrePacketInboxMessage(
                 MassacrePacketInboxMessageKind.Packet,
                 source,

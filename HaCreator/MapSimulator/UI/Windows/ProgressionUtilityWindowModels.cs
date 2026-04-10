@@ -609,18 +609,29 @@ namespace HaCreator.MapSimulator.UI
 
             if (hasLabel && hasValue)
             {
-                string headline = BuildEntryHeadlineText(label, value);
                 AddWrappedTextRecords(
                     records,
-                    headline,
-                    ClientCollectionTextLaneLeft,
+                    label,
+                    ClientCollectionLabelLaneLeft,
                     top,
-                    ClientCollectionTextLaneWidthInt,
+                    ClientCollectionLabelLaneWidth,
                     styleIndex,
                     CollectionBookTextAlignment.Left,
                     CollectionBookRecordRole.Label,
                     measureTextWidth);
-                bottom = GetWrappedRecordBottom(headline, top, ClientCollectionTextLaneWidthInt, styleIndex, measureTextWidth);
+                AddWrappedTextRecords(
+                    records,
+                    value,
+                    ClientCollectionValueLaneLeft,
+                    top,
+                    ClientCollectionValueLaneWidth,
+                    styleIndex,
+                    CollectionBookTextAlignment.Right,
+                    CollectionBookRecordRole.Value,
+                    measureTextWidth);
+                int labelBottom = GetWrappedRecordBottom(label, top, ClientCollectionLabelLaneWidth, styleIndex, measureTextWidth);
+                int valueBottom = GetWrappedRecordBottom(value, top, ClientCollectionValueLaneWidth, styleIndex, measureTextWidth);
+                bottom = Math.Max(labelBottom, valueBottom);
                 return bottom;
             }
 
@@ -723,7 +734,9 @@ namespace HaCreator.MapSimulator.UI
 
             if (hasLabel && hasValue)
             {
-                return GetWrappedRecordBottom(BuildEntryHeadlineText(label, value), top, ClientCollectionTextLaneWidthInt, styleIndex, measureTextWidth);
+                int labelBottom = GetWrappedRecordBottom(label, top, ClientCollectionLabelLaneWidth, styleIndex, measureTextWidth);
+                int valueBottom = GetWrappedRecordBottom(value, top, ClientCollectionValueLaneWidth, styleIndex, measureTextWidth);
+                return Math.Max(labelBottom, valueBottom);
             }
 
             if (hasLabel)
@@ -818,21 +831,6 @@ namespace HaCreator.MapSimulator.UI
             return alignment == CollectionBookTextAlignment.Left
                 ? left + ClientCollectionTextAnalyzerMargin
                 : left;
-        }
-
-        private static string BuildEntryHeadlineText(string label, string value)
-        {
-            if (string.IsNullOrWhiteSpace(label))
-            {
-                return value?.Trim() ?? string.Empty;
-            }
-
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return label.Trim();
-            }
-
-            return $"{label.Trim()}: {value.Trim()}";
         }
 
         private static float MeasureApproximateCollectionTextWidth(string text)

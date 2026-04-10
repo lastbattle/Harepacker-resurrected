@@ -1005,7 +1005,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (!TryParseTransferPayloadCompat(payload, out int transferMapId, out string portalName))
+            if (!DojoField.TryParseTransferPacketPayload(payload, out int transferMapId, out string portalName))
             {
                 return false;
             }
@@ -1019,6 +1019,22 @@ namespace HaCreator.MapSimulator.Managers
             bool matchesPendingPortal = !string.IsNullOrWhiteSpace(portalName)
                 && !string.IsNullOrWhiteSpace(pendingTransferPortalName)
                 && string.Equals(portalName, pendingTransferPortalName, StringComparison.OrdinalIgnoreCase);
+
+            if (matchesPendingPortal)
+            {
+                packetType = DojoField.PacketTypeClear;
+                reason = $"transfer target matched preserved pending clear portal ({transferMapId}{FormatPortalSuffix(portalName)})";
+                return true;
+            }
+
+            if (matchesPendingTransfer
+                && !string.IsNullOrWhiteSpace(pendingTransferPortalName)
+                && string.IsNullOrWhiteSpace(portalName))
+            {
+                packetType = DojoField.PacketTypeClear;
+                reason = $"transfer target matched preserved pending clear map ({transferMapId})";
+                return true;
+            }
 
             if ((matchesPendingPortal || matchesPendingTransfer) && clearActive)
             {
@@ -1065,39 +1081,6 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return false;
-        }
-
-        private static bool TryParseTransferPayloadCompat(byte[] payload, out int mapId, out string portalName)
-        {
-            mapId = -1;
-            portalName = string.Empty;
-            if (payload == null || payload.Length == 0)
-            {
-                mapId = 0;
-                return true;
-            }
-
-            if (payload.Length < sizeof(int))
-            {
-                return false;
-            }
-
-            mapId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
-            if (payload.Length <= sizeof(int))
-            {
-                return true;
-            }
-
-            try
-            {
-                portalName = System.Text.Encoding.UTF8.GetString(payload, sizeof(int), payload.Length - sizeof(int)).TrimEnd('\0');
-            }
-            catch
-            {
-                portalName = string.Empty;
-            }
-
-            return true;
         }
 
         private static string FormatPortalSuffix(string portalName)

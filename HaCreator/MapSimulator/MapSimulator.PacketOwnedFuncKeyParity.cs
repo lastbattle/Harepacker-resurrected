@@ -131,6 +131,8 @@ namespace HaCreator.MapSimulator
             FamilyChart = 8,
             Profession = 9,
             Event = 10,
+            Ranking = 11,
+            FamilyTree = 12,
         }
 
         internal enum PacketOwnedRawChatOwner
@@ -1299,6 +1301,13 @@ namespace HaCreator.MapSimulator
                     TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.Event, () =>
                         ShowUtilityWindow(MapSimulatorWindowNames.Event, "packet-owned-funckey:31"));
                     return true;
+                case PacketOwnedRawFunctionOwner.Ranking:
+                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.Ranking, () =>
+                        ShowUtilityWindow(MapSimulatorWindowNames.Ranking, "packet-owned-funckey:25"));
+                    return true;
+                case PacketOwnedRawFunctionOwner.FamilyTree:
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyTree);
+                    return true;
                 default:
                     break;
             }
@@ -1452,6 +1461,10 @@ namespace HaCreator.MapSimulator
 
         internal static PacketOwnedRawFunctionOwner ResolvePacketOwnedRawFunctionOwner(int clientFunctionId)
         {
+            // The direct type-4 palette ids come from CUIKeyConfig::ResetPaletteItems /
+            // GetIdxFromPaletteSlot, and the narrower owner targets here are aligned to
+            // the corresponding CWvsContext::UI_Open cases when the simulator already
+            // has an equivalent window seam.
             return clientFunctionId switch
             {
                 4 => PacketOwnedRawFunctionOwner.SocialListFriend,
@@ -1460,8 +1473,12 @@ namespace HaCreator.MapSimulator
                 17 => PacketOwnedRawFunctionOwner.SocialListGuild,
                 19 => PacketOwnedRawFunctionOwner.SocialListParty,
                 14 => PacketOwnedRawFunctionOwner.ShortcutMenu,
+                21 => PacketOwnedRawFunctionOwner.PartySearch,
+                22 => PacketOwnedRawFunctionOwner.Profession,
+                25 => PacketOwnedRawFunctionOwner.Ranking,
+                26 => PacketOwnedRawFunctionOwner.FamilyChart,
+                27 => PacketOwnedRawFunctionOwner.FamilyTree,
                 24 => PacketOwnedRawFunctionOwner.PartySearch,
-                25 => PacketOwnedRawFunctionOwner.FamilyChart,
                 29 => PacketOwnedRawFunctionOwner.Profession,
                 31 => PacketOwnedRawFunctionOwner.Event,
                 _ => PacketOwnedRawFunctionOwner.None,

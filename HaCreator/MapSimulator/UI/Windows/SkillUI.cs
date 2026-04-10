@@ -724,10 +724,10 @@ namespace HaCreator.MapSimulator.UI
             int nextLevel = Math.Min(skill.MaxLevel, previewLevel + (currentLevel > 0 ? 1 : 0));
             string title = SanitizeTooltipText(skill.SkillName);
             string description = SanitizeTooltipText(skill.FormattedDescriptionOrDefault);
-            string currentLevelHeader = currentLevel > 0 ? $"Current Level: {currentLevel}" : string.Empty;
+            string currentLevelHeader = currentLevel > 0 ? SkillTooltipClientText.FormatCurrentLevelHeader(currentLevel) : string.Empty;
             string currentLevelDescription = currentLevel > 0 ? SanitizeTooltipText(skill.GetFormattedLevelDescription(currentLevel)) : string.Empty;
             bool showNextLevel = nextLevel > 0 && nextLevel <= skill.MaxLevel && nextLevel != currentLevel;
-            string nextLevelHeader = showNextLevel ? $"Next Level: {nextLevel}" : string.Empty;
+            string nextLevelHeader = showNextLevel ? SkillTooltipClientText.FormatNextLevelHeader(nextLevel) : string.Empty;
             string nextLevelDescription = showNextLevel ? SanitizeTooltipText(skill.GetFormattedLevelDescription(nextLevel)) : string.Empty;
             SkillLevelData tooltipLevelData = ResolveTooltipLevelData(skill, previewLevel);
 
@@ -943,7 +943,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawTooltipText(
                 sprite,
-                ResolveRequiredSkillHeaderText(),
+                SkillTooltipClientText.ResolveRequiredSkillHeaderText(),
                 new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_HEADER_X, sectionY + CLIENT_TOOLTIP_REQUIREMENT_HEADER_Y_OFFSET),
                 new Color(255, 204, 120));
 
@@ -982,21 +982,10 @@ namespace HaCreator.MapSimulator.UI
                     Color.White);
                 DrawTooltipText(
                     sprite,
-                    FormatRequiredSkillLevelText(requirement.RequiredLevel),
+                    SkillTooltipClientText.FormatRequiredSkillLevelText(requirement.RequiredLevel),
                     new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_LEVEL_X, rowY + CLIENT_TOOLTIP_REQUIREMENT_LEVEL_Y),
                     new Color(210, 210, 210));
             }
-        }
-
-        private static string ResolveRequiredSkillHeaderText()
-        {
-            return MapleStoryStringPool.GetOrFallback(0x801, "Required Skill");
-        }
-
-        private static string FormatRequiredSkillLevelText(int requiredLevel)
-        {
-            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(0x800, "Lv. {0}+", 1, out _);
-            return string.Format(format, Math.Max(1, requiredLevel));
         }
 
         private int ResolveHoveredTooltipWidth()

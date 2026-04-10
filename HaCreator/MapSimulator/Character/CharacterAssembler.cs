@@ -172,6 +172,10 @@ namespace HaCreator.MapSimulator.Character
         private string _faceExpressionName = "default";
         private CharacterPart _overrideAvatarPart;
         private CharacterPart _overrideTamingMobPart;
+        private int _preparedActionSpeedDegree = 6;
+        private int _preparedWalkSpeed = 100;
+        private bool _heldActionFrameDelay;
+        private bool _currentFacingRight = true;
 
         // Map point names for alignment
         private const string MAP_NAVEL = "navel";
@@ -232,6 +236,30 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        internal int PreparedActionSpeedDegree
+        {
+            get => _preparedActionSpeedDegree;
+            set => _preparedActionSpeedDegree = value;
+        }
+
+        internal int PreparedWalkSpeed
+        {
+            get => _preparedWalkSpeed;
+            set => _preparedWalkSpeed = value;
+        }
+
+        internal bool HeldActionFrameDelay
+        {
+            get => _heldActionFrameDelay;
+            set => _heldActionFrameDelay = value;
+        }
+
+        internal bool CurrentFacingRight
+        {
+            get => _currentFacingRight;
+            set => _currentFacingRight = value;
+        }
+
         public bool TryGetFaceLookDuration(string expressionName, out int durationMs)
         {
             durationMs = 0;
@@ -260,11 +288,12 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public AssembledFrame[] GetAnimation(string actionName)
         {
-            if (_cachedAnimations.TryGetValue(actionName, out var cached))
+            string cacheKey = BuildAnimationCacheKey(actionName);
+            if (_cachedAnimations.TryGetValue(cacheKey, out var cached))
                 return cached;
 
             var frames = AssembleAnimation(actionName);
-            _cachedAnimations[actionName] = frames;
+            _cachedAnimations[cacheKey] = frames;
             return frames;
         }
 
@@ -583,12 +612,16 @@ namespace HaCreator.MapSimulator.Character
         {
             if (_overrideAvatarPart != null)
             {
-                return AssembleStandaloneAnimation(_overrideAvatarPart, actionName);
+                bool overrideIsMorphAvatar = _overrideAvatarPart.Type == CharacterPartType.Morph;
+                string overridePreparedActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(actionName, overrideIsMorphAvatar);
+                return AssembleStandaloneAnimation(_overrideAvatarPart, overridePreparedActionName);
             }
 
             var frames = new List<AssembledFrame>();
+            bool isMorphAvatar = false;
+            string preparedActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(actionName, isMorphAvatar);
             CharacterLoader.CharacterActionMergeInput mergeInput =
-                CharacterLoader.PrepareActionMergeInput(_build, actionName, GetActiveTamingMobPart());
+                CharacterLoader.PrepareActionMergeInput(_build, preparedActionName, GetActiveTamingMobPart());
             string resolvedActionName = mergeInput.ActionName;
             CharacterPart activeTamingMob = mergeInput.ActiveTamingMobPart;
             bool suppressBaseAvatar = ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, resolvedActionName);
@@ -637,17 +670,25 @@ namespace HaCreator.MapSimulator.Character
             var frames = new AssembledFrame[animation.Frames.Count];
             for (int i = 0; i < animation.Frames.Count; i++)
             {
-                frames[i] = AssembleStandaloneFrame(part, animation.Frames[i]);
+                frames[i] = AssembleStandaloneFrame(part, actionName, animation.Frames[i], i);
             }
 
             return frames;
         }
 
-        private AssembledFrame AssembleStandaloneFrame(CharacterPart part, CharacterFrame frame)
+        private AssembledFrame AssembleStandaloneFrame(CharacterPart part, string actionName, CharacterFrame frame, int frameIndex)
         {
             var assembled = new AssembledFrame
             {
-                Duration = frame?.Delay ?? 100
+                Duration = frame == null
+                    ? 100
+                    : AvatarActionLayerCoordinator.ResolvePreparedFrameDelay(
+                        actionName,
+                        frame.Delay,
+                        PreparedActionSpeedDegree,
+                        PreparedWalkSpeed,
+                        HeldActionFrameDelay,
+                        frameIndex)
             };
 
             if (frame == null)
@@ -677,7 +718,13 @@ namespace HaCreator.MapSimulator.Character
             string actionName = mergeInput?.ActionName ?? CharacterPart.GetActionString(CharacterAction.Stand1);
             var assembled = new AssembledFrame
             {
-                Duration = bodyFrame.Delay
+                Duration = AvatarActionLayerCoordinator.ResolvePreparedFrameDelay(
+                    actionName,
+                    bodyFrame.Delay,
+                    PreparedActionSpeedDegree,
+                    PreparedWalkSpeed,
+                    HeldActionFrameDelay,
+                    frameIndex)
             };
 
             var parts = new List<AssembledPart>();
@@ -836,16 +883,42 @@ namespace HaCreator.MapSimulator.Character
                 AddPortableChairLayers(parts, frameIndex);
             }
 
+            assembled.Parts = parts;
+
+            if (!suppressBaseAvatar
+                && activeTamingMob?.Slot == EquipSlot.TamingMob)
+            {
+                CharacterFrame tamingMobFrame = GetPartFrame(activeTamingMob, actionName, frameIndex);
+                if (tamingMobFrame != null)
+                {
+                    AvatarActionLayerCoordinator.ApplyMountedOriginRelocation(
+                        assembled,
+                        actionName,
+                        bodyFrame,
+                        tamingMobFrame,
+                        CurrentFacingRight);
+                }
+            }
+
             // Sort parts by z-index
             parts.Sort((a, b) => a.ZIndex.CompareTo(b.ZIndex));
             ApplyVisibility(parts);
-            assembled.Parts = parts;
             assembled.AvatarRenderLayers = BuildAvatarRenderLayers(parts);
 
             // Calculate bounds
             CalculateBounds(assembled);
 
             return assembled;
+        }
+
+        private string BuildAnimationCacheKey(string actionName)
+        {
+            return string.Concat(
+                actionName ?? string.Empty,
+                "|spd:", PreparedActionSpeedDegree.ToString(),
+                "|walk:", PreparedWalkSpeed.ToString(),
+                "|held:", HeldActionFrameDelay ? "1" : "0",
+                "|dir:", CurrentFacingRight ? "R" : "L");
         }
 
         private CharacterPart GetActiveTamingMobPart()

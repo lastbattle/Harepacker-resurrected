@@ -104,6 +104,10 @@ namespace HaCreator.MapSimulator.Managers
             public int? PreviousJobRank { get; init; }
             public byte[] AvatarLookPacket { get; init; } = Array.Empty<byte>();
             public int Portal { get; init; }
+            public bool HasPacketOwnedRadioCreateLayerLeftContextValue { get; init; }
+            public bool PacketOwnedRadioCreateLayerLeftContextValue { get; init; }
+            public int PacketOwnedRadioCreateLayerMutationSequence { get; init; }
+            public string PacketOwnedRadioCreateLayerLastMutationSource { get; init; } = string.Empty;
         }
 
         private static readonly JsonSerializerOptions JsonOptions = new()
@@ -227,11 +231,13 @@ namespace HaCreator.MapSimulator.Managers
             IEnumerable<CashShopStorageExpansionRecordState> storageExpansionHistory = null)
         {
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName) ? "explorergm" : accountName.Trim();
+            PersistedAccountState existingState = TryGetPersistedState(normalizedAccountName, worldId, accountId);
             List<LoginCharacterAccountEntryState> normalizedEntries = entries?
                 .Where(entry => entry != null)
                 .Select(CloneEntryState)
                 .ToList()
                 ?? new List<LoginCharacterAccountEntryState>();
+            MergePersistedPacketOwnedRadioCreateLayerState(normalizedEntries, existingState);
             LoginExtraCharInfoResultProfile normalizedExtraCharInfoResult =
                 NormalizeExtraCharInfoResultProfile(extraCharInfoResult, accountId);
             int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(
@@ -267,6 +273,109 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             SaveToDisk();
+        }
+
+        public bool UpdatePacketOwnedRadioCreateLayerState(
+            string accountName,
+            int worldId,
+            int characterId,
+            bool hasOverride,
+            bool bLeft,
+            int mutationSequence,
+            string mutationSource,
+            int? accountId = null)
+        {
+            if (characterId <= 0)
+            {
+                return false;
+            }
+
+            string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim();
+            int normalizedWorldId = Math.Max(0, worldId);
+            bool changed = false;
+
+            foreach (string key in EnumerateStateKeys(normalizedAccountName, normalizedWorldId, accountId))
+            {
+                if (!_accountsByKey.TryGetValue(key, out PersistedAccountState persistedState) || persistedState == null)
+                {
+                    continue;
+                }
+
+                List<LoginCharacterAccountEntryState> entries = persistedState.Entries?
+                    .Where(entry => entry != null)
+                    .Select(CloneEntryState)
+                    .ToList()
+                    ?? new List<LoginCharacterAccountEntryState>();
+                int entryIndex = entries.FindIndex(entry => entry.CharacterId == characterId);
+                if (entryIndex < 0)
+                {
+                    continue;
+                }
+
+                LoginCharacterAccountEntryState existingEntry = entries[entryIndex];
+                LoginCharacterAccountEntryState updatedEntry = new()
+                {
+                    CharacterId = existingEntry.CharacterId,
+                    Name = existingEntry.Name,
+                    Gender = existingEntry.Gender,
+                    Skin = existingEntry.Skin,
+                    Level = existingEntry.Level,
+                    Job = existingEntry.Job,
+                    SubJob = existingEntry.SubJob,
+                    JobName = existingEntry.JobName,
+                    GuildName = existingEntry.GuildName,
+                    AllianceName = existingEntry.AllianceName,
+                    Fame = existingEntry.Fame,
+                    WorldRank = existingEntry.WorldRank,
+                    JobRank = existingEntry.JobRank,
+                    Exp = existingEntry.Exp,
+                    ExpToNextLevel = existingEntry.ExpToNextLevel,
+                    HP = existingEntry.HP,
+                    MaxHP = existingEntry.MaxHP,
+                    MP = existingEntry.MP,
+                    MaxMP = existingEntry.MaxMP,
+                    Strength = existingEntry.Strength,
+                    Dexterity = existingEntry.Dexterity,
+                    Intelligence = existingEntry.Intelligence,
+                    Luck = existingEntry.Luck,
+                    AbilityPoints = existingEntry.AbilityPoints,
+                    FieldMapId = existingEntry.FieldMapId,
+                    FieldDisplayName = existingEntry.FieldDisplayName,
+                    CanDelete = existingEntry.CanDelete,
+                    PreviousWorldRank = existingEntry.PreviousWorldRank,
+                    PreviousJobRank = existingEntry.PreviousJobRank,
+                    AvatarLookPacket = existingEntry.AvatarLookPacket != null
+                        ? (byte[])existingEntry.AvatarLookPacket.Clone()
+                        : Array.Empty<byte>(),
+                    Portal = existingEntry.Portal,
+                    HasPacketOwnedRadioCreateLayerLeftContextValue = hasOverride,
+                    PacketOwnedRadioCreateLayerLeftContextValue = hasOverride && bLeft,
+                    PacketOwnedRadioCreateLayerMutationSequence = Math.Max(0, mutationSequence),
+                    PacketOwnedRadioCreateLayerLastMutationSource = string.IsNullOrWhiteSpace(mutationSource)
+                        ? string.Empty
+                        : mutationSource.Trim()
+                };
+
+                if (AreEquivalentPacketOwnedRadioCreateLayerState(existingEntry, updatedEntry))
+                {
+                    continue;
+                }
+
+                entries[entryIndex] = updatedEntry;
+                PersistedAccountState updatedState = ClonePersistedState(persistedState);
+                updatedState.Entries = entries;
+                _accountsByKey[key] = updatedState;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                SaveToDisk();
+            }
+
+            return changed;
         }
 
         public bool BindAccountId(string accountName, int worldId, int accountId)
@@ -637,8 +746,122 @@ namespace HaCreator.MapSimulator.Managers
                 PreviousWorldRank = entry.PreviousWorldRank,
                 PreviousJobRank = entry.PreviousJobRank,
                 AvatarLookPacket = entry.AvatarLookPacket != null ? (byte[])entry.AvatarLookPacket.Clone() : Array.Empty<byte>(),
-                Portal = entry.Portal
+                Portal = entry.Portal,
+                HasPacketOwnedRadioCreateLayerLeftContextValue = entry.HasPacketOwnedRadioCreateLayerLeftContextValue,
+                PacketOwnedRadioCreateLayerLeftContextValue = entry.HasPacketOwnedRadioCreateLayerLeftContextValue && entry.PacketOwnedRadioCreateLayerLeftContextValue,
+                PacketOwnedRadioCreateLayerMutationSequence = Math.Max(0, entry.PacketOwnedRadioCreateLayerMutationSequence),
+                PacketOwnedRadioCreateLayerLastMutationSource = entry.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty
             };
+        }
+
+        private static IEnumerable<string> EnumerateStateKeys(string accountName, int worldId, int? accountId)
+        {
+            if (accountId.HasValue && accountId.Value > 0)
+            {
+                yield return ResolveAccountKey(accountName, worldId, accountId);
+            }
+
+            yield return ResolveAccountKey(accountName, worldId);
+        }
+
+        private static void MergePersistedPacketOwnedRadioCreateLayerState(
+            IList<LoginCharacterAccountEntryState> entries,
+            PersistedAccountState existingState)
+        {
+            if (entries == null || entries.Count == 0 || existingState?.Entries == null || existingState.Entries.Count == 0)
+            {
+                return;
+            }
+
+            foreach ((LoginCharacterAccountEntryState entry, int index) in entries.Select((entry, index) => (entry, index)))
+            {
+                if (entry == null || HasPersistedPacketOwnedRadioCreateLayerState(entry))
+                {
+                    continue;
+                }
+
+                LoginCharacterAccountEntryState persistedEntry = existingState.Entries.FirstOrDefault(candidate =>
+                    candidate != null &&
+                    candidate.CharacterId > 0 &&
+                    candidate.CharacterId == entry.CharacterId);
+                if (persistedEntry == null || !HasPersistedPacketOwnedRadioCreateLayerState(persistedEntry))
+                {
+                    continue;
+                }
+
+                entries[index] = CopyPacketOwnedRadioCreateLayerState(entry, persistedEntry);
+            }
+        }
+
+        private static LoginCharacterAccountEntryState CopyPacketOwnedRadioCreateLayerState(
+            LoginCharacterAccountEntryState target,
+            LoginCharacterAccountEntryState source)
+        {
+            return new LoginCharacterAccountEntryState
+            {
+                CharacterId = target.CharacterId,
+                Name = target.Name,
+                Gender = target.Gender,
+                Skin = target.Skin,
+                Level = target.Level,
+                Job = target.Job,
+                SubJob = target.SubJob,
+                JobName = target.JobName,
+                GuildName = target.GuildName,
+                AllianceName = target.AllianceName,
+                Fame = target.Fame,
+                WorldRank = target.WorldRank,
+                JobRank = target.JobRank,
+                Exp = target.Exp,
+                ExpToNextLevel = target.ExpToNextLevel,
+                HP = target.HP,
+                MaxHP = target.MaxHP,
+                MP = target.MP,
+                MaxMP = target.MaxMP,
+                Strength = target.Strength,
+                Dexterity = target.Dexterity,
+                Intelligence = target.Intelligence,
+                Luck = target.Luck,
+                AbilityPoints = target.AbilityPoints,
+                FieldMapId = target.FieldMapId,
+                FieldDisplayName = target.FieldDisplayName,
+                CanDelete = target.CanDelete,
+                PreviousWorldRank = target.PreviousWorldRank,
+                PreviousJobRank = target.PreviousJobRank,
+                AvatarLookPacket = target.AvatarLookPacket != null
+                    ? (byte[])target.AvatarLookPacket.Clone()
+                    : Array.Empty<byte>(),
+                Portal = target.Portal,
+                HasPacketOwnedRadioCreateLayerLeftContextValue = source.HasPacketOwnedRadioCreateLayerLeftContextValue,
+                PacketOwnedRadioCreateLayerLeftContextValue = source.HasPacketOwnedRadioCreateLayerLeftContextValue && source.PacketOwnedRadioCreateLayerLeftContextValue,
+                PacketOwnedRadioCreateLayerMutationSequence = Math.Max(0, source.PacketOwnedRadioCreateLayerMutationSequence),
+                PacketOwnedRadioCreateLayerLastMutationSource = source.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty
+            };
+        }
+
+        private static bool HasPersistedPacketOwnedRadioCreateLayerState(LoginCharacterAccountEntryState entry)
+        {
+            return entry != null &&
+                   (entry.HasPacketOwnedRadioCreateLayerLeftContextValue ||
+                    entry.PacketOwnedRadioCreateLayerMutationSequence > 0 ||
+                    !string.IsNullOrWhiteSpace(entry.PacketOwnedRadioCreateLayerLastMutationSource));
+        }
+
+        private static bool AreEquivalentPacketOwnedRadioCreateLayerState(
+            LoginCharacterAccountEntryState left,
+            LoginCharacterAccountEntryState right)
+        {
+            return left != null &&
+                   right != null &&
+                   left.HasPacketOwnedRadioCreateLayerLeftContextValue == right.HasPacketOwnedRadioCreateLayerLeftContextValue &&
+                   (!left.HasPacketOwnedRadioCreateLayerLeftContextValue ||
+                    left.PacketOwnedRadioCreateLayerLeftContextValue == right.PacketOwnedRadioCreateLayerLeftContextValue) &&
+                   Math.Max(0, left.PacketOwnedRadioCreateLayerMutationSequence) ==
+                   Math.Max(0, right.PacketOwnedRadioCreateLayerMutationSequence) &&
+                   string.Equals(
+                       left.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty,
+                       right.PacketOwnedRadioCreateLayerLastMutationSource ?? string.Empty,
+                       StringComparison.Ordinal);
         }
 
         private static string NormalizeSecret(string value)

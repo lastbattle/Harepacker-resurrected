@@ -202,7 +202,7 @@ namespace HaCreator.MapSimulator.Entities
                 }
             }
 
-            _availableStates = _stateFrames.Keys.OrderBy(state => state).ToArray();
+            _availableStates = BuildAvailableStates(_stateFrames.Keys, _stateLayerProperties.Keys);
             _activeState = ResolveInitialState();
         }
 
@@ -756,6 +756,28 @@ namespace HaCreator.MapSimulator.Entities
             return loadedFrames;
         }
 
+        private IDXObject[] EnsureStateFramesLoaded(int state)
+        {
+            int resolvedState = ResolveState(state);
+            if (_stateFrames.TryGetValue(resolvedState, out IDXObject[] cachedFrames) && cachedFrames.Length > 0)
+            {
+                return cachedFrames;
+            }
+
+            if (!_stateLayerProperties.TryGetValue(resolvedState, out WzImageProperty sourceProperty) || sourceProperty == null)
+            {
+                return Array.Empty<IDXObject>();
+            }
+
+            IDXObject[] loadedFrames = TryLoadFramesFromSourceProperty(sourceProperty);
+            if (loadedFrames.Length > 0)
+            {
+                _stateFrames[resolvedState] = loadedFrames;
+            }
+
+            return loadedFrames;
+        }
+
         private int ResolveHitAnimationDuration(
             HitAnimationSourceKind sourceKind,
             int state,
@@ -809,7 +831,8 @@ namespace HaCreator.MapSimulator.Entities
 
         private int GetExactStateDuration(int state)
         {
-            if (!_stateFrames.TryGetValue(state, out IDXObject[] frames) || frames.Length == 0)
+            IDXObject[] frames = EnsureStateFramesLoaded(state);
+            if (frames.Length == 0)
             {
                 return 0;
             }
@@ -1093,14 +1116,28 @@ namespace HaCreator.MapSimulator.Entities
         private IDXObject[] ResolveStateFrames(int state)
         {
             int resolvedState = ResolveState(state);
-            if (_stateFrames.TryGetValue(resolvedState, out IDXObject[] frames) && frames.Length > 0)
+            IDXObject[] frames = EnsureStateFramesLoaded(resolvedState);
+            if (frames.Length > 0)
             {
                 return frames;
             }
 
-            return _stateFrames.TryGetValue(0, out IDXObject[] fallbackFrames) && fallbackFrames.Length > 0
-                ? fallbackFrames
-                : null;
+            if (_stateFrames.TryGetValue(0, out IDXObject[] fallbackFrames) && fallbackFrames.Length > 0)
+            {
+                return fallbackFrames;
+            }
+
+            if (_stateLayerProperties.TryGetValue(0, out WzImageProperty fallbackSourceProperty) && fallbackSourceProperty != null)
+            {
+                fallbackFrames = TryLoadFramesFromSourceProperty(fallbackSourceProperty);
+                if (fallbackFrames.Length > 0)
+                {
+                    _stateFrames[0] = fallbackFrames;
+                    return fallbackFrames;
+                }
+            }
+
+            return null;
         }
 
         private static IDXObject GetAnimationFrame(
@@ -1152,17 +1189,17 @@ namespace HaCreator.MapSimulator.Entities
 
         private int ResolveState(int state)
         {
-            if (_stateFrames.Count == 0 || _stateFrames.ContainsKey(state))
+            if (_availableStates.Length == 0 || _availableStates.Contains(state))
                 return state;
 
-            int lowerOrEqualState = _stateFrames.Keys
+            int lowerOrEqualState = _availableStates
                 .Where(key => key <= state)
                 .DefaultIfEmpty(int.MinValue)
                 .Max();
             if (lowerOrEqualState != int.MinValue)
                 return lowerOrEqualState;
 
-            return _stateFrames.Keys.OrderBy(key => key).First();
+            return _availableStates[0];
         }
 
         private int ResolveInitialState()
@@ -1190,6 +1227,15 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return result;
+        }
+
+        private static int[] BuildAvailableStates(IEnumerable<int> frameStates, IEnumerable<int> sourceStates)
+        {
+            return frameStates
+                .Concat(sourceStates ?? Array.Empty<int>())
+                .Distinct()
+                .OrderBy(state => state)
+                .ToArray();
         }
 
         private int[] GetAuthoredCandidates(int resolvedState, ReactorTransitionRequest request)

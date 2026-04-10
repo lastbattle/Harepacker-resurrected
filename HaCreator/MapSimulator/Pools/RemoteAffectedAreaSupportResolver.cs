@@ -242,6 +242,71 @@ namespace HaCreator.MapSimulator.Pools
             return SupportedAreaCleanseEffects;
         }
 
+        internal static SkillLevelData ResolveRemoteAffectedAreaSkillLevel(
+            SkillData skill,
+            int level,
+            bool preferPvpLevelData)
+        {
+            if (skill == null)
+            {
+                return null;
+            }
+
+            if (preferPvpLevelData)
+            {
+                SkillLevelData pvpLevelData = skill.GetPvpLevel(Math.Max(1, level));
+                if (pvpLevelData != null)
+                {
+                    return pvpLevelData;
+                }
+            }
+
+            SkillLevelData levelData = skill.GetLevel(Math.Max(1, level));
+            if (levelData != null)
+            {
+                return levelData;
+            }
+
+            if (!preferPvpLevelData)
+            {
+                SkillLevelData pvpLevelData = skill.GetPvpLevel(Math.Max(1, level));
+                if (pvpLevelData != null)
+                {
+                    return pvpLevelData;
+                }
+            }
+
+            int maxLevel = Math.Max(1, skill.MaxLevel);
+            for (int resolvedLevel = 1; resolvedLevel <= maxLevel; resolvedLevel++)
+            {
+                if (preferPvpLevelData)
+                {
+                    SkillLevelData pvpLevelData = skill.GetPvpLevel(resolvedLevel);
+                    if (pvpLevelData != null)
+                    {
+                        return pvpLevelData;
+                    }
+                }
+
+                levelData = skill.GetLevel(resolvedLevel);
+                if (levelData != null)
+                {
+                    return levelData;
+                }
+
+                if (!preferPvpLevelData)
+                {
+                    SkillLevelData pvpLevelData = skill.GetPvpLevel(resolvedLevel);
+                    if (pvpLevelData != null)
+                    {
+                        return pvpLevelData;
+                    }
+                }
+            }
+
+            return null;
+        }
+
         public static bool HasProjectableSupportBuffMetadata(SkillLevelData levelData)
         {
             if (levelData == null)

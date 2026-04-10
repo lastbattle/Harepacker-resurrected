@@ -192,7 +192,7 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
-            if (TryResolveAmbiguousTransferPacketType(payload, candidates, -1, null, -1, out packetType, out reason, out bool isStableResolution)
+            if (TryResolveAmbiguousTransferPacketType(payload, candidates, -1, null, -1, -1, null, out packetType, out reason, out bool isStableResolution)
                 && isStableResolution)
             {
                 return true;
@@ -262,6 +262,8 @@ namespace HaCreator.MapSimulator.Effects
                     clearMapIdHint,
                     clearPortalNameHint,
                     exitMapIdHint,
+                    pendingTransferMapIdHint,
+                    pendingTransferPortalNameHint,
                     out packetType,
                     out reason,
                     out isStableInference))
@@ -301,6 +303,8 @@ namespace HaCreator.MapSimulator.Effects
                     clearMapIdHint,
                     clearPortalNameHint,
                     exitMapIdHint,
+                    -1,
+                    string.Empty,
                     out packetType,
                     out reason,
                     out isStableInference))
@@ -336,6 +340,8 @@ namespace HaCreator.MapSimulator.Effects
                     clearMapIdHint,
                     clearPortalNameHint,
                     exitMapIdHint,
+                    -1,
+                    null,
                     out int packetType,
                     out string reason,
                     out _))
@@ -1195,6 +1201,8 @@ namespace HaCreator.MapSimulator.Effects
             int clearMapIdHint,
             string clearPortalNameHint,
             int exitMapIdHint,
+            int pendingTransferMapIdHint,
+            string pendingTransferPortalNameHint,
             out int packetType,
             out string reason,
             out bool isStableResolution)
@@ -1228,6 +1236,28 @@ namespace HaCreator.MapSimulator.Effects
                 bool matchesClearPortal = !string.IsNullOrWhiteSpace(portalName)
                     && !string.IsNullOrWhiteSpace(clearPortalNameHint)
                     && string.Equals(portalName, clearPortalNameHint, StringComparison.OrdinalIgnoreCase);
+                bool matchesPendingPortal = !string.IsNullOrWhiteSpace(portalName)
+                    && !string.IsNullOrWhiteSpace(pendingTransferPortalNameHint)
+                    && string.Equals(portalName, pendingTransferPortalNameHint, StringComparison.OrdinalIgnoreCase);
+                bool matchesPendingMap = pendingTransferMapIdHint > 0 && transferMapId == pendingTransferMapIdHint;
+
+                if (matchesPendingPortal)
+                {
+                    packetType = PacketTypeClear;
+                    reason = $"clear(transfer target matched pending clear portal {portalName})";
+                    isStableResolution = true;
+                    return true;
+                }
+
+                if (matchesPendingMap
+                    && !string.IsNullOrWhiteSpace(pendingTransferPortalNameHint)
+                    && string.IsNullOrWhiteSpace(portalName))
+                {
+                    packetType = PacketTypeClear;
+                    reason = $"clear(transfer target matched pending clear map {transferMapId})";
+                    isStableResolution = true;
+                    return true;
+                }
 
                 if (matchesClearPortal || (matchesClearMap && !matchesExitMap))
                 {

@@ -285,7 +285,9 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            status = $"Guild boss official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus}";
+            status =
+                $"Guild boss official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. " +
+                $"{startStatus} {BuildDiscoveryAttachmentRequirementMessage(ListenPort)}";
             LastStatus = status;
             return true;
         }
@@ -359,7 +361,9 @@ namespace HaCreator.MapSimulator.Managers
                 _passiveEstablishedSession = candidate;
                 RemoteHost = candidate.RemoteEndpoint.Address.ToString();
                 RemotePort = candidate.RemoteEndpoint.Port;
-                LastStatus = $"Observed already-established Guild Boss Maple socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. This path cannot decrypt or inject opcode {OutboundPulleyRequestOpcode} after the Maple handshake; reconnect through the localhost proxy for live packet ownership.";
+                LastStatus =
+                    $"Observed already-established Guild Boss Maple socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. " +
+                    $"This passive attach keeps the live socket pair visible to the guild-boss ownership seam, but it still cannot decrypt inbound {PacketTypeHealerMove}/{PacketTypePulleyStateChange} traffic or inject opcode {OutboundPulleyRequestOpcode} after the Maple handshake; reconnect through the localhost proxy for live packet ownership.";
                 status = LastStatus;
                 return true;
             }
@@ -949,10 +953,22 @@ namespace HaCreator.MapSimulator.Managers
                 return $"No established TCP sessions matched {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
             }
 
-            return string.Join(
-                Environment.NewLine,
-                filteredCandidates.Select(candidate =>
-                    $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
+            return "Guild boss official-session bridge discovery candidates:"
+                + Environment.NewLine
+                + string.Join(
+                    Environment.NewLine,
+                    filteredCandidates.Select(candidate =>
+                        $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"))
+                + Environment.NewLine
+                + BuildDiscoveryAttachmentRequirementMessage();
+        }
+
+        private static string BuildDiscoveryAttachmentRequirementMessage(int? listenPort = null)
+        {
+            string reconnectTarget = listenPort.HasValue && listenPort.Value > 0
+                ? $"127.0.0.1:{listenPort.Value}"
+                : "the configured localhost listen port";
+            return $"Discovery identifies established Maple sockets. Use `/guildboss session attach ...` to bind the simulator to the current socket pair for passive status-only observation, or `/guildboss session attachproxy ...` to arm a reconnect proxy and queue opcode {OutboundPulleyRequestOpcode} until Maple reconnects through {reconnectTarget}.";
         }
 
         private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(

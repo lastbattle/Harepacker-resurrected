@@ -13,6 +13,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using HaSharedLibrary.Util;
+using SD = System.Drawing;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -86,6 +87,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly GraphicsDevice _graphicsDevice;
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
         private SpriteFont _font;
+        private ClientTextRasterizer _categoryLabelTextRasterizer;
+        private ClientTextRasterizer _categoryCountTextRasterizer;
         private MouseState _previousMouseState;
         private Func<QuestLogTabType, bool, QuestLogSnapshot> _questLogProvider;
         private Func<QuestLogTabType, bool, int?> _preferredQuestIdProvider;
@@ -1228,25 +1231,40 @@ namespace HaCreator.MapSimulator.UI
                 float labelScale = 0.38f;
                 string countText = slot.Entry.Count.ToString();
                 float countScale = 0.38f;
-                Color labelColor = enabled ? new Color(70, 45, 24) : new Color(106, 98, 88);
-                Color countColor = enabled ? new Color(108, 76, 42) : new Color(128, 120, 108);
-                Color leaderColor = enabled ? new Color(153, 121, 80) : new Color(156, 148, 136);
+                bool useClientCategoryText = HasClientCategoryButtonArt();
+                Color labelColor = useClientCategoryText
+                    ? (enabled ? new Color(74, 74, 74) : new Color(136, 136, 136))
+                    : (enabled ? new Color(70, 45, 24) : new Color(106, 98, 88));
+                Color countColor = useClientCategoryText
+                    ? (enabled ? new Color(180, 54, 54) : new Color(136, 136, 136))
+                    : (enabled ? new Color(108, 76, 42) : new Color(128, 120, 108));
+                Color leaderColor = useClientCategoryText
+                    ? (enabled ? new Color(148, 148, 148) : new Color(170, 170, 170))
+                    : (enabled ? new Color(153, 121, 80) : new Color(156, 148, 136));
                 int textX = HasClientCategoryButtonArt() ? bounds.X + ClientCategoryTextLeft : bounds.X + 6;
                 int textY = HasClientCategoryButtonArt()
                     ? bounds.Y + GetCategoryRowTextTopOffset(slot)
                     : bounds.Y + 3;
                 string renderedCountText = countText;
                 int availableLabelWidth = HasClientCategoryButtonArt()
-                    ? ResolveClientCategoryLabelWidth(renderedCountText, countScale)
+                    ? ResolveClientCategoryLabelWidth(MeasureCategoryText(renderedCountText, countScale, emphasized: true).X)
                     : Math.Max(0, (int)MathF.Floor(bounds.Width * 0.68f));
-                string labelText = FitSingleLineText(slot.Entry.AreaName, availableLabelWidth, labelScale);
-                Vector2 labelMeasure = MeasureClientText(labelText, labelScale);
+                string labelText = useClientCategoryText
+                    ? FitSingleLineCategoryText(slot.Entry.AreaName, availableLabelWidth, labelScale, emphasized: false)
+                    : FitSingleLineText(slot.Entry.AreaName, availableLabelWidth, labelScale);
+                Vector2 labelMeasure = useClientCategoryText
+                    ? MeasureCategoryText(labelText, labelScale, emphasized: false)
+                    : MeasureClientText(labelText, labelScale);
 
-                ClientTextDrawing.Draw(sprite, labelText, new Vector2(textX, textY), labelColor, labelScale, _font);
+                DrawCategoryText(sprite, labelText, new Vector2(textX, textY), labelColor, labelScale, emphasized: false);
                 if (HasClientCategoryButtonArt())
                 {
-                    renderedCountText = FitSingleLineText(renderedCountText, ResolveClientCategoryMaxCountWidth(), countScale);
-                    float countWidth = MeasureClientText(renderedCountText, countScale).X;
+                    renderedCountText = useClientCategoryText
+                        ? FitSingleLineCategoryText(renderedCountText, ResolveClientCategoryMaxCountWidth(), countScale, emphasized: true)
+                        : FitSingleLineText(renderedCountText, ResolveClientCategoryMaxCountWidth(), countScale);
+                    float countWidth = useClientCategoryText
+                        ? MeasureCategoryText(renderedCountText, countScale, emphasized: true).X
+                        : MeasureClientText(renderedCountText, countScale).X;
                     float countX = bounds.X + ResolveClientCategoryCountLeft(countWidth);
                     float labelRight = textX + labelMeasure.X;
                     float leaderLeft = labelRight + ClientCategoryTrailingTextGap;
@@ -1261,7 +1279,7 @@ namespace HaCreator.MapSimulator.UI
 
                     if (!string.IsNullOrEmpty(renderedCountText))
                     {
-                        ClientTextDrawing.Draw(sprite, renderedCountText, new Vector2(countX, textY), countColor, countScale, _font);
+                        DrawCategoryText(sprite, renderedCountText, new Vector2(countX, textY), countColor, countScale, emphasized: true);
                     }
                 }
                 else
@@ -1656,6 +1674,43 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 if (MeasureClientText(candidate, scale).X + ellipsisWidth <= maxWidth)
+                {
+                    return candidate + ellipsis;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private string FitSingleLineCategoryText(string text, float maxWidth, float scale, bool emphasized)
+        {
+            if (string.IsNullOrWhiteSpace(text) || maxWidth <= 0f)
+            {
+                return string.Empty;
+            }
+
+            string trimmed = text.Trim();
+            if (MeasureCategoryText(trimmed, scale, emphasized).X <= maxWidth)
+            {
+                return trimmed;
+            }
+
+            const string ellipsis = "...";
+            float ellipsisWidth = MeasureCategoryText(ellipsis, scale, emphasized).X;
+            if (ellipsisWidth >= maxWidth)
+            {
+                return string.Empty;
+            }
+
+            for (int length = trimmed.Length - 1; length > 0; length--)
+            {
+                string candidate = trimmed.Substring(0, length).TrimEnd();
+                if (candidate.Length == 0)
+                {
+                    continue;
+                }
+
+                if (MeasureCategoryText(candidate, scale, emphasized).X + ellipsisWidth <= maxWidth)
                 {
                     return candidate + ellipsis;
                 }
@@ -2203,6 +2258,51 @@ namespace HaCreator.MapSimulator.UI
         private Vector2 MeasureClientText(string text, float scale)
         {
             return ClientTextDrawing.Measure(_graphicsDevice, text, scale, _font);
+        }
+
+        private Vector2 MeasureCategoryText(string text, float scale, bool emphasized)
+        {
+            ClientTextRasterizer rasterizer = ResolveCategoryTextRasterizer(emphasized);
+            if (rasterizer != null)
+            {
+                return rasterizer.MeasureString(text ?? string.Empty, scale);
+            }
+
+            return MeasureClientText(text, scale);
+        }
+
+        private void DrawCategoryText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale, bool emphasized)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            ClientTextRasterizer rasterizer = ResolveCategoryTextRasterizer(emphasized);
+            if (rasterizer != null)
+            {
+                rasterizer.DrawString(sprite, text, position, color, scale);
+                return;
+            }
+
+            ClientTextDrawing.Draw(sprite, text, position, color, scale, _font);
+        }
+
+        private ClientTextRasterizer ResolveCategoryTextRasterizer(bool emphasized)
+        {
+            if (_graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (emphasized)
+            {
+                _categoryCountTextRasterizer ??= new ClientTextRasterizer(_graphicsDevice, fontStyle: SD.FontStyle.Bold);
+                return _categoryCountTextRasterizer;
+            }
+
+            _categoryLabelTextRasterizer ??= new ClientTextRasterizer(_graphicsDevice);
+            return _categoryLabelTextRasterizer;
         }
 
         private string Truncate(string text, int maxChars)

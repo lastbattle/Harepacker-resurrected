@@ -214,12 +214,17 @@ namespace HaCreator.MapSimulator.Character
                 // the authored `eburster` branch instead of verbatim `burster*`.
                 ["burster1"] = new[] { "eburster" },
                 ["burster2"] = new[] { "eburster" },
+                // `fake` and `octopus` remain pirate gun-family requests in the client
+                // raw action table, but Morph/1001.img still only publishes the
+                // authored gun surface as `doublefire`.
+                ["fake"] = new[] { "doublefire" },
                 ["fireburner"] = new[] { "doublefire" },
                 ["coolingeffect"] = new[] { "doublefire" },
                 ["homing"] = new[] { "doublefire" },
                 ["rapidfire"] = new[] { "doublefire" },
                 ["cannon"] = new[] { "doublefire" },
                 ["torpedo"] = new[] { "doublefire" },
+                ["octopus"] = new[] { "doublefire" },
                 // The current WZ export publishes cannon-family skill actions under
                 // Skill/501, 530, 531, and 532, but pirate Morph/*.img still exposes
                 // no verbatim cannon combat branches. Keep them on the same loader-

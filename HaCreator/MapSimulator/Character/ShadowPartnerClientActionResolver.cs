@@ -300,14 +300,17 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
+            bool playerActionFamilyUnsupported = IsFamilyUnsupportedClientRawActionName(playerActionName, supportedRawActionNames);
             if (!string.IsNullOrWhiteSpace(playerActionName))
             {
-                if (yielded.Add(playerActionName))
+                if (!playerActionFamilyUnsupported && yielded.Add(playerActionName))
                 {
                     yield return playerActionName;
                 }
 
-                foreach (string candidate in EnumerateAliasCandidates(playerActionName))
+                foreach (string candidate in playerActionFamilyUnsupported
+                             ? Array.Empty<string>()
+                             : EnumerateAliasCandidates(playerActionName))
                 {
                     if (yielded.Add(candidate))
                     {
@@ -315,7 +318,9 @@ namespace HaCreator.MapSimulator.Character
                     }
                 }
 
-                foreach (string candidate in EnumerateHeuristicAttackAliases(playerActionName, state, weaponType))
+                foreach (string candidate in playerActionFamilyUnsupported
+                             ? Array.Empty<string>()
+                             : EnumerateHeuristicAttackAliases(playerActionName, state, weaponType))
                 {
                     if (yielded.Add(candidate))
                     {
@@ -431,9 +436,16 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        public static IEnumerable<string> EnumerateClientActionAliases(string playerActionName)
+        public static IEnumerable<string> EnumerateClientActionAliases(
+            string playerActionName,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             if (string.IsNullOrWhiteSpace(playerActionName))
+            {
+                yield break;
+            }
+
+            if (IsFamilyUnsupportedClientRawActionName(playerActionName, supportedRawActionNames))
             {
                 yield break;
             }
@@ -1095,13 +1107,17 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            if (!ShouldSuppressRawBackedGenericAttackIdentityCandidate(playerActionName, rawActionCode)
+            bool playerActionFamilyUnsupported = IsFamilyUnsupportedClientRawActionName(playerActionName, supportedRawActionNames);
+            if (!playerActionFamilyUnsupported
+                && !ShouldSuppressRawBackedGenericAttackIdentityCandidate(playerActionName, rawActionCode)
                 && yielded.Add(playerActionName))
             {
                 yield return playerActionName;
             }
 
-            foreach (string candidate in EnumerateAliasCandidates(playerActionName))
+            foreach (string candidate in playerActionFamilyUnsupported
+                         ? Array.Empty<string>()
+                         : EnumerateAliasCandidates(playerActionName))
             {
                 if (yielded.Add(candidate))
                 {
@@ -1109,7 +1125,9 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            foreach (string candidate in EnumerateHeuristicAttackAliases(playerActionName, state, weaponType))
+            foreach (string candidate in playerActionFamilyUnsupported
+                         ? Array.Empty<string>()
+                         : EnumerateHeuristicAttackAliases(playerActionName, state, weaponType))
             {
                 if (yielded.Add(candidate))
                 {
@@ -1189,6 +1207,24 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return supportedRawActionNames.Contains(canonicalActionName);
+        }
+
+        internal static bool IsSupportedRawActionForFamily(
+            string actionName,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            return IsSupportedRawActionName(actionName, supportedRawActionNames);
+        }
+
+        private static bool IsFamilyUnsupportedClientRawActionName(
+            string actionName,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && supportedRawActionNames != null
+                   && supportedRawActionNames.Count > 0
+                   && SupportedRawActionCanonicalNames.ContainsKey(actionName)
+                   && !IsSupportedRawActionName(actionName, supportedRawActionNames);
         }
 
         private static IEnumerable<string> EnumerateHeuristicAttackAliases(

@@ -1138,6 +1138,7 @@ namespace HaCreator.MapSimulator
             _questGatedMapObjects.Clear();
             _authoredDynamicObjectTagStates.Clear();
             _npcsArray = null;
+            _lastNpcClientActionSelectionContextStamp = int.MinValue;
             _npcsById.Clear();
             _mobsArray = null;
             _reactorsArray = null;

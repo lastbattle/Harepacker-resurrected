@@ -68,8 +68,10 @@ namespace HaCreator.MapSimulator
         {
             _initialQuizTimerRuntime.Clear();
             _speedQuizOwnerRuntime.Clear();
+            _packetScriptDedicatedOwnerRuntime.Clear();
             ClearInitialQuizOwnerInputState();
             ClearSpeedQuizOwnerInputState();
+            ClearPacketScriptDedicatedOwnerVisualState();
             SyncUtilityChannelSelectorAvailability();
         }
     }

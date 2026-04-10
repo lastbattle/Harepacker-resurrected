@@ -260,6 +260,7 @@ namespace HaCreator.MapSimulator
                 {
                     DrawCenteredPacketOwnedSpeedQuizOwner(TickCount, speedQuizOwnerSnapshot);
                 }
+                DrawCenteredPacketScriptDedicatedOwner(TickCount);
                 DrawPacketOwnedScriptOwnerVisuals(TickCount);
             }
 

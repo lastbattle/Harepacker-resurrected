@@ -67,6 +67,22 @@ namespace HaCreator.MapSimulator.Loaders
                 reactorInstance.Y,
                 device,
                 usedProps);
+            if (stateFrames.Count == 0 && stateLayerProperties.Count > 0)
+            {
+                int bootstrapState = stateLayerProperties.Keys.Min();
+                List<IDXObject> bootstrapFrames = LoadReactorFramesForExactSourceProperty(
+                    texturePool,
+                    stateLayerProperties[bootstrapState],
+                    reactorInstance.X,
+                    reactorInstance.Y,
+                    device,
+                    usedProps);
+                if (bootstrapFrames.Count > 0)
+                {
+                    stateFrames[bootstrapState] = bootstrapFrames;
+                }
+            }
+
             if (stateFrames.Count == 0)
                 return null;
 
@@ -184,12 +200,6 @@ namespace HaCreator.MapSimulator.Loaders
             if (nestedDefaultFrames != null)
             {
                 return MapSimulatorLoader.LoadFrames(texturePool, nestedDefaultFrames, x, y, device, usedProps);
-            }
-
-            WzImageProperty hitFrames = WzInfoTools.GetRealProperty(resolvedStateProperty["hit"]);
-            if (hitFrames != null)
-            {
-                return MapSimulatorLoader.LoadFrames(texturePool, hitFrames, x, y, device, usedProps);
             }
 
             return new List<IDXObject>();

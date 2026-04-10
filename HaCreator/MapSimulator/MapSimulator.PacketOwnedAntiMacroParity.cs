@@ -57,6 +57,8 @@ namespace HaCreator.MapSimulator
 
         private sealed record PacketOwnedAntiMacroNoticeDefinition(int StringPoolId, string Text, string AvatarCanvasPath);
         private sealed record PacketOwnedAntiMacroChatDefinition(int StringPoolId, string FormatText, bool SaveScreenshot);
+        internal readonly record struct PacketOwnedAntiMacroNoticeMapping(int StringPoolId, string AvatarCanvasPath);
+        internal readonly record struct PacketOwnedAntiMacroChatMapping(int StringPoolId, bool SaveScreenshot);
         private enum PacketOwnedAntiMacroSubmitTransportPath
         {
             None = 0,
@@ -551,6 +553,28 @@ namespace HaCreator.MapSimulator
             return officialSessionBridgeEnabled
                 && hasAttachedClient
                 && !hasConnectedSession;
+        }
+
+        internal static PacketOwnedAntiMacroNoticeMapping ResolvePacketOwnedAntiMacroNoticeMappingForTest(int noticeType, int antiMacroType)
+        {
+            PacketOwnedAntiMacroNoticeDefinition definition = ResolvePacketOwnedAntiMacroNoticeDefinition(noticeType, antiMacroType);
+            return new PacketOwnedAntiMacroNoticeMapping(definition.StringPoolId, definition.AvatarCanvasPath);
+        }
+
+        internal static bool TryResolvePacketOwnedAntiMacroChatMappingForTest(
+            int mode,
+            int antiMacroType,
+            out PacketOwnedAntiMacroChatMapping mapping)
+        {
+            PacketOwnedAntiMacroChatDefinition definition = ResolvePacketOwnedAntiMacroChatDefinition(mode, antiMacroType);
+            if (definition == null)
+            {
+                mapping = default;
+                return false;
+            }
+
+            mapping = new PacketOwnedAntiMacroChatMapping(definition.StringPoolId, definition.SaveScreenshot);
+            return true;
         }
 
         private static PacketOwnedAntiMacroNoticeDefinition ResolvePacketOwnedAntiMacroNoticeDefinition(int noticeType, int antiMacroType)

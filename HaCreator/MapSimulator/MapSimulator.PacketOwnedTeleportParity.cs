@@ -498,14 +498,6 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (TryResolvePendingCrossMapTeleportPortalIndexBySourceMetadata(
-                portalPool,
-                target,
-                out portalIndex))
-            {
-                return true;
-            }
-
             return false;
         }
 

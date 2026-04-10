@@ -534,8 +534,8 @@ namespace HaCreator.MapSimulator.Managers
 
             if (opcode >= FirstCarnivalOpcode && opcode <= LastCarnivalOpcode)
             {
-                int relayedPacketType = opcode;
-                SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref relayedPacketType, ref payload);
+                int relayedPacketType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+                payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
                 message = new MonsterCarnivalPacketInboxMessage(
                     relayedPacketType,
                     payload,
@@ -552,8 +552,8 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            int relayOpcode = mappedPacketType;
-            SpecialFieldRuntimeCoordinator.NormalizeCurrentWrapperRelayPacket(ref relayOpcode, ref payload);
+            int relayOpcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
+            payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(mappedPacketType, payload);
             message = new MonsterCarnivalPacketInboxMessage(
                 relayOpcode,
                 payload,
