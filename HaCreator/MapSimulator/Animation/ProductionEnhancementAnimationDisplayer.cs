@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.Animation
         private const string CashGachaponJackpotTag = "cashgachapon:jackpot";
         private const string CashGachaponCopyNormalTag = "cashgachaponcopy:normal";
         private const string CashGachaponCopyJackpotTag = "cashgachaponcopy:jackpot";
+        private static readonly Point CashGachaponLoadLayerOffset = new(2, 31);
         private static readonly Point ViciousHammerRepeatOffset = new(91, 81);
         private static readonly Point ViciousHammerFinishedOffset = new(89, 105);
         private static readonly Point VegaCastingOffset = new(91, 41);
@@ -47,6 +48,8 @@ namespace HaCreator.MapSimulator.Animation
         private readonly Dictionary<ItemUpgradeUI.VisualThemeKind, CubeAnimationTheme> _cubeThemes = new();
 
         public AnimationDisplayerWindowOverlayOwner Owner => _owner;
+
+        internal static Point CashGachaponClientLoadLayerOffset => CashGachaponLoadLayerOffset;
 
         public void ConfigureItemMake(List<IDXObject> successFrames, List<IDXObject> failureFrames)
         {
@@ -271,7 +274,7 @@ namespace HaCreator.MapSimulator.Animation
                 MapSimulatorWindowNames.CashShopStage,
                 ResolveCashGachaponTag(isCopyResult, isJackpot),
                 frames,
-                Point.Zero,
+                CashGachaponLoadLayerOffset,
                 AnimationDisplayerWindowOverlayPass.Overlay,
                 currentTimeMs);
             return true;

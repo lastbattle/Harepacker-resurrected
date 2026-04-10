@@ -812,7 +812,9 @@ namespace HaCreator.MapSimulator
                 _clientOwnedLimitedViewMaskWidth,
                 _clientOwnedLimitedViewMaskHeight,
                 _clientOwnedLimitedViewOriginX,
-                _clientOwnedLimitedViewOriginY);
+                _clientOwnedLimitedViewOriginY,
+                (int)MathF.Round(_clientOwnedLimitedViewMaskWidth),
+                (int)MathF.Round(_clientOwnedLimitedViewMaskHeight));
         }
 
         private void SyncClientOwnedLimitedViewFocus(float playerX, float playerY)
@@ -985,7 +987,8 @@ namespace HaCreator.MapSimulator
             _specialFieldRuntime?.SpecialEffects?.Wedding?.BindWeddingPhotoSceneOwner(
                 mapInfo?.id ?? 0,
                 $"CField_WeddingPhoto::GetFieldType = {ClientOwnedWeddingPhotoFieldType}; {activeContract.SourceDescription}; {activeContract.SceneDescription}",
-                viewport);
+                viewport,
+                activeContract.BackgroundMusicPath);
         }
 
         private void SyncClientOwnedTutorialTutorOwner(int currentTick)
@@ -1196,8 +1199,11 @@ namespace HaCreator.MapSimulator
                     && TryResolveWeddingPhotoSceneViewportCenter(weddingPhotoContract, out Vector2 viewportCenter)
                     ? $" camera lock enforced at viewport center ({viewportCenter.X:0.#}, {viewportCenter.Y:0.#})."
                     : string.Empty;
+                string bgm = string.IsNullOrWhiteSpace(weddingPhotoContract.BackgroundMusicPath)
+                    ? string.Empty
+                    : $" bgm={weddingPhotoContract.BackgroundMusicPath}.";
                 activeWrappers.Add(
-                    $"{ownerLabel} ({weddingPhotoContract.SceneDescription}, client owner {weddingPhotoContract.SourceDescription}) on map {mapInfo.id}, returnMap {weddingPhotoContract.ReturnMapId}.{safeArea}{viewport}{cameraFocus}");
+                    $"{ownerLabel} ({weddingPhotoContract.SceneDescription}, client owner {weddingPhotoContract.SourceDescription}) on map {mapInfo.id}, returnMap {weddingPhotoContract.ReturnMapId}.{safeArea}{viewport}{cameraFocus}{bgm}");
             }
 
             if (_specialFieldRuntime.PartyRaid.HasNativePartyRaidWrapperOwner)

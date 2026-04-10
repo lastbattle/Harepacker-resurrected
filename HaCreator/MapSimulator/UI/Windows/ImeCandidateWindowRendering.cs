@@ -4,9 +4,10 @@ namespace HaCreator.MapSimulator.UI
 {
     internal static class ImeCandidateWindowRendering
     {
-        internal static bool ShouldPreferNativeWindow(ImeCandidateListState state)
+        internal static bool ShouldPreferNativeWindow(ImeCandidateListState state, bool clientOwnedCandidateWindow = false)
         {
-            return state?.HasCandidates == true
+            return !clientOwnedCandidateWindow
+                && state?.HasCandidates == true
                 && state.WindowForm?.HasPlacementData == true;
         }
     }

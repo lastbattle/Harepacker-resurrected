@@ -219,7 +219,7 @@ namespace HaCreator.MapSimulator
 
             if (canAffectLocalPlayer)
             {
-                ApplyRemoteHostileAffectedAreaDamageToLocalPlayer(hostileSkillRuntimes, currentTime);
+                ApplyRemoteHostileAffectedAreaToLocalPlayer(hostileSkillRuntimes, currentTime);
             }
 
             if (!canAffectMobs || skillManager == null)
@@ -611,7 +611,7 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private void ApplyRemoteHostileAffectedAreaDamageToLocalPlayer(
+        private void ApplyRemoteHostileAffectedAreaToLocalPlayer(
             RemoteAffectedAreaSkillRuntime[] hostileSkillRuntimes,
             int currentTime)
         {
@@ -630,15 +630,21 @@ namespace HaCreator.MapSimulator
                     hostileSkillRuntimes[i].LevelData);
             }
 
-            if (incomingDamage <= 0)
+            if (incomingDamage > 0)
             {
-                return;
+                int resolvedDamage = skillManager.ResolveIncomingDamageAfterActiveBuffs(incomingDamage, currentTime);
+                if (resolvedDamage > 0)
+                {
+                    player.TakeDamage(resolvedDamage, 0f, 0f);
+                }
             }
 
-            int resolvedDamage = skillManager.ResolveIncomingDamageAfterActiveBuffs(incomingDamage, currentTime);
-            if (resolvedDamage > 0)
+            for (int i = 0; i < hostileSkillRuntimes.Length; i++)
             {
-                player.TakeDamage(resolvedDamage, 0f, 0f);
+                _playerManager.TryApplyRemoteAffectedAreaPlayerSkillStatus(
+                    hostileSkillRuntimes[i].Skill,
+                    hostileSkillRuntimes[i].LevelData,
+                    currentTime);
             }
         }
 

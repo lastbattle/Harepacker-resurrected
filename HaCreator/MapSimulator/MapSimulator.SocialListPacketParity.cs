@@ -23,9 +23,9 @@ namespace HaCreator.MapSimulator
         private int _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt;
 
         private const string SocialListPacketPayloadUsage =
-            "Usage: /sociallist packet [status|session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> <opcode>|stop]|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|guildskillresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>|guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>]";
+            "Usage: /sociallist packet [status|session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> <opcode>|stop]|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|friendresult <payloadhex=..|payloadb64=..>|partyresult <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|guildskillresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>|guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>]";
         private const string SocialListPacketRawUsage =
-            "Usage: /sociallist packetraw <friend|party|guild|alliance|blacklist|guildauth|allianceauth|guildui|guildresult|guildskillresult|allianceresult> <hex>";
+            "Usage: /sociallist packetraw <friend|party|guild|alliance|blacklist|guildauth|allianceauth|guildui|friendresult|partyresult|guildresult|guildskillresult|allianceresult> <hex>";
 
         private ChatCommandHandler.CommandResult HandleSocialListPacketCommand(string[] args)
         {
@@ -80,6 +80,20 @@ namespace HaCreator.MapSimulator
                     $"CWvsContext::OnGuildResult UI: {_socialListRuntime.ApplyPacketOwnedGuildUiPayload(guildUiPayload)}");
             }
 
+            if (string.Equals(packetAction, "friendresult", StringComparison.OrdinalIgnoreCase)
+                && TryParseSocialListPacketPayloadArgument(args, 1, out byte[] friendResultPayload, out _))
+            {
+                return ChatCommandHandler.CommandResult.Ok(
+                    $"CWvsContext::OnFriendResult: {_socialListRuntime.ApplyClientFriendResultPayload(friendResultPayload)}");
+            }
+
+            if (string.Equals(packetAction, "partyresult", StringComparison.OrdinalIgnoreCase)
+                && TryParseSocialListPacketPayloadArgument(args, 1, out byte[] partyResultPayload, out _))
+            {
+                return ChatCommandHandler.CommandResult.Ok(
+                    $"CWvsContext::OnPartyResult: {_socialListRuntime.ApplyClientPartyResultPayload(partyResultPayload)}");
+            }
+
             if (string.Equals(packetAction, "guildresult", StringComparison.OrdinalIgnoreCase)
                 && TryParseSocialListPacketPayloadArgument(args, 1, out byte[] guildResultPayload, out _))
             {
@@ -130,6 +144,16 @@ namespace HaCreator.MapSimulator
             if (string.Equals(target, "guildui", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ApplyPacketOwnedGuildUiPayload(payload));
+            }
+
+            if (string.Equals(target, "friendresult", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ApplyClientFriendResultPayload(payload));
+            }
+
+            if (string.Equals(target, "partyresult", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ApplyClientPartyResultPayload(payload));
             }
 
             if (string.Equals(target, "guildresult", StringComparison.OrdinalIgnoreCase))
@@ -189,8 +213,11 @@ namespace HaCreator.MapSimulator
         {
             string enabledText = _socialListOfficialSessionBridgeEnabled ? "enabled" : "disabled";
             string modeText = _socialListOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
-            string opcodeText = _socialListOfficialSessionBridgeConfiguredGuildResultOpcode > 0
+            string guildOpcodeText = _socialListOfficialSessionBridgeConfiguredGuildResultOpcode > 0
                 ? _socialListOfficialSessionBridgeConfiguredGuildResultOpcode.ToString()
+                : "unset";
+            string allianceOpcodeText = _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode > 0
+                ? _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode.ToString()
                 : "unset";
             string configuredTarget = _socialListOfficialSessionBridgeUseDiscovery
                 ? _socialListOfficialSessionBridgeConfiguredLocalPort.HasValue
@@ -203,7 +230,7 @@ namespace HaCreator.MapSimulator
             string listeningText = _socialListOfficialSessionBridge.IsRunning
                 ? $"listening on 127.0.0.1:{_socialListOfficialSessionBridge.ListenPort}"
                 : $"configured for 127.0.0.1:{_socialListOfficialSessionBridgeConfiguredListenPort}";
-            return $"Social-list session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, guild-result opcode {opcodeText}. {_socialListOfficialSessionBridge.DescribeStatus()}";
+            return $"Social-list session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, friend-result opcode {SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode}, party-result opcode {SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode}, guild-result opcode {guildOpcodeText}, alliance-result opcode {allianceOpcodeText}. {_socialListOfficialSessionBridge.DescribeStatus()}";
         }
 
         private void EnsureSocialListOfficialSessionBridgeState(bool shouldRun)
@@ -327,11 +354,11 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                string detail = ApplyClientGuildResultPayload(message.Payload);
+                string detail = ApplySocialListOfficialSessionMessage(message);
                 bool applied = !detail.StartsWith("Unsupported", StringComparison.OrdinalIgnoreCase)
                     && !detail.Contains("could not be decoded", StringComparison.OrdinalIgnoreCase)
                     && !detail.Contains("missing", StringComparison.OrdinalIgnoreCase);
-                _socialListOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
+                _socialListOfficialSessionBridge.RecordDispatchResult(message.Source, applied, $"{message.ResultLabel}: {detail}");
                 WireSocialListWindowData();
                 RefreshGuildSkillUiContext();
                 WireGuildSkillWindowData();
@@ -348,6 +375,17 @@ namespace HaCreator.MapSimulator
                     }
                 }
             }
+        }
+
+        private string ApplySocialListOfficialSessionMessage(SocialListOfficialSessionBridgeMessage message)
+        {
+            return message.Kind switch
+            {
+                SocialListOfficialSessionBridgePayloadKind.FriendResult => _socialListRuntime.ApplyClientFriendResultPayload(message.Payload),
+                SocialListOfficialSessionBridgePayloadKind.PartyResult => _socialListRuntime.ApplyClientPartyResultPayload(message.Payload),
+                SocialListOfficialSessionBridgePayloadKind.AllianceResult => _socialListRuntime.ApplyClientAllianceResultPayload(message.Payload),
+                _ => ApplyClientGuildResultPayload(message.Payload)
+            };
         }
 
         private string ApplyClientGuildResultPayload(byte[] payload)

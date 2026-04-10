@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator.Animation
             public float Radius { get; init; }
             public bool RandomizeStartupAngle { get; init; }
             public Func<bool> GetTargetFlip { get; init; }
+            public Func<bool> IsTargetMoveAction { get; init; }
             public bool SuppressTargetFlip { get; init; }
             public bool SpawnOnlyOnTargetMove { get; init; }
             public int UpdateIntervalMs { get; init; }
@@ -1883,6 +1884,7 @@ namespace HaCreator.MapSimulator.Animation
         private IReadOnlyList<List<IDXObject>> _spawnFrameVariants;
         private bool _spawnRelativeToTarget;
         private bool _spawnOnlyOnTargetMove;
+        private Func<bool> _isTargetMoveAction;
         private int _spawnDurationMs;
         private int _nextSpawnTime;
         private float _spawnTravelDistanceMin;
@@ -1921,6 +1923,7 @@ namespace HaCreator.MapSimulator.Animation
             _spawnRelativeToTarget = options?.SpawnRelativeToTarget ?? true;
             _suppressTargetFlip = options?.SuppressTargetFlip ?? false;
             _spawnOnlyOnTargetMove = options?.SpawnOnlyOnTargetMove ?? false;
+            _isTargetMoveAction = options?.IsTargetMoveAction;
             _spawnDurationMs = Math.Max(0, options?.SpawnDurationMs ?? 0);
             _spawnTravelDistanceMin = Math.Max(0f, options?.SpawnTravelDistanceMin ?? 0f);
             _spawnTravelDistanceMax = Math.Max(_spawnTravelDistanceMin, options?.SpawnTravelDistanceMax ?? _spawnTravelDistanceMin);
@@ -1985,8 +1988,7 @@ namespace HaCreator.MapSimulator.Animation
                 }
 
                 Vector2 targetPosition = _getTargetPosition();
-                bool targetMoved = !_spawnOnlyOnTargetMove
-                    || Vector2.DistanceSquared(targetPosition, _lastObservedTargetPosition) > float.Epsilon;
+                bool targetMoved = ResolveTargetMoveActionState(targetPosition);
 
                 if (effects != null && targetMoved && AnimationEffects.HasFrameVariants(_spawnFrameVariants))
                 {
@@ -2066,6 +2068,21 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return true;
+        }
+
+        private bool ResolveTargetMoveActionState(Vector2 targetPosition)
+        {
+            if (!_spawnOnlyOnTargetMove)
+            {
+                return true;
+            }
+
+            if (_isTargetMoveAction != null)
+            {
+                return _isTargetMoveAction();
+            }
+
+            return Vector2.DistanceSquared(targetPosition, _lastObservedTargetPosition) > float.Epsilon;
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)

@@ -728,6 +728,17 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        internal bool TryApplyRemoteAffectedAreaPlayerSkillStatus(
+            SkillData skill,
+            SkillLevelData levelData,
+            int currentTime)
+        {
+            return _mobStatusController?.TryApplyRemoteAffectedAreaPlayerSkill(
+                skill,
+                levelData,
+                currentTime) == true;
+        }
+
         internal void PlayMobSkillHitEffect(int skillId, int skillLevel, int currentTime)
         {
             if (Player == null)

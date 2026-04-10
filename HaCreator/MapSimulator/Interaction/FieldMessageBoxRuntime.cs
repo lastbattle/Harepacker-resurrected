@@ -26,7 +26,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int DefaultBoxOffsetX = -3;
         private const int DefaultBoxOffsetY = -100;
         private const float DefaultBobAmplitude = 3f;
-        private const float DefaultBobPeriodMs = 360f;
+        private const float ClientBobAngleStepRadians = MathHelper.Pi * 30f / 1000f * 0.5f;
+        private const int ClientBobInitialPhaseModulo = 0x168;
         private const int MinBoardWidth = 92;
         private const int MaxBodyLineCount = 4;
         private const int CreateFailedStringPoolId = 0x1EA;
@@ -1417,6 +1418,16 @@ namespace HaCreator.MapSimulator.Interaction
             return ComputeLeaveFadeAlpha(elapsedMs);
         }
 
+        internal static float GetClientBobAngleStepRadiansForTest()
+        {
+            return ClientBobAngleStepRadians;
+        }
+
+        internal static int ComputeClientBobOffsetForTest(float angleRadians)
+        {
+            return ComputeClientBobOffset(angleRadians);
+        }
+
         internal static Rectangle ComputeTextBoundsForTest(
             int boardWidth,
             int boardHeight,
@@ -1750,6 +1761,18 @@ namespace HaCreator.MapSimulator.Interaction
                 : new Color(244, 246, 232);
         }
 
+        private static float ComputeInitialBobAngleRadians(int id, Point hostPosition, int currentTick)
+        {
+            int hash = HashCode.Combine(id, hostPosition.X, hostPosition.Y, currentTick);
+            int phase = Math.Abs(hash == int.MinValue ? 0 : hash) % ClientBobInitialPhaseModulo;
+            return phase;
+        }
+
+        private static int ComputeClientBobOffset(float angleRadians)
+        {
+            return (int)Math.Round(Math.Sin(angleRadians) * DefaultBobAmplitude);
+        }
+
         private string ResolveItemName(int itemId)
         {
             if (_itemNameCache.TryGetValue(itemId, out string cachedName))
@@ -1858,7 +1881,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             private int _frameIndex;
             private int _nextFrameTick;
-            private readonly int _createdAt;
+            private float _bobAngleRadians;
 
             public FieldMessageBoxEntry(
                 int id,
@@ -1881,7 +1904,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Visual = visual;
                 ItemName = itemName ?? string.Empty;
                 Source = source;
-                _createdAt = currentTick;
+                _bobAngleRadians = ComputeInitialBobAngleRadians(id, hostPosition, currentTick);
                 _nextFrameTick = currentTick + (visual?.GetFrameDelay(0) ?? DefaultFrameDelayMs);
             }
 
@@ -1899,6 +1922,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             public void Update(int currentTick)
             {
+                _bobAngleRadians += ClientBobAngleStepRadians;
                 if (Visual == null || Visual.FrameCount <= 1 || currentTick < _nextFrameTick)
                 {
                     return;
@@ -1915,8 +1939,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             public int GetVerticalFloatOffset(int currentTick)
             {
-                float phase = ((currentTick - _createdAt) % DefaultBobPeriodMs) / DefaultBobPeriodMs;
-                return (int)Math.Round(Math.Sin(phase * MathHelper.TwoPi) * DefaultBobAmplitude);
+                return ComputeClientBobOffset(_bobAngleRadians);
             }
 
             public Texture2D GetDisplayTexture()

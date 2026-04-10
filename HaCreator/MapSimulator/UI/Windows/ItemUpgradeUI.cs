@@ -630,7 +630,8 @@ namespace HaCreator.MapSimulator.UI
                 forcedConsumableSlotIndex: null,
                 forcedModifierInventoryType: null,
                 forcedModifierSlotIndex: null,
-                forcedSuccess: null);
+                forcedSuccess: null,
+                previewOnly: false);
         }
 
         public ItemUpgradeAttemptResult TryApplyPreparedUpgradeAtSlots(
@@ -645,7 +646,23 @@ namespace HaCreator.MapSimulator.UI
                 consumableSlotIndex,
                 modifierInventoryType,
                 modifierSlotIndex,
-                forcedSuccess);
+                forcedSuccess,
+                previewOnly: false);
+        }
+
+        public ItemUpgradeAttemptResult TryResolvePreparedUpgradeOutcomeAtSlots(
+            InventoryType consumableInventoryType,
+            int consumableSlotIndex,
+            InventoryType? modifierInventoryType = null,
+            int? modifierSlotIndex = null)
+        {
+            return TryApplyPreparedUpgradeCore(
+                consumableInventoryType,
+                consumableSlotIndex,
+                modifierInventoryType,
+                modifierSlotIndex,
+                forcedSuccess: null,
+                previewOnly: true);
         }
 
         private ItemUpgradeAttemptResult TryApplyPreparedUpgradeCore(
@@ -653,7 +670,8 @@ namespace HaCreator.MapSimulator.UI
             int? forcedConsumableSlotIndex,
             InventoryType? forcedModifierInventoryType,
             int? forcedModifierSlotIndex,
-            bool? forcedSuccess)
+            bool? forcedSuccess,
+            bool previewOnly)
         {
             IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
             if (candidates.Count == 0)
@@ -799,6 +817,17 @@ namespace HaCreator.MapSimulator.UI
                 return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
             }
 
+            bool success = forcedSuccess ?? _random.NextDouble() < ResolveSuccessRate(consumable, state, modifier);
+            if (previewOnly)
+            {
+                string modifierSuffix = modifier != null ? $" with {modifier.Name}" : string.Empty;
+                _statusMessage = success
+                    ? $"{ResolveItemName(selectedPart)} is responding to {consumable.Name}{modifierSuffix}."
+                    : $"{ResolveItemName(selectedPart)} is resisting {consumable.Name}{modifierSuffix}.";
+                _lastUpgradeSucceeded = success;
+                return new ItemUpgradeAttemptResult(success, _statusMessage, consumable.ItemId, modifier?.ItemId ?? 0);
+            }
+
             if (!TryConsumePreparedInventoryItem(
                     consumable,
                     forcedConsumableInventoryType,
@@ -822,7 +851,6 @@ namespace HaCreator.MapSimulator.UI
                 return new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId, modifier.ItemId);
             }
 
-            bool success = forcedSuccess ?? _random.NextDouble() < ResolveSuccessRate(consumable, state, modifier);
             state.Attempts++;
 
             switch (consumable.EffectType)
@@ -3173,12 +3201,35 @@ namespace HaCreator.MapSimulator.UI
             destroyChance = ResolveDestroyChanceFromWzInfo(info, description);
             statDeltaProfile = ResolveAuthoredStatDeltaProfile(info, description);
             if (statDeltaProfile.IsEmpty &&
-                !TryGetScrollTargetSlots(itemId, out IReadOnlyCollection<EquipSlot> targetSlots))
+                !TryGetScrollTargetSlots(itemId, out IReadOnlyCollection<EquipSlot> targetSlots) &&
+                !IsGenericEquipmentRandomStatScroll(info, ResolveCachedItemNameOrFallback(itemId), description))
             {
                 return false;
             }
 
             return true;
+        }
+
+        private static bool IsGenericEquipmentRandomStatScroll(WzSubProperty info, string itemName, string description)
+        {
+            return ResolveWzInfoIntValue(info, "randstat") > 0 &&
+                   IsGenericEquipmentRandomStatScrollText(itemName, description);
+        }
+
+        private static bool IsGenericEquipmentRandomStatScrollText(string itemName, string description)
+        {
+            string normalizedName = itemName ?? string.Empty;
+            string normalizedDescription = description ?? string.Empty;
+
+            if (normalizedName.IndexOf("chaos scroll", StringComparison.OrdinalIgnoreCase) < 0 &&
+                normalizedDescription.IndexOf("chaos scroll", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            return normalizedDescription.IndexOf("current equipment", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   normalizedDescription.IndexOf("the equipment", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   normalizedDescription.IndexOf("equipment options", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static float ResolveSuccessRateFromWzInfo(WzSubProperty info, string description)
@@ -4018,6 +4069,11 @@ namespace HaCreator.MapSimulator.UI
             return TryParseSuccessRateText(description, out int percent)
                 ? MathHelper.Clamp(percent / 100f, 0f, 1.0f)
                 : 0f;
+        }
+
+        internal static bool IsGenericEquipmentRandomStatScrollForTesting(string itemName, string description)
+        {
+            return IsGenericEquipmentRandomStatScrollText(itemName, description);
         }
 
         internal static int ResolveHammerSuccessRateFromDescriptionForTesting(string description)

@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _receiverName = string.Empty;
         private string _itemName = "Maple TV";
         private string _defaultItemName = "Maple TV";
+        private string _defaultMediaRootPath = "UI/MapleTV.img/TVmedia";
         private string _statusMessage = "Prepare a MapleTV draft, then publish it through the simulator window or /mapletv.";
         private int _itemId;
         private int _defaultItemId;
@@ -96,8 +97,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _defaultItemId = Math.Max(0, itemId);
             _defaultItemName = string.IsNullOrWhiteSpace(itemName) ? "Maple TV" : itemName.Trim();
+            _defaultMediaRootPath = MapleStoryStringPool.GetOrFallback(0x0F8D, "UI/MapleTV.img/TVmedia");
             _availableMediaIndices = MapleTvMediaIndexResolver.NormalizeAvailableMediaIndices(availableMediaIndices, defaultMediaIndex);
-            _defaultMediaIndex = MapleTvMediaIndexResolver.ResolveKnownMediaIndex(defaultMediaIndex, _availableMediaIndices);
+            _defaultMediaIndex = MapleTvMediaIndexResolver.ResolveClientInitDefaultMediaIndex(
+                _defaultMediaRootPath,
+                _availableMediaIndices,
+                defaultMediaIndex);
             _mediaBranchCount = _availableMediaIndices.Count;
             _itemProfile = MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs, _availableMediaIndices);
             if (_itemId == 0)
@@ -147,6 +152,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ItemId = _itemId,
                 DefaultItemId = _defaultItemId,
                 DefaultItemName = _defaultItemName,
+                DefaultMediaRootPath = _defaultMediaRootPath,
                 DefaultMediaIndex = _defaultMediaIndex,
                 MediaBranchCount = _mediaBranchCount,
                 ResolvedMediaIndex = _resolvedMediaIndex,
@@ -183,10 +189,13 @@ namespace HaCreator.MapSimulator.Interaction
             string itemLabel = snapshot.ItemId > 0
                 ? $"{snapshot.ItemId} ({snapshot.ItemName})"
                 : $"{snapshot.DefaultItemId} ({snapshot.DefaultItemName})";
+            string initMedia = snapshot.MediaBranchCount > 0
+                ? $" Init media root {snapshot.DefaultMediaRootPath} exposes {snapshot.MediaBranchCount} branch(es); default branch {snapshot.DefaultMediaIndex}."
+                : string.Empty;
             string queueConfirmationSuffix = snapshot.AwaitingQueueReuseConfirmation
                 ? " Queue reuse confirmation is pending."
                 : string.Empty;
-            return $"MapleTV {mode}: {snapshot.SenderName} -> {receiver}, item {itemLabel}, {timer}. {snapshot.StatusMessage}{queueConfirmationSuffix}";
+            return $"MapleTV {mode}: {snapshot.SenderName} -> {receiver}, item {itemLabel}, {timer}.{initMedia} {snapshot.StatusMessage}{queueConfirmationSuffix}";
         }
 
         internal string ToggleReceiverMode()
@@ -828,6 +837,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int ItemId { get; init; }
         public string DefaultItemName { get; init; } = string.Empty;
         public int DefaultItemId { get; init; }
+        public string DefaultMediaRootPath { get; init; } = string.Empty;
         public int DefaultMediaIndex { get; init; }
         public int MediaBranchCount { get; init; }
         public int ResolvedMediaIndex { get; init; }
@@ -905,6 +915,39 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return -1;
+        }
+
+        internal static int ResolveClientInitDefaultMediaIndex(
+            string configuredPathOrToken,
+            IReadOnlyList<int> availableMediaIndices,
+            int fallbackDefaultMediaIndex)
+        {
+            IReadOnlyList<int> normalizedIndices = NormalizeAvailableMediaIndices(availableMediaIndices, fallbackDefaultMediaIndex);
+            int configuredBranchIndex = TryResolveConfiguredDefaultMediaIndex(configuredPathOrToken, normalizedIndices);
+            if (configuredBranchIndex >= 0)
+            {
+                return configuredBranchIndex;
+            }
+
+            if (IsConfiguredDefaultMediaRoot(configuredPathOrToken) && normalizedIndices.Contains(1))
+            {
+                return 1;
+            }
+
+            return ResolveKnownMediaIndex(fallbackDefaultMediaIndex, normalizedIndices);
+        }
+
+        private static bool IsConfiguredDefaultMediaRoot(string configuredPathOrToken)
+        {
+            if (string.IsNullOrWhiteSpace(configuredPathOrToken))
+            {
+                return false;
+            }
+
+            string normalized = configuredPathOrToken.Trim().Replace('\\', '/').TrimEnd('/');
+            return string.Equals(normalized, "UI/MapleTV.img/TVmedia", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "MapleTV.img/TVmedia", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "TVmedia", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static IReadOnlyList<int> NormalizeAvailableMediaIndices(IReadOnlyList<int> availableMediaIndices, int fallbackDefaultMediaIndex)

@@ -48,16 +48,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            ContextOwnedStagePeriodValidationResult validation = callbacks.ValidateStagePeriodChange?.Invoke(packet)
-                ?? ContextOwnedStagePeriodValidationResult.Accepted();
-            if (!validation.Success)
-            {
-                _status = validation.Detail
-                    ?? $"CWvsContext::OnStageChange rejected '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)} because CStageSystem::BuildCacheData would fail for that stage-theme cache key.";
-                message = _status;
-                return false;
-            }
-
             bool isAlreadyCurrent = callbacks.IsStagePeriodCurrent?.Invoke(packet)
                 ?? string.Equals(_currentStagePeriod, packet.StagePeriod, StringComparison.Ordinal)
                 && _currentMode == packet.Mode;
@@ -68,6 +58,16 @@ namespace HaCreator.MapSimulator.Interaction
                 _status = $"CWvsContext::OnStageChange decoded '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)}, but the live stage-period cache was already current.";
                 message = _status;
                 return true;
+            }
+
+            ContextOwnedStagePeriodValidationResult validation = callbacks.ValidateStagePeriodChange?.Invoke(packet)
+                ?? ContextOwnedStagePeriodValidationResult.Accepted();
+            if (!validation.Success)
+            {
+                _status = validation.Detail
+                    ?? $"CWvsContext::OnStageChange rejected '{packet.StagePeriod}' mode {packet.Mode.ToString(CultureInfo.InvariantCulture)} because CStageSystem::BuildCacheData would fail for that stage-theme cache key.";
+                message = _status;
+                return false;
             }
 
             _currentStagePeriod = packet.StagePeriod;

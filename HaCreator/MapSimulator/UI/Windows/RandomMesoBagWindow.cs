@@ -180,6 +180,11 @@ namespace HaCreator.MapSimulator.UI
             return new Point(centeredX, anchoredY);
         }
 
+        internal static bool ShouldUseClientCoordinateLayout(bool hasAuthoredRankArt, bool usesFallbackNoticeShell)
+        {
+            return hasAuthoredRankArt || usesFallbackNoticeShell;
+        }
+
         internal static Point ResolveMessagePosition(int frameWidth, float measuredWidth, bool useAuthoredLayout)
         {
             if (useAuthoredLayout)

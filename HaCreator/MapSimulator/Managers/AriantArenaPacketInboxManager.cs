@@ -90,6 +90,9 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeEffect = 224;
         private const int PacketTypeTemporaryStatSet = 225;
         private const int PacketTypeTemporaryStatReset = 226;
+        private const int PacketTypeReceiveHp = 227;
+        private const int PacketTypeGuildNameChanged = 228;
+        private const int PacketTypeGuildMarkChanged = 229;
         private const int PacketTypeThrowGrenade = 230;
         private const int PacketTypeShowResult = 171;
         private const int PacketTypeUserScore = 354;
@@ -389,6 +392,9 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == PacketTypeEffect
                 || packetType == PacketTypeTemporaryStatSet
                 || packetType == PacketTypeTemporaryStatReset
+                || packetType == PacketTypeReceiveHp
+                || packetType == PacketTypeGuildNameChanged
+                || packetType == PacketTypeGuildMarkChanged
                 || packetType == PacketTypeThrowGrenade
                 || packetType == PacketTypeUserScore;
         }
@@ -538,6 +544,9 @@ namespace HaCreator.MapSimulator.Managers
                 "224" or "usereffect" or "officialeffect" => AssignPacketType(PacketTypeEffect, out packetType),
                 "225" or "tempset" or "tempstatset" or "temporarystatset" => AssignPacketType(PacketTypeTemporaryStatSet, out packetType),
                 "226" or "tempreset" or "tempstatreset" or "temporarystatreset" => AssignPacketType(PacketTypeTemporaryStatReset, out packetType),
+                "227" or "receivehp" or "hp" => AssignPacketType(PacketTypeReceiveHp, out packetType),
+                "228" or "guildname" or "guildnamechanged" => AssignPacketType(PacketTypeGuildNameChanged, out packetType),
+                "229" or "guildmark" or "guildmarkchanged" => AssignPacketType(PacketTypeGuildMarkChanged, out packetType),
                 "230" or "throwgrenade" or "grenade" => AssignPacketType(PacketTypeThrowGrenade, out packetType),
                 "354" or "userscore" or "score" => AssignPacketType(PacketTypeUserScore, out packetType),
                 _ => int.TryParse(normalized, out packetType)
@@ -574,6 +583,9 @@ namespace HaCreator.MapSimulator.Managers
                 PacketTypeEffect => "usereffect (224)",
                 PacketTypeTemporaryStatSet => "tempstatset (225)",
                 PacketTypeTemporaryStatReset => "tempstatreset (226)",
+                PacketTypeReceiveHp => "receivehp (227)",
+                PacketTypeGuildNameChanged => "guildname (228)",
+                PacketTypeGuildMarkChanged => "guildmark (229)",
                 PacketTypeThrowGrenade => "throwgrenade (230)",
                 PacketTypeUserScore => "userscore (354)",
                 _ => packetType.ToString()

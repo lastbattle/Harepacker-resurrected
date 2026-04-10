@@ -785,7 +785,11 @@ namespace HaCreator.MapSimulator.Fields
 
             foreach ((RemoteOpenGateKey key, RemoteOpenGateRuntime runtime) in _remoteOpenGateRuntimes)
             {
-                runtime.Portal.LinkedPortalId = _remoteOpenGateRuntimes.TryGetValue(new RemoteOpenGateKey(key.OwnerCharacterId, !key.IsFirstSlot), out RemoteOpenGateRuntime target)
+                RemoteOpenGateKey targetKey = new(key.OwnerCharacterId, !key.IsFirstSlot);
+                bool hasTargetState = _remoteOpenGates.TryGetValue(targetKey, out RemoteOpenGateState targetState);
+                runtime.Portal.LinkedPortalId = _remoteOpenGates.TryGetValue(key, out RemoteOpenGateState state)
+                    && ShouldLinkRemoteOpenGatePortal(state.Phase, hasTargetState, targetState.Phase)
+                    && _remoteOpenGateRuntimes.TryGetValue(targetKey, out RemoteOpenGateRuntime target)
                     ? target.Portal.Id
                     : null;
             }
@@ -1851,6 +1855,16 @@ namespace HaCreator.MapSimulator.Fields
             };
         }
 
+        private static bool ShouldLinkRemoteOpenGatePortal(
+            RemoteOpenGateVisualPhase phase,
+            bool hasPartner,
+            RemoteOpenGateVisualPhase partnerPhase)
+        {
+            return phase != RemoteOpenGateVisualPhase.Removing
+                   && hasPartner
+                   && partnerPhase != RemoteOpenGateVisualPhase.Removing;
+        }
+
         private static BaseDXDrawableItem CreateRemoteOpenGateDrawable(
             RemoteOpenGateState state,
             bool hasPartner,
@@ -2822,6 +2836,14 @@ namespace HaCreator.MapSimulator.Fields
         {
             RemoteOpenGateState state = new(0, 0, 0, 0, 0, false, 0, phase, 0);
             return ResolveRemoteOpenGateVisualMode(state, hasPartner);
+        }
+
+        internal static bool ShouldLinkRemoteOpenGatePortalForTesting(
+            RemoteOpenGateVisualPhase phase,
+            bool hasPartner,
+            RemoteOpenGateVisualPhase partnerPhase)
+        {
+            return ShouldLinkRemoteOpenGatePortal(phase, hasPartner, partnerPhase);
         }
     }
 }

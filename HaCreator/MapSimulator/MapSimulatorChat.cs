@@ -297,6 +297,14 @@ namespace HaCreator.MapSimulator
                     if (_isWhisperTargetPickerActive)
                     {
                         if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                            && _whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.ComboBox
+                            && _isWhisperTargetPickerComboDropdownOpen
+                            && AcceptWhisperTargetPickerModalComboSelection())
+                        {
+                            return true;
+                        }
+
+                        if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
                             && _whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons
                             && _whisperTargetPickerModalButtonFocus == WhisperTargetPickerModalButtonFocus.Close)
                         {
@@ -404,7 +412,12 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    OpenWhisperTargetPickerModalComboDropdown();
+                    if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                        && !_isWhisperTargetPickerComboDropdownOpen)
+                    {
+                        return true;
+                    }
+
                     MoveWhisperTargetPickerSelection(-1, WhisperTargetPickerNavigationMode.Step);
                     return true;
                 }
@@ -475,13 +488,8 @@ namespace HaCreator.MapSimulator
                     if (_whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons)
                     {
                         MoveWhisperTargetPickerModalButtonFocus(-1);
+                        return true;
                     }
-                    else
-                    {
-                        ToggleWhisperTargetPickerModalComboDropdown();
-                    }
-
-                    return true;
                 }
 
                 if (oldKeyboardState.IsKeyUp(Keys.Left))
@@ -515,13 +523,8 @@ namespace HaCreator.MapSimulator
                     if (_whisperTargetPickerModalFocusTarget == WhisperTargetPickerModalFocusTarget.FooterButtons)
                     {
                         MoveWhisperTargetPickerModalButtonFocus(1);
+                        return true;
                     }
-                    else
-                    {
-                        ToggleWhisperTargetPickerModalComboDropdown();
-                    }
-
-                    return true;
                 }
 
                 if (oldKeyboardState.IsKeyUp(Keys.Right))
@@ -618,8 +621,17 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    OpenWhisperTargetPickerModalComboDropdown();
-                    MoveWhisperTargetPickerSelectionToBoundary(moveToLast: false);
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                        || _isWhisperTargetPickerComboDropdownOpen)
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                        MoveWhisperTargetPickerSelectionToBoundary(moveToLast: false);
+                    }
+                    else
+                    {
+                        _cursorPosition = 0;
+                    }
+
                     return true;
                 }
 
@@ -632,8 +644,17 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    OpenWhisperTargetPickerModalComboDropdown();
-                    MoveWhisperTargetPickerSelectionToBoundary(moveToLast: true);
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                        || _isWhisperTargetPickerComboDropdownOpen)
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                        MoveWhisperTargetPickerSelectionToBoundary(moveToLast: true);
+                    }
+                    else
+                    {
+                        _cursorPosition = _inputText.Length;
+                    }
+
                     return true;
                 }
 
@@ -645,8 +666,13 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    OpenWhisperTargetPickerModalComboDropdown();
-                    PageWhisperTargetPickerSelection(-1);
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                        || _isWhisperTargetPickerComboDropdownOpen)
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                        PageWhisperTargetPickerSelection(-1);
+                    }
+
                     return true;
                 }
             }
@@ -655,8 +681,13 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    OpenWhisperTargetPickerModalComboDropdown();
-                    PageWhisperTargetPickerSelection(1);
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                        || _isWhisperTargetPickerComboDropdownOpen)
+                    {
+                        OpenWhisperTargetPickerModalComboDropdown();
+                        PageWhisperTargetPickerSelection(1);
+                    }
+
                     return true;
                 }
             }
@@ -2069,6 +2100,23 @@ namespace HaCreator.MapSimulator
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
             _isWhisperTargetPickerComboDropdownOpen = !_isWhisperTargetPickerComboDropdownOpen
                 && _whisperCandidates.Count > 0;
+        }
+
+        internal bool AcceptWhisperTargetPickerModalComboSelection()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen
+                || _whisperTargetPickerSelectionIndex < 0
+                || _whisperTargetPickerSelectionIndex >= _whisperCandidates.Count)
+            {
+                return false;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+            SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex]);
+            return true;
         }
 
         internal void ToggleWhisperTargetPickerModalFocusTarget()

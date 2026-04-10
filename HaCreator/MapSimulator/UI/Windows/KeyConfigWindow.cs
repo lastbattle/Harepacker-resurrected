@@ -1192,36 +1192,41 @@ namespace HaCreator.MapSimulator.UI
         {
             const int leftX = 18;
             const int rightX = 314;
-            const int topY = 72;
+            const int topY = 68;
             const int rowWidth = 272;
-            const int rowHeight = 24;
-            const int rowGap = 28;
+            const int rowHeight = 18;
+            const int rowGap = 20;
 
             (InputAction action, string label, int paletteSlotId, int clientFunctionId)[] mainRows =
             {
                 (InputAction.Jump, "Jump", 53, 53),
                 (InputAction.Attack, "Attack", 52, 52),
                 (InputAction.Pickup, "Pick Up", 50, 50),
+                (InputAction.Interact, "NPC Chat / Harvest", 54, 54),
+                (InputAction.ToggleEquip, "Equip", 0, 0),
+                (InputAction.ToggleInventory, "Inventory", 1, 1),
+                (InputAction.ToggleStats, "Char Stats", 2, 2),
+                (InputAction.ToggleSkills, "Skill Tab", 3, 3),
+                (InputAction.ToggleQuest, "Quest Log", 8, 8),
+                (InputAction.ToggleMinimap, "Mini Map", 7, 7),
+                (InputAction.ToggleKeyConfig, "Key Config", 9, 9),
+                (InputAction.ToggleQuickSlot, "Toggle Quick Slot", 15, 15),
+                (InputAction.ToggleChat, "Chat Window", 16, 16),
                 (InputAction.Skill1, "Skill 1", -1, -1),
                 (InputAction.Skill2, "Skill 2", -1, -1),
                 (InputAction.Skill3, "Skill 3", -1, -1),
                 (InputAction.Skill4, "Skill 4", -1, -1),
-                (InputAction.Interact, "NPC Chat / Harvest", 54, 54),
-                (InputAction.ToggleInventory, "Inventory", 1, 1),
-                (InputAction.ToggleEquip, "Equip", 0, 0),
                 (InputAction.Skill5, "Skill 5", -1, -1),
                 (InputAction.Skill6, "Skill 6", -1, -1),
                 (InputAction.Skill7, "Skill 7", -1, -1),
                 (InputAction.Skill8, "Skill 8", -1, -1),
-                (InputAction.ToggleQuest, "Quest Log", 8, 8),
-                (InputAction.ToggleStats, "Char Stats", 2, 2),
-                (InputAction.ToggleMinimap, "Mini Map", 7, 7),
             };
 
+            int rowsPerColumn = (mainRows.Length + 1) / 2;
             for (int i = 0; i < mainRows.Length; i++)
             {
-                int column = i < 8 ? 0 : 1;
-                int row = i % 8;
+                int column = i / rowsPerColumn;
+                int row = i % rowsPerColumn;
                 int x = column == 0 ? leftX : rightX;
                 int y = topY + (row * rowGap);
                 _bindingRows.Add(new BindingRow(mainRows[i].action, mainRows[i].label, new Rectangle(x, y, rowWidth, rowHeight), mainRows[i].paletteSlotId, mainRows[i].clientFunctionId));

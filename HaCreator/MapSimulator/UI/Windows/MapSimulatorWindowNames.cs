@@ -104,6 +104,7 @@ namespace HaCreator.MapSimulator.UI
         public const string RepairDurability = "RepairDurability";
         public const string PacketOwnedRewardResultNotice = "PacketOwnedRewardResultNotice";
         public const string RandomMesoBag = "RandomMesoBag";
+        public const string RandomMorph = "RandomMorph";
         public const string QuestDelivery = "QuestDelivery";
         public const string QuestTimer = "QuestTimer";
         public const string QuestTimerAction = "QuestTimerAction";

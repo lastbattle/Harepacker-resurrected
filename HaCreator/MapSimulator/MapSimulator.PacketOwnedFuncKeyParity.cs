@@ -133,6 +133,7 @@ namespace HaCreator.MapSimulator
             Event = 10,
             Ranking = 11,
             FamilyTree = 12,
+            QuestAlarm = 13,
         }
 
         internal enum PacketOwnedRawChatOwner
@@ -1308,6 +1309,10 @@ namespace HaCreator.MapSimulator
                 case PacketOwnedRawFunctionOwner.FamilyTree:
                     ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyTree);
                     return true;
+                case PacketOwnedRawFunctionOwner.QuestAlarm:
+                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.QuestAlarm, () =>
+                        ShowUtilityWindow(MapSimulatorWindowNames.QuestAlarm, "packet-owned-funckey:20"));
+                    return true;
                 default:
                     break;
             }
@@ -1472,6 +1477,7 @@ namespace HaCreator.MapSimulator
                 6 => PacketOwnedRawFunctionOwner.Messenger,
                 17 => PacketOwnedRawFunctionOwner.SocialListGuild,
                 19 => PacketOwnedRawFunctionOwner.SocialListParty,
+                20 => PacketOwnedRawFunctionOwner.QuestAlarm,
                 14 => PacketOwnedRawFunctionOwner.ShortcutMenu,
                 21 => PacketOwnedRawFunctionOwner.PartySearch,
                 22 => PacketOwnedRawFunctionOwner.Profession,

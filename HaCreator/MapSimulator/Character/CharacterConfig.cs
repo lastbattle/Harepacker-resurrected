@@ -215,12 +215,12 @@ namespace HaCreator.MapSimulator.Character
 
             // Copy learned skill levels
             SkillLevels.Clear();
-            foreach (var skill in skillManager.GetLearnedSkills())
+            foreach (int skillId in skillManager.GetLearnedSkillRecordIds())
             {
-                int level = skillManager.GetSkillLevel(skill.SkillId);
+                int level = skillManager.GetSkillLevel(skillId);
                 if (level > 0)
                 {
-                    SkillLevels[skill.SkillId] = level;
+                    SkillLevels[skillId] = level;
                 }
             }
         }

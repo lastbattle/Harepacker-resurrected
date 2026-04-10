@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using HaCreator.MapSimulator;
+using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Character.Skills;
 
 namespace HaCreator.MapSimulator.Character
@@ -319,6 +320,54 @@ namespace HaCreator.MapSimulator.Character
                 default:
                     return false;
             }
+        }
+
+        public bool TryApplyRemoteAffectedAreaPlayerSkill(
+            SkillData skill,
+            SkillLevelData levelData,
+            int currentTime)
+        {
+            if (_player == null || skill == null || levelData == null)
+            {
+                return false;
+            }
+
+            int propPercent = levelData.Prop > 0 ? Math.Clamp(levelData.Prop, 0, 100) : 100;
+            if (propPercent <= 0 || propPercent < 100 && Random.Shared.Next(100) >= propPercent)
+            {
+                return false;
+            }
+
+            IReadOnlyList<RemoteHostilePlayerAreaStatus> statuses =
+                RemoteAffectedAreaSupportResolver.ResolveHostilePlayerAreaStatuses(skill, levelData);
+            if (statuses.Count == 0)
+            {
+                return false;
+            }
+
+            bool applied = false;
+            for (int i = 0; i < statuses.Count; i++)
+            {
+                RemoteHostilePlayerAreaStatus status = statuses[i];
+                if (status.TickIntervalMs > 0)
+                {
+                    ApplyPeriodicDamageStatus(
+                        status.Effect,
+                        status.DurationMs,
+                        currentTime,
+                        status.Value,
+                        status.TickIntervalMs,
+                        status.RemainingCount);
+                }
+                else
+                {
+                    ApplyStatus(status.Effect, status.DurationMs, currentTime, status.Value);
+                }
+
+                applied = true;
+            }
+
+            return applied;
         }
 
         internal static bool ShouldResistMobSkillStatus(

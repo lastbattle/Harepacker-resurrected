@@ -170,24 +170,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AccountMoreInfoOwnerSnapshot snapshot = GetSnapshot();
-            Vector2 origin = new(Position.X + ContentLeft, Position.Y + ContentTop);
             DrawComboBox(sprite, AreaGroupRect, ResolveComboBoxDisplayText(snapshot.AreaGroupText, snapshot.AreaGroup), false);
             DrawComboBox(sprite, AreaDetailRect, ResolveComboBoxDisplayText(snapshot.AreaDetailText, snapshot.AreaDetail), false);
 
-            DrawComboBox(sprite, BirthYearRect, snapshot.BirthYear.ToString("D4"), false);
-            DrawComboBox(sprite, BirthMonthRect, snapshot.BirthMonth.ToString("D2"), false);
-            DrawComboBox(sprite, BirthDayRect, snapshot.BirthDay.ToString("D2"), false);
+            DrawComboBox(sprite, BirthYearRect, Managers.AccountMoreInfoRuntime.FormatBirthdayComboText(snapshot.BirthYear), false);
+            DrawComboBox(sprite, BirthMonthRect, Managers.AccountMoreInfoRuntime.FormatBirthdayComboText(snapshot.BirthMonth), false);
+            DrawComboBox(sprite, BirthDayRect, Managers.AccountMoreInfoRuntime.FormatBirthdayComboText(snapshot.BirthDay), false);
 
             DrawCheckboxGrid(sprite, snapshot.PlayStyleLabels, snapshot.PlayStyleSelections, PlayStyleCheckboxPositions);
 
             DrawCheckboxGrid(sprite, snapshot.ActivityLabels, snapshot.ActivitySelections, ActivityCheckboxPositions);
-
-            DrawWindowText(sprite, snapshot.StatusText, origin + new Vector2(0f, 246f), new Color(210, 220, 255), SmallTextScale, 360f);
-            DrawWindowText(sprite, snapshot.GenderStatusText, origin + new Vector2(0f, 272f), new Color(210, 210, 210), SmallTextScale, 360f);
-            if (!string.IsNullOrWhiteSpace(snapshot.LastDispatchText))
-            {
-                DrawWindowText(sprite, snapshot.LastDispatchText, origin + new Vector2(0f, 292f), new Color(255, 220, 150), 0.36f, 360f);
-            }
         }
 
         private AccountMoreInfoOwnerSnapshot GetSnapshot()

@@ -29,36 +29,45 @@ namespace HaCreator.MapSimulator.UI
 
             if (!entry.InGuild)
             {
-                lines.Add("Current: Join a guild.");
+                lines.Add(SkillTooltipClientText.FormatCurrentLevelHeader(0));
+                lines.Add("Join a guild.");
             }
             else if (!string.IsNullOrWhiteSpace(entry.CurrentEffectDescription))
             {
-                lines.Add($"Current: {entry.CurrentEffectDescription}");
+                lines.Add(SkillTooltipClientText.FormatCurrentLevelHeader(entry.CurrentLevel));
+                lines.Add(entry.CurrentEffectDescription);
             }
             else if (entry.CurrentLevel > 0)
             {
-                lines.Add($"Current: Lv. {entry.CurrentLevel}/{entry.MaxLevel}");
+                lines.Add(SkillTooltipClientText.FormatCurrentLevelHeader(entry.CurrentLevel));
+                lines.Add($"Lv. {entry.CurrentLevel}/{entry.MaxLevel}");
             }
             else
             {
-                lines.Add("Current: Not learned.");
+                lines.Add(SkillTooltipClientText.FormatCurrentLevelHeader(0));
+                lines.Add("Not learned.");
             }
 
             if (!entry.InGuild)
             {
-                lines.Add("Next: Requires guild membership.");
+                lines.Add(SkillTooltipClientText.FormatNextLevelHeader(1));
+                lines.Add("Requires guild membership.");
             }
             else if (entry.CurrentLevel >= entry.MaxLevel)
             {
-                lines.Add("Next: Max level reached.");
+                lines.Add(SkillTooltipClientText.FormatNextLevelHeader(entry.MaxLevel));
+                lines.Add("Max level reached.");
             }
             else if (!string.IsNullOrWhiteSpace(entry.NextEffectDescription))
             {
-                lines.Add($"Next: {entry.NextEffectDescription}");
+                lines.Add(SkillTooltipClientText.FormatNextLevelHeader(ResolveNextLevel(entry)));
+                lines.Add(entry.NextEffectDescription);
             }
             else
             {
-                lines.Add($"Next: Lv. {Math.Min(entry.MaxLevel, entry.CurrentLevel + 1)}/{entry.MaxLevel}");
+                int nextLevel = ResolveNextLevel(entry);
+                lines.Add(SkillTooltipClientText.FormatNextLevelHeader(nextLevel));
+                lines.Add($"Lv. {nextLevel}/{entry.MaxLevel}");
             }
 
             if (entry.RequiredGuildLevel > 0 && entry.CurrentLevel < entry.MaxLevel)
@@ -137,6 +146,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"{durationMinutes}m";
+        }
+
+        private static int ResolveNextLevel(GuildSkillEntrySnapshot entry)
+        {
+            if (entry == null)
+            {
+                return 1;
+            }
+
+            int maxLevel = Math.Max(1, entry.MaxLevel);
+            return Math.Clamp(entry.CurrentLevel <= 0 ? 1 : entry.CurrentLevel + 1, 1, maxLevel);
         }
 
         private static string FormatMeso(int amount)

@@ -166,6 +166,8 @@ namespace HaCreator.MapSimulator.Managers
                 "couplechairremove" => (int)RemoteUserPacketType.UserCoupleChairRecordRemove,
                 "chat" or "onchat" => (int)RemoteUserPacketType.UserChat,
                 "outsidechat" or "chatoutside" or "onchatoutside" => (int)RemoteUserPacketType.UserChatFromOutsideMap,
+                "tutorhire" or "hiretutor" or "onhiretutor" => (int)RemoteUserPacketType.UserTutorHire,
+                "tutormsg" or "tutormessage" or "ontutormsg" => (int)RemoteUserPacketType.UserTutorMessage,
                 "enter" => (int)RemoteUserPacketType.UserEnterField,
                 "leave" => (int)RemoteUserPacketType.UserLeaveField,
                 "move" => (int)RemoteUserPacketType.UserMove,
@@ -226,6 +228,8 @@ namespace HaCreator.MapSimulator.Managers
                 (int)RemoteUserPacketType.UserThrowGrenadeOfficial => $"UserThrowGrenadeOfficial (0x{packetType:X})",
                 (int)RemoteUserPacketType.UserChat => "UserChat (CUser::OnChat)",
                 (int)RemoteUserPacketType.UserChatFromOutsideMap => "UserChatFromOutsideMap (CUser::OnChat)",
+                (int)RemoteUserPacketType.UserTutorHire => "UserTutorHire (remote CTutor hire)",
+                (int)RemoteUserPacketType.UserTutorMessage => "UserTutorMessage (remote CTutor message)",
                 _ => Enum.IsDefined(typeof(RemoteUserPacketType), packetType)
                     ? $"{(RemoteUserPacketType)packetType} (0x{packetType:X})"
                     : $"packet {packetType}"

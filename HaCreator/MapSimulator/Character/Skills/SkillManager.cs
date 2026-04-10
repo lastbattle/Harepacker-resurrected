@@ -385,6 +385,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int MovingShootAttackActionTypeMelee = 0;
         private const int MovingShootAttackActionTypeShoot = 1;
         private const int MovingShootAttackActionTypeMagic = 2;
+        private const int MovingShootAttackActionTypeUnsupported = -1;
         private const int MovingShootActionSpeedMinDegree = 2;
         private const int MovingShootActionSpeedMaxDegree = 10;
         private const int ClientMovingShootBaseSpeedOffsetSkillId = 4001334;
@@ -661,8 +662,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ["evaR"] = new[] { "EVA" },
                 ["er"] = new[] { "EVA" },
                 ["speed"] = new[] { "Speed" },
+                ["speedMax"] = new[] { "Speed" },
+                ["psdSpeed"] = new[] { "Speed" },
                 ["indieSpeed"] = new[] { "Speed" },
                 ["jump"] = new[] { "Jump" },
+                ["psdJump"] = new[] { "Jump" },
                 ["indieJump"] = new[] { "Jump" },
                 ["str"] = new[] { StrengthBuffLabel },
                 ["strX"] = new[] { StrengthBuffLabel },
@@ -753,7 +757,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public const int FUNCTION_SLOT_COUNT = 12;     // F1-F12 (indices 8-19)
         public const int CTRL_SLOT_COUNT = 8;          // Ctrl+1-8 (indices 20-27)
         public const int TOTAL_SLOT_COUNT = PRIMARY_SLOT_COUNT + FUNCTION_SLOT_COUNT + CTRL_SLOT_COUNT;
-        private const int DefaultBulletAfterimageDurationMs = 180;
+        private const int ClientBulletAfterimageIntervalMs = 200;
+        private const int ClientBulletAfterimageStartAlpha = 200;
 
         // Slot index offsets
         public const int FUNCTION_SLOT_OFFSET = PRIMARY_SLOT_COUNT;
@@ -977,7 +982,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds,
             Func<int, int, bool> requestClientSkillCancel)
         {
-            if (expirations == null || expirations.Count == 0)
+            if (expirations == null
+                || expirations.Count == 0
+                || tryPrimeExpiredLocalSummon == null)
             {
                 return 0;
             }
@@ -992,8 +999,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                if (tryPrimeExpiredLocalSummon != null
-                    && !tryPrimeExpiredLocalSummon(expiration.TimerKey, expiration.ExpireTime))
+                if (!tryPrimeExpiredLocalSummon(expiration.TimerKey, expiration.ExpireTime))
                 {
                     continue;
                 }
@@ -4019,26 +4025,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool IsMechanicVehicleActionName(string actionName)
         {
-            if (string.IsNullOrWhiteSpace(actionName))
-            {
-                return false;
-            }
-
-            return actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("flamethrower", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("rbooster", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("gatlingshot", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("drillrush", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("earthslug", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("rpunch", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("mbooster", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("msummon", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "mRush", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "herbalism_mechanic", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase);
+            return ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(
+                actionName,
+                includeTransformStates: true);
         }
 
         private void UpdateClientOwnedVehicleTamingMobState(int currentTime)
@@ -6173,7 +6162,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return currentActionMountItemId;
             }
 
-            if (ClientShootAttackFamilyResolver.IsMountedBodyRelMoveVehicle(mountedStateMountItemId))
+            if (ClientShootAttackFamilyResolver.IsClientFallbackShootAttackVehicle(mountedStateMountItemId))
             {
                 return mountedStateMountItemId;
             }
@@ -6400,6 +6389,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             out int attackActionType)
         {
             attackActionType = default;
+            if (currentWeaponAttackActionType is < 1 or > 10)
+            {
+                // `get_random_shoot_attack_action(...)` rejects values outside [1,10]
+                // before consulting the action table, so explicit unsupported avatar
+                // metadata must not fall back to a generic ranged owner.
+                attackActionType = MovingShootAttackActionTypeUnsupported;
+                return true;
+            }
+
             if (IsClientMovingShootShootAttackActionType(currentWeaponAttackActionType))
             {
                 attackActionType = currentWeaponAttackActionType;
@@ -6528,7 +6526,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private int ResolveQueuedMovingShootActionSpeed(SkillData skill)
         {
-            int weaponAttackSpeed = Math.Max(0, _player?.Build?.GetWeapon()?.AttackSpeed ?? 0);
+            int weaponAttackSpeed = ResolveEffectiveWeaponAttackSpeed(_player?.Build);
             int boosterAttackSpeedDelta = GetBuffStat(BuffStatType.Booster);
             int auraBoosterDelta = ResolveQueuedMovingShootAuraBoosterDelta(_buffs);
             return ResolveQueuedMovingShootActionSpeedDegree(
@@ -6540,7 +6538,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal int ResolveSharedSkillUseDelayRate(int skillId)
         {
-            int weaponAttackSpeed = Math.Max(0, _player?.Build?.GetWeapon()?.AttackSpeed ?? 0);
+            int weaponAttackSpeed = ResolveEffectiveWeaponAttackSpeed(_player?.Build);
             int boosterAttackSpeedDelta = GetBuffStat(BuffStatType.Booster);
             int auraBoosterDelta = ResolveQueuedMovingShootAuraBoosterDelta(_buffs);
             int actionSpeedDegree = ResolveQueuedMovingShootActionSpeedDegree(
@@ -6550,6 +6548,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 auraBoosterDelta: auraBoosterDelta);
             actionSpeedDegree = Math.Clamp(actionSpeedDegree, MovingShootActionSpeedMinDegree, MovingShootActionSpeedMaxDegree);
             return (1000 * (actionSpeedDegree + 10)) / 16;
+        }
+
+        internal static int ResolveEffectiveWeaponAttackSpeed(CharacterBuild build)
+        {
+            if (build?.GetWeapon() == null)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, build.GetEffectiveWeaponAttackSpeed());
         }
 
         internal static int ResolveQueuedMovingShootAuraBoosterDelta(IEnumerable<ActiveBuff> activeBuffs)
@@ -6843,7 +6851,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool IsClientMovingShootShootAttackActionType(int attackActionType)
         {
             return attackActionType == MovingShootAttackActionTypeShoot
-                   || attackActionType is 3 or 4 or 9 or 11 or 12;
+                   || attackActionType is 3 or 4 or 9;
         }
 
         private static ClientRandomMovingShootActionFamily ResolveClientRandomMovingShootActionFamily(
@@ -6852,6 +6860,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             int? currentRawActionCode,
             string currentWeaponType)
         {
+            if (queuedAttackActionType is > 10)
+            {
+                return ClientRandomMovingShootActionFamily.Unsupported;
+            }
+
             ClientRandomMovingShootActionFamily requiredFamily = ResolveRequiredClientRandomMovingShootActionFamily(queuedAttackActionType);
             if (IsExactClientMovingShootShootRow(requiredFamily))
             {
@@ -6957,6 +6970,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 3 => ClientRandomMovingShootActionFamily.Shoot1,
                 4 => ClientRandomMovingShootActionFamily.Shoot2,
                 9 => ClientRandomMovingShootActionFamily.GunShoot,
+                MovingShootAttackActionTypeUnsupported => ClientRandomMovingShootActionFamily.Unsupported,
                 MovingShootAttackActionTypeMagic => ClientRandomMovingShootActionFamily.Unsupported,
                 MovingShootAttackActionTypeMelee => ClientRandomMovingShootActionFamily.OneHandedSwing,
                 _ => ClientRandomMovingShootActionFamily.None
@@ -11657,7 +11671,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _player?.Level ?? 1,
                 flip: !presentationFacingRight,
                 skill.MaxLevel);
-            int bulletItemId = ResolveProjectileVisualItemId(projectile);
+            int projectileVisualItemId = ResolveProjectileVisualItemId(projectile);
+            int bulletItemId = ResolveBulletAnimationVisualItemId(projectile, projectileVisualItemId);
             BulletAnimationOwnerKind kind = ResolveBulletAnimationOwnerKind(skill, bulletItemId, ballUol);
             if (kind == BulletAnimationOwnerKind.Magic && !ShouldRegisterMagicBulletAnimation(ballUol))
             {
@@ -11665,7 +11680,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             SkillAnimation animation = kind == BulletAnimationOwnerKind.Normal
-                ? ResolveProjectileVisualAnimation(projectile) ?? ResolveSkillBallAnimation(skill, projectile)
+                ? ResolveNormalBulletAnimation(projectile, bulletItemId) ?? ResolveSkillBallAnimation(skill, projectile)
                 : ResolveSkillBallAnimation(skill, projectile);
             Vector2 destinationPoint = ResolveBulletAnimationDestinationPoint(projectile);
             Vector2 targetPoint = projectile.PreferredTargetPosition ?? destinationPoint;
@@ -11675,7 +11690,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Kind = kind,
                 StartTime = startTime,
                 EndTime = startTime + Math.Max(1, (int)MathF.Round(projectile.Data.LifeTime)),
-                SourcePoint = new Vector2(projectile.OwnerX, projectile.OwnerY),
+                SourcePoint = ResolveBulletAnimationSourcePoint(projectile),
                 DestinationPoint = destinationPoint,
                 TargetPoint = targetPoint,
                 Z = ResolveBulletAnimationZ(animation),
@@ -11732,6 +11747,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             return !string.IsNullOrWhiteSpace(ballUol);
         }
 
+        internal static Vector2 ResolveBulletAnimationSourcePoint(ActiveProjectile projectile)
+        {
+            if (projectile == null)
+            {
+                return Vector2.Zero;
+            }
+
+            return new Vector2(projectile.X, projectile.Y);
+        }
+
         internal static bool ShouldEnableMagicBulletAfterimage(
             BulletAnimationOwnerKind kind,
             string ballUol,
@@ -11740,6 +11765,37 @@ namespace HaCreator.MapSimulator.Character.Skills
             return kind == BulletAnimationOwnerKind.Magic
                    && ShouldRegisterMagicBulletAnimation(ballUol)
                    && animation?.Frames?.Count > 0;
+        }
+
+        internal static int ResolveBulletAnimationVisualItemId(ActiveProjectile projectile, int fallbackVisualItemId)
+        {
+            if (projectile == null || projectile.IsExploding)
+            {
+                return 0;
+            }
+
+            ShootAmmoSelection selection = projectile.ResolvedShootAmmoSelection;
+            if (selection?.HasCashAmmo == true)
+            {
+                return selection.CashItemId;
+            }
+
+            if (selection?.HasUseAmmo == true)
+            {
+                return selection.UseItemId;
+            }
+
+            if (selection?.CashItemId > 0)
+            {
+                return selection.CashItemId;
+            }
+
+            if (selection?.UseItemId > 0)
+            {
+                return selection.UseItemId;
+            }
+
+            return fallbackVisualItemId;
         }
 
         internal static Vector2 ResolveBulletAnimationDestinationPoint(ActiveProjectile projectile)
@@ -11826,6 +11882,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 projectile.SkillLevel,
                 _player?.Level ?? 1,
                 skill?.MaxLevel ?? 0);
+        }
+
+        private SkillAnimation ResolveNormalBulletAnimation(ActiveProjectile projectile, int bulletItemId)
+        {
+            if (bulletItemId > 0)
+            {
+                SkillAnimation itemAnimation = _loader?.LoadItemBulletAnimation(bulletItemId);
+                if (itemAnimation?.Frames?.Count > 0)
+                {
+                    return itemAnimation;
+                }
+            }
+
+            return ResolveProjectileVisualAnimation(projectile);
         }
 
         internal static Vector2? ResolveDeferredProjectileTargetPositionSnapshot(
@@ -12899,7 +12969,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Position = owner.CurrentPosition,
                 Flip = owner.FacingRight ^ frame.Flip,
                 StartTime = currentTime,
-                Duration = Math.Max(updateInterval, DefaultBulletAfterimageDurationMs),
+                Duration = updateInterval,
                 AlphaStart = ResolveBulletAfterimageStartAlpha(frame),
                 AlphaEnd = 0
             });
@@ -12907,12 +12977,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static int ResolveBulletAfterimageUpdateInterval(SkillFrame frame)
         {
-            return Math.Max(1, frame?.Delay ?? 1);
+            return ClientBulletAfterimageIntervalMs;
         }
 
         internal static int ResolveBulletAfterimageStartAlpha(SkillFrame frame)
         {
-            return Math.Clamp(frame?.AlphaStart ?? 160, 0, 160);
+            return ClientBulletAfterimageStartAlpha;
         }
 
         public IReadOnlyList<ActiveProjectile> ActiveProjectiles => _projectiles;
@@ -16462,6 +16532,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && summon.AssistType == SummonAssistType.Support
                    && !summon.IsPendingRemoval
                    && !summon.IsExpired(currentTime)
+                   && !IsSupportSummonSuspended(summon, currentTime)
                    && SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData);
         }
 
@@ -19981,7 +20052,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ShouldUseDirectBuffIconFamily(
                     levelData,
                     levelData.Jump > 0,
-                    "jump"),
+                    "jump", "psdJump"),
                 "Jump");
             Track(
                 HasAuthoredTemporaryStatProperty(levelData, "incCraft"),
@@ -20032,6 +20103,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || string.Equals(propertyName, "psdSpeed", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "indieSpeed", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "jump", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(propertyName, "psdJump", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(propertyName, "incCraft", StringComparison.OrdinalIgnoreCase);
         }
 
@@ -20724,6 +20796,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarOverlaySecondaryEffect);
             AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarUnderFaceEffect);
             AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarUnderFaceSecondaryEffect);
+            AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarLadderEffect);
+            AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarOverlayFinishEffect);
+            AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarUnderFaceFinishEffect);
+            AppendPersistentAvatarEffectSignature(ref hash, skill.AvatarLadderFinishEffect);
+            hash.Add(skill.HideAvatarEffectOnLadderOrRope);
+            hash.Add(skill.HideAvatarEffectOnRotateAction);
             return hash.ToHashCode();
         }
 
@@ -22740,7 +22818,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void DrawProjectiles(SpriteBatch spriteBatch, int mapShiftX, int mapShiftY,
             int centerX, int centerY, int currentTime)
         {
-            foreach (ActiveBulletAnimationOwner owner in _bulletAnimationOwners)
+            foreach (ActiveBulletAnimationOwner owner in _bulletAnimationOwners
+                         .OrderBy(static owner => owner?.Presentation?.Z ?? 0)
+                         .ThenBy(static owner => owner?.Id ?? 0))
             {
                 DrawBulletAnimationOwner(spriteBatch, owner, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             }
@@ -23945,6 +24025,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (GetSkillLevel(skill.SkillId) > 0)
                 {
                     yield return skill;
+                }
+            }
+        }
+
+        public IEnumerable<int> GetLearnedSkillRecordIds()
+        {
+            foreach (KeyValuePair<int, int> entry in _skillLevels)
+            {
+                if (entry.Key > 0 && entry.Value > 0)
+                {
+                    yield return entry.Key;
                 }
             }
         }

@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _guildName = "Maple GM";
         private string _allianceName = "Maple Union";
         private int _channel = 1;
+        private int _clientPartyId;
         private bool _friendOnlineOnly;
         private bool _hasGuildMembership;
         private bool _forceNoGuildMembership;
@@ -64,6 +65,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal SocialListTab CurrentTab => _currentTab;
         internal int TrackedEntriesCount => _trackedEntriesCount;
         internal Action<string, int> SocialChatObserved { get; set; }
+        internal int ClientPartyId => _clientPartyId;
 
         internal bool HasLocalPartyLeader()
         {
@@ -316,6 +318,27 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 return true;
+            }
+
+            return false;
+        }
+
+        internal bool IsTrackedPartyActor(int actorId)
+        {
+            if (actorId <= 0
+                || !_entriesByTab.TryGetValue(SocialListTab.Party, out List<SocialEntryState> entries)
+                || entries == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                SocialEntryState entry = entries[i];
+                if (entry?.MemberId == actorId)
+                {
+                    return true;
+                }
             }
 
             return false;

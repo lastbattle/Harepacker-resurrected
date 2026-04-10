@@ -2402,6 +2402,23 @@ namespace HaCreator.MapSimulator
 
 
             _chat.CommandHandler.RegisterCommand(
+                "dropmeso",
+                "Drop mesos from the local inventory balance through the field-rule drop seam",
+                "/dropmeso <amount>",
+                args =>
+                {
+                    if (args.Length == 0 || !long.TryParse(args[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out long amount))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /dropmeso <amount>");
+                    }
+
+                    return HandleLocalMesoDropRequest(amount, out string message)
+                        ? ChatCommandHandler.CommandResult.Ok(message)
+                        : ChatCommandHandler.CommandResult.Error(message);
+                });
+
+
+            _chat.CommandHandler.RegisterCommand(
 
                 "wedding",
 
@@ -6341,6 +6358,105 @@ namespace HaCreator.MapSimulator
                 });
 
 
+            _chat.CommandHandler.RegisterCommand(
+                "cakepie",
+                "Inspect or drive the Cake Pie event timerboard and item-info UI",
+                "/cakepie [status|timer <townui|ready|start|cake|pie> <seconds>|timer close|iteminfo <open|close>|set <fieldId> <cake|pie|itemId> <percent> <eventStatus> <winnerTeam>|clear [fieldId cake|pie|itemId]|rows]",
+                args =>
+                {
+                    CakePieEventField cakePie = _specialFieldRuntime.SpecialEffects.CakePie;
+
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(cakePie.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "timer", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length >= 2 && string.Equals(args[1], "close", StringComparison.OrdinalIgnoreCase))
+                        {
+                            cakePie.CloseTimerboard();
+                            return ChatCommandHandler.CommandResult.Ok(cakePie.DescribeStatus());
+                        }
+
+                        if (args.Length < 3
+                            || !CakePieEventField.TryParseTimerType(args[1], out CakePieTimerType timerType)
+                            || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int durationSeconds)
+                            || durationSeconds < 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /cakepie timer <townui|ready|start|cake|pie> <seconds>|close");
+                        }
+
+                        cakePie.OpenTimerboard(timerType, durationSeconds, currTickCount);
+                        return ChatCommandHandler.CommandResult.Ok(cakePie.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "iteminfo", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /cakepie iteminfo <open|close>");
+                        }
+
+                        if (string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase))
+                        {
+                            cakePie.OpenItemInfo();
+                            return ChatCommandHandler.CommandResult.Ok(cakePie.DescribeStatus());
+                        }
+
+                        if (string.Equals(args[1], "close", StringComparison.OrdinalIgnoreCase))
+                        {
+                            cakePie.CloseItemInfo();
+                            return ChatCommandHandler.CommandResult.Ok(cakePie.DescribeStatus());
+                        }
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /cakepie iteminfo <open|close>");
+                    }
+
+                    if (string.Equals(args[0], "set", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 6
+                            || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int fieldId)
+                            || !CakePieEventField.TryParseItemToken(args[2], out int itemId)
+                            || !int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int percentage)
+                            || !int.TryParse(args[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int eventStatus)
+                            || !int.TryParse(args[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out int winnerTeam))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /cakepie set <fieldId> <cake|pie|itemId> <percent> <eventStatus> <winnerTeam>");
+                        }
+
+                        cakePie.SetEventItemInfo(fieldId, itemId, percentage, eventStatus, winnerTeam);
+                        return ChatCommandHandler.CommandResult.Ok($"{cakePie.DescribeStatus()}{Environment.NewLine}{cakePie.DescribeOrderedItemInfoRows()}");
+                    }
+
+                    if (string.Equals(args[0], "clear", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length == 1)
+                        {
+                            cakePie.ClearEventItemInfo();
+                            return ChatCommandHandler.CommandResult.Ok(cakePie.DescribeStatus());
+                        }
+
+                        if (args.Length < 3
+                            || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int fieldId)
+                            || !CakePieEventField.TryParseItemToken(args[2], out int itemId))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /cakepie clear [fieldId cake|pie|itemId]");
+                        }
+
+                        bool removed = cakePie.ClearEventItemInfo(fieldId, itemId);
+                        return ChatCommandHandler.CommandResult.Ok($"{(removed ? "Removed" : "No matching")} {CakePieEventField.EventOwnerName} item-info row. {cakePie.DescribeStatus()}");
+                    }
+
+                    if (string.Equals(args[0], "rows", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(cakePie.DescribeOrderedItemInfoRows());
+                    }
+
+                    return ChatCommandHandler.CommandResult.Error("Usage: /cakepie [status|timer <townui|ready|start|cake|pie> <seconds>|timer close|iteminfo <open|close>|set <fieldId> <cake|pie|itemId> <percent> <eventStatus> <winnerTeam>|clear [fieldId cake|pie|itemId]|rows]");
+                });
+
+
 
             _chat.CommandHandler.RegisterCommand(
 
@@ -6348,7 +6464,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Massacre timerboard and gauge flow",
 
-                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     MassacreField massacre = _specialFieldRuntime.SpecialEffects.Massacre;
@@ -6439,11 +6555,11 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 5
                                 || !int.TryParse(args[2], out int listenPort)
-                                || listenPort <= 0
+                                || listenPort < 0
                                 || !int.TryParse(args[4], out int remotePort)
                                 || remotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session start <listenPort> <serverHost> <serverPort>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session start <listenPort|0> <serverHost> <serverPort>");
                             }
 
                             return _massacreOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startMessage)
@@ -6455,11 +6571,11 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 4
                                 || !int.TryParse(args[2], out int autoListenPort)
-                                || autoListenPort <= 0
+                                || autoListenPort < 0
                                 || !int.TryParse(args[3], out int autoRemotePort)
                                 || autoRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
                             }
 
                             string processSelector = args.Length >= 5 ? args[4] : null;
@@ -6485,7 +6601,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_massacreOfficialSessionBridge.LastStatus);
                         }
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /massacre session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /massacre session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]");
                     }
 
 

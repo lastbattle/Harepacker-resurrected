@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal int TrackedMembersCount => _trackedMembersCount;
+        internal Action<string, int> SocialChatObserved { get; set; }
 
         internal void UpdateLocalContext(CharacterBuild build, string locationSummary, int channel)
         {
@@ -312,7 +313,9 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedMemberId = newJunior.Id;
             _selectedEmptyTreeSlot = -1;
 
-            return $"{newJunior.Name} was registered under {selectedMember.Name}.";
+            string message = $"{newJunior.Name} was registered under {selectedMember.Name}.";
+            NotifySocialChatObserved(message);
+            return message;
         }
 
         internal string RemoveSelectedMember()
@@ -347,7 +350,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             _selectedMemberId = LocalPlayerId;
             _selectedEmptyTreeSlot = -1;
-            return $"Removed {selectedMember.Name}'s simulator family branch.";
+            string message = $"Removed {selectedMember.Name}'s simulator family branch.";
+            NotifySocialChatObserved(message);
+            return message;
         }
 
         internal string CyclePrecept()
@@ -424,6 +429,7 @@ namespace HaCreator.MapSimulator.Interaction
             NormalizeRosterState();
 
             string familyName = string.IsNullOrWhiteSpace(_familyName) ? "(unnamed)" : _familyName;
+            NotifySocialMessagesObserved(_familyName, _familyPrecept);
             return $"Applied packet-authored family info for {familyName}: current/total reputation {snapshot.CurrentReputation:N0}/{snapshot.TotalReputation:N0}, today {snapshot.TodayReputation:+#,#;-#,#;0}, juniors {snapshot.ChildCount}/{snapshot.ChildLimit}, total juniors {snapshot.TotalChildCount}.";
         }
 
@@ -445,6 +451,7 @@ namespace HaCreator.MapSimulator.Interaction
                     : "Cleared the simulator family precept.";
             }
 
+            NotifySocialChatObserved(_familyPrecept);
             return packetAuthored
                 ? $"Set the packet-authored family precept to: {_familyPrecept}"
                 : $"Set the simulator family precept to: {_familyPrecept}";
@@ -533,6 +540,7 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     ConsumeEntitlementUse(localPlayer, specialCost);
+                    NotifySocialChatObserved(selectedMember.Name);
                     return new FamilyEntitlementUseResult(
                         $"Moved to {selectedMember.Name}'s family-chart branch in {selectedLocation}.",
                         RequestTeleport: true,
@@ -549,14 +557,18 @@ namespace HaCreator.MapSimulator.Interaction
                     selectedMember.IsOnline = true;
                     selectedMember.SimulatedPosition = new Vector2(localPlayerPosition.X + 64f, localPlayerPosition.Y);
                     ConsumeEntitlementUse(localPlayer, specialCost);
-                    return new FamilyEntitlementUseResult($"Summoned {selectedMember.Name} to {localLocation}.");
+                    string message = $"Summoned {selectedMember.Name} to {localLocation}.";
+                    NotifySocialChatObserved(message);
+                    return new FamilyEntitlementUseResult(message);
                 }
                 case FamilyEntitlementType.DropBuff:
                 case FamilyEntitlementType.ExpBuff:
                 case FamilyEntitlementType.DropAndExpBuff:
                     ConsumeEntitlementUse(localPlayer, specialCost);
                     _activePrivilege = new FamilyPrivilegeState(_entitlementType, currentTick + EntitlementDurationMs);
-                    return new FamilyEntitlementUseResult($"Applied {GetEntitlementLabel(_entitlementType)} for the current simulator family session.");
+                    string privilegeMessage = $"Applied {GetEntitlementLabel(_entitlementType)} for the current simulator family session.";
+                    NotifySocialChatObserved(privilegeMessage);
+                    return new FamilyEntitlementUseResult(privilegeMessage);
                 default:
                     return new FamilyEntitlementUseResult("That family entitlement is not modeled yet.");
             }
@@ -619,6 +631,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SetFamilyNameFromPacket(string familyName)
         {
             _familyName = string.IsNullOrWhiteSpace(familyName) ? string.Empty : familyName.Trim();
+            NotifySocialChatObserved(_familyName);
             return string.IsNullOrWhiteSpace(_familyName)
                 ? "Cleared the packet-authored family name."
                 : $"Set the packet-authored family name to {_familyName}.";
@@ -645,7 +658,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             NormalizeRosterState();
-            return $"Removed synced family branch rooted at {selectedMember.Name} (#{memberId}).";
+            string message = $"Removed synced family branch rooted at {selectedMember.Name} (#{memberId}).";
+            NotifySocialChatObserved(message);
+            return message;
         }
 
         internal string UpsertMemberFromPacket(
@@ -721,7 +736,44 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             NormalizeRosterState();
+            NotifySocialChatObserved(member.Name);
             return $"Synced family member #{memberId} {member.Name} under {(parentId.HasValue ? $"#{parentId.Value}" : "the family head root")}.";
+        }
+
+        private void NotifySocialChatObserved(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message.Trim(), Environment.TickCount);
+        }
+
+        private void NotifySocialMessagesObserved(params string[] messages)
+        {
+            if (messages == null)
+            {
+                return;
+            }
+
+            HashSet<string> observed = null;
+            foreach (string message in messages)
+            {
+                string normalized = message?.Trim();
+                if (string.IsNullOrWhiteSpace(normalized))
+                {
+                    continue;
+                }
+
+                observed ??= new HashSet<string>(StringComparer.Ordinal);
+                if (!observed.Add(normalized))
+                {
+                    continue;
+                }
+
+                SocialChatObserved?.Invoke(normalized, Environment.TickCount);
+            }
         }
 
         private void ResetRuntimeState()

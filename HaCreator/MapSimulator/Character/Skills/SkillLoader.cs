@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "mob"
         };
 
+        public const int ClientAfterimageCanvasDelayFallbackMs = 120;
         private const int ClientSummonedFrameDelayFallbackMs = 120;
         private const int ClientSummonReversePlaybackStringPoolId = 0x049F;
         private const string ClientSummonReversePlaybackFallbackName = "zigzag";
@@ -129,11 +130,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     4201002, 4201003, 4201005,
                     4211002, 4211003, 4211005, 4211006, 4211007,
-                    4221001, 4221003, 4221006, 4221007
+                    4221000, 4221001, 4221003, 4221004, 4221006, 4221007
                 },
                 [14111000] = new[]
                 {
-                    14101006,
+                    14101002, 14101003, 14101006,
                     14111001, 14111002
                 }
             };
@@ -521,7 +522,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.ZoneType = GetString(infoNode, "zoneType");
                 skill.IsMassSpell = GetInt(infoNode, "massSpell") == 1;
                 skill.DebuffMessageToken = GetString(infoNode, "mes");
-                skill.AffectedSkillIds = ParseLinkedSkillIds(GetString(infoNode, "affectedSkill"));
+                skill.AffectedSkillIds = ParseLinkedSkillIds(infoNode["affectedSkill"]);
                 skill.AffectedSkillId = skill.AffectedSkillIds.FirstOrDefault();
                 skill.PassiveLinkedSkillIds = ParseLinkedSkillIds(skillNode["psdSkill"]);
                 skill.AffectedSkillEffect = GetString(infoNode, "affectedSkillEffect");
@@ -1844,7 +1845,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (frameSetNode is WzCanvasProperty)
             {
-                SkillFrame directFrame = LoadSkillFrame(frameSetNode);
+                SkillFrame directFrame = LoadAfterImageFrame(frameSetNode);
                 if (directFrame != null)
                 {
                     frameSet.Frames.Add(directFrame);
@@ -1860,7 +1861,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                SkillFrame frame = LoadSkillFrame(child);
+                SkillFrame frame = LoadAfterImageFrame(child);
                 if (frame != null)
                 {
                     frameSet.Frames.Add(frame);
@@ -1868,6 +1869,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return frameSet;
+        }
+
+        private SkillFrame LoadAfterImageFrame(WzImageProperty frameNode)
+        {
+            return LoadSkillFrame(frameNode, ClientAfterimageCanvasDelayFallbackMs, false);
         }
 
         internal static IReadOnlyList<WzImageProperty> EnumerateAfterImageFrameChildrenInClientOrder(WzImageProperty frameSetNode)
@@ -2243,6 +2249,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 yield return sourceSkillNode;
             }
+        }
+
+        internal static IReadOnlyList<int> GetShadowPartnerRawActionSourceSkillIdsForClientParity(int skillId)
+        {
+            return ShadowPartnerRawActionSourceSkillIdsBySkillId.TryGetValue(skillId, out int[] sourceSkillIds)
+                ? Array.AsReadOnly(sourceSkillIds)
+                : Array.Empty<int>();
         }
 
         internal static void SynthesizeClientOwnedShadowPartnerActionAnimations(
@@ -3205,7 +3218,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         continue;
                     }
 
-                    int[] affectedSkillIds = ParseLinkedSkillIds(GetString(candidateSkillNode["info"], "affectedSkill"));
+                    int[] affectedSkillIds = ParseLinkedSkillIds(candidateSkillNode["info"]?["affectedSkill"]);
                     if (Array.IndexOf(affectedSkillIds, affectedSkillId) >= 0)
                     {
                         parentSkillIds.Add(parentSkillId);
@@ -4246,17 +4259,54 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             HashSet<int> linkedSkillIds = new();
-            foreach (WzImageProperty child in property.WzProperties)
+            AddLinkedSkillIds(linkedSkillIds, property);
+            if (property.WzProperties != null)
             {
-                if (child != null && int.TryParse(child.Name, out int linkedSkillId) && linkedSkillId > 0)
+                foreach (WzImageProperty child in property.WzProperties)
                 {
-                    linkedSkillIds.Add(linkedSkillId);
+                    AddLinkedSkillIds(linkedSkillIds, child);
                 }
             }
 
             return linkedSkillIds.Count == 0
                 ? Array.Empty<int>()
                 : linkedSkillIds.OrderBy(id => id).ToArray();
+        }
+
+        private static void AddLinkedSkillIds(HashSet<int> linkedSkillIds, WzImageProperty property)
+        {
+            if (linkedSkillIds == null || property == null)
+            {
+                return;
+            }
+
+            if (int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int namedSkillId)
+                && namedSkillId > 0)
+            {
+                linkedSkillIds.Add(namedSkillId);
+            }
+
+            foreach (int valueSkillId in EnumerateLinkedSkillIdsFromPropertyValue(property))
+            {
+                linkedSkillIds.Add(valueSkillId);
+            }
+        }
+
+        private static IEnumerable<int> EnumerateLinkedSkillIdsFromPropertyValue(WzImageProperty property)
+        {
+            switch (property)
+            {
+                case WzStringProperty stringProperty:
+                    return ParseLinkedSkillIds(stringProperty.Value);
+                case WzIntProperty intProperty when intProperty.Value > 0:
+                    return new[] { intProperty.Value };
+                case WzShortProperty shortProperty when shortProperty.Value > 0:
+                    return new[] { (int)shortProperty.Value };
+                case WzLongProperty longProperty when longProperty.Value > 0:
+                    return new[] { (int)longProperty.Value };
+                default:
+                    return Array.Empty<int>();
+            }
         }
 
         public static string SelectPreferredSummonAttackBranch(IEnumerable<string> branchNames)
@@ -4544,13 +4594,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             string normalizedPath = summonedUolPath
                 .Replace('\\', '/')
-                .Trim();
+                .Trim()
+                .TrimStart('/');
 
             const string wzRootPrefix = "wz/";
             if (normalizedPath.StartsWith(wzRootPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 normalizedPath = normalizedPath[wzRootPrefix.Length..];
             }
+            normalizedPath = normalizedPath.TrimStart('/');
 
             if (!normalizedPath.StartsWith("Skill/", StringComparison.OrdinalIgnoreCase))
             {
@@ -6001,7 +6053,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.CriticalRate = ApplyDescriptionBackedAliasValue(
                 levelData.CriticalRate,
                 xValue,
-                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "critical rate"));
+                PlaceholderMatchesHintLabel(normalizedSurface, "#x", "critical rate", "critical chance"));
+            levelData.CriticalRate = ApplyDescriptionBackedAliasValue(
+                levelData.CriticalRate,
+                vValue,
+                PlaceholderMatchesHintLabel(normalizedSurface, "#v", "critical rate", "critical chance"));
             levelData.MaxHPPercent = ApplyDescriptionBackedAliasValue(
                 levelData.MaxHPPercent,
                 xValue,
@@ -6543,7 +6599,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             var requiredSkillIds = new HashSet<int>();
 
-            foreach (int infoRequiredSkillId in ParseLinkedSkillIds(GetString(infoNode, "requireSkill")))
+            foreach (int infoRequiredSkillId in ParseLinkedSkillIds(infoNode?["requireSkill"]))
             {
                 requiredSkillIds.Add(infoRequiredSkillId);
             }

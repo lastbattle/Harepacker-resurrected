@@ -2922,6 +2922,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool OnCalc { get; private set; }
         internal bool ServerOnCalc { get; private set; }
         internal bool DotTrackingEnabled { get; private set; }
+        internal bool SummonTrackingEnabled { get; private set; }
         internal int TotalDamage { get; private set; }
         internal int TotalHits { get; private set; }
         internal int MaxDamage { get; private set; }
@@ -2935,6 +2936,52 @@ namespace HaCreator.MapSimulator.Interaction
         {
             ResetSession(clearNotes: false);
             StatusMessage = "CBattleRecordMan owner closed locally.";
+        }
+
+        internal bool TryBuildRequestOnCalcOutboundRequest(bool enabled, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = new PacketOwnedNpcUtilityOutboundRequest(
+                299,
+                new[] { enabled ? (byte)1 : (byte)0 },
+                $"Mirrored CBattleRecordMan::RequestOnCalc({(enabled ? 1 : 0).ToString(CultureInfo.InvariantCulture)}) from the CUIBattleRecord owner path (opcode 299).");
+
+            IsOpen = enabled || IsOpen;
+            OnCalc = enabled;
+            if (!enabled)
+            {
+                DotTrackingEnabled = false;
+                SummonTrackingEnabled = false;
+            }
+
+            StatusMessage = enabled
+                ? "CUIBattleRecord armed CBattleRecordMan::RequestOnCalc(1); packet 421 still waits for the server-on-calc ack and DOT include flag before mutating damage."
+                : "CUIBattleRecord disarmed CBattleRecordMan::RequestOnCalc(0) through the owner on/off or destroy path.";
+            AppendNote(StatusMessage);
+            message = StatusMessage;
+            return true;
+        }
+
+        internal string SetAdditionDamageInclude(bool enabled, int option)
+        {
+            switch (option)
+            {
+                case 0:
+                    DotTrackingEnabled = enabled;
+                    StatusMessage = $"CUIBattleRecord checkbox mirrored CBattleRecordMan::SetAdditionDamageInclude({(enabled ? 1 : 0).ToString(CultureInfo.InvariantCulture)}, 0) for DOT tracking.";
+                    break;
+
+                case 1:
+                    SummonTrackingEnabled = enabled;
+                    StatusMessage = $"CUIBattleRecord checkbox mirrored CBattleRecordMan::SetAdditionDamageInclude({(enabled ? 1 : 0).ToString(CultureInfo.InvariantCulture)}, 1) for summon tracking.";
+                    break;
+
+                default:
+                    StatusMessage = $"CUIBattleRecord ignored unsupported additional-damage option {option.ToString(CultureInfo.InvariantCulture)}.";
+                    break;
+            }
+
+            AppendNote(StatusMessage);
+            return StatusMessage;
         }
 
         internal void SelectPage(int pageIndex)
@@ -3012,7 +3059,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 "Packet-owned owner: CBattleRecordMan::OnPacket (420-423).",
                 $"Page: {ResolvePageName()} | Window: {(IsOpen ? "open" : "closed")}",
-                $"Calc flags: onCalc={OnCalc}, serverOnCalc={ServerOnCalc}, dot={DotTrackingEnabled}, decode421={IsDotDamageDecodeReady}, mutate421={IsDotDamageMutationReady}",
+                $"Calc flags: onCalc={OnCalc}, serverOnCalc={ServerOnCalc}, dot={DotTrackingEnabled}, summon={SummonTrackingEnabled}, decode421={IsDotDamageDecodeReady}, mutate421={IsDotDamageMutationReady}",
                 $"Packets: 420={_packetCount420.ToString(CultureInfo.InvariantCulture)}, 421={_packetCount421.ToString(CultureInfo.InvariantCulture)}, 422={_packetCount422.ToString(CultureInfo.InvariantCulture)}, 423={_packetCount423.ToString(CultureInfo.InvariantCulture)}"
             };
 
@@ -3115,6 +3162,7 @@ namespace HaCreator.MapSimulator.Interaction
             OnCalc = false;
             ServerOnCalc = false;
             DotTrackingEnabled = false;
+            SummonTrackingEnabled = false;
             TotalDamage = 0;
             TotalHits = 0;
             MaxDamage = 0;

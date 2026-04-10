@@ -109,6 +109,35 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal static bool TryParseHexBytes(string text, out byte[] payload, out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                error = "Family packet hex payload is missing.";
+                return false;
+            }
+
+            string hex = text.Replace(" ", string.Empty, StringComparison.Ordinal);
+            if (hex.Length == 0 || (hex.Length % 2) != 0)
+            {
+                error = "Family packet hex payload must contain an even number of hexadecimal characters.";
+                return false;
+            }
+
+            try
+            {
+                payload = Convert.FromHexString(hex);
+                return true;
+            }
+            catch (FormatException)
+            {
+                error = "Family packet hex payload must contain only hexadecimal characters.";
+                return false;
+            }
+        }
+
         internal static bool TryParsePayloadToken(string token, out byte[] payload, out string error)
         {
             payload = Array.Empty<byte>();

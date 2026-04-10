@@ -479,6 +479,8 @@ namespace HaCreator.MapSimulator.UI
         private InventoryType _pendingPacketOwnedUserSellSnapshotInventoryType = InventoryType.NONE;
         private int _pendingPacketOwnedUserSellSnapshotScrollOffset;
         private bool _pendingPacketOwnedAdminShopResult;
+        private AdminShopEntry _pendingPacketOwnedWishlistRegisterEntry;
+        private AdminShopCategory _pendingPacketOwnedWishlistRegisterCategory = AdminShopCategory.All;
         public Action<AdminShopDialogUI> WishlistWindowRequested { get; set; }
         public Action<AdminShopDialogUI> WindowHidden { get; set; }
         public Func<long, bool> TryConsumeCashBalance { get; set; }
@@ -697,6 +699,7 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopRows.Clear();
             _packetOwnedAdminShopRows.AddRange(snapshot.Rows);
             ClearPendingPacketOwnedUserSellSnapshot();
+            ClearPendingPacketOwnedWishlistRegister();
             ResetMode(AdminShopServiceMode.CashShop);
             if (reopenViewState.PreserveView)
             {
@@ -762,6 +765,7 @@ namespace HaCreator.MapSimulator.UI
                 outboundSummary,
                 "Packet 367 refusal closed the admin-shop unique-modeless owner.");
             ClearPendingPacketOwnedUserSellSnapshot();
+            ClearPendingPacketOwnedWishlistRegister();
             ResetPendingRequestState();
             _footerMessage = string.IsNullOrWhiteSpace(noticeText)
                 ? $"Packet 367 rejected the admin-shop open request. {outboundSummary}"
@@ -790,6 +794,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (_pendingRequestEntry == null)
             {
+                if (_pendingPacketOwnedWishlistRegisterEntry != null)
+                {
+                    return TryApplyPacketOwnedWishlistRegisterResult(subtype, resultCode, out message, out noticeText, out reopenRequested);
+                }
+
                 _packetOwnedAdminShopSession.MarkDisconnectHazard();
                 _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 arrived after the admin-shop owner had already cleared m_bShopRequestSent.");
                 message = "Packet 366 arrived without a pending admin-shop request. The v95 client throws CDisconnectException when m_bShopRequestSent is clear.";
@@ -3375,6 +3384,11 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryFocusWishlistEntry(AdminShopEntry matchedEntry, AdminShopCategory requestedCategory, out string message)
         {
+            return TryFocusWishlistEntry(matchedEntry, requestedCategory, out message, dispatchWishlistRegisterPacket: true);
+        }
+
+        private bool TryFocusWishlistEntry(AdminShopEntry matchedEntry, AdminShopCategory requestedCategory, out string message, bool dispatchWishlistRegisterPacket)
+        {
             message = "Wish-list selection could not be focused.";
             if (matchedEntry == null)
             {
@@ -3412,8 +3426,20 @@ namespace HaCreator.MapSimulator.UI
             string wishlistRegisterSummary = string.Empty;
             if (!alreadyWishlisted)
             {
-                wishlistRegisterSummary = DispatchPacketOwnedAdminShopWishlistRegister(matchedEntry);
-                _packetOwnedAdminShopSession.SetLastOwnerState("CUIAdminShopWishListSearchResult::BtRegist confirmed the selected result, sent CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3, and closed the wishlist owner.");
+                if (_packetOwnedAdminShopSession.IsActive && dispatchWishlistRegisterPacket)
+                {
+                    wishlistRegisterSummary = BeginPacketOwnedWishlistRegister(matchedEntry, requestedCategory);
+                    message = $"Wish-list search submitted {matchedEntry.Title} to the packet-owned register path. {wishlistRegisterSummary} Waiting for packet 366 subtype 4.";
+                    _footerMessage = message;
+                    UpdateActionButtonStates();
+                    return true;
+                }
+
+                if (dispatchWishlistRegisterPacket)
+                {
+                    wishlistRegisterSummary = DispatchPacketOwnedAdminShopWishlistRegister(matchedEntry);
+                    _packetOwnedAdminShopSession.SetLastOwnerState("CUIAdminShopWishListSearchResult::BtRegist confirmed the selected result, sent CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3, and closed the wishlist owner.");
+                }
             }
 
             matchedEntry.Wishlisted = true;
@@ -3435,6 +3461,102 @@ namespace HaCreator.MapSimulator.UI
 
             _footerMessage = message;
             return true;
+        }
+
+        private string BeginPacketOwnedWishlistRegister(AdminShopEntry entry, AdminShopCategory requestedCategory)
+        {
+            _pendingPacketOwnedWishlistRegisterEntry = entry;
+            _pendingPacketOwnedWishlistRegisterCategory = requestedCategory;
+            string registerSummary = DispatchPacketOwnedAdminShopWishlistRegister(entry);
+            _packetOwnedAdminShopSession.SetWaitingForResult(true);
+            _packetOwnedAdminShopSession.SetLastOwnerState("CUIAdminShopWishListSearchResult::BtRegist confirmed the selected result, sent CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3, and closed the wishlist owner while waiting for packet 366 subtype 4.");
+            return registerSummary;
+        }
+
+        private bool TryApplyPacketOwnedWishlistRegisterResult(byte subtype, byte resultCode, out string message, out string noticeText, out bool reopenRequested)
+        {
+            message = "Packet-owned wish-list register result could not be applied.";
+            noticeText = string.Empty;
+            reopenRequested = false;
+            AdminShopEntry entry = _pendingPacketOwnedWishlistRegisterEntry;
+            AdminShopCategory requestedCategory = _pendingPacketOwnedWishlistRegisterCategory;
+
+            if (!AdminShopDialogClientParityText.HandlesResultSubtype(subtype))
+            {
+                ClearPendingPacketOwnedWishlistRegister();
+                message = AdminShopDialogClientParityText.BuildUnsupportedResultMessage(subtype, resultCode);
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 subtype was ignored by the wish-list register owner path.");
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return true;
+            }
+
+            if (entry == null || !_paneStates[AdminShopPane.Npc].SourceEntries.Contains(entry))
+            {
+                ClearPendingPacketOwnedWishlistRegister();
+                _packetOwnedAdminShopSession.MarkDisconnectHazard();
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 arrived after the pending wish-list register row was no longer present in the admin-shop catalog.");
+                message = "Packet 366 arrived for a wish-list register request whose live NPC catalog row was no longer available.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return true;
+            }
+
+            if (resultCode == 0)
+            {
+                ClearPendingPacketOwnedWishlistRegister();
+                bool focused = TryFocusWishlistEntry(entry, requestedCategory, out message, dispatchWishlistRegisterPacket: false);
+                _packetOwnedAdminShopSession.ClearLastNotice();
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 accepted the wish-list register request and the selected catalog row was saved locally.");
+                if (!focused)
+                {
+                    _footerMessage = message;
+                    UpdateActionButtonStates();
+                }
+
+                return true;
+            }
+
+            if (AdminShopDialogClientParityText.TryGetResultNotice(resultCode, out string resolvedNotice, out reopenRequested))
+            {
+                noticeText = resolvedNotice;
+                _packetOwnedAdminShopSession.SetLastNotice(resolvedNotice);
+            }
+            else
+            {
+                _packetOwnedAdminShopSession.ClearLastNotice();
+            }
+
+            ClearPendingPacketOwnedWishlistRegister();
+            if (reopenRequested)
+            {
+                string outboundSummary = DispatchPacketOwnedAdminShopOutbound(
+                    PacketOwnedAdminShopResultMode,
+                    _packetOwnedAdminShopSession.NpcTemplateId);
+                _packetOwnedAdminShopSession.SetLastOutboundSummary(outboundSummary);
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 rejected the wish-list register request and requested an admin-shop owner reopen through opcode 74 mode 0.");
+                _footerMessage = string.IsNullOrWhiteSpace(noticeText)
+                    ? $"CUIAdminShopWishList register result {resultCode} requested an authoritative packet 367 refresh. {outboundSummary}"
+                    : $"CUIAdminShopWishList register result {resultCode} requested an authoritative packet 367 refresh. {noticeText} {outboundSummary}";
+            }
+            else
+            {
+                string stateLabel = AdminShopDialogClientParityText.BuildResultStateLabel(resultCode);
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 rejected the wish-list register request and left the admin-shop owner open.");
+                _footerMessage = string.IsNullOrWhiteSpace(noticeText)
+                    ? $"CUIAdminShopWishList register result {resultCode} ({stateLabel}) rejected the request for {entry.Title}."
+                    : $"CUIAdminShopWishList register result {resultCode} ({stateLabel}) rejected the request for {entry.Title}. {noticeText}";
+            }
+
+            message = _footerMessage;
+            UpdateActionButtonStates();
+            return true;
+        }
+
+        private void ClearPendingPacketOwnedWishlistRegister()
+        {
+            _pendingPacketOwnedWishlistRegisterEntry = null;
+            _pendingPacketOwnedWishlistRegisterCategory = AdminShopCategory.All;
         }
 
         private WishlistSearchResult BuildWishlistSearchResult(AdminShopEntry entry, int score)

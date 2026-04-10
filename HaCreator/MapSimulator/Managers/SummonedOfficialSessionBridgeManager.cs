@@ -1481,7 +1481,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            if (!CanCandidateTemplateEvidenceSource(trace.Source))
+            if (!CanSg88CandidateTemplateEvidenceSource(trace.Source))
             {
                 return;
             }
@@ -1521,6 +1521,11 @@ namespace HaCreator.MapSimulator.Managers
             Sg88ManualAttackTraceBinding binding)
         {
             if (capture == null || !binding.HasSemanticEvidence)
+            {
+                return;
+            }
+
+            if (!CanTeslaCandidateTemplateEvidenceSource(trace.Source))
             {
                 return;
             }
@@ -2034,15 +2039,21 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
-        private static bool CanCandidateTemplateEvidenceSource(string source)
+        internal static bool CanSg88CandidateTemplateEvidenceSource(string source)
         {
             return !string.IsNullOrWhiteSpace(source)
                 && (source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase)
-                    || source.StartsWith(SimulatorSg88TemplateReplaySourcePrefix, StringComparison.OrdinalIgnoreCase)
+                    || source.StartsWith(SimulatorSg88TemplateReplaySourcePrefix, StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static bool CanTeslaCandidateTemplateEvidenceSource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && (source.StartsWith(OfficialSessionTraceSourcePrefix, StringComparison.OrdinalIgnoreCase)
                     || source.StartsWith(SimulatorTeslaTemplateReplaySourcePrefix, StringComparison.OrdinalIgnoreCase));
         }
 
-        private static bool IsEligibleSg88TemplateEvidenceSource(string source, string resolutionSource)
+        internal static bool IsEligibleSg88TemplateEvidenceSource(string source, string resolutionSource)
         {
             if (string.IsNullOrWhiteSpace(source))
             {
@@ -2058,7 +2069,7 @@ namespace HaCreator.MapSimulator.Managers
                 && GetSg88TemplateResolutionRank(resolutionSource) >= GetSg88TemplateResolutionRank("0x119-target-cover");
         }
 
-        private static bool IsEligibleTeslaTemplateEvidenceSource(string source, string resolutionSource)
+        internal static bool IsEligibleTeslaTemplateEvidenceSource(string source, string resolutionSource)
         {
             if (string.IsNullOrWhiteSpace(source))
             {

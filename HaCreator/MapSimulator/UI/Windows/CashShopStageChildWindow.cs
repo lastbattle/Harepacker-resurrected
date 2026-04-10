@@ -102,7 +102,7 @@ namespace HaCreator.MapSimulator.UI
             public bool HasPlateBigCanvas { get; init; }
             public int NumberCanvasCount { get; init; }
             public int PlateCount { get; init; } = 3;
-            public int PreviousOfferCount { get; init; } = 10;
+            public int PreviousOfferCount { get; init; } = 12;
             public string PlateCanvasBaseName { get; init; } = "NoItem";
             public string ShortcutHelpCanvasName { get; init; } = "ShortcutHelp";
             public int CurrentCommoditySerialNumber { get; init; }
@@ -669,7 +669,7 @@ namespace HaCreator.MapSimulator.UI
                     ? $"Shortcut surface {ResolveOneADayPlateName(state)} is active beside the reward owner."
                     : _oneADaySelectorIndex == 0
                         ? $"Current reward plate {ResolveOneADayPlateName(state)}  Pending {(state.IsPending ? "yes" : "no")}"
-                        : $"Previous slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}/{Math.Max(0, state.PreviousOfferCount - 1).ToString(CultureInfo.InvariantCulture)}  Buy lane armed from the recovered 10-slot history.",
+                        : $"Previous slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}/{Math.Max(0, state.PreviousOfferCount - 1).ToString(CultureInfo.InvariantCulture)}  Buy lane armed from the recovered {state.PreviousOfferCount.ToString(CultureInfo.InvariantCulture)}-slot history.",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 accentColor);
             lineY += _font.LineSpacing;
@@ -1604,7 +1604,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void SelectOneADayPreviousOfferFromMouse(OneADayOwnerState state, Rectangle rowsBounds, Point mousePosition)
         {
-            int previousOfferCount = Math.Max(1, state?.PreviousOfferCount ?? 10);
+            int previousOfferCount = Math.Max(1, state?.PreviousOfferCount ?? 12);
             int columns = Math.Min(5, previousOfferCount);
             int rows = Math.Max(1, (int)Math.Ceiling(previousOfferCount / (double)columns));
             int rowHeight = Math.Max(18, rowsBounds.Height / rows);

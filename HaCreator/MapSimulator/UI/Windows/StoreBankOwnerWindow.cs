@@ -21,6 +21,9 @@ namespace HaCreator.MapSimulator.UI
         private const int RowHeight = 35;
         private const int RowPitch = 42;
         private const int RowHitHeight = 42;
+        private const int RowIconX = 12;
+        private const int RowIconY = 1;
+        private const int RowIconSize = 32;
         private const int RowClientStockX = 10;
         private const int RowCashIconRightX = 42;
         private const int RowPrimaryTextX = 53;
@@ -55,11 +58,13 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _cashIconTexture;
         private readonly VerticalScrollbarSkin _scrollbarSkin;
         private readonly Texture2D _selectionTexture;
+        private readonly Dictionary<int, Texture2D> _itemIconTextureCache = new();
 
         private PacketOwnedStoreBankDialogRuntime _runtime;
         private Func<string> _footerProvider;
         private Action _getAction;
         private Func<bool> _closeAction;
+        private Func<int, Texture2D> _itemIconProvider;
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
@@ -152,6 +157,12 @@ namespace HaCreator.MapSimulator.UI
         internal void SetCloseAction(Func<bool> closeAction)
         {
             _closeAction = closeAction;
+        }
+
+        internal void SetItemIconProvider(Func<int, Texture2D> itemIconProvider)
+        {
+            _itemIconProvider = itemIconProvider;
+            _itemIconTextureCache.Clear();
         }
 
         internal void AddLayer(IDXObject drawable, Point offset)
@@ -313,6 +324,8 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
+                DrawItemIcon(sprite, row, drawX, drawY);
+
                 string primary = TrimToWidth(row.PrimaryText, RowWidth - RowPrimaryTextX - 8f, 0.62f);
                 InventoryRenderUtil.DrawOutlinedText(
                     sprite,
@@ -334,6 +347,37 @@ namespace HaCreator.MapSimulator.UI
                     new Color(198, 214, 233),
                     0.52f);
             }
+        }
+
+        private void DrawItemIcon(SpriteBatch sprite, StoreBankOwnerRowSnapshot row, int rowX, int rowY)
+        {
+            Texture2D texture = ResolveItemIconTexture(row.ItemId);
+            if (texture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                texture,
+                new Rectangle(rowX + RowIconX, rowY + RowIconY, RowIconSize, RowIconSize),
+                Color.White);
+        }
+
+        private Texture2D ResolveItemIconTexture(int itemId)
+        {
+            if (itemId <= 0 || _itemIconProvider == null)
+            {
+                return null;
+            }
+
+            if (_itemIconTextureCache.TryGetValue(itemId, out Texture2D cachedTexture))
+            {
+                return cachedTexture;
+            }
+
+            Texture2D texture = _itemIconProvider(itemId);
+            _itemIconTextureCache[itemId] = texture;
+            return texture;
         }
 
         private void DrawClientStock(SpriteBatch sprite, StoreBankOwnerRowSnapshot row, int rowX, int rowY)

@@ -290,7 +290,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
-                int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                int resolvedListenPort = listenPort < 0 ? DefaultListenPort : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasAttachedClient)
                 {
@@ -318,12 +318,12 @@ namespace HaCreator.MapSimulator.Managers
 
                 try
                 {
-                    ListenPort = resolvedListenPort;
                     RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
                     _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
+                    _listener = new TcpListener(IPAddress.Loopback, resolvedListenPort);
                     _listener.Start();
+                    ListenPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = $"Cookie House official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     status = LastStatus;
@@ -358,7 +358,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            int resolvedListenPort = listenPort < 0 ? DefaultListenPort : listenPort;
             if (HasAttachedClient)
             {
                 if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
@@ -1005,7 +1005,7 @@ namespace HaCreator.MapSimulator.Managers
             string requestedRemoteHost,
             int requestedRemotePort)
         {
-            return currentListenPort == requestedListenPort
+            return (requestedListenPort == 0 || currentListenPort == requestedListenPort)
                 && currentRemotePort == requestedRemotePort
                 && string.Equals(
                     NormalizeRemoteHost(currentRemoteHost),

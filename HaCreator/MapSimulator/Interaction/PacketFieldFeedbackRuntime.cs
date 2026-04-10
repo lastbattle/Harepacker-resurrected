@@ -160,6 +160,7 @@ namespace HaCreator.MapSimulator.Interaction
         private PacketFieldBossTimerVisualState _bossTimerVisualState;
         private string _lastFieldClockSummary = string.Empty;
         private PacketFieldClockVisualState _clockVisualState;
+        private bool _fieldClockEventFlag;
         private int _nextSwindleWarningTick;
         private BossHpState _bossHpState;
         internal void Initialize(GraphicsDevice graphicsDevice)
@@ -187,6 +188,7 @@ namespace HaCreator.MapSimulator.Interaction
             _bossTimerVisualState = null;
             _lastFieldClockSummary = string.Empty;
             _clockVisualState = null;
+            _fieldClockEventFlag = false;
             _nextSwindleWarningTick = 0;
         }
 
@@ -207,7 +209,7 @@ namespace HaCreator.MapSimulator.Interaction
                 && _clockVisualState.Kind == PacketFieldClockVisualKind.Countdown
                 && GetFieldClockRemainingSeconds(_clockVisualState, currentTick) <= 0)
             {
-                _clockVisualState = null;
+                ClearFieldClock(callbacks: null);
             }
         }
 
@@ -1077,6 +1079,7 @@ namespace HaCreator.MapSimulator.Interaction
             _bossTimerVisualState = null;
             _lastFieldClockSummary = string.Empty;
             _clockVisualState = null;
+            _fieldClockEventFlag = false;
             callbacks?.ClearBossTimerClock?.Invoke();
             callbacks?.ClearFieldClock?.Invoke();
             _statusMessage = "Applied packet-owned destroy-clock teardown.";
@@ -1095,6 +1098,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             byte mode = reader.ReadByte();
+            if (mode != 3)
+            {
+                _fieldClockEventFlag = false;
+            }
+
             switch (mode)
             {
                 case 0:
@@ -1138,12 +1146,21 @@ namespace HaCreator.MapSimulator.Interaction
                     }
                 case 3:
                     {
+                        if (_clockVisualState != null && _fieldClockEventFlag)
+                        {
+                            ClearFieldClock(callbacks);
+                        }
+                        else if (_clockVisualState != null)
+                        {
+                            _statusMessage = "Ignored packet-owned event countdown because a non-event clock is active.";
+                            message = _statusMessage;
+                            return true;
+                        }
+
                         bool show = reader.ReadByte() != 0;
                         if (!show)
                         {
-                            _clockVisualState = null;
-                            _lastFieldClockSummary = string.Empty;
-                            callbacks?.ClearFieldClock?.Invoke();
+                            ClearFieldClock(callbacks);
                             _statusMessage = "Cleared packet-owned event countdown clock.";
                             message = _statusMessage;
                             return true;
@@ -1151,6 +1168,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                         int durationSeconds = reader.ReadInt32();
                         ApplyCountdownClock(PacketFieldClockVisualVariant.Event, durationSeconds, currentTick, callbacks, "event countdown");
+                        _fieldClockEventFlag = _clockVisualState != null;
                         _statusMessage = "Applied packet-owned event countdown clock.";
                         message = _statusMessage;
                         return true;
@@ -1160,9 +1178,7 @@ namespace HaCreator.MapSimulator.Interaction
                         bool show = reader.ReadByte() != 0;
                         if (!show)
                         {
-                            _clockVisualState = null;
-                            _lastFieldClockSummary = string.Empty;
-                            callbacks?.ClearFieldClock?.Invoke();
+                            ClearFieldClock(callbacks);
                             _statusMessage = "Cleared packet-owned cake-pie timerboard.";
                             message = _statusMessage;
                             return true;
@@ -1300,11 +1316,9 @@ namespace HaCreator.MapSimulator.Interaction
             PacketFieldFeedbackCallbacks callbacks,
             string label)
         {
-            if (durationSeconds <= 0)
+            if (durationSeconds < 0)
             {
-                _clockVisualState = null;
-                _lastFieldClockSummary = string.Empty;
-                callbacks?.ClearFieldClock?.Invoke();
+                ClearFieldClock(callbacks);
                 return;
             }
 
@@ -1326,6 +1340,14 @@ namespace HaCreator.MapSimulator.Interaction
                 durationSeconds / 60,
                 durationSeconds % 60);
             callbacks?.ShowFieldClock?.Invoke(state);
+        }
+
+        private void ClearFieldClock(PacketFieldFeedbackCallbacks callbacks)
+        {
+            _clockVisualState = null;
+            _fieldClockEventFlag = false;
+            _lastFieldClockSummary = string.Empty;
+            callbacks?.ClearFieldClock?.Invoke();
         }
 
         private bool TryApplyFieldFadeOutForce(byte[] payload, PacketFieldFeedbackCallbacks callbacks, out string message)

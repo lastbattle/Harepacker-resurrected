@@ -261,6 +261,7 @@ namespace HaCreator.MapSimulator.Fields
         internal string LoseEffectPath => _loseEffectPath;
         internal string VictorySoundPath => _victorySoundPath;
         internal string LoseSoundPath => _loseSoundPath;
+        internal bool HasResultSoundManager => _soundManager != null;
         public int LocalTeam => _localTeam;
         public LocalTeamSelectionSource TeamSelectionSource => _localTeamSelectionSource;
         public bool HasResolvedLocalTeamSelection => _localTeamSelectionSource != LocalTeamSelectionSource.Default;

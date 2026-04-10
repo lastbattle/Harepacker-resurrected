@@ -120,7 +120,7 @@ namespace HaCreator.MapSimulator.Interaction
             int runtimeCharacterId,
             out string message)
         {
-            if (HasLiveOwner())
+            if (HasLiveOwner(currentTickCount))
             {
                 message =
                     $"Ignored context-owned initial quiz reopen while the existing owner is still alive: " +
@@ -212,9 +212,9 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"\"{value.Trim()}\"";
         }
 
-        private bool HasLiveOwner()
+        private bool HasLiveOwner(int currentTickCount)
         {
-            return _expiresAtTick > 0;
+            return GetRemainingMs(currentTickCount) > 0;
         }
 
         internal void ObserveRuntimeCharacterId(int runtimeCharacterId)

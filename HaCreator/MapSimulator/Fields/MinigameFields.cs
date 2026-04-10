@@ -65,7 +65,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             _graphicsDevice = graphicsDevice;
 
-            _coconut.Initialize(graphicsDevice);
+            _coconut.Initialize(graphicsDevice, soundManager);
             _memoryGame.Initialize(graphicsDevice);
             _rockPaperScissors.Initialize(graphicsDevice);
             _monsterCarnival.Initialize(graphicsDevice);

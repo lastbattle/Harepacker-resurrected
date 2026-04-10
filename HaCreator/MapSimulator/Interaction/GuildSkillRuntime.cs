@@ -348,6 +348,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Ignored guild-skill packet result because no guild is currently active.";
             }
 
+            if (packet.Kind == GuildSkillResultPacketKind.FundSync)
+            {
+                string fundSyncResult = ApplyStandalonePacketOwnedFundSync(packet.GuildFundMeso);
+                return string.IsNullOrWhiteSpace(packet.Summary)
+                    ? fundSyncResult
+                    : $"{packet.Summary.Trim()} {fundSyncResult}";
+            }
+
             SkillDisplayData selectedSkill = _skills.FirstOrDefault(skill => skill?.SkillId == packet.SkillId);
             if (selectedSkill == null)
             {
@@ -817,6 +825,18 @@ namespace HaCreator.MapSimulator.Interaction
             return resolvedRemainingMinutes > 0
                 ? $"{selectedSkill.SkillName} now mirrors the packet-owned renewal echo with {FormatDuration(resolvedRemainingMinutes)} remaining. Guild fund: {FormatMeso(_guildFundMeso)}."
                 : $"{selectedSkill.SkillName} packet-owned renewal echo cleared the active timer. Guild fund: {FormatMeso(_guildFundMeso)}.";
+        }
+
+        private string ApplyStandalonePacketOwnedFundSync(int? guildFundMeso)
+        {
+            if (!guildFundMeso.HasValue)
+            {
+                return "Packet-owned guild-fund sync did not carry a fund total.";
+            }
+
+            _guildFundMeso = Math.Max(0, guildFundMeso.Value);
+            SaveCurrentGuildState(_activeGuildStateKey);
+            return $"Packet-owned guild-fund sync updated the dedicated guild-skill ledger to {FormatMeso(_guildFundMeso)}.";
         }
 
         private static string ResolvePacketActionLabel(GuildSkillResultPacketKind kind)

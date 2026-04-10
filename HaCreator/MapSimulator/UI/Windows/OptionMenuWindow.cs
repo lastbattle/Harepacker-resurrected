@@ -94,7 +94,6 @@ namespace HaCreator.MapSimulator.UI
             InputAction.QuickSlot1,
             InputAction.QuickSlot2,
             InputAction.ToggleInventory,
-            InputAction.Escape,
         };
 
         private const int JoypadSummaryTop = 72;
@@ -109,6 +108,7 @@ namespace HaCreator.MapSimulator.UI
         private const int JoypadClientOkButtonLeft = 74;
         private const int JoypadClientCancelButtonLeft = 120;
         private const int JoypadClientButtonTop = 302;
+        private const int JoypadClientComboCount = 11;
         private const int JoypadClientSelectableButtonCount = 12;
         private const int JoypadClientEmptyButtonNameStringPoolId = 0x1A54;
         private const int JoypadClientButtonItemFormatStringPoolId = 0x180E;
@@ -987,11 +987,10 @@ namespace HaCreator.MapSimulator.UI
             AddJoypadBindingRow(InputAction.QuickSlot1, "Quick Slot 1", "Cycles the first staged quick-slot button without exposing directional inputs.", 8, 238);
             AddJoypadBindingRow(InputAction.QuickSlot2, "Quick Slot 2", "Cycles the second staged quick-slot button from the same utility-button family.", 9, 256);
             AddJoypadBindingRow(InputAction.ToggleInventory, "Inventory", "Cycles the utility menu pad button while keeping movement inputs reserved.", 10, 274);
-            AddJoypadBindingRow(InputAction.Escape, "Escape", "Cycles the system or cancel pad button while keeping movement inputs reserved.", 11, 292);
             _joypadRows.Add(new JoypadRow(
                 null,
                 "Default",
-                "Mirrors CUIJoyPad button 1009 / StringPool[0x1810]; confirm stages the client default combo assignment instead of applying immediately.",
+                "Mirrors CUIJoyPad button 1009 / StringPool[0x1810]; confirm stages the recovered eleven-combo default assignment instead of applying immediately.",
                 session => DescribeResetProfileState(session),
                 (session, direction) =>
                 {
@@ -1079,6 +1078,7 @@ namespace HaCreator.MapSimulator.UI
             AddJoypadBindingRow(InputAction.ToggleChat, "Chat", "Cycles the chat-focus pad button from the non-directional client utility family.");
             AddJoypadBindingRow(InputAction.ToggleQuickSlot, "Quick Slot UI", "Cycles the quick-slot-bar toggle while still keeping movement reserved.");
             AddJoypadBindingRow(InputAction.ToggleKeyConfig, "Key Config", "Cycles the key-setting shortcut from the same staged utility set.");
+            AddJoypadBindingRow(InputAction.Escape, "Escape", "Simulator extension: keeps the system or cancel pad shortcut outside the recovered eleven-combo CUIJoyPad core.");
         }
 
         private void AddJoypadBindingRow(InputAction action, string label, string description, int clientSlotIndex = -1, int clientY = 0)
@@ -1953,7 +1953,7 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private static void ResetJoypadSession(JoypadSessionSnapshot session)
+        private void ResetJoypadSession(JoypadSessionSnapshot session)
         {
             if (session == null)
             {
@@ -1977,6 +1977,47 @@ namespace HaCreator.MapSimulator.UI
                     session.Bindings[action] = gamepad;
                 }
             }
+
+            ApplyClientJoypadDefaultCombos(session);
+        }
+
+        private static void ApplyClientJoypadDefaultCombos(JoypadSessionSnapshot session)
+        {
+            if (session == null)
+            {
+                return;
+            }
+
+            // CUIJoyPad::SetDefault selects Button 1..N across the recovered combo controls.
+            int detectedButtonCount = ResolveClientJoypadButtonCount(session);
+            for (int i = 0; i < JoypadClientCoreBindingActions.Length; i++)
+            {
+                InputAction action = JoypadClientCoreBindingActions[i];
+                IReadOnlyList<Buttons> allowedButtons = PlayerInput.GetConfigurableGamepadButtons(action);
+                session.Bindings[action] = i < detectedButtonCount && i < allowedButtons.Count
+                    ? allowedButtons[i]
+                    : (Buttons)0;
+            }
+
+            session.Bindings[InputAction.Escape] = 0;
+        }
+
+        private static int ResolveClientJoypadButtonCount(JoypadSessionSnapshot session)
+        {
+            if (session == null)
+            {
+                return 0;
+            }
+
+            GamePadState state = GamePad.GetState(session.GamepadIndex);
+            if (!state.IsConnected)
+            {
+                return 0;
+            }
+
+            return Math.Min(
+                JoypadClientSelectableButtonCount,
+                PlayerInput.GetConfigurableGamepadButtons(InputAction.Jump).Count);
         }
 
         private static void CopyJoypadSession(JoypadSessionSnapshot source, JoypadSessionSnapshot destination)
@@ -2157,7 +2198,7 @@ namespace HaCreator.MapSimulator.UI
                 return $"{label}: {value}. Client CUIJoyPad slot {coreSlotIndex + 1} is now staged here; left or right cycles the shared button family, A or Space arms capture, and Delete or X clears it.";
             }
 
-            return $"{label}: {value}. This stays on the simulator extension lane beyond the recovered 12-slot CUIJoyPad core set; left or right cycles the staged shared-button binding, A or Space arms capture, and Delete or X clears it.";
+            return $"{label}: {value}. This stays on the simulator extension lane beyond the recovered eleven-combo CUIJoyPad core set; left or right cycles the staged shared-button binding, A or Space arms capture, and Delete or X clears it.";
         }
 
         private static int GetNearestStepIndex(IReadOnlyList<float> steps, float value)
@@ -2587,19 +2628,19 @@ namespace HaCreator.MapSimulator.UI
 
         private static string BuildJoypadClientCoreSummary(JoypadSessionSnapshot session)
         {
-            List<string> slots = new(JoypadClientCoreBindingActions.Length);
+            List<string> slots = new(JoypadClientComboCount);
             for (int i = 0; i < JoypadClientCoreBindingActions.Length; i++)
             {
                 InputAction action = JoypadClientCoreBindingActions[i];
                 slots.Add($"{i + 1}:{FormatGamepadButton(GetJoypadBinding(session, action))}");
             }
 
-            return $"CUIJoyPad core 1-12: {string.Join("  ", slots)}";
+            return $"CUIJoyPad combos 1000-1010: {string.Join("  ", slots)}";
         }
 
         private static string BuildJoypadExtensionSummary(JoypadSessionSnapshot session)
         {
-            return $"Extensions: Map {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleMinimap))}, Chat {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleChat))}, Quick UI {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleQuickSlot))}, Key {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleKeyConfig))}";
+            return $"Extensions: Map {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleMinimap))}, Chat {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleChat))}, Quick UI {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleQuickSlot))}, Key {FormatGamepadButton(GetJoypadBinding(session, InputAction.ToggleKeyConfig))}, Esc {FormatGamepadButton(GetJoypadBinding(session, InputAction.Escape))}";
         }
 
         private static int GetJoypadClientCoreSlotIndex(InputAction action)

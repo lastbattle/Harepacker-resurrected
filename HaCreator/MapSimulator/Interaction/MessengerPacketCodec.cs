@@ -114,14 +114,37 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        public static byte[] BuildBlockedAutoRejectOutPacket(string inviterName, string localCharacterName)
+        public static byte[] BuildBlockedAutoRejectPayload(string inviterName, string localCharacterName)
         {
             PacketWriter writer = new();
-            writer.WriteShort(ClientMessengerRequestOpcode);
             writer.WriteByte(5);
             writer.WriteMapleString(inviterName ?? string.Empty);
             writer.WriteMapleString(localCharacterName ?? string.Empty);
             writer.WriteByte(1);
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildBlockedAutoRejectOutPacket(string inviterName, string localCharacterName)
+        {
+            PacketWriter writer = new();
+            writer.WriteShort(ClientMessengerRequestOpcode);
+            writer.WriteBytes(BuildBlockedAutoRejectPayload(inviterName, localCharacterName));
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildInviteRequestPayload(string contactName)
+        {
+            PacketWriter writer = new();
+            writer.WriteByte(3);
+            writer.WriteMapleString(NormalizeText(contactName));
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildProcessChatRequestPayload(string localCharacterName, string message)
+        {
+            PacketWriter writer = new();
+            writer.WriteByte(6);
+            writer.WriteMapleString($"{NormalizeText(localCharacterName)}{ChatSeparator}{NormalizeText(message)}");
             return writer.ToArray();
         }
 

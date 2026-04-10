@@ -321,6 +321,7 @@ namespace HaCreator.MapSimulator
 
         private void DrawPacketOwnedLocalOverlayState(int currentTickCount, int mapCenterX, int mapCenterY)
         {
+            DrawPacketOwnedFieldFadeOverlay(currentTickCount);
             DrawPacketOwnedBalloonOverlay(currentTickCount, mapCenterX, mapCenterY);
         }
 
@@ -3764,34 +3765,64 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedDamageMeterPayload(byte[] payload, out string message)
         {
-            message = null;
-            if (payload == null || payload.Length < sizeof(int))
+            if (!TryDecodePacketOwnedDamageMeterPayload(payload, out int durationSeconds, out message))
             {
-                message = "Damage-meter payload must contain a duration Int32.";
                 return false;
             }
 
-            try
-            {
-                using var stream = new MemoryStream(payload, writable: false);
-                using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
-                int durationSeconds = reader.ReadInt32();
-                message = ApplyDamageMeterTimer(durationSeconds, currTickCount);
-                return true;
-            }
-            catch (Exception ex) when (ex is EndOfStreamException or IOException)
-            {
-                message = $"Damage-meter payload could not be decoded: {ex.Message}";
-                return false;
-            }
+            message = ApplyDamageMeterTimer(durationSeconds, currTickCount);
+            return true;
         }
 
         private bool TryApplyPacketOwnedFieldHazardPayload(byte[] payload, out string message)
         {
+            if (!TryDecodePacketOwnedFieldHazardPayload(payload, out int damage, out message))
+            {
+                return false;
+            }
+
+            message = ApplyFieldHazardNotice(damage, currTickCount);
+            return true;
+        }
+
+        internal static bool TryDecodePacketOwnedDamageMeterPayload(byte[] payload, out int durationSeconds, out string message)
+        {
+            return TryDecodeSingleInt32LocalUtilityPayload(
+                payload,
+                "Damage-meter",
+                "duration",
+                out durationSeconds,
+                out message);
+        }
+
+        internal static bool TryDecodePacketOwnedFieldHazardPayload(byte[] payload, out int damage, out string message)
+        {
+            return TryDecodeSingleInt32LocalUtilityPayload(
+                payload,
+                "Field-hazard",
+                "damage",
+                out damage,
+                out message);
+        }
+
+        private static bool TryDecodeSingleInt32LocalUtilityPayload(
+            byte[] payload,
+            string ownerName,
+            string valueName,
+            out int value,
+            out string message)
+        {
+            value = 0;
             message = null;
             if (payload == null || payload.Length < sizeof(int))
             {
-                message = "Field-hazard payload must contain a damage Int32.";
+                message = $"{ownerName} payload must contain a {valueName} Int32.";
+                return false;
+            }
+
+            if (payload.Length != sizeof(int))
+            {
+                message = $"{ownerName} payload must contain exactly one {valueName} Int32, but received {payload.Length - sizeof(int)} trailing byte(s).";
                 return false;
             }
 
@@ -3799,13 +3830,12 @@ namespace HaCreator.MapSimulator
             {
                 using var stream = new MemoryStream(payload, writable: false);
                 using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
-                int damage = reader.ReadInt32();
-                message = ApplyFieldHazardNotice(damage, currTickCount);
+                value = reader.ReadInt32();
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException or IOException)
             {
-                message = $"Field-hazard payload could not be decoded: {ex.Message}";
+                message = $"{ownerName} payload could not be decoded: {ex.Message}";
                 return false;
             }
         }

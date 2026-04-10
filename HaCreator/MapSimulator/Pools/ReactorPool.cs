@@ -1195,9 +1195,11 @@ namespace HaCreator.MapSimulator.Pools
             IReadOnlyList<string> scriptNames = QuestRuntimeManager.ParseScriptNames(infoProperty?["script"]);
             ReactorType reactorType = TryGetOptionalReactorType(infoProperty?["reactorType"])
                 ?? TryGetOptionalReactorType(infoProperty?["type"])
+                ?? TryInferDirectionalReactorTypeFromStateEvents(authoredEventTypes)
                 ?? ReactorType.UNKNOWN;
             int hitOption = TryGetOptionalInt(infoProperty?["reactorType"])
                 ?? TryGetOptionalInt(infoProperty?["type"])
+                ?? TryResolveHitOptionFromReactorType(reactorType)
                 ?? -1;
 
             bool activateByTouch = TryGetOptionalInt(infoProperty?["activateByTouch"]).GetValueOrDefault() != 0;
@@ -1293,6 +1295,44 @@ namespace HaCreator.MapSimulator.Pools
             return value.HasValue && Enum.IsDefined(typeof(ReactorType), value.Value)
                 ? (ReactorType)value.Value
                 : null;
+        }
+
+        internal static ReactorType? TryInferDirectionalReactorTypeFromStateEvents(IReadOnlySet<int> authoredEventTypes)
+        {
+            if (authoredEventTypes == null)
+            {
+                return null;
+            }
+
+            bool hasLeftHitOnlyEvent = authoredEventTypes.Contains(3);
+            bool hasRightHitOnlyEvent = authoredEventTypes.Contains(4);
+            if (hasLeftHitOnlyEvent && !hasRightHitOnlyEvent)
+            {
+                return ReactorType.ActivatedLeftHit;
+            }
+
+            if (hasRightHitOnlyEvent && !hasLeftHitOnlyEvent)
+            {
+                return ReactorType.ActivatedRightHit;
+            }
+
+            if (hasLeftHitOnlyEvent && hasRightHitOnlyEvent)
+            {
+                return ReactorType.ActivatedByAnyHit;
+            }
+
+            return null;
+        }
+
+        internal static int? TryResolveHitOptionFromReactorType(ReactorType reactorType)
+        {
+            return reactorType switch
+            {
+                ReactorType.ActivatedLeftHit => 0,
+                ReactorType.ActivatedRightHit => 1,
+                ReactorType.ActivatedByAnyHit => 0,
+                _ => null
+            };
         }
 
         private static ReactorActivationType? TryInferActivationTypeFromStateEvents(WzImage linkedReactorImage)

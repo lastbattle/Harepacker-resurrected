@@ -4475,9 +4475,15 @@ namespace HaCreator.MapSimulator.Character
 
             string actionName = CurrentActionName ?? string.Empty;
             int sourceLayerCurrentTime = GetRenderAnimationTime(currentTime);
+            bool preservesPreparedFeetOffset = CanPreserveMirrorImagePreparedFeetOffset(
+                _activeMirrorImage.PreparedSourceLayers,
+                FacingRight);
             _activeMirrorImage.PreparedActionName = actionName;
             _activeMirrorImage.PreparedFrameIndex = currentFrameIndex;
-            _activeMirrorImage.PreparedFeetOffset = frame.FeetOffset;
+            _activeMirrorImage.PreparedFeetOffset = ResolveMirrorImagePreparedFeetOffset(
+                _activeMirrorImage.PreparedFeetOffset,
+                frame.FeetOffset,
+                preservesPreparedFeetOffset);
             _activeMirrorImage.PreparedSourceLayers = BuildPreparedMirrorImageSourceLayers(
                 frame.AvatarRenderLayers,
                 _activeMirrorImage.PreparedSourceLayers,
@@ -5213,6 +5219,42 @@ namespace HaCreator.MapSimulator.Character
             return incomingBounds.IsEmpty
                 ? Point.Zero
                 : ResolveMirrorImageSourceLayerOrigin(incomingBounds);
+        }
+
+        private static bool CanPreserveMirrorImagePreparedFeetOffset(
+            IReadOnlyList<MirrorImagePreparedSourceLayer> existingLayers,
+            bool currentFacingRight)
+        {
+            if (existingLayers == null || existingLayers.Count == 0)
+            {
+                return false;
+            }
+
+            for (int layerIndex = 0; layerIndex < existingLayers.Count; layerIndex++)
+            {
+                MirrorImagePreparedSourceLayer layer = existingLayers[layerIndex];
+                if (layer?.Parts == null || layer.Parts.Count == 0)
+                {
+                    continue;
+                }
+
+                if (layer.PreparedFacingRight == currentFacingRight)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static int ResolveMirrorImagePreparedFeetOffset(
+            int existingFeetOffset,
+            int incomingFeetOffset,
+            bool preservesExistingLayerObject)
+        {
+            return preservesExistingLayerObject
+                ? existingFeetOffset
+                : incomingFeetOffset;
         }
 
         private static void DrawMirrorImageSourcePartToTexture(SpriteBatch spriteBatch, AssembledPart part, Rectangle bounds)

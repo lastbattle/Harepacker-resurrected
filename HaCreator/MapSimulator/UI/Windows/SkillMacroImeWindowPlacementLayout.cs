@@ -99,6 +99,27 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        internal static SkillMacroImeWindowPlacement PreserveNativeCandidateWindowPlacement(
+            SkillMacroImeWindowPlacement placement,
+            ImeCandidateListState candidateListState)
+        {
+            if (!TryResolveCandidateWindowFormPlacement(
+                candidateListState?.WindowForm,
+                out Point nativeCandidatePoint,
+                out Rectangle nativeCandidateArea,
+                out uint nativeCandidateStyle))
+            {
+                return placement;
+            }
+
+            return placement with
+            {
+                CandidatePoint = nativeCandidatePoint,
+                CandidateExcludeArea = nativeCandidateArea,
+                CandidateStyle = nativeCandidateStyle
+            };
+        }
+
         private static uint NormalizeCandidateWindowStyle(uint style)
         {
             uint normalized = style & (ImeWindowStyleRect

@@ -137,7 +137,8 @@ namespace HaCreator.MapSimulator.Managers
             bool tournamentMatchTableVisible,
             bool rockPaperScissorsVisible,
             bool initialQuizVisible,
-            bool speedQuizVisible)
+            bool speedQuizVisible,
+            bool packetScriptDedicatedOwnerVisible)
         {
             return npcInteractionVisible
                    || trackedOwnerVisible
@@ -150,7 +151,8 @@ namespace HaCreator.MapSimulator.Managers
                    || tournamentMatchTableVisible
                    || rockPaperScissorsVisible
                    || initialQuizVisible
-                   || speedQuizVisible;
+                   || speedQuizVisible
+                   || packetScriptDedicatedOwnerVisible;
         }
 
         /// <summary>

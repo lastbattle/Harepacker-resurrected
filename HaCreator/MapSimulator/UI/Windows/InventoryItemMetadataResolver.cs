@@ -325,7 +325,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            int resolvedNpcId = GetIntValue(specProperty["npc"]);
+            int resolvedNpcId = GetIntOrStringValue(specProperty["npc"]);
             if (resolvedNpcId <= 0)
             {
                 return false;
@@ -369,8 +369,8 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool IsNotConsumedOnUse(WzSubProperty infoProperty)
         {
-            return GetIntValue(infoProperty?["noExpend"]) == 1
-                   || GetIntValue(infoProperty?["notConsume"]) == 1;
+            return GetIntOrStringValue(infoProperty?["noExpend"]) == 1
+                   || GetIntOrStringValue(infoProperty?["notConsume"]) == 1;
         }
 
         public static bool IsPetFoodItem(int itemId)
@@ -982,6 +982,7 @@ namespace HaCreator.MapSimulator.UI
         {
             List<string> effectLines = new();
             AppendInfoEffectLines(effectLines, infoProperty);
+            AppendInfoExperienceEffectLines(effectLines, infoProperty);
             AppendChairRecoveryEffectLines(effectLines, infoProperty);
             AppendPetFoodEffectLine(effectLines, itemId, specProperty);
             AppendBuffItemEffectLines(effectLines, itemProperty?["buff"] as WzSubProperty);
@@ -1180,6 +1181,15 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendInfoExperienceEffectLines(List<string> effectLines, WzSubProperty infoProperty)
+        {
+            int experienceAmount = GetIntOrStringValue(infoProperty?["exp"]);
+            if (experienceAmount > 0)
+            {
+                effectLines.Add($"EXP +{experienceAmount.ToString("N0", CultureInfo.InvariantCulture)}");
+            }
+        }
+
         private static void AppendChairRecoveryEffectLines(List<string> effectLines, WzSubProperty infoProperty)
         {
             if (infoProperty == null)
@@ -1338,7 +1348,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int npcId = GetIntValue(specProperty["npc"]);
+            int npcId = GetIntOrStringValue(specProperty["npc"]);
             if (npcId > 0)
             {
                 string npcName = ResolveNpcName(npcId);
@@ -1648,6 +1658,7 @@ namespace HaCreator.MapSimulator.UI
             AppendRecoveryRateMetadataLines(metadataLines, infoProperty);
             AppendRandomChairEffectMetadataLines(metadataLines, infoProperty);
             AppendAdditionalExperienceMetadataLines(metadataLines, infoProperty);
+            AppendGrowthItemMetadataLines(metadataLines, infoProperty);
             AppendLevelBandMetadataLines(metadataLines, infoProperty);
             AppendBundleLimitMetadataLines(metadataLines, infoProperty);
             AppendLevelUpWarningMetadataLines(metadataLines, infoProperty);
@@ -1656,6 +1667,7 @@ namespace HaCreator.MapSimulator.UI
             AppendItemBagMetadataLines(metadataLines, specProperty);
             AppendSpecExMobSkillMetadataLines(metadataLines, specExProperty);
             AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
+            AppendCashRateScheduleMetadataLines(metadataLines, infoProperty);
             AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
         }
 
@@ -2135,6 +2147,59 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendGrowthItemMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int questId = GetIntOrStringValue(infoProperty["questId"]);
+            if (questId > 0)
+            {
+                metadataLines.Add($"Related Quest: {ResolveQuestTooltipLabel(questId)}");
+            }
+
+            int growthGrade = GetIntOrStringValue(infoProperty["grade"]);
+            if (growthGrade > 0)
+            {
+                metadataLines.Add($"Growth Grade: {growthGrade.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            string growthName = NormalizeTooltipText((infoProperty["name"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(growthName))
+            {
+                metadataLines.Add($"Growth Name: {growthName}");
+            }
+
+            AppendAuthoredMessageMetadataLines(metadataLines, infoProperty["message"] as WzSubProperty);
+        }
+
+        private static void AppendAuthoredMessageMetadataLines(List<string> metadataLines, WzSubProperty messageProperty)
+        {
+            if (messageProperty?.WzProperties == null)
+            {
+                return;
+            }
+
+            const int previewLineLimit = 3;
+            int appended = 0;
+            List<(int Index, string Text)> authoredRows = GetNumericNamedStringRows(messageProperty);
+            foreach ((_, string text) in authoredRows)
+            {
+                if (appended < previewLineLimit)
+                {
+                    metadataLines.Add($"Message: {text}");
+                    appended++;
+                }
+            }
+
+            if (authoredRows.Count > appended)
+            {
+                metadataLines.Add($"Message: ... and {(authoredRows.Count - appended).ToString(CultureInfo.InvariantCulture)} more");
+            }
+        }
+
         private static void AppendAdditionalExperienceMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
         {
             if (infoProperty == null)
@@ -2373,6 +2438,74 @@ namespace HaCreator.MapSimulator.UI
             {
                 metadataLines.Add($"Time limit: {FormatMinuteDuration(limitMinutes)}");
             }
+        }
+
+        private static void AppendCashRateScheduleMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int rate = GetIntOrStringValue(infoProperty["rate"]);
+            if (rate > 0)
+            {
+                metadataLines.Add($"Cash Rate: {rate.ToString(CultureInfo.InvariantCulture)}x");
+            }
+
+            AppendAuthoredScheduleMetadataLines(metadataLines, infoProperty["time"] as WzSubProperty);
+        }
+
+        private static void AppendAuthoredScheduleMetadataLines(List<string> metadataLines, WzSubProperty scheduleProperty)
+        {
+            if (scheduleProperty?.WzProperties == null)
+            {
+                return;
+            }
+
+            List<(int Index, string Text)> scheduleRows = GetNumericNamedStringRows(scheduleProperty);
+
+            if (scheduleRows.Count == 0)
+            {
+                return;
+            }
+
+            const int previewLineLimit = 4;
+            int previewCount = Math.Min(scheduleRows.Count, previewLineLimit);
+            List<string> previewRows = scheduleRows.GetRange(0, previewCount).ConvertAll(row => row.Text);
+            string line = $"Available: {string.Join(", ", previewRows)}";
+            if (scheduleRows.Count > previewCount)
+            {
+                line += $", +{(scheduleRows.Count - previewCount).ToString(CultureInfo.InvariantCulture)} more";
+            }
+
+            metadataLines.Add(line);
+        }
+
+        private static List<(int Index, string Text)> GetNumericNamedStringRows(WzSubProperty property)
+        {
+            List<(int Index, string Text)> rows = new();
+            if (property?.WzProperties == null)
+            {
+                return rows;
+            }
+
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                string text = NormalizeTooltipText(GetStringValue(child));
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    rows.Add((index, text));
+                }
+            }
+
+            rows.Sort((left, right) => left.Index.CompareTo(right.Index));
+            return rows;
         }
 
         private static void AppendAdditionalInfoFlagsMetadataLines(

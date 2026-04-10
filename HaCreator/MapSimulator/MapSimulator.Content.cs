@@ -1228,6 +1228,7 @@ namespace HaCreator.MapSimulator
             if (!preserveCrossMapTeleportRequest)
             {
                 _packetOwnedTeleportRequestActive = false;
+                ClearCollisionScriptExclusiveRequestSent();
                 _packetOwnedTeleportRequestCompletedAt = int.MinValue;
                 _lastPacketOwnedTeleportPortalRequestTick = int.MinValue;
                 _lastPacketOwnedTeleportPortalIndex = -1;

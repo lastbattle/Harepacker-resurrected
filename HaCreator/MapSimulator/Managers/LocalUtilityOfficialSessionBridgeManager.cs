@@ -619,7 +619,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.AntiMacroResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.PetConsumeResultPacketType
-                || packetType == LocalUtilityPacketInboxManager.MechanicEquipStatePacketType;
+                || packetType == LocalUtilityPacketInboxManager.MechanicEquipStatePacketType
+                || packetType == LocalUtilityPacketInboxManager.CharacterEquipStatePacketType;
         }
 
         internal static string DescribePacketType(int packetType)
@@ -648,6 +649,7 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.AntiMacroResultPacketType => "AntiMacroResult(1011)",
                 LocalUtilityPacketInboxManager.PetConsumeResultPacketType => "PetConsumeResult(1026) / RaiseOwnerSync(1026)",
                 LocalUtilityPacketInboxManager.MechanicEquipStatePacketType => "MechanicEquipState(1023)",
+                LocalUtilityPacketInboxManager.CharacterEquipStatePacketType => "CharacterEquipState(1034)",
                 _ => $"packet {packetType}"
             };
         }

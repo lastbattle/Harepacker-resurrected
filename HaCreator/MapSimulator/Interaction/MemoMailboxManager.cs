@@ -243,6 +243,7 @@ namespace HaCreator.MapSimulator.Interaction
             _memos.Clear();
             _nextMemoId = 1;
 
+            int skippedRows = 0;
             if (entries != null)
             {
                 DateTimeOffset displayTime = DateTimeOffset.Now;
@@ -250,6 +251,12 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     if (entry == null)
                     {
+                        continue;
+                    }
+
+                    if (_memos.Count >= MaxPacketOwnedReceiveRows)
+                    {
+                        skippedRows++;
                         continue;
                     }
 
@@ -315,7 +322,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             message = entries == null || entries.Count == 0
                 ? "Applied packet-owned parcel session with no receive rows."
-                : $"Applied packet-owned parcel session with {entries.Count} receive row(s).";
+                : skippedRows > 0
+                    ? $"Applied packet-owned parcel session with {_memos.Count} receive row(s) and skipped {skippedRows} row(s) beyond the client-shaped 10-row backlog."
+                    : $"Applied packet-owned parcel session with {_memos.Count} receive row(s).";
             _lastActionSummary = message;
         }
 

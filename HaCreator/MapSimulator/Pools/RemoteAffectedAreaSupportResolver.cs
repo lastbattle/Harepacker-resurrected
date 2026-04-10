@@ -12,6 +12,13 @@ namespace HaCreator.MapSimulator.Pools
         Hostile = 2
     }
 
+    internal readonly record struct RemoteHostilePlayerAreaStatus(
+        PlayerMobStatusEffect Effect,
+        int DurationMs,
+        int Value,
+        int TickIntervalMs = 0,
+        int RemainingCount = 0);
+
     public static class RemoteAffectedAreaSupportResolver
     {
         private static readonly string[] FriendlyAreaDescriptionTokens =
@@ -728,6 +735,94 @@ namespace HaCreator.MapSimulator.Pools
             return hostileEntries;
         }
 
+        internal static IReadOnlyList<RemoteHostilePlayerAreaStatus> ResolveHostilePlayerAreaStatuses(
+            SkillData skill,
+            SkillLevelData levelData)
+        {
+            List<RemoteHostilePlayerAreaStatus> statuses = new();
+            if (skill == null || levelData == null)
+            {
+                return statuses;
+            }
+
+            string hostileSearchText = BuildHostileGameplaySearchText(skill);
+            int durationMs = ResolveHostilePlayerAreaStatusDurationMs(levelData);
+            int dotDurationMs = ResolveHostilePlayerAreaStatusDurationMs(levelData, preferDotDuration: true);
+            int dotTickIntervalMs = ResolveHostilePlayerAreaDotTickIntervalMs(levelData);
+
+            if (HasHostilePlayerDotStatus(skill, levelData, hostileSearchText))
+            {
+                int dotValue = ResolveHostilePlayerAreaStatusMagnitude(
+                    levelData,
+                    Math.Max(1, Math.Max(levelData.Damage, 10) / 5),
+                    preferDotDamage: true);
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Poison,
+                    dotDurationMs,
+                    dotValue,
+                    dotTickIntervalMs));
+            }
+
+            if (ContainsToken(hostileSearchText, "freeze", "ice", "blizzard", "frost") || skill.Element == SkillElement.Ice)
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(PlayerMobStatusEffect.Freeze, durationMs, 1));
+            }
+
+            if (ContainsToken(hostileSearchText, "stun", "paraly", "shock"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(PlayerMobStatusEffect.Stun, durationMs, 1));
+            }
+
+            if (ContainsToken(hostileSearchText, "seal"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(PlayerMobStatusEffect.Seal, durationMs, 1));
+            }
+
+            if (ContainsToken(hostileSearchText, "blind", "dark", "darkness"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Darkness,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20)));
+            }
+
+            if (ContainsToken(hostileSearchText, "slow", "web") || levelData.Speed < 0)
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Slow,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20, preferSpeed: true)));
+            }
+
+            if (ContainsToken(hostileSearchText, "weak") || levelData.Jump < 0)
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(PlayerMobStatusEffect.Weakness, durationMs, 1));
+            }
+
+            if (ContainsToken(hostileSearchText, "curse"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Curse,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 50)));
+            }
+
+            if (ContainsToken(hostileSearchText, "reverse"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(PlayerMobStatusEffect.ReverseInput, durationMs, 1));
+            }
+
+            if (ContainsToken(hostileSearchText, "undead"))
+            {
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Undead,
+                    durationMs,
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 100)));
+            }
+
+            return statuses;
+        }
+
         private static bool HasHostileMobGameplayCore(SkillData skill, SkillLevelData levelData)
         {
             if (skill == null)
@@ -805,6 +900,91 @@ namespace HaCreator.MapSimulator.Pools
 
             return string.Equals(skill.MinionAttack, "dot", StringComparison.OrdinalIgnoreCase)
                    && !string.IsNullOrWhiteSpace(skill.DotType);
+        }
+
+        private static bool HasHostilePlayerDotStatus(SkillData skill, SkillLevelData levelData, string hostileSearchText)
+        {
+            return levelData?.DotDamage > 0
+                   || levelData?.DotTime > 0
+                   || skill?.Element == SkillElement.Poison
+                   || UsesHostileDotOrBodyAttackMetadata(skill)
+                   || ContainsToken(hostileSearchText, "poison", "venom", "burn", "flame");
+        }
+
+        private static int ResolveHostilePlayerAreaStatusDurationMs(
+            SkillLevelData levelData,
+            bool preferDotDuration = false)
+        {
+            if (levelData == null)
+            {
+                return 4000;
+            }
+
+            if (preferDotDuration && levelData.DotTime > 0)
+            {
+                return levelData.DotTime * 1000;
+            }
+
+            if (levelData.Time > 0)
+            {
+                return levelData.Time * 1000;
+            }
+
+            return 4000;
+        }
+
+        private static int ResolveHostilePlayerAreaDotTickIntervalMs(SkillLevelData levelData)
+        {
+            return levelData?.DotInterval > 0
+                ? levelData.DotInterval * 1000
+                : 1000;
+        }
+
+        private static int ResolveHostilePlayerAreaStatusMagnitude(
+            SkillLevelData levelData,
+            int fallback,
+            bool preferDotDamage = false,
+            bool preferSpeed = false)
+        {
+            if (levelData == null)
+            {
+                return Math.Max(1, fallback);
+            }
+
+            if (preferDotDamage && levelData.DotDamage > 0)
+            {
+                return levelData.DotDamage;
+            }
+
+            if (preferSpeed && levelData.Speed != 0)
+            {
+                return Math.Abs(levelData.Speed);
+            }
+
+            int[] candidates =
+            {
+                Math.Abs(levelData.X),
+                Math.Abs(levelData.Y),
+                Math.Abs(levelData.Z),
+                Math.Abs(levelData.PAD),
+                Math.Abs(levelData.MAD),
+                Math.Abs(levelData.PDD),
+                Math.Abs(levelData.MDD),
+                Math.Abs(levelData.ACC),
+                Math.Abs(levelData.EVA),
+                Math.Abs(levelData.Speed),
+                Math.Abs(levelData.Jump)
+            };
+
+            foreach (int candidate in candidates)
+            {
+                if (candidate > 0)
+                {
+                    return candidate;
+                }
+            }
+
+            return Math.Max(1, fallback);
         }
 
         private static bool IsFriendlySupportSummonArea(SkillData skill)

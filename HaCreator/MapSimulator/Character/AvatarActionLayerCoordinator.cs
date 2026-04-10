@@ -7,6 +7,12 @@ namespace HaCreator.MapSimulator.Character
     internal static class AvatarActionLayerCoordinator
     {
         internal const int MaxClientActionFrameDelay = 1_000_000_000;
+        internal const string ClientBodyOriginMapPoint = "clientBodyOrigin";
+        internal const string ClientFaceOriginMapPoint = "clientFaceOrigin";
+        internal const string ClientMuzzleOriginMapPoint = "clientMuzzleOrigin";
+        internal const string ClientTamingMobNavelOriginMapPoint = "clientTamingMobNavelOrigin";
+        internal const string ClientTamingMobHeadOriginMapPoint = "clientTamingMobHeadOrigin";
+        internal const string ClientTamingMobMuzzleOriginMapPoint = "clientTamingMobMuzzleOrigin";
         private const int MechanicTankModeSkillId = 35121005;
 
         private static readonly IReadOnlyDictionary<int, int> MechanicTankOneTimeActionRewrites =
@@ -22,6 +28,11 @@ namespace HaCreator.MapSimulator.Character
             if (string.IsNullOrWhiteSpace(actionName))
             {
                 return CharacterPart.GetActionString(CharacterAction.Stand1);
+            }
+
+            if (!isMorphAvatar && IsExplicitMountedTransitionActionName(actionName))
+            {
+                return actionName;
             }
 
             if (!CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode))
@@ -88,19 +99,23 @@ namespace HaCreator.MapSimulator.Character
             if (frame?.Parts == null
                 || frame.Parts.Count == 0
                 || characterFrame == null
-                || tamingMobFrame == null
-                || !tamingMobFrame.Map.TryGetValue("navel", out Point tamingMobNavel)
-                || !characterFrame.Map.TryGetValue("navel", out Point characterNavel))
+                || tamingMobFrame == null)
             {
                 return;
             }
 
-            Point bodyRelMove = new(tamingMobNavel.X - characterNavel.X, tamingMobNavel.Y - characterNavel.Y);
-            if (!facingRight)
+            MountedOriginRelocation relocation = ResolveMountedOriginRelocation(
+                characterFrame,
+                tamingMobFrame,
+                facingRight);
+            if (!relocation.HasBodyRelMove)
             {
-                bodyRelMove.X = -bodyRelMove.X;
+                return;
             }
 
+            WriteClientMountedOriginMapPoints(frame.MapPoints, relocation);
+
+            Point bodyRelMove = relocation.BodyRelMove;
             if (bodyRelMove == Point.Zero)
             {
                 return;
@@ -126,9 +141,73 @@ namespace HaCreator.MapSimulator.Character
             OffsetMapPoint(frame.MapPoints, "muzzle", bodyRelMove);
         }
 
+        internal static MountedOriginRelocation ResolveMountedOriginRelocation(
+            CharacterFrame characterFrame,
+            CharacterFrame tamingMobFrame,
+            bool facingRight)
+        {
+            var relocation = new MountedOriginRelocation();
+            if (characterFrame == null || tamingMobFrame == null)
+            {
+                return relocation;
+            }
+
+            if (!TryGetMapPoint(characterFrame, "navel", out Point characterNavel)
+                || !TryGetMapPoint(tamingMobFrame, "navel", out Point tamingMobNavel))
+            {
+                return relocation;
+            }
+
+            relocation.HasBodyRelMove = true;
+            relocation.BodyRelMove = ApplyClientFlip(
+                new Point(tamingMobNavel.X - characterNavel.X, tamingMobNavel.Y - characterNavel.Y),
+                facingRight);
+
+            if (TryGetMapPoint(characterFrame, "brow", out Point faceOrigin))
+            {
+                relocation.FaceOrigin = ApplyClientFlip(faceOrigin, facingRight);
+            }
+
+            if (TryGetMapPoint(characterFrame, "muzzle", out Point muzzleOrigin))
+            {
+                relocation.MuzzleOrigin = ApplyClientFlip(muzzleOrigin, facingRight);
+            }
+
+            relocation.TamingMobNavelOrigin = ApplyClientFlip(tamingMobNavel, facingRight);
+
+            if (TryGetMapPoint(tamingMobFrame, "head", out Point tamingMobHeadOrigin))
+            {
+                relocation.TamingMobHeadOrigin = ApplyClientFlip(tamingMobHeadOrigin, facingRight);
+            }
+
+            if (TryGetMapPoint(tamingMobFrame, "muzzle", out Point tamingMobMuzzleOrigin))
+            {
+                relocation.TamingMobMuzzleOrigin = ApplyClientFlip(tamingMobMuzzleOrigin, facingRight);
+            }
+
+            return relocation;
+        }
+
         internal static bool IsRawActionAllowed(int rawActionCode, bool isMorphAvatar)
         {
             return rawActionCode >= 0 && rawActionCode < (isMorphAvatar ? 49 : 273);
+        }
+
+        private static bool IsExplicitMountedTransitionActionName(string actionName)
+        {
+            return string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal sealed class MountedOriginRelocation
+        {
+            public bool HasBodyRelMove { get; set; }
+            public Point BodyRelMove { get; set; }
+            public Point? FaceOrigin { get; set; }
+            public Point? MuzzleOrigin { get; set; }
+            public Point? TamingMobNavelOrigin { get; set; }
+            public Point? TamingMobHeadOrigin { get; set; }
+            public Point? TamingMobMuzzleOrigin { get; set; }
         }
 
         private static bool UsesWalkSpeedTiming(string actionName)
@@ -177,6 +256,31 @@ namespace HaCreator.MapSimulator.Character
                    || part.SourcePart?.Slot == EquipSlot.TamingMob;
         }
 
+        private static void WriteClientMountedOriginMapPoints(
+            Dictionary<string, Point> mapPoints,
+            MountedOriginRelocation relocation)
+        {
+            if (mapPoints == null || relocation == null)
+            {
+                return;
+            }
+
+            mapPoints[ClientBodyOriginMapPoint] = relocation.BodyRelMove;
+            WriteOptionalMapPoint(mapPoints, ClientFaceOriginMapPoint, relocation.FaceOrigin);
+            WriteOptionalMapPoint(mapPoints, ClientMuzzleOriginMapPoint, relocation.MuzzleOrigin);
+            WriteOptionalMapPoint(mapPoints, ClientTamingMobNavelOriginMapPoint, relocation.TamingMobNavelOrigin);
+            WriteOptionalMapPoint(mapPoints, ClientTamingMobHeadOriginMapPoint, relocation.TamingMobHeadOrigin);
+            WriteOptionalMapPoint(mapPoints, ClientTamingMobMuzzleOriginMapPoint, relocation.TamingMobMuzzleOrigin);
+        }
+
+        private static void WriteOptionalMapPoint(Dictionary<string, Point> mapPoints, string name, Point? point)
+        {
+            if (point.HasValue)
+            {
+                mapPoints[name] = point.Value;
+            }
+        }
+
         private static void OffsetMapPoint(Dictionary<string, Point> mapPoints, string name, Point offset)
         {
             if (mapPoints == null || !mapPoints.TryGetValue(name, out Point point))
@@ -185,6 +289,17 @@ namespace HaCreator.MapSimulator.Character
             }
 
             mapPoints[name] = new Point(point.X + offset.X, point.Y + offset.Y);
+        }
+
+        private static bool TryGetMapPoint(CharacterFrame frame, string name, out Point point)
+        {
+            point = Point.Zero;
+            return frame?.Map != null && frame.Map.TryGetValue(name, out point);
+        }
+
+        private static Point ApplyClientFlip(Point point, bool facingRight)
+        {
+            return facingRight ? point : new Point(-point.X, point.Y);
         }
     }
 }

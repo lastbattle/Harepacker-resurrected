@@ -401,29 +401,56 @@ namespace HaCreator.MapSimulator.Fields
 
         private static IEnumerable<int> EnumerateSkillRestrictionClassCandidates(int currentJobId, SkillData skill)
         {
-            foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
-            {
-                yield return candidate;
-            }
+            HashSet<int> yielded = new HashSet<int>();
 
             if (skill == null)
             {
+                foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+
                 yield break;
             }
 
             if (skill.IsFourthJob)
             {
-                yield return 4;
+                if (yielded.Add(4))
+                {
+                    yield return 4;
+                }
             }
 
             foreach (int candidate in EnumerateClassCandidatesForJobId(Math.Abs(skill.Job)))
             {
-                yield return candidate;
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
             }
 
             foreach (int candidate in EnumerateClassCandidatesForJobId(Math.Abs(skill.SkillId / 10000)))
             {
-                yield return candidate;
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+
+            if (yielded.Count > 0)
+            {
+                yield break;
+            }
+
+            foreach (int candidate in EnumerateClassCandidatesForJobId(currentJobId))
+            {
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
             }
         }
 

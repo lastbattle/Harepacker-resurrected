@@ -362,6 +362,11 @@ namespace HaCreator.MapSimulator.Managers
                 : FormatComboNumericValue(areaCode);
         }
 
+        internal static string FormatBirthdayComboText(int value)
+        {
+            return FormatComboNumericValue(Math.Max(0, value));
+        }
+
         internal static string ResolveAreaDetailCountryNamePath(int areaGroup)
         {
             return $"{CountryNameRootPath}/{Math.Clamp(areaGroup, 0, 255)}";

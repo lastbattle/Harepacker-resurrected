@@ -1411,7 +1411,10 @@ namespace HaCreator.MapSimulator.Interaction
             int bestOpaqueByteCount = int.MaxValue;
             long bestPosition = startPosition;
             PacketCharacterDataSnapshot bestSnapshot = null;
-            for (int opaqueByteCount = 0; opaqueByteCount <= maxOpaqueByteCount; opaqueByteCount++)
+            int minOpaqueByteCount = hasInt16ValueRecordSection
+                ? sizeof(ushort)
+                : 0;
+            for (int opaqueByteCount = minOpaqueByteCount; opaqueByteCount <= maxOpaqueByteCount; opaqueByteCount++)
             {
                 reader.BaseStream.Position = startPosition;
                 if (!TryDecodeKnownCharacterDataTailSectionsCandidate(
@@ -1420,7 +1423,7 @@ namespace HaCreator.MapSimulator.Interaction
                         snapshot,
                         remainingBytes,
                         opaqueByteCount,
-                        decodeInt16ValueRecords: hasInt16ValueRecordSection && opaqueByteCount == 0,
+                        decodeInt16ValueRecords: false,
                         out PacketCharacterDataSnapshot candidateSnapshot))
                 {
                     continue;

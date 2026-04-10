@@ -242,9 +242,32 @@ namespace HaCreator.MapSimulator
 
         private bool AreDropActorsInSameParty(int ownerId, int actorId)
         {
+            return AreDropActorsInSameParty(
+                ownerId,
+                actorId,
+                _socialListRuntime.ClientPartyId,
+                _playerManager?.Player?.Build?.Id ?? 0,
+                _socialListRuntime.IsTrackedPartyActor,
+                IsTrackedDropPartyActor);
+        }
+
+        internal static bool AreDropActorsInSameParty(
+            int ownerId,
+            int actorId,
+            int localPartyId,
+            int localCharacterId,
+            Func<int, bool> trackedPartyActorEvaluator,
+            Func<int, bool> legacyTrackedActorEvaluator)
+        {
             if (ownerId <= 0 || actorId <= 0)
             {
                 return false;
+            }
+
+            if (localPartyId > 0 && ownerId == localPartyId)
+            {
+                return actorId == localCharacterId
+                    || trackedPartyActorEvaluator?.Invoke(actorId) == true;
             }
 
             if (ownerId == actorId)
@@ -252,7 +275,8 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            return IsTrackedDropPartyActor(ownerId) && IsTrackedDropPartyActor(actorId);
+            return legacyTrackedActorEvaluator?.Invoke(ownerId) == true
+                && legacyTrackedActorEvaluator?.Invoke(actorId) == true;
         }
 
         internal static bool ShouldSurfacePickupNotice(

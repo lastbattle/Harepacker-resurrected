@@ -167,7 +167,9 @@ namespace HaCreator.MapSimulator.Effects
     {
         #region Constants
         private const int MAX_ACTIVE_NUMBERS = 100;
-        private const int DamageNumberFormatStringPoolId = 0x1A15;
+        internal const int DamageNumberFormatStringPoolId = 0x1A15;
+        internal const string DamageNumberEffectCategoryName = "effect";
+        internal const string DamageNumberBasicEffectImageName = "BasicEff.img";
         #endregion
 
         internal readonly record struct DigitLayoutEntry(int Digit, bool UseLargeDigitSet, int RelativeX);
@@ -176,6 +178,7 @@ namespace HaCreator.MapSimulator.Effects
         internal readonly record struct PreparedDamageNumberCompositionInsertCommand(
             string SourceSetName,
             string SpriteName,
+            string SourceCanvasPath,
             bool UseLargeDigitSet,
             Point SourceOrigin,
             int SourceWidth,
@@ -185,6 +188,7 @@ namespace HaCreator.MapSimulator.Effects
             CanvasLayerRecoveredCanvasSettings CanvasSettings,
             PreparedDamageNumberCompositionInsertCommand[] InsertCanvasCommands,
             bool KeepsCriticalBannerOnSeparateLayer,
+            string CriticalBannerLayerCanvasPath,
             PreparedSpriteDrawInfo? CriticalBannerLayerSprite);
         internal readonly record struct CompositeCanvasPlacement(int Left, int Top, int Width, int Height);
         internal readonly record struct DamageNumberAnimationTimeline(
@@ -211,6 +215,7 @@ namespace HaCreator.MapSimulator.Effects
             string DamageString,
             int CanvasWidth,
             int CanvasHeight,
+            int DamageStringPoolId,
             PreparedDigitDrawInfo[] Digits,
             PreparedSpriteDrawInfo? MissSprite,
             PreparedSpriteDrawInfo? CriticalBannerSprite,
@@ -510,6 +515,7 @@ namespace HaCreator.MapSimulator.Effects
                     dmgNumber.GetDamageString(),
                     0,
                     DamageNumberConstants.COMPOSITE_CANVAS_HEIGHT_PX,
+                    DamageNumberFormatStringPoolId,
                     Array.Empty<PreparedDigitDrawInfo>(),
                     null,
                     null,
@@ -641,6 +647,7 @@ namespace HaCreator.MapSimulator.Effects
                     damageString,
                     canvasWidth,
                     canvasHeight,
+                    DamageNumberFormatStringPoolId,
                     Array.Empty<PreparedDigitDrawInfo>(),
                     missSprite,
                     null,
@@ -689,6 +696,7 @@ namespace HaCreator.MapSimulator.Effects
                 damageString,
                 Math.Max(0, totalWidth),
                 ResolveCompositeCanvasHeight(),
+                DamageNumberFormatStringPoolId,
                 digits,
                 null,
                 criticalBanner,
@@ -707,6 +715,7 @@ namespace HaCreator.MapSimulator.Effects
                 new CanvasLayerRecoveredCanvasSettings(0, ResolveCompositeCanvasHeight()),
                 Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
                 KeepsCriticalBannerOnSeparateLayer: false,
+                CriticalBannerLayerCanvasPath: null,
                 CriticalBannerLayerSprite: null);
         }
 
@@ -724,6 +733,7 @@ namespace HaCreator.MapSimulator.Effects
                     new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                     Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
                     criticalBanner.HasValue,
+                    BuildBasicEffCanvasPath(largeDigitSet?.Name, criticalBanner?.SpriteName),
                     criticalBanner);
             }
 
@@ -736,6 +746,7 @@ namespace HaCreator.MapSimulator.Effects
                 insertCommands[i] = new PreparedDamageNumberCompositionInsertCommand(
                     digitSet?.Name ?? string.Empty,
                     digit.Digit.ToString(CultureInfo.InvariantCulture),
+                    BuildBasicEffCanvasPath(digitSet?.Name, digit.Digit.ToString(CultureInfo.InvariantCulture)),
                     digit.UseLargeDigitSet,
                     digitSet?.Origins[digit.Digit] ?? Point.Zero,
                     digitSet?.Widths[digit.Digit] ?? 0,
@@ -747,6 +758,7 @@ namespace HaCreator.MapSimulator.Effects
                 new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                 insertCommands,
                 criticalBanner.HasValue,
+                BuildBasicEffCanvasPath(largeDigitSet?.Name, criticalBanner?.SpriteName),
                 criticalBanner);
         }
 
@@ -763,6 +775,7 @@ namespace HaCreator.MapSimulator.Effects
                     new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                     Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
                     KeepsCriticalBannerOnSeparateLayer: false,
+                    CriticalBannerLayerCanvasPath: null,
                     CriticalBannerLayerSprite: null);
             }
 
@@ -774,6 +787,7 @@ namespace HaCreator.MapSimulator.Effects
             PreparedDamageNumberCompositionInsertCommand insertCommand = new(
                 digitSet?.Name ?? string.Empty,
                 spriteName ?? string.Empty,
+                BuildBasicEffCanvasPath(digitSet?.Name, spriteName),
                 UseLargeDigitSet: false,
                 sourceOrigin,
                 sourceWidth,
@@ -784,7 +798,25 @@ namespace HaCreator.MapSimulator.Effects
                 new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                 new[] { insertCommand },
                 KeepsCriticalBannerOnSeparateLayer: false,
+                CriticalBannerLayerCanvasPath: null,
                 CriticalBannerLayerSprite: null);
+        }
+
+        internal static string BuildBasicEffCanvasPath(string setName, string spriteName)
+        {
+            if (string.IsNullOrWhiteSpace(setName) || string.IsNullOrWhiteSpace(spriteName))
+            {
+                return null;
+            }
+
+            return string.Concat(
+                DamageNumberEffectCategoryName,
+                "/",
+                DamageNumberBasicEffectImageName,
+                "/",
+                setName.Trim(),
+                "/",
+                spriteName.Trim());
         }
 
         private static int ResolveSpecialTextWidth(DamageNumberDigitSet digitSet, string spriteName)

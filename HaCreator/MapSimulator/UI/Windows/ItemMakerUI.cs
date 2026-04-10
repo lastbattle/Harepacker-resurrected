@@ -1727,8 +1727,24 @@ namespace HaCreator.MapSimulator.UI
 
         private string SelectedRecipeLabel =>
             CurrentRecipes.Count == 0 || _selectedRecipeIndex < 0 || _selectedRecipeIndex >= CurrentRecipes.Count
-                ? "Select Item"
-                : GetRecipeSelectorLabel(CurrentRecipes[_selectedRecipeIndex]);
+                ? ResolveClientAggregateItemSelectorLabel(SelectedPageCategoryKey) ?? "Select Item"
+                : ResolveClientAggregateItemSelectorLabel(SelectedPageCategoryKey)
+                  ?? GetRecipeSelectorLabel(CurrentRecipes[_selectedRecipeIndex]);
+
+        private int SelectedPageCategoryKey =>
+            _pages.Count == 0 || _selectedPageIndex < 0 || _selectedPageIndex >= _pages.Count
+                ? 0
+                : _pages[_selectedPageIndex].CategoryKey;
+
+        internal static string ResolveClientAggregateItemSelectorLabel(int categoryKey)
+        {
+            return categoryKey switch
+            {
+                DisassembleCategoryKey => ResolveClientCategoryLabel(MonsterCrystalCategoryKey),
+                HiddenCategoryKey => ResolveClientCategoryLabel(HiddenCategoryKey),
+                _ => null
+            };
+        }
 
         private void ScrollRecipes(int delta)
         {

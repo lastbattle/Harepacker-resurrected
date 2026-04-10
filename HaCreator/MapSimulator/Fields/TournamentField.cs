@@ -755,7 +755,8 @@ namespace HaCreator.MapSimulator.Fields
     public sealed class TournamentMatchTableDialogState
     {
         private const int RawTableByteCount = 0x300;
-        private const int EntrantCount = 8;
+        private const int EntrantCount = 32;
+        private const int VisibleEntrantCount = 8;
         private const int EntryValueCount = 6;
         private const int ExactPayloadLength = RawTableByteCount + 1;
         private const int DialogWidth = 758;
@@ -772,7 +773,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int ScrollButtonHeight = 18;
         private const int MatchTableStatusMin = 2;
         private const int MatchTableStatusMax = 5;
-        private const int MaxScroll = 2;
+        private const int InitialScroll = 2;
+        private const int MaxScroll = (EntrantCount / VisibleEntrantCount) - 1;
         private const int MatchTableDialogTitleStringPoolId = 0x752;
         private const string DialogTitleFallback = "Tournament Match Table";
 
@@ -821,7 +823,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool IsVisible { get; private set; }
         public byte Stage { get; private set; }
-        public int Scroll { get; private set; } = MaxScroll;
+        public int Scroll { get; private set; } = InitialScroll;
         public int PayloadLength { get; private set; }
         public int RawTableLength => _rawTable.Length;
         public string Summary { get; private set; }
@@ -830,12 +832,14 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<string> SlotNames => _slotNames;
         public bool HasExactCtorPayloadShape => PayloadLength == ExactPayloadLength && _rawTable.Length == RawTableByteCount;
         public string StageLabel => ResolveStateLabel();
+        public int EntrantCapacity => EntrantCount;
+        public int VisibleSlotOffset => Scroll * VisibleEntrantCount;
 
         public void Reset()
         {
             IsVisible = false;
             Stage = 0;
-            Scroll = MaxScroll;
+            Scroll = InitialScroll;
             PayloadLength = 0;
             Summary = null;
             DialogTitle = null;
@@ -862,7 +866,7 @@ namespace HaCreator.MapSimulator.Fields
             PayloadLength = payload.Length;
             _rawTable = payload.Take(RawTableByteCount).ToArray();
             Stage = payload[RawTableByteCount];
-            Scroll = MaxScroll;
+            Scroll = InitialScroll;
             IsVisible = true;
 
             DecodeMatchValues();
@@ -875,7 +879,7 @@ namespace HaCreator.MapSimulator.Fields
                 firstNames = "no printable entrant names recovered";
             }
 
-            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), state-byte={Stage} [{StageLabel}], title StringPool=0x{DialogTitleStringPoolId:X}, title=\"{DialogTitle}\", scroll={Scroll}, preview={firstNames}).";
+            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog (0x300-byte match buffer + state byte, payload={PayloadLength} byte(s), decodedCapacity={EntrantCapacity} entrants x {EntryValueCount} ints, state-byte={Stage} [{StageLabel}], title StringPool=0x{DialogTitleStringPoolId:X}, title=\"{DialogTitle}\", scroll={Scroll}, visibleOffset={VisibleSlotOffset}, preview={firstNames}).";
             summary = Summary;
             return true;
         }
@@ -913,7 +917,7 @@ namespace HaCreator.MapSimulator.Fields
                 names = "none recovered";
             }
 
-            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | exactCtorShape={HasExactCtorPayloadShape} | state-byte={Stage} [{StageLabel}] | title=0x{DialogTitleStringPoolId:X} \"{DialogTitle}\" | scroll={Scroll} | entrants={names}";
+            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes (0x300-byte match buffer + state byte) | exactCtorShape={HasExactCtorPayloadShape} | capacity={EntrantCapacity} entrants x {EntryValueCount} ints | state-byte={Stage} [{StageLabel}] | title=0x{DialogTitleStringPoolId:X} \"{DialogTitle}\" | scroll={Scroll} | visibleOffset={VisibleSlotOffset} | entrants={names}";
         }
 
         public int GetMatchValue(int slotIndex, int valueIndex)
@@ -1231,13 +1235,15 @@ namespace HaCreator.MapSimulator.Fields
             Color normalColor = Color.Gainsboro;
             Color debugColor = new(182, 191, 209);
 
-            for (int slotIndex = 0; slotIndex < EntrantCount; slotIndex++)
+            int slotOffset = VisibleSlotOffset;
+            for (int visibleIndex = 0; visibleIndex < VisibleEntrantCount; visibleIndex++)
             {
-                Vector2 namePosition = ToVector2(ScaleAndOffset(RoundOneNamePoints[slotIndex], tableRect, scale));
+                int slotIndex = Math.Min(slotOffset + visibleIndex, EntrantCount - 1);
+                Vector2 namePosition = ToVector2(ScaleAndOffset(RoundOneNamePoints[visibleIndex], tableRect, scale));
                 DrawCenteredText(spriteBatch, font, _slotNames[slotIndex], namePosition, normalColor, nameScale);
 
                 string dataSummary = $"[{_matchValues[slotIndex, 0]},{_matchValues[slotIndex, 1]},{_matchValues[slotIndex, 4]}]";
-                Vector2 debugPosition = ToVector2(ScaleAndOffset(RoundOneDebugPoints[slotIndex], tableRect, scale));
+                Vector2 debugPosition = ToVector2(ScaleAndOffset(RoundOneDebugPoints[visibleIndex], tableRect, scale));
                 DrawCenteredText(spriteBatch, font, dataSummary, debugPosition, debugColor, debugScale);
             }
 
@@ -1363,7 +1369,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             return round switch
             {
-                1 => "Round of 8",
+                1 => $"Round of 32 [{VisibleSlotOffset + 1}-{Math.Min(VisibleSlotOffset + VisibleEntrantCount, EntrantCount)}]",
                 2 => "Final 4",
                 3 => "Semi Final",
                 _ => "Champion"

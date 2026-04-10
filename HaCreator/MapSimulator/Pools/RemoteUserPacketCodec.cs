@@ -17,6 +17,8 @@ namespace HaCreator.MapSimulator.Pools
         UserProfile = -1003,
         UserChat = -1004,
         UserChatFromOutsideMap = -1005,
+        UserTutorHire = -1006,
+        UserTutorMessage = -1007,
         UserCoupleRecordAdd = -1101,
         UserCoupleRecordRemove = -1102,
         UserFriendRecordAdd = -1103,
@@ -285,6 +287,8 @@ namespace HaCreator.MapSimulator.Pools
     public enum RemoteUserEffectSubtype : byte
     {
         GenericUserState = 0,
+        SkillUse = 1,
+        ItemMake = 18,
         IncDecHp = 29,
         QuestDeliveryStart = 30,
         QuestDeliveryEnd = 31
@@ -294,11 +298,16 @@ namespace HaCreator.MapSimulator.Pools
         int CharacterId,
         byte EffectType,
         int? Int32Value,
-        byte[] RawPayload)
+        byte[] RawPayload,
+        int? SkillId = null,
+        byte? CharacterLevel = null,
+        byte? SkillLevel = null)
     {
         public RemoteUserEffectSubtype? KnownSubtype => EffectType switch
         {
             (byte)RemoteUserEffectSubtype.GenericUserState => RemoteUserEffectSubtype.GenericUserState,
+            (byte)RemoteUserEffectSubtype.SkillUse => RemoteUserEffectSubtype.SkillUse,
+            (byte)RemoteUserEffectSubtype.ItemMake => RemoteUserEffectSubtype.ItemMake,
             (byte)RemoteUserEffectSubtype.IncDecHp => RemoteUserEffectSubtype.IncDecHp,
             (byte)RemoteUserEffectSubtype.QuestDeliveryStart => RemoteUserEffectSubtype.QuestDeliveryStart,
             (byte)RemoteUserEffectSubtype.QuestDeliveryEnd => RemoteUserEffectSubtype.QuestDeliveryEnd,
@@ -618,25 +627,26 @@ namespace HaCreator.MapSimulator.Pools
             out RemoteUserFollowCharacterPacket packet,
             out string error)
         {
-            if (TryParseCompactFollowCharacter(payload, out packet, out error))
-            {
-                return true;
-            }
-
-            string commonPayloadError = error;
+            error = null;
             if (localCharacterId > 0
                 && TryParseOfficialFollowCharacter(payload, localCharacterId, out packet, out error))
             {
                 return true;
             }
 
-            if (!string.IsNullOrWhiteSpace(commonPayloadError) && !string.IsNullOrWhiteSpace(error))
+            string officialPayloadError = error;
+            if (TryParseCompactFollowCharacter(payload, out packet, out error))
             {
-                error = $"{error} Common CUserPool::OnUserCommonPacket parse also failed: {commonPayloadError}";
+                return true;
             }
-            else if (!string.IsNullOrWhiteSpace(commonPayloadError))
+
+            if (!string.IsNullOrWhiteSpace(officialPayloadError) && !string.IsNullOrWhiteSpace(error))
             {
-                error = commonPayloadError;
+                error = $"{error} Official CUserPool::OnUserCommonPacket parse also failed: {officialPayloadError}";
+            }
+            else if (!string.IsNullOrWhiteSpace(officialPayloadError))
+            {
+                error = officialPayloadError;
             }
 
             return false;
@@ -664,6 +674,12 @@ namespace HaCreator.MapSimulator.Pools
                         transferX = reader.ReadInt32();
                         transferY = reader.ReadInt32();
                     }
+                }
+
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user compact follow packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
                 }
 
                 packet = new RemoteUserFollowCharacterPacket(characterId, driverId, transferField, transferX, transferY);
@@ -1283,6 +1299,9 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 int? int32Value = null;
+                int? skillId = null;
+                byte? characterLevel = null;
+                byte? skillLevel = null;
                 switch ((RemoteUserEffectSubtype)effectType)
                 {
                     case RemoteUserEffectSubtype.GenericUserState:
@@ -1295,6 +1314,19 @@ namespace HaCreator.MapSimulator.Pools
 
                         break;
 
+                    case RemoteUserEffectSubtype.SkillUse:
+                        if (effectPayload.Length < sizeof(int) + 2)
+                        {
+                            error = $"Remote user effect subtype {effectType} expects at least 6 trailing bytes but received {effectPayload.Length}.";
+                            return false;
+                        }
+
+                        skillId = BinaryPrimitives.ReadInt32LittleEndian(effectPayload.AsSpan(0, sizeof(int)));
+                        characterLevel = effectPayload[sizeof(int)];
+                        skillLevel = effectPayload[sizeof(int) + 1];
+                        break;
+
+                    case RemoteUserEffectSubtype.ItemMake:
                     case RemoteUserEffectSubtype.IncDecHp:
                     case RemoteUserEffectSubtype.QuestDeliveryStart:
                         if (effectPayload.Length != sizeof(int))
@@ -1307,7 +1339,14 @@ namespace HaCreator.MapSimulator.Pools
                         break;
                 }
 
-                packet = new RemoteUserEffectPacket(characterId, effectType, int32Value, effectPayload);
+                packet = new RemoteUserEffectPacket(
+                    characterId,
+                    effectType,
+                    int32Value,
+                    effectPayload,
+                    skillId,
+                    characterLevel,
+                    skillLevel);
                 return true;
             }
             catch (InvalidOperationException ex)

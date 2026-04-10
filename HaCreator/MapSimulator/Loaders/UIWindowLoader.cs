@@ -9304,7 +9304,7 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            if (backgrounds.Count == 0)
+            if (backgrounds.Count < 4)
             {
                 Texture2D fallbackTexture = CreateUtilDlgNoticeFrameTexture(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, device);
                 if (fallbackTexture != null)
@@ -9312,10 +9312,16 @@ namespace HaCreator.MapSimulator.Loaders
                     IDXObject fallbackFrame = new DXObject(0, 0, fallbackTexture, 0);
                     for (int rank = 1; rank <= 4; rank++)
                     {
-                        backgrounds[rank] = fallbackFrame;
+                        if (!backgrounds.ContainsKey(rank))
+                        {
+                            backgrounds[rank] = fallbackFrame;
+                        }
+
                         // The recovered CUIRandomMesoBag control/text coordinates still apply even when the
                         // authored rank art is missing and the simulator has to fall back to the notice frame.
-                        authoredLayoutByRank[rank] = true;
+                        authoredLayoutByRank[rank] = RandomMesoBagWindow.ShouldUseClientCoordinateLayout(
+                            authoredLayoutByRank.TryGetValue(rank, out bool hasAuthoredRankArt) && hasAuthoredRankArt,
+                            usesFallbackNoticeShell: true);
                     }
                 }
             }

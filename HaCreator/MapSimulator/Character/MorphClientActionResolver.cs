@@ -209,6 +209,9 @@ namespace HaCreator.MapSimulator.Character
                 ["triplefire"] = new[] { "doublefire" },
                 ["airstrike"] = new[] { "doublefire" },
                 ["shot"] = new[] { "doublefire", "windshot" },
+                // Skill/520.img/skill/5201006 publishes raw `backstep`, while the
+                // pirate morph family only authors that spin-back surface as `backspin`.
+                ["backstep"] = new[] { "backspin" },
                 // The client raw morph action table still publishes `burster1` and
                 // `burster2`, while pirate Morph/*.img publishes that surface as
                 // the authored `eburster` branch instead of verbatim `burster*`.

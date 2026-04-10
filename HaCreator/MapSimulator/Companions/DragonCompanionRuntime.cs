@@ -237,7 +237,9 @@ namespace HaCreator.MapSimulator.Companions
             _currentSet = animationSet;
             _facingRight = owner.FacingRight;
             _worldAnchor = ResolveAnchor(owner, animationSet, currentTime);
-            _isSuppressed = ShouldSuppress(owner);
+            bool suppressedForMap = ShouldSuppressForCurrentMap();
+            bool suppressedForMount = ShouldSuppressForCurrentMount(owner);
+            _isSuppressed = suppressedForMap || suppressedForMount;
             ApplyQuestInfoState(_questInfoStateProvider?.Invoke());
 
             float deltaSeconds = GetDeltaSeconds(currentTime);
@@ -296,7 +298,14 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _alpha = ResolveClientLayerAlpha(!_isSuppressed);
-            _actionLayerColor = ResolveClientActionLayerColor(Color.White, _alpha, _ownerPhaseActionAlphaProvider?.Invoke());
+            int? ownerPhaseAlpha = _ownerPhaseActionAlphaProvider?.Invoke();
+            _actionLayerColor = ResolveClientActionLayerColorAfterOwnerUpdate(
+                ResolveClientActionLayerColor(Color.White, _alpha, null),
+                ownerUpdateVisible: !suppressedForMap,
+                hasLocalUser: ownerPhaseAlpha.HasValue,
+                ownerMatchesLocalPhase: !ownerPhaseAlpha.HasValue,
+                ownerPhaseAlpha: ownerPhaseAlpha ?? 255,
+                hasSpecialDragonRidingMount: suppressedForMount);
             _ownerPhaseActionAlpha = _actionLayerColor.A / 255f;
             _hasActiveOneTimeAction = HasClientOwnedOneTimeAction(explicitActionName, currentTime);
             UpdateAuxiliaryLayers(owner, currentTime);
@@ -1139,6 +1148,29 @@ namespace HaCreator.MapSimulator.Companions
             return currentColor.A > cappedAlpha
                 ? new Color(currentColor.R, currentColor.G, currentColor.B, cappedAlpha)
                 : currentColor;
+        }
+
+        internal static Color ResolveClientActionLayerColorAfterOwnerUpdate(
+            Color currentColor,
+            bool ownerUpdateVisible,
+            bool hasLocalUser,
+            bool ownerMatchesLocalPhase,
+            int ownerPhaseAlpha,
+            bool hasSpecialDragonRidingMount)
+        {
+            if (!ownerUpdateVisible)
+            {
+                return currentColor;
+            }
+
+            if (!hasLocalUser || ownerMatchesLocalPhase)
+            {
+                return hasSpecialDragonRidingMount
+                    ? currentColor
+                    : new Color(currentColor.R, currentColor.G, currentColor.B, byte.MaxValue);
+            }
+
+            return ResolveClientActionLayerColorCap(currentColor, ownerPhaseAlpha);
         }
 
         private void UpdateAuxiliaryLayers(PlayerCharacter owner, int currentTime)

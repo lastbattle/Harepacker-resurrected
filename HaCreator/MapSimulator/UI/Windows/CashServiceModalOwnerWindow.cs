@@ -136,7 +136,7 @@ namespace HaCreator.MapSimulator.UI
             _inputPlaceholder = inputPlaceholder ?? string.Empty;
             _inputActive = inputActive;
             _inputMaxLength = Math.Max(0, inputMaxLength);
-            _selectedGiftIndex = Math.Clamp(selectedGiftIndex, 0, Math.Max(0, _giftRows.Count - 1));
+            _selectedGiftIndex = ResolveSelectedGiftIndex(selectedGiftIndex, _giftRows.Count);
             _showGiftRows = _giftRows.Count > 0;
             _showWorldRows = _worldNames.Count > 0;
             UpdateLayout();
@@ -144,6 +144,16 @@ namespace HaCreator.MapSimulator.UI
 
         internal string InputValue => _inputValue;
         internal int SelectedGiftIndex => _selectedGiftIndex;
+
+        internal static int ResolveSelectedGiftIndex(int selectedGiftIndex, int giftRowCount)
+        {
+            if (giftRowCount <= 0)
+            {
+                return Math.Max(0, selectedGiftIndex);
+            }
+
+            return Math.Clamp(selectedGiftIndex, 0, giftRowCount - 1);
+        }
 
         public override void Show()
         {

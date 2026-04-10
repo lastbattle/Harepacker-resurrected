@@ -48,7 +48,7 @@ namespace HaCreator.MapSimulator
 
         private readonly CashServicePacketInboxManager _cashServicePacketInbox = new();
         private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
-        private const int CashShopOneADayHistorySlotCount = 10;
+        private const int CashShopOneADayHistorySlotCount = 12;
         private int _lastPlayedCashGachaponAnimationSequence;
 
         private sealed class CashInventoryPacketFocusSnapshot

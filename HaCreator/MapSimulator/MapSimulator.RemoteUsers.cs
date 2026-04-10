@@ -21,7 +21,7 @@ namespace HaCreator.MapSimulator
         private const string RemoteUserCommandUsage =
             "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox|session> ...";
         private const string RemoteUserPacketTokenUsage =
-            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|-1004|-1005|179|180|181|182|183|184|210|211|212|213|214|215|216|218|219|220|221|222|223|224|225|226|227|228|229|230|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|chat|outsidechat|enter|leave|move|state|helper|team|follow|chair|mount|prepare|movingshootprepare|preparedclear|hit|emotion|activeeffect|upgradetomb|officialchair|usereffect|receivehp|throwgrenade|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname|guildmark>";
+            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|-1109|-1110|-1004|-1005|-1006|-1007|179|180|181|182|183|184|210|211|212|213|214|215|216|218|219|220|221|222|223|224|225|226|227|228|229|230|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|couplechairadd|couplechairremove|chat|outsidechat|tutorhire|tutormsg|enter|leave|move|state|helper|team|follow|chair|mount|prepare|movingshootprepare|preparedclear|hit|emotion|activeeffect|upgradetomb|officialchair|usereffect|receivehp|throwgrenade|pickup|melee|effect|avatarmodified|tempset|tempreset|guildname|guildmark>";
         private const int RemoteUserOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private readonly RemoteUserPacketInboxManager _remoteUserPacketInbox = new();
         private readonly RemoteUserOfficialSessionBridgeManager _remoteUserOfficialSessionBridge = new();
@@ -1187,6 +1187,40 @@ namespace HaCreator.MapSimulator
                 }
 
                 result = ApplyRemoteUserChatPacket(chatPacket, fromOutsideOfMap);
+                return true;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserTutorHire)
+            {
+                if (!TryDecodeRemotePacketOwnedTutorHirePayload(payload, out int characterId, out bool enabled, out string tutorHireError))
+                {
+                    result = tutorHireError;
+                    return false;
+                }
+
+                result = ApplyPacketOwnedTutorHire(enabled, characterId);
+                return true;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserTutorMessage)
+            {
+                if (!TryDecodeRemotePacketOwnedTutorMessagePayload(
+                        payload,
+                        out int characterId,
+                        out bool indexedPayload,
+                        out int messageIndex,
+                        out int durationMs,
+                        out string text,
+                        out int width,
+                        out string tutorMessageError))
+                {
+                    result = tutorMessageError;
+                    return false;
+                }
+
+                result = indexedPayload
+                    ? ApplyPacketOwnedTutorIndexedMessage(messageIndex, durationMs, characterId)
+                    : ApplyPacketOwnedTutorTextMessage(text, width, durationMs, characterId);
                 return true;
             }
 

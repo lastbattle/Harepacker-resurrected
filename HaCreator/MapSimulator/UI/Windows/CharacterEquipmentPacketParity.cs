@@ -8,6 +8,8 @@ namespace HaCreator.MapSimulator.UI
 {
     public static class CharacterEquipmentPacketParity
     {
+        private const int MaxAuthoritySlotStateCount = 64;
+
         public static byte[] EncodeAuthorityRequestPayload(EquipmentChangeRequest request)
         {
             if (request == null)
@@ -255,9 +257,9 @@ namespace HaCreator.MapSimulator.UI
             slotStates = null;
             errorMessage = null;
             int count = reader.ReadInt32();
-            if (count <= 0 || count > 4)
+            if (count <= 0 || count > MaxAuthoritySlotStateCount)
             {
-                errorMessage = "Character equipment authority-result state must contain one to four slot states.";
+                errorMessage = $"Character equipment authority-result state must contain one to {MaxAuthoritySlotStateCount} slot states.";
                 return false;
             }
 

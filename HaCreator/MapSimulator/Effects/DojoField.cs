@@ -786,7 +786,7 @@ namespace HaCreator.MapSimulator.Effects
 
             return ResolveNextFloorPortalName();
         }
-        private static (int MapId, string PortalName) ResolveNextFloorDestinationFromPortals(IEnumerable<PortalInstance> portals)
+        private (int MapId, string PortalName) ResolveNextFloorDestinationFromPortals(IEnumerable<PortalInstance> portals)
         {
             if (portals == null)
             {
@@ -802,13 +802,32 @@ namespace HaCreator.MapSimulator.Effects
                 }
 
                 int targetMapId = NormalizeTransferMapId(portal.tm);
+                string portalName = ResolveNextFloorPortalName(portal);
                 if (targetMapId > 0)
                 {
-                    return (targetMapId, portal.tn ?? string.Empty);
+                    return (targetMapId, portalName);
+                }
+
+                if (portal.tm == MapConstants.MaxMap || portal.tm <= 0)
+                {
+                    int inferredMapId = ResolveNextFloorMapIdCore(_mapId, hasNextFloorPortal: true, HasMapImage);
+                    if (inferredMapId > 0)
+                    {
+                        return (inferredMapId, portalName);
+                    }
                 }
             }
 
             return (-1, string.Empty);
+        }
+        private static string ResolveNextFloorPortalName(PortalInstance portal)
+        {
+            if (!string.IsNullOrWhiteSpace(portal?.tn))
+            {
+                return portal.tn;
+            }
+
+            return portal?.pn ?? string.Empty;
         }
         private static int ResolveNextFloorMapIdCore(int mapId, bool hasNextFloorPortal, Func<int, bool> hasMapImage)
         {

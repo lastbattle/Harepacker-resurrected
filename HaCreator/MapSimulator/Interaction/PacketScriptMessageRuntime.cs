@@ -1488,7 +1488,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case 3:
                 case 14:
                 {
-                    bool accepted = !string.IsNullOrEmpty(submittedValue);
+                    bool accepted = submission.Kind is NpcInteractionInputKind.Text or NpcInteractionInputKind.MultiLineText;
                     writer.WriteByte(accepted ? (byte)1 : (byte)0);
                     if (accepted)
                     {

@@ -96,6 +96,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (!packetOwned)
             {
                 _lastPendingRequestByTab[tab] = null;
+                if (tab == SocialListTab.Party)
+                {
+                    _clientPartyId = 0;
+                }
+
                 if (tab == SocialListTab.Guild)
                 {
                     _packetGuildUiState = null;
@@ -128,6 +133,11 @@ namespace HaCreator.MapSimulator.Interaction
             _packetOwnedRosterByTab[tab] = true;
             _lastPacketSyncSummaryByTab[tab] = "Packet clear removed every roster entry.";
             _lastPendingRequestByTab[tab] = null;
+            if (tab == SocialListTab.Party)
+            {
+                _clientPartyId = 0;
+            }
+
             _selectedIndexByTab[tab] = -1;
             _firstVisibleIndexByTab[tab] = 0;
             SyncPacketGuildUiStateFromRoster(tab);

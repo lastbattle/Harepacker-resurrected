@@ -8369,10 +8369,36 @@ namespace HaCreator.MapSimulator.Interaction
                    propertyName.Equals("stop", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("lost", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("info", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("message", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("illustration", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("npc", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("job", StringComparison.OrdinalIgnoreCase) ||
-                   propertyName.Equals("quest", StringComparison.OrdinalIgnoreCase);
+                   propertyName.Equals("quest", StringComparison.OrdinalIgnoreCase) ||
+                   IsQuestActionDataPropertyName(propertyName);
+        }
+
+        private static bool IsQuestActionDataPropertyName(string propertyName)
+        {
+            return propertyName.Equals("exp", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("money", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("pop", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("buffItemID", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("nextQuest", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("lvmin", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("lvmax", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("start", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("end", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("interval", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("fieldEnter", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("npcAct", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("item", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("skill", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("sp", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("petskill", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("pettameness", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("petspeed", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("map", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.EndsWith("EXP", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string FormatConversationBranchChoiceLabel(string branchName)
@@ -9739,143 +9765,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
-            IReadOnlyList<string> supplementalLines = BuildClientPacketQuestResultSupplementalActionLines(actions, build, questId);
-            string noticeSummary = string.IsNullOrWhiteSpace(summaryText)
-                ? string.Empty
-                : actions.MesoReward < 0
-                    ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
-                    : summaryText;
-
-            if (string.IsNullOrWhiteSpace(noticeSummary))
+            if (string.IsNullOrWhiteSpace(summaryText))
             {
-                return supplementalLines.Count == 0
-                    ? string.Empty
-                    : string.Join("\n", supplementalLines);
+                return string.Empty;
             }
 
-            if (supplementalLines.Count == 0)
-            {
-                return noticeSummary;
-            }
-
-            return $"{noticeSummary}\n{string.Join("\n", supplementalLines)}";
-        }
-
-        private List<string> BuildClientPacketQuestResultSupplementalActionLines(
-            QuestActionBundle actions,
-            CharacterBuild build,
-            int questId)
-        {
-            var lines = new List<string>();
-            if (actions == null)
-            {
-                return lines;
-            }
-
-            NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, questId);
-            bool actionApplies = MatchesActionJobFilter(actions, build);
-
-            lines.AddRange(BuildVisibleQuestActionMetadataLines(actions));
-
-            if (!actionApplies)
-            {
-                return lines;
-            }
-
-            if (actions.ExpReward > 0)
-            {
-                lines.Add($"EXP +{actions.ExpReward}");
-            }
-
-            if (actions.MesoReward != 0)
-            {
-                lines.Add($"Meso {actions.MesoReward:+#;-#;0}");
-            }
-
-            if (actions.FameReward != 0)
-            {
-                lines.Add($"Fame {actions.FameReward:+#;-#;0}");
-            }
-
-            if (actions.BuffItemId > 0)
-            {
-                lines.Add($"Buff {GetBuffItemRewardText(actions)}");
-            }
-
-            if (actions.PetTamenessReward != 0)
-            {
-                lines.Add(GetPetTamenessRewardText(actions.PetTamenessReward));
-            }
-
-            if (actions.PetSpeedReward != 0)
-            {
-                lines.Add(GetPetSpeedRewardText(actions.PetSpeedReward));
-            }
-
-            if (actions.BuffItemId <= 0 && actions.BuffItemMapIds.Count > 0)
-            {
-                lines.Add($"Maps: {FormatMapIdList(actions.BuffItemMapIds)}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(actions.NpcActionName))
-            {
-                lines.Add(QuestNpcActionResolver.FormatActionDetail(actions.NpcActionName));
-            }
-
-            for (int i = 0; i < actions.TraitRewards.Count; i++)
-            {
-                QuestTraitReward reward = actions.TraitRewards[i];
-                lines.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
-            }
-
-            for (int i = 0; i < actions.SkillRewards.Count; i++)
-            {
-                QuestSkillReward reward = actions.SkillRewards[i];
-                if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
-                {
-                    continue;
-                }
-
-                lines.Add(GetSkillRewardText(reward));
-            }
-
-            if (actions.PetSkillRewardMask > 0)
-            {
-                lines.Add(GetPetSkillRewardText(actions.PetSkillRewardMask));
-            }
-
-            for (int i = 0; i < actions.QuestMutations.Count; i++)
-            {
-                QuestStateMutation mutation = actions.QuestMutations[i];
-                lines.Add($"Quest state: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}");
-            }
-
-            for (int i = 0; i < actions.SpRewards.Count; i++)
-            {
-                QuestSpReward reward = actions.SpRewards[i];
-                if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
-                {
-                    continue;
-                }
-
-                lines.Add($"SP {GetSpRewardText(reward)}");
-            }
-
-            if (actions.NextQuestId.HasValue && actions.NextQuestId.Value > 0)
-            {
-                lines.Add($"Next quest: {GetQuestName(actions.NextQuestId.Value)}");
-            }
-
-            for (int i = 0; i < actions.Messages.Count; i++)
-            {
-                string message = NormalizeQuestActionMessage(actions.Messages[i], formattingContext);
-                if (!string.IsNullOrWhiteSpace(message))
-                {
-                    lines.Add(message);
-                }
-            }
-
-            return lines;
+            return actions.MesoReward < 0
+                ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
+                : summaryText;
         }
 
         private static string ResolvePacketQuestResultPrimaryText(

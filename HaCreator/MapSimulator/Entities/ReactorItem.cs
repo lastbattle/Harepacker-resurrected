@@ -1730,7 +1730,15 @@ namespace HaCreator.MapSimulator.Entities
                 }
             }
 
-            return totalDuration;
+            if (totalDuration > 0)
+            {
+                return totalDuration;
+            }
+
+            WzImageProperty nestedDefaultFrames = WzInfoTools.GetRealProperty(hitProperty["0"]);
+            return !ReferenceEquals(nestedDefaultFrames, hitProperty)
+                ? TryReadHitDuration(nestedDefaultFrames)
+                : 0;
         }
 
         private static int LoadTemplateLayerMode(ReactorInstance reactorInstance)

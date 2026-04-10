@@ -223,6 +223,7 @@ namespace HaCreator.MapSimulator.Interaction
                             : $"Client OnPartyResult({(byte)packet.Kind}) reported {packet.ActorName} joining party {packet.PartyId}.");
 
                 case SocialListClientPartyResultKind.Create:
+                    _clientPartyId = Math.Max(0, packet.PartyId);
                     return SetPacketSyncSummary(SocialListTab.Party, $"Client OnPartyResult({(byte)packet.Kind}) created party {packet.PartyId}.");
 
                 case SocialListClientPartyResultKind.LeaderChange:
@@ -451,6 +452,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyClientPartyListReplace(SocialListClientPartyResultPacket packet)
         {
+            _clientPartyId = Math.Max(0, packet.PartyId);
             List<SocialEntryState> entries = _entriesByTab[SocialListTab.Party];
             SocialEntryState localState = ResolveLocalEntryState(SocialListTab.Party);
             entries.Clear();

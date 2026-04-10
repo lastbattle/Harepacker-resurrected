@@ -126,6 +126,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestRewardRaisePutItemReleaseResultPacketType = 1038;
         public const int QuestRewardRaisePutItemConfirmResultPacketType = 1039;
         public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1040;
+        public const int QuestRewardRaiseQuestRecordMessagePacketType = 1041;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
@@ -988,6 +989,15 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("raisequestrecord", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raiseqr", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("raisequestrecordmessage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onquestrecordmessage-raise", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestRewardRaiseQuestRecordMessagePacketType;
+                return true;
+            }
+
             if (token.Equals("skillcooltime", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("skillcooltimeset", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("cooltime", StringComparison.OrdinalIgnoreCase)
@@ -1117,6 +1127,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == FuncKeyMapInitPacketType
                 || packetType == PetConsumeItemInitPacketType
                 || packetType == PetConsumeMpItemInitPacketType
+                || packetType == PetConsumeResultPacketType
                 || packetType == MapleTvRuntime.PacketTypeSetMessage
                 || packetType == MapleTvRuntime.PacketTypeClearMessage
                 || packetType == MapleTvRuntime.PacketTypeSendMessageResult
@@ -1128,7 +1139,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == QuestRewardRaisePutItemAddResultPacketType
                 || packetType == QuestRewardRaisePutItemReleaseResultPacketType
                 || packetType == QuestRewardRaisePutItemConfirmResultPacketType
-                || packetType == QuestRewardRaiseOwnerDestroyResultPacketType;
+                || packetType == QuestRewardRaiseOwnerDestroyResultPacketType
+                || packetType == QuestRewardRaiseQuestRecordMessagePacketType;
         }
 
         public static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
@@ -1331,6 +1343,7 @@ namespace HaCreator.MapSimulator.Managers
                 QuestRewardRaisePutItemReleaseResultPacketType => "RaisePutItemReleaseResult(1038)",
                 QuestRewardRaisePutItemConfirmResultPacketType => "RaisePutItemConfirmResult(1039)",
                 QuestRewardRaiseOwnerDestroyResultPacketType => "RaiseOwnerDestroyResult(1040)",
+                QuestRewardRaiseQuestRecordMessagePacketType => "RaiseQuestRecordMessage(1041)",
                 _ => $"packet {packetType}"
             };
         }

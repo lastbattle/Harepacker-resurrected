@@ -290,6 +290,7 @@ namespace HaCreator.MapSimulator
         private bool _isBgmPausedForFocusLoss = false;
         private bool _utilityBgmMuted = false;
         private bool _utilityEffectsMuted = false;
+        private bool _packetOwnedRadioMuted = true;
         private bool _pauseAudioOnFocusLoss = true;
         private float _appliedUtilityBgmVolume = UtilityAudioDefaultVolume;
         private float _appliedPacketOwnedRadioVolume = 0f;
@@ -670,6 +671,7 @@ namespace HaCreator.MapSimulator
         private const string RockPaperScissorsDirectionModeOwnerName = "__SpecialFieldRockPaperScissors";
         private const string InitialQuizDirectionModeOwnerName = "__PacketScriptInitialQuiz";
         private const string SpeedQuizDirectionModeOwnerName = "__PacketScriptSpeedQuiz";
+        private const string PacketScriptDedicatedOwnerDirectionModeOwnerName = "__PacketScriptDedicatedOwner";
         private bool _sameMapTeleportPending = false;
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
@@ -680,6 +682,11 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedTeleportPortalRequestTick = int.MinValue;
         private int _lastPacketOwnedTeleportPortalIndex = -1;
         private int _lastPortalCollisionSourcePortalIndex = -1;
+        private bool _collisionScriptExclusiveRequestSent = false;
+        private int _collisionScriptExclusiveRequestSentTick = int.MinValue;
+        private int _lastCollisionScriptOutboundOpcode = -1;
+        private byte[] _lastCollisionScriptOutboundPayload = Array.Empty<byte>();
+        private string _lastCollisionScriptOutboundSummary;
         private string _lastPacketOwnedTeleportSourcePortalName;
         private string _lastPacketOwnedTeleportTargetPortalName;
         private int _lastPacketOwnedTeleportRegistrationTick = int.MinValue;
@@ -2791,7 +2798,8 @@ namespace HaCreator.MapSimulator
                 _specialFieldRuntime.Minigames.Tournament.MatchTableDialog.IsVisible,
                 _specialFieldRuntime.Minigames.RockPaperScissors.IsVisible,
                 _initialQuizTimerRuntime.IsActive(currTickCount),
-                _speedQuizOwnerRuntime.IsActive(currTickCount));
+                _speedQuizOwnerRuntime.IsActive(currTickCount),
+                _packetScriptDedicatedOwnerRuntime.IsActive);
         }
 
 
@@ -3774,12 +3782,46 @@ namespace HaCreator.MapSimulator
 
         private float ResolveUtilityBgmTargetVolume()
         {
-            return (_utilityBgmMuted || IsPacketOwnedRadioPlaying()) ? 0f : UtilityAudioDefaultVolume;
+            return ResolveUtilityBgmTargetVolume(
+                _utilityBgmMuted,
+                IsPacketOwnedRadioPlaying(),
+                _packetOwnedRadioMuted,
+                UtilityAudioDefaultVolume);
         }
 
         private float ResolvePacketOwnedRadioTargetVolume()
         {
-            return _utilityBgmMuted ? 0f : UtilityAudioDefaultVolume;
+            return ResolvePacketOwnedRadioTargetVolume(
+                _utilityBgmMuted,
+                _packetOwnedRadioMuted,
+                UtilityAudioDefaultVolume);
+        }
+
+        internal static float ResolveUtilityBgmTargetVolume(
+            bool utilityBgmMuted,
+            bool packetOwnedRadioPlaying,
+            bool packetOwnedRadioMuted,
+            float defaultVolume)
+        {
+            float normalizedDefaultVolume = Math.Clamp(defaultVolume, 0f, 1f);
+            if (utilityBgmMuted)
+            {
+                return 0f;
+            }
+
+            return packetOwnedRadioPlaying && !packetOwnedRadioMuted
+                ? 0f
+                : normalizedDefaultVolume;
+        }
+
+        internal static float ResolvePacketOwnedRadioTargetVolume(
+            bool utilityBgmMuted,
+            bool packetOwnedRadioMuted,
+            float defaultVolume)
+        {
+            return utilityBgmMuted || packetOwnedRadioMuted
+                ? 0f
+                : Math.Clamp(defaultVolume, 0f, 1f);
         }
 
         internal static float AdvanceUtilityAudioFadeVolume(float currentVolume, float targetVolume, int elapsedMs, int fadeDurationMs)
@@ -3955,9 +3997,16 @@ namespace HaCreator.MapSimulator
 
         private string HandleCharacterInfoSearchRequest(UserInfoUI.UserInfoActionContext context)
         {
+            context = NormalizeCharacterInfoActionContext(context);
+            _socialListRuntime.OpenSearchWindowFromCharacterInfo(
+                context.CharacterName,
+                context.Build,
+                context.LocationSummary,
+                context.Channel,
+                context.IsRemoteTarget);
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
             return context.IsRemoteTarget
-                ? $"Social search opened while inspecting {context.CharacterName}."
+                ? $"Social search opened from the character-info target handoff for {context.CharacterName}."
                 : "Social search opened from the profile window.";
         }
 
@@ -16369,6 +16418,7 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.SkillUseRegistered += HandleRemoteAnimationDisplayerSkillUse;
             _remoteUserPool.UpgradeTombEffectRegistered += HandleRemoteUpgradeTombEffect;
             _remoteUserPool.GenericUserStateRegistered += HandleRemoteGenericUserStateEffect;
+            _remoteUserPool.ItemMakeRegistered += HandleRemoteItemMakeEffect;
             _remoteUserPool.HitFeedbackRegistered += HandleRemoteHitFeedback;
             _mapTransferDestinations = new MapTransferDestinationStore();
             _mapTransferRuntime = new MapTransferRuntimeManager(_mapTransferDestinations);
@@ -20870,12 +20920,16 @@ namespace HaCreator.MapSimulator
             {
                 int itemId = int.TryParse(drop.ItemId, out int parsedItemId) ? parsedItemId : 0;
                 bool consumeOnPickupMonsterCard = _monsterBookManager.IsConsumeOnPickupCardItem(itemId);
+                // Monster Book card entries in Item/Consume/0238.img are authored as only=1 plus
+                // consumeOnPickup=1, so a consumed card pickup advances one card copy even if a
+                // simulator or packet-injected drop carried a larger stack quantity.
+                int pickupQuantity = consumeOnPickupMonsterCard ? 1 : Math.Max(1, drop.Quantity);
                 InventoryType inventoryType = itemId > 0
                     ? InventoryItemMetadataResolver.ResolveInventoryType(itemId)
                     : InventoryType.NONE;
                 string itemName = itemId > 0 ? ResolvePickupNoticeItemName(itemId) : null;
                 string itemTypeName = itemId > 0 ? ResolvePickupItemTypeName(itemId, inventoryType) : null;
-                if (PickupNoticeTextFormatter.TryFormatItemPickup(itemName, itemTypeName, drop.Quantity, MeasurePickupNoticeTextWidth, out string screenMessage))
+                if (PickupNoticeTextFormatter.TryFormatItemPickup(itemName, itemTypeName, pickupQuantity, MeasurePickupNoticeTextWidth, out string screenMessage))
                 {
                     Texture2D itemIcon = LoadInventoryItemIcon(itemId);
                     _pickupNoticeUI.AddFormattedNotice(
@@ -20883,7 +20937,7 @@ namespace HaCreator.MapSimulator
                         PickupMessageType.ItemPickup,
                         currentTime,
                         itemIcon,
-                        drop.Quantity,
+                        pickupQuantity,
                         drop.IsRare ? new Color(255, 200, 100) : Color.White);
                 }
 
@@ -20891,7 +20945,10 @@ namespace HaCreator.MapSimulator
                 {
                     AddItemToInventoryWindow(drop.ItemId, drop.Quantity);
                 }
-                _monsterBookManager.RecordCardPickup(_playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build, itemId, Math.Max(1, drop.Quantity));
+                else
+                {
+                    _monsterBookManager.RecordCardPickup(_playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build, itemId, 1);
+                }
             }
             else if (drop.Type == Pools.DropType.QuestItem)
             {
@@ -23598,6 +23655,7 @@ namespace HaCreator.MapSimulator
                         actor.IsVisibleInWorld,
                         actor.HiddenLikeClient,
                         actor.HelperMarkerType.HasValue,
+                        actor.HasPacketAuthoredHelperState,
                         actor.BattlefieldTeamId))
                 {
                     continue;
@@ -25062,7 +25120,7 @@ namespace HaCreator.MapSimulator
 
         /// <summary>
         /// Refreshes the client-owned local reactor touch set.
-        /// Call this from player movement updates.
+        /// The main update loop owns this poll, matching CUserLocal::CheckReactor_Collision.
         /// </summary>
         /// <param name="playerX">Player X position</param>
         /// <param name="playerY">Player Y position</param>
@@ -25195,6 +25253,12 @@ namespace HaCreator.MapSimulator
             SyncMonsterCarnivalGuardianReactors(currentTick);
             _reactorPool.RefreshQuestReactors(currentTick);
             _reactorPool.Update(currentTick, deltaSeconds);
+            if (_playerManager?.IsPlayerActive == true)
+            {
+                var playerPosition = _playerManager.GetPlayerPosition();
+                CheckReactorTouch(playerPosition.X, playerPosition.Y, currentTick: currentTick);
+            }
+
             if (_reactorsArray == null || _reactorsArray.Length == 0)
                 return;
 
@@ -25641,7 +25705,10 @@ namespace HaCreator.MapSimulator
             if (killedMobId > 0
                 && _monsterBookManager.TryResolveCardItemId(killedMobId, out monsterCardItemId))
             {
-                int cardQuantity = MobStatusRewardParity.ResolveItemQuantity(mob, 1, supportDropRatePercent);
+                // Item/Consume/0238.img card entries are only=1 consume-on-pickup records, so keep
+                // simulator-authored Monster Card drops single-count while server/drop-table odds
+                // remain outside this local fallback.
+                const int cardQuantity = 1;
                 _dropPool.SpawnItemDrop(
                     mobX + 18f,
                     mobY,
@@ -25889,6 +25956,7 @@ namespace HaCreator.MapSimulator
             return PassiveTransferFieldReadinessEvaluator.CanRetryFromLiveFieldInterface(
                 new PassiveTransferFieldInterfaceState(
                     HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
+                    HasActiveVectorControl: _playerManager?.IsPlayerActive == true,
                     HasPendingMapChange: _gameState.PendingMapChange,
                     HasPlayerInputControl: _gameState.IsPlayerInputEnabled,
                     HasStandAloneControlOwner: _gameState.StandAloneModeActive,
@@ -26182,7 +26250,7 @@ namespace HaCreator.MapSimulator
 
             return portal.pt switch
             {
-                PortalType.CollisionScript => TryHandleCollisionScriptPortal(portal, portalIndex, currentTime, fieldLimit),
+                PortalType.CollisionScript => TryHandleCollisionScriptPortal(portal, portalIndex, currentTime),
                 PortalType.CollisionVerticalJump => TryHandleVerticalJumpPortal(portal, currentTime),
                 PortalType.CollisionCustomImpact => TryHandleCustomImpactPortal(portal),
                 _ => TryHandleTransferPortalCollision(portal, portalIndex, currentTime, fieldLimit)
@@ -26192,32 +26260,124 @@ namespace HaCreator.MapSimulator
         private bool TryHandleCollisionScriptPortal(
             PortalInstance portal,
             int portalIndex,
-            int currentTime,
-            long fieldLimit)
+            int currentTime)
         {
             if (!CanSendCollisionScriptPortalRequest(portal, portalIndex, currentTime))
             {
                 return true;
             }
 
-            return TryHandleTransferPortalCollision(portal, portalIndex, currentTime, fieldLimit);
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Physics == null)
+            {
+                return false;
+            }
+
+            Vector2 position = player.Physics.GetPosition();
+            return TryDispatchCollisionScriptPortalRequest(portal, portalIndex, position.X, position.Y, currentTime);
         }
 
         private bool CanSendCollisionScriptPortalRequest(PortalInstance portal, int portalIndex, int currentTime)
         {
-            if (portal == null || _packetOwnedTeleportRequestActive)
+            if (portal == null || _collisionScriptExclusiveRequestSent)
             {
                 return false;
             }
 
             int delayMs = Math.Max(0, portal.delay ?? 0);
-            if (_lastPacketOwnedTeleportPortalRequestTick != int.MinValue
-                && unchecked(currentTime - _lastPacketOwnedTeleportPortalRequestTick) < delayMs)
+            if (_collisionScriptExclusiveRequestSentTick != int.MinValue
+                && unchecked(currentTime - _collisionScriptExclusiveRequestSentTick) < delayMs)
             {
                 return false;
             }
 
             return portal.onlyOnce != MapleBool.True || portalIndex != _lastPortalCollisionSourcePortalIndex;
+        }
+
+        private bool TryDispatchCollisionScriptPortalRequest(
+            PortalInstance portal,
+            int portalIndex,
+            float playerX,
+            float playerY,
+            int currentTime)
+        {
+            if (portal == null
+                || !PortalCollisionScriptRequestCodec.TryBuildPayload(
+                    PortalCollisionScriptRequestCodec.SyntheticFieldKey,
+                    portal.pn,
+                    playerX,
+                    playerY,
+                    out byte[] payload))
+            {
+                _lastCollisionScriptOutboundOpcode = -1;
+                _lastCollisionScriptOutboundPayload = Array.Empty<byte>();
+                _lastCollisionScriptOutboundSummary = "CollisionScript portal request was not dispatched because the portal name was empty.";
+                return false;
+            }
+
+            _lastCollisionScriptOutboundOpcode = PortalCollisionScriptRequestCodec.Opcode;
+            _lastCollisionScriptOutboundPayload = payload;
+            _lastCollisionScriptOutboundSummary = DispatchCollisionScriptPortalRequest(payload, portal.pn, playerX, playerY);
+            SetCollisionScriptExclusiveRequestSent(currentTime);
+            RegisterPortalCollisionRequestSource(portalIndex);
+            return true;
+        }
+
+        private string DispatchCollisionScriptPortalRequest(byte[] payload, string portalName, float playerX, float playerY)
+        {
+            payload ??= Array.Empty<byte>();
+            string summary =
+                $"Recorded CUserLocal::CheckPortal_Collision opcode {PortalCollisionScriptRequestCodec.Opcode} " +
+                $"for CollisionScript portal '{portalName?.Trim()}' at ({(int)MathF.Round(playerX)}, {(int)MathF.Round(playerY)}) " +
+                $"with field key {PortalCollisionScriptRequestCodec.SyntheticFieldKey}.";
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                PortalCollisionScriptRequestCodec.Opcode,
+                payload,
+                out string bridgeStatus))
+            {
+                return $"{summary} Dispatched it through the live official-session bridge. {bridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                PortalCollisionScriptRequestCodec.Opcode,
+                payload,
+                out string outboxStatus))
+            {
+                return $"{summary} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PortalCollisionScriptRequestCodec.Opcode,
+                    payload,
+                    out string queuedBridgeStatus))
+            {
+                return $"{summary} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                PortalCollisionScriptRequestCodec.Opcode,
+                payload,
+                out string queuedOutboxStatus))
+            {
+                return $"{summary} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PortalCollisionScriptRequestCodec.Opcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+        }
+
+        private void SetCollisionScriptExclusiveRequestSent(int currentTime)
+        {
+            _collisionScriptExclusiveRequestSent = true;
+            _collisionScriptExclusiveRequestSentTick = currentTime;
+            _packetOwnedTeleportRequestActive = true;
+            _lastPacketOwnedTeleportPortalRequestTick = currentTime;
+        }
+
+        private void ClearCollisionScriptExclusiveRequestSent()
+        {
+            _collisionScriptExclusiveRequestSent = false;
         }
 
         private bool TryHandleVerticalJumpPortal(PortalInstance portal, int currentTime)
@@ -26685,6 +26845,9 @@ namespace HaCreator.MapSimulator
             _scriptedDirectionModeWindows.TrackOwner(
                 SpeedQuizDirectionModeOwnerName,
                 () => _speedQuizOwnerRuntime.IsActive(currentTime));
+            _scriptedDirectionModeWindows.TrackOwner(
+                PacketScriptDedicatedOwnerDirectionModeOwnerName,
+                () => _packetScriptDedicatedOwnerRuntime.IsActive);
 
 
             bool scriptedOwnerActive = _scriptedDirectionModeWindows.HasVisibleOwnedWindow(IsWindowVisible);
@@ -28470,7 +28633,7 @@ namespace HaCreator.MapSimulator
                 skillWindow,
                 _playerManager.Player?.Build?.Job ?? 0,
                 GraphicsDevice,
-                _playerManager.Skills.GetLearnedSkills().Select(skill => skill.SkillId),
+                _playerManager.Skills.GetLearnedSkillRecordIds(),
                 _playerManager.Player?.Build?.SubJob ?? 0);
 
             skillWindow.SetSkillManager(_playerManager.Skills);
@@ -28543,7 +28706,7 @@ namespace HaCreator.MapSimulator
                 skillWindow,
                 build.Job,
                 GraphicsDevice,
-                _playerManager.Skills.GetLearnedSkills().Select(skill => skill.SkillId),
+                _playerManager.Skills.GetLearnedSkillRecordIds(),
                 build.SubJob);
 
             Dictionary<int, SkillData> skillDataById = _playerManager.Skills
@@ -29837,7 +30000,7 @@ namespace HaCreator.MapSimulator
         private void LoadSkillCooldownNoticeUiFrame()
         {
             WzImage basicUiImage = Program.FindImage("UI", "Basic.img");
-            WzSubProperty noticeSource = basicUiImage?["Notice3"] as WzSubProperty;
+            WzSubProperty noticeSource = ResolveSkillCooldownNoticeFrameSource(basicUiImage);
             if (noticeSource == null)
             {
                 return;
@@ -29851,6 +30014,86 @@ namespace HaCreator.MapSimulator
             Texture2D bottom = LoadUiCanvasTexture(noticeSource["s"] as WzCanvasProperty);
 
             _skillCooldownNoticeUI.SetFrameTextures(top, center, bottom);
+        }
+
+        private static WzSubProperty ResolveSkillCooldownNoticeFrameSource(WzImage basicUiImage)
+        {
+            if (basicUiImage == null)
+            {
+                return null;
+            }
+
+            const string fallbackNoticeFamily = "Notice3";
+            string[] candidateNames = { "Notice2", "Notice3", "Notice4", "Notice5", "Notice6" };
+            List<SkillCooldownNoticeUI.NoticeFrameCandidate> candidates = new(candidateNames.Length);
+            for (int i = 0; i < candidateNames.Length; i++)
+            {
+                string name = candidateNames[i];
+                if (basicUiImage[name] is not WzSubProperty noticeFamily)
+                {
+                    continue;
+                }
+
+                candidates.Add(CreateSkillCooldownNoticeFrameCandidate(name, noticeFamily));
+            }
+
+            string resolvedFamilyName = SkillCooldownNoticeUI.ResolveNoticeFrameFamilyForClientParity(candidates);
+            if (!string.IsNullOrWhiteSpace(resolvedFamilyName)
+                && basicUiImage[resolvedFamilyName] is WzSubProperty resolvedFamily)
+            {
+                return resolvedFamily;
+            }
+
+            return basicUiImage[fallbackNoticeFamily] as WzSubProperty;
+        }
+
+        private static SkillCooldownNoticeUI.NoticeFrameCandidate CreateSkillCooldownNoticeFrameCandidate(
+            string name,
+            WzSubProperty noticeFamily)
+        {
+            WzCanvasProperty top = noticeFamily?["t"] as WzCanvasProperty;
+            WzCanvasProperty center = noticeFamily?["c"] as WzCanvasProperty;
+            WzCanvasProperty bottom = noticeFamily?["s"] as WzCanvasProperty;
+
+            return new SkillCooldownNoticeUI.NoticeFrameCandidate(
+                name,
+                top != null,
+                center != null,
+                bottom != null,
+                top?.PngProperty?.Width ?? 0,
+                top?.PngProperty?.Height ?? 0,
+                center?.PngProperty?.Width ?? 0,
+                center?.PngProperty?.Height ?? 0,
+                bottom?.PngProperty?.Width ?? 0,
+                bottom?.PngProperty?.Height ?? 0,
+                CountSkillCooldownNoticeExtraParts(noticeFamily));
+        }
+
+        private static int CountSkillCooldownNoticeExtraParts(WzSubProperty noticeFamily)
+        {
+            if (noticeFamily == null)
+            {
+                return 0;
+            }
+
+            int extraPartCount = 0;
+            foreach (WzImageProperty child in noticeFamily.WzProperties)
+            {
+                if (child == null)
+                {
+                    continue;
+                }
+
+                string name = child.Name;
+                if (!string.Equals(name, "t", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(name, "c", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(name, "s", StringComparison.OrdinalIgnoreCase))
+                {
+                    extraPartCount++;
+                }
+            }
+
+            return extraPartCount;
         }
 
         private void LoadPacketOwnedHudNoticeUiFrame()
@@ -30372,6 +30615,53 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool HandleLocalMesoDropRequest(long requestedAmount, out string message)
+        {
+            message = null;
+            IInventoryRuntime inventoryRuntime = uiWindowManager?.InventoryWindow as IInventoryRuntime;
+            long currentMeso = inventoryRuntime?.GetMesoCount() ?? 0L;
+
+            if (!FieldDropRequestEvaluator.TryResolveLocalMesoDropRequest(
+                    _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                    currentMeso,
+                    requestedAmount,
+                    out LocalFieldMesoDropRequest request,
+                    out string restrictionMessage))
+            {
+                message = restrictionMessage ?? "The meso drop request is invalid.";
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    ShowFieldRestrictionMessage(message);
+                }
+
+                return false;
+            }
+
+            if (_dropPool == null || _playerManager?.Player == null || inventoryRuntime == null)
+            {
+                message = "Meso drops are unavailable right now.";
+                return false;
+            }
+
+            if (!inventoryRuntime.TryConsumeMeso(request.Amount))
+            {
+                message = "You do not have enough mesos to drop that amount.";
+                ShowFieldRestrictionMessage(message);
+                return false;
+            }
+
+            int ownerId = _playerManager.Player.Build?.Id ?? 0;
+            _dropPool.SpawnMesoDrop(
+                _playerManager.Player.X,
+                _playerManager.Player.Y,
+                request.Amount,
+                currTickCount,
+                ownerId);
+            PlayDropItemSE();
+            message = $"Dropped {request.Amount.ToString("N0", CultureInfo.InvariantCulture)} mesos.";
+            return true;
+        }
+
         private static bool ShouldTrackFieldConsumeItemCooldown(
             InventoryType inventoryType,
             PetFoodItemEffect petFoodEffect,
@@ -30779,7 +31069,7 @@ namespace HaCreator.MapSimulator
                 skillWindow,
                 jobId,
                 GraphicsDevice,
-                _playerManager?.Skills?.GetLearnedSkills().Select(skill => skill.SkillId),
+                _playerManager?.Skills?.GetLearnedSkillRecordIds(),
                 _playerManager?.Player?.Build?.SubJob ?? 0);
 
             ConfigureSkillUIBindings();

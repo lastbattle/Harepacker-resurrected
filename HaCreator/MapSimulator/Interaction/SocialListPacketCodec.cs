@@ -133,7 +133,8 @@ namespace HaCreator.MapSimulator.Interaction
     internal enum GuildSkillResultPacketKind : byte
     {
         LevelUp = 0,
-        Renew = 1
+        Renew = 1,
+        FundSync = 2
     }
 
     internal readonly record struct GuildSkillResultPacket(
@@ -767,6 +768,21 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 PacketReader reader = new(payload);
                 GuildSkillResultPacketKind kind = (GuildSkillResultPacketKind)reader.ReadByte();
+                if (kind == GuildSkillResultPacketKind.FundSync)
+                {
+                    int syncedGuildFundMeso = reader.ReadInt32();
+                    string fundSummary = reader.HasRemaining ? reader.ReadString16().Trim() : null;
+                    packet = new GuildSkillResultPacket(
+                        kind,
+                        0,
+                        Approved: true,
+                        null,
+                        null,
+                        syncedGuildFundMeso,
+                        fundSummary);
+                    return true;
+                }
+
                 if (kind != GuildSkillResultPacketKind.LevelUp && kind != GuildSkillResultPacketKind.Renew)
                 {
                     error = $"Unsupported guild-skill result kind {(byte)kind}.";

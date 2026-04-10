@@ -57,7 +57,10 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ExistingNoticeStringPoolId = 0xEB3;
         private const int ClientGuildBbsRequestOpcode = 179;
         private const byte ClientRegisterRequestType = 0;
+        private const byte ClientDeleteRequestType = 1;
+        private const byte ClientLoadListRequestType = 2;
         private const byte ClientCommentRequestType = 4;
+        private const byte ClientCommentDeleteRequestType = 5;
 
         private sealed class GuildBbsCommentState
         {
@@ -894,9 +897,102 @@ namespace HaCreator.MapSimulator.Interaction
         public string BuildClientLoadListRequestPreview()
         {
             var payload = new List<byte>();
-            EncodeByte(payload, 2);
+            EncodeByte(payload, ClientLoadListRequestType);
             EncodeInt32(payload, ResolveClientListStart());
             return FormatClientPacketPreview("load-list", payload);
+        }
+
+        public string BuildClientDeleteRequestPreview()
+        {
+            GuildBbsThreadState selectedThread = GetSelectedThread();
+            if (selectedThread == null)
+            {
+                return "Select a Guild BBS thread before deleting it.";
+            }
+
+            if (!CanDeleteThread(selectedThread))
+            {
+                return "Only your own Guild BBS thread or an officer-moderated thread can be deleted here.";
+            }
+
+            var payload = new List<byte>();
+            EncodeByte(payload, ClientDeleteRequestType);
+            EncodeInt32(payload, selectedThread.ThreadId);
+            return FormatClientPacketPreview("delete", payload);
+        }
+
+        public string BuildClientDeleteSequencePreview()
+        {
+            return $"{BuildClientDeleteRequestPreview()} {BuildClientLoadListRequestPreview()}";
+        }
+
+        public string BuildClientCommentDeleteRequestPreview(int visibleIndex)
+        {
+            GuildBbsThreadState selectedThread = GetSelectedThread();
+            if (selectedThread == null)
+            {
+                return "Select a Guild BBS thread before removing a reply.";
+            }
+
+            if (visibleIndex < 0 || visibleIndex >= VisibleCommentCount)
+            {
+                return "That Guild BBS reply slot is outside the visible client comment range.";
+            }
+
+            IReadOnlyList<GuildBbsCommentState> orderedComments = selectedThread.Comments
+                .OrderBy(comment => comment.CreatedAt)
+                .ToArray();
+            int commentIndex = (_commentPageIndex * VisibleCommentCount) + visibleIndex;
+            if (commentIndex < 0 || commentIndex >= orderedComments.Count)
+            {
+                return "No Guild BBS reply is loaded in that visible client comment slot.";
+            }
+
+            GuildBbsCommentState comment = orderedComments[commentIndex];
+            if (!CanDeleteComment(comment))
+            {
+                return "That Guild BBS reply cannot be deleted by the current simulator authority.";
+            }
+
+            var payload = new List<byte>();
+            EncodeByte(payload, ClientCommentDeleteRequestType);
+            EncodeInt32(payload, selectedThread.ThreadId);
+            EncodeInt32(payload, comment.CommentId);
+            return FormatClientPacketPreview("comment-delete", payload);
+        }
+
+        public string BuildClientCommentDeleteRequestPreview()
+        {
+            GuildBbsThreadState selectedThread = GetSelectedThread();
+            if (selectedThread == null)
+            {
+                return "Select a Guild BBS thread before removing a reply.";
+            }
+
+            IReadOnlyList<GuildBbsCommentState> orderedComments = selectedThread.Comments
+                .OrderBy(comment => comment.CreatedAt)
+                .ToArray();
+            int pageStart = _commentPageIndex * VisibleCommentCount;
+            for (int visibleIndex = Math.Min(VisibleCommentCount, orderedComments.Count - pageStart) - 1; visibleIndex >= 0; visibleIndex--)
+            {
+                GuildBbsCommentState comment = orderedComments[pageStart + visibleIndex];
+                if (CanDeleteComment(comment))
+                {
+                    return BuildClientCommentDeleteRequestPreview(visibleIndex);
+                }
+            }
+
+            return "No deletable Guild BBS reply is available on the selected thread.";
+        }
+
+        public string BuildClientCommentDeleteSequencePreview(int visibleIndex)
+        {
+            return $"{BuildClientCommentDeleteRequestPreview(visibleIndex)} {BuildClientLoadListRequestPreview()}";
+        }
+
+        public string BuildClientCommentDeleteSequencePreview()
+        {
+            return $"{BuildClientCommentDeleteRequestPreview()} {BuildClientLoadListRequestPreview()}";
         }
 
         public string BuildClientSubmitSequencePreview()

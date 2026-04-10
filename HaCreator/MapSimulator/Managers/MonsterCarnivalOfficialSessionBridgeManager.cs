@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.Managers
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private BridgePair _activePair;
+        private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -93,6 +94,7 @@ namespace HaCreator.MapSimulator.Managers
         public int RemotePort { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasAttachedClient => _activePair != null;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public string LastStatus { get; private set; } = "Monster Carnival official-session bridge inactive.";
@@ -104,8 +106,10 @@ namespace HaCreator.MapSimulator.Managers
                 : "inactive";
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                : HasPassiveEstablishedSocketPair
+                    ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
-            return $"Monster Carnival official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
+            return $"Monster Carnival official-session bridge {lifecycle}; {session}; attachMode=proxy+passive-observe; received={ReceivedCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -208,6 +212,7 @@ namespace HaCreator.MapSimulator.Managers
                     _listenerCancellation = new CancellationTokenSource();
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
                     _listener.Start();
+                    _passiveEstablishedSession = null;
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = $"Monster Carnival official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     status = LastStatus;
@@ -279,6 +284,55 @@ namespace HaCreator.MapSimulator.Managers
             status = $"Monster Carnival official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus}";
             LastStatus = status;
             return true;
+        }
+
+        public bool TryAttachEstablishedSession(int remotePort, string processSelector, int? localPort, out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            return TryAttachEstablishedSession(candidate, out status);
+        }
+
+        public bool TryAttachEstablishedSession(SessionDiscoveryCandidate candidate, out string status)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
+            {
+                status = "Monster Carnival official-session attach requires an established Maple client socket pair.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (HasAttachedClient)
+                {
+                    status = $"Monster Carnival official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before observing an already-established socket pair.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                StopInternal(clearPending: true);
+                _passiveEstablishedSession = candidate;
+                RemoteHost = candidate.RemoteEndpoint.Address.ToString();
+                RemotePort = candidate.RemoteEndpoint.Port;
+                LastStatus = $"Observed already-established Monster Carnival Maple socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. This passive attach can keep the CField_MonsterCarnival session target visible, but it cannot decrypt inbound 346-353 traffic or inject outbound opcode {OutboundRequestOpcode} after the Maple handshake; reconnect through the localhost proxy for live Monster Carnival packet ownership.";
+                status = LastStatus;
+                return true;
+            }
         }
 
         public string DescribeDiscoveredSessions(int remotePort, string processSelector = null, int? localPort = null)
@@ -447,6 +501,7 @@ namespace HaCreator.MapSimulator.Managers
                 lock (_sync)
                 {
                     _activePair = pair;
+                    _passiveEstablishedSession = null;
                 }
 
                 LastStatus = $"Monster Carnival official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
@@ -627,6 +682,7 @@ namespace HaCreator.MapSimulator.Managers
 
             BridgePair pair = _activePair;
             _activePair = null;
+            _passiveEstablishedSession = null;
             pair?.Close();
 
             if (clearPending)
@@ -943,6 +999,11 @@ namespace HaCreator.MapSimulator.Managers
                 Environment.NewLine,
                 filteredCandidates.Select(candidate =>
                     $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}"));
+        }
+
+        private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"observing established socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}; proxy reconnect required for decrypt/inject";
         }
 
         private static IReadOnlyList<SessionDiscoveryCandidate> FilterCandidatesByLocalPort(

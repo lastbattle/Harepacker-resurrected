@@ -53,6 +53,11 @@ namespace HaCreator.MapSimulator.Pools
         public readonly record struct RemoteGenericUserStatePresentation(
             int CharacterId,
             int CurrentTime);
+        public readonly record struct RemoteItemMakePresentation(
+            int CharacterId,
+            int ResultCode,
+            bool Success,
+            int CurrentTime);
         public readonly record struct RemoteHitFeedbackPresentation(
             int CharacterId,
             Vector2 Position,
@@ -328,6 +333,7 @@ namespace HaCreator.MapSimulator.Pools
         public event Action<RemoteSkillUsePresentation> SkillUseRegistered;
         public event Action<RemoteUpgradeTombPresentation> UpgradeTombEffectRegistered;
         public event Action<RemoteGenericUserStatePresentation> GenericUserStateRegistered;
+        public event Action<RemoteItemMakePresentation> ItemMakeRegistered;
         public event Action<RemoteHitFeedbackPresentation> HitFeedbackRegistered;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
@@ -1106,6 +1112,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             actor.HelperMarkerType = markerType;
+            actor.HasPacketAuthoredHelperState = true;
             actor.ShowDirectionOverlay = showDirectionOverlay;
             return true;
         }
@@ -1167,6 +1174,11 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
+            if (syncPairRecordFromChairState)
+            {
+                SyncPortableChairRecordFromChairState(characterId, chairItemId.Value, pairCharacterId);
+            }
+
             PortableChair chair = _loader.LoadPortableChair(chairItemId.Value);
             if (chair == null)
             {
@@ -1176,10 +1188,6 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.Build.ActivePortableChair = chair;
             actor.PreferredPortableChairPairCharacterId = pairCharacterId;
-            if (syncPairRecordFromChairState)
-            {
-                SyncPortableChairRecordFromChairState(actor.CharacterId, chair.ItemId, pairCharacterId);
-            }
 
             ApplyPortableChairMount(actor, chair);
             SetActorAction(actor, "sit", allowSitFallback: true, Environment.TickCount);
@@ -2004,6 +2012,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            actor.LastEffect = packet;
             switch (packet.KnownSubtype)
             {
                 case RemoteUserEffectSubtype.GenericUserState:
@@ -2011,6 +2020,33 @@ namespace HaCreator.MapSimulator.Pools
                         packet.CharacterId,
                         currentTime));
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered generic user-state presentation.";
+                    return true;
+
+                case RemoteUserEffectSubtype.SkillUse:
+                    int skillId = packet.SkillId.GetValueOrDefault();
+                    if (skillId <= 0)
+                    {
+                        message = $"Remote user {packet.CharacterId} skill-use effect skill ID {skillId} is invalid.";
+                        return false;
+                    }
+
+                    SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                        packet.CharacterId,
+                        skillId,
+                        null,
+                        actor.FacingRight,
+                        currentTime));
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered skill-use presentation for skill {skillId}.";
+                    return true;
+
+                case RemoteUserEffectSubtype.ItemMake:
+                    int itemMakeResultCode = packet.Int32Value.GetValueOrDefault();
+                    ItemMakeRegistered?.Invoke(new RemoteItemMakePresentation(
+                        packet.CharacterId,
+                        itemMakeResultCode,
+                        itemMakeResultCode == 0,
+                        currentTime));
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered item-make {(itemMakeResultCode == 0 ? "success" : "failure")} presentation.";
                     return true;
 
                 case RemoteUserEffectSubtype.IncDecHp:
@@ -2041,8 +2077,8 @@ namespace HaCreator.MapSimulator.Pools
                     return true;
 
                 default:
-                    message = $"Remote user effect subtype {packet.EffectType} is not supported by the shared remote-user owner.";
-                    return false;
+                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} preserved without a recovered simulator presentation.";
+                    return true;
             }
         }
 
@@ -2728,12 +2764,13 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private static bool IsRemoteDragonActionLooping(string actionName)
+        internal static bool IsRemoteDragonActionLooping(string actionName)
         {
-            return string.Equals(actionName, "stand", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase)
-                || (!string.IsNullOrWhiteSpace(actionName)
-                    && actionName.EndsWith("_prepare", StringComparison.OrdinalIgnoreCase));
+            string normalizedActionName = DragonActionLoader.NormalizeClientActionName(actionName) ?? actionName;
+            return string.Equals(normalizedActionName, "stand", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedActionName, "move", StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(normalizedActionName)
+                    && normalizedActionName.EndsWith("_prepare", StringComparison.OrdinalIgnoreCase));
         }
 
         private static int? GetWzIntValue(WzImageProperty property)
@@ -2955,6 +2992,7 @@ namespace HaCreator.MapSimulator.Pools
                         actor?.IsVisibleInWorld == true,
                         actor?.HiddenLikeClient == true,
                         actor?.HelperMarkerType.HasValue == true,
+                        actor?.HasPacketAuthoredHelperState == true,
                         actor?.BattlefieldTeamId))
                 {
                     continue;
@@ -2985,11 +3023,13 @@ namespace HaCreator.MapSimulator.Pools
             bool isVisibleInWorld,
             bool hiddenLikeClient,
             bool hasExplicitHelperMarker,
+            bool hasPacketAuthoredHelperState,
             int? battlefieldTeamId)
         {
             return isVisibleInWorld
                 && !hiddenLikeClient
-                && (hasExplicitHelperMarker || battlefieldTeamId.HasValue);
+                && (hasExplicitHelperMarker
+                    || (!hasPacketAuthoredHelperState && battlefieldTeamId.HasValue));
         }
 
         internal static MinimapUI.HelperMarkerType ResolvePacketAuthoredMinimapHelperMarker(
@@ -8146,6 +8186,7 @@ namespace HaCreator.MapSimulator.Pools
         public string SourceTag { get; set; }
         public bool IsVisibleInWorld { get; set; }
         public MinimapUI.HelperMarkerType? HelperMarkerType { get; set; }
+        public bool HasPacketAuthoredHelperState { get; set; }
         public bool ShowDirectionOverlay { get; set; } = true;
         public int? BattlefieldTeamId { get; set; }
         public RemotePreparedSkillState PreparedSkill { get; set; }
@@ -8181,10 +8222,11 @@ namespace HaCreator.MapSimulator.Pools
         public int? PartyCurrentHp { get; set; }
         public int? PartyMaxHp { get; set; }
         public int? PartyHpPercent { get; set; }
-        public int? PartyHpGaugePos { get; set; }
-        public int? PacketOwnedQuestDeliveryEffectItemId { get; set; }
-        public RemoteUserActorPool.RemoteHitState LastHit { get; set; }
-        public int? LastThrowGrenadeSkillId { get; set; }
+            public int? PartyHpGaugePos { get; set; }
+            public int? PacketOwnedQuestDeliveryEffectItemId { get; set; }
+            public RemoteUserEffectPacket LastEffect { get; set; }
+            public RemoteUserActorPool.RemoteHitState LastHit { get; set; }
+            public int? LastThrowGrenadeSkillId { get; set; }
         public int? LastThrowGrenadeId { get; set; }
         public Point? LastThrowGrenadeTarget { get; set; }
         public int LastThrowGrenadeKeyDownTime { get; set; }
@@ -8319,7 +8361,9 @@ namespace HaCreator.MapSimulator.Pools
 
         public string Describe()
         {
-            string helperText = HelperMarkerType?.ToString() ?? "none";
+            string helperText = HasPacketAuthoredHelperState
+                ? HelperMarkerType?.ToString() ?? "clear"
+                : "none";
             string teamText = BattlefieldTeamId?.ToString() ?? "none";
             string preparedText = PreparedSkill != null ? PreparedSkill.SkillId.ToString() : "none";
             string chairPairText = PreferredPortableChairPairCharacterId?.ToString() ?? "none";

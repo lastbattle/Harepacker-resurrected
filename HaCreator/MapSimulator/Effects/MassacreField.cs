@@ -372,6 +372,12 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            if (_mapMode != MassacreMapMode.Result)
+            {
+                errorMessage = "Massacre result packet 174 is owned by CField_MassacreResult, not the active CField_Massacre wrapper.";
+                return false;
+            }
+
             if (payload == null || payload.Length < sizeof(byte) + sizeof(int))
             {
                 errorMessage = "Massacre result packet requires a 5-byte payload.";

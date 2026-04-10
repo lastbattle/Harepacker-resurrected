@@ -144,28 +144,112 @@ namespace HaCreator.MapSimulator.Character
         private static readonly IReadOnlyDictionary<string, ShadowPartnerActionPiece[]> PiecedShadowPartnerActionPlans =
             new Dictionary<string, ShadowPartnerActionPiece[]>(StringComparer.OrdinalIgnoreCase)
             {
-                ["avenger"] = CreateIndexedPieces("shoot1", "shoot2", "shootF"),
-                ["assaulter"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
-                ["flyingAssaulter"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
-                ["savage"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
-                ["showdown"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
-                ["assassination"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
+                // CActionMan::Init builds the helper table from Character/00002000.img
+                // action-piece rows before LoadShadowPartnerAction copies source canvases.
+                ["avenger"] = CreateIndexedPieces(("swingO3", 0), ("swingO3", 1), ("swingO3", 2)),
+                ["assaulter"] = CreateIndexedPieces(("swingO1", 0), ("swingOF", 3)),
+                ["flyingAssaulter"] = CreateIndexedPieces(
+                    ("swingPF", 2),
+                    ("swingOF", 3),
+                    ("swingOF", 3),
+                    ("stabT1", 2),
+                    ("stabT1", 2),
+                    ("stabT1", 2),
+                    ("swingO2", 0)),
+                ["savage"] = CreateIndexedPieces(
+                    ("stabO1", 0),
+                    ("swingOF", 3),
+                    ("proneStab", 0),
+                    ("swingO1", 2),
+                    ("swingO2", 0),
+                    ("stabOF", 2),
+                    ("alert", 1),
+                    ("swingO3", 2)),
+                ["showdown"] = CreateIndexedPieces(
+                    ("proneStab", 0),
+                    ("swingOF", 0),
+                    ("swingOF", 1),
+                    ("swingOF", 2),
+                    ("swingOF", 3)),
+                ["assassination"] = CreateIndexedPieces(
+                    ("stand1", 0),
+                    ("swingOF", 0),
+                    ("swingOF", 1),
+                    ("swingOF", 2),
+                    ("swingOF", 3),
+                    ("swingO3", 0),
+                    ("swingO3", 1),
+                    ("swingO3", 2),
+                    ("swingO2", 0),
+                    ("swingO2", 1),
+                    ("swingO2", 2)),
                 // `get_action_name_from_code(62)` resolves to `assassinationS` in the client
                 // action table; keep the earlier compatibility alias too until the simulator
                 // no longer carries call sites or saved state that can surface the older name.
-                ["assassinationS"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
-                ["assassinations"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
-                ["ninjastorm"] = CreateIndexedPieces("shoot1", "shoot2", "shootF"),
-                ["vampire"] = CreateIndexedPieces("shoot1", "shoot2", "shootF"),
+                ["assassinationS"] = CreateIndexedPieces(
+                    ("stand1", 0),
+                    ("swingOF", 0),
+                    ("swingOF", 1),
+                    ("swingOF", 2),
+                    ("swingOF", 3),
+                    ("swingO3", 0),
+                    ("swingO3", 1),
+                    ("swingO3", 2),
+                    ("swingO2", 0),
+                    ("swingO2", 1),
+                    ("swingO2", 2)),
+                ["assassinations"] = CreateIndexedPieces(
+                    ("stand1", 0),
+                    ("swingOF", 0),
+                    ("swingOF", 1),
+                    ("swingOF", 2),
+                    ("swingOF", 3),
+                    ("swingO3", 0),
+                    ("swingO3", 1),
+                    ("swingO3", 2),
+                    ("swingO2", 0),
+                    ("swingO2", 1),
+                    ("swingO2", 2)),
+                ["ninjastorm"] = CreateIndexedPieces(("alert", 0), ("alert", 1), ("alert", 2)),
+                ["vampire"] = CreateIndexedPieces(("alert", 0), ("alert", 1), ("alert", 2)),
                 // `Skill/421.img/skill/4211006/action/0 = prone2`; the loader
                 // disassembly shows hidden piece entries carry source frame slots.
                 ["prone2"] = CreateIndexedPieces(("prone", 1)),
-                ["stabD1"] = CreateIndexedPieces("stabO1", "stabO2", "stabOF"),
-                ["swingD1"] = CreateIndexedPieces("swingO1", "swingO2", "swingO3", "swingOF"),
-                ["swingD2"] = CreateIndexedPieces("swingO1", "swingO2", "swingO3", "swingOF"),
-                ["doubleSwing"] = CreateIndexedPieces("swingP1", "swingP2", "swingPF"),
-                ["tripleSwing"] = CreateIndexedPieces("swingP1", "swingP2", "swingPF"),
-                ["shotC1"] = CreateIndexedPieces("shoot1", "shoot2", "shootF")
+                ["stabD1"] = CreateIndexedPieces(
+                    ("stabO1", 0),
+                    ("stabO1", 1),
+                    ("swingO3", 2),
+                    ("stabT1", 2)),
+                ["swingD1"] = CreateIndexedPieces(
+                    ("swingO2", 0),
+                    ("swingO2", 2),
+                    ("swingO2", 1),
+                    ("swingOF", 3)),
+                ["swingD2"] = CreateIndexedPieces(
+                    ("swingO2", 0),
+                    ("swingO2", 2),
+                    ("swingO2", 1),
+                    ("swingOF", 0)),
+                ["doubleSwing"] = CreateIndexedPieces(
+                    ("swingP2", 2),
+                    ("swingPF", 0),
+                    ("stabTF", 0),
+                    ("stabTF", 2),
+                    ("stabTF", 2)),
+                ["tripleSwing"] = CreateIndexedPieces(
+                    ("swingPF", 1),
+                    ("proneStab", 0),
+                    ("proneStab", 0),
+                    ("swingPF", 2),
+                    ("swingPF", 2),
+                    ("swingP2", 2),
+                    ("swingP2", 2),
+                    ("swingP2", 2)),
+                ["shotC1"] = CreateIndexedPieces(
+                    ("alert", 2),
+                    ("stabO1", 0),
+                    ("stabO1", 0),
+                    ("stabO1", 0))
             };
 
         private static readonly HashSet<string> ClientAttackAliasActionNames = new(StringComparer.OrdinalIgnoreCase)

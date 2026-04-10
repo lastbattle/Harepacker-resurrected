@@ -87,6 +87,12 @@ internal static class ClientShootAttackFamilyResolver
         return MountedBodyRelMoveVehicleIds.Contains(mountedTamingMobItemId);
     }
 
+    internal static bool IsClientFallbackShootAttackVehicle(int mountedTamingMobItemId)
+    {
+        return IsMountedBodyRelMoveVehicle(mountedTamingMobItemId)
+               || mountedTamingMobItemId == MechanicTamingMobItemId;
+    }
+
     private static bool IsPositionUpSkillOnRiding(int skillId, int jobId)
     {
         return skillId switch

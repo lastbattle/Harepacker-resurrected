@@ -17,12 +17,14 @@ namespace HaCreator.MapSimulator.Managers
         private const ulong CharacterDataInt16ValueRecordFlag = 0x8000UL;
         private const ulong CharacterDataQuestRecordFlag = 0x10000UL;
         private const ulong CharacterDataShortFileTimeRecordFlag = 0x20000UL;
+        private const ulong CharacterDataTwoIntValueRecordFlag = 0x100000UL;
         private const int LogoutGiftConfigByteLength =
             sizeof(int) + (PacketStageTransitionRuntime.LogoutGiftEntryCount * sizeof(int));
         private const int SkillRecordBaseByteLength = sizeof(int) + sizeof(int);
         private const int SkillRecordOptionalMasterLevelByteLength = sizeof(int);
         private const int SkillExpirationRecordByteLength = sizeof(int) + sizeof(long);
         private const int Int16ValueRecordByteLength = sizeof(int) + sizeof(ushort);
+        private const int TwoIntValueRecordByteLength = sizeof(int) + sizeof(int);
         private const int ShortFileTimeRecordByteLength = sizeof(ushort) + sizeof(long);
         private const int MiniGameRecordByteLength = 0x14;
         private const int CoupleRecordByteLength = 0x21;
@@ -383,6 +385,11 @@ namespace HaCreator.MapSimulator.Managers
                 new(0, -1)
             };
 
+            if ((characterDataFlags & CharacterDataTwoIntValueRecordFlag) != 0)
+            {
+                candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetExactNextOffsets(TrySkipTwoIntValueRecord));
+            }
+
             if ((characterDataFlags & CharacterDataSkillRecordFlag) != 0)
             {
                 candidateStarts = ExtendKnownLeadingOffsets(candidateStarts, payload, GetPossibleSkillRecordGroupOffsets);
@@ -542,6 +549,18 @@ namespace HaCreator.MapSimulator.Managers
         private static bool TrySkipInt16ValueRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
         {
             return TrySkipFixedRecordGroup(payload, offset, Int16ValueRecordByteLength, out nextOffset);
+        }
+
+        private static bool TrySkipTwoIntValueRecord(ReadOnlySpan<byte> payload, int offset, out int nextOffset)
+        {
+            nextOffset = offset;
+            if ((uint)offset > payload.Length || payload.Length - offset < TwoIntValueRecordByteLength)
+            {
+                return false;
+            }
+
+            nextOffset = offset + TwoIntValueRecordByteLength;
+            return true;
         }
 
         private static bool TrySkipQuestRecordGroup(ReadOnlySpan<byte> payload, int offset, out int nextOffset)

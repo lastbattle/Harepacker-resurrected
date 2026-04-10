@@ -11,18 +11,28 @@ namespace HaCreator.MapSimulator
     {
         private readonly RockPaperScissorsPacketInboxManager _rockPaperScissorsPacketInbox = new();
         private readonly RockPaperScissorsClientPacketTransportManager _rockPaperScissorsClientPacketOutbox = new();
+        private readonly RockPaperScissorsOfficialSessionBridgeManager _rockPaperScissorsOfficialSessionBridge = new();
+        private const int RockPaperScissorsOfficialSessionBridgeDiscoveryRefreshIntervalMs = 5000;
+        private bool _rockPaperScissorsOfficialSessionBridgeEnabled;
+        private bool _rockPaperScissorsOfficialSessionBridgeUseDiscovery;
+        private int _rockPaperScissorsOfficialSessionBridgeConfiguredListenPort = RockPaperScissorsOfficialSessionBridgeManager.DefaultListenPort;
+        private string _rockPaperScissorsOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+        private int _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort;
+        private string _rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _rockPaperScissorsOfficialSessionBridgeConfiguredLocalPort;
+        private int _nextRockPaperScissorsOfficialSessionBridgeDiscoveryRefreshAt;
 
         private void RegisterRockPaperScissorsChatCommands()
         {
             _chat.CommandHandler.RegisterCommand(
                 "rps",
                 "Drive the CRPSGameDlg Rock-Paper-Scissors runtime",
-                "/rps <open|close|choose|main|status|packet|packetraw|inbox|outbox> [...]",
+                "/rps <open|close|choose|main|status|packet|packetraw|inbox|outbox|session> [...]",
                 args =>
                 {
                     if (args.Length == 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /rps <open|close|choose|main|status|packet|packetraw|inbox|outbox> [...]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /rps <open|close|choose|main|status|packet|packetraw|inbox|outbox|session> [...]");
                     }
 
                     RockPaperScissorsField field = _specialFieldRuntime.Minigames.RockPaperScissors;
@@ -74,7 +84,7 @@ namespace HaCreator.MapSimulator
                                 : ChatCommandHandler.CommandResult.Error(mainMessage);
 
                         case "status":
-                            return ChatCommandHandler.CommandResult.Info($"{field.DescribeStatus()} | inbox={_rockPaperScissorsPacketInbox.LastStatus} | outbox={_rockPaperScissorsClientPacketOutbox.LastStatus}");
+                            return ChatCommandHandler.CommandResult.Info($"{field.DescribeStatus()} | inbox={_rockPaperScissorsPacketInbox.LastStatus} | outbox={_rockPaperScissorsClientPacketOutbox.LastStatus} | {DescribeRockPaperScissorsOfficialSessionBridgeStatus()}");
 
                         case "packet":
                         {
@@ -187,8 +197,11 @@ namespace HaCreator.MapSimulator
                             }
                         }
 
+                        case "session":
+                            return HandleRockPaperScissorsSessionCommand(args.Length > 1 ? args[1..] : Array.Empty<string>());
+
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /rps <open|close|choose|main|status|packet|packetraw|inbox|outbox> [...]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /rps <open|close|choose|main|status|packet|packetraw|inbox|outbox|session> [...]");
                     }
                 });
         }
@@ -201,6 +214,7 @@ namespace HaCreator.MapSimulator
             {
                 _rockPaperScissorsPacketInbox.Stop();
                 _rockPaperScissorsClientPacketOutbox.Stop();
+                _rockPaperScissorsOfficialSessionBridge.Stop();
                 return;
             }
 
@@ -208,10 +222,124 @@ namespace HaCreator.MapSimulator
             _rockPaperScissorsClientPacketOutbox.Start();
         }
 
+        private string DescribeRockPaperScissorsOfficialSessionBridgeStatus()
+        {
+            string enabledText = _rockPaperScissorsOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _rockPaperScissorsOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _rockPaperScissorsOfficialSessionBridgeUseDiscovery
+                ? _rockPaperScissorsOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort} with local port {_rockPaperScissorsOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_rockPaperScissorsOfficialSessionBridgeConfiguredRemoteHost}:{_rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector}";
+            return $"RPS session bridge {enabledText}, {modeText}, target {configuredTarget}{processText}. {_rockPaperScissorsOfficialSessionBridge.DescribeStatus()}";
+        }
+
+        private void EnsureRockPaperScissorsOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_rockPaperScissorsOfficialSessionBridgeEnabled)
+            {
+                if (_rockPaperScissorsOfficialSessionBridge.IsRunning)
+                {
+                    _rockPaperScissorsOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_rockPaperScissorsOfficialSessionBridgeConfiguredListenPort <= 0 ||
+                _rockPaperScissorsOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
+            {
+                _rockPaperScissorsOfficialSessionBridge.Stop();
+                _rockPaperScissorsOfficialSessionBridgeEnabled = false;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredListenPort = RockPaperScissorsOfficialSessionBridgeManager.DefaultListenPort;
+                return;
+            }
+
+            if (_rockPaperScissorsOfficialSessionBridgeUseDiscovery)
+            {
+                if (_rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                    _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    _rockPaperScissorsOfficialSessionBridge.Stop();
+                    return;
+                }
+
+                _rockPaperScissorsOfficialSessionBridge.TryStartFromDiscovery(
+                    _rockPaperScissorsOfficialSessionBridgeConfiguredListenPort,
+                    _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort,
+                    _rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector,
+                    _rockPaperScissorsOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue ||
+                string.IsNullOrWhiteSpace(_rockPaperScissorsOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                _rockPaperScissorsOfficialSessionBridge.Stop();
+                return;
+            }
+
+            _rockPaperScissorsOfficialSessionBridge.TryStart(
+                _rockPaperScissorsOfficialSessionBridgeConfiguredListenPort,
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemoteHost,
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort,
+                out _);
+        }
+
+        private void RefreshRockPaperScissorsOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (!_rockPaperScissorsOfficialSessionBridgeEnabled ||
+                !_rockPaperScissorsOfficialSessionBridgeUseDiscovery ||
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue ||
+                _rockPaperScissorsOfficialSessionBridge.HasConnectedSession ||
+                currentTickCount < _nextRockPaperScissorsOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextRockPaperScissorsOfficialSessionBridgeDiscoveryRefreshAt = currentTickCount + RockPaperScissorsOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+            _rockPaperScissorsOfficialSessionBridge.TryStartFromDiscovery(
+                _rockPaperScissorsOfficialSessionBridgeConfiguredListenPort,
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort,
+                _rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector,
+                _rockPaperScissorsOfficialSessionBridgeConfiguredLocalPort,
+                out _);
+        }
+
         private void DrainRockPaperScissorsPacketInbox(int currentTickCount)
         {
             RockPaperScissorsField field = _specialFieldRuntime.Minigames.RockPaperScissors;
             while (_rockPaperScissorsPacketInbox.TryDequeue(out RockPaperScissorsPacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = field.TryApplyRawPacket(message.PacketType, message.Payload, currentTickCount, out string resultMessage);
+                if (applied)
+                {
+                    DrainRockPaperScissorsPendingNotice(field);
+                }
+
+                _rockPaperScissorsPacketInbox.RecordDispatchResult(
+                    message.Source,
+                    message.PacketType,
+                    applied,
+                    applied ? field.DescribeStatus() : resultMessage);
+            }
+        }
+
+        private void DrainRockPaperScissorsOfficialSessionBridge(int currentTickCount)
+        {
+            RockPaperScissorsField field = _specialFieldRuntime.Minigames.RockPaperScissors;
+            while (_rockPaperScissorsOfficialSessionBridge.TryDequeue(out RockPaperScissorsPacketInboxMessage message))
             {
                 if (message == null)
                 {
@@ -261,8 +389,119 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                _rockPaperScissorsClientPacketOutbox.TryQueueClientPacket(packet, out _);
+                string outboxStatus = "Rock-Paper-Scissors client outbox immediate delivery unavailable.";
+                if (_rockPaperScissorsOfficialSessionBridgeEnabled
+                    && _rockPaperScissorsOfficialSessionBridge.TrySendOrQueueClientPacket(packet, out _, out _))
+                {
+                    continue;
+                }
+
+                _rockPaperScissorsClientPacketOutbox.TryQueueClientPacket(packet, out outboxStatus);
             }
+        }
+
+        private ChatCommandHandler.CommandResult HandleRockPaperScissorsSessionCommand(string[] args)
+        {
+            if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribeRockPaperScissorsOfficialSessionBridgeStatus());
+            }
+
+            if (string.Equals(args[0], "discover", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !int.TryParse(args[1], out int remotePort) || remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /rps session discover <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 3 ? args[2] : null;
+                int? localPort = null;
+                if (args.Length >= 4)
+                {
+                    if (!int.TryParse(args[3], out int parsedLocalPort) || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /rps session discover <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPort = parsedLocalPort;
+                }
+
+                return ChatCommandHandler.CommandResult.Info(
+                    _rockPaperScissorsOfficialSessionBridge.DescribeDiscoveredSessions(remotePort, processSelector, localPort));
+            }
+
+            if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 4 ||
+                    !int.TryParse(args[1], out int listenPort) ||
+                    listenPort <= 0 ||
+                    !int.TryParse(args[3], out int remotePort) ||
+                    remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /rps session start <listenPort> <serverHost> <serverPort>");
+                }
+
+                _rockPaperScissorsOfficialSessionBridgeEnabled = true;
+                _rockPaperScissorsOfficialSessionBridgeUseDiscovery = false;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredListenPort = listenPort;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemoteHost = args[2];
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector = null;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredLocalPort = null;
+
+                return _rockPaperScissorsOfficialSessionBridge.TryStart(listenPort, args[2], remotePort, out string status)
+                    ? ChatCommandHandler.CommandResult.Ok($"{status} {DescribeRockPaperScissorsOfficialSessionBridgeStatus()}")
+                    : ChatCommandHandler.CommandResult.Error(status);
+            }
+
+            if (string.Equals(args[0], "startauto", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 3 ||
+                    !int.TryParse(args[1], out int listenPort) ||
+                    listenPort <= 0 ||
+                    !int.TryParse(args[2], out int remotePort) ||
+                    remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /rps session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 4 ? args[3] : null;
+                int? localPort = null;
+                if (args.Length >= 5)
+                {
+                    if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /rps session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPort = parsedLocalPort;
+                }
+
+                _rockPaperScissorsOfficialSessionBridgeEnabled = true;
+                _rockPaperScissorsOfficialSessionBridgeUseDiscovery = true;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredListenPort = listenPort;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredLocalPort = localPort;
+                _nextRockPaperScissorsOfficialSessionBridgeDiscoveryRefreshAt = 0;
+
+                return _rockPaperScissorsOfficialSessionBridge.TryStartFromDiscovery(listenPort, remotePort, processSelector, localPort, out string status)
+                    ? ChatCommandHandler.CommandResult.Ok($"{status} {DescribeRockPaperScissorsOfficialSessionBridgeStatus()}")
+                    : ChatCommandHandler.CommandResult.Error(status);
+            }
+
+            if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                _rockPaperScissorsOfficialSessionBridgeEnabled = false;
+                _rockPaperScissorsOfficialSessionBridgeUseDiscovery = false;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector = null;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredLocalPort = null;
+                _rockPaperScissorsOfficialSessionBridge.Stop();
+                return ChatCommandHandler.CommandResult.Ok(DescribeRockPaperScissorsOfficialSessionBridgeStatus());
+            }
+
+            return ChatCommandHandler.CommandResult.Error("Usage: /rps session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
         }
 
         private void DrainRockPaperScissorsPendingNotice(RockPaperScissorsField field)

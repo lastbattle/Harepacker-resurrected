@@ -262,11 +262,18 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryRouteLocalPacketOwnedSummonExpiryToClientCancel(
             PacketOwnedSummonTimerExpiration expiration,
+            Func<int, int, bool> tryPrimeLocalNaturalExpirySummon,
             Func<int, int, bool> requestClientSkillCancel)
         {
             if (!expiration.OwnerIsLocal
                 || expiration.SkillId <= 0
+                || tryPrimeLocalNaturalExpirySummon == null
                 || requestClientSkillCancel == null)
+            {
+                return false;
+            }
+
+            if (!tryPrimeLocalNaturalExpirySummon(expiration.SummonedObjectId, expiration.CurrentTime))
             {
                 return false;
             }
@@ -282,6 +289,7 @@ namespace HaCreator.MapSimulator
         {
             if (expirations == null
                 || expirations.Length == 0
+                || tryPrimeLocalNaturalExpirySummon == null
                 || requestClientSkillCancel == null)
             {
                 return 0;
@@ -297,8 +305,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                if (tryPrimeLocalNaturalExpirySummon != null
-                    && !tryPrimeLocalNaturalExpirySummon(expiration.SummonedObjectId, expiration.CurrentTime))
+                if (!tryPrimeLocalNaturalExpirySummon(expiration.SummonedObjectId, expiration.CurrentTime))
                 {
                     continue;
                 }

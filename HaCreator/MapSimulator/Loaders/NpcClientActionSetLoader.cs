@@ -212,20 +212,8 @@ namespace HaCreator.MapSimulator.Loaders
             int clientActionId,
             IEnumerable<string> authoredTemplateActionNames)
         {
-            IEnumerable<string> fixedCandidates = clientActionId switch
-            {
-                0 => ActionZeroClientActionCandidates,
-                // CActionMan::LoadNpcAction indexes the static NPC action-name table before WZ lookup.
-                // Shop-style UI owners default to action 1, and WZ shop NPCs publish only `stand` for that path.
-                1 => ActionOneClientActionCandidates,
-                // For nAction >= 2, CActionMan::LoadNpcAction indexes CNpcTemplate::aAct[nAction - 2].bsAction.
-                // Quest-preview NPCs in this data set commonly publish that first extra template action as `say`.
-                2 => FirstTemplateClientActionCandidates,
-                _ => Array.Empty<string>()
-            };
-
             HashSet<string> yielded = new(StringComparer.OrdinalIgnoreCase);
-            foreach (string candidate in fixedCandidates)
+            foreach (string candidate in EnumerateFixedClientActionNameCandidates(clientActionId))
             {
                 if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
                 {
@@ -253,6 +241,21 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static IEnumerable<string> EnumerateFixedClientActionNameCandidates(int clientActionId)
+        {
+            return clientActionId switch
+            {
+                0 => ActionZeroClientActionCandidates,
+                // CActionMan::LoadNpcAction indexes the static NPC action-name table before WZ lookup.
+                // Shop-style UI owners default to action 1, and WZ shop NPCs publish only `stand` for that path.
+                1 => ActionOneClientActionCandidates,
+                // For nAction >= 2, CActionMan::LoadNpcAction indexes CNpcTemplate::aAct[nAction - 2].bsAction.
+                // Quest-preview NPCs in this data set commonly publish that first extra template action as `say`.
+                2 => FirstTemplateClientActionCandidates,
+                _ => Array.Empty<string>()
+            };
+        }
+
         internal static string ResolveClientActionName(
             int clientActionId,
             IEnumerable<string> availableActionNames,
@@ -274,7 +277,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return Animation.AnimationKeys.Stand;
             }
 
-            foreach (string candidate in EnumerateClientActionNameCandidates(clientActionId, availableActionOrder))
+            foreach (string candidate in EnumerateFixedClientActionNameCandidates(clientActionId))
             {
                 if (!string.IsNullOrWhiteSpace(candidate) &&
                     availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
@@ -283,9 +286,14 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            if (clientActionId == 2)
+            if (clientActionId >= 2)
             {
-                foreach (string candidate in authoredSpeakFallbackActions ?? Array.Empty<string>())
+                IReadOnlyList<string> clientTemplateActionOrder = BuildClientTemplateActionOrder(
+                    availableActionOrder,
+                    authoredSpeakFallbackActions);
+                foreach (string candidate in EnumerateAuthoredTemplateActionCandidates(
+                             clientActionId,
+                             clientTemplateActionOrder))
                 {
                     if (!string.IsNullOrWhiteSpace(candidate) &&
                         availableActionMap.TryGetValue(candidate, out string resolvedCandidate))
@@ -293,6 +301,12 @@ namespace HaCreator.MapSimulator.Loaders
                         return resolvedCandidate;
                     }
                 }
+            }
+
+            string numericCandidate = clientActionId.ToString(CultureInfo.InvariantCulture);
+            if (availableActionMap.TryGetValue(numericCandidate, out string resolvedNumericCandidate))
+            {
+                return resolvedNumericCandidate;
             }
 
             foreach (string actionName in availableActionOrder)
@@ -304,6 +318,22 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return availableActionOrder[0];
+        }
+
+        private static IReadOnlyList<string> BuildClientTemplateActionOrder(
+            IReadOnlyList<string> availableActionOrder,
+            IEnumerable<string> authoredSpeakFallbackActions)
+        {
+            List<string> authoredSpeakActionOrder = authoredSpeakFallbackActions?
+                .Where(static action => !string.IsNullOrWhiteSpace(action))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (authoredSpeakActionOrder?.Count > 0)
+            {
+                return authoredSpeakActionOrder;
+            }
+
+            return availableActionOrder ?? Array.Empty<string>();
         }
 
         private static IEnumerable<string> EnumerateAuthoredTemplateActionCandidates(

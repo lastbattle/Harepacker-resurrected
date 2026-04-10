@@ -14,6 +14,19 @@ namespace HaCreator.MapSimulator.UI
 
     internal sealed class SkillCooldownNoticeUI
     {
+        internal readonly record struct NoticeFrameCandidate(
+            string Name,
+            bool HasTop,
+            bool HasCenter,
+            bool HasBottom,
+            int TopWidth,
+            int TopHeight,
+            int CenterWidth,
+            int CenterHeight,
+            int BottomWidth,
+            int BottomHeight,
+            int ExtraPartCount);
+
         private const int ReferenceClientHeight = 578;
         private const int MaxNotices = 3;
         private const int DisplayDurationMs = 2200;
@@ -79,6 +92,51 @@ namespace HaCreator.MapSimulator.UI
         private int _messageY = DefaultMessageY;
         private int _textRightPadding = DefaultTextRightPadding;
         private int _textBottomPadding = DefaultTextBottomPadding;
+
+        internal static string ResolveNoticeFrameFamilyForClientParity(IReadOnlyList<NoticeFrameCandidate> candidates)
+        {
+            string bestName = null;
+            int bestScore = int.MaxValue;
+
+            if (candidates == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                NoticeFrameCandidate candidate = candidates[i];
+                if (!candidate.HasTop || !candidate.HasCenter || !candidate.HasBottom)
+                {
+                    continue;
+                }
+
+                if (candidate.TopWidth <= 0 || candidate.CenterWidth <= 0 || candidate.BottomWidth <= 0)
+                {
+                    continue;
+                }
+
+                int widthSpread =
+                    Math.Abs(candidate.TopWidth - candidate.CenterWidth) +
+                    Math.Abs(candidate.CenterWidth - candidate.BottomWidth);
+                int score =
+                    (Math.Abs(candidate.TopWidth - 266) * 6) +
+                    (Math.Abs(candidate.TopHeight - 21) * 4) +
+                    (Math.Abs(candidate.CenterHeight - 20) * 4) +
+                    (Math.Abs(candidate.BottomHeight - 55) * 3) +
+                    (widthSpread * 8) +
+                    (Math.Max(0, candidate.ExtraPartCount) * 40);
+
+                if (score < bestScore
+                    || (score == bestScore && string.Equals(candidate.Name, "Notice3", StringComparison.OrdinalIgnoreCase)))
+                {
+                    bestName = candidate.Name;
+                    bestScore = score;
+                }
+            }
+
+            return bestName;
+        }
 
         public void Initialize(SpriteFont font, Texture2D pixelTexture, int screenWidth, int screenHeight)
         {

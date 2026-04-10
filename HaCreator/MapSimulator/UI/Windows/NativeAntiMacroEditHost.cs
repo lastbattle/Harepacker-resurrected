@@ -49,12 +49,25 @@ namespace HaCreator.MapSimulator.UI
         private const int EcLeftMargin = 0x0001;
         private const int EcRightMargin = 0x0002;
         private const int VkReturn = 0x0D;
+        private const int VkBack = 0x08;
+        private const int VkEnd = 0x23;
+        private const int VkHome = 0x24;
+        private const int VkLeft = 0x25;
+        private const int VkUp = 0x26;
+        private const int VkRight = 0x27;
+        private const int VkDown = 0x28;
+        private const int VkInsert = 0x2D;
+        private const int VkDelete = 0x2E;
         private const int VkF1 = 0x70;
         private const int VkF12 = 0x7B;
         private const int VkA = 0x41;
+        private const int VkC = 0x43;
+        private const int VkV = 0x56;
+        private const int VkX = 0x58;
         private const int VkY = 0x59;
         private const int VkZ = 0x5A;
         private const int VkControl = 0x11;
+        private const int VkShift = 0x10;
         private const int WmLButtonDown = 0x0201;
         private const int WmLButtonUp = 0x0202;
         private const int WmLButtonDblClk = 0x0203;
@@ -621,7 +634,9 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
-            if (ShouldSuppressClientUnsupportedEditShortcut(msg, wParam.ToInt32(), IsControlKeyDown()))
+            bool controlHeld = IsControlKeyDown();
+            bool shiftHeld = IsShiftKeyDown();
+            if (ShouldSuppressClientUnsupportedEditKey(msg, wParam.ToInt32(), controlHeld, shiftHeld))
             {
                 return IntPtr.Zero;
             }
@@ -680,22 +695,58 @@ namespace HaCreator.MapSimulator.UI
             return virtualKey >= VkF1 && virtualKey <= VkF12;
         }
 
-        internal static bool ShouldSuppressClientUnsupportedEditShortcut(uint msg, int virtualKey, bool controlHeld)
+        internal static bool ShouldSuppressClientUnsupportedEditKey(uint msg, int virtualKey, bool controlHeld, bool shiftHeld)
         {
-            if (!controlHeld || msg != WmKeyDown)
+            if (msg != WmKeyDown)
             {
                 return false;
             }
 
-            // `CCtrlEdit::OnKey` handles Ctrl+C/V/X, but not the Win32 EDIT affordances
-            // for select-all or undo/redo. Keep those hosted-control extras out of the
-            // anti-macro seam so it stays closer to the recovered client widget path.
-            return virtualKey is VkA or VkY or VkZ;
+            if (virtualKey is VkUp or VkDown)
+            {
+                return true;
+            }
+
+            if (controlHeld)
+            {
+                if (virtualKey is VkC or VkV or VkX)
+                {
+                    return false;
+                }
+
+                // `CCtrlEdit::OnKey` handles Ctrl+C/V/X, but not Win32 EDIT affordances
+                // such as select-all, undo/redo, Ctrl+Insert, Ctrl+Delete, or word/home/end
+                // navigation. Keep those hosted-control extras out of this recovered seam.
+                return virtualKey is VkA
+                    or VkY
+                    or VkZ
+                    or VkInsert
+                    or VkDelete
+                    or VkBack
+                    or VkLeft
+                    or VkRight
+                    or VkHome
+                    or VkEnd;
+            }
+
+            if (shiftHeld)
+            {
+                // The recovered `CCtrlEdit::OnKey` uses Shift+Insert and Shift+Delete for
+                // paste/cut, but does not expose Win32 shift-selection navigation.
+                return virtualKey is VkLeft or VkRight or VkHome or VkEnd or VkUp or VkDown;
+            }
+
+            return false;
         }
 
         private static bool IsControlKeyDown()
         {
             return (GetKeyState(VkControl) & 0x8000) != 0;
+        }
+
+        private static bool IsShiftKeyDown()
+        {
+            return (GetKeyState(VkShift) & 0x8000) != 0;
         }
 
         private void ApplyClientWordSelectionFromDoubleClick(IntPtr lParam)

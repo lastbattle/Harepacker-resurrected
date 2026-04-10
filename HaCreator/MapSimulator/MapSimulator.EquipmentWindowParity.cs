@@ -542,7 +542,7 @@ namespace HaCreator.MapSimulator
             EquipSlot targetSlot = request.TargetEquipSlot.Value;
             HashSet<EquipSlot> affectedSlots = new() { targetSlot };
             Dictionary<EquipSlot, CharacterAuthoritySlotParts> beforeParts = CaptureCharacterAuthoritySlotParts(build, affectedSlots);
-            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState = CharacterEquipmentPacketParity.CaptureAuthoritySlotStates(build, affectedSlots);
+            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState = CaptureCharacterAuthoritySlotStateSnapshot(build);
             if (!TryValidatePacketOwnedCharacterAuthorityScope(request, beforeState, payload, out rejectReason))
             {
                 return false;
@@ -586,7 +586,7 @@ namespace HaCreator.MapSimulator
             }
 
             HashSet<EquipSlot> affectedSlots = new() { request.SourceEquipSlot.Value, request.TargetEquipSlot.Value };
-            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState = CharacterEquipmentPacketParity.CaptureAuthoritySlotStates(build, affectedSlots);
+            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState = CaptureCharacterAuthoritySlotStateSnapshot(build);
             if (!TryValidatePacketOwnedCharacterAuthorityScope(request, beforeState, payload, out rejectReason))
             {
                 return false;
@@ -643,7 +643,7 @@ namespace HaCreator.MapSimulator
             }
 
             HashSet<EquipSlot> affectedSlots = new() { request.SourceEquipSlot.Value };
-            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState = CharacterEquipmentPacketParity.CaptureAuthoritySlotStates(build, affectedSlots);
+            Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState = CaptureCharacterAuthoritySlotStateSnapshot(build);
             if (!TryValidatePacketOwnedCharacterAuthorityScope(request, beforeState, payload, out rejectReason))
             {
                 return false;
@@ -741,7 +741,20 @@ namespace HaCreator.MapSimulator
                 CharacterEquipmentAuthoritySlotState state = payload.AuthoritySlotStates[i];
                 if (!affectedSlots.Contains(state.Slot))
                 {
-                    rejectReason = "Packet-authored character authority changed slots outside the active request.";
+                    if (!TryGetAuthoritySlotState(beforeState, state.Slot, out CharacterEquipmentAuthoritySlotState beforeSlotState)
+                        || beforeSlotState.VisibleItemId != state.VisibleItemId
+                        || beforeSlotState.HiddenItemId != state.HiddenItemId)
+                    {
+                        rejectReason = "Packet-authored character authority changed slots outside the active request.";
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if (finalStates.ContainsKey(state.Slot))
+                {
+                    rejectReason = "Packet-authored character authority returned duplicate slot states.";
                     return false;
                 }
 
@@ -831,6 +844,34 @@ namespace HaCreator.MapSimulator
         private static bool SlotStateContainsItem(CharacterEquipmentAuthoritySlotState state, int itemId)
         {
             return itemId > 0 && (state.VisibleItemId == itemId || state.HiddenItemId == itemId);
+        }
+
+        private static Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> CaptureCharacterAuthoritySlotStateSnapshot(CharacterBuild build)
+        {
+            List<EquipSlot> slots = new();
+            foreach (EquipSlot slot in Enum.GetValues<EquipSlot>())
+            {
+                if (slot != EquipSlot.None)
+                {
+                    slots.Add(slot);
+                }
+            }
+
+            return CharacterEquipmentPacketParity.CaptureAuthoritySlotStates(build, slots);
+        }
+
+        private static bool TryGetAuthoritySlotState(
+            IReadOnlyDictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState,
+            EquipSlot slot,
+            out CharacterEquipmentAuthoritySlotState slotState)
+        {
+            if (beforeState != null && beforeState.TryGetValue(slot, out slotState))
+            {
+                return true;
+            }
+
+            slotState = new CharacterEquipmentAuthoritySlotState(slot, 0, 0);
+            return Enum.IsDefined(typeof(EquipSlot), slot) && slot != EquipSlot.None;
         }
 
         private static Dictionary<EquipSlot, CharacterAuthoritySlotParts> CaptureCharacterAuthoritySlotParts(

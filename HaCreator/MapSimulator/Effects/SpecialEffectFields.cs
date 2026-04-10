@@ -339,7 +339,7 @@ namespace HaCreator.MapSimulator.Effects
 
             if (_massacre.IsActive)
             {
-                ownerName = "CField_Massacre::OnPacket";
+                ownerName = _massacre.GetPacketOwnerName(packetType);
                 bool applied = _massacre.TryApplyPacket(packetType, payload, currentTimeMs, out string errorMessage);
                 message = applied ? _massacre.DescribeStatus() : errorMessage;
                 return applied;

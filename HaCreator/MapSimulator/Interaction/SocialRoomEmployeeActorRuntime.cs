@@ -721,6 +721,11 @@ namespace HaCreator.MapSimulator.Interaction
             return BuildEmployeeActionCacheKey(templateId, actionIndex);
         }
 
+        internal static IReadOnlyList<string> NormalizeClientEmployeeActionNamesForTesting(IEnumerable<string> actionNames)
+        {
+            return EmployeeActionCatalog.NormalizeClientActionNames(actionNames);
+        }
+
         private static uint BuildEmployeeActionCacheKey(int templateId, int actionIndex)
         {
             return ((uint)Math.Max(0, templateId) << 8) | (uint)Math.Max(0, actionIndex);
@@ -1727,10 +1732,8 @@ namespace HaCreator.MapSimulator.Interaction
                     return null;
                 }
 
-                List<Entry> actions = new();
-                List<string> orderedActionNames = new();
+                List<(string ActionName, WzImageProperty ActionProperty)> candidateActions = new();
                 HashSet<string> seenActionNames = new(StringComparer.Ordinal);
-                int nextTemplateActionIndex = 1;
                 foreach (WzImageProperty childProperty in employeeImgEntry.PropertyRoot.WzProperties)
                 {
                     if (childProperty == null || string.IsNullOrWhiteSpace(childProperty.Name))
@@ -1750,16 +1753,65 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    int clientActionIndex = string.Equals(normalizedActionName, BaseActionName, StringComparison.Ordinal)
-                        ? 0
-                        : nextTemplateActionIndex++;
-                    actions.Add(new Entry(normalizedActionName, clientActionIndex, resolvedActionProperty));
-                    orderedActionNames.Add(normalizedActionName);
+                    candidateActions.Add((normalizedActionName, resolvedActionProperty));
+                }
+
+                List<string> orderedActionNames = NormalizeClientActionNames(candidateActions.Select(action => action.ActionName)).ToList();
+                List<Entry> actions = new();
+                for (int i = 0; i < orderedActionNames.Count; i++)
+                {
+                    string actionName = orderedActionNames[i];
+                    WzImageProperty actionProperty = candidateActions
+                        .FirstOrDefault(action => string.Equals(action.ActionName, actionName, StringComparison.Ordinal))
+                        .ActionProperty;
+                    if (actionProperty != null)
+                    {
+                        actions.Add(new Entry(actionName, i, actionProperty));
+                    }
                 }
 
                 return actions.Count == 0
                     ? null
                     : new EmployeeActionCatalog(actions, orderedActionNames);
+            }
+
+            internal static IReadOnlyList<string> NormalizeClientActionNames(IEnumerable<string> actionNames)
+            {
+                List<string> normalizedActions = new();
+                if (actionNames == null)
+                {
+                    return normalizedActions;
+                }
+
+                List<string> nonStandActions = new();
+                bool hasStand = false;
+                foreach (string actionName in actionNames)
+                {
+                    if (string.IsNullOrWhiteSpace(actionName))
+                    {
+                        continue;
+                    }
+
+                    string normalizedActionName = actionName.Trim().ToLowerInvariant();
+                    if (string.Equals(normalizedActionName, BaseActionName, StringComparison.Ordinal))
+                    {
+                        hasStand = true;
+                        continue;
+                    }
+
+                    if (!nonStandActions.Contains(normalizedActionName, StringComparer.Ordinal))
+                    {
+                        nonStandActions.Add(normalizedActionName);
+                    }
+                }
+
+                if (hasStand)
+                {
+                    normalizedActions.Add(BaseActionName);
+                }
+
+                normalizedActions.AddRange(nonStandActions);
+                return normalizedActions;
             }
 
             internal IReadOnlyList<Entry> Actions { get; }

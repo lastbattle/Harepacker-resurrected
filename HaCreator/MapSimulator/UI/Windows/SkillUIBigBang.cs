@@ -777,7 +777,10 @@ namespace HaCreator.MapSimulator.UI
 
                     if (resolveMaxLevel != null)
                     {
-                        skill.MaxLevel = Math.Max(currentLevel, resolveMaxLevel(skill.SkillId));
+                        int resolvedMaxLevel = resolveMaxLevel(skill.SkillId);
+                        skill.MaxLevel = resolvedMaxLevel > 0
+                            ? Math.Max(currentLevel, resolvedMaxLevel)
+                            : Math.Max(skill.MaxLevel, currentLevel);
                     }
                     else
                     {

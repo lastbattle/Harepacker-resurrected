@@ -195,6 +195,18 @@ namespace HaCreator.MapSimulator.Pools
                        summon.SkillData);
         }
 
+        internal static byte ResolvePacketOwnedTeslaRuntimeState(byte packetCreateState, byte currentRuntimeState)
+        {
+            if (currentRuntimeState > 1)
+            {
+                return currentRuntimeState;
+            }
+
+            return packetCreateState > 0 || currentRuntimeState == 1
+                ? (byte)2
+                : (byte)0;
+        }
+
         internal static int ResolveClientOwnedPostAttackEffectDelayMs(ActiveSummon summon)
         {
             return SummonClientPostEffectRules.ResolvePostAttackEffectDelayMs(
@@ -325,7 +337,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 return ResolvePacketOwnedAttachedHitPosition(
                     summonPosition,
-                    ResolvePacketOwnedAuthoredHitOffset(attackInfo),
+                    Vector2.Zero,
                     facingAttach,
                     facingRight);
             }

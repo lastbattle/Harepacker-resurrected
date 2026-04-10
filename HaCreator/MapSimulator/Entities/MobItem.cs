@@ -44,7 +44,6 @@ namespace HaCreator.MapSimulator.Entities
         private int _lastAngerChargeCount = -1;
         private int _angerGaugeLoopStartTick;
         private int _angerGaugeBurstNextAllowedTick = int.MinValue;
-        private int _angerGaugeEffectStartTick = int.MinValue;
         private string _lastObservedAttackAction;
         private int _lastObservedAttackFrameIndex;
         private int _lastObservedAttackFrameTime = int.MinValue;
@@ -1768,7 +1767,6 @@ namespace HaCreator.MapSimulator.Entities
             {
                 _lastAngerChargeCount = -1;
                 _angerGaugeBurstNextAllowedTick = int.MinValue;
-                _angerGaugeEffectStartTick = int.MinValue;
                 return;
             }
 
@@ -1828,8 +1826,6 @@ namespace HaCreator.MapSimulator.Entities
                     zOrder: 1);
                 return;
             }
-
-            _angerGaugeEffectStartTick = tickCount;
         }
 
         private static IDXObject GetTimedAnimationFrame(IReadOnlyList<IDXObject> frames, int tickCount, int startTick, bool loop)
@@ -1888,22 +1884,6 @@ namespace HaCreator.MapSimulator.Entities
             int stageIndex = Math.Clamp(AI.AngerChargeCount - 1, 0, Math.Max(0, AI.AngerChargeTarget - 1));
             List<IDXObject> frames = _animationSet.GetAngerGaugeAnimation(stageIndex);
             return GetTimedAnimationFrame(frames, tickCount, _angerGaugeLoopStartTick, loop: true);
-        }
-
-        private IDXObject GetCurrentAngerGaugeEffectFrame(int tickCount)
-        {
-            if (_angerGaugeEffectStartTick == int.MinValue)
-            {
-                return null;
-            }
-
-            IDXObject frame = GetTimedAnimationFrame(_animationSet.GetAngerGaugeEffect(), tickCount, _angerGaugeEffectStartTick, loop: false);
-            if (frame == null)
-            {
-                _angerGaugeEffectStartTick = int.MinValue;
-            }
-
-            return frame;
         }
 
         private static void DrawOverlayFrame(
@@ -2013,12 +1993,6 @@ namespace HaCreator.MapSimulator.Entities
 
                     IDXObject angerGaugeFrame = GetCurrentAngerGaugeAnimationFrame(TickCount);
                     DrawOverlayFrame(angerGaugeFrame, sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, spawnAlpha);
-
-                    if (_animationEffects == null)
-                    {
-                        IDXObject angerEffectFrame = GetCurrentAngerGaugeEffectFrame(TickCount);
-                        DrawOverlayFrame(angerEffectFrame, sprite, skeletonMeshRenderer, gameTime, adjustedShiftX, shiftCenteredY, flip, spawnAlpha);
-                    }
                 }
             }
 

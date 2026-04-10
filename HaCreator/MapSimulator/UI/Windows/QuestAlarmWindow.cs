@@ -107,6 +107,7 @@ namespace HaCreator.MapSimulator.UI
         private string _loadedStateCharacterKey = string.Empty;
         private bool _suppressStatePersistence;
         private QuestAlarmSnapshot _currentSnapshot = new();
+        private bool _persistedOpenRequested;
 
         public QuestAlarmWindow(
             string windowName,
@@ -223,6 +224,32 @@ namespace HaCreator.MapSimulator.UI
         {
             _font = font;
             base.SetFont(font);
+        }
+
+        public override void Show()
+        {
+            EnsurePersistedStateLoaded();
+            base.Show();
+            SavePersistedState();
+        }
+
+        public override void Hide()
+        {
+            EnsurePersistedStateLoaded();
+            base.Hide();
+            SavePersistedState();
+        }
+
+        internal bool RestorePersistedVisibility()
+        {
+            EnsurePersistedStateLoaded();
+            if (!_persistedOpenRequested)
+            {
+                return false;
+            }
+
+            Show();
+            return true;
         }
 
         internal void TrackQuest(int questId)
@@ -1739,6 +1766,7 @@ namespace HaCreator.MapSimulator.UI
 
                 _autoTrackEnabled = state.AutoRegisterEnabled;
                 _isMinimized = state.IsMinimized;
+                _persistedOpenRequested = state.IsOpened;
             }
             finally
             {
@@ -1760,6 +1788,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     AutoRegisterEnabled = _autoTrackEnabled,
                     IsMinimized = _isMinimized,
+                    IsOpened = IsVisible,
                     TrackedQuestIds = _trackedQuestIds.ToArray(),
                     HiddenAutoQuestIds = _hiddenAutoQuestIds.ToArray()
                 });

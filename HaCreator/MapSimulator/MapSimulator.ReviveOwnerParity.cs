@@ -265,10 +265,19 @@ namespace HaCreator.MapSimulator
 
         private bool IsPremiumCurrentFieldReviveUsable()
         {
-            MapInfo mapInfo = _mapBoard?.MapInfo;
+            return IsPremiumCurrentFieldReviveUsable(_mapBoard?.MapInfo);
+        }
+
+        internal static bool IsPremiumCurrentFieldReviveUsable(MapInfo mapInfo)
+        {
             if (mapInfo == null)
             {
                 return true;
+            }
+
+            if (TryGetReviveOwnerMapInfoFlag(mapInfo, "noResurection", out bool noResurrection) && noResurrection)
+            {
+                return false;
             }
 
             if (TryGetReviveOwnerMapInfoFlag(mapInfo, "reviveCurField", out bool reviveCurField))
@@ -297,11 +306,31 @@ namespace HaCreator.MapSimulator
 
         internal static Vector2 ResolveCurrentFieldReviveRespawnPoint(MapInfo mapInfo, Vector2 spawnPoint, Vector2 fallbackPoint)
         {
-            return TryGetReviveOwnerMapInfoPoint(mapInfo, "ReviveCurFieldOfNoTransferPoint", out Vector2 revivePoint)
-                ? revivePoint
-                : ShouldUseCurrentFieldReviveSpawnApproximation(mapInfo)
-                    ? spawnPoint
-                    : fallbackPoint;
+            return ResolveCurrentFieldReviveRespawnPointWithSource(mapInfo, spawnPoint, fallbackPoint).Point;
+        }
+
+        internal static ReviveOwnerRespawnPointResolution ResolveCurrentFieldReviveRespawnPointWithSource(
+            MapInfo mapInfo,
+            Vector2 spawnPoint,
+            Vector2 fallbackPoint)
+        {
+            if (TryGetReviveOwnerMapInfoPoint(mapInfo, "ReviveCurFieldOfNoTransferPoint", out Vector2 revivePoint))
+            {
+                return new ReviveOwnerRespawnPointResolution(
+                    revivePoint,
+                    ReviveOwnerRespawnPointSource.AuthoredCurrentFieldPoint);
+            }
+
+            if (ShouldUseCurrentFieldReviveSpawnApproximation(mapInfo))
+            {
+                return new ReviveOwnerRespawnPointResolution(
+                    spawnPoint,
+                    ReviveOwnerRespawnPointSource.SpawnApproximation);
+            }
+
+            return new ReviveOwnerRespawnPointResolution(
+                fallbackPoint,
+                ReviveOwnerRespawnPointSource.DeathPoint);
         }
 
         internal static bool TryGetReviveOwnerMapInfoFlag(MapInfo mapInfo, string propertyName, out bool value)
@@ -354,6 +383,11 @@ namespace HaCreator.MapSimulator
             }
 
             if (TryGetReviveOwnerMapInfoFlag(mapInfo, "forceReturnOnDead", out bool forceReturnOnDead) && forceReturnOnDead)
+            {
+                return false;
+            }
+
+            if (TryGetReviveOwnerMapInfoFlag(mapInfo, "noResurection", out bool noResurrection) && noResurrection)
             {
                 return false;
             }

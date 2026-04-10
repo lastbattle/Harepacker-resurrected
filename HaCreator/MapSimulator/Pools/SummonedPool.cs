@@ -744,7 +744,7 @@ namespace HaCreator.MapSimulator.Pools
             state.LastAttackTailByte = packet.TailByte;
             state.LastAttackTargets = packet.Targets ?? Array.Empty<SummonedAttackTargetPacket>();
             state.Summon.LastAttackTime = currentTime;
-            state.Summon.TeslaCoilState = state.TeslaCoilState > 0 ? (byte)2 : state.Summon.TeslaCoilState;
+            PromotePacketOwnedTeslaRuntimeState(state);
             state.Summon.FacingRight = PacketOwnedSummonUpdateRules.ResolvePacketAttackFacingRight(
                 state.Summon,
                 state.LastMoveActionRaw,
@@ -772,7 +772,7 @@ namespace HaCreator.MapSimulator.Pools
 
             state.LastSkillAction = (byte)(attackAction & 0x7F);
             state.LastSkillTime = currentTime;
-            state.Summon.TeslaCoilState = state.TeslaCoilState > 0 ? (byte)2 : state.Summon.TeslaCoilState;
+            PromotePacketOwnedTeslaRuntimeState(state);
             if (ShouldApplyHealingRobotSkillPacketFacing(state.Summon, state.LastSkillAction))
             {
                 state.Summon.FacingRight = ResolveHealingRobotSkillPacketFacingRight(attackAction);
@@ -838,6 +838,7 @@ namespace HaCreator.MapSimulator.Pools
             foreach (PacketOwnedSummonState teslaState in EnumerateOwnerSummonStates(state.OwnerCharacterId)
                          .Where(static candidate => candidate?.Summon?.SkillId == TeslaCoilSkillId && !candidate.Summon.IsPendingRemoval))
             {
+                PromotePacketOwnedTeslaRuntimeState(teslaState);
                 PreparePacketOwnedSkillActionOwner(teslaState);
                 teslaState.Summon.CurrentAnimationBranchName = state.Summon.CurrentAnimationBranchName;
                 teslaState.Summon.LastAttackAnimationStartTime = currentTime;
@@ -858,6 +859,20 @@ namespace HaCreator.MapSimulator.Pools
 
             ClearPacketOwnedOneTimeAction(state);
             ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
+        }
+
+        private static void PromotePacketOwnedTeslaRuntimeState(PacketOwnedSummonState state)
+        {
+            if (state?.Summon?.SkillId != TeslaCoilSkillId)
+            {
+                return;
+            }
+
+            byte resolvedState = PacketOwnedSummonUpdateRules.ResolvePacketOwnedTeslaRuntimeState(
+                state.TeslaCoilState,
+                state.Summon.TeslaCoilState);
+            state.TeslaCoilState = resolvedState;
+            state.Summon.TeslaCoilState = resolvedState;
         }
 
         private static void ArmPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
@@ -1086,6 +1101,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     foreach (PacketOwnedSummonState teslaState in teslaStates)
                     {
+                        PromotePacketOwnedTeslaRuntimeState(teslaState);
                         BeginPacketOwnedAttackAnimation(teslaState, currentTime);
                     }
 
@@ -4399,13 +4415,13 @@ namespace HaCreator.MapSimulator.Pools
             PacketOwnedHitMobCandidate left,
             PacketOwnedHitMobCandidate right)
         {
-            int comparison = CompareBool(left.MatchesObservedAttack, right.MatchesObservedAttack);
+            int comparison = CompareBool(left.IsAlive, right.IsAlive);
             if (comparison != 0)
             {
                 return comparison;
             }
 
-            comparison = CompareBool(left.IsAlive, right.IsAlive);
+            comparison = CompareBool(left.MatchesObservedAttack, right.MatchesObservedAttack);
             if (comparison != 0)
             {
                 return comparison;

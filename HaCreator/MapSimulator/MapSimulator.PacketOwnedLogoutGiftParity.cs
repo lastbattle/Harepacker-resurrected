@@ -32,6 +32,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLogoutGiftSpecialItemFamily = 91;
         private const int PacketOwnedLogoutGiftPredictQuitContextDwordIndex = 4137;
         private const int PacketOwnedLogoutGiftCommodityContextDwordIndex = 4138;
+        private const int PacketOwnedLogoutGiftPredictQuitContextByteOffset = 0x40A4;
+        private const int PacketOwnedLogoutGiftCommodityContextByteOffset = 0x40A8;
 
         private readonly int[] _packetOwnedLogoutGiftCommoditySerialNumbers = new int[PacketOwnedLogoutGiftEntryCount];
         private bool _packetOwnedLogoutGiftHasConfig;
@@ -39,6 +41,7 @@ namespace HaCreator.MapSimulator
         private byte[] _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
         private int[] _packetOwnedLogoutGiftLeadingOpaqueInt32Values = Array.Empty<int>();
         private PacketOwnedLogoutGiftContextField[] _packetOwnedLogoutGiftLeadingContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
+        private PacketOwnedLogoutGiftContextField? _packetOwnedLogoutGiftPredictQuitContextField;
         private PacketOwnedLogoutGiftContextField[] _packetOwnedLogoutGiftCommodityContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
         private bool _packetOwnedLogoutGiftHasPredictQuitFlag;
         private int _packetOwnedLogoutGiftPredictQuitRawValue;
@@ -397,6 +400,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedLogoutGiftLeadingOpaqueBytes = leadingOpaqueBytes ?? Array.Empty<byte>();
             _packetOwnedLogoutGiftLeadingOpaqueInt32Values = leadingOpaqueInt32Values ?? Array.Empty<int>();
             _packetOwnedLogoutGiftLeadingContextFields = DecodePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingOpaqueInt32Values);
+            _packetOwnedLogoutGiftPredictQuitContextField = DecodePacketOwnedLogoutGiftPredictQuitContextField(predictQuitRawValue);
             _packetOwnedLogoutGiftCommodityContextFields = DecodePacketOwnedLogoutGiftCommodityContextFields(_packetOwnedLogoutGiftCommoditySerialNumbers);
             _packetOwnedLogoutGiftHasPredictQuitFlag = true;
             _packetOwnedLogoutGiftPredictQuitRawValue = predictQuitRawValue;
@@ -452,6 +456,7 @@ namespace HaCreator.MapSimulator
                 _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
                 _packetOwnedLogoutGiftLeadingOpaqueInt32Values = Array.Empty<int>();
                 _packetOwnedLogoutGiftLeadingContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
+                _packetOwnedLogoutGiftPredictQuitContextField = null;
                 _packetOwnedLogoutGiftCommodityContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
                 _packetOwnedLogoutGiftHasPredictQuitFlag = false;
                 _packetOwnedLogoutGiftPredictQuitRawValue = 0;
@@ -919,12 +924,21 @@ namespace HaCreator.MapSimulator
                 int dwordIndex = startDwordIndex + i;
                 fields[i] = new PacketOwnedLogoutGiftContextField(
                     dwordIndex,
-                    dwordIndex * sizeof(int),
+                    ResolvePacketOwnedLogoutGiftContextByteOffset(dwordIndex),
                     leadingOpaqueInt32Values[i],
                     null);
             }
 
             return fields;
+        }
+
+        internal static PacketOwnedLogoutGiftContextField DecodePacketOwnedLogoutGiftPredictQuitContextField(int predictQuitRawValue)
+        {
+            return new PacketOwnedLogoutGiftContextField(
+                PacketOwnedLogoutGiftPredictQuitContextDwordIndex,
+                PacketOwnedLogoutGiftPredictQuitContextByteOffset,
+                predictQuitRawValue,
+                "CWvsContext::m_bPredictQuit");
         }
 
         internal static PacketOwnedLogoutGiftContextField[] DecodePacketOwnedLogoutGiftCommodityContextFields(int[] commoditySerialNumbers)
@@ -940,9 +954,9 @@ namespace HaCreator.MapSimulator
                 int dwordIndex = PacketOwnedLogoutGiftCommodityContextDwordIndex + i;
                 fields[i] = new PacketOwnedLogoutGiftContextField(
                     dwordIndex,
-                    dwordIndex * sizeof(int),
+                    ResolvePacketOwnedLogoutGiftContextByteOffset(dwordIndex),
                     commoditySerialNumbers[i],
-                    $"LogoutGift commodity SN[{i}]");
+                    $"CWvsContext::m_anLogoutGiftCommoditySN[{i}]");
             }
 
             return fields;
@@ -978,20 +992,41 @@ namespace HaCreator.MapSimulator
         private string BuildPacketOwnedLogoutGiftContextOwnershipSuffix()
         {
             string leading = DescribePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingContextFields);
+            string predictQuit = _packetOwnedLogoutGiftPredictQuitContextField.HasValue
+                ? DescribePacketOwnedLogoutGiftLeadingContextFields(new[] { _packetOwnedLogoutGiftPredictQuitContextField.Value })
+                : string.Empty;
             string commodity = DescribePacketOwnedLogoutGiftCommodityContextFields(_packetOwnedLogoutGiftCommodityContextFields);
-            if (string.IsNullOrWhiteSpace(leading))
+            List<string> parts = new(3);
+            if (!string.IsNullOrWhiteSpace(leading))
             {
-                return string.IsNullOrWhiteSpace(commodity)
-                    ? string.Empty
-                    : $" Client cache ownership: {commodity}.";
+                parts.Add(leading);
             }
 
-            if (string.IsNullOrWhiteSpace(commodity))
+            if (!string.IsNullOrWhiteSpace(predictQuit))
             {
-                return $" Client cache ownership: {leading}.";
+                parts.Add(predictQuit);
             }
 
-            return $" Client cache ownership: {leading}; {commodity}.";
+            if (!string.IsNullOrWhiteSpace(commodity))
+            {
+                parts.Add(commodity);
+            }
+
+            return parts.Count == 0
+                ? string.Empty
+                : $" Client cache ownership: {string.Join("; ", parts)}.";
+        }
+
+        private static int ResolvePacketOwnedLogoutGiftContextByteOffset(int dwordIndex)
+        {
+            if (dwordIndex >= PacketOwnedLogoutGiftCommodityContextDwordIndex)
+            {
+                return PacketOwnedLogoutGiftCommodityContextByteOffset
+                    + ((dwordIndex - PacketOwnedLogoutGiftCommodityContextDwordIndex) * sizeof(int));
+            }
+
+            return PacketOwnedLogoutGiftPredictQuitContextByteOffset
+                - ((PacketOwnedLogoutGiftPredictQuitContextDwordIndex - dwordIndex) * sizeof(int));
         }
 
         private static string DescribePacketOwnedLogoutGiftCommodityContextFields(IReadOnlyList<PacketOwnedLogoutGiftContextField> fields)

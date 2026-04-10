@@ -95,7 +95,13 @@ namespace HaCreator.MapSimulator.Fields
         {
             yield return scriptName;
 
-            string fileName = TrimPathPrefix(scriptName);
+            string transportStem = TrimTransportSuffix(scriptName);
+            if (!string.Equals(transportStem, scriptName, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return transportStem;
+            }
+
+            string fileName = TrimPathPrefix(transportStem);
             if (!string.Equals(fileName, scriptName, StringComparison.OrdinalIgnoreCase))
             {
                 yield return fileName;
@@ -119,6 +125,28 @@ namespace HaCreator.MapSimulator.Fields
             return separatorIndex >= 0 && separatorIndex < scriptName.Length - 1
                 ? scriptName[(separatorIndex + 1)..]
                 : scriptName;
+        }
+
+        private static string TrimTransportSuffix(string scriptName)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                return scriptName;
+            }
+
+            int suffixIndex = scriptName.IndexOfAny(new[] { '?', '#' });
+            if (suffixIndex > 0)
+            {
+                scriptName = scriptName[..suffixIndex];
+            }
+
+            int argumentIndex = scriptName.IndexOf('(');
+            if (argumentIndex > 0 && scriptName.EndsWith(")", StringComparison.Ordinal))
+            {
+                scriptName = scriptName[..argumentIndex];
+            }
+
+            return scriptName.Trim();
         }
 
         private static string TrimFileExtension(string scriptName)

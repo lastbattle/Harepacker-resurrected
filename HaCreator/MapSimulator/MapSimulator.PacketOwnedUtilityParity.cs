@@ -1908,6 +1908,24 @@ namespace HaCreator.MapSimulator
             return $"Local utility packet session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}. {_localUtilityOfficialSessionBridge.DescribeStatus()}";
         }
 
+        private string DescribeMessengerOfficialSessionBridgeStatus()
+        {
+            string enabledText = _messengerOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _messengerOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _messengerOfficialSessionBridgeUseDiscovery
+                ? _messengerOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_messengerOfficialSessionBridgeConfiguredRemotePort} with local port {_messengerOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_messengerOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_messengerOfficialSessionBridgeConfiguredRemoteHost}:{_messengerOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_messengerOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_messengerOfficialSessionBridgeConfiguredProcessSelector}";
+            string listeningText = _messengerOfficialSessionBridge.IsRunning
+                ? $"listening on 127.0.0.1:{_messengerOfficialSessionBridge.ListenPort}"
+                : $"configured for 127.0.0.1:{_messengerOfficialSessionBridgeConfiguredListenPort}";
+            return $"Messenger session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, inbound opcode {_messengerOfficialSessionBridgeConfiguredInboundOpcode}. {_messengerOfficialSessionBridge.DescribeStatus()}";
+        }
+
         private void EnsureLocalUtilityOfficialSessionBridgeState(bool shouldRun)
         {
             if (!shouldRun || !_localUtilityOfficialSessionBridgeEnabled)
@@ -1986,6 +2004,86 @@ namespace HaCreator.MapSimulator
                 _localUtilityOfficialSessionBridgeConfiguredRemotePort);
         }
 
+        private void EnsureMessengerOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_messengerOfficialSessionBridgeEnabled)
+            {
+                if (_messengerOfficialSessionBridge.IsRunning)
+                {
+                    _messengerOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_messengerOfficialSessionBridgeConfiguredListenPort <= 0
+                || _messengerOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue
+                || _messengerOfficialSessionBridgeConfiguredInboundOpcode == 0)
+            {
+                if (_messengerOfficialSessionBridge.IsRunning)
+                {
+                    _messengerOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_messengerOfficialSessionBridgeUseDiscovery)
+            {
+                if (_messengerOfficialSessionBridgeConfiguredRemotePort <= 0
+                    || _messengerOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    if (_messengerOfficialSessionBridge.IsRunning)
+                    {
+                        _messengerOfficialSessionBridge.Stop();
+                    }
+
+                    return;
+                }
+
+                _messengerOfficialSessionBridge.TryRefreshFromDiscovery(
+                    _messengerOfficialSessionBridgeConfiguredListenPort,
+                    _messengerOfficialSessionBridgeConfiguredRemotePort,
+                    _messengerOfficialSessionBridgeConfiguredInboundOpcode,
+                    _messengerOfficialSessionBridgeConfiguredProcessSelector,
+                    _messengerOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_messengerOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _messengerOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || string.IsNullOrWhiteSpace(_messengerOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                if (_messengerOfficialSessionBridge.IsRunning)
+                {
+                    _messengerOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_messengerOfficialSessionBridge.IsRunning
+                && _messengerOfficialSessionBridge.ListenPort == _messengerOfficialSessionBridgeConfiguredListenPort
+                && _messengerOfficialSessionBridge.RemotePort == _messengerOfficialSessionBridgeConfiguredRemotePort
+                && _messengerOfficialSessionBridge.MessengerOpcode == _messengerOfficialSessionBridgeConfiguredInboundOpcode
+                && string.Equals(_messengerOfficialSessionBridge.RemoteHost, _messengerOfficialSessionBridgeConfiguredRemoteHost, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (_messengerOfficialSessionBridge.IsRunning)
+            {
+                _messengerOfficialSessionBridge.Stop();
+            }
+
+            _messengerOfficialSessionBridge.Start(
+                _messengerOfficialSessionBridgeConfiguredListenPort,
+                _messengerOfficialSessionBridgeConfiguredRemoteHost,
+                _messengerOfficialSessionBridgeConfiguredRemotePort,
+                _messengerOfficialSessionBridgeConfiguredInboundOpcode);
+        }
+
         private void RefreshLocalUtilityOfficialSessionBridgeDiscovery(int currentTickCount)
         {
             if (!_localUtilityOfficialSessionBridgeEnabled
@@ -2006,6 +2104,54 @@ namespace HaCreator.MapSimulator
                 _localUtilityOfficialSessionBridgeConfiguredProcessSelector,
                 _localUtilityOfficialSessionBridgeConfiguredLocalPort,
                 out _);
+        }
+
+        private void RefreshMessengerOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (!_messengerOfficialSessionBridgeEnabled
+                || !_messengerOfficialSessionBridgeUseDiscovery
+                || _messengerOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _messengerOfficialSessionBridgeConfiguredInboundOpcode == 0
+                || _messengerOfficialSessionBridge.HasAttachedClient
+                || currentTickCount < _nextMessengerOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextMessengerOfficialSessionBridgeDiscoveryRefreshAt =
+                currentTickCount + MessengerOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+            _messengerOfficialSessionBridge.TryRefreshFromDiscovery(
+                _messengerOfficialSessionBridgeConfiguredListenPort,
+                _messengerOfficialSessionBridgeConfiguredRemotePort,
+                _messengerOfficialSessionBridgeConfiguredInboundOpcode,
+                _messengerOfficialSessionBridgeConfiguredProcessSelector,
+                _messengerOfficialSessionBridgeConfiguredLocalPort,
+                out _);
+        }
+
+        private void DrainMessengerOfficialSessionBridge()
+        {
+            while (_messengerOfficialSessionBridge.TryDequeue(out MessengerOfficialSessionBridgeMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = TryApplyPacketOwnedMessengerDispatchPayload(message.Payload, out string detail);
+                _messengerOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
+                if (!string.IsNullOrWhiteSpace(detail))
+                {
+                    if (applied)
+                    {
+                        _chat?.AddSystemMessage(detail, currTickCount);
+                    }
+                    else
+                    {
+                        _chat?.AddErrorMessage(detail, currTickCount);
+                    }
+                }
+            }
         }
 
         private void EnsureLocalUtilityPacketOutboxState(bool shouldRun)
@@ -2104,6 +2250,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.ChatMsgClientPacketType:
                     return TryApplyPacketOwnedChatPayload(payload, requireExactClientPayload: true, out message);
+
+                case LocalUtilityPacketInboxManager.MessageClientPacketType:
+                    return TryApplyPacketOwnedDropPickupMessagePayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.EventCalendarEntriesPacketType:
                     return TryApplyPacketOwnedEventCalendarEntriesPayload(payload, out message);
@@ -6870,13 +7019,21 @@ namespace HaCreator.MapSimulator
                 requestedWidth,
                 lineHeight * lines.Length,
                 actorHeight);
+            Rectangle layerBounds = ResolvePacketOwnedTutorBalloonLayerBounds(
+                layerOrigin,
+                requestedWidth,
+                lineHeight * lines.Length);
             Rectangle bodyBounds = new(layerOrigin.X, layerOrigin.Y, bodyWidth, bodyHeight);
             Rectangle arrowBounds = ResolvePacketOwnedTutorBalloonArrowBounds(
                 bodyBounds,
                 lineHeight * lines.Length,
                 arrowWidth,
                 arrowHeight);
-            Rectangle canvasBounds = Rectangle.Union(bodyBounds, arrowBounds == Rectangle.Empty ? bodyBounds : arrowBounds);
+            Rectangle canvasBounds = Rectangle.Union(layerBounds, bodyBounds);
+            if (arrowBounds != Rectangle.Empty)
+            {
+                canvasBounds = Rectangle.Union(canvasBounds, arrowBounds);
+            }
             Point canvasShift = ResolvePacketOwnedTutorCanvasShift(canvasBounds);
             if (canvasShift != Point.Zero)
             {
@@ -6933,6 +7090,21 @@ namespace HaCreator.MapSimulator
             return new Point(
                 actorScreenPoint.X - Math.Max(0, requestedWidth / 2),
                 actorScreenPoint.Y - Math.Max(0, contentHeight) - Math.Max(0, actorHeight) - PacketOwnedTutorBalloonClientVerticalAnchorOffset);
+        }
+
+        internal static Rectangle ResolvePacketOwnedTutorBalloonLayerBounds(
+            Point layerOrigin,
+            int requestedWidth,
+            int contentHeight)
+        {
+            // Client evidence: CTutor::OnMessage(ZXString&,long,long) creates the
+            // message layer at nWidth + 38 by m_nCTHeight + 92 before drawing the
+            // WZ-backed tutorial balloon into that layer.
+            return new Rectangle(
+                layerOrigin.X,
+                layerOrigin.Y,
+                Math.Max(0, requestedWidth) + PacketOwnedTutorBalloonClientLeftInset + PacketOwnedTutorBalloonClientRightInset,
+                Math.Max(0, contentHeight) + PacketOwnedTutorBalloonClientLayerHeightPadding);
         }
 
         internal static int ResolvePacketOwnedTutorBalloonArrowLeft(Rectangle bodyBounds, int requestedWidth)
@@ -9112,6 +9284,52 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyPacketOwnedDropPickupMessagePayload(byte[] payload, out string message)
+        {
+            if (!PickupNoticePacketRuntime.TryDecodeClientMessagePayload(
+                    payload,
+                    ResolvePickupNoticeItemName,
+                    itemId => ResolvePickupItemTypeName(itemId, InventoryItemMetadataResolver.ResolveInventoryType(itemId)),
+                    MeasurePickupNoticeTextWidth,
+                    out PickupNoticePacketMessage packetMessage,
+                    out message))
+            {
+                return false;
+            }
+
+            int currentTime = Environment.TickCount;
+            if (!string.IsNullOrWhiteSpace(packetMessage.ScreenMessage))
+            {
+                Texture2D itemIcon = packetMessage.ItemId > 0
+                    ? LoadInventoryItemIcon(packetMessage.ItemId)
+                    : null;
+
+                _pickupNoticeUI.AddFormattedNotice(
+                    packetMessage.ScreenMessage,
+                    packetMessage.ScreenMessageType,
+                    currentTime,
+                    itemIcon,
+                    packetMessage.Quantity);
+            }
+
+            if (!string.IsNullOrWhiteSpace(packetMessage.ChatMessage))
+            {
+                _chat?.AddMessage(packetMessage.ChatMessage, new Color(255, 228, 151), currentTime);
+            }
+
+            if (!string.IsNullOrWhiteSpace(packetMessage.SecondaryScreenMessage))
+            {
+                _pickupNoticeUI.AddFormattedNotice(
+                    packetMessage.SecondaryScreenMessage,
+                    PickupMessageType.MesoPickup,
+                    currentTime,
+                    textColor: packetMessage.SecondaryScreenColor);
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            return true;
+        }
+
         internal static bool TryDecodePacketOwnedNoticePayload(
             byte[] payload,
             bool requireExactClientPayload,
@@ -9210,6 +9428,28 @@ namespace HaCreator.MapSimulator
 
             message = "Decoded packet-owned hire-tutor payload.";
             return true;
+        }
+
+        internal static bool TryDecodeRemotePacketOwnedTutorHirePayload(
+            byte[] payload,
+            out int characterId,
+            out bool enabled,
+            out string message)
+        {
+            characterId = 0;
+            enabled = false;
+            message = "Remote tutor-hire payload is missing.";
+            if (!TrySplitRemoteTutorPayload(payload, out characterId, out byte[] localTutorPayload, out message))
+            {
+                return false;
+            }
+
+            return TryDecodePacketOwnedTutorHirePayload(
+                localTutorPayload,
+                requireExactClientPayload: true,
+                out enabled,
+                out _,
+                out message);
         }
 
         private bool TryApplyPacketOwnedTutorMessagePayload(byte[] payload, out string message)
@@ -9336,6 +9576,68 @@ namespace HaCreator.MapSimulator
                 message = $"Tutor message payload could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        internal static bool TryDecodeRemotePacketOwnedTutorMessagePayload(
+            byte[] payload,
+            out int characterId,
+            out bool indexedPayload,
+            out int messageIndex,
+            out int durationMs,
+            out string text,
+            out int width,
+            out string message)
+        {
+            characterId = 0;
+            indexedPayload = false;
+            messageIndex = 0;
+            durationMs = 0;
+            text = null;
+            width = 0;
+            message = "Remote tutor-message payload is missing.";
+            if (!TrySplitRemoteTutorPayload(payload, out characterId, out byte[] localTutorPayload, out message))
+            {
+                return false;
+            }
+
+            return TryDecodePacketOwnedTutorMessagePayload(
+                localTutorPayload,
+                requireExactClientPayload: true,
+                out indexedPayload,
+                out messageIndex,
+                out durationMs,
+                out text,
+                out width,
+                out _,
+                out message);
+        }
+
+        private static bool TrySplitRemoteTutorPayload(
+            byte[] payload,
+            out int characterId,
+            out byte[] localTutorPayload,
+            out string message)
+        {
+            characterId = 0;
+            localTutorPayload = Array.Empty<byte>();
+            message = "Remote tutor payload is missing.";
+            if (payload == null || payload.Length < sizeof(int) + 1)
+            {
+                message = "Remote tutor payload must contain a leading Int32 owner character id followed by the exact CUserLocal tutor payload.";
+                return false;
+            }
+
+            characterId = Math.Max(0, BitConverter.ToInt32(payload, 0));
+            if (characterId <= 0)
+            {
+                message = "Remote tutor payload owner character id must be positive.";
+                return false;
+            }
+
+            localTutorPayload = new byte[payload.Length - sizeof(int)];
+            Buffer.BlockCopy(payload, sizeof(int), localTutorPayload, 0, localTutorPayload.Length);
+            message = "Decoded remote tutor payload owner.";
+            return true;
         }
 
         private bool TryApplyPacketOwnedChatPayload(byte[] payload, out string message)
@@ -12164,6 +12466,11 @@ namespace HaCreator.MapSimulator
                     break;
                 case "notice":
                     applied = TryApplyPacketOwnedNoticePayload(payload, out message);
+                    break;
+                case "pickupnotice":
+                case "droppickupmessage":
+                case "ondroppickupmessage":
+                    applied = TryApplyPacketOwnedDropPickupMessagePayload(payload, out message);
                     break;
                 case "chat":
                     applied = TryApplyPacketOwnedChatPayload(payload, out message);

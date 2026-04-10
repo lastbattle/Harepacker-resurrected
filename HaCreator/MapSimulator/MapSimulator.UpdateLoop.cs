@@ -206,6 +206,7 @@ namespace HaCreator.MapSimulator
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
                 EnsureAdminShopPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: false);
+                EnsureMessengerOfficialSessionBridgeState(shouldRun: false);
                 EnsureExpeditionIntermediaryPacketInboxState(shouldRun: false);
                 EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: false);
                 EnsureSocialListOfficialSessionBridgeState(shouldRun: false);
@@ -326,6 +327,8 @@ namespace HaCreator.MapSimulator
             RefreshPacketScriptOfficialSessionBridgeDiscovery(currTickCount);
             EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: true);
             RefreshLocalUtilityOfficialSessionBridgeDiscovery(currTickCount);
+            EnsureMessengerOfficialSessionBridgeState(shouldRun: true);
+            RefreshMessengerOfficialSessionBridgeDiscovery(currTickCount);
             EnsureExpeditionIntermediaryPacketInboxState(shouldRun: true);
             EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: true);
             RefreshExpeditionIntermediaryOfficialSessionBridgeDiscovery(currTickCount);
@@ -334,6 +337,7 @@ namespace HaCreator.MapSimulator
             DrainLocalUtilityPacketInbox();
             DrainAdminShopPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
+            DrainMessengerOfficialSessionBridge();
             DrainExpeditionIntermediaryPacketInbox();
             DrainExpeditionIntermediaryOfficialSessionBridge();
             DrainSocialListOfficialSessionBridge();
@@ -1376,6 +1380,7 @@ namespace HaCreator.MapSimulator
                                 {
                                     _pendingCrossMapTeleportTarget = null;
                                     _packetOwnedTeleportRequestActive = false;
+                                    ClearCollisionScriptExclusiveRequestSent();
                                 }
 
 

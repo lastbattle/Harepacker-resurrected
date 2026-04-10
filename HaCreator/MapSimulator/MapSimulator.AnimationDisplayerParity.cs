@@ -22,6 +22,8 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerFireCrackerEffectUol = "Effect/OnUserEff.img/itemEffect/firework/5680024";
         private const string AnimationDisplayerGenericUserStateEffectUol = "Effect/OnUserEff.img/character";
         private const string AnimationDisplayerGenericUserStateSingleEffectUol = "Effect/OnUserEff.img/character/0";
+        private const string AnimationDisplayerItemMakeSuccessEffectUol = "Effect/BasicEff.img/ItemMake/Success";
+        private const string AnimationDisplayerItemMakeFailureEffectUol = "Effect/BasicEff.img/ItemMake/Failure";
         private const int AnimationDisplayerSkillBookSuccessFrontStringPoolId = 0x0FF1;
         private const int AnimationDisplayerSkillBookSuccessBackStringPoolId = 0x0FF2;
         private const int AnimationDisplayerSkillBookFailureFrontStringPoolId = 0x0FF3;
@@ -569,6 +571,7 @@ namespace HaCreator.MapSimulator
             Point spawnOffsetMin = BuildAnimationDisplayerFollowSpawnOffsetMin(relativeEmission, followDefinition);
             Point spawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission, followDefinition);
             Func<bool> getOwnerFlip = ResolveAnimationDisplayerFollowOwnerFlip(ownerCharacterId);
+            bool spawnOnlyOnOwnerMove = followDefinition?.SpawnOnlyOnOwnerMove ?? false;
 
             ClearAnimationDisplayerFollowRegistration(registrationKey);
             int followId = _animationEffects.AddFollow(
@@ -595,7 +598,10 @@ namespace HaCreator.MapSimulator
                         relativeEmission,
                         followDefinition?.SpawnRelativeToTarget),
                     SuppressTargetFlip = followDefinition?.SuppressOwnerFlip ?? false,
-                    SpawnOnlyOnTargetMove = followDefinition?.SpawnOnlyOnOwnerMove ?? false,
+                    SpawnOnlyOnTargetMove = spawnOnlyOnOwnerMove,
+                    IsTargetMoveAction = spawnOnlyOnOwnerMove
+                        ? ResolveAnimationDisplayerFollowOwnerMoveAction(ownerCharacterId)
+                        : null,
                     SpawnArea = followDefinition?.EmissionArea ?? BuildAnimationDisplayerFollowEmissionArea(),
                     SpawnUsesEmissionBox = !relativeEmission,
                     SpawnAppliesEmissionBias = relativeEmission && (followDefinition?.UsesRelativeEmission ?? true),
@@ -801,6 +807,56 @@ namespace HaCreator.MapSimulator
                     "userstate:generic:single",
                     AnimationDisplayerGenericUserStateSingleEffectUol,
                     out List<IDXObject> frames))
+            {
+                return;
+            }
+
+            Vector2 fallbackPosition = actor.Position;
+            bool fallbackFacingRight = actor.FacingRight;
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                () =>
+                {
+                    if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                        && liveActor != null)
+                    {
+                        return liveActor.Position;
+                    }
+
+                    return fallbackPosition;
+                },
+                () =>
+                {
+                    if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                        && liveActor != null)
+                    {
+                        return liveActor.FacingRight;
+                    }
+
+                    return fallbackFacingRight;
+                },
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFacingRight,
+                presentation.CurrentTime);
+        }
+
+        private void HandleRemoteItemMakeEffect(RemoteUserActorPool.RemoteItemMakePresentation presentation)
+        {
+            if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor actor) != true
+                || actor == null
+                || !actor.IsVisibleInWorld)
+            {
+                return;
+            }
+
+            string effectUol = presentation.Success
+                ? AnimationDisplayerItemMakeSuccessEffectUol
+                : AnimationDisplayerItemMakeFailureEffectUol;
+            string cacheKey = presentation.Success
+                ? "itemmake:success"
+                : "itemmake:failure";
+            if (!TryGetAnimationDisplayerFrames(cacheKey, effectUol, out List<IDXObject> frames))
             {
                 return;
             }
@@ -3293,6 +3349,41 @@ namespace HaCreator.MapSimulator
             }
 
             return null;
+        }
+
+        private Func<bool> ResolveAnimationDisplayerFollowOwnerMoveAction(int ownerCharacterId)
+        {
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (ownerCharacterId > 0 && ownerCharacterId == localCharacterId)
+            {
+                return () => IsAnimationDisplayerFollowGenOnMoveActionName(_playerManager?.Player?.CurrentActionName);
+            }
+
+            if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor actor) == true && actor != null)
+            {
+                return () =>
+                {
+                    if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor liveActor) == true && liveActor != null)
+                    {
+                        return IsAnimationDisplayerFollowGenOnMoveActionName(liveActor.ActionName);
+                    }
+
+                    return IsAnimationDisplayerFollowGenOnMoveActionName(actor.ActionName);
+                };
+            }
+
+            return null;
+        }
+
+        internal static bool IsAnimationDisplayerFollowGenOnMoveActionName(string actionName)
+        {
+            return CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
+                && IsAnimationDisplayerFollowGenOnMoveRawActionCode(rawActionCode);
+        }
+
+        internal static bool IsAnimationDisplayerFollowGenOnMoveRawActionCode(int rawActionCode)
+        {
+            return rawActionCode is 0 or 1 or 43 or 44;
         }
 
         private sealed class DelayAdjustedDxObject : IDXObject
