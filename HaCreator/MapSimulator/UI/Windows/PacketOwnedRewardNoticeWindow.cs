@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.UI
         private const float BodyLineSpacing = 14f;
         private const int CenteredButtonX = 136;
         private const int ButtonBottomMargin = 15;
+        private const int SeparatorBottomOffset = 43;
         private const int CloseButtonRightMargin = 8;
         private const int CloseButtonTopMargin = 8;
 
@@ -37,14 +38,17 @@ namespace HaCreator.MapSimulator.UI
         private IReadOnlyList<string> _bodyLines = Array.Empty<string>();
         private readonly IReadOnlyDictionary<int, IDXObject> _framesByLineCount;
         private readonly IDXObject _defaultFrame;
+        private readonly IDXObject _separatorLine;
         private KeyboardState _previousKeyboardState;
 
         public PacketOwnedRewardNoticeWindow(
-            IReadOnlyDictionary<int, IDXObject> framesByLineCount)
+            IReadOnlyDictionary<int, IDXObject> framesByLineCount,
+            IDXObject separatorLine)
             : base(framesByLineCount != null && framesByLineCount.TryGetValue(1, out IDXObject frame) ? frame : null)
         {
             _framesByLineCount = framesByLineCount ?? new Dictionary<int, IDXObject>();
             _defaultFrame = Frame;
+            _separatorLine = separatorLine;
         }
 
         public override string WindowName => MapSimulatorWindowNames.PacketOwnedRewardResultNotice;
@@ -56,6 +60,19 @@ namespace HaCreator.MapSimulator.UI
             int availableWidth = (int)CenteredBodyAreaWidth;
             int textWidth = Math.Max(0, (int)measuredWidth);
             return (int)CenteredBodyAreaLeftX + Math.Max(0, (availableWidth - textWidth) / 2);
+        }
+
+        internal static Point ResolveSeparatorPosition(
+            int frameWidth,
+            int frameHeight,
+            int separatorWidth,
+            int separatorHeight)
+        {
+            int normalizedWidth = Math.Max(0, separatorWidth);
+            int normalizedHeight = Math.Max(0, separatorHeight);
+            int x = Math.Max(0, (Math.Max(0, frameWidth) - normalizedWidth) / 2);
+            int y = Math.Max(0, Math.Max(0, frameHeight) - SeparatorBottomOffset - normalizedHeight);
+            return new Point(x, y);
         }
 
         internal static bool ShouldDismissForKeyboard(Keys key)
@@ -158,6 +175,24 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(x, y),
                     new Color(232, 232, 232));
                 y += BodyLineSpacing;
+            }
+
+            if (_separatorLine?.Texture != null)
+            {
+                Point separatorPosition = ResolveSeparatorPosition(
+                    CurrentFrame?.Width ?? DefaultFrameWidth,
+                    CurrentFrame?.Height ?? DefaultFrameHeight,
+                    _separatorLine.Width,
+                    _separatorLine.Height);
+                _separatorLine.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    Position.X + separatorPosition.X,
+                    Position.Y + separatorPosition.Y,
+                    Color.White,
+                    false,
+                    null);
             }
         }
 

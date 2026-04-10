@@ -213,12 +213,35 @@ namespace HaCreator.MapSimulator.Character
             "smokeshell"
         };
 
+        private static readonly IReadOnlyDictionary<string, string> SupportedRawActionCanonicalNames =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["alert2"] = "alert2",
+                ["alert3"] = "alert3",
+                ["alert4"] = "alert4",
+                ["alert5"] = "alert5",
+                ["swingO1"] = "swingO1",
+                ["avenger"] = "avenger",
+                ["assaulter"] = "assaulter",
+                ["flyingAssaulter"] = "assaulter",
+                ["prone2"] = "prone2",
+                ["savage"] = "savage",
+                ["showdown"] = "showdown",
+                ["assassination"] = "assassination",
+                ["assassinationS"] = "assassination",
+                ["assassinations"] = "assassination",
+                ["smokeshell"] = "smokeshell",
+                ["ninjastorm"] = "ninjastorm",
+                ["vampire"] = "vampire"
+            };
+
         public static IEnumerable<string> EnumerateClientMappedCandidates(
             string playerActionName,
             PlayerState state,
             string fallbackActionName,
             string weaponType = null,
-            int? rawActionCode = null)
+            int? rawActionCode = null,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string rawActionName = null;
@@ -228,12 +251,14 @@ namespace HaCreator.MapSimulator.Character
             // for the alias-backed helper families we have recovered so far instead of only
             // special-casing ghost-family actions.
             if (IsPiecedShadowPartnerActionName(playerActionName)
+                && IsSupportedRawActionName(playerActionName, supportedRawActionNames)
                 && yielded.Add(playerActionName))
             {
                 yield return playerActionName;
             }
 
-            if (ShouldPreferActionSpecificAliasCandidates(playerActionName))
+            if (ShouldPreferActionSpecificAliasCandidates(playerActionName)
+                && IsSupportedRawActionName(playerActionName, supportedRawActionNames))
             {
                 foreach (string candidate in EnumerateAliasCandidates(playerActionName))
                 {
@@ -248,13 +273,16 @@ namespace HaCreator.MapSimulator.Character
                 && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out rawActionName)
                 && !string.IsNullOrWhiteSpace(rawActionName))
             {
-                bool rawActionUsesPiecedPlan = IsPiecedShadowPartnerActionName(rawActionName);
+                bool rawActionSupported = IsSupportedRawActionName(rawActionName, supportedRawActionNames);
+                bool rawActionUsesPiecedPlan = rawActionSupported && IsPiecedShadowPartnerActionName(rawActionName);
                 if (rawActionUsesPiecedPlan && yielded.Add(rawActionName))
                 {
                     yield return rawActionName;
                 }
 
-                foreach (string candidate in EnumerateActionSpecificAliasCandidates(rawActionName))
+                foreach (string candidate in rawActionSupported
+                             ? EnumerateActionSpecificAliasCandidates(rawActionName)
+                             : Array.Empty<string>())
                 {
                     if (yielded.Add(candidate))
                     {
@@ -262,7 +290,7 @@ namespace HaCreator.MapSimulator.Character
                     }
                 }
 
-                if (!rawActionUsesPiecedPlan && yielded.Add(rawActionName))
+                if (rawActionSupported && !rawActionUsesPiecedPlan && yielded.Add(rawActionName))
                 {
                     yield return rawActionName;
                 }
@@ -485,7 +513,8 @@ namespace HaCreator.MapSimulator.Character
             IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
             string resolvedActionName,
             string playerActionName,
-            string rawActionName = null)
+            string rawActionName = null,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             if (actionAnimations == null
                 || string.IsNullOrWhiteSpace(resolvedActionName)
@@ -494,6 +523,16 @@ namespace HaCreator.MapSimulator.Character
                 || baseAnimation.Frames.Count == 0)
             {
                 return null;
+            }
+
+            if (!IsSupportedRawActionName(playerActionName, supportedRawActionNames))
+            {
+                playerActionName = null;
+            }
+
+            if (!IsSupportedRawActionName(rawActionName, supportedRawActionNames))
+            {
+                rawActionName = null;
             }
 
             IReadOnlyList<int> frameRemap = ResolveClientFrameRemap(
@@ -549,11 +588,13 @@ namespace HaCreator.MapSimulator.Character
 
         internal static SkillAnimation TryBuildPiecedShadowPartnerActionAnimation(
             IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
-            string actionName)
+            string actionName,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             if (actionAnimations == null
                 || actionAnimations.Count == 0
                 || string.IsNullOrWhiteSpace(actionName)
+                || !IsSupportedRawActionName(actionName, supportedRawActionNames)
                 || !PiecedShadowPartnerActionPlans.TryGetValue(actionName, out ShadowPartnerActionPiece[] piecePlan)
                 || piecePlan == null
                 || piecePlan.Length == 0)
@@ -634,11 +675,13 @@ namespace HaCreator.MapSimulator.Character
 
         internal static SkillAnimation TryBuildRemappedShadowPartnerActionAnimation(
             IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
-            string actionName)
+            string actionName,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             if (actionAnimations == null
                 || actionAnimations.Count == 0
                 || string.IsNullOrWhiteSpace(actionName)
+                || !IsSupportedRawActionName(actionName, supportedRawActionNames)
                 || actionAnimations.ContainsKey(actionName))
             {
                 return null;
@@ -657,7 +700,8 @@ namespace HaCreator.MapSimulator.Character
                     actionAnimations,
                     resolvedActionName,
                     actionName,
-                    rawActionName: actionName);
+                    rawActionName: actionName,
+                    supportedRawActionNames: supportedRawActionNames);
                 if (playbackAnimation?.Frames == null || playbackAnimation.Frames.Count == 0)
                 {
                     continue;
@@ -980,18 +1024,21 @@ namespace HaCreator.MapSimulator.Character
             string playerActionName,
             PlayerState state,
             string weaponType = null,
-            int? rawActionCode = null)
+            int? rawActionCode = null,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string rawActionName = null;
 
             if (IsPiecedShadowPartnerActionName(playerActionName)
+                && IsSupportedRawActionName(playerActionName, supportedRawActionNames)
                 && yielded.Add(playerActionName))
             {
                 yield return playerActionName;
             }
 
-            if (ShouldPreferActionSpecificAliasCandidates(playerActionName))
+            if (ShouldPreferActionSpecificAliasCandidates(playerActionName)
+                && IsSupportedRawActionName(playerActionName, supportedRawActionNames))
             {
                 foreach (string candidate in EnumerateAliasCandidates(playerActionName))
                 {
@@ -1006,13 +1053,16 @@ namespace HaCreator.MapSimulator.Character
                 && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out rawActionName)
                 && !string.IsNullOrWhiteSpace(rawActionName))
             {
-                bool rawActionUsesPiecedPlan = IsPiecedShadowPartnerActionName(rawActionName);
+                bool rawActionSupported = IsSupportedRawActionName(rawActionName, supportedRawActionNames);
+                bool rawActionUsesPiecedPlan = rawActionSupported && IsPiecedShadowPartnerActionName(rawActionName);
                 if (rawActionUsesPiecedPlan && yielded.Add(rawActionName))
                 {
                     yield return rawActionName;
                 }
 
-                foreach (string candidate in EnumerateActionSpecificAliasCandidates(rawActionName))
+                foreach (string candidate in rawActionSupported
+                             ? EnumerateActionSpecificAliasCandidates(rawActionName)
+                             : Array.Empty<string>())
                 {
                     if (yielded.Add(candidate))
                     {
@@ -1020,12 +1070,14 @@ namespace HaCreator.MapSimulator.Character
                     }
                 }
 
-                if (!rawActionUsesPiecedPlan && yielded.Add(rawActionName))
+                if (rawActionSupported && !rawActionUsesPiecedPlan && yielded.Add(rawActionName))
                 {
                     yield return rawActionName;
                 }
 
-                foreach (string candidate in EnumerateHeuristicAttackAliases(rawActionName, state, weaponType))
+                foreach (string candidate in rawActionSupported
+                             ? EnumerateHeuristicAttackAliases(rawActionName, state, weaponType)
+                             : Array.Empty<string>())
                 {
                     if (yielded.Add(candidate))
                     {
@@ -1114,6 +1166,25 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return Array.Empty<int>();
+        }
+
+        private static bool IsSupportedRawActionName(
+            string actionName,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            if (string.IsNullOrWhiteSpace(actionName)
+                || supportedRawActionNames == null
+                || supportedRawActionNames.Count == 0)
+            {
+                return true;
+            }
+
+            if (!SupportedRawActionCanonicalNames.TryGetValue(actionName, out string canonicalActionName))
+            {
+                return true;
+            }
+
+            return supportedRawActionNames.Contains(canonicalActionName);
         }
 
         private static IEnumerable<string> EnumerateHeuristicAttackAliases(

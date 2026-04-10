@@ -109,7 +109,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            return actionKey switch
+            string result = actionKey switch
             {
                 "Search.Party.Request" => RequestSelectedParty(),
                 "Search.Party.PartyLeader" => SortSearchEntries(SocialSearchTab.Party, "leader"),
@@ -131,6 +131,9 @@ namespace HaCreator.MapSimulator.Interaction
                 "Search.Expedition.Cancel" => ToggleExpeditionRegistration(false),
                 _ => "That social search action is not modeled yet."
             };
+
+            ObserveSearchSocialAction(actionKey, result);
+            return result;
         }
 
         internal GuildSearchSnapshot BuildGuildSearchSnapshot()
@@ -197,7 +200,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             EnsureGuildSearchSeedData();
             GuildSearchEntryState selectedEntry = GetSelectedGuildSearchEntry();
-            return actionKey switch
+            string result = actionKey switch
             {
                 "GuildSearch.Add" => ToggleGuildWatch(selectedEntry, true),
                 "GuildSearch.Delete" => ToggleGuildWatch(selectedEntry, false),
@@ -206,6 +209,45 @@ namespace HaCreator.MapSimulator.Interaction
                 "GuildSearch.Renew" => RenewGuildSearch(),
                 _ => "That guild-search action is not modeled yet."
             };
+
+            ObserveGuildSearchSocialAction(actionKey, result);
+            return result;
+        }
+
+        private void ObserveSearchSocialAction(string actionKey, string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            if (actionKey is not ("Search.Party.Request"
+                or "Search.PartyMember.Invite"
+                or "Search.Expedition.Start"
+                or "Search.Expedition.QuickJoin"
+                or "Search.Expedition.Request"
+                or "Search.Expedition.Whisper"
+                or "Search.Expedition.Regist2"))
+            {
+                return;
+            }
+
+            NotifySocialChatObserved(message);
+        }
+
+        private void ObserveGuildSearchSocialAction(string actionKey, string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            if (actionKey is not ("GuildSearch.Join" or "GuildSearch.Whisper"))
+            {
+                return;
+            }
+
+            NotifySocialChatObserved(message);
         }
 
         private void EnsureSearchSeedData()

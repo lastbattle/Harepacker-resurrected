@@ -26,6 +26,8 @@ namespace HaCreator.MapSimulator.Animation
             public int ThetaDegrees { get; init; }
             public float Radius { get; init; }
             public bool RandomizeStartupAngle { get; init; }
+            public Func<bool> GetTargetFlip { get; init; }
+            public bool SuppressTargetFlip { get; init; }
             public int UpdateIntervalMs { get; init; }
             public IReadOnlyList<List<IDXObject>> SpawnFrameVariants { get; init; }
             public bool SpawnRelativeToTarget { get; init; } = true;
@@ -133,7 +135,8 @@ namespace HaCreator.MapSimulator.Animation
             int overlayDelayMs = 0,
             bool ownsCanvasTexture = false,
             AnimationCanvasLayerOwner owner = AnimationCanvasLayerOwner.Generic,
-            CanvasLayerRecoveredLayerSettings? recoveredLayerSettings = null)
+            CanvasLayerRecoveredLayerSettings? recoveredLayerSettings = null,
+            CanvasLayerRecoveredRegistrationTrace? recoveredRegistrationTrace = null)
         {
             if (canvasTexture == null)
             {
@@ -161,9 +164,12 @@ namespace HaCreator.MapSimulator.Animation
                 registration.InsertDescriptors,
                 ownsCanvasTexture,
                 owner,
-                registration.RecoveredLayerSettings);
+                registration.RecoveredLayerSettings,
+                recoveredRegistrationTrace);
             _oneTimeCanvasLayers.Add(anim);
         }
+
+        internal IReadOnlyList<OneTimeCanvasLayerAnimation> OneTimeCanvasLayers => _oneTimeCanvasLayers;
 
         public void ClearCanvasLayers(AnimationCanvasLayerOwner owner)
         {
@@ -767,8 +773,10 @@ namespace HaCreator.MapSimulator.Animation
             int followRegistrationId,
             List<IDXObject> frames,
             Func<Vector2> getTargetPosition,
+            Func<bool> getTargetFlip,
             Vector2 capturedTargetPosition,
             bool relativeToTarget,
+            bool suppressTargetFlip,
             float offsetX,
             float offsetY,
             Vector2 startOffset,
@@ -786,8 +794,10 @@ namespace HaCreator.MapSimulator.Animation
                 followRegistrationId,
                 frames,
                 getTargetPosition,
+                getTargetFlip,
                 capturedTargetPosition,
                 relativeToTarget,
+                suppressTargetFlip,
                 offsetX,
                 offsetY,
                 startOffset,
@@ -1224,7 +1234,8 @@ namespace HaCreator.MapSimulator.Animation
             IReadOnlyList<CanvasLayerInsertDescriptor> insertDescriptors,
             bool ownsCanvasTexture,
             AnimationCanvasLayerOwner owner,
-            CanvasLayerRecoveredLayerSettings recoveredLayerSettings)
+            CanvasLayerRecoveredLayerSettings recoveredLayerSettings,
+            CanvasLayerRecoveredRegistrationTrace? recoveredRegistrationTrace = null)
         {
             _canvasTexture = canvasTexture;
             _overlayTexture = overlayTexture;
@@ -1236,7 +1247,7 @@ namespace HaCreator.MapSimulator.Animation
             _insertOperations = BuildInsertOperations(insertDescriptors);
             Owner = owner;
             RecoveredLayerSettings = recoveredLayerSettings;
-            RecoveredRegistrationTrace = BuildRecoveredRegistrationTrace(
+            RecoveredRegistrationTrace = recoveredRegistrationTrace ?? BuildRecoveredRegistrationTrace(
                 left,
                 top,
                 canvasTexture.Width,
@@ -1771,6 +1782,7 @@ namespace HaCreator.MapSimulator.Animation
 
         private List<IDXObject> _frames;
         private Func<Vector2> _getTargetPosition;
+        private Func<bool> _getTargetFlip;
         private float _offsetX, _offsetY;
         private int _startTime;
         private int _duration;
@@ -1796,6 +1808,7 @@ namespace HaCreator.MapSimulator.Animation
         private Point _spawnOffsetMin;
         private Point _spawnOffsetMax;
         private Rectangle _spawnArea;
+        private bool _suppressTargetFlip;
 
         public int Id { get; private set; }
 
@@ -1813,12 +1826,14 @@ namespace HaCreator.MapSimulator.Animation
             _lastFrameTime = currentTimeMs;
             _lastFollowUpdateTime = currentTimeMs;
             _generationPoints = options?.GenerationPoints ?? Array.Empty<Vector2>();
+            _getTargetFlip = options?.GetTargetFlip;
             _currentGenerationPointIndex = 0;
             _thetaDegrees = options?.ThetaDegrees ?? 0;
             _updateIntervalMs = Math.Max(1, options?.UpdateIntervalMs ?? 100);
             _radius = Math.Max(0f, options?.Radius ?? 0f);
             _spawnFrameVariants = options?.SpawnFrameVariants;
             _spawnRelativeToTarget = options?.SpawnRelativeToTarget ?? true;
+            _suppressTargetFlip = options?.SuppressTargetFlip ?? false;
             _spawnDurationMs = Math.Max(0, options?.SpawnDurationMs ?? 0);
             _spawnTravelDistanceMin = Math.Max(0f, options?.SpawnTravelDistanceMin ?? 0f);
             _spawnTravelDistanceMax = Math.Max(_spawnTravelDistanceMin, options?.SpawnTravelDistanceMax ?? _spawnTravelDistanceMin);
@@ -1936,8 +1951,10 @@ namespace HaCreator.MapSimulator.Animation
                                 Id,
                                 variantFrames,
                                 _getTargetPosition,
+                                _getTargetFlip,
                                 targetPosition,
                                 _spawnRelativeToTarget,
+                                _suppressTargetFlip,
                                 _offsetX,
                                 _offsetY,
                                 startOffset: particleStartOffset,
@@ -1964,6 +1981,7 @@ namespace HaCreator.MapSimulator.Animation
 
             Vector2 targetPos = _getTargetPosition();
             IDXObject frame = _frames[_currentFrame];
+            bool flip = !_suppressTargetFlip && (_getTargetFlip?.Invoke() ?? false);
 
             // Use the object's built-in DrawObject method
             float drawX = targetPos.X + _offsetX + _followOffset.X;
@@ -1971,7 +1989,7 @@ namespace HaCreator.MapSimulator.Animation
             int drawShiftX = -(int)drawX - mapShiftX;
             int drawShiftY = -(int)drawY - mapShiftY;
 
-            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, false, null);
+            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
         }
     }
 
@@ -1979,8 +1997,10 @@ namespace HaCreator.MapSimulator.Animation
     {
         private List<IDXObject> _frames;
         private Func<Vector2> _getTargetPosition;
+        private Func<bool> _getTargetFlip;
         private Vector2 _capturedTargetPosition;
         private bool _relativeToTarget;
+        private bool _suppressTargetFlip;
         private float _offsetX;
         private float _offsetY;
         private Vector2 _startOffset;
@@ -1996,8 +2016,10 @@ namespace HaCreator.MapSimulator.Animation
             int followRegistrationId,
             List<IDXObject> frames,
             Func<Vector2> getTargetPosition,
+            Func<bool> getTargetFlip,
             Vector2 capturedTargetPosition,
             bool relativeToTarget,
+            bool suppressTargetFlip,
             float offsetX,
             float offsetY,
             Vector2 startOffset,
@@ -2008,8 +2030,10 @@ namespace HaCreator.MapSimulator.Animation
             FollowRegistrationId = followRegistrationId;
             _frames = frames;
             _getTargetPosition = getTargetPosition;
+            _getTargetFlip = getTargetFlip;
             _capturedTargetPosition = capturedTargetPosition;
             _relativeToTarget = relativeToTarget;
+            _suppressTargetFlip = suppressTargetFlip;
             _offsetX = offsetX;
             _offsetY = offsetY;
             _startOffset = startOffset;
@@ -2058,11 +2082,12 @@ namespace HaCreator.MapSimulator.Animation
                 _relativeToTarget);
             Vector2 animatedOffset = Vector2.Lerp(_startOffset, _endOffset, progress);
             IDXObject frame = _frames[_currentFrame];
+            bool flip = !_suppressTargetFlip && (_getTargetFlip?.Invoke() ?? false);
             float drawX = anchorPosition.X + _offsetX + animatedOffset.X;
             float drawY = anchorPosition.Y + _offsetY + animatedOffset.Y;
             int drawShiftX = -(int)drawX - mapShiftX;
             int drawShiftY = -(int)drawY - mapShiftY;
-            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, false, null);
+            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
         }
     }
 

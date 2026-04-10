@@ -1838,9 +1838,12 @@ namespace HaCreator.MapSimulator.Pools
                             {
                                 data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(currentTick, hitAnimationDuration);
                             }
-                            else if (data.PacketAnimationEndTime <= currentTick)
+                            else
                             {
-                                data.PacketAnimationEndTime = 0;
+                                data.PacketAnimationEndTime = ResolvePacketLeaveNoHitLayerAnimationEndTime(
+                                    currentTick,
+                                    data.PacketAnimationEndTime,
+                                    reactor?.GetRemainingAnimationDuration(currentTick) ?? 0);
                             }
                         }
 
@@ -1863,15 +1866,6 @@ namespace HaCreator.MapSimulator.Pools
                         data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(
                             currentTick,
                             StartPacketHitAnimation(reactor, data, currentTick, _onReactorLayerSoundRequested));
-
-                        if (data.PacketAnimationEndTime <= 0)
-                        {
-                            reactor?.ClearTransientAnimation();
-                            ApplyPendingPacketVisualState(reactor, data, currentTick);
-                            data.State = ReactorState.Active;
-                            data.StateStartTime = currentTick;
-                            StartPacketStateMovement(reactor, data, currentTick);
-                        }
                     }
 
                     if (data.State == ReactorState.Activated
@@ -2149,6 +2143,7 @@ namespace HaCreator.MapSimulator.Pools
 
             ReactorInteractionMetadata interactionMetadata = ResolveInteractionMetadata(reactorInstance);
             data.ReactorType = interactionMetadata.ReactorType;
+            data.HitOption = interactionMetadata.HitOption;
             data.PrimaryActivationType = interactionMetadata.ActivationType;
             data.ActivationType = interactionMetadata.ActivationType;
             data.SupportedActivationTypes = interactionMetadata.SupportedActivationTypes;
@@ -2499,42 +2494,87 @@ namespace HaCreator.MapSimulator.Pools
             List<PacketEnterAuthoredReactorCandidate> exactNameCandidates = candidates
                 .Where(static candidate => candidate.HasExactNameMatch)
                 .ToList();
-            if (exactNameCandidates.Count == 1)
-            {
-                index = exactNameCandidates[0].Index;
-                return true;
-            }
-
             List<PacketEnterAuthoredReactorCandidate> immediatePositionCandidates = candidates
                 .Where(static candidate => candidate.ContainsCurrentLocalUserPosition)
                 .ToList();
-            if (immediatePositionCandidates.Count == 1)
-            {
-                index = immediatePositionCandidates[0].Index;
-                return true;
-            }
-
             List<PacketEnterAuthoredReactorCandidate> touchedCandidates = candidates
                 .Where(static candidate => candidate.IsLocallyTouched)
                 .ToList();
-            if (touchedCandidates.Count == 1)
+            List<PacketEnterAuthoredReactorCandidate> stateMatches = candidates
+                .Where(candidate => candidate.VisualState == initialState)
+                .ToList();
+
+            static bool TrySelectUniqueCandidate(
+                IReadOnlyList<PacketEnterAuthoredReactorCandidate> scope,
+                out int selectedIndex)
             {
-                index = touchedCandidates[0].Index;
+                selectedIndex = -1;
+                if (scope == null || scope.Count != 1)
+                {
+                    return false;
+                }
+
+                selectedIndex = scope[0].Index;
                 return true;
             }
 
-            IReadOnlyList<PacketEnterAuthoredReactorCandidate> stateScope = immediatePositionCandidates.Count > 1
-                ? immediatePositionCandidates
-                : touchedCandidates.Count > 1
-                    ? touchedCandidates
-                    : candidates;
-            List<PacketEnterAuthoredReactorCandidate> stateMatches = stateScope
-                .Where(candidate => candidate.VisualState == initialState)
-                .ToList();
-            if (stateMatches.Count == 1)
+            static List<PacketEnterAuthoredReactorCandidate> IntersectCandidates(
+                IReadOnlyList<PacketEnterAuthoredReactorCandidate> scope,
+                bool? requireExactName = null,
+                bool? requireImmediatePosition = null,
+                bool? requireLocallyTouched = null,
+                int? requiredVisualState = null)
             {
-                index = stateMatches[0].Index;
-                return true;
+                IEnumerable<PacketEnterAuthoredReactorCandidate> query = scope ?? Array.Empty<PacketEnterAuthoredReactorCandidate>();
+
+                if (requireExactName.HasValue)
+                {
+                    query = query.Where(candidate => candidate.HasExactNameMatch == requireExactName.Value);
+                }
+
+                if (requireImmediatePosition.HasValue)
+                {
+                    query = query.Where(candidate => candidate.ContainsCurrentLocalUserPosition == requireImmediatePosition.Value);
+                }
+
+                if (requireLocallyTouched.HasValue)
+                {
+                    query = query.Where(candidate => candidate.IsLocallyTouched == requireLocallyTouched.Value);
+                }
+
+                if (requiredVisualState.HasValue)
+                {
+                    query = query.Where(candidate => candidate.VisualState == requiredVisualState.Value);
+                }
+
+                return query.ToList();
+            }
+
+            IReadOnlyList<PacketEnterAuthoredReactorCandidate>[] prioritizedScopes =
+            {
+                IntersectCandidates(candidates, requireExactName: true, requireImmediatePosition: true, requireLocallyTouched: true, requiredVisualState: initialState),
+                IntersectCandidates(candidates, requireExactName: true, requireImmediatePosition: true, requireLocallyTouched: true),
+                IntersectCandidates(candidates, requireExactName: true, requireImmediatePosition: true, requiredVisualState: initialState),
+                IntersectCandidates(candidates, requireExactName: true, requireLocallyTouched: true, requiredVisualState: initialState),
+                IntersectCandidates(candidates, requireImmediatePosition: true, requireLocallyTouched: true, requiredVisualState: initialState),
+                IntersectCandidates(candidates, requireExactName: true, requireImmediatePosition: true),
+                IntersectCandidates(candidates, requireExactName: true, requireLocallyTouched: true),
+                IntersectCandidates(candidates, requireImmediatePosition: true, requireLocallyTouched: true),
+                IntersectCandidates(candidates, requireExactName: true, requiredVisualState: initialState),
+                IntersectCandidates(candidates, requireImmediatePosition: true, requiredVisualState: initialState),
+                IntersectCandidates(candidates, requireLocallyTouched: true, requiredVisualState: initialState),
+                exactNameCandidates,
+                immediatePositionCandidates,
+                touchedCandidates,
+                stateMatches
+            };
+
+            foreach (IReadOnlyList<PacketEnterAuthoredReactorCandidate> scope in prioritizedScopes)
+            {
+                if (TrySelectUniqueCandidate(scope, out index))
+                {
+                    return true;
+                }
             }
 
             return false;
@@ -3008,6 +3048,19 @@ namespace HaCreator.MapSimulator.Pools
                 : 0;
         }
 
+        internal static int ResolvePacketLeaveNoHitLayerAnimationEndTime(
+            int currentTick,
+            int currentAnimationEndTime,
+            int remainingCurrentAnimationDuration)
+        {
+            if (currentAnimationEndTime > currentTick)
+            {
+                return currentAnimationEndTime;
+            }
+
+            return ResolvePacketAnimationEndTime(currentTick, remainingCurrentAnimationDuration);
+        }
+
         internal static float ResolvePacketEnterFadeAlpha(int fadeStartTime, int fadeEndTime, int currentTick)
         {
             if (fadeEndTime <= fadeStartTime)
@@ -3199,7 +3252,7 @@ namespace HaCreator.MapSimulator.Pools
 
             int preferredOrder = data.PreferredAuthoredActivationType == request.ActivationType
                 ? data.PreferredAuthoredEventOrder
-                : -1;
+                : ResolveLocalPreferredAuthoredOrder(reactor, data, request);
             if (!reactor.TryResolveNextState(
                 data.VisualState,
                 request,
@@ -3213,6 +3266,34 @@ namespace HaCreator.MapSimulator.Pools
             nextVisualState = selection.TargetState;
             selectedAuthoredOrder = selection.IsAuthored ? selection.AuthoredOrder : -1;
             return true;
+        }
+
+        internal static int ResolveClientPreferredHitAuthoredOrder(
+            IEnumerable<int> authoredEventTypes,
+            int hitOption,
+            ReactorType reactorType)
+        {
+            return ReactorItem.TryResolveClientHitEventIndex(authoredEventTypes, hitOption, reactorType, out int eventIndex)
+                ? eventIndex
+                : -1;
+        }
+
+        private static int ResolveLocalPreferredAuthoredOrder(
+            ReactorItem reactor,
+            ReactorRuntimeData data,
+            ReactorTransitionRequest request)
+        {
+            if (reactor == null
+                || data == null
+                || request.ActivationType != ReactorActivationType.Hit)
+            {
+                return -1;
+            }
+
+            return ResolveClientPreferredHitAuthoredOrder(
+                reactor.GetAuthoredEventTypes(data.VisualState),
+                data.HitOption,
+                data.ReactorType);
         }
 
         private static ReactorActivationTypeMask AddSupportedActivationType(

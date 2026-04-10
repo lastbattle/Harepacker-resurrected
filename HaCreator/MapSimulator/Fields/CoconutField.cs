@@ -221,6 +221,7 @@ namespace HaCreator.MapSimulator.Fields
         private string _loseSoundPath = "Coconut/Failed";
         private string _victorySoundKey;
         private string _loseSoundKey;
+        private int _localBasicActionOwnerUntilTick = int.MinValue;
         private readonly Dictionary<(int TeamId, CharacterGender Gender), AvatarAppearanceContract> _avatarAppearanceContracts = new();
         // UI
         private string _currentMessage;
@@ -347,6 +348,7 @@ namespace HaCreator.MapSimulator.Fields
             _awaitingFinalScore = false;
             _lastPacketType = null;
             _lastScorePacketTick = null;
+            _localBasicActionOwnerUntilTick = int.MinValue;
             ClearRoundResult();
             System.Diagnostics.Debug.WriteLine($"[CoconutField] Initialized with {coconutCount} coconuts");
         }
@@ -632,6 +634,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastScorePacketTick = null;
             _hitQueue.Clear();
             _pendingAttackPacketRequests.Clear();
+            _localBasicActionOwnerUntilTick = int.MinValue;
             ClearRoundResult();
             ShowMessage(_eventName, _messageDurationMs, startTick);
         }
@@ -682,6 +685,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
             QueueAttackPacketRequest(target.Id, resolvedAttackDelayMs, currentTick);
+            RegisterLocalBasicActionOwnership(currentTick, resolvedAttackDelayMs);
             if (allowLocalPreview
                 && TryResolveLocalPreviewState(target, _localTeam, out CoconutState previewState))
             {
@@ -753,6 +757,7 @@ namespace HaCreator.MapSimulator.Fields
             _timeRemaining = 0;
             _awaitingFinalScore = true;
             _pendingAttackPacketRequests.Clear();
+            _localBasicActionOwnerUntilTick = int.MinValue;
             ShowMessage("Waiting for final score packet...", _finalScoreMessageDurationMs, currentTick);
         }
         private void ResolveRoundResult(int currentTick)
@@ -853,7 +858,17 @@ namespace HaCreator.MapSimulator.Fields
 
         internal bool ResolveLocalBasicActionOwnerActive(int currentTick)
         {
-            if (!_gameActive || _pendingAttackPacketRequests.Count == 0)
+            if (!_gameActive)
+            {
+                return false;
+            }
+
+            if (unchecked(currentTick - _localBasicActionOwnerUntilTick) < 0)
+            {
+                return true;
+            }
+
+            if (_pendingAttackPacketRequests.Count == 0)
             {
                 return false;
             }
@@ -870,6 +885,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return false;
+        }
+
+        private void RegisterLocalBasicActionOwnership(int currentTick, int attackDelayMs)
+        {
+            int ownerWindowMs = Math.Max(DefaultLocalNormalAttackDelayMs, attackDelayMs) + DefaultLocalNormalAttackDelayMs;
+            int ownerUntil = unchecked(currentTick + ownerWindowMs);
+            if (unchecked(ownerUntil - _localBasicActionOwnerUntilTick) > 0)
+            {
+                _localBasicActionOwnerUntilTick = ownerUntil;
+            }
         }
 
         private bool HasPendingAttackRequestForTarget(int targetId)
@@ -1422,6 +1447,7 @@ namespace HaCreator.MapSimulator.Fields
             _localTeamSelectionSource = LocalTeamSelectionSource.Default;
             _lastPacketType = null;
             _lastScorePacketTick = null;
+            _localBasicActionOwnerUntilTick = int.MinValue;
             ClearRoundResult();
             foreach (var coconut in _coconuts)
             {

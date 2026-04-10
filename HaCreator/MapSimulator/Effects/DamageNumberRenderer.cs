@@ -948,7 +948,8 @@ namespace HaCreator.MapSimulator.Effects
                 registration.Timeline.CriticalDelayMs,
                 ownsCanvasTexture: true,
                 owner: AnimationCanvasLayerOwner.DamageNumber,
-                recoveredLayerSettings: registration.RecoveredLayerSettings);
+                recoveredLayerSettings: registration.RecoveredLayerSettings,
+                recoveredRegistrationTrace: registration.RecoveredRegistrationTrace);
 
             dmgNumber.CompositeCanvasTexture = null;
             dmgNumber.PreparedVisual = null;

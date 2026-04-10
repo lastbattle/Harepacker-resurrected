@@ -2196,7 +2196,7 @@ namespace HaCreator.MapSimulator.Character
             // Create appropriate part type
             if (folder == "Weapon")
             {
-                part = LoadWeapon(imageEntry, itemId);
+                part = LoadWeapon(imageEntry, itemId, slot);
             }
             else
             {
@@ -2232,7 +2232,7 @@ namespace HaCreator.MapSimulator.Character
             return part;
         }
 
-        private WeaponPart LoadWeapon(CharacterImageEntry imageEntry, int itemId)
+        private WeaponPart LoadWeapon(CharacterImageEntry imageEntry, int itemId, EquipSlot slot)
         {
             WzImage img = imageEntry?.BaseImage;
             if (img == null) return null;
@@ -2242,7 +2242,7 @@ namespace HaCreator.MapSimulator.Character
                 ItemId = itemId,
                 Name = GetItemName(img) ?? $"Weapon_{itemId}",
                 Type = CharacterPartType.Weapon,
-                Slot = EquipSlot.Weapon
+                Slot = slot
             };
 
             img.ParseImage();

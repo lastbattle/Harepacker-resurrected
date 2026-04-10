@@ -220,9 +220,7 @@ namespace HaCreator.MapSimulator.UI
             string resultText = ResultCount > 0
                 ? $"result {ResultCount}"
                 : "result 0";
-            string waitText = IsWaitingForResult
-                ? "awaiting packet 366"
-                : "service idle";
+            string phaseText = DescribeWishlistSearchPhase();
             string wishlistText = AskItemWishlist
                 ? "wish prompt on"
                 : "wish prompt off";
@@ -235,7 +233,7 @@ namespace HaCreator.MapSimulator.UI
             string resultStateText = LastSubtype >= 0
                 ? $"last {DescribeLastResultState()}"
                 : "no result packet";
-            return $"{packetText}, {resultText}, {waitText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}";
+            return $"{packetText}, {resultText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}";
         }
 
         public IReadOnlyList<string> BuildWishlistSearchStateDetailLines()
@@ -259,13 +257,18 @@ namespace HaCreator.MapSimulator.UI
                 : string.Empty;
             lines.Add($"{visibilityText}, {DescribeDisconnectHazard()}{blockedText}{tailText}");
 
+            string phaseText = DescribeWishlistSearchPhase();
             if (!string.IsNullOrWhiteSpace(LastNotice))
             {
-                lines.Add(LastNotice);
+                lines.Add($"{phaseText}; {LastNotice}");
             }
             else if (LastSubtype >= 0)
             {
-                lines.Add($"packet 366 {DescribeLastResultState()}");
+                lines.Add($"{phaseText}; packet 366 {DescribeLastResultState()}");
+            }
+            else
+            {
+                lines.Add(phaseText);
             }
 
             if (!string.IsNullOrWhiteSpace(LastOwnerState))
@@ -338,6 +341,30 @@ namespace HaCreator.MapSimulator.UI
             return WouldDisconnect
                 ? "disconnect hazard recorded"
                 : "no disconnect hazard";
+        }
+
+        private string DescribeWishlistSearchPhase()
+        {
+            if (IsWaitingForResult)
+            {
+                return "awaiting packet 366 subtype 4";
+            }
+
+            if (LastOutboundOpcode == 74 && LastOutboundPayload.Length > 0)
+            {
+                return LastOutboundPayload[0] switch
+                {
+                    0 => "awaiting packet 367 refresh",
+                    1 => "trade request submitted",
+                    2 => "close requested",
+                    3 => "wishlist register submitted",
+                    _ => "service idle"
+                };
+            }
+
+            return IsActive
+                ? "service idle"
+                : "service closed";
         }
     }
 }

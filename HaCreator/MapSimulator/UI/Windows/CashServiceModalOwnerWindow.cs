@@ -43,7 +43,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<string> _worldNames = new();
         private readonly List<string> _giftRows = new();
         private readonly Dictionary<int, Rectangle> _buttonBounds = new();
-        private readonly Action<int> _buttonHandler;
+        private Action<int> _buttonHandler;
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
@@ -83,6 +83,11 @@ namespace HaCreator.MapSimulator.UI
         public override bool CapturesKeyboardInput => IsVisible;
 
         internal IReadOnlyList<ActionButtonState> Buttons { get; private set; } = Array.Empty<ActionButtonState>();
+
+        internal void SetButtonHandler(Action<int> buttonHandler)
+        {
+            _buttonHandler = buttonHandler;
+        }
 
         public override void SetFont(SpriteFont font)
         {

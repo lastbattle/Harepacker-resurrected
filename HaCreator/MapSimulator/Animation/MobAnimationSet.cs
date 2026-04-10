@@ -1,6 +1,7 @@
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Animation
 {
@@ -284,6 +285,18 @@ namespace HaCreator.MapSimulator.Animation
                     if (frameOwnedEntry != null)
                     {
                         return frameOwnedEntry;
+                    }
+
+                    // When the packet lands after the authored source frame has already advanced,
+                    // keep the latest frame-owned clip instead of rebasing immediately to info/hit.
+                    AttackHitEffectEntry nearestPriorFrameOwnedEntry = entries
+                        .Where(entry => entry?.IsAttackFrameOwned == true
+                                        && entry.SourceFrameIndex <= attackFrameIndex.Value)
+                        .OrderByDescending(entry => entry.SourceFrameIndex)
+                        .FirstOrDefault();
+                    if (nearestPriorFrameOwnedEntry != null)
+                    {
+                        return nearestPriorFrameOwnedEntry;
                     }
                 }
 

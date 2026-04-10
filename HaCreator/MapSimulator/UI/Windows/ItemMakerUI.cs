@@ -1983,6 +1983,11 @@ namespace HaCreator.MapSimulator.UI
                 return "Item Maker result is unavailable.";
             }
 
+            if (packetResult.ResultType == 3)
+            {
+                return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+            }
+
             string sourceItemName = _pendingPacketOwnedDisassemblyItemId > 0
                 ? GetItemName(_pendingPacketOwnedDisassemblyItemId)
                 : "the selected equipment";

@@ -229,6 +229,7 @@ namespace HaCreator.MapSimulator
         private readonly List<EventAlarmLineSnapshot> _packetOwnedEventAlarmLines = new();
         private string _lastPacketOwnedEventAlarmSummary = string.Empty;
         private int _lastPacketOwnedEventAlarmTick = int.MinValue;
+
         private readonly List<RankingEntrySnapshot> _packetOwnedRankingEntries = new();
         private string _lastPacketOwnedRankingSummary = string.Empty;
         private int _lastPacketOwnedRankingTick = int.MinValue;
@@ -1704,6 +1705,28 @@ namespace HaCreator.MapSimulator
                 out usedResolvedTemplate);
         }
 
+        private void DispatchRepeatSkillModeEndEffectRequest(
+            int skillId,
+            int returnSkillId,
+            int requestedAt,
+            PacketOwnedSkillEffectRequest request)
+        {
+            if (request.Opcode <= 0 || request.Payload == null)
+            {
+                return;
+            }
+
+            MechanicAuthorityTransportPlanner.DispatchRequest(
+                requestedAt,
+                request.Opcode,
+                request.Payload,
+                _localUtilityOfficialSessionBridgeEnabled,
+                _localUtilityOfficialSessionBridge.TrySendOutboundPacket,
+                _localUtilityPacketOutbox.TrySendOutboundPacket,
+                _localUtilityOfficialSessionBridge.TryQueueOutboundPacket,
+                _localUtilityPacketOutbox.TryQueueOutboundPacket);
+        }
+
         private void EnsureLocalUtilityPacketInboxState(bool shouldRun)
         {
             if (!shouldRun || !_localUtilityPacketInboxEnabled)
@@ -2067,12 +2090,16 @@ namespace HaCreator.MapSimulator
                     return TryApplyPacketOwnedCommodityPayload(payload, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.NoticeMsgPacketType:
+                    return TryApplyPacketOwnedNoticePayload(payload, requireExactClientPayload: false, out message);
+
                 case LocalUtilityPacketInboxManager.NoticeMsgClientPacketType:
-                    return TryApplyPacketOwnedNoticePayload(payload, out message);
+                    return TryApplyPacketOwnedNoticePayload(payload, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.ChatMsgPacketType:
+                    return TryApplyPacketOwnedChatPayload(payload, requireExactClientPayload: false, out message);
+
                 case LocalUtilityPacketInboxManager.ChatMsgClientPacketType:
-                    return TryApplyPacketOwnedChatPayload(payload, out message);
+                    return TryApplyPacketOwnedChatPayload(payload, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.EventCalendarEntriesPacketType:
                     return TryApplyPacketOwnedEventCalendarEntriesPayload(payload, out message);
@@ -2085,12 +2112,16 @@ namespace HaCreator.MapSimulator
                     return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedBuffzoneEffect, "Buff-zone payload is missing.", out message);
 
                 case LocalUtilityPacketInboxManager.PlayEventSoundPacketType:
+                    return TryApplyPacketOwnedEventSoundPayload(payload, minigame: false, requireExactClientPayload: false, out message);
+
                 case LocalUtilityPacketInboxManager.PlayEventSoundClientPacketType:
-                    return TryApplyPacketOwnedStringPayload(payload, descriptor => ApplyPacketOwnedEventSound(descriptor, minigame: false), "Event-sound payload is missing.", out message);
+                    return TryApplyPacketOwnedEventSoundPayload(payload, minigame: false, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.PlayMinigameSoundPacketType:
+                    return TryApplyPacketOwnedEventSoundPayload(payload, minigame: true, requireExactClientPayload: false, out message);
+
                 case LocalUtilityPacketInboxManager.PlayMinigameSoundClientPacketType:
-                    return TryApplyPacketOwnedStringPayload(payload, descriptor => ApplyPacketOwnedEventSound(descriptor, minigame: true), "Minigame-sound payload is missing.", out message);
+                    return TryApplyPacketOwnedEventSoundPayload(payload, minigame: true, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.RadioSchedulePacketType:
                     return TryApplyPacketOwnedRadioSchedulePayload(payload, requireExactClientPayload: false, out message);
@@ -4412,7 +4443,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            ShowWindow(MapSimulatorWindowNames.Radio, radioWindow, trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
+            ShowWindow(MapSimulatorWindowNames.Radio, radioWindow, trackDirectionModeOwner: true);
         }
 
         private bool ShouldUsePacketOwnedRadioLeftInset()
@@ -5171,7 +5202,7 @@ namespace HaCreator.MapSimulator
                 return unavailable;
             }
 
-            int normalizedSkillId = ResolvePacketOwnedLocalSkillId(skillId);
+            int normalizedSkillId = ResolvePacketOwnedTimeBombLocalSkillId(skillId);
             Vector2 timeBombPosition = new(timeBombX, timeBombY);
             bool appliedPacketOwnedAttack = _playerManager.Skills.TryApplyPacketOwnedTimeBombAttack(
                 normalizedSkillId,
@@ -5215,9 +5246,12 @@ namespace HaCreator.MapSimulator
             }
 
             string skillName = skill?.Name ?? $"Skill {normalizedSkillId}";
+            string packetSkillResolution = normalizedSkillId != skillId
+                ? $" (resolved from packet skill {skillId})"
+                : string.Empty;
             string message = appliedPacketOwnedAttack
-                ? $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}, special effect {(appliedSpecialEffect ? "registered" : "unavailable")})."
-                : $"Applied packet-owned Time Bomb reaction for {skillName} without a resolved melee-attack branch ({errorMessage}) (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}, special effect {(appliedSpecialEffect ? "registered" : "unavailable")}).";
+                ? $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level}{packetSkillResolution} (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}, special effect {(appliedSpecialEffect ? "registered" : "unavailable")})."
+                : $"Applied packet-owned Time Bomb reaction for {skillName}{packetSkillResolution} without a resolved melee-attack branch ({errorMessage}) (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}, special effect {(appliedSpecialEffect ? "registered" : "unavailable")}).";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -5650,7 +5684,7 @@ namespace HaCreator.MapSimulator
             ShowWindow(
                 MapSimulatorWindowNames.AranSkillGuide,
                 aranSkillGuideWindow,
-                trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
+                trackDirectionModeOwner: true);
             _lastPacketOwnedSkillGuideMessage = $"{skillWindowMessage} Opened the packet-owned current skill guide at Aran grade {guideGrade}.";
             _lastPacketOwnedSkillGuideTick = Environment.TickCount;
             NotifyEventAlarmOwnerActivity("packet-owned skill guide");
@@ -8545,6 +8579,66 @@ namespace HaCreator.MapSimulator
             return candidateSkillIds[0];
         }
 
+        private static bool IsPacketOwnedTimeBombSkillId(int skillId)
+        {
+            return skillId > 0 && PacketOwnedTimeBombSkillIdCatalog.Value.Contains(skillId);
+        }
+
+        private int ResolvePacketOwnedTimeBombLocalSkillId(int packetSkillId)
+        {
+            int packetSkillLevel = _playerManager?.Skills?.GetSkillLevel(packetSkillId) ?? 0;
+            int normalizedSkillId = ResolvePacketOwnedLocalSkillId(packetSkillId);
+            if (IsPacketOwnedTimeBombSkillId(packetSkillId)
+                || packetSkillLevel > 0
+                || normalizedSkillId != packetSkillId)
+            {
+                return normalizedSkillId;
+            }
+
+            return ResolvePacketOwnedDedicatedFamilyFallbackSkillId(
+                packetSkillId,
+                packetSkillLevel,
+                EnumeratePacketOwnedSkillIdCandidates(PacketOwnedCurrentTimeBombSkillId),
+                static candidateSkillId => candidateSkillId > 0,
+                candidateSkillId => _playerManager?.Skills?.GetSkillLevel(candidateSkillId) ?? 0);
+        }
+
+        internal static int ResolvePacketOwnedDedicatedFamilyFallbackSkillId(
+            int packetSkillId,
+            int packetSkillLevel,
+            IEnumerable<int> preferredSkillIdCandidates,
+            Func<int, bool> canUsePacketSkillId,
+            Func<int, int> getCandidateSkillLevel)
+        {
+            if (packetSkillLevel > 0
+                && (canUsePacketSkillId?.Invoke(packetSkillId) ?? packetSkillId > 0))
+            {
+                return packetSkillId;
+            }
+
+            int fallbackSkillId = packetSkillId;
+            if (preferredSkillIdCandidates == null)
+            {
+                return fallbackSkillId;
+            }
+
+            foreach (int candidateSkillId in preferredSkillIdCandidates)
+            {
+                if (!(canUsePacketSkillId?.Invoke(candidateSkillId) ?? candidateSkillId > 0))
+                {
+                    continue;
+                }
+
+                fallbackSkillId = candidateSkillId;
+                if ((getCandidateSkillLevel?.Invoke(candidateSkillId) ?? 0) > 0)
+                {
+                    return candidateSkillId;
+                }
+            }
+
+            return fallbackSkillId;
+        }
+
         internal static bool IsClientOwnedVengeancePacketSkillId(int skillId)
         {
             return skillId == PacketOwnedLegacyVengeanceSkillId;
@@ -8794,6 +8888,11 @@ namespace HaCreator.MapSimulator
             return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedNoticeMessage, "Notice payload is missing.", out message);
         }
 
+        private bool TryApplyPacketOwnedNoticePayload(byte[] payload, bool requireExactClientPayload, out string message)
+        {
+            return TryApplyPacketOwnedNoticePayload(payload, out message);
+        }
+
         private bool TryApplyPacketOwnedTutorHirePayload(byte[] payload, out string message)
         {
             return TryApplyPacketOwnedTutorHirePayload(payload, requireExactClientPayload: false, out message);
@@ -9029,6 +9128,20 @@ namespace HaCreator.MapSimulator
             }
 
             return TryApplyPacketOwnedStringPayload(payload, value => ApplyPacketOwnedChatMessage(value), "Chat payload is missing.", out message);
+        }
+
+        private bool TryApplyPacketOwnedChatPayload(byte[] payload, bool requireExactClientPayload, out string message)
+        {
+            return TryApplyPacketOwnedChatPayload(payload, out message);
+        }
+
+        private bool TryApplyPacketOwnedEventSoundPayload(byte[] payload, bool minigame, bool requireExactClientPayload, out string message)
+        {
+            return TryApplyPacketOwnedStringPayload(
+                payload,
+                descriptor => ApplyPacketOwnedEventSound(descriptor, minigame),
+                minigame ? "Minigame-sound payload is missing." : "Event-sound payload is missing.",
+                out message);
         }
 
         private bool TryApplyPacketOwnedOpenUiWithOptionPayload(byte[] payload, bool requireExactClientPayload, out string message)
@@ -9553,89 +9666,55 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedQuestGuidePayload(byte[] payload, out string message)
         {
             message = null;
-            if (payload == null || payload.Length < 1)
+            if (!TryDecodePacketOwnedQuestGuidePayload(
+                    payload,
+                    out byte mode,
+                    out int questId,
+                    out (int PrimaryId, int[] ChildIds)[] records,
+                    out string error))
             {
-                message = "Quest-guide payload is missing.";
+                message = error ?? "Quest-guide payload could not be decoded.";
                 return false;
             }
 
-            try
+            if (mode == 2)
             {
-                using MemoryStream stream = new(payload, writable: false);
-                using BinaryReader reader = new(stream);
-                byte mode = reader.ReadByte();
-                if (mode == 2)
-                {
-                    message = ResetPacketQuestGuideLaunch();
-                    return true;
-                }
-
-                if (mode != 1)
-                {
-                    message = $"Quest-guide payload mode {mode} is not modeled by the simulator.";
-                    return false;
-                }
-
-                int questId = reader.ReadUInt16();
-                int targetCount = reader.ReadInt32();
-                if (targetCount < 0)
-                {
-                    message = "Quest-guide payload declared a negative target count.";
-                    return false;
-                }
-
-                List<(int PrimaryId, List<int> ChildIds)> records = new(targetCount);
-                for (int i = 0; i < targetCount; i++)
-                {
-                    int primaryId = reader.ReadInt32();
-                    int childCount = reader.ReadUInt16();
-                    List<int> childIds = new(Math.Max(0, childCount));
-                    for (int childIndex = 0; childIndex < childCount; childIndex++)
-                    {
-                        childIds.Add(reader.ReadInt32());
-                    }
-
-                    records.Add((primaryId, childIds));
-                }
-
-                bool looksLikeLegacyMobGuide = records.Count > 0
-                    && records.All(record => record.ChildIds.All(childId => childId <= 0 || childId >= 100000000));
-                if (looksLikeLegacyMobGuide)
-                {
-                    Dictionary<int, IReadOnlyList<int>> targetsByMobId = new();
-                    for (int i = 0; i < records.Count; i++)
-                    {
-                        int mobId = records[i].PrimaryId;
-                        List<int> mapIds = records[i].ChildIds
-                            .Where(mapId => mapId > 0)
-                            .Distinct()
-                            .ToList();
-                        if (mobId > 0 && mapIds.Count > 0)
-                        {
-                            targetsByMobId[mobId] = mapIds;
-                        }
-                    }
-
-                    message = ApplyPacketQuestGuideLaunch(questId, targetsByMobId);
-                    return true;
-                }
-
-                QuestDemandItemQueryState runtimeFallbackQuery = null;
-                _questRuntime.TryBuildQuestDemandItemQuery(questId, out runtimeFallbackQuery);
-                QuestDemandItemQueryState queryState = BuildPacketOwnedQuestDemandItemQueryState(
-                    questId,
-                    records.Select(record => (record.PrimaryId, (IReadOnlyList<int>)record.ChildIds)).ToArray(),
-                    _mapBoard?.MapInfo?.id ?? 0,
-                    runtimeFallbackQuery,
-                    ResolveQuestMobMapIds);
-                message = ApplyQuestDemandItemQueryLaunch(queryState);
+                message = ResetPacketQuestGuideLaunch();
                 return true;
             }
-            catch (Exception ex)
+
+            bool looksLikeLegacyMobGuide = records.Length > 0
+                && records.All(record => record.ChildIds.All(childId => childId <= 0 || childId >= 100000000));
+            if (looksLikeLegacyMobGuide)
             {
-                message = $"Quest-guide payload could not be decoded: {ex.Message}";
-                return false;
+                Dictionary<int, IReadOnlyList<int>> targetsByMobId = new();
+                for (int i = 0; i < records.Length; i++)
+                {
+                    int mobId = records[i].PrimaryId;
+                    List<int> mapIds = records[i].ChildIds
+                        .Where(mapId => mapId > 0)
+                        .Distinct()
+                        .ToList();
+                    if (mobId > 0 && mapIds.Count > 0)
+                    {
+                        targetsByMobId[mobId] = mapIds;
+                    }
+                }
+
+                message = ApplyPacketQuestGuideLaunch(questId, targetsByMobId);
+                return true;
             }
+
+            QuestDemandItemQueryState runtimeFallbackQuery = null;
+            _questRuntime.TryBuildQuestDemandItemQuery(questId, out runtimeFallbackQuery);
+            QuestDemandItemQueryState queryState = BuildPacketOwnedQuestDemandItemQueryState(
+                questId,
+                records.Select(record => (record.PrimaryId, (IReadOnlyList<int>)record.ChildIds)).ToArray(),
+                _mapBoard?.MapInfo?.id ?? 0,
+                runtimeFallbackQuery,
+                ResolveQuestMobMapIds);
+            message = ApplyQuestDemandItemQueryLaunch(queryState);
+            return true;
         }
 
         private bool TryApplyPacketOwnedDeliveryPayload(byte[] payload, out string message)
@@ -9655,6 +9734,94 @@ namespace HaCreator.MapSimulator
 
             message = ApplyDeliveryQuestLaunch(questId, itemId, disallowedQuestIds, packetOwnedDeliveryType);
             return true;
+        }
+
+        internal static bool TryDecodePacketOwnedQuestGuidePayloadForTests(
+            byte[] payload,
+            out byte mode,
+            out int questId,
+            out (int PrimaryId, int[] ChildIds)[] records,
+            out string error)
+        {
+            return TryDecodePacketOwnedQuestGuidePayload(payload, out mode, out questId, out records, out error);
+        }
+
+        private static bool TryDecodePacketOwnedQuestGuidePayload(
+            byte[] payload,
+            out byte mode,
+            out int questId,
+            out (int PrimaryId, int[] ChildIds)[] records,
+            out string error)
+        {
+            mode = 0;
+            questId = 0;
+            records = Array.Empty<(int PrimaryId, int[] ChildIds)>();
+            error = null;
+
+            if (payload == null || payload.Length < sizeof(byte))
+            {
+                error = "Quest-guide payload is missing.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                mode = reader.ReadByte();
+                if (mode == 2)
+                {
+                    if (reader.BaseStream.Position != reader.BaseStream.Length)
+                    {
+                        error = $"Quest-guide reset payload has {reader.BaseStream.Length - reader.BaseStream.Position} trailing byte(s).";
+                        return false;
+                    }
+
+                    return true;
+                }
+
+                if (mode != 1)
+                {
+                    error = $"Quest-guide payload mode {mode} is not modeled by the simulator.";
+                    return false;
+                }
+
+                questId = reader.ReadUInt16();
+                int targetCount = reader.ReadInt32();
+                if (targetCount < 0)
+                {
+                    error = "Quest-guide payload declared a negative target count.";
+                    return false;
+                }
+
+                var decodedRecords = new (int PrimaryId, int[] ChildIds)[targetCount];
+                for (int i = 0; i < targetCount; i++)
+                {
+                    int primaryId = reader.ReadInt32();
+                    int childCount = reader.ReadUInt16();
+                    int[] childIds = new int[childCount];
+                    for (int childIndex = 0; childIndex < childCount; childIndex++)
+                    {
+                        childIds[childIndex] = reader.ReadInt32();
+                    }
+
+                    decodedRecords[i] = (primaryId, childIds);
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    error = $"Quest-guide payload has {reader.BaseStream.Length - reader.BaseStream.Position} trailing byte(s) after the decoded target records.";
+                    return false;
+                }
+
+                records = decodedRecords;
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException or IOException)
+            {
+                error = $"Quest-guide payload could not be decoded: {ex.Message}";
+                return false;
+            }
         }
 
         private static List<int> DecodePacketOwnedDisallowedDeliveryQuestIds(BinaryReader reader)
@@ -9759,6 +9926,12 @@ namespace HaCreator.MapSimulator
             if (rawType == int.MinValue)
             {
                 error = $"Delivery-quest payload left {remaining} byte(s) for the optional delivery-type discriminator; expected 0, 1, 2, or 4 bytes.";
+                return false;
+            }
+
+            if (rawType is < 0 or > 2)
+            {
+                error = $"Delivery-quest payload used unsupported delivery-type discriminator value {rawType}; expected 0, 1, or 2.";
                 return false;
             }
 

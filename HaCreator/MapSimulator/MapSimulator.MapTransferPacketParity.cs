@@ -166,8 +166,8 @@ namespace HaCreator.MapSimulator
                 int[] continentSnapshotFields = snapshot.ContinentMapTransferFields.ToArray();
                 _mapTransferRuntime.ApplyAuthoritativeBootstrap(build, regularSnapshotFields, continentSnapshotFields);
                 RefreshMapTransferWindow();
-                string snapshotLogoutGiftSuffix = (packet.TrailingPayload?.Length ?? 0) == (3 * sizeof(int))
-                    ? " while preserving the client 12-byte logout-gift cache that follows CharacterData::Decode in CStage::OnSetField"
+                string snapshotLogoutGiftSuffix = (packet.TrailingPayload?.Length ?? 0) == PacketStageTransitionRuntime.LogoutGiftConfigByteLength
+                    ? " while preserving the client 16-byte logout-gift cache (`CWvsContext::m_bPredictQuit` plus three commodity serial numbers) that follows CharacterData::Decode in CStage::OnSetField"
                     : string.Empty;
                 _lastAuthoritativeMapTransferBootstrapSummary =
                     $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} directly from the decoded CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} stage-transition snapshot{snapshotLogoutGiftSuffix}.";
@@ -197,7 +197,7 @@ namespace HaCreator.MapSimulator
             _mapTransferRuntime.ApplyAuthoritativeBootstrap(build, regularFields, continentFields);
             RefreshMapTransferWindow();
             string logoutGiftSuffix = ignoredTrailingLogoutGiftConfig
-                ? " after preserving the client 12-byte logout-gift cache that follows CharacterData::Decode in CStage::OnSetField"
+                ? " after preserving the client 16-byte logout-gift cache (`CWvsContext::m_bPredictQuit` plus three commodity serial numbers) that follows CharacterData::Decode in CStage::OnSetField"
                 : string.Empty;
             string tailBoundarySuffix = matchedExactTailBoundary
                 ? " using the exact payload-tail boundary the client keeps after CharacterData::Decode"

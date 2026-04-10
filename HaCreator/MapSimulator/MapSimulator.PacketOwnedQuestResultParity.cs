@@ -311,7 +311,7 @@ namespace HaCreator.MapSimulator
                 message = $"{message} {deliveryOutcome}";
             }
 
-            return !string.IsNullOrWhiteSpace(noticeText);
+            return true;
         }
 
         private bool TryApplyPacketOwnedQuestResultNoOp(out string message)

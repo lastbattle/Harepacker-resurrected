@@ -32,6 +32,54 @@ namespace HaCreator.MapSimulator.Character.Skills
             alpha = 0f;
         }
 
+        internal static bool RefreshSnapshotCache(
+            CharacterAssembler assembler,
+            string actionName,
+            MeleeAfterImageAction action,
+            int animationTime,
+            ref int frameIndex,
+            ref SkillFrame frame,
+            ref float alpha)
+        {
+            if (TryResolveSnapshot(
+                    assembler,
+                    actionName,
+                    action,
+                    animationTime,
+                    out Snapshot snapshot))
+            {
+                ApplySnapshotToCache(snapshot, ref frameIndex, ref frame, ref alpha);
+                return true;
+            }
+
+            ClearSnapshotCache(ref frameIndex, ref frame, ref alpha);
+            return false;
+        }
+
+        internal static bool CaptureFadeSnapshotOrClearCache(
+            CharacterAssembler assembler,
+            string actionName,
+            MeleeAfterImageAction action,
+            int animationTime,
+            ref int frameIndex,
+            ref SkillFrame frame,
+            ref float alpha)
+        {
+            if (TryCaptureFadeSnapshot(
+                    assembler,
+                    actionName,
+                    action,
+                    animationTime,
+                    out Snapshot snapshot))
+            {
+                ApplySnapshotToCache(snapshot, ref frameIndex, ref frame, ref alpha);
+                return true;
+            }
+
+            ClearSnapshotCache(ref frameIndex, ref frame, ref alpha);
+            return false;
+        }
+
         internal static bool TryResolveSnapshot(
             CharacterAssembler assembler,
             string actionName,

@@ -323,7 +323,7 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static byte[] BuildFollowCharacterWithdrawPayload()
         {
-            return Array.Empty<byte>();
+            return BuildFollowCharacterRequestPayload(0, autoRequest: false, keyInput: true);
         }
 
         public void Dispose()

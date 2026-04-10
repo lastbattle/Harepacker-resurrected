@@ -112,6 +112,11 @@ namespace HaCreator.MapSimulator.Pools
     {
         internal const int RemoveFadeDurationMs = 1000;
 
+        internal readonly record struct PlayerSkillAreaMetadata(
+            int DurationSeconds,
+            string ZoneType,
+            SkillAnimation Animation);
+
         private readonly SkillLoader _skillLoader;
         private readonly MobSkillEffectLoader _mobSkillEffectLoader;
         private readonly GraphicsDevice _graphicsDevice;
@@ -269,13 +274,14 @@ namespace HaCreator.MapSimulator.Pools
             Func<int, SkillData> loadLinkedSkill = _skillLoader == null
                 ? null
                 : skillId => _skillLoader.LoadSkill(skillId);
-            int durationSeconds = ResolvePlayerSkillAreaDurationSeconds(
+            PlayerSkillAreaMetadata metadata = ResolvePlayerSkillAreaMetadata(
                 skill,
                 levelData,
                 loadLinkedSkill,
+                affectedSkillId => _skillLoader?.FindAffectedSkillParentIds(affectedSkillId) ?? Array.Empty<int>(),
                 ResolveSkillLevel,
                 createInfo.SkillLevel);
-            int expireTime = ResolveExpireTime(startTime, durationSeconds);
+            int expireTime = ResolveExpireTime(startTime, metadata.DurationSeconds);
 
             return new ActiveAffectedArea
             {
@@ -290,8 +296,8 @@ namespace HaCreator.MapSimulator.Pools
                 ExpireTime = expireTime,
                 NextGameplayTickTime = startTime,
                 WorldBounds = createInfo.WorldBounds,
-                ZoneType = skill.ZoneType,
-                Animation = skill.ZoneAnimation,
+                ZoneType = metadata.ZoneType,
+                Animation = metadata.Animation,
                 SourceKind = createInfo.SourceKind
             };
         }
@@ -381,37 +387,46 @@ namespace HaCreator.MapSimulator.Pools
             return null;
         }
 
-        internal static int ResolvePlayerSkillAreaDurationSeconds(
+        internal static PlayerSkillAreaMetadata ResolvePlayerSkillAreaMetadata(
             SkillData skill,
             SkillLevelData levelData,
             Func<int, SkillData> loadSkill,
+            Func<int, IReadOnlyList<int>> findParentSkillIds,
             Func<SkillData, int, SkillLevelData> resolveLevelData,
             int skillLevel)
         {
             int durationSeconds = ResolveSkillAreaLevelDurationSeconds(levelData);
+            string zoneType = skill?.ZoneType;
+            SkillAnimation animation = HasRenderableAnimation(skill?.ZoneAnimation) ? skill.ZoneAnimation : null;
             if (skill == null || loadSkill == null || resolveLevelData == null)
             {
-                return durationSeconds;
+                return new PlayerSkillAreaMetadata(durationSeconds, zoneType, animation);
             }
 
             var visitedSkillIds = new HashSet<int>();
-            CollectLinkedPlayerSkillAreaDurationSeconds(
+            CollectLinkedPlayerSkillAreaMetadata(
                 skill,
                 loadSkill,
+                findParentSkillIds,
                 resolveLevelData,
                 Math.Max(1, skillLevel),
                 visitedSkillIds,
-                ref durationSeconds);
-            return durationSeconds;
+                ref durationSeconds,
+                ref zoneType,
+                ref animation);
+            return new PlayerSkillAreaMetadata(durationSeconds, zoneType, animation);
         }
 
-        private static void CollectLinkedPlayerSkillAreaDurationSeconds(
+        private static void CollectLinkedPlayerSkillAreaMetadata(
             SkillData skill,
             Func<int, SkillData> loadSkill,
+            Func<int, IReadOnlyList<int>> findParentSkillIds,
             Func<SkillData, int, SkillLevelData> resolveLevelData,
             int skillLevel,
             ISet<int> visitedSkillIds,
-            ref int durationSeconds)
+            ref int durationSeconds,
+            ref string zoneType,
+            ref SkillAnimation animation)
         {
             if (skill == null)
             {
@@ -424,6 +439,18 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            SkillLevelData linkedLevelData = resolveLevelData(skill, skillLevel);
+            durationSeconds = Math.Max(durationSeconds, ResolveSkillAreaLevelDurationSeconds(linkedLevelData));
+            if (string.IsNullOrWhiteSpace(zoneType) && !string.IsNullOrWhiteSpace(skill.ZoneType))
+            {
+                zoneType = skill.ZoneType;
+            }
+
+            if (!HasRenderableAnimation(animation) && HasRenderableAnimation(skill.ZoneAnimation))
+            {
+                animation = skill.ZoneAnimation;
+            }
+
             foreach (int linkedSkillId in RemoteAffectedAreaSupportResolver.EnumerateRemoteAffectedAreaLinkedSkillIds(skill))
             {
                 SkillData linkedSkill = loadSkill(linkedSkillId);
@@ -432,15 +459,36 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                SkillLevelData linkedLevelData = resolveLevelData(linkedSkill, skillLevel);
-                durationSeconds = Math.Max(durationSeconds, ResolveSkillAreaLevelDurationSeconds(linkedLevelData));
-                CollectLinkedPlayerSkillAreaDurationSeconds(
+                CollectLinkedPlayerSkillAreaMetadata(
                     linkedSkill,
                     loadSkill,
+                    findParentSkillIds,
                     resolveLevelData,
                     skillLevel,
                     visitedSkillIds,
-                    ref durationSeconds);
+                    ref durationSeconds,
+                    ref zoneType,
+                    ref animation);
+            }
+
+            foreach (int parentSkillId in findParentSkillIds?.Invoke(skillId) ?? Array.Empty<int>())
+            {
+                SkillData parentSkill = loadSkill(parentSkillId);
+                if (parentSkill == null)
+                {
+                    continue;
+                }
+
+                CollectLinkedPlayerSkillAreaMetadata(
+                    parentSkill,
+                    loadSkill,
+                    findParentSkillIds,
+                    resolveLevelData,
+                    skillLevel,
+                    visitedSkillIds,
+                    ref durationSeconds,
+                    ref zoneType,
+                    ref animation);
             }
         }
 
@@ -449,6 +497,11 @@ namespace HaCreator.MapSimulator.Pools
             return levelData == null
                 ? 0
                 : Math.Max(levelData.Time, levelData.DotTime);
+        }
+
+        private static bool HasRenderableAnimation(SkillAnimation animation)
+        {
+            return animation?.Frames?.Count > 0;
         }
 
         private static int ResolveExpireTime(int currentTime, int durationSeconds)

@@ -1,5 +1,4 @@
 using HaCreator.MapSimulator.Managers;
-using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -172,29 +171,16 @@ namespace HaCreator.MapSimulator.UI
 
             AccountMoreInfoOwnerSnapshot snapshot = GetSnapshot();
             Vector2 origin = new(Position.X + ContentLeft, Position.Y + ContentTop);
-            DrawWindowText(sprite, "Account More Info", origin, Color.White, 0.55f, 360f);
-            DrawWindowText(
-                sprite,
-                snapshot.IsFirstEntry ? "First-entry context owner (UI id 40)" : "Context-owned profile utility (UI id 40)",
-                origin + new Vector2(0f, 18f),
-                new Color(255, 226, 150),
-                TextScale,
-                360f);
-
-            DrawWindowText(sprite, "Area", origin + new Vector2(0f, 36f), new Color(255, 226, 150), TextScale, 60f);
             DrawComboBox(sprite, AreaGroupRect, ResolveComboBoxDisplayText(snapshot.AreaGroupText, snapshot.AreaGroup), false);
             DrawComboBox(sprite, AreaDetailRect, ResolveComboBoxDisplayText(snapshot.AreaDetailText, snapshot.AreaDetail), false);
 
-            DrawWindowText(sprite, "Birthday", origin + new Vector2(0f, 61f), new Color(255, 226, 150), TextScale, 70f);
             DrawComboBox(sprite, BirthYearRect, snapshot.BirthYear.ToString("D4"), false);
             DrawComboBox(sprite, BirthMonthRect, snapshot.BirthMonth.ToString("D2"), false);
             DrawComboBox(sprite, BirthDayRect, snapshot.BirthDay.ToString("D2"), false);
 
-            DrawWindowText(sprite, "Play style", origin + new Vector2(0f, 92f), new Color(255, 226, 150), TextScale, 120f);
-            DrawCheckboxGrid(sprite, snapshot.PlayStyleLabels, snapshot.PlayStyleSelections, PlayStyleCheckboxPositions, 0);
+            DrawCheckboxGrid(sprite, snapshot.PlayStyleLabels, snapshot.PlayStyleSelections, PlayStyleCheckboxPositions);
 
-            DrawWindowText(sprite, "Activities", origin + new Vector2(0f, 173f), new Color(255, 226, 150), TextScale, 120f);
-            DrawCheckboxGrid(sprite, snapshot.ActivityLabels, snapshot.ActivitySelections, ActivityCheckboxPositions, 0);
+            DrawCheckboxGrid(sprite, snapshot.ActivityLabels, snapshot.ActivitySelections, ActivityCheckboxPositions);
 
             DrawWindowText(sprite, snapshot.StatusText, origin + new Vector2(0f, 246f), new Color(210, 220, 255), SmallTextScale, 360f);
             DrawWindowText(sprite, snapshot.GenderStatusText, origin + new Vector2(0f, 272f), new Color(210, 210, 210), SmallTextScale, 360f);
@@ -254,8 +240,7 @@ namespace HaCreator.MapSimulator.UI
             SpriteBatch sprite,
             IReadOnlyList<string> labels,
             IReadOnlyList<bool> selections,
-            IReadOnlyList<Point> positions,
-            int startingLabelNumber)
+            IReadOnlyList<Point> positions)
         {
             IReadOnlyList<string> safeLabels = labels ?? Array.Empty<string>();
             IReadOnlyList<bool> safeSelections = selections ?? Array.Empty<bool>();
@@ -281,10 +266,9 @@ namespace HaCreator.MapSimulator.UI
                             new Color(92, 192, 112));
                     }
                 }
-
                 string label = i < safeLabels.Count
                     ? safeLabels[i] ?? string.Empty
-                    : (startingLabelNumber + i + 1).ToString();
+                    : string.Empty;
                 if (!string.IsNullOrWhiteSpace(label))
                 {
                     DrawWindowText(

@@ -9884,6 +9884,7 @@ namespace HaCreator.MapSimulator
                             _contextOwnedStageActiveKeywords.Clear();
                             _contextOwnedStageActiveQuestIds.Clear();
                             _contextOwnedStageAffectedMapIds.Clear();
+                            _contextOwnedStageCurrentPeriod = null;
                             _contextOwnedStageCurrentBackImages = Array.Empty<ContextOwnedStageBackImageEntry>();
                             _contextOwnedStageCurrentBackColorArgb = null;
                             ReloadContextOwnedStagePeriodBackLayers();

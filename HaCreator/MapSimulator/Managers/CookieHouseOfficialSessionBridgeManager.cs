@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Fields;
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
@@ -872,7 +873,7 @@ namespace HaCreator.MapSimulator.Managers
         private static string FormatCandidateList(IEnumerable<InboundPointOpcodeCandidateSummary> candidates)
         {
             return string.Join(", ", candidates.Select(candidate =>
-                $"{candidate.Opcode}/0x{candidate.Opcode:X} obs={candidate.ObservationCount} distinct={candidate.DistinctPointValueCount} changes={candidate.TransitionCount} lastPoint={candidate.LastPoint}"));
+                $"{candidate.Opcode}/0x{candidate.Opcode:X} obs={candidate.ObservationCount} distinct={candidate.DistinctPointValueCount} changes={candidate.TransitionCount} grades={candidate.GradeBucketCount} range={candidate.MinimumPoint}-{candidate.MaximumPoint} lastPoint={candidate.LastPoint}"));
         }
 
         private static bool HaveEquivalentInferenceRanking(
@@ -881,7 +882,9 @@ namespace HaCreator.MapSimulator.Managers
         {
             return left.ObservationCount == right.ObservationCount
                 && left.DistinctPointValueCount == right.DistinctPointValueCount
-                && left.TransitionCount == right.TransitionCount;
+                && left.TransitionCount == right.TransitionCount
+                && left.GradeBucketCount == right.GradeBucketCount
+                && (left.MaximumPoint - left.MinimumPoint) == (right.MaximumPoint - right.MinimumPoint);
         }
 
         private sealed class InboundPointOpcodeCandidateAccumulator
@@ -898,7 +901,11 @@ namespace HaCreator.MapSimulator.Managers
             public int ObservationCount { get; private set; }
             public int DistinctPointValueCount => _distinctPoints.Count;
             public int TransitionCount { get; private set; }
+            public int GradeBucketCount => _gradeBuckets.Count;
+            public int MinimumPoint { get; private set; } = int.MaxValue;
+            public int MaximumPoint { get; private set; } = int.MinValue;
             public int LastPoint { get; private set; }
+            private readonly HashSet<int> _gradeBuckets = new();
 
             public void AddPoint(int point)
             {
@@ -911,11 +918,22 @@ namespace HaCreator.MapSimulator.Managers
                 LastPoint = point;
                 _hasLastObservedPoint = true;
                 _distinctPoints.Add(point);
+                _gradeBuckets.Add(CookieHouseField.FindGradeForTesting(point));
+                MinimumPoint = Math.Min(MinimumPoint, point);
+                MaximumPoint = Math.Max(MaximumPoint, point);
             }
 
             public InboundPointOpcodeCandidateSummary ToSummary()
             {
-                return new InboundPointOpcodeCandidateSummary(Opcode, ObservationCount, DistinctPointValueCount, TransitionCount, LastPoint);
+                return new InboundPointOpcodeCandidateSummary(
+                    Opcode,
+                    ObservationCount,
+                    DistinctPointValueCount,
+                    TransitionCount,
+                    GradeBucketCount,
+                    MinimumPoint == int.MaxValue ? 0 : MinimumPoint,
+                    MaximumPoint == int.MinValue ? 0 : MaximumPoint,
+                    LastPoint);
             }
         }
 
@@ -924,6 +942,9 @@ namespace HaCreator.MapSimulator.Managers
             int ObservationCount,
             int DistinctPointValueCount,
             int TransitionCount,
+            int GradeBucketCount,
+            int MinimumPoint,
+            int MaximumPoint,
             int LastPoint);
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

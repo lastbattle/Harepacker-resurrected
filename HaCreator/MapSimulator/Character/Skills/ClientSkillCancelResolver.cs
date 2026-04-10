@@ -7,6 +7,20 @@ namespace HaCreator.MapSimulator.Character.Skills
     internal static class ClientSkillCancelResolver
     {
         private static readonly int[] SupportedAffectedSkillCancelTypes = { 1, 10, 16, 33, 50, 51 };
+        private static readonly IReadOnlyDictionary<int, int> ClientCancelRequestSkillAliases =
+            new Dictionary<int, int>
+            {
+                [32120000] = 32001003,
+                [32110000] = 32101002,
+                [32120001] = 32101003
+            };
+
+        internal static int NormalizeClientCancelRequestSkillId(int skillId)
+        {
+            return ClientCancelRequestSkillAliases.TryGetValue(skillId, out int normalizedSkillId)
+                ? normalizedSkillId
+                : skillId;
+        }
 
         public static bool DoesClientCancelMatchSkillId(
             int activeSkillId,
@@ -90,6 +104,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             Queue<int> pendingSkillIds = new();
             pendingSkillIds.Enqueue(rootSkillId);
+            EnqueueSkillId(NormalizeClientCancelRequestSkillId(rootSkillId), pendingSkillIds, resolvedSkillIds);
 
             while (pendingSkillIds.Count > 0)
             {

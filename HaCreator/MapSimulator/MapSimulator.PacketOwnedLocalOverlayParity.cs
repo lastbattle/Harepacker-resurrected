@@ -2360,6 +2360,7 @@ namespace HaCreator.MapSimulator
 
             if (!TryResolveFieldHazardSharedHpPotionCandidate(
                     activePets,
+                    requestPet,
                     predictedRemainingHp,
                     out FieldHazardHpPotionCandidate candidate,
                     out FieldHazardSharedPetConsumeSource sharedSource))
@@ -2382,6 +2383,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryResolveFieldHazardSharedHpPotionCandidate(
             IReadOnlyList<PetRuntime> activePets,
+            PetRuntime requestPet,
             int predictedRemainingHp,
             out FieldHazardHpPotionCandidate candidate,
             out FieldHazardSharedPetConsumeSource sharedSource)
@@ -2427,6 +2429,7 @@ namespace HaCreator.MapSimulator
             {
                 PetRuntime pet = activePets[i];
                 if (pet == null
+                    || !ShouldUseFieldHazardConfiguredPetForAutoConsume(requestPet?.SlotIndex ?? -1, pet.SlotIndex)
                     || !pet.AutoConsumeHpEnabled
                     || pet.AutoConsumeHpItemId <= 0
                     || pet.AutoConsumeHpInventoryType == InventoryType.NONE)
@@ -3169,6 +3172,15 @@ namespace HaCreator.MapSimulator
             return forceRequest
                 ? FieldHazardPetAutoConsumeForceRequestIndex
                 : FieldHazardPetAutoConsumeDefaultRequestIndex;
+        }
+
+        internal static bool ShouldUseFieldHazardConfiguredPetForAutoConsume(
+            int firstEnabledPetSlotIndex,
+            int candidatePetSlotIndex)
+        {
+            return firstEnabledPetSlotIndex >= 0
+                && candidatePetSlotIndex >= 0
+                && candidatePetSlotIndex == firstEnabledPetSlotIndex;
         }
 
         private static string DescribeFieldHazardSharedPetConsumeSource(FieldHazardSharedPetConsumeSource source)

@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MaxClaimLogEntries = 6;
         private const int PresencePulseIntervalMs = 9000;
         private const int InviteResolutionDelayMs = 1800;
+        private const int InvitePromptLifetimeMs = 180000;
         private const int BubbleLifetimeMs = 4200;
         private const int BlinkDurationMs = 3000;
         private const int BlinkPulseIntervalMs = 180;
@@ -339,7 +340,8 @@ namespace HaCreator.MapSimulator.Interaction
                 true,
                 packet.InviteType,
                 packet.InviteSequence,
-                packet.SkipBlacklistAutoReject);
+                packet.SkipBlacklistAutoReject,
+                Environment.TickCount + InvitePromptLifetimeMs);
             _lastActionSummary = MessengerClientParityText.FormatIncomingInviteNotice(contact.Name);
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
@@ -454,6 +456,144 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return ResolvePendingInvite(accepted, packetDriven: true);
+        }
+
+        internal bool TryBuildPendingInviteResolutionPayload(bool accepted, string contactName, out byte[] payload, out string message)
+        {
+            payload = null;
+            message = null;
+
+            PendingMessengerInviteState pendingInvite = _pendingInvite;
+            if (pendingInvite == null)
+            {
+                message = "No Messenger invite is waiting for a packet-authored response.";
+                return false;
+            }
+
+            string resolvedName = NormalizeParticipantName(contactName) ?? pendingInvite.ContactName;
+            if (!string.Equals(pendingInvite.ContactName, resolvedName, StringComparison.OrdinalIgnoreCase))
+            {
+                message = $"Pending Messenger invite targets {pendingInvite.ContactName}, not {resolvedName}.";
+                return false;
+            }
+
+            payload = MessengerPacketCodec.BuildInvitePayload(
+                pendingInvite.ContactName,
+                pendingInvite.InviteType,
+                pendingInvite.InviteSequence,
+                pendingInvite.SkipBlacklistAutoReject);
+            message = accepted
+                ? $"Built packet-authored Messenger accept payload for {pendingInvite.ContactName}."
+                : $"Built packet-authored Messenger reject payload for {pendingInvite.ContactName}.";
+            return true;
+        }
+
+        internal bool TryBuildPacketAvatarPayload(
+            string participantToken,
+            Func<LoginAvatarLook> localAvatarLookResolver,
+            int? slotOverride,
+            out byte[] payload,
+            out string message)
+        {
+            payload = null;
+            message = null;
+
+            if (!TryResolveParticipantDescriptor(participantToken, localAvatarLookResolver, out MessengerPacketParticipantDescriptor participant, out message))
+            {
+                return false;
+            }
+
+            if (participant.AvatarLook == null)
+            {
+                message = $"Messenger avatar payload for {participant.Name} requires AvatarLook data.";
+                return false;
+            }
+
+            payload = MessengerPacketCodec.BuildAvatarPayload(slotOverride ?? participant.SlotIndex, participant.AvatarLook);
+            message = $"Built packet-authored Messenger avatar payload for {participant.Name} at slot {(slotOverride ?? participant.SlotIndex)}.";
+            return true;
+        }
+
+        internal bool TryBuildPacketEnterPayload(
+            string participantToken,
+            Func<LoginAvatarLook> localAvatarLookResolver,
+            int? slotOverride,
+            int? channelOverride,
+            bool? isNewOverride,
+            out byte[] payload,
+            out string message)
+        {
+            payload = null;
+            message = null;
+
+            if (!TryResolveParticipantDescriptor(participantToken, localAvatarLookResolver, out MessengerPacketParticipantDescriptor participant, out message))
+            {
+                return false;
+            }
+
+            payload = MessengerPacketCodec.BuildEnterPayload(
+                slotOverride ?? participant.SlotIndex,
+                participant.Name,
+                channelOverride ?? participant.Channel,
+                isNewOverride ?? !participant.IsCurrentlyInRoom,
+                participant.AvatarLook);
+            message = $"Built packet-authored Messenger enter payload for {participant.Name} at slot {(slotOverride ?? participant.SlotIndex)}, CH {(channelOverride ?? participant.Channel)}.";
+            return true;
+        }
+
+        internal bool TryBuildPacketMigratedPayload(
+            Func<LoginAvatarLook> localAvatarLookResolver,
+            out byte[] payload,
+            out string message)
+        {
+            payload = null;
+            message = null;
+
+            MessengerMigratedParticipantPacket[] participants = new MessengerMigratedParticipantPacket[MaxParticipants];
+            for (int slotIndex = 0; slotIndex < MaxParticipants; slotIndex++)
+            {
+                MessengerParticipantState participant = GetParticipantAtSlot(slotIndex);
+                if (participant == null)
+                {
+                    participants[slotIndex] = new MessengerMigratedParticipantPacket(slotIndex, 0, string.Empty, 1, null);
+                    continue;
+                }
+
+                LoginAvatarLook avatarLook = participant.AvatarLook;
+                if (participant.IsLocalPlayer && avatarLook == null)
+                {
+                    avatarLook = localAvatarLookResolver?.Invoke();
+                }
+
+                participants[slotIndex] = new MessengerMigratedParticipantPacket(
+                    slotIndex,
+                    participant.IsOnline ? (byte)2 : (byte)1,
+                    participant.IsOnline ? participant.Name : string.Empty,
+                    participant.Channel,
+                    participant.IsOnline ? avatarLook : null);
+            }
+
+            payload = MessengerPacketCodec.BuildMigratedPayload(participants);
+            message = $"Built packet-authored Messenger migrated payload for {_participants.Count} active participant(s).";
+            return true;
+        }
+
+        internal bool TryBuildPacketSelfEnterResultPayload(int? slotOverride, out byte[] payload, out string message)
+        {
+            payload = null;
+            message = null;
+
+            MessengerParticipantState localParticipant = GetLocalParticipant();
+            if (slotOverride == null && localParticipant == null)
+            {
+                message = "Messenger self-enter-result payload needs a local Messenger participant or an explicit slot.";
+                return false;
+            }
+
+            int slotIndex = slotOverride ?? localParticipant.SlotIndex;
+            payload = MessengerPacketCodec.BuildSelfEnterResultPayload(slotIndex);
+            message = $"Built packet-authored Messenger self-enter-result payload for slot {slotIndex}.";
+            return true;
         }
 
         public string WhisperSelected()
@@ -1084,6 +1224,17 @@ namespace HaCreator.MapSimulator.Interaction
         {
             TryCompleteDeferredDelete(tickCount);
 
+            if (_incomingInvite != null
+                && _incomingInvite.PromptExpireTick != int.MinValue
+                && tickCount >= _incomingInvite.PromptExpireTick)
+            {
+                string expiredContactName = _incomingInvite.ContactName;
+                _incomingInvite = null;
+                _lastActionSummary = $"Messenger invite from {expiredContactName} expired after the FadeYesNo lifetime elapsed.";
+                RecordPacketSummary($"Expired simulated Messenger invite prompt from {expiredContactName} after {InvitePromptLifetimeMs} ms.");
+                NotifyIncomingInvitePromptChanged();
+            }
+
             if (_pendingInvite != null && tickCount >= _pendingInvite.ResolveAtTick)
             {
                 ResolvePendingInvite(_pendingInvite.WillAccept, packetDriven: true);
@@ -1358,6 +1509,68 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return _participants[0];
+        }
+
+        private bool TryResolveParticipantDescriptor(
+            string participantToken,
+            Func<LoginAvatarLook> localAvatarLookResolver,
+            out MessengerPacketParticipantDescriptor participant,
+            out string message)
+        {
+            participant = default;
+            message = null;
+
+            string normalizedToken = NormalizeParticipantName(participantToken);
+            MessengerParticipantState localParticipant = GetLocalParticipant();
+            if (normalizedToken == null
+                || string.Equals(normalizedToken, "self", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "local", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedToken, "player", StringComparison.OrdinalIgnoreCase))
+            {
+                if (localParticipant == null)
+                {
+                    message = "Messenger packet helper could not resolve the local player.";
+                    return false;
+                }
+
+                participant = new MessengerPacketParticipantDescriptor(
+                    localParticipant.Name,
+                    localParticipant.SlotIndex,
+                    Math.Max(1, localParticipant.Channel),
+                    localAvatarLookResolver?.Invoke() ?? localParticipant.AvatarLook,
+                    localParticipant.IsOnline,
+                    true);
+                return true;
+            }
+
+            int participantIndex = FindParticipantIndex(normalizedToken);
+            if (participantIndex >= 0)
+            {
+                MessengerParticipantState existingParticipant = _participants[participantIndex];
+                participant = new MessengerPacketParticipantDescriptor(
+                    existingParticipant.Name,
+                    existingParticipant.SlotIndex,
+                    Math.Max(1, existingParticipant.Channel),
+                    existingParticipant.AvatarLook,
+                    existingParticipant.IsOnline,
+                    true);
+                return true;
+            }
+
+            if (_contacts.TryGetValue(normalizedToken, out MessengerContactState contact))
+            {
+                participant = new MessengerPacketParticipantDescriptor(
+                    contact.Name,
+                    FindFirstEmptyRemoteSlot() is int emptyRemoteSlot && emptyRemoteSlot >= 1 ? emptyRemoteSlot : 1,
+                    Math.Max(1, contact.Channel),
+                    contact.AvatarLook,
+                    contact.IsOnline,
+                    false);
+                return true;
+            }
+
+            message = $"No simulator Messenger participant or contact named {normalizedToken} is available.";
+            return false;
         }
 
         private int FindFirstEmptyRemoteSlot()
@@ -2109,7 +2322,8 @@ namespace HaCreator.MapSimulator.Interaction
             bool WillAccept,
             byte InviteType = 0,
             int InviteSequence = 0,
-            bool SkipBlacklistAutoReject = false);
+            bool SkipBlacklistAutoReject = false,
+            int PromptExpireTick = int.MinValue);
 
         private sealed record MessengerParticipantState
         {
@@ -2147,6 +2361,14 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
         }
+
+        private readonly record struct MessengerPacketParticipantDescriptor(
+            string Name,
+            int SlotIndex,
+            int Channel,
+            LoginAvatarLook AvatarLook,
+            bool IsOnline,
+            bool IsCurrentlyInRoom);
 
         private sealed class MessengerLogEntryState
         {

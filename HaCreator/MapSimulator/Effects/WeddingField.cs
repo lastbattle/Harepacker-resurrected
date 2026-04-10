@@ -20,6 +20,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.UI;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 
@@ -86,6 +87,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int PacketTypeTemporaryStatSet = 225;
         private const int PacketTypeTemporaryStatReset = 226;
         private const int PacketTypeGuildNameChanged = 228;
+        private const int PacketTypeGuildMarkChanged = 229;
         private const int PacketTypeCoupleRecordAdd = -1101;
         private const int PacketTypeCoupleRecordRemove = -1102;
         private const int PacketTypeFriendRecordAdd = -1103;
@@ -186,7 +188,8 @@ namespace HaCreator.MapSimulator.Effects
 
 
         #region Public Properties
-        public bool IsActive => _isActive || IsWeddingPhotoSceneOwnerActive;
+        internal bool HasPresentationOwner => _isActive || IsWeddingPhotoSceneOwnerActive;
+        public bool IsActive => HasPresentationOwner;
         public bool HasWeddingPacketOwner => _isActive;
         public bool IsWeddingPhotoSceneOwnerActive { get; private set; }
         public string WeddingPhotoSceneOwnerDescription { get; private set; }
@@ -372,6 +375,8 @@ namespace HaCreator.MapSimulator.Effects
                         return TryApplyRemoteTemporaryStatResetPacket(payload, out errorMessage);
                     case PacketTypeGuildNameChanged:
                         return TryApplyRemoteGuildNameChangedPacket(payload, out errorMessage);
+                    case PacketTypeGuildMarkChanged:
+                        return TryApplyRemoteGuildMarkChangedPacket(payload, out errorMessage);
                     case PacketTypeCoupleRecordAdd:
                     case PacketTypeFriendRecordAdd:
                     case PacketTypeMarriageRecordAdd:
@@ -1322,6 +1327,28 @@ namespace HaCreator.MapSimulator.Effects
             return true;
         }
 
+        private bool TryApplyRemoteGuildMarkChangedPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseGuildMarkChanged(payload, out RemoteUserGuildMarkChangedPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
+            {
+                return false;
+            }
+
+            ApplyParticipantGuildMarkChanged(
+                participant,
+                packet.MarkBackgroundId,
+                packet.MarkBackgroundColor,
+                packet.MarkId,
+                packet.MarkColor);
+            return true;
+        }
+
         private bool TryApplyRemoteItemEffectPacket(byte[] payload, out string errorMessage)
         {
             errorMessage = null;
@@ -1528,6 +1555,24 @@ namespace HaCreator.MapSimulator.Effects
             participant.Build.HasAuthoritativeProfileGuild = true;
         }
 
+        private static void ApplyParticipantGuildMarkChanged(
+            WeddingRemoteParticipant participant,
+            int markBackgroundId,
+            int markBackgroundColor,
+            int markId,
+            int markColor)
+        {
+            if (participant?.Build == null)
+            {
+                return;
+            }
+
+            participant.Build.GuildMarkBackgroundId = markBackgroundId > 0 ? markBackgroundId : null;
+            participant.Build.GuildMarkBackgroundColor = markBackgroundColor;
+            participant.Build.GuildMarkId = markId > 0 ? markId : null;
+            participant.Build.GuildMarkColor = markColor;
+        }
+
         private bool TryResolveParticipantForTemporaryStats(int characterId, out WeddingRemoteParticipant participant, out string errorMessage)
         {
             participant = null;
@@ -1626,6 +1671,11 @@ namespace HaCreator.MapSimulator.Effects
                 destination.GuildName = source.GuildName ?? string.Empty;
                 destination.HasAuthoritativeProfileGuild = true;
             }
+
+            destination.GuildMarkBackgroundId = source.GuildMarkBackgroundId;
+            destination.GuildMarkBackgroundColor = source.GuildMarkBackgroundColor;
+            destination.GuildMarkId = source.GuildMarkId;
+            destination.GuildMarkColor = source.GuildMarkColor;
         }
 
         private static bool TryDecodeRemoteSpawnPacket(byte[] payload, out WeddingRemoteSpawnPacket packet, out string errorMessage)
@@ -1911,6 +1961,7 @@ namespace HaCreator.MapSimulator.Effects
                 PacketTypeTemporaryStatSet => "tempset (225)",
                 PacketTypeTemporaryStatReset => "tempreset (226)",
                 PacketTypeGuildNameChanged => "guildnamechanged (228)",
+                PacketTypeGuildMarkChanged => "guildmarkchanged (229)",
                 PacketTypeCoupleRecordAdd => "couplerecordadd (-1101)",
                 PacketTypeCoupleRecordRemove => "couplerecordremove (-1102)",
                 PacketTypeFriendRecordAdd => "friendrecordadd (-1103)",
@@ -2468,7 +2519,7 @@ namespace HaCreator.MapSimulator.Effects
                 string viewport = WeddingPhotoSceneViewport.HasValue
                     ? $" viewport={WeddingPhotoSceneViewport.Value.Left},{WeddingPhotoSceneViewport.Value.Top},{WeddingPhotoSceneViewport.Value.Right},{WeddingPhotoSceneViewport.Value.Bottom}"
                     : " viewport=<none>";
-                return $"Wedding photo scene owner map {_mapId}: {WeddingPhotoSceneOwnerDescription}.{viewport} Packet owner remains CField_WeddingPhoto, not CField_Wedding::OnPacket.";
+                return $"Wedding photo scene owner map {_mapId}: {WeddingPhotoSceneOwnerDescription}.{viewport} coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, scene={scene}. Packet owner remains CField_WeddingPhoto, not CField_Wedding::OnPacket.";
             }
 
             return $"Wedding map {_mapId}: step {_currentStep}, role {role}, dialog {dialog}, scene {scene}, coupleActors={_participantActors.Count}, audienceActors={_audienceActors.Count}, remoteLoaded={_loadedExternalRemoteActorIds.Count}, remotePending={_pendingExternalRemoteActorLoadIds.Count}, groom {groomPosition}, bride {bridePosition}, last packet {lastPacket}, last remote packet {lastRemotePacket}.";
@@ -2512,7 +2563,7 @@ namespace HaCreator.MapSimulator.Effects
 
         {
 
-            if (!_isActive) return;
+            if (!HasPresentationOwner) return;
             UpdateRemoteParticipantMovementSnapshots(currentTimeMs);
             AdvanceExternalRemoteActorLoadLifecycle(currentTimeMs);
 
@@ -2590,7 +2641,7 @@ namespace HaCreator.MapSimulator.Effects
             int mapShiftX, int mapShiftY, int centerX, int centerY, int tickCount,
             Texture2D pixelTexture, SpriteFont font)
         {
-            if (!_isActive) return;
+            if (!HasPresentationOwner) return;
 
 
             DrawCeremonyOverlay(spriteBatch);
@@ -3177,14 +3228,84 @@ namespace HaCreator.MapSimulator.Effects
                 }
 
                 Vector2 textSize = font.MeasureString(line);
+                Texture2D guildMarkBackground = null;
+                Texture2D guildMark = null;
+                bool drawGuildMark = i == 0
+                    && !string.IsNullOrWhiteSpace(participant.Build?.GuildName)
+                    && TryResolveParticipantGuildMarkTextures(spriteBatch.GraphicsDevice, participant, out guildMarkBackground, out guildMark);
+                float guildMarkWidth = drawGuildMark
+                    ? Math.Max(guildMarkBackground?.Width ?? 0, guildMark?.Width ?? 0)
+                    : 0f;
+                float totalWidth = textSize.X + (drawGuildMark ? guildMarkWidth + 4f : 0f);
                 Vector2 textPosition = new(
-                    screenX - (textSize.X * 0.5f),
+                    screenX - (totalWidth * 0.5f) + (drawGuildMark ? guildMarkWidth + 4f : 0f),
                     labelTopY + (i * (font.LineSpacing + ParticipantLabelLineSpacing)));
                 Color textColor = i == labelLines.Count - 1
                     ? new Color(255, 242, 178)
                     : new Color(176, 226, 255);
+                if (drawGuildMark)
+                {
+                    float iconLeft = textPosition.X - guildMarkWidth - 4f;
+                    DrawGuildMarkIcon(
+                        spriteBatch,
+                        guildMarkBackground,
+                        guildMark,
+                        new Vector2(iconLeft, textPosition.Y + ((font.LineSpacing - Math.Max(guildMarkBackground?.Height ?? 0, guildMark?.Height ?? 0)) * 0.5f)));
+                }
+
                 DrawOutlinedText(spriteBatch, font, line, textPosition, Color.Black, textColor);
             }
+        }
+
+        private static void DrawGuildMarkIcon(
+            SpriteBatch spriteBatch,
+            Texture2D backgroundTexture,
+            Texture2D markTexture,
+            Vector2 position)
+        {
+            if (backgroundTexture != null)
+            {
+                spriteBatch.Draw(backgroundTexture, position, Color.White);
+            }
+
+            if (markTexture == null)
+            {
+                return;
+            }
+
+            if (backgroundTexture == null)
+            {
+                spriteBatch.Draw(markTexture, position, Color.White);
+                return;
+            }
+
+            Vector2 markPosition = new(
+                position.X + ((backgroundTexture.Width - markTexture.Width) * 0.5f),
+                position.Y + ((backgroundTexture.Height - markTexture.Height) * 0.5f));
+            spriteBatch.Draw(markTexture, markPosition, Color.White);
+        }
+
+        private static bool TryResolveParticipantGuildMarkTextures(
+            GraphicsDevice device,
+            WeddingRemoteParticipant participant,
+            out Texture2D backgroundTexture,
+            out Texture2D markTexture)
+        {
+            backgroundTexture = null;
+            markTexture = null;
+            CharacterBuild build = participant?.Build;
+            if (device == null
+                || build?.GuildMarkBackgroundId is not int backgroundId || backgroundId <= 0
+                || build.GuildMarkId is not int markId || markId <= 0)
+            {
+                return false;
+            }
+
+            int backgroundColor = build.GuildMarkBackgroundColor ?? 1;
+            int markColor = build.GuildMarkColor ?? 1;
+            backgroundTexture = GuildMarkTextureCache.GetBackgroundTexture(device, backgroundId, backgroundColor);
+            markTexture = GuildMarkTextureCache.GetMarkTexture(device, markId, markColor);
+            return backgroundTexture != null || markTexture != null;
         }
 
         private static void DrawParticipantPacketOwnedItemEffect(

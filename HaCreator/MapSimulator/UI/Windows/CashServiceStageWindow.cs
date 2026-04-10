@@ -1038,13 +1038,30 @@ namespace HaCreator.MapSimulator.UI
                     ? buyCharacterMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResIncBuyCharacterCountDone", packetPayload),
                 116 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResIncBuyCharacterCountFailed"),
-                119 => BuildCashSimpleResult("CCashShop::OnCashItemResMoveLtoSDone", packetPayload),
+                119 => TryApplyCashMoveLtoSDone(packetPayload, out string moveLtoSMessage)
+                    ? moveLtoSMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResMoveLtoSDone", packetPayload),
                 120 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResMoveLtoSFailed"),
-                121 => BuildCashSimpleResult("CCashShop::OnCashItemResMoveStoLDone", packetPayload),
+                121 => TryApplyCashMoveStoLDone(packetPayload, out string moveStoLMessage)
+                    ? moveStoLMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResMoveStoLDone", packetPayload),
                 122 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResMoveStoLFailed"),
-                123 => BuildCashSimpleResult("CCashShop::OnCashItemResDestroyDone", packetPayload),
+                123 => TryApplyCashDestroyDone(packetPayload, out string destroyDoneMessage)
+                    ? destroyDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResDestroyDone", packetPayload),
                 124 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResDestroyFailed"),
-                125 => BuildCashSimpleResult("CCashShop::OnCashItemResExpireDone", packetPayload),
+                125 => TryApplyCashExpireDone(packetPayload, out string expireDoneMessage)
+                    ? expireDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResExpireDone", packetPayload),
+                -104 => TryApplyCashRelationshipGiftDone(packetPayload, "CCashShop::OnCashItemResCoupleDone", "Couple", out string coupleDoneMessage)
+                    ? coupleDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResCoupleDone", packetPayload),
+                -94 => TryApplyCashRelationshipGiftDone(packetPayload, "CCashShop::OnCashItemResFriendShipDone", "Friendship", out string friendshipDoneMessage)
+                    ? friendshipDoneMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResFriendShipDone", packetPayload),
+                -86 => TryApplyCashFreeCashItemDone(packetPayload, out string freeCashItemMessage)
+                    ? freeCashItemMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResFreeCashItemDone", packetPayload),
                 _ => $"{subtypeLabel} reached CCashShop with {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s) of packet-owned state."
             };
             _cashItemCommoditySerialNumber = _cashPacketCatalogEntries.FirstOrDefault()?.ListingId ?? 0;
@@ -1204,21 +1221,24 @@ namespace HaCreator.MapSimulator.UI
             List<PacketCatalogEntry> entries = new();
             for (int i = 0; i < Math.Max(0, (int)giftCount); i++)
             {
-                if (!TryReadGiftListPacketSnapshot(reader, out GiftListPacketSnapshot snapshot))
+                if (!TryReadGiftListPacketSnapshot(reader, i + 1, out GiftListPacketSnapshot snapshot))
                 {
                     return false;
                 }
 
-                entries.Add(BuildGiftListPacketEntry(snapshot, i + 1));
+                entries.Add(BuildGiftListPacketEntry(snapshot));
             }
 
             _cashGiftPacketEntries.Clear();
             _cashGiftPacketEntries.AddRange(entries);
             ReplaceCashPacketCatalogEntries("Packet gifts", "Gift", entries);
+            _cashGiftLastSummary = entries.Count > 0
+                ? $"Gift inbox owns {entries.Count.ToString(CultureInfo.InvariantCulture)} decoded GW_GiftList row(s). {entries[0].Detail}"
+                : $"Gift inbox owns {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} decoded GW_GiftList row(s).";
             _noticeState = entries.Count > 0
-                ? $"Gift inbox refreshed with {entries.Count.ToString(CultureInfo.InvariantCulture)} gift row(s). {entries[0].Detail}"
+                ? _cashGiftLastSummary
                 : $"Gift inbox refreshed with {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} gift row(s).";
-            message = $"CCashShop::OnCashItemResLoadGiftDone loaded {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} gift row(s) into the dedicated receive-gift flow.";
+            message = $"CCashShop::OnCashItemResLoadGiftDone decoded {Math.Max(0, (int)giftCount).ToString(CultureInfo.InvariantCulture)} GW_GiftList row(s) into the dedicated receive-gift flow.";
             return true;
         }
 
@@ -1731,6 +1751,110 @@ namespace HaCreator.MapSimulator.UI
                 $"Rebate removed locker serial {serialNumber.ToString(CultureInfo.InvariantCulture)} and returned {prepaidRefund.ToString("N0", CultureInfo.InvariantCulture)} NX Prepaid.";
             message = $"CCashShop::OnCashItemResRebateDone updated CCSWnd_Locker with {_noticeState}";
             return true;
+        }
+
+        private bool TryApplyCashMoveLtoSDone(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < 1 + sizeof(short))
+            {
+                return false;
+            }
+
+            int inventorySlot = Math.Max(0, (int)BitConverter.ToInt16(payload, 1));
+            _noticeState = inventorySlot > 0
+                ? $"CCSWnd_Inventory moved the selected locker cash item into inventory slot {inventorySlot.ToString(CultureInfo.InvariantCulture)}."
+                : "CCSWnd_Inventory moved the selected locker cash item out of the locker.";
+            message = $"CCashShop::OnCashItemResMoveLtoSDone applied the locker-to-inventory mutation for {(inventorySlot > 0 ? $"slot {inventorySlot.ToString(CultureInfo.InvariantCulture)}" : "the selected cash item")}.";
+            return true;
+        }
+
+        private bool TryApplyCashMoveStoLDone(byte[] payload, out string message)
+        {
+            return TryApplyCashLockerAppendFromPacket(
+                payload,
+                "Moved to locker",
+                "CCSWnd_Locker",
+                "Moved",
+                "CCashShop::OnCashItemResMoveStoLDone",
+                "moved one decoded GW_CashItemInfo body back into CCSWnd_Locker",
+                out message);
+        }
+
+        private bool TryApplyCashDestroyDone(byte[] payload, out string message)
+        {
+            return TryApplyCashLockerRemovalBySerial(
+                payload,
+                "Destroyed",
+                "CCashShop::OnCashItemResDestroyDone",
+                out message);
+        }
+
+        private bool TryApplyCashExpireDone(byte[] payload, out string message)
+        {
+            return TryApplyCashLockerRemovalBySerial(
+                payload,
+                "Expired",
+                "CCashShop::OnCashItemResExpireDone",
+                out message);
+        }
+
+        private bool TryApplyCashRelationshipGiftDone(byte[] payload, string ownerName, string relationshipLabel, out string message)
+        {
+            message = null;
+            if (!TryReadCashItemInfoPacketSnapshotFromPayload(payload, out CashItemInfoPacketSnapshot snapshot))
+            {
+                return false;
+            }
+
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            stream.Position = 1 + 55;
+            string recipient = TryReadMapleString(reader, out string decodedRecipient)
+                ? SanitizePacketString(decodedRecipient, "gift recipient")
+                : string.Empty;
+            int itemId = stream.Length - stream.Position >= sizeof(int)
+                ? Math.Max(0, reader.ReadInt32())
+                : Math.Max(0, snapshot.ItemId);
+            int quantity = stream.Length - stream.Position >= sizeof(short)
+                ? Math.Max(1, (int)reader.ReadInt16())
+                : Math.Max(1, snapshot.Quantity);
+
+            PacketCatalogEntry lockerEntry = BuildCashItemInfoPacketEntry(snapshot, $"{relationshipLabel} gift", "CCSWnd_Locker", relationshipLabel);
+            UpsertCashLockerPacketEntry(lockerEntry);
+            _cashLockerItemCount = Math.Max(_cashLockerItemCount, _cashLockerPacketEntries.Count);
+            AppendCashPacketCatalogEntry("Packet gifts", "Gift", lockerEntry);
+
+            string itemTitle = ResolveCashStageItemTitle(itemId, snapshot.CommodityId, "Item");
+            _cashGiftLastSummary =
+                $"{relationshipLabel} gift sent to {(string.IsNullOrWhiteSpace(recipient) ? "the selected recipient" : recipient)} with {itemTitle} x{quantity.ToString(CultureInfo.InvariantCulture)}; locker row {DescribeCashItemInfoPacketSnapshot(snapshot, includeSerialNumber: true)}.";
+            _cashGiftPacketEntries.Insert(0, new PacketCatalogEntry
+            {
+                Title = $"{relationshipLabel} gift",
+                Detail = _cashGiftLastSummary,
+                Seller = string.IsNullOrWhiteSpace(recipient) ? "CCashShop" : recipient,
+                PriceLabel = quantity.ToString(CultureInfo.InvariantCulture),
+                StateLabel = relationshipLabel,
+                SerialNumber = snapshot.SerialNumber,
+                ListingId = snapshot.CommodityId,
+                ItemId = itemId,
+                Quantity = quantity
+            });
+            _noticeState = _cashGiftLastSummary;
+            message = $"{ownerName} appended one decoded GW_CashItemInfo body to CCSWnd_Locker and confirmed {_cashGiftLastSummary}";
+            return true;
+        }
+
+        private bool TryApplyCashFreeCashItemDone(byte[] payload, out string message)
+        {
+            return TryApplyCashLockerAppendFromPacket(
+                payload,
+                "Free cash item",
+                "CCSWnd_Locker",
+                "Free",
+                "CCashShop::OnCashItemResFreeCashItemDone",
+                "appended one decoded GW_CashItemInfo body to CCSWnd_Locker",
+                out message);
         }
 
         private bool TryApplyCashCounterUpdate(byte[] payload, string ownerName, int maxValue, Action<int> applyValue, out string message)
@@ -2558,7 +2682,7 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        private static bool TryReadGiftListPacketSnapshot(BinaryReader reader, out GiftListPacketSnapshot snapshot)
+        private static bool TryReadGiftListPacketSnapshot(BinaryReader reader, int rowIndex, out GiftListPacketSnapshot snapshot)
         {
             snapshot = null;
             if (reader == null)
@@ -2577,7 +2701,8 @@ namespace HaCreator.MapSimulator.UI
                 SerialNumber = reader.ReadInt64(),
                 ItemId = Math.Max(0, reader.ReadInt32()),
                 Sender = ReadFixedPacketString(reader, 13),
-                Message = ReadFixedPacketString(reader, 73)
+                Message = ReadFixedPacketString(reader, 73),
+                RowIndex = Math.Max(1, rowIndex)
             };
             return true;
         }
@@ -2620,15 +2745,16 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private static PacketCatalogEntry BuildGiftListPacketEntry(GiftListPacketSnapshot snapshot, int rowNumber)
+        private static PacketCatalogEntry BuildGiftListPacketEntry(GiftListPacketSnapshot snapshot)
         {
             int itemId = Math.Max(0, snapshot?.ItemId ?? 0);
             string sender = SanitizePacketString(snapshot?.Sender, "Unknown sender");
             string message = SanitizePacketString(snapshot?.Message, string.Empty);
-            string title = ResolveCashStageGiftRowTitle(itemId, Math.Max(1, rowNumber), "Gift");
+            int rowNumber = Math.Max(1, snapshot?.RowIndex ?? 1);
+            string title = ResolveCashStageGiftRowTitle(itemId, rowNumber, "Gift");
             string detail = string.IsNullOrWhiteSpace(message)
-                ? $"Gift row {Math.Max(1, rowNumber).ToString(CultureInfo.InvariantCulture)} from {sender}."
-                : $"Gift row {Math.Max(1, rowNumber).ToString(CultureInfo.InvariantCulture)} from {sender}: {message}";
+                ? $"GW_GiftList row {rowNumber.ToString(CultureInfo.InvariantCulture)} from {sender} accepts through opcode {(snapshot?.AcceptRequestOpcode ?? 154).ToString(CultureInfo.InvariantCulture)}."
+                : $"GW_GiftList row {rowNumber.ToString(CultureInfo.InvariantCulture)} from {sender}: {message} (accept opcode {(snapshot?.AcceptRequestOpcode ?? 154).ToString(CultureInfo.InvariantCulture)}).";
             return new PacketCatalogEntry
             {
                 Title = title,
@@ -2639,6 +2765,7 @@ namespace HaCreator.MapSimulator.UI
                     : $"Row {Math.Max(1, rowNumber).ToString(CultureInfo.InvariantCulture)}",
                 StateLabel = "Gift",
                 SerialNumber = snapshot?.SerialNumber ?? 0,
+                ListingId = rowNumber,
                 ItemId = itemId,
                 Quantity = 1
             };
@@ -2772,6 +2899,78 @@ namespace HaCreator.MapSimulator.UI
             {
                 _cashLockerPacketEntries.Insert(0, entry);
             }
+        }
+
+        private static bool TryReadCashItemInfoPacketSnapshotFromPayload(byte[] payload, out CashItemInfoPacketSnapshot snapshot)
+        {
+            snapshot = null;
+            if (payload == null || payload.Length < 1 + 55)
+            {
+                return false;
+            }
+
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            _ = reader.ReadByte();
+            return TryReadCashItemInfoPacketSnapshot(reader, out snapshot);
+        }
+
+        private bool TryApplyCashLockerAppendFromPacket(
+            byte[] payload,
+            string titlePrefix,
+            string seller,
+            string stateLabel,
+            string ownerName,
+            string successDetail,
+            out string message)
+        {
+            message = null;
+            if (!TryReadCashItemInfoPacketSnapshotFromPayload(payload, out CashItemInfoPacketSnapshot snapshot))
+            {
+                return false;
+            }
+
+            _cashLockerItemCount = Math.Max(0, _cashLockerItemCount + 1);
+            PacketCatalogEntry entry = BuildCashItemInfoPacketEntry(snapshot, titlePrefix, seller, stateLabel);
+            UpsertCashLockerPacketEntry(entry);
+            AppendCashPacketCatalogEntry("Packet purchase", "Buy", entry);
+            string snapshotDetail = DescribeCashItemInfoPacketSnapshot(snapshot, includeSerialNumber: true);
+            _noticeState = $"{titlePrefix} updated CCSWnd_Locker (now {_cashLockerItemCount.ToString(CultureInfo.InvariantCulture)} item(s)). {snapshotDetail}";
+            message = $"{ownerName} {successDetail}: {snapshotDetail}";
+            return true;
+        }
+
+        private bool TryApplyCashLockerRemovalBySerial(byte[] payload, string actionLabel, string ownerName, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < 1 + sizeof(long))
+            {
+                return false;
+            }
+
+            long serialNumber = BitConverter.ToInt64(payload, 1);
+            PacketCatalogEntry existingEntry = FindCashLockerPacketEntryBySerialNumber(serialNumber);
+            string itemTitle = existingEntry != null
+                ? existingEntry.Title
+                : serialNumber > 0
+                    ? $"Serial {serialNumber.ToString(CultureInfo.InvariantCulture)}"
+                    : "the selected locker item";
+            _cashLockerItemCount = Math.Max(0, _cashLockerItemCount - 1);
+            RemoveCashLockerPacketEntryBySerialNumber(serialNumber);
+            _noticeState = $"{actionLabel} removed {itemTitle} from CCSWnd_Locker.";
+            message = $"{ownerName} removed {(serialNumber > 0 ? $"locker serial {serialNumber.ToString(CultureInfo.InvariantCulture)}" : "the selected locker row")} from CCSWnd_Locker.";
+            return true;
+        }
+
+        private PacketCatalogEntry FindCashLockerPacketEntryBySerialNumber(long serialNumber)
+        {
+            if (serialNumber <= 0)
+            {
+                return null;
+            }
+
+            return _cashLockerPacketEntries.FirstOrDefault(entry => entry.SerialNumber == serialNumber)
+                ?? _cashPacketCatalogEntries.FirstOrDefault(entry => entry.SerialNumber == serialNumber);
         }
 
         private void RemoveCashLockerPacketEntryBySerialNumber(long serialNumber)

@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal enum PacketFieldFeedbackPacketKind
     {
+        Clock = 1000,
         GroupMessage = 150,
         Whisper = 151,
         CoupleMessage = 152,
@@ -58,6 +59,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<IReadOnlyList<PacketFieldSwindleWarningEntry>> ResolveSwindleWarnings { get; init; }
         internal Action<PacketFieldBossTimerVisualState> ShowBossTimerClock { get; init; }
         internal Action ClearBossTimerClock { get; init; }
+        internal Action<PacketFieldClockVisualState> ShowFieldClock { get; init; }
+        internal Action ClearFieldClock { get; init; }
     }
 
     internal sealed record PacketFieldSwindleWarningEntry(
@@ -70,6 +73,31 @@ namespace HaCreator.MapSimulator.Interaction
         string Label,
         int DurationSeconds,
         int StartedAtTick);
+
+    internal enum PacketFieldClockVisualKind
+    {
+        Realtime,
+        Countdown
+    }
+
+    internal enum PacketFieldClockVisualVariant
+    {
+        Default,
+        Event,
+        CakePieSmall,
+        CakePieLarge
+    }
+
+    internal sealed record PacketFieldClockVisualState(
+        PacketFieldClockVisualKind Kind,
+        PacketFieldClockVisualVariant Variant,
+        int StartedAtTick,
+        int DurationSeconds,
+        bool IsPm,
+        int Hour,
+        int Minute,
+        int Second,
+        string Label);
 
     internal sealed class PacketFieldFeedbackRuntime
     {
@@ -130,6 +158,8 @@ namespace HaCreator.MapSimulator.Interaction
         private string _lastJukeboxSummary = string.Empty;
         private string _lastBossTimerSummary = string.Empty;
         private PacketFieldBossTimerVisualState _bossTimerVisualState;
+        private string _lastFieldClockSummary = string.Empty;
+        private PacketFieldClockVisualState _clockVisualState;
         private int _nextSwindleWarningTick;
         private BossHpState _bossHpState;
         internal void Initialize(GraphicsDevice graphicsDevice)
@@ -155,6 +185,8 @@ namespace HaCreator.MapSimulator.Interaction
             _lastJukeboxSummary = string.Empty;
             _lastBossTimerSummary = string.Empty;
             _bossTimerVisualState = null;
+            _lastFieldClockSummary = string.Empty;
+            _clockVisualState = null;
             _nextSwindleWarningTick = 0;
         }
 
@@ -169,6 +201,13 @@ namespace HaCreator.MapSimulator.Interaction
                 && GetBossTimerRemainingSeconds(_bossTimerVisualState, currentTick) <= 0)
             {
                 _bossTimerVisualState = null;
+            }
+
+            if (_clockVisualState != null
+                && _clockVisualState.Kind == PacketFieldClockVisualKind.Countdown
+                && GetFieldClockRemainingSeconds(_clockVisualState, currentTick) <= 0)
+            {
+                _clockVisualState = null;
             }
         }
 
@@ -189,6 +228,9 @@ namespace HaCreator.MapSimulator.Interaction
             string bossTimerStatus = string.IsNullOrWhiteSpace(_lastBossTimerSummary)
                 ? "bosstimer=none"
                 : $"bosstimer=\"{TrimForStatus(_lastBossTimerSummary)}\"";
+            string clockStatus = string.IsNullOrWhiteSpace(_lastFieldClockSummary)
+                ? "clock=none"
+                : $"clock=\"{TrimForStatus(_lastFieldClockSummary)}\"";
 
             return string.Join(
                 "; ",
@@ -201,6 +243,7 @@ namespace HaCreator.MapSimulator.Interaction
                 string.IsNullOrWhiteSpace(_lastTransferFailureMessage) ? "transfer=none" : $"transfer=\"{TrimForStatus(_lastTransferFailureMessage)}\"",
                 string.IsNullOrWhiteSpace(_lastJukeboxSummary) ? "jukebox=none" : $"jukebox=\"{TrimForStatus(_lastJukeboxSummary)}\"",
                 bossTimerStatus,
+                clockStatus,
                 obstacleStatus,
                 bossHpStatus);
         }
@@ -287,6 +330,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return kind switch
                 {
+                    PacketFieldFeedbackPacketKind.Clock => TryApplyClock(payload, currentTick, callbacks, out message),
                     PacketFieldFeedbackPacketKind.GroupMessage => TryApplyGroupMessage(payload, currentTick, callbacks, out message),
                     PacketFieldFeedbackPacketKind.Whisper => TryApplyWhisper(payload, currentTick, callbacks, out message),
                     PacketFieldFeedbackPacketKind.CoupleMessage => TryApplyCoupleMessage(payload, currentTick, callbacks, out message),
@@ -515,6 +559,59 @@ namespace HaCreator.MapSimulator.Interaction
             using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
             writer.Write(mode);
             writer.Write(value);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static byte[] BuildClockRealtimePayload(byte hour, byte minute, byte second)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)1);
+            writer.Write(hour);
+            writer.Write(minute);
+            writer.Write(second);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static byte[] BuildClockCountdownPayload(int durationSeconds)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)2);
+            writer.Write(durationSeconds);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static byte[] BuildClockEventCountdownPayload(bool show, int durationSeconds)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)3);
+            writer.Write(show ? (byte)1 : (byte)0);
+            if (show)
+            {
+                writer.Write(durationSeconds);
+            }
+
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        internal static byte[] BuildClockCakePiePayload(bool show, byte boardType, int durationSeconds)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)100);
+            writer.Write(show ? (byte)1 : (byte)0);
+            if (show)
+            {
+                writer.Write(boardType);
+                writer.Write(durationSeconds);
+            }
+
             writer.Flush();
             return stream.ToArray();
         }
@@ -978,10 +1075,118 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _lastBossTimerSummary = "destroyed";
             _bossTimerVisualState = null;
+            _lastFieldClockSummary = string.Empty;
+            _clockVisualState = null;
             callbacks?.ClearBossTimerClock?.Invoke();
+            callbacks?.ClearFieldClock?.Invoke();
             _statusMessage = "Applied packet-owned destroy-clock teardown.";
             message = _statusMessage;
             return true;
+        }
+
+        private bool TryApplyClock(byte[] payload, int currentTick, PacketFieldFeedbackCallbacks callbacks, out string message)
+        {
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+            if (stream.Length < 1)
+            {
+                message = "Clock payload is empty.";
+                return false;
+            }
+
+            byte mode = reader.ReadByte();
+            switch (mode)
+            {
+                case 0:
+                    {
+                        int durationSeconds = reader.ReadInt32();
+                        _lastFieldClockSummary = durationSeconds == 0
+                            ? "event timer expired"
+                            : $"event timer {Math.Abs(durationSeconds)}s";
+                        _statusMessage = durationSeconds <= 0
+                            ? "Applied packet-owned event-timer expiry update."
+                            : "Applied packet-owned event-timer context update.";
+                        message = _statusMessage;
+                        return true;
+                    }
+                case 1:
+                    {
+                        byte hour = reader.ReadByte();
+                        byte minute = reader.ReadByte();
+                        byte second = reader.ReadByte();
+                        PacketFieldClockVisualState state = CreateRealtimeClockVisualState(hour, minute, second, currentTick);
+                        _clockVisualState = state;
+                        _lastFieldClockSummary = string.Format(
+                            CultureInfo.InvariantCulture,
+                            "{0} {1:00}:{2:00}:{3:00}",
+                            state.IsPm ? "PM" : "AM",
+                            state.Hour,
+                            state.Minute,
+                            state.Second);
+                        callbacks?.ShowFieldClock?.Invoke(state);
+                        _statusMessage = "Applied packet-owned realtime field-clock update.";
+                        message = _statusMessage;
+                        return true;
+                    }
+                case 2:
+                    {
+                        int durationSeconds = reader.ReadInt32();
+                        ApplyCountdownClock(PacketFieldClockVisualVariant.Default, durationSeconds, currentTick, callbacks, "field clock countdown");
+                        _statusMessage = "Applied packet-owned clock countdown.";
+                        message = _statusMessage;
+                        return true;
+                    }
+                case 3:
+                    {
+                        bool show = reader.ReadByte() != 0;
+                        if (!show)
+                        {
+                            _clockVisualState = null;
+                            _lastFieldClockSummary = string.Empty;
+                            callbacks?.ClearFieldClock?.Invoke();
+                            _statusMessage = "Cleared packet-owned event countdown clock.";
+                            message = _statusMessage;
+                            return true;
+                        }
+
+                        int durationSeconds = reader.ReadInt32();
+                        ApplyCountdownClock(PacketFieldClockVisualVariant.Event, durationSeconds, currentTick, callbacks, "event countdown");
+                        _statusMessage = "Applied packet-owned event countdown clock.";
+                        message = _statusMessage;
+                        return true;
+                    }
+                case 100:
+                    {
+                        bool show = reader.ReadByte() != 0;
+                        if (!show)
+                        {
+                            _clockVisualState = null;
+                            _lastFieldClockSummary = string.Empty;
+                            callbacks?.ClearFieldClock?.Invoke();
+                            _statusMessage = "Cleared packet-owned cake-pie timerboard.";
+                            message = _statusMessage;
+                            return true;
+                        }
+
+                        byte boardType = reader.ReadByte();
+                        int durationSeconds = reader.ReadInt32();
+                        PacketFieldClockVisualVariant variant = boardType == 0
+                            ? PacketFieldClockVisualVariant.CakePieSmall
+                            : PacketFieldClockVisualVariant.CakePieLarge;
+                        ApplyCountdownClock(
+                            variant,
+                            durationSeconds,
+                            currentTick,
+                            callbacks,
+                            boardType == 0 ? "cake pie small timerboard" : "cake pie large timerboard");
+                        _statusMessage = "Applied packet-owned cake-pie timerboard.";
+                        message = _statusMessage;
+                        return true;
+                    }
+                default:
+                    message = $"Unsupported clock mode {mode}.";
+                    return false;
+            }
         }
 
         private bool TryApplyBossTimer(
@@ -1086,6 +1291,41 @@ namespace HaCreator.MapSimulator.Interaction
                 currentTick);
             _bossTimerVisualState = state;
             callbacks?.ShowBossTimerClock?.Invoke(state);
+        }
+
+        private void ApplyCountdownClock(
+            PacketFieldClockVisualVariant variant,
+            int durationSeconds,
+            int currentTick,
+            PacketFieldFeedbackCallbacks callbacks,
+            string label)
+        {
+            if (durationSeconds <= 0)
+            {
+                _clockVisualState = null;
+                _lastFieldClockSummary = string.Empty;
+                callbacks?.ClearFieldClock?.Invoke();
+                return;
+            }
+
+            PacketFieldClockVisualState state = new(
+                PacketFieldClockVisualKind.Countdown,
+                variant,
+                currentTick,
+                durationSeconds,
+                false,
+                0,
+                0,
+                0,
+                label);
+            _clockVisualState = state;
+            _lastFieldClockSummary = string.Format(
+                CultureInfo.InvariantCulture,
+                "{0} {1:00}:{2:00}",
+                label,
+                durationSeconds / 60,
+                durationSeconds % 60);
+            callbacks?.ShowFieldClock?.Invoke(state);
         }
 
         private bool TryApplyFieldFadeOutForce(byte[] payload, PacketFieldFeedbackCallbacks callbacks, out string message)
@@ -1728,6 +1968,87 @@ namespace HaCreator.MapSimulator.Interaction
             long elapsedMilliseconds = Math.Max(0, currentTick - state.StartedAtTick);
             long remainingMilliseconds = ((long)Math.Max(0, state.DurationSeconds) * 1000L) - elapsedMilliseconds;
             return (int)Math.Max(0L, remainingMilliseconds / 1000L);
+        }
+
+        private static PacketFieldClockVisualState CreateRealtimeClockVisualState(byte hour, byte minute, byte second, int currentTick)
+        {
+            bool isPm = hour / 12 != 0;
+            int normalizedHour = hour % 12;
+            if (isPm && normalizedHour == 0)
+            {
+                normalizedHour = 12;
+            }
+
+            return new PacketFieldClockVisualState(
+                PacketFieldClockVisualKind.Realtime,
+                PacketFieldClockVisualVariant.Default,
+                currentTick,
+                0,
+                isPm,
+                normalizedHour,
+                Math.Clamp((int)minute, 0, 59),
+                Math.Clamp((int)second, 0, 59),
+                "field clock");
+        }
+
+        private static int GetFieldClockRemainingSeconds(PacketFieldClockVisualState state, int currentTick)
+        {
+            if (state == null || state.Kind != PacketFieldClockVisualKind.Countdown)
+            {
+                return 0;
+            }
+
+            long elapsedMilliseconds = Math.Max(0, currentTick - state.StartedAtTick);
+            long remainingMilliseconds = ((long)Math.Max(0, state.DurationSeconds) * 1000L) - elapsedMilliseconds;
+            return (int)Math.Max(0L, remainingMilliseconds / 1000L);
+        }
+
+        private static (bool IsPm, int Hour, int Minute, int Second) ResolveFieldClockDisplayTime(PacketFieldClockVisualState state, int currentTick)
+        {
+            if (state == null)
+            {
+                return (false, 0, 0, 0);
+            }
+
+            if (state.Kind != PacketFieldClockVisualKind.Realtime)
+            {
+                int remainingSeconds = GetFieldClockRemainingSeconds(state, currentTick);
+                return (false, remainingSeconds / 3600, (remainingSeconds / 60) % 60, remainingSeconds % 60);
+            }
+
+            int hour24 = state.IsPm
+                ? (state.Hour == 12 ? 12 : state.Hour + 12)
+                : (state.Hour == 12 ? 0 : state.Hour);
+            int totalSeconds = (((hour24 * 60) + Math.Max(0, state.Minute)) * 60) + Math.Max(0, state.Second);
+            totalSeconds += Math.Max(0, currentTick - state.StartedAtTick) / 1000;
+            totalSeconds %= 24 * 60 * 60;
+
+            int resolvedHour24 = totalSeconds / 3600;
+            int resolvedMinute = (totalSeconds / 60) % 60;
+            int resolvedSecond = totalSeconds % 60;
+            bool isPm = resolvedHour24 / 12 != 0;
+            int resolvedHour = resolvedHour24 % 12;
+            if (isPm && resolvedHour == 0)
+            {
+                resolvedHour = 12;
+            }
+
+            return (isPm, resolvedHour, resolvedMinute, resolvedSecond);
+        }
+
+        internal static PacketFieldClockVisualState CreateFieldClockVisualStateForTest(byte hour, byte minute, byte second)
+        {
+            return CreateRealtimeClockVisualState(hour, minute, second, 0);
+        }
+
+        internal static int GetFieldClockRemainingSecondsForTest(PacketFieldClockVisualState state, int currentTick)
+        {
+            return GetFieldClockRemainingSeconds(state, currentTick);
+        }
+
+        internal static (bool IsPm, int Hour, int Minute, int Second) ResolveFieldClockDisplayTimeForTest(PacketFieldClockVisualState state, int currentTick)
+        {
+            return ResolveFieldClockDisplayTime(state, currentTick);
         }
 
         private void DrawBossHp(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)

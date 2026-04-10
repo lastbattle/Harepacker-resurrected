@@ -947,6 +947,47 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        public bool TryResolvePacketOwnedQuestDetailRecordText(string token, out string value)
+        {
+            value = null;
+            if (string.IsNullOrWhiteSpace(token) || _questRecordValues.Count == 0)
+            {
+                return false;
+            }
+
+            string normalizedToken = token.Trim();
+            bool hasMatch = false;
+            foreach ((int questId, string recordValue) in _questRecordValues)
+            {
+                if (string.IsNullOrWhiteSpace(recordValue) ||
+                    !TryResolveQuestDetailRecordTokenValue(recordValue, normalizedToken, out string candidateValue) ||
+                    string.IsNullOrWhiteSpace(candidateValue))
+                {
+                    continue;
+                }
+
+                if (!hasMatch)
+                {
+                    value = candidateValue;
+                    hasMatch = true;
+                    continue;
+                }
+
+                if (!string.Equals(value, candidateValue, StringComparison.Ordinal))
+                {
+                    value = null;
+                    return false;
+                }
+            }
+
+            return hasMatch;
+        }
+
+        public bool HasNpcClientActionSelectionContext()
+        {
+            return _progress.Count > 0 || _questRecordValues.Count > 0;
+        }
+
         public IReadOnlyList<QuestDeliveryEntrySnapshot> BuildQuestDeliverySnapshot(
             int preferredQuestId,
             int itemId,
@@ -1882,6 +1923,7 @@ namespace HaCreator.MapSimulator.Interaction
                         QuestId = item.Definition.QuestId,
                         Title = item.Definition.Name,
                         StatusText = issues.Count == 0 ? "Ready" : "In progress",
+                        UpdateSequence = GetQuestAlarmUpdateSequence(item.Definition.QuestId),
                         CurrentProgress = currentProgress,
                         TotalProgress = totalProgress,
                         ProgressRatio = totalProgress > 0
@@ -1904,6 +1946,13 @@ namespace HaCreator.MapSimulator.Interaction
                 Entries = entries,
                 HasAlertAnimation = entries.Any(entry => entry.IsRecentlyUpdated)
             };
+        }
+
+        private long GetQuestAlarmUpdateSequence(int questId)
+        {
+            return questId > 0 && _questAlarmUpdateTicks.TryGetValue(questId, out long tick)
+                ? tick
+                : long.MinValue;
         }
 
         internal IReadOnlyList<int> CaptureAvailableQuestIds(CharacterBuild build)
@@ -2049,7 +2098,7 @@ namespace HaCreator.MapSimulator.Interaction
                 build,
                 clientState,
                 formattingContext: null);
-            return !string.IsNullOrWhiteSpace(noticeText);
+            return true;
         }
 
         internal int GetTrackedItemCount(int itemId)
@@ -6464,13 +6513,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IReadOnlyList<string> ParseLayerTags(string tags)
         {
-            if (string.IsNullOrWhiteSpace(tags))
-            {
-                return Array.Empty<string>();
-            }
-
-            return tags
-                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return ParseDelimitedStrings(tags);
         }
 
         private static void AddLayerTags(ISet<string> tags, string rawTags)
@@ -6552,12 +6595,37 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<string>();
             }
 
-            string[] parts = value
-                .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            string[] rawParts = value.Split(
+                new[] { ',', ';', '\r', '\n', '\t' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (rawParts.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
 
-            return parts.Length == 0
+            var normalizedParts = new List<string>(rawParts.Length);
+            for (int i = 0; i < rawParts.Length; i++)
+            {
+                string normalizedPart = NormalizeDelimitedToken(rawParts[i]);
+                if (!string.IsNullOrWhiteSpace(normalizedPart))
+                {
+                    normalizedParts.Add(normalizedPart);
+                }
+            }
+
+            return normalizedParts.Count == 0
                 ? Array.Empty<string>()
-                : parts.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                : normalizedParts.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        }
+
+        private static string NormalizeDelimitedToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return value.Trim().Trim('"', '\'').Trim();
         }
 
         internal static IReadOnlyList<int> ParseJobIds(WzImageProperty property)
@@ -9516,22 +9584,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            var sections = new List<string>(2);
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
-            if (!string.IsNullOrWhiteSpace(summaryText))
+            if (string.IsNullOrWhiteSpace(summaryText))
             {
-                sections.Add(actions.MesoReward < 0
-                    ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
-                    : summaryText);
+                return string.Empty;
             }
 
-            IReadOnlyList<string> supplementalLines = BuildClientPacketQuestResultNonItemSupplementalLines(actions, build);
-            if (supplementalLines.Count > 0)
-            {
-                sections.Add(string.Join("\n", supplementalLines));
-            }
-
-            return string.Join("\n", sections.Where(static section => !string.IsNullOrWhiteSpace(section)));
+            return actions.MesoReward < 0
+                ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
+                : summaryText;
         }
 
         private static string ResolvePacketQuestResultPrimaryText(
@@ -9909,115 +9970,6 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return QuestClientPacketResultNoticeText.FormatRewardInventoryNotice(itemIds);
-        }
-
-        private IReadOnlyList<string> BuildClientPacketQuestResultNonItemSupplementalLines(QuestActionBundle actions, CharacterBuild build)
-        {
-            var lines = new List<string>();
-            if (actions == null)
-            {
-                return lines;
-            }
-
-            NpcDialogueFormattingContext formattingContext = BuildDialogueFormattingContext(build, 0);
-            bool actionApplies = MatchesActionJobFilter(actions, build);
-
-            if (actionApplies && actions.ExpReward > 0)
-            {
-                lines.Add($"EXP +{actions.ExpReward}");
-            }
-
-            if (actionApplies && actions.MesoReward != 0)
-            {
-                lines.Add($"Meso {actions.MesoReward:+#;-#;0}");
-            }
-
-            if (actionApplies && actions.FameReward != 0)
-            {
-                lines.Add($"Fame {actions.FameReward:+#;-#;0}");
-            }
-
-            if (actionApplies && actions.BuffItemId > 0)
-            {
-                lines.Add($"Buff {GetBuffItemRewardText(actions)}");
-            }
-
-            if (actionApplies && actions.PetTamenessReward != 0)
-            {
-                lines.Add(GetPetTamenessRewardText(actions.PetTamenessReward));
-            }
-
-            if (actionApplies && actions.PetSpeedReward != 0)
-            {
-                lines.Add(GetPetSpeedRewardText(actions.PetSpeedReward));
-            }
-
-            if (actionApplies && actions.BuffItemId <= 0 && actions.BuffItemMapIds.Count > 0)
-            {
-                lines.Add($"Maps: {FormatMapIdList(actions.BuffItemMapIds)}");
-            }
-
-            lines.AddRange(BuildVisibleQuestActionMetadataLines(actions));
-
-            if (actionApplies && !string.IsNullOrWhiteSpace(actions.NpcActionName))
-            {
-                lines.Add(QuestNpcActionResolver.FormatActionDetail(actions.NpcActionName));
-            }
-
-            for (int i = 0; actionApplies && i < actions.TraitRewards.Count; i++)
-            {
-                QuestTraitReward reward = actions.TraitRewards[i];
-                lines.Add($"{FormatTraitName(reward.Trait)} {reward.Amount:+#;-#;0}");
-            }
-
-            for (int i = 0; actionApplies && i < actions.SkillRewards.Count; i++)
-            {
-                QuestSkillReward reward = actions.SkillRewards[i];
-                if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
-                {
-                    continue;
-                }
-
-                lines.Add(GetSkillRewardText(reward));
-            }
-
-            if (actionApplies && actions.PetSkillRewardMask > 0)
-            {
-                lines.Add(GetPetSkillRewardText(actions.PetSkillRewardMask));
-            }
-
-            for (int i = 0; actionApplies && i < actions.QuestMutations.Count; i++)
-            {
-                QuestStateMutation mutation = actions.QuestMutations[i];
-                lines.Add($"Quest state: {GetQuestName(mutation.QuestId)} -> {FormatQuestState(mutation.State)}");
-            }
-
-            for (int i = 0; actionApplies && i < actions.SpRewards.Count; i++)
-            {
-                QuestSpReward reward = actions.SpRewards[i];
-                if (build != null && !MatchesAllowedJobs(build.Job, reward.AllowedJobs))
-                {
-                    continue;
-                }
-
-                lines.Add($"SP {GetSpRewardText(reward)}");
-            }
-
-            if (actionApplies && actions.NextQuestId.HasValue && actions.NextQuestId.Value > 0)
-            {
-                lines.Add($"Next quest: {GetQuestName(actions.NextQuestId.Value)}");
-            }
-
-            for (int i = 0; actionApplies && i < actions.Messages.Count; i++)
-            {
-                string message = NormalizeQuestActionMessage(actions.Messages[i], formattingContext);
-                if (!string.IsNullOrWhiteSpace(message))
-                {
-                    lines.Add(message);
-                }
-            }
-
-            return lines;
         }
 
         private List<string> RemoveGiveUpItems(QuestActionBundle actions)

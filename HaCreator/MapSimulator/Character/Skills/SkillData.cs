@@ -1126,6 +1126,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation AvatarUnderFaceFinishEffect { get; set; } // One-shot cleanup below face
         public SkillAnimation AvatarLadderFinishEffect { get; set; } // Ladder/rope cleanup override
         public Dictionary<string, SkillAnimation> ShadowPartnerActionAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> ShadowPartnerSupportedRawActionNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public int ShadowPartnerHorizontalOffsetPx { get; set; }
         public bool HideAvatarEffectOnLadderOrRope { get; set; }
         public int SummonMoveAbility { get; set; }

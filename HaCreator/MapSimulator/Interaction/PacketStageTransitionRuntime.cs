@@ -43,6 +43,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int CharacterDataCoupleRecordByteLength = 0x21;
         private const int CharacterDataFriendRecordByteLength = 0x25;
         private const int CharacterDataMarriageRecordByteLength = 0x30;
+        internal const int LogoutGiftEntryCount = 3;
+        internal const int LogoutGiftConfigByteLength = sizeof(int) + (LogoutGiftEntryCount * sizeof(int));
 
         private int _boundMapId = int.MinValue;
         private string _stageStatus = "Packet-owned stage transition idle.";
@@ -359,29 +361,28 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool TryDecodeTrailingLogoutGiftConfigPayload(
             byte[] trailingPayload,
+            out int predictQuitRawValue,
             out int[] commoditySerialNumbers,
             out byte[] leadingOpaqueBytes,
             out int[] leadingOpaqueInt32Values,
             out string error)
         {
-            const int logoutGiftEntryCount = 3;
-            const int logoutGiftConfigByteLength = logoutGiftEntryCount * sizeof(int);
-
-            commoditySerialNumbers = new int[logoutGiftEntryCount];
+            predictQuitRawValue = 0;
+            commoditySerialNumbers = new int[LogoutGiftEntryCount];
             leadingOpaqueBytes = Array.Empty<byte>();
             leadingOpaqueInt32Values = Array.Empty<int>();
             error = null;
             trailingPayload ??= Array.Empty<byte>();
 
-            if (trailingPayload.Length < logoutGiftConfigByteLength)
+            if (trailingPayload.Length < LogoutGiftConfigByteLength)
             {
                 error = trailingPayload.Length == 0
                     ? "Character-data SetField did not carry trailing logout-gift bytes."
-                    : $"Character-data SetField preserved only {trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} trailing byte(s), which is too short for the client 12-byte logout-gift cache.";
+                    : $"Character-data SetField preserved only {trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} trailing byte(s), which is too short for the client 16-byte logout-gift cache (`CWvsContext::m_bPredictQuit` plus three commodity serial numbers).";
                 return false;
             }
 
-            int leadingOpaqueByteCount = trailingPayload.Length - logoutGiftConfigByteLength;
+            int leadingOpaqueByteCount = trailingPayload.Length - LogoutGiftConfigByteLength;
             if (leadingOpaqueByteCount > 0)
             {
                 leadingOpaqueBytes = new byte[leadingOpaqueByteCount];
@@ -393,8 +394,9 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            using MemoryStream stream = new(trailingPayload, leadingOpaqueByteCount, logoutGiftConfigByteLength, writable: false);
+            using MemoryStream stream = new(trailingPayload, leadingOpaqueByteCount, LogoutGiftConfigByteLength, writable: false);
             using BinaryReader reader = new(stream);
+            predictQuitRawValue = reader.ReadInt32();
             for (int i = 0; i < commoditySerialNumbers.Length; i++)
             {
                 commoditySerialNumbers[i] = Math.Max(0, reader.ReadInt32());
@@ -1567,8 +1569,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static int GetKnownCharacterDataTailCandidateScore(long trailingBytes)
         {
-            const int likelyLogoutGiftConfigByteLength = 3 * sizeof(int);
-            if (trailingBytes == 0 || trailingBytes == likelyLogoutGiftConfigByteLength)
+            if (trailingBytes == 0 || trailingBytes == LogoutGiftConfigByteLength)
             {
                 return int.MaxValue - (int)trailingBytes;
             }

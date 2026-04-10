@@ -579,8 +579,9 @@ namespace HaCreator.MapSimulator.Entities
 
         internal bool HasAuthoredEventIndex(int currentState, int properEventIndex)
         {
+            int resolvedState = ResolveState(currentState);
             return properEventIndex >= 0
-                && _stateTransitions.TryGetValue(currentState, out AuthoredStateTransition[] transitions)
+                && _stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
                 && properEventIndex < transitions.Length;
         }
 
@@ -647,12 +648,13 @@ namespace HaCreator.MapSimulator.Entities
             out HitAnimationSourceKind sourceKind,
             out WzImageProperty sourceProperty)
         {
+            int resolvedState = ResolveState(state);
             sourceKind = HitAnimationSourceKind.None;
             sourceProperty = null;
 
             if (properEventIndex < 0)
             {
-                if (_stateLayerProperties.TryGetValue(state, out sourceProperty) && sourceProperty != null)
+                if (_stateLayerProperties.TryGetValue(resolvedState, out sourceProperty) && sourceProperty != null)
                 {
                     sourceKind = HitAnimationSourceKind.StateLayer;
                     return true;
@@ -661,19 +663,19 @@ namespace HaCreator.MapSimulator.Entities
                 return TryResolveRootHitSource(out sourceKind, out sourceProperty);
             }
 
-            if (!HasAuthoredEventIndex(state, properEventIndex))
+            if (!HasAuthoredState(resolvedState)
+                || !HasAuthoredEventIndex(resolvedState, properEventIndex))
             {
-                return TryResolveRootHitSource(out sourceKind, out sourceProperty)
-                    || TryResolveStateHitSource(state, out sourceKind, out sourceProperty);
+                return TryResolveRootHitSource(out sourceKind, out sourceProperty);
             }
 
-            if (_stateIndexedHitProperties.TryGetValue((state, properEventIndex), out sourceProperty) && sourceProperty != null)
+            if (_stateIndexedHitProperties.TryGetValue((resolvedState, properEventIndex), out sourceProperty) && sourceProperty != null)
             {
                 sourceKind = HitAnimationSourceKind.IndexedHit;
                 return true;
             }
 
-            if (TryResolveStateHitSource(state, out sourceKind, out sourceProperty))
+            if (TryResolveStateHitSource(resolvedState, out sourceKind, out sourceProperty))
             {
                 return true;
             }

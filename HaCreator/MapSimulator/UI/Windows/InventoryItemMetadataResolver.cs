@@ -765,7 +765,7 @@ namespace HaCreator.MapSimulator.UI
         private static bool TryResolveNpcValue(WzSubProperty property, out int npcId)
         {
             npcId = 0;
-            int resolvedNpcId = GetIntValue(property?["npc"]);
+            int resolvedNpcId = GetIntOrStringValue(property?["npc"]);
             if (resolvedNpcId <= 0)
             {
                 return false;
@@ -773,6 +773,11 @@ namespace HaCreator.MapSimulator.UI
 
             npcId = resolvedNpcId;
             return true;
+        }
+
+        internal static bool TryResolveNpcValueForTests(WzSubProperty property, out int npcId)
+        {
+            return TryResolveNpcValue(property, out npcId);
         }
 
         internal static bool TryResolveSpecScript(WzSubProperty specProperty, out string script)
@@ -1635,6 +1640,7 @@ namespace HaCreator.MapSimulator.UI
 
             AppendSkillBookMetadataLines(metadataLines, infoProperty);
             AppendRequiredMapMetadataLines(metadataLines, infoProperty);
+            AppendTargetMobMetadataLines(metadataLines, infoProperty, specProperty);
             AppendStateChangeItemMetadataLines(metadataLines, infoProperty);
             AppendItemPeriodMetadataLines(metadataLines, infoProperty);
             AppendCreateMetadataLines(metadataLines, infoProperty);
@@ -1869,6 +1875,48 @@ namespace HaCreator.MapSimulator.UI
             metadataLines.Add(isMonsterBookCard
                 ? $"Monster Book Card: {mobLabel}"
                 : $"Associated Mob: {mobLabel}");
+        }
+
+        private static void AppendTargetMobMetadataLines(
+            List<string> metadataLines,
+            WzSubProperty infoProperty,
+            WzSubProperty specProperty)
+        {
+            int targetMobId = GetIntOrStringValue(specProperty?["mobID"]);
+            if (targetMobId > 0)
+            {
+                metadataLines.Add($"Target Mob: {ResolveMobTooltipLabel(targetMobId)}");
+            }
+
+            int targetMobHpPercent = GetIntOrStringValue(infoProperty?["mobHP"]);
+            if (targetMobHpPercent > 0)
+            {
+                metadataLines.Add($"Target Mob HP: {targetMobHpPercent.ToString(CultureInfo.InvariantCulture)}% or below");
+            }
+
+            int targetMobHpValue = GetIntOrStringValue(specProperty?["mobHp"]);
+            if (targetMobHpValue > 0)
+            {
+                metadataLines.Add($"Target Mob HP: {targetMobHpValue.ToString("N0", CultureInfo.InvariantCulture)} or below");
+            }
+
+            int useDelayMs = GetIntOrStringValue(infoProperty?["useDelay"]);
+            if (useDelayMs > 0)
+            {
+                metadataLines.Add($"Use Delay: {FormatDuration(useDelayMs)}");
+            }
+
+            string delayMessage = NormalizeTooltipText((infoProperty?["delayMsg"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(delayMessage))
+            {
+                metadataLines.Add($"Delay Notice: {delayMessage}");
+            }
+
+            string noMobMessage = NormalizeTooltipText((infoProperty?["nomobMsg"] as WzStringProperty)?.Value);
+            if (!string.IsNullOrWhiteSpace(noMobMessage))
+            {
+                metadataLines.Add($"No Target Notice: {noMobMessage}");
+            }
         }
 
         private static void AppendQuestRequirementMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)

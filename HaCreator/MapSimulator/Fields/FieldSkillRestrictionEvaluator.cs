@@ -21,6 +21,7 @@ namespace HaCreator.MapSimulator.Fields
             public bool CoconutBasicActionOwned { get; init; }
             public bool SnowBallBasicActionOwned { get; init; }
             public bool GuildBossBasicActionOwned { get; init; }
+            public bool? HasLocalDragonActor { get; init; }
         }
 
         private static readonly HashSet<int> ClientUnableToUseSkillForbiddenSet = new HashSet<int>
@@ -242,9 +243,11 @@ namespace HaCreator.MapSimulator.Fields
                 return "Skills cannot be used while the Guild Boss field owns basic attacks.";
             }
 
-            if (IsNoDragonField(mapInfo) && IsEvanDragonMagicAttack(skill))
+            if (IsEvanDragonMagicAttack(skill)
+                && (runtimeState?.HasLocalDragonActor == false
+                    || (runtimeState?.HasLocalDragonActor != true && IsNoDragonField(mapInfo))))
             {
-                return "Evan dragon magic skills cannot be used in no-dragon fields.";
+                return "Evan dragon magic skills cannot be used while the local dragon is unavailable.";
             }
 
             return mapInfo.fieldType switch

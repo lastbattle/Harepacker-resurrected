@@ -453,39 +453,14 @@ namespace HaCreator.MapSimulator.Fields
                 return GenericMapTransferRegistrationRestrictionMessage;
             }
 
-            if (mapInfo == null)
-            {
-                return null;
-            }
-
-            string entryRestrictionMessage = context.HasValue
-                ? FieldEntryRestrictionEvaluator.GetRestrictionMessage(mapInfo, context.Value)
-                : null;
-            if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
-            {
-                return entryRestrictionMessage;
-            }
-
-            if (mapInfo.noMapCmd == true ||
-                (mapInfo.moveLimit.HasValue && mapInfo.moveLimit.Value > 0) ||
-                (mapInfo.fieldType.HasValue && mapInfo.fieldType.Value != FieldType.FIELDTYPE_DEFAULT))
-            {
-                return GenericMapTransferRegistrationRestrictionMessage;
-            }
-
-            return null;
+            return GetSharedMapTransferDestinationRestrictionMessage(mapInfo, context);
         }
 
         public static string GetMapTransferEntryRestrictionMessage(
             MapInfo mapInfo,
             FieldEntryRestrictionContext? context)
         {
-            if (mapInfo == null || !context.HasValue)
-            {
-                return null;
-            }
-
-            return FieldEntryRestrictionEvaluator.GetRestrictionMessage(mapInfo, context.Value);
+            return GetSharedMapTransferDestinationRestrictionMessage(mapInfo, context);
         }
 
         public static string GetJumpRestrictionMessage(long fieldLimit)
@@ -501,6 +476,39 @@ namespace HaCreator.MapSimulator.Fields
             {
                 messages.Add(message);
             }
+        }
+
+        private static string GetSharedMapTransferDestinationRestrictionMessage(
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
+        {
+            if (mapInfo == null)
+            {
+                return null;
+            }
+
+            string entryRestrictionMessage = context.HasValue
+                ? FieldEntryRestrictionEvaluator.GetRestrictionMessage(mapInfo, context.Value)
+                : null;
+            if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
+            {
+                return entryRestrictionMessage;
+            }
+
+            string transferRestrictionMessage = GetTransferRestrictionMessage(mapInfo.fieldLimit);
+            if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
+            {
+                return transferRestrictionMessage;
+            }
+
+            if (mapInfo.noMapCmd == true ||
+                (mapInfo.moveLimit.HasValue && mapInfo.moveLimit.Value > 0) ||
+                (mapInfo.fieldType.HasValue && mapInfo.fieldType.Value != FieldType.FIELDTYPE_DEFAULT))
+            {
+                return GenericMapTransferRegistrationRestrictionMessage;
+            }
+
+            return null;
         }
 
         private static bool IsPortalScrollItem(InventoryType inventoryType, int itemId)

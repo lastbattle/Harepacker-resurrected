@@ -44,7 +44,10 @@ namespace HaCreator.MapSimulator.Managers
 
             if (pendingRequest.IsDisassembly)
             {
-                if (pendingRequest.SourceSlotIndex >= 0 && pendingRequest.SourceItemId > 0)
+                bool shouldConsumeMountedSourceSlot = packetResult.ResultType != 3;
+                if (shouldConsumeMountedSourceSlot
+                    && pendingRequest.SourceSlotIndex >= 0
+                    && pendingRequest.SourceItemId > 0)
                 {
                     clearedSourceSlot = inventory.TryConsumeItemAtSlot(
                         InventoryType.EQUIP,

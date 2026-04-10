@@ -212,6 +212,24 @@ namespace HaCreator.MapSimulator.Effects
             return true;
         }
 
+        public bool HandleMouseClick(Point mousePosition, int viewportWidth, int viewportHeight, out string message)
+        {
+            message = null;
+            if (!IsItemInfoVisible)
+            {
+                return false;
+            }
+
+            Rectangle closeButtonBounds = GetItemInfoCloseButtonBounds(viewportWidth, viewportHeight);
+            if (!closeButtonBounds.Contains(mousePosition) || !HandleItemInfoButton(ItemInfoCloseButtonId))
+            {
+                return false;
+            }
+
+            message = $"{ItemInfoOwnerName} closed via BtClose({ItemInfoCloseButtonId}) at ({ItemInfoCloseButtonX},{ItemInfoCloseButtonY}).";
+            return true;
+        }
+
         public void Update(int currentTimeMs)
         {
             if (currentTimeMs > _lastBlinkTick)
@@ -411,9 +429,7 @@ namespace HaCreator.MapSimulator.Effects
         private void DrawItemInfo(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
         {
             Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
-            int width = _itemInfoBackground?.Width ?? DefaultItemInfoWidth;
-            int height = _itemInfoBackground?.Height ?? DefaultItemInfoHeight;
-            Rectangle bounds = new(Math.Max(0, (viewport.Width - width) / 2), Math.Max(0, (viewport.Height - height) / 2), width, height);
+            Rectangle bounds = GetItemInfoBounds(viewport.Width, viewport.Height);
             if (_itemInfoBackground != null)
             {
                 spriteBatch.Draw(_itemInfoBackground, new Vector2(bounds.X, bounds.Y), Color.White);
@@ -504,6 +520,23 @@ namespace HaCreator.MapSimulator.Effects
                 CakePieTimerType.Pie => _timerPie,
                 _ => null
             };
+        }
+
+        private Rectangle GetItemInfoBounds(int viewportWidth, int viewportHeight)
+        {
+            int width = _itemInfoBackground?.Width ?? DefaultItemInfoWidth;
+            int height = _itemInfoBackground?.Height ?? DefaultItemInfoHeight;
+            return new Rectangle(
+                Math.Max(0, (viewportWidth - width) / 2),
+                Math.Max(0, (viewportHeight - height) / 2),
+                width,
+                height);
+        }
+
+        private Rectangle GetItemInfoCloseButtonBounds(int viewportWidth, int viewportHeight)
+        {
+            Rectangle bounds = GetItemInfoBounds(viewportWidth, viewportHeight);
+            return new Rectangle(bounds.X + ItemInfoCloseButtonX, bounds.Y + ItemInfoCloseButtonY, 26, 18);
         }
 
         private int ResolvePercentage(int itemId)

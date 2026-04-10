@@ -304,6 +304,7 @@ namespace HaCreator.MapSimulator
             UpdateWorldChannelSelectorRequestState();
             EnsureContextOwnedStagePeriodInboxState(shouldRun: _mapBoard?.MapInfo != null);
             DrainContextOwnedStagePeriodInbox();
+            RefreshContextOwnedStagePeriodQuestStateGates();
             EnsureStageTransitionPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
             DrainStageTransitionPacketInbox();
             EnsureReactorPoolPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);

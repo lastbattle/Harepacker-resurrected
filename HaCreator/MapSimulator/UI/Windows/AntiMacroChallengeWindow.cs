@@ -8,6 +8,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -20,6 +21,7 @@ namespace HaCreator.MapSimulator.UI
         private const int InputWidth = 194;
         private const int InputHeight = 16;
         private const int InputMaxLength = 12;
+        private const int ManagedDoubleClickDistancePadding = 2;
 
         private sealed class LayoutProfile
         {
@@ -91,6 +93,8 @@ namespace HaCreator.MapSimulator.UI
         private int _answerCount;
         private int _expiresAt = int.MinValue;
         private bool _softKeyboardActive;
+        private int _lastManagedInputClickTick = int.MinValue;
+        private Point _lastManagedInputClickPosition = new(int.MinValue, int.MinValue);
 
         public AntiMacroChallengeWindow(string windowName, bool adminVariant, GraphicsDevice graphicsDevice)
             : base(new DXObject(0, 0, CreateFallbackFrameTexture(graphicsDevice), 0))
@@ -279,7 +283,7 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 _editControl.HandleKeyboardInput(keyboardState, _previousKeyboardState);
-                if (Pressed(keyboardState, Keys.Enter) && CanSubmitAnswer())
+                if (Pressed(keyboardState, Microsoft.Xna.Framework.Input.Keys.Enter) && CanSubmitAnswer())
                 {
                     SubmitRequested?.Invoke(_editControl.Text);
                 }
@@ -298,9 +302,9 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
-            bool leftHeld = mouseState.LeftButton == ButtonState.Pressed;
-            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
+            bool leftJustPressed = mouseState.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed && _previousMouseState.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Released;
+            bool leftHeld = mouseState.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed;
+            bool leftJustReleased = mouseState.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Released && _previousMouseState.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed;
             Rectangle ownerBounds = GetWindowBounds();
             if (leftJustPressed)
             {
@@ -314,7 +318,17 @@ namespace HaCreator.MapSimulator.UI
                     }
                     else
                     {
-                        _editControl.BeginSelectionAtMouseX(mouseState.X, ownerBounds);
+                        if (IsManagedInputDoubleClick(mouseState.Position, inputBounds))
+                        {
+                            _editControl.DoubleClickSelectAtMouseX(mouseState.X, ownerBounds);
+                        }
+                        else
+                        {
+                            _editControl.BeginSelectionAtMouseX(mouseState.X, ownerBounds);
+                        }
+
+                        _lastManagedInputClickTick = Environment.TickCount;
+                        _lastManagedInputClickPosition = mouseState.Position;
                         _softKeyboardActive = true;
                     }
 
@@ -662,9 +676,31 @@ namespace HaCreator.MapSimulator.UI
                 fallbackFont: _font);
         }
 
-        private bool Pressed(KeyboardState keyboardState, Keys key)
+        private bool Pressed(KeyboardState keyboardState, Microsoft.Xna.Framework.Input.Keys key)
         {
             return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+        }
+
+        private bool IsManagedInputDoubleClick(Point mousePosition, Rectangle inputBounds)
+        {
+            if (_lastManagedInputClickTick == int.MinValue)
+            {
+                return false;
+            }
+
+            int elapsed = unchecked(Environment.TickCount - _lastManagedInputClickTick);
+            if (elapsed < 0 || elapsed > SystemInformation.DoubleClickTime)
+            {
+                return false;
+            }
+
+            System.Drawing.Size doubleClickSize = SystemInformation.DoubleClickSize;
+            Rectangle toleranceBounds = new(
+                _lastManagedInputClickPosition.X - (doubleClickSize.Width / 2) - ManagedDoubleClickDistancePadding,
+                _lastManagedInputClickPosition.Y - (doubleClickSize.Height / 2) - ManagedDoubleClickDistancePadding,
+                doubleClickSize.Width + (ManagedDoubleClickDistancePadding * 2),
+                doubleClickSize.Height + (ManagedDoubleClickDistancePadding * 2));
+            return inputBounds.Contains(mousePosition) && toleranceBounds.Contains(mousePosition);
         }
 
         private bool CanSubmitAnswer()

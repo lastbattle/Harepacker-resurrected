@@ -910,14 +910,9 @@ namespace HaCreator.MapSimulator.UI
 
             return buttonId switch
             {
-                ClientButtonIdMinimapState => new ClientStateTransition(
-                    normalizedCurrentOption != ClientOptionExpanded
-                        ? (normalizedCurrentOption + 1) % 3
-                        : ClientOptionCollapsed,
+                ClientButtonIdMinimapState => ResolveMinimapStateButtonTransition(
                     normalizedCurrentOption,
-                    normalizedCurrentOption != ClientOptionExpanded
-                        ? ((normalizedCurrentOption + 1) % 3) == ClientOptionCollapsed
-                        : true),
+                    normalizedPreviousExpandedOption),
                 ClientButtonIdMinimapRestore => new ClientStateTransition(
                     NormalizeRememberedExpandedOption(normalizedPreviousExpandedOption),
                     normalizedPreviousExpandedOption,
@@ -933,6 +928,24 @@ namespace HaCreator.MapSimulator.UI
                     normalizedPreviousExpandedOption,
                     normalizedCurrentOption == ClientOptionCollapsed)
             };
+        }
+
+        private static ClientStateTransition ResolveMinimapStateButtonTransition(
+            int normalizedCurrentOption,
+            int normalizedPreviousExpandedOption)
+        {
+            int rememberedExpandedOption = normalizedCurrentOption == ClientOptionCollapsed
+                ? normalizedPreviousExpandedOption
+                : NormalizeRememberedExpandedOption(normalizedCurrentOption);
+
+            int nextOption = normalizedCurrentOption == ClientOptionExpanded
+                ? ClientOptionCollapsed
+                : (normalizedCurrentOption + 1) % 3;
+
+            return new ClientStateTransition(
+                nextOption,
+                rememberedExpandedOption,
+                nextOption == ClientOptionCollapsed);
         }
 
         internal static ClientStateTransition ResolveToggleMiniMapStateTransitionForTesting(

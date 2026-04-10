@@ -290,6 +290,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _usedProps,
                 includeTooltips: false,
                 localPlayerGender: localPlayerGender,
+                hasQuestCheckContext: questStateProvider != null || questRecordValueProvider != null,
                 questStateProvider: questStateProvider,
                 questRecordValueProvider: questRecordValueProvider);
         }

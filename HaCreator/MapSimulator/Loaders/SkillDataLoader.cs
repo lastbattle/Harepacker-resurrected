@@ -1039,6 +1039,10 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Max Movement Speed";
             }
+            else if (normalizedClause.Contains("movement speed", StringComparison.Ordinal))
+            {
+                label = "Movement Speed";
+            }
             else if (normalizedClause.Contains("attack speed", StringComparison.Ordinal)
                      || normalizedClause.Contains("weapon speed", StringComparison.Ordinal))
             {
@@ -1088,6 +1092,22 @@ namespace HaCreator.MapSimulator.Loaders
                      || normalizedClause.Contains("crit rate", StringComparison.Ordinal))
             {
                 label = "Critical Rate";
+            }
+            else if (normalizedClause.Contains("mesos dropped", StringComparison.Ordinal)
+                     || normalizedClause.Contains("meso drop rate", StringComparison.Ordinal))
+            {
+                label = "Meso Drop Rate";
+            }
+            else if (normalizedClause.Contains("damage guard rate", StringComparison.Ordinal))
+            {
+                label = "Damage Guard Rate";
+            }
+            else if (normalizedClause.Contains("meso guard", StringComparison.Ordinal)
+                     && (normalizedClause.Contains("mesos consumed", StringComparison.Ordinal)
+                         || normalizedClause.Contains("meso consumed", StringComparison.Ordinal)
+                         || normalizedClause.Contains("meso consumption", StringComparison.Ordinal)))
+            {
+                label = "Meso Guard Cost";
             }
             else if (normalizedClause.Contains("chance", StringComparison.Ordinal))
             {
@@ -1219,6 +1239,7 @@ namespace HaCreator.MapSimulator.Loaders
                 "Magic DEF" => FormatSignedValue,
                 "Accuracy" => FormatSignedValue,
                 "Avoidability" => FormatSignedValue,
+                "Movement Speed" => FormatSignedValue,
                 "Speed" => FormatSignedValue,
                 "Jump" => FormatSignedValue,
                 "Max HP" => FormatSignedValue,

@@ -27,5 +27,6 @@ namespace HaCreator.MapSimulator
         RetryTrunkSpw = 22,
         LogoutGiftCompletion = 23,
         SetFamilyPrecept = 24,
+        ExecuteFamilyPrivilegeTarget = 25,
     }
 }

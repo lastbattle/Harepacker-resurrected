@@ -36,7 +36,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int VisibleCommentCount = 4;
         private const int VisibleCashEmoticonCount = 7;
         private const int DefaultBasicEmoticonCount = 3;
-        private const int DefaultCashEmoticonCount = 8;
+        private const int DefaultCashEmoticonCount = ClientVisibleCashEmoticonCount;
         internal const int ClientVisibleCashEmoticonCount = 7;
         private const int CashEmoticonItemIdStart = 5290000;
         private const int ClientCashEmoticonIdStart = 100;
@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int EnterTextStringPoolId = 0xEB1;
         private const int EnterTitleStringPoolId = 0x1A5D;
         private const int DeletePostPromptStringPoolId = 0xEB2;
+        private const int ExistingNoticeStringPoolId = 0xEB3;
 
         private sealed class GuildBbsCommentState
         {
@@ -387,7 +388,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (!_compose.IsNotice && HasExistingNotice(_compose.EditThreadId))
                 {
-                    return "A guild notice is already registered. Remove it before drafting another notice.";
+                    return GetExistingNoticeNotice();
                 }
 
                 _compose.IsNotice = !_compose.IsNotice;
@@ -403,7 +404,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (HasExistingNotice())
             {
-                return "A guild notice is already registered. Remove it before drafting another notice.";
+                return GetExistingNoticeNotice();
             }
 
             IsWriteMode = true;
@@ -450,7 +451,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (HasExistingNotice(_compose.EditThreadId))
                 {
-                    return "A guild notice is already registered. Remove it before drafting another notice.";
+                    return GetExistingNoticeNotice();
                 }
             }
 
@@ -1339,6 +1340,15 @@ namespace HaCreator.MapSimulator.Interaction
             return MapleStoryStringPool.GetOrFallback(
                 DeletePostPromptStringPoolId,
                 "Are you sure you want to delete the post?",
+                appendFallbackSuffix: false,
+                minimumHexWidth: 0);
+        }
+
+        internal static string GetExistingNoticeNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ExistingNoticeStringPoolId,
+                "Please delete the current notice\r\nand then try again.",
                 appendFallbackSuffix: false,
                 minimumHexWidth: 0);
         }

@@ -375,6 +375,27 @@ namespace HaCreator.MapSimulator.Interaction
                 : null;
         }
 
+        public static string ResolveCashGachaponImageName(bool isCopyResult)
+        {
+            const int cashGachaponImageStringPoolId = 0x13D4;
+            const int cashGachaponCopyImageStringPoolId = 0x13D5;
+
+            return GetOrFallback(
+                isCopyResult ? cashGachaponCopyImageStringPoolId : cashGachaponImageStringPoolId,
+                isCopyResult ? "CashGachaponCopy.img" : "CashGachapon.img");
+        }
+
+        public static string ResolveCashGachaponWindowPropertyPath(bool isCopyResult)
+        {
+            string imageName = ResolveCashGachaponImageName(isCopyResult);
+            if (string.Equals(imageName, "CashGachaponCopy.img", StringComparison.OrdinalIgnoreCase))
+            {
+                return "CashGachapon1";
+            }
+
+            return "CashGachapon";
+        }
+
         public static string GetCompositeFormatOrFallback(
             int stringPoolId,
             string fallbackFormat,

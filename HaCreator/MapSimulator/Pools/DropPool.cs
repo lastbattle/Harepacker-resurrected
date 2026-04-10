@@ -199,6 +199,7 @@ namespace HaCreator.MapSimulator.Pools
         public float RemovalTargetScale { get; set; } = 1f;
         public int PacketEnterAlphaRampStartTime { get; set; }
         public int PacketEnterAlphaRampDurationMs { get; set; }
+        public bool FreezeAnimationDuringRemovalFade { get; set; }
         #endregion
 
         #region Constants
@@ -539,6 +540,11 @@ namespace HaCreator.MapSimulator.Pools
             if (AnimFrames == null || AnimFrames.Count <= 1)
                 return;
 
+            if (FreezeAnimationDuringRemovalFade)
+            {
+                return;
+            }
+
             if (State == DropState.Spawning
                 && IsPacketCreateDelayPending(currentTime))
             {
@@ -607,6 +613,11 @@ namespace HaCreator.MapSimulator.Pools
             RemovalStartScale = Scale;
             RemovalTargetScale = targetScale;
             Alpha = Math.Max(Alpha, 0f);
+
+            if (!UseLayeredMesoAnimation && AnimFrames != null && AnimFrames.Count > 1)
+            {
+                FreezeAnimationDuringRemovalFade = true;
+            }
         }
 
         public void SnapToTargetPosition()
@@ -1005,6 +1016,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.RemovalTargetScale = 1f;
             drop.PacketEnterAlphaRampStartTime = 0;
             drop.PacketEnterAlphaRampDurationMs = 0;
+            drop.FreezeAnimationDuringRemovalFade = false;
             drop.CanPickup = true;
             drop.IsRare = false;
             drop.GlowColor = Color.White;

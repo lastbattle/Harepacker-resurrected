@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int FollowCharacterClientPacketType = 193;
         public const int SitResultPacketType = 231;
         public const int EmotionPacketType = 232;
+        public const int MessageClientPacketType = 38;
         public const int MesoGiveSucceededPacketType = 236;
         public const int MesoGiveFailedPacketType = 237;
         public const int RandomMesobagSucceededPacketType = 238;
@@ -506,6 +507,16 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onemotion", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = EmotionPacketType;
+                return true;
+            }
+
+            if (token.Equals("message", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmessage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("pickupnotice", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("droppickupmessage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ondroppickupmessage", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MessageClientPacketType;
                 return true;
             }
 
@@ -1027,6 +1038,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == FollowCharacterClientPacketType
                 || packetType == SitResultPacketType
                 || packetType == EmotionPacketType
+                || packetType == MessageClientPacketType
                 || packetType == MesoGiveSucceededPacketType
                 || packetType == MesoGiveFailedPacketType
                 || packetType == RandomMesobagSucceededPacketType
@@ -1196,6 +1208,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 SitResultPacketType => "OnSitResult(231)",
                 EmotionPacketType => "OnEmotion(232)",
+                MessageClientPacketType => "OnMessage(38)",
                 OpenUiPacketType => "OpenUI(1000)",
                 OpenUiWithOptionPacketType => "OpenUIWithOption(1001)",
                 GoToCommoditySnPacketType => "GoToCommoditySN(1002)",

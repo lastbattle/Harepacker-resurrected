@@ -948,7 +948,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static string BuildCompactCollectionStatusText(int pageCount, CollectionBookOwnerContextSnapshot ownerContext)
         {
-            return $"{(ownerContext?.IsRemoteTarget == true ? "Inspect" : "Local")}  Pages {Math.Max(0, pageCount)}  {FormatOwnerLocationLine(ownerContext)}";
+            return string.Empty;
         }
 
         private static string BuildCompactOverviewFooter(CollectionBookOwnerContextSnapshot ownerContext)
@@ -1175,6 +1175,30 @@ namespace HaCreator.MapSimulator.UI
         public bool IsLoading { get; init; }
         public int LoadingStartTick { get; init; } = int.MinValue;
         public IReadOnlyList<RankingEntrySnapshot> Entries { get; init; } = Array.Empty<RankingEntrySnapshot>();
+    }
+
+    internal sealed class PacketOwnedRankingOwnerStateSnapshot
+    {
+        public string Subtitle { get; init; } = string.Empty;
+        public string StatusText { get; init; } = string.Empty;
+        public string NavigationCaption { get; init; } = string.Empty;
+        public string NavigateUrl { get; init; } = string.Empty;
+        public string NavigationHostText { get; init; } = string.Empty;
+        public string NavigationRequestText { get; init; } = string.Empty;
+        public string NavigationStateText { get; init; } = string.Empty;
+        public bool? IsLoading { get; init; }
+        public int LoadingStartTick { get; init; } = int.MinValue;
+
+        public bool HasAnyState =>
+            !string.IsNullOrWhiteSpace(Subtitle)
+            || !string.IsNullOrWhiteSpace(StatusText)
+            || !string.IsNullOrWhiteSpace(NavigationCaption)
+            || !string.IsNullOrWhiteSpace(NavigateUrl)
+            || !string.IsNullOrWhiteSpace(NavigationHostText)
+            || !string.IsNullOrWhiteSpace(NavigationRequestText)
+            || !string.IsNullOrWhiteSpace(NavigationStateText)
+            || IsLoading.HasValue
+            || LoadingStartTick != int.MinValue;
     }
 
     internal enum EventEntryStatus

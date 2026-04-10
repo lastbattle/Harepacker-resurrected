@@ -386,16 +386,6 @@ namespace HaCreator.MapSimulator.Loaders
 
 
                 var pathJobIds = GetVisibleSkillRootIdsForJob(jobId, subJob, learnedSkillIds);
-                var visibleTabs = new HashSet<int>();
-                foreach (int pathJobId in pathJobIds)
-                {
-                    visibleTabs.Add(GetSkillTabFromJobId(pathJobId));
-                }
-
-
-                // `CSkillInfo::GetSkillRootVisible` starts from client-owned root objects
-                // and keeps roots visible for the active lineage or learned skill records.
-                skillWindow.SetVisibleTabs(visibleTabs);
                 skillWindow.ConfigureAranGuideButtons(GetAranGuideUnlockedGrade(jobId));
 
 
@@ -411,14 +401,9 @@ namespace HaCreator.MapSimulator.Loaders
 
 
                 foreach (int pathJobId in pathJobIds)
-
                 {
-
                     int tabIndex = GetSkillTabFromJobId(pathJobId);
-
                     System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for display job {pathJobId} into tab {tabIndex} (requested job {jobId})");
-                    skillWindow.SetDisplayedSkillRootId(tabIndex, pathJobId);
-
 
                     var skillMap = new Dictionary<int, SkillDisplayData>();
                     foreach (int bookJobId in GetSkillBookAliasesForJob(pathJobId).Distinct())
@@ -437,6 +422,10 @@ namespace HaCreator.MapSimulator.Loaders
 
 
                     var mergedSkills = skillMap.Values.ToList();
+                    if (mergedSkills.Count == 0)
+                        continue;
+
+                    skillWindow.SetDisplayedSkillRootId(tabIndex, pathJobId);
                     skillWindow.AddSkills(tabIndex, mergedSkills);
                     skillWindow.SetRecommendedSkillEntries(
                         pathJobId,
@@ -465,6 +454,8 @@ namespace HaCreator.MapSimulator.Loaders
                 }
 
 
+                // Mirror the client root refresh more closely by deciding visible books
+                // after the root objects are loaded rather than from the ancestry helper alone.
                 skillWindow.RefreshVisibleTabsFromLoadedSkillRoots();
 
                 // Show the populated tab by default.

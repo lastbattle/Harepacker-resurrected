@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.UI
         private const int VkControl = 0x11;
         private const int WmLButtonDown = 0x0201;
         private const int WmLButtonUp = 0x0202;
+        private const int WmLButtonDblClk = 0x0203;
         private const int WmMouseMove = 0x0200;
         private const uint WsChild = 0x40000000;
         private const uint WsVisible = 0x10000000;
@@ -548,14 +549,26 @@ namespace HaCreator.MapSimulator.UI
             int packed = packedPosition.ToInt32();
             int x = (short)(packed & 0xFFFF);
             int y = (short)((packed >> 16) & 0xFFFF);
-            if (x < 0 || y < 0)
+            return ResolveClientOwnedCaretPoint(x, y, width, height);
+        }
+
+        internal static Point ResolveClientOwnedCaretPoint(int rawX, int rawY, int width, int height)
+        {
+            int resolvedWidth = Math.Max(1, width);
+            int resolvedHeight = Math.Max(1, height);
+            int fallbackBaselineY = Math.Clamp(
+                AntiMacroEditControl.ClientTextOrigin.Y + AntiMacroEditControl.ClientFontHeightPixels - 1,
+                0,
+                resolvedHeight - 1);
+            if (rawX < 0 || rawY < 0)
             {
-                return new Point(0, Math.Max(0, height - 1));
+                return new Point(0, fallbackBaselineY);
             }
 
+            int baselineY = rawY + AntiMacroEditControl.ClientTextOrigin.Y + AntiMacroEditControl.ClientFontHeightPixels - 1;
             return new Point(
-                Math.Clamp(x, 0, width - 1),
-                Math.Clamp(y + Math.Max(0, height - 1), 0, height - 1));
+                Math.Clamp(rawX + AntiMacroEditControl.ClientCaretOrigin.X, 0, resolvedWidth - 1),
+                Math.Clamp(baselineY + AntiMacroEditControl.ClientCaretOrigin.Y, 0, resolvedHeight - 1));
         }
 
         private int GetCaretIndex()
@@ -633,6 +646,7 @@ namespace HaCreator.MapSimulator.UI
                 || msg == WmKeyUp
                 || msg == WmChar
                 || msg == WmLButtonDown
+                || msg == WmLButtonDblClk
                 || msg == WmLButtonUp
                 || msg == WmMouseMove)
             {

@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator.Character
     public class PlayerManager
     {
         private const int AffectedAreaAvatarEffectIdBase = int.MinValue;
+        private const int DragonFurySkillId = 22160000;
         private const string WeaponSfxAttackSoundName = "Attack";
 
         private sealed class AffectedAreaAvatarEffectCacheEntry
@@ -105,6 +106,7 @@ namespace HaCreator.MapSimulator.Character
         private Action<string> _onJumpRestricted;
         private Func<float, float> _moveSpeedCapResolver;
         private Action<PlayerCharacter, PlayerLandingInfo> _onLanded;
+        internal Action<int, int, int, PacketOwnedSkillEffectRequest> OnRepeatSkillModeEndEffectRequestReady { get; set; }
 
         #endregion
 
@@ -408,6 +410,11 @@ namespace HaCreator.MapSimulator.Character
             Dragon.SetQuestInfoStateProvider(questInfoStateProvider);
         }
 
+        internal static bool HasClientOwnedDragonFuryEffect(SkillManager skills)
+        {
+            return skills?.HasBuff(DragonFurySkillId) == true;
+        }
+
         /// <summary>
         /// Set spawn point
         /// </summary>
@@ -473,6 +480,8 @@ namespace HaCreator.MapSimulator.Character
 
                 System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created for job path {build.Job}");
             }
+
+            Dragon.SetDragonFuryVisibleProvider(() => HasClientOwnedDragonFuryEffect(Skills));
 
             _mobStatusController = new PlayerMobStatusController(Player, Skills, TeleportToSpawn);
             Skills?.SetExternalCastBlockedEvaluator(currentTime => _currentMobStatusState.SkillCastBlocked);
@@ -1375,6 +1384,15 @@ namespace HaCreator.MapSimulator.Character
             _pendingRepeatSkillModeEndSkillId = skillId;
             _pendingRepeatSkillModeEndReturnSkillId = returnSkillId;
             _pendingRepeatSkillModeEndRequestTime = requestedAt;
+            if (Skills?.TryBuildPendingRepeatSkillModeEndEffectRequest(
+                    skillId,
+                    returnSkillId,
+                    requestedAt,
+                    out PacketOwnedSkillEffectRequest request,
+                    out _) == true)
+            {
+                OnRepeatSkillModeEndEffectRequestReady?.Invoke(skillId, returnSkillId, requestedAt, request);
+            }
         }
 
         public bool TryResolvePacketOwnedRepeatSkillModeEndRequest(

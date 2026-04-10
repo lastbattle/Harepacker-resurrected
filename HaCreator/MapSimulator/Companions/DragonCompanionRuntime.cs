@@ -301,6 +301,21 @@ namespace HaCreator.MapSimulator.Companions
             UpdateAuxiliaryLayers(owner, currentTime);
         }
 
+        internal bool CanOwnSkillCast(PlayerCharacter owner)
+        {
+            if (owner?.Build == null || !TryResolveDragonJob(owner.Build.Job, out int dragonJob))
+            {
+                return false;
+            }
+
+            if (ShouldSuppress(owner))
+            {
+                return false;
+            }
+
+            return GetOrLoadAnimationSet(dragonJob) != null;
+        }
+
         public void Draw(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,

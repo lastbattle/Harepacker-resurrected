@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.Character;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Buffers.Binary;
@@ -21,7 +22,10 @@ namespace HaCreator.MapSimulator
         private const byte VegaPacketOwnedSuccessTerminalCode = 69;
         private const byte VegaPacketOwnedFailPreludeCode = 73;
         private const byte VegaPacketOwnedFailTerminalCode = 71;
-        private const int VegaConsumeCashLaunchPayloadLength = sizeof(int) + sizeof(short) + sizeof(int);
+        private const int VegaConsumeCashLaunchPayloadPrefixLength = sizeof(int) + sizeof(short) + sizeof(int);
+        private const int VegaConsumeCashLaunchPayloadLength = VegaConsumeCashLaunchPayloadPrefixLength + (sizeof(int) * 3);
+        private const int VegaSyntheticEquipItemTokenMask = unchecked((int)0x40000000);
+        private const int VegaSyntheticInventoryItemTokenMask = unchecked((int)0x20000000);
         private const string VegaResultLoopSoundKey = "PacketOwnedSound:Sound/UI.img/EnchantDelay:VegaLoop";
         private ActiveVegaModifierSelectionState _activeVegaModifierSelection;
         private bool _vegaExclusiveRequestSent;
@@ -129,7 +133,14 @@ namespace HaCreator.MapSimulator
             }
 
             int slotPosition = slotIndex >= 0 ? slotIndex + 1 : 0;
-            byte[] payload = BuildVegaConsumeCashLaunchPayload(slotPosition, itemId, currTickCount);
+            int modifierItemToken = BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot: null);
+            byte[] payload = BuildVegaConsumeCashLaunchPayload(
+                slotPosition,
+                itemId,
+                currTickCount,
+                inventoryType,
+                slotIndex,
+                modifierItemToken);
             _localUtilityPacketInbox.EnqueueLocal(
                 LocalUtilityPacketInboxManager.ConsumeCashItemUseRequestPacketType,
                 payload,
@@ -154,7 +165,14 @@ namespace HaCreator.MapSimulator
             }
 
             int slotPosition = slotIndex >= 0 ? slotIndex + 1 : 0;
-            byte[] payload = BuildVegaConsumeCashLaunchPayload(slotPosition, itemId, currTickCount);
+            int modifierItemToken = BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot: null);
+            byte[] payload = BuildVegaConsumeCashLaunchPayload(
+                slotPosition,
+                itemId,
+                currTickCount,
+                inventoryType,
+                slotIndex,
+                modifierItemToken);
             _activeVegaModifierSelection = new ActiveVegaModifierSelectionState
             {
                 ModifierItemId = itemId,
@@ -421,9 +439,9 @@ namespace HaCreator.MapSimulator
             byte[] encodedPayload = BuildVegaRequestPayload(
                 modifierSlotPosition: requestContext.ModifierSlotIndex + 1,
                 modifierItemId: request.ModifierItemId,
-                equipItemId: request.EquipItemId,
+                equipItemToken: requestContext.EquipItemToken,
                 equipSlotPosition: requestContext.EncodedEquipPosition,
-                scrollItemId: request.ScrollItemId,
+                scrollItemToken: requestContext.ScrollItemToken,
                 scrollSlotPosition: requestContext.ScrollSlotIndex + 1,
                 useWhiteScroll: useWhiteScroll,
                 updateTick: requestTick);
@@ -471,9 +489,9 @@ namespace HaCreator.MapSimulator
         private static byte[] BuildVegaRequestPayload(
             int modifierSlotPosition,
             int modifierItemId,
-            int equipItemId,
+            int equipItemToken,
             int equipSlotPosition,
-            int scrollItemId,
+            int scrollItemToken,
             int scrollSlotPosition,
             bool useWhiteScroll,
             int updateTick)
@@ -482,9 +500,9 @@ namespace HaCreator.MapSimulator
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), updateTick);
             BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(sizeof(int), sizeof(short)), (short)Math.Max(0, modifierSlotPosition));
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(short), sizeof(int)), modifierItemId);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 2) + sizeof(short), sizeof(int)), equipItemId);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 2) + sizeof(short), sizeof(int)), equipItemToken);
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 3) + sizeof(short), sizeof(int)), equipSlotPosition);
-            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 4) + sizeof(short), sizeof(int)), scrollItemId);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 4) + sizeof(short), sizeof(int)), scrollItemToken);
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 5) + sizeof(short), sizeof(int)), scrollSlotPosition);
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 6) + sizeof(short), sizeof(int)), useWhiteScroll ? 1 : 0);
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan((sizeof(int) * 7) + sizeof(short), sizeof(int)), updateTick);
@@ -494,12 +512,18 @@ namespace HaCreator.MapSimulator
         private static byte[] BuildVegaConsumeCashLaunchPayload(
             int modifierSlotPosition,
             int modifierItemId,
-            int updateTick)
+            int updateTick,
+            InventoryType inventoryType,
+            int slotIndex,
+            int modifierItemToken)
         {
             byte[] payload = new byte[VegaConsumeCashLaunchPayloadLength];
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), updateTick);
             BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(sizeof(int), sizeof(short)), (short)Math.Max(0, modifierSlotPosition));
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(short), sizeof(int)), modifierItemId);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(VegaConsumeCashLaunchPayloadPrefixLength, sizeof(int)), (int)inventoryType);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(VegaConsumeCashLaunchPayloadPrefixLength + sizeof(int), sizeof(int)), slotIndex);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(VegaConsumeCashLaunchPayloadPrefixLength + (sizeof(int) * 2), sizeof(int)), modifierItemToken);
             return payload;
         }
 
@@ -740,17 +764,20 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            int equipItemToken = BuildSyntheticVegaEquippedItemToken(request.Slot, request.EquipItemId, encodedEquipPosition);
             if (!TryResolveVegaModifierSlotPosition(
                     inventoryWindow,
                     request.ModifierItemId,
                     out InventoryType modifierInventoryType,
-                    out int modifierSlotIndex)
+                    out int modifierSlotIndex,
+                    out InventorySlotData modifierSlot)
                 || !TryResolveInventorySlotIndex(
                     inventoryWindow,
                     request.ScrollItemId,
                     preferredInventoryType: InventoryType.USE,
                     out InventoryType scrollInventoryType,
-                    out int scrollSlotIndex))
+                    out int scrollSlotIndex,
+                    out InventorySlotData scrollSlot))
             {
                 failureMessage = VegaOwnerStringPoolText.GetMissingSelectionNotice();
                 return false;
@@ -758,10 +785,13 @@ namespace HaCreator.MapSimulator
 
             context = new VegaRequestContext(
                 encodedEquipPosition,
+                equipItemToken,
                 modifierInventoryType,
                 modifierSlotIndex,
+                BuildSyntheticVegaInventoryItemToken(modifierInventoryType, modifierSlotIndex, request.ModifierItemId, modifierSlot),
                 scrollInventoryType,
-                scrollSlotIndex);
+                scrollSlotIndex,
+                BuildSyntheticVegaInventoryItemToken(scrollInventoryType, scrollSlotIndex, request.ScrollItemId, scrollSlot));
             return true;
         }
 
@@ -769,10 +799,12 @@ namespace HaCreator.MapSimulator
             UI.IInventoryRuntime inventoryWindow,
             int modifierItemId,
             out InventoryType inventoryType,
-            out int slotIndex)
+            out int slotIndex,
+            out InventorySlotData slot)
         {
             inventoryType = InventoryType.NONE;
             slotIndex = -1;
+            slot = null;
 
             if (_activeVegaModifierSelection != null &&
                 _activeVegaModifierSelection.ModifierItemId == modifierItemId &&
@@ -780,10 +812,12 @@ namespace HaCreator.MapSimulator
                     inventoryWindow,
                     _activeVegaModifierSelection.InventoryType,
                     _activeVegaModifierSelection.SlotIndex,
-                    modifierItemId))
+                    modifierItemId,
+                    out InventorySlotData activeSlot))
             {
                 inventoryType = _activeVegaModifierSelection.InventoryType;
                 slotIndex = _activeVegaModifierSelection.SlotIndex;
+                slot = activeSlot;
                 return true;
             }
 
@@ -792,7 +826,8 @@ namespace HaCreator.MapSimulator
                 modifierItemId,
                 preferredInventoryType: InventoryType.CASH,
                 out inventoryType,
-                out slotIndex);
+                out slotIndex,
+                out slot);
         }
 
         private static bool TryResolveInventorySlotIndex(
@@ -800,10 +835,12 @@ namespace HaCreator.MapSimulator
             int itemId,
             InventoryType preferredInventoryType,
             out InventoryType inventoryType,
-            out int slotIndex)
+            out int slotIndex,
+            out InventorySlotData slot)
         {
             inventoryType = InventoryType.NONE;
             slotIndex = -1;
+            slot = null;
             if (inventoryWindow == null || itemId <= 0)
             {
                 return false;
@@ -836,17 +873,18 @@ namespace HaCreator.MapSimulator
 
                 for (int i = 0; i < slots.Count; i++)
                 {
-                    InventorySlotData slot = slots[i];
-                    if (slot == null ||
-                        slot.IsDisabled ||
-                        slot.ItemId != itemId ||
-                        Math.Max(0, slot.Quantity) <= 0)
+                    InventorySlotData candidate = slots[i];
+                    if (candidate == null ||
+                        candidate.IsDisabled ||
+                        candidate.ItemId != itemId ||
+                        Math.Max(0, candidate.Quantity) <= 0)
                     {
                         continue;
                     }
 
                     inventoryType = currentType;
                     slotIndex = i;
+                    slot = candidate.Clone();
                     return true;
                 }
             }
@@ -858,8 +896,10 @@ namespace HaCreator.MapSimulator
             UI.IInventoryRuntime inventoryWindow,
             InventoryType inventoryType,
             int slotIndex,
-            int expectedItemId)
+            int expectedItemId,
+            out InventorySlotData slot)
         {
+            slot = null;
             if (inventoryWindow == null || slotIndex < 0)
             {
                 return false;
@@ -871,11 +911,17 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            InventorySlotData slot = slots[slotIndex];
-            return slot != null
-                && !slot.IsDisabled
-                && slot.ItemId == expectedItemId
-                && Math.Max(0, slot.Quantity) > 0;
+            InventorySlotData candidate = slots[slotIndex];
+            if (candidate == null
+                || candidate.IsDisabled
+                || candidate.ItemId != expectedItemId
+                || Math.Max(0, candidate.Quantity) <= 0)
+            {
+                return false;
+            }
+
+            slot = candidate.Clone();
+            return true;
         }
 
         private static (byte PrimaryCode, byte SecondaryCode) ResolveVegaResultCodes(bool success)
@@ -885,12 +931,60 @@ namespace HaCreator.MapSimulator
                 : (VegaPacketOwnedFailPreludeCode, VegaPacketOwnedFailTerminalCode);
         }
 
+        private static int BuildSyntheticVegaEquippedItemToken(EquipSlot slot, int itemId, int encodedEquipPosition)
+        {
+            int encodedPosition = encodedEquipPosition;
+            if (encodedPosition == int.MinValue
+                && !RepairDurabilityClientParity.TryEncodeEquippedPosition(slot, itemId, out encodedPosition))
+            {
+                encodedPosition = 0;
+            }
+
+            int normalizedPosition = Math.Abs(encodedPosition) & 0x3F;
+            return VegaSyntheticEquipItemTokenMask
+                | (normalizedPosition << 24)
+                | (itemId & 0x00FFFFFF);
+        }
+
+        private static int BuildSyntheticVegaInventoryItemToken(
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId,
+            InventorySlotData slot)
+        {
+            int stableIdentity = slot?.PendingRequestId ?? 0;
+            if (stableIdentity == 0 && slot?.CashItemSerialNumber is long cashSerialNumber)
+            {
+                stableIdentity = unchecked((int)(cashSerialNumber & 0xFFF));
+            }
+
+            if (stableIdentity == 0 && slot?.OwnerCharacterId is int ownerCharacterId && ownerCharacterId > 0)
+            {
+                stableIdentity = ownerCharacterId & 0xFFF;
+            }
+
+            if (stableIdentity == 0 && slot?.OwnerAccountId is int ownerAccountId && ownerAccountId > 0)
+            {
+                stableIdentity = ownerAccountId & 0xFFF;
+            }
+
+            if (stableIdentity == 0)
+            {
+                stableIdentity = itemId & 0xFFF;
+            }
+
+            return VegaSyntheticInventoryItemTokenMask
+                | (((int)inventoryType & 0xF) << 24)
+                | ((Math.Max(slotIndex, 0) + 1 & 0xFFF) << 12)
+                | (stableIdentity & 0xFFF);
+        }
+
         internal static byte[] BuildVegaRequestPayloadForTests(
             int modifierSlotPosition,
             int modifierItemId,
-            int equipItemId,
+            int equipItemToken,
             int equipSlotPosition,
-            int scrollItemId,
+            int scrollItemToken,
             int scrollSlotPosition,
             bool useWhiteScroll,
             int updateTick)
@@ -898,9 +992,9 @@ namespace HaCreator.MapSimulator
             return BuildVegaRequestPayload(
                 modifierSlotPosition,
                 modifierItemId,
-                equipItemId,
+                equipItemToken,
                 equipSlotPosition,
-                scrollItemId,
+                scrollItemToken,
                 scrollSlotPosition,
                 useWhiteScroll,
                 updateTick);
@@ -909,14 +1003,37 @@ namespace HaCreator.MapSimulator
         internal static byte[] BuildVegaConsumeCashLaunchPayloadForTests(
             int modifierSlotPosition,
             int modifierItemId,
-            int updateTick)
+            int updateTick,
+            InventoryType inventoryType,
+            int slotIndex,
+            int modifierItemToken)
         {
-            return BuildVegaConsumeCashLaunchPayload(modifierSlotPosition, modifierItemId, updateTick);
+            return BuildVegaConsumeCashLaunchPayload(
+                modifierSlotPosition,
+                modifierItemId,
+                updateTick,
+                inventoryType,
+                slotIndex,
+                modifierItemToken);
         }
 
         internal static (byte PrimaryCode, byte SecondaryCode) ResolveVegaResultCodesForTests(bool success)
         {
             return ResolveVegaResultCodes(success);
+        }
+
+        internal static int BuildSyntheticVegaEquippedItemTokenForTests(EquipSlot slot, int itemId, int encodedEquipPosition)
+        {
+            return BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition);
+        }
+
+        internal static int BuildSyntheticVegaInventoryItemTokenForTests(
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId,
+            InventorySlotData slot)
+        {
+            return BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
         }
 
         internal static bool TryDecodeVegaLaunchPayloadForTests(
@@ -965,10 +1082,13 @@ namespace HaCreator.MapSimulator
 
         private readonly record struct VegaRequestContext(
             int EncodedEquipPosition,
+            int EquipItemToken,
             InventoryType ModifierInventoryType,
             int ModifierSlotIndex,
+            int ModifierItemToken,
             InventoryType ScrollInventoryType,
-            int ScrollSlotIndex);
+            int ScrollSlotIndex,
+            int ScrollItemToken);
 
         private readonly record struct VegaLaunchPayload(
             int ModifierItemId,
@@ -1150,10 +1270,13 @@ namespace HaCreator.MapSimulator
                 }
 
                 int nextOffset = modifierOffset + sizeof(int);
-                if (!decodedConsumeCashPrefix && payload.Length >= nextOffset + (sizeof(int) * 2))
+                int explicitSlotTailOffset = decodedConsumeCashPrefix
+                    ? VegaConsumeCashLaunchPayloadPrefixLength
+                    : nextOffset;
+                if (payload.Length >= explicitSlotTailOffset + (sizeof(int) * 2))
                 {
-                    int encodedInventoryType = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(nextOffset, sizeof(int)));
-                    int encodedSlotIndex = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(nextOffset + sizeof(int), sizeof(int)));
+                    int encodedInventoryType = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(explicitSlotTailOffset, sizeof(int)));
+                    int encodedSlotIndex = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(explicitSlotTailOffset + sizeof(int), sizeof(int)));
                     if (Enum.IsDefined(typeof(InventoryType), encodedInventoryType))
                     {
                         inventoryType = (InventoryType)encodedInventoryType;

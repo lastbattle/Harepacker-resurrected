@@ -1554,8 +1554,16 @@ namespace HaCreator.MapSimulator.UI
                 {
                     ShowSoftKeyboard(resetDismissedState: true);
                     ClearOwnerNotice();
-                    _editingCursorPosition = ResolveNameCursorFromMouse(mouseX);
+                    int updatedCursorPosition = ResolveNameCursorFromMouse(mouseX);
+                    _editingCursorPosition = updatedCursorPosition;
+                    if (_compositionText.Length > 0)
+                    {
+                        _compositionInsertionIndex = updatedCursorPosition;
+                    }
+
+                    _validationMessage = string.Empty;
                     _caretBlinkTick = Environment.TickCount;
+                    UpdateImePresentationPlacement();
                 }
                 else if (_editingMacroIndex >= 0 && IsPointInCheckbox(mouseX, mouseY) && leftButton)
                 {
@@ -2201,7 +2209,12 @@ namespace HaCreator.MapSimulator.UI
                     return;
                 }
 
-                string normalizedClipboardText = clipboardText.Replace("\r", string.Empty).Replace("\n", string.Empty);
+                string normalizedClipboardText = SanitizeCompositionText(
+                    clipboardText.Replace("\r", string.Empty).Replace("\n", string.Empty));
+                if (string.IsNullOrEmpty(normalizedClipboardText))
+                {
+                    return;
+                }
 
                 ClearCompositionText();
                 ClearOwnerNotice();

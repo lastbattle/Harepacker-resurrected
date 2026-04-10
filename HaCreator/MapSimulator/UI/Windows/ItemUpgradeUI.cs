@@ -103,6 +103,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex PercentRateRegex = new Regex(@"(?:Success\s*rate\s*:?\s*(\d+)\s*%|(\d+)\s*%\s*success\s*rate)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex VegaModifierRegex = new Regex(@"enables\s+a\s+(\d+)\s*%\s+success\s+rate\s+on\s+a\s+(\d+)\s*%\s+scroll", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex ScrollTargetRegex = new Regex(@"Scroll\s+for\s+(.+?)\s+for\s", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex AccessorySubsetRegex = new Regex(@"accessories?\s*\(([^)]*)\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex DestroyChanceRegex = new Regex(@"(?:chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed|destroyed\s+(?:in|at)\s+(?:a\s+)?)\s*(\d+)\s*%\s*(?:[-\s]*chance|rate)?|(\d+)\s*%\s*(?:[-\s]*chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed|chance\s+(?:of\s+being|to\s+be)\s+(?:completely\s+)?destroyed)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex CompleteDestroyRegex = new Regex(@"(?:if\s+(?:it\s+)?fails?|upon\s+failure).*?(?:completely\s+destroyed|destroyed\s+completely)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -4006,6 +4007,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string normalized = text.Trim();
+            bool hasExplicitAccessorySubset = TryAddExplicitAccessorySubsetSlots(normalized, targetSlots);
             if (normalized.IndexOf("face accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 normalized.IndexOf("face accessories", StringComparison.OrdinalIgnoreCase) >= 0)
             {
@@ -4068,20 +4070,23 @@ namespace HaCreator.MapSimulator.UI
             if (normalized.IndexOf("accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 normalized.IndexOf("accessories", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                targetSlots.Add(EquipSlot.FaceAccessory);
-                targetSlots.Add(EquipSlot.EyeAccessory);
-                targetSlots.Add(EquipSlot.Earrings);
-                targetSlots.Add(EquipSlot.Ring1);
-                targetSlots.Add(EquipSlot.Ring2);
-                targetSlots.Add(EquipSlot.Ring3);
-                targetSlots.Add(EquipSlot.Ring4);
-                targetSlots.Add(EquipSlot.Pendant);
-                targetSlots.Add(EquipSlot.Pendant2);
-                targetSlots.Add(EquipSlot.Belt);
-                targetSlots.Add(EquipSlot.Shoulder);
-                targetSlots.Add(EquipSlot.Pocket);
-                targetSlots.Add(EquipSlot.Badge);
-                targetSlots.Add(EquipSlot.Medal);
+                if (!hasExplicitAccessorySubset)
+                {
+                    targetSlots.Add(EquipSlot.FaceAccessory);
+                    targetSlots.Add(EquipSlot.EyeAccessory);
+                    targetSlots.Add(EquipSlot.Earrings);
+                    targetSlots.Add(EquipSlot.Ring1);
+                    targetSlots.Add(EquipSlot.Ring2);
+                    targetSlots.Add(EquipSlot.Ring3);
+                    targetSlots.Add(EquipSlot.Ring4);
+                    targetSlots.Add(EquipSlot.Pendant);
+                    targetSlots.Add(EquipSlot.Pendant2);
+                    targetSlots.Add(EquipSlot.Belt);
+                    targetSlots.Add(EquipSlot.Shoulder);
+                    targetSlots.Add(EquipSlot.Pocket);
+                    targetSlots.Add(EquipSlot.Badge);
+                    targetSlots.Add(EquipSlot.Medal);
+                }
             }
 
             if (normalized.IndexOf("ring", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -4174,6 +4179,97 @@ namespace HaCreator.MapSimulator.UI
         private static bool AreRatesEquivalent(float left, float right)
         {
             return Math.Abs(left - right) < 0.0001f;
+        }
+
+        private static bool TryAddExplicitAccessorySubsetSlots(string text, ISet<EquipSlot> targetSlots)
+        {
+            if (targetSlots == null || string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            Match match = AccessorySubsetRegex.Match(text);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            int countBefore = targetSlots.Count;
+            string subsetText = match.Groups[1].Value;
+            AddAccessorySubsetSlots(subsetText, targetSlots);
+            return targetSlots.Count > countBefore;
+        }
+
+        private static void AddAccessorySubsetSlots(string subsetText, ISet<EquipSlot> targetSlots)
+        {
+            if (targetSlots == null || string.IsNullOrWhiteSpace(subsetText))
+            {
+                return;
+            }
+
+            string normalized = subsetText.Trim();
+            if (normalized.IndexOf("face accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("face accessories", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("mask", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("face eqp", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("face equipment", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.FaceAccessory);
+            }
+
+            if (normalized.IndexOf("eye accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("eye accessories", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("glasses", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("eye eqp", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("eye equipment", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.EyeAccessory);
+            }
+
+            if (normalized.IndexOf("earring", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Earrings);
+            }
+
+            if (normalized.IndexOf("ring", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Ring1);
+                targetSlots.Add(EquipSlot.Ring2);
+                targetSlots.Add(EquipSlot.Ring3);
+                targetSlots.Add(EquipSlot.Ring4);
+            }
+
+            if (normalized.IndexOf("pendant", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("necklace", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Pendant);
+                targetSlots.Add(EquipSlot.Pendant2);
+            }
+
+            if (normalized.IndexOf("belt", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Belt);
+            }
+
+            if (normalized.IndexOf("shoulder", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Shoulder);
+            }
+
+            if (normalized.IndexOf("pocket", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Pocket);
+            }
+
+            if (normalized.IndexOf("badge", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Badge);
+            }
+
+            if (normalized.IndexOf("medal", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Medal);
+            }
         }
 
         private static bool TryParseSuccessRateText(string description, out int percent)

@@ -2887,6 +2887,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             RoomTitle = string.IsNullOrWhiteSpace(title) ? RoomTitle : title.Trim();
             _miniRoomLocalSeatIndex = Math.Max(0, payload.MyPosition);
+            ResetEntrustedChildDialogStateForEnterResult(payload.MyPosition, decodedOwnerLedger, soldDialogVisible);
 
             EnsureMerchantPacketNotes();
             _notes[0] = decodedChatEntries.Count > 0
@@ -2936,6 +2937,25 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        private void ResetEntrustedChildDialogStateForEnterResult(int localSeatIndex, bool decodedOwnerLedger, bool soldDialogVisible)
+        {
+            _entrustedChildDialogKind = null;
+            _entrustedVisitListSelectedIndex = -1;
+            _entrustedBlacklistSelectedIndex = -1;
+            _entrustedBlacklistPromptRequest = null;
+            _entrustedBlacklistNotice = null;
+
+            if (localSeatIndex == 0)
+            {
+                _entrustedChildDialogStatus = decodedOwnerLedger && soldDialogVisible
+                    ? "CEntrustedShopDlg::OnEnterResult refreshed the owner shell and left visit-list or blacklist child owners closed while the sold-item ledger branch is active."
+                    : "CEntrustedShopDlg::OnEnterResult refreshed the owner shell and re-armed visit-list or blacklist access on the parent entrusted-shop dialog.";
+                return;
+            }
+
+            _entrustedChildDialogStatus = "CEntrustedShopDlg::OnEnterResult refreshed the visitor shell and cleared owner-only visit-list or blacklist child owners.";
         }
 
         private bool TryDecodeEntrustedShopTitleAndBasePayload(
@@ -3254,6 +3274,13 @@ namespace HaCreator.MapSimulator.Interaction
                 ownerName = "CMiniRoomBaseDlg::OnPacketBase";
                 handled = TryDispatchMiniRoomBasePacket(nestedReader, out message);
             }
+            else if (IsMiniRoomBasePacketSubType(nestedPacketType))
+            {
+                ownerName = "CMiniRoomBaseDlg::OnPacketBase";
+                PacketReader baseReader = new(nestedPayload);
+                handled = TryDispatchMiniRoomBasePacket(baseReader, out message);
+                nestedReader = baseReader;
+            }
             else
             {
                 handled = Kind switch
@@ -3279,8 +3306,24 @@ namespace HaCreator.MapSimulator.Interaction
             string detail = handled
                 ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}. {message} | payload={payloadPreview} | remaining={nestedReader.Remaining}"
                 : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}, but it was not modeled. {message} | payload={payloadPreview} | remaining={nestedReader.Remaining}";
+            _lastPacketOwnerSummary = detail;
             message = detail;
             return handled;
+        }
+
+        private static bool IsMiniRoomBasePacketSubType(byte packetType)
+        {
+            return packetType is
+                MiniRoomBaseInvitePacketSubType or
+                MiniRoomBaseInviteResultPacketSubType or
+                MiniRoomBaseEnterPacketSubType or
+                MiniRoomBaseEnterResultPacketSubType or
+                MiniRoomBaseUpdatePacketSubType or
+                MiniRoomBaseChatPacketSubType or
+                MiniRoomBaseChatAltPacketSubType or
+                MiniRoomBaseAvatarPacketSubType or
+                MiniRoomBaseLeavePacketSubType or
+                MiniRoomBaseCheckSsnPacketSubType;
         }
 
         private bool TryApplyMiniRoomBaseEnterPacket(PacketReader reader, out string message)

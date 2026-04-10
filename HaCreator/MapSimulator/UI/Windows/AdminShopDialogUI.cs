@@ -3216,13 +3216,22 @@ namespace HaCreator.MapSimulator.UI
                 : 0;
             _pendingStorageExpansionAwaitingPacketResult = entry?.IsStorageExpansion == true
                 && _pendingStorageExpansionCommoditySerialNumber > 0;
-            _pendingPacketOwnedAdminShopResult = _packetOwnedAdminShopSession.IsActive
+            bool shouldAwaitPacketOwnedResult = _packetOwnedAdminShopSession.IsActive
                 && !_pendingStorageExpansionAwaitingPacketResult
                 && entry?.InventoryExpansionType == InventoryType.NONE
                 && entry?.IsStorageExpansion != true;
-            string packetOwnedTradeSummary = _pendingPacketOwnedAdminShopResult
-                ? DispatchPacketOwnedAdminShopTradeRequest(entry, _pendingRequestQuantity)
-                : string.Empty;
+            string packetOwnedTradeSummary = string.Empty;
+            _pendingPacketOwnedAdminShopResult = shouldAwaitPacketOwnedResult
+                && TryDispatchPacketOwnedAdminShopTradeRequest(entry, _pendingRequestQuantity, out packetOwnedTradeSummary);
+            if (_pendingPacketOwnedAdminShopResult)
+            {
+                ApplyPendingPacketOwnedSetUserItemsParity(entry);
+            }
+            else if (shouldAwaitPacketOwnedResult && !string.IsNullOrWhiteSpace(packetOwnedTradeSummary))
+            {
+                _packetOwnedAdminShopSession.SetLastOwnerState("CAdminShopDlg::SendTradeRequest could not build opcode 74 mode 1, so the owner stayed on the local simulator request seam.");
+            }
+
             _packetOwnedAdminShopSession.SetWaitingForResult(_pendingPacketOwnedAdminShopResult);
             _requestResolveTick = _pendingPacketOwnedAdminShopResult
                 ? int.MaxValue
@@ -3240,8 +3249,48 @@ namespace HaCreator.MapSimulator.UI
                     ? string.IsNullOrWhiteSpace(packetOwnedTradeSummary)
                         ? $"Submitted a packet-owned admin-shop request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for packet 366 subtype 4."
                         : $"Submitted a packet-owned admin-shop request for {entry.Title}{quantityLabel}{priceLabel}. {packetOwnedTradeSummary} Waiting for packet 366 subtype 4."
-                    : $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for simulator response.";
+                    : string.IsNullOrWhiteSpace(packetOwnedTradeSummary)
+                        ? $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for simulator response."
+                        : $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. {packetOwnedTradeSummary} Waiting for simulator response.";
             UpdateActionButtonStates();
+        }
+
+        private void ApplyPendingPacketOwnedSetUserItemsParity(AdminShopEntry entry)
+        {
+            if (!_packetOwnedAdminShopSession.IsActive
+                || entry == null
+                || !RequiresInventorySource(entry)
+                || entry.SourceInventoryType == InventoryType.NONE)
+            {
+                return;
+            }
+
+            AdminShopUserSellMutationRow requestedRow = new(
+                entry.SourceInventoryType,
+                entry.SourceItemId,
+                entry.InventorySlotIndex + 1,
+                Math.Max(0, entry.DisplayQuantity));
+            _activePane = AdminShopPane.User;
+            _activeBrowseMode = AdminShopBrowseMode.All;
+            _activeCategory = ResolveCategoryForInventoryType(entry.SourceInventoryType);
+            RefreshDynamicUserEntries();
+
+            AdminShopPaneState paneState = _paneStates[AdminShopPane.User];
+            int selectedIndex = AdminShopUserSellMutationParity.FindMatchingEntryIndex(
+                BuildUserSellMutationRows(entry.SourceInventoryType),
+                requestedRow);
+            paneState.SelectedIndex = selectedIndex >= 0
+                ? selectedIndex
+                : paneState.Entries.Count == 0 ? -1 : Math.Clamp(paneState.SelectedIndex, 0, paneState.Entries.Count - 1);
+            paneState.ScrollOffset = selectedIndex < 0
+                ? Math.Max(0, paneState.ScrollOffset)
+                : AdminShopUserSellMutationParity.ComputeScrollOffset(
+                    paneState.ScrollOffset,
+                    selectedIndex,
+                    MaxVisibleRows);
+            ClampPaneState(paneState);
+            PersistBrowseSurfaceState(AdminShopPane.User);
+            UpdateRowButtons();
         }
 
         private void AdjustModalQuantity(int delta)
@@ -6840,19 +6889,22 @@ namespace HaCreator.MapSimulator.UI
             return resolvedSummary;
         }
 
-        private string DispatchPacketOwnedAdminShopTradeRequest(AdminShopEntry entry, int requestQuantity)
+        private bool TryDispatchPacketOwnedAdminShopTradeRequest(AdminShopEntry entry, int requestQuantity, out string summary)
         {
+            summary = string.Empty;
             if (entry == null)
             {
-                return string.Empty;
+                return false;
             }
 
             if (!TryBuildPacketOwnedAdminShopTradeRequest(entry, requestQuantity, out PacketOwnedNpcUtilityOutboundRequest request, out string error))
             {
-                return error ?? string.Empty;
+                summary = error ?? string.Empty;
+                return false;
             }
 
-            return DispatchPacketOwnedAdminShopOutbound(request);
+            summary = DispatchPacketOwnedAdminShopOutbound(request);
+            return true;
         }
 
         private string DispatchPacketOwnedAdminShopWishlistRegister(AdminShopEntry entry)

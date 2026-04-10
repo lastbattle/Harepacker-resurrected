@@ -316,6 +316,7 @@ namespace HaCreator.MapSimulator
                         _DxDeviceManager.GraphicsDevice,
                         usedProps,
                         _playerManager?.Player?.Build?.Gender,
+                        _questRuntime.HasNpcClientActionSelectionContext(),
                         _questRuntime.GetCurrentState,
                         questId => _questRuntime.TryGetQuestRecordValue(questId, out string value) ? value : string.Empty);
                     if (npcItem != null)
@@ -850,6 +851,7 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.WhisperTargetPickerCancelRequested = () => _chat.CancelActiveWhisperTargetPicker();
                 statusBarChatUI.WhisperTargetPickerModalButtonFocusRequested = () => _chat.ActivateWhisperTargetPickerModalButtonFocus();
                 statusBarChatUI.WhisperTargetPickerModalComboFocusRequested = () => _chat.ActivateWhisperTargetPickerModalComboFocus();
+                statusBarChatUI.WhisperTargetPickerModalComboDropdownToggleRequested = () => _chat.ToggleWhisperTargetPickerModalComboDropdown();
             }
 
 
@@ -871,6 +873,7 @@ namespace HaCreator.MapSimulator
                     userInfoWindow.SetCollectionSnapshotProvider(ResolveCharacterInfoItemMakerProgressionSnapshot);
                     userInfoWindow.SetMonsterBookSnapshotProvider(ResolveCharacterInfoMonsterBookSnapshot);
                     userInfoWindow.SetRankDeltaProvider(ResolveCharacterInfoRankDeltaSnapshot);
+                    userInfoWindow.SetRemoteRideSnapshotProvider(ResolveCharacterInfoRemoteRideSnapshot);
 
                     WireCharacterInfoWindowActionRoutes(userInfoWindow);
                 }
@@ -1449,6 +1452,7 @@ namespace HaCreator.MapSimulator
                         _DxDeviceManager.GraphicsDevice,
                         usedProps,
                         _playerManager?.Player?.Build?.Gender,
+                        _questRuntime.HasNpcClientActionSelectionContext(),
                         _questRuntime.GetCurrentState,
                         questId => _questRuntime.TryGetQuestRecordValue(questId, out string value) ? value : string.Empty);
                     if (npcItem != null)
@@ -1713,6 +1717,7 @@ namespace HaCreator.MapSimulator
                     userInfoWindow.SetCollectionSnapshotProvider(ResolveCharacterInfoItemMakerProgressionSnapshot);
                     userInfoWindow.SetMonsterBookSnapshotProvider(ResolveCharacterInfoMonsterBookSnapshot);
                     userInfoWindow.SetRankDeltaProvider(ResolveCharacterInfoRankDeltaSnapshot);
+                    userInfoWindow.SetRemoteRideSnapshotProvider(ResolveCharacterInfoRemoteRideSnapshot);
 
                     WireCharacterInfoWindowActionRoutes(userInfoWindow);
                 }

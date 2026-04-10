@@ -20,6 +20,9 @@ namespace HaCreator.MapSimulator.Interaction
         private const int DefaultFrameDelayMs = 100;
         private const int ClientLeaveCanvasFadeDurationMs = 1000;
         private const int ClientLeaveCanvasReinsertDelayMs = 0;
+        private const int ClientLeaveRemoveCanvasIndex = -2;
+        private const int ClientLeaveInsertCanvasStartAlphaValue = -1;
+        private const int ClientLeaveInsertCanvasEndAlphaValue = 0;
         private const int DefaultBoxOffsetX = -3;
         private const int DefaultBoxOffsetY = -100;
         private const float DefaultBobAmplitude = 3f;
@@ -158,11 +161,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return _statusMessage;
             }
 
-            Texture2D leaveSnapshotTexture = null;
-            Point leaveSnapshotOrigin = Point.Zero;
-            TryCreateLeaveSnapshot(entry, out leaveSnapshotTexture, out leaveSnapshotOrigin);
-
-            _leavingEntries.Add(LeavingMessageBoxEntry.FromEntry(entry, leaveSnapshotTexture, leaveSnapshotOrigin, currentTick));
+            FrozenMessageBoxRenderState leaveRenderState = CaptureLeaveRenderState(entry);
+            _leavingEntries.Add(LeavingMessageBoxEntry.FromEntry(entry, leaveRenderState, currentTick));
             _statusMessage = $"{entry.Source.GetLabel()} field message-box {messageBoxId} began its client leave-field fade.";
             return _statusMessage;
         }
@@ -1502,8 +1502,11 @@ namespace HaCreator.MapSimulator.Interaction
                 messageText: "test",
                 layerPosition: Point.Zero,
                 visual: null,
-                leaveTexture: new Texture2D(GraphicsDeviceServiceForTests.Instance, 1, 1),
-                leaveOrigin: Point.Zero,
+                leaveRenderState: new FrozenMessageBoxRenderState(
+                    DisplayTexture: new Texture2D(GraphicsDeviceServiceForTests.Instance, 1, 1),
+                    DisplayOrigin: Point.Zero,
+                    TextLayout: MessageBoxTextLayout.Default,
+                    DrawTextOverTexture: false),
                 leaveStartedAt: 100,
                 source: MessageBoxEntrySource.LocalCommand);
 
@@ -1513,6 +1516,17 @@ namespace HaCreator.MapSimulator.Interaction
             float alphaAtHalfFade = entry.GetAlpha(600);
             bool shouldRemoveAtFadeDuration = entry.ShouldRemove(1100);
             return (alphaBeforeUpdate, alphaAfterUpdate, alphaAtHalfFade, shouldRemoveAtFadeDuration, entry.ShouldDrawText);
+        }
+
+        internal static (int RemoveCanvasIndex, int FadeDurationMs, int InsertCanvasStartAlphaValue, int InsertCanvasEndAlphaValue, bool StopsLayerAnimation, bool RegistersOneTimeAnimation) GetLeaveFieldRegistrationTraceForTest()
+        {
+            return (
+                ClientLeaveRemoveCanvasIndex,
+                ClientLeaveCanvasFadeDurationMs,
+                ClientLeaveInsertCanvasStartAlphaValue,
+                ClientLeaveInsertCanvasEndAlphaValue,
+                StopsLayerAnimation: true,
+                RegistersOneTimeAnimation: true);
         }
 
         internal static ((int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom) FirstFrame, (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom) SecondFrame) ComputeAnimatedFrameTextLayoutsForTest(
@@ -1582,6 +1596,22 @@ namespace HaCreator.MapSimulator.Interaction
         internal static int ResolveUiCenterRepeatCountForTest(WzSubProperty uiProperty)
         {
             return ResolveUiCenterRepeatCount(uiProperty);
+        }
+
+        private FrozenMessageBoxRenderState CaptureLeaveRenderState(FieldMessageBoxEntry entry)
+        {
+            Texture2D displayTexture = entry.GetDisplayTexture();
+            Point displayOrigin = entry.GetDisplayOrigin();
+            MessageBoxTextLayout textLayout = entry.GetDisplayTextLayout();
+            bool drawTextOverTexture = true;
+            if (TryCreateLeaveSnapshot(entry, out Texture2D snapshotTexture, out Point snapshotOrigin))
+            {
+                displayTexture = snapshotTexture;
+                displayOrigin = snapshotOrigin;
+                drawTextOverTexture = false;
+            }
+
+            return new FrozenMessageBoxRenderState(displayTexture, displayOrigin, textLayout, drawTextOverTexture);
         }
 
         private bool TryCreateLeaveSnapshot(FieldMessageBoxEntry entry, out Texture2D snapshotTexture, out Point snapshotOrigin)
@@ -1906,18 +1936,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             private LeaveCanvasState _canvasState;
             private readonly int _leaveStartedAt;
-            private readonly Texture2D _leaveTexture;
-            private readonly Point _leaveOrigin;
+            private readonly FrozenMessageBoxRenderState _leaveRenderState;
             private int _reinsertedAt = int.MinValue;
 
-            internal LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, Texture2D leaveTexture, Point leaveOrigin, int leaveStartedAt, MessageBoxEntrySource source)
+            internal LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, FrozenMessageBoxRenderState leaveRenderState, int leaveStartedAt, MessageBoxEntrySource source)
             {
                 Id = id;
                 MessageText = messageText;
                 LayerPosition = layerPosition;
                 Visual = visual;
-                _leaveTexture = leaveTexture;
-                _leaveOrigin = leaveOrigin;
+                _leaveRenderState = leaveRenderState;
                 _leaveStartedAt = leaveStartedAt;
                 Source = source;
                 _canvasState = LeaveCanvasState.Removed;
@@ -1928,7 +1956,7 @@ namespace HaCreator.MapSimulator.Interaction
             public Point LayerPosition { get; }
             public MessageBoxVisual Visual { get; }
             public MessageBoxEntrySource Source { get; }
-            public bool ShouldDrawText => _canvasState == LeaveCanvasState.ReinsertedFade && _leaveTexture == null;
+            public bool ShouldDrawText => _canvasState == LeaveCanvasState.ReinsertedFade && _leaveRenderState.DrawTextOverTexture;
 
             public void Update(int currentTick)
             {
@@ -1940,15 +1968,14 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            public static LeavingMessageBoxEntry FromEntry(FieldMessageBoxEntry entry, Texture2D leaveTexture, Point leaveOrigin, int currentTick)
+            public static LeavingMessageBoxEntry FromEntry(FieldMessageBoxEntry entry, FrozenMessageBoxRenderState leaveRenderState, int currentTick)
             {
                 return new LeavingMessageBoxEntry(
                     entry.Id,
                     entry.MessageText,
                     entry.LayerPosition,
                     entry.Visual,
-                    leaveTexture ?? entry.GetDisplayTexture(),
-                    leaveTexture == null ? entry.GetDisplayOrigin() : leaveOrigin,
+                    leaveRenderState,
                     currentTick,
                     entry.Source);
             }
@@ -1962,16 +1989,16 @@ namespace HaCreator.MapSimulator.Interaction
             public Texture2D GetDisplayTexture()
             {
                 return _canvasState == LeaveCanvasState.ReinsertedFade
-                    ? _leaveTexture
+                    ? _leaveRenderState.DisplayTexture
                     : null;
             }
 
             public Point GetDisplayOrigin()
             {
-                return _leaveOrigin;
+                return _leaveRenderState.DisplayOrigin;
             }
 
-            public MessageBoxTextLayout GetDisplayTextLayout() => Visual?.GetFrameTextLayout(0) ?? MessageBoxTextLayout.Default;
+            public MessageBoxTextLayout GetDisplayTextLayout() => _leaveRenderState.TextLayout;
 
             public float GetAlpha(int currentTick)
             {
@@ -2043,6 +2070,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return TextLayouts[index];
             }
         }
+
+        private readonly record struct FrozenMessageBoxRenderState(
+            Texture2D DisplayTexture,
+            Point DisplayOrigin,
+            MessageBoxTextLayout TextLayout,
+            bool DrawTextOverTexture);
 
         private readonly record struct MessageBoxTextLayout(
             int PaddingLeft,

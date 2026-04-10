@@ -123,6 +123,7 @@ namespace HaCreator.MapSimulator.Character
                 ["magneticCannon"] = new[] { "doublefire" },
                 ["bombExplosion"] = new[] { "doublefire" },
                 ["monkeyBoomboom"] = new[] { "doublefire" },
+                ["immolation"] = new[] { "doublefire" },
                 // The same cannon-family client block also publishes buff/voice action
                 // requests that current Morph/*.img does not author as separate roots.
                 ["piratebless"] = new[] { "doublefire" },
@@ -649,11 +650,17 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // CAvatar::MoveAction2RawAction still promotes attackable morph move-action 18
-            // to raw action 42 (`paralyze`), and s_sMorphAction also exposes raw
-            // `shoot6`; archer Morph/*.img surfaces publish generic `shoot*` nodes
-            // for those non-authored ranged requests rather than verbatim branches.
+            // to raw action 42 (`paralyze`), while s_sMorphAction also exposes generic
+            // shot-family raw names like `shoot6`, `shotC1`, `shootDb1`, `jShot`, and
+            // `speedDualShot`. Current Morph/*.img archer surfaces publish generic
+            // `shoot*` nodes for those non-authored requests rather than verbatim
+            // branches or archer-only authored aliases like `windshot`.
             return string.Equals(actionName, "paralyze", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "shoot6", StringComparison.OrdinalIgnoreCase);
+                   || string.Equals(actionName, "shoot6", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "shotC1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "shootDb1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "jShot", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "speedDualShot", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumerateGenericAttackAliases(CharacterPart morphPart, string actionName)

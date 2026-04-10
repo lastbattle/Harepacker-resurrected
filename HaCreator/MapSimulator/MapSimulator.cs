@@ -3840,6 +3840,7 @@ namespace HaCreator.MapSimulator
             userInfoWindow.MarriedBadgeProvider = ResolveCharacterInfoMarriageBadgeState;
             userInfoWindow.LocalActionLocationSummaryProvider = GetCurrentMapTransferDisplayName;
             userInfoWindow.LocalActionChannelProvider = () => Math.Max(1, _simulatorChannelIndex + 1);
+            userInfoWindow.SetRemoteRideSnapshotProvider(ResolveCharacterInfoRemoteRideSnapshot);
             userInfoWindow.InspectionTargetResolver = ResolveCharacterInfoInspectionTarget;
         }
 
@@ -3927,6 +3928,30 @@ namespace HaCreator.MapSimulator
             return context.IsRemoteTarget
                 ? $"Social search opened while inspecting {context.CharacterName}."
                 : "Social search opened from the profile window.";
+        }
+
+        private UserInfoUI.RemoteRideSnapshot ResolveCharacterInfoRemoteRideSnapshot(UserInfoUI.UserInfoActionContext context)
+        {
+            if (!context.IsRemoteTarget)
+            {
+                return default;
+            }
+
+            bool foundActor = (context.CharacterId > 0 && _remoteUserPool.TryGetActor(context.CharacterId, out RemoteUserActor actor))
+                || _remoteUserPool.TryGetActorByName(context.CharacterName, out actor);
+            return BuildCharacterInfoRemoteRideSnapshot(foundActor ? actor : null);
+        }
+
+        internal static UserInfoUI.RemoteRideSnapshot BuildCharacterInfoRemoteRideSnapshot(RemoteUserActor actor)
+        {
+            if (actor?.IsVisibleInWorld != true)
+            {
+                return default;
+            }
+
+            return new UserInfoUI.RemoteRideSnapshot(
+                hasAuthoritativeRideState: true,
+                isMountedInField: actor.RidingVehicleId > 0);
         }
 
         private string HandleCharacterInfoFollowRequest(UserInfoUI.UserInfoActionContext context)
@@ -4243,7 +4268,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            unavailableMessage = $"{context.CharacterName} is not discoverable as online from shared-field, social-roster, messenger, or family seams, so this request remains a local preview only.";
+            unavailableMessage = $"{context.CharacterName} is not discoverable as online from shared-field, social-roster, messenger-room, family-chart, or active wedding seams, so this request remains a local preview only.";
             return false;
         }
 
@@ -6122,6 +6147,7 @@ namespace HaCreator.MapSimulator
                 usedProps,
                 includeTooltips,
                 _playerManager?.Player?.Build?.Gender,
+                _questRuntime.HasNpcClientActionSelectionContext(),
                 _questRuntime.GetCurrentState,
                 questId => _questRuntime.TryGetQuestRecordValue(questId, out string value) ? value : string.Empty);
             if (npcPreview != null)
@@ -16141,6 +16167,7 @@ namespace HaCreator.MapSimulator
             this._spawnPortalName = spawnPortalName;
             _remoteUserPool.SkillUseRegistered += HandleRemoteAnimationDisplayerSkillUse;
             _remoteUserPool.UpgradeTombEffectRegistered += HandleRemoteUpgradeTombEffect;
+            _remoteUserPool.HitFeedbackRegistered += HandleRemoteHitFeedback;
             _mapTransferDestinations = new MapTransferDestinationStore();
             _mapTransferRuntime = new MapTransferRuntimeManager(_mapTransferDestinations);
 
@@ -20419,6 +20446,11 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryResolveSocialRoomEmployeeBridgeRuntimeByHintScore(hint, out runtime, out kind))
+            {
+                return true;
+            }
+
             return false;
         }
 
@@ -20447,6 +20479,70 @@ namespace HaCreator.MapSimulator
 
             return false;
         }
+
+        private bool TryResolveSocialRoomEmployeeBridgeRuntimeByHintScore(
+            SocialRoomEmployeePoolCodec.RoutingHint hint,
+            out SocialRoomRuntime runtime,
+            out SocialRoomKind kind)
+        {
+            runtime = null;
+            kind = SocialRoomKind.PersonalShop;
+
+            SocialRoomEmployeeBridgeHintCandidate? bestCandidate = null;
+            foreach (SocialRoomKind candidateKind in new[] { SocialRoomKind.EntrustedShop, SocialRoomKind.PersonalShop })
+            {
+                if (!TryGetSocialRoomRuntime(candidateKind, out SocialRoomRuntime candidateRuntime))
+                {
+                    continue;
+                }
+
+                int score = candidateRuntime.ScoreEmployeeRoutingHint(hint);
+                if (score <= 0)
+                {
+                    continue;
+                }
+
+                bool isVisible = uiWindowManager?.GetWindow(GetSocialRoomWindowName(candidateKind))?.IsVisible == true;
+                SocialRoomEmployeeBridgeHintCandidate candidate = new(candidateRuntime, candidateKind, score, isVisible);
+                if (!bestCandidate.HasValue || IsBetterSocialRoomEmployeeBridgeHintCandidate(candidate, bestCandidate.Value))
+                {
+                    bestCandidate = candidate;
+                }
+            }
+
+            if (!bestCandidate.HasValue)
+            {
+                return false;
+            }
+
+            runtime = bestCandidate.Value.Runtime;
+            kind = bestCandidate.Value.Kind;
+            return true;
+        }
+
+        internal static bool IsBetterSocialRoomEmployeeBridgeHintCandidate(
+            SocialRoomEmployeeBridgeHintCandidate candidate,
+            SocialRoomEmployeeBridgeHintCandidate currentBest)
+        {
+            if (candidate.Score != currentBest.Score)
+            {
+                return candidate.Score > currentBest.Score;
+            }
+
+            if (candidate.IsVisible != currentBest.IsVisible)
+            {
+                return candidate.IsVisible;
+            }
+
+            return candidate.Kind == SocialRoomKind.EntrustedShop
+                && currentBest.Kind != SocialRoomKind.EntrustedShop;
+        }
+
+        internal readonly record struct SocialRoomEmployeeBridgeHintCandidate(
+            SocialRoomRuntime Runtime,
+            SocialRoomKind Kind,
+            int Score,
+            bool IsVisible);
 
         private static bool TryResolveSocialRoomKindFromMiniRoomType(byte miniRoomType, out SocialRoomKind kind)
         {
@@ -23741,39 +23837,48 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (HasVisibleRemoteTrackedUserActor(occupantName))
+            return ShouldSeedSyntheticMinimapOccupantMarkerForTesting(
+                kind,
+                HasVisibleRemoteTrackedUserActor(occupantName),
+                hasDedicatedFieldActorMarker,
+                IsTraderOccupantRepresentedByFieldActor(kind, runtime, occupant),
+                _remoteUserPool.TryGetPosition(occupantName, out _),
+                occupant?.AvatarBuild != null,
+                occupant != null);
+        }
+
+        internal static bool ShouldSeedSyntheticMinimapOccupantMarkerForTesting(
+            SocialRoomKind kind,
+            bool hasVisibleRemoteTrackedUserActor,
+            bool hasDedicatedFieldActorMarker,
+            bool isRepresentedByDedicatedFieldActor,
+            bool hasRemotePosition,
+            bool hasAvatarBuild,
+            bool hasOccupant)
+        {
+            if (hasVisibleRemoteTrackedUserActor)
             {
                 return true;
             }
 
-            if (hasDedicatedFieldActorMarker
-                && IsTraderOccupantRepresentedByFieldActor(kind, runtime, occupant))
+            if (kind is not SocialRoomKind.MiniRoom
+                && kind is not SocialRoomKind.PersonalShop
+                && kind is not SocialRoomKind.EntrustedShop)
             {
                 return false;
             }
 
-            if (_remoteUserPool.TryGetPosition(occupantName, out _))
+            if (hasDedicatedFieldActorMarker && isRepresentedByDedicatedFieldActor)
+            {
+                return false;
+            }
+
+            if (hasRemotePosition || hasAvatarBuild)
             {
                 return true;
             }
 
-            if (occupant?.AvatarBuild != null)
-            {
-                return true;
-            }
-
-            if (occupant == null)
-            {
-                return kind == SocialRoomKind.MiniRoom;
-            }
-
-            return kind switch
-            {
-                SocialRoomKind.MiniRoom => occupant.Role is SocialRoomOccupantRole.Owner or SocialRoomOccupantRole.Guest,
-                SocialRoomKind.PersonalShop => occupant.Role is SocialRoomOccupantRole.Owner or SocialRoomOccupantRole.Buyer or SocialRoomOccupantRole.Visitor,
-                SocialRoomKind.EntrustedShop => occupant.Role is SocialRoomOccupantRole.Owner or SocialRoomOccupantRole.Merchant or SocialRoomOccupantRole.Buyer or SocialRoomOccupantRole.Visitor,
-                _ => false
-            };
+            return false;
         }
 
         private bool HasVisibleRemoteTrackedUserActor(string occupantName)
@@ -25563,6 +25668,7 @@ namespace HaCreator.MapSimulator
                     AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
                     HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
                     HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership(),
+                    HasAttachedPacketOwnedDriver: _localFollowRuntime.HasAttachedDriver,
                     HasPendingSameMapTransfer: _sameMapTeleportPending,
                     HasBlockingScriptedSequence: _specialFieldRuntime.HasBlockingScriptedSequence));
         }
@@ -25859,7 +25965,7 @@ namespace HaCreator.MapSimulator
             return portal.pt switch
             {
                 PortalType.CollisionScript => TryHandleCollisionScriptPortal(portal, portalIndex, currentTime, fieldLimit),
-                PortalType.CollisionVerticalJump => TryHandleVerticalJumpPortal(portal),
+                PortalType.CollisionVerticalJump => TryHandleVerticalJumpPortal(portal, currentTime),
                 PortalType.CollisionCustomImpact => TryHandleCustomImpactPortal(portal),
                 _ => TryHandleTransferPortalCollision(portal, portalIndex, currentTime, fieldLimit)
             };
@@ -25896,7 +26002,7 @@ namespace HaCreator.MapSimulator
             return portal.onlyOnce != MapleBool.True || portalIndex != _lastPortalCollisionSourcePortalIndex;
         }
 
-        private bool TryHandleVerticalJumpPortal(PortalInstance portal)
+        private bool TryHandleVerticalJumpPortal(PortalInstance portal, int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
             if (player?.Physics == null)
@@ -25907,10 +26013,12 @@ namespace HaCreator.MapSimulator
             double horizontalImpact = ResolveCollisionVerticalJumpHorizontalImpact(player.HorizontalInputDirection, player.FacingRight);
             player.Physics.SetImpactNext(horizontalImpact, CollisionVerticalJumpVelocityY);
             _lastCollisionVerticalJumpMovePathAttribute = CollisionVerticalJumpMovePathAttribute;
+            TryRegisterCollisionVerticalJumpEffect(currentTime);
             _ = ClearPacketOwnedTeleportPassengerLink();
             return true;
         }
 
+        internal const string CollisionVerticalJumpEffectUol = "Effect/BasicEff.img/VerticalJump";
         internal const int CollisionVerticalJumpMovePathAttribute = 24;
         internal const double CollisionVerticalJumpVelocityY = -2300d;
 
@@ -27457,9 +27565,12 @@ namespace HaCreator.MapSimulator
                 (skillId, currentTime) => _playerManager?.Skills?.ResolveClientCancelFamilyRemainingDurationMs(skillId, currentTime) ?? 0,
                 _soundManager,
                 _combatEffects,
-                _animationEffects);
+                _animationEffects,
+                _texturePool,
+                _DxDeviceManager.GraphicsDevice);
             if (_playerManager?.Skills != null)
             {
+                _playerManager.OnRepeatSkillModeEndEffectRequestReady = DispatchRepeatSkillModeEndEffectRequest;
                 _playerManager.Skills.OnClientSkillCancelRequested = (cancelSkillId, _, currentTime) =>
                     _summonedPool.TryCancelLocalOwnerSummonsBySkillRequest(cancelSkillId, currentTime);
                 _playerManager.Skills.OnSg88ManualAttackRequested = request =>
@@ -28012,7 +28123,8 @@ namespace HaCreator.MapSimulator
             {
                 CoconutBasicActionOwned = _specialFieldRuntime?.Minigames?.Coconut?.IsLocalBasicActionOwnerActive == true,
                 SnowBallBasicActionOwned = snowBall?.IsLocalBasicActionOwnerActive == true,
-                GuildBossBasicActionOwned = IsGuildBossBasicActionOwnerActive()
+                GuildBossBasicActionOwned = IsGuildBossBasicActionOwnerActive(),
+                HasLocalDragonActor = _playerManager?.Dragon?.CanOwnSkillCast(_playerManager?.Player) == true
             };
         }
 
@@ -29841,19 +29953,19 @@ namespace HaCreator.MapSimulator
             int sourceSlotIndex,
             InventorySlotData draggedSlotData)
         {
-            if (sourceInventoryType == InventoryType.NONE
-                || sourceSlotIndex < 0
-                || draggedSlotData == null
-                || draggedSlotData.ItemId <= 0)
+            if (!FieldDropRequestEvaluator.TryResolveLocalItemDropRequest(
+                    _mapBoard?.MapInfo?.fieldLimit ?? 0,
+                    sourceInventoryType,
+                    sourceSlotIndex,
+                    draggedSlotData,
+                    out LocalFieldItemDropRequest request,
+                    out string restrictionMessage))
             {
-                return false;
-            }
+                if (!string.IsNullOrWhiteSpace(restrictionMessage))
+                {
+                    ShowFieldRestrictionMessage(restrictionMessage);
+                }
 
-            string restrictionMessage = FieldInteractionRestrictionEvaluator.GetDropRequestRestrictionMessage(
-                _mapBoard?.MapInfo?.fieldLimit ?? 0);
-            if (!string.IsNullOrWhiteSpace(restrictionMessage))
-            {
-                ShowFieldRestrictionMessage(restrictionMessage);
                 return false;
             }
 
@@ -29862,13 +29974,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int quantity = Math.Max(1, draggedSlotData.Quantity);
             int ownerId = _playerManager.Player.Build?.Id ?? 0;
             _dropPool.SpawnItemDrop(
                 _playerManager.Player.X,
                 _playerManager.Player.Y,
-                draggedSlotData.ItemId.ToString(CultureInfo.InvariantCulture),
-                quantity,
+                request.ItemId.ToString(CultureInfo.InvariantCulture),
+                request.Quantity,
                 currTickCount,
                 ownerId);
             PlayDropItemSE();

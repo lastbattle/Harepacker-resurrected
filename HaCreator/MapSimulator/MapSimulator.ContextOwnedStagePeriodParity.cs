@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator
         private HashSet<string> _contextOwnedStageActiveKeywords = new(StringComparer.Ordinal);
         private HashSet<int> _contextOwnedStageActiveQuestIds = new();
         private HashSet<int> _contextOwnedStageAffectedMapIds = new();
+        private ContextOwnedStagePeriodCatalogEntry _contextOwnedStageCurrentPeriod;
         private IReadOnlyList<ContextOwnedStageBackImageEntry> _contextOwnedStageCurrentBackImages = Array.Empty<ContextOwnedStageBackImageEntry>();
         private uint? _contextOwnedStageCurrentBackColorArgb;
 
@@ -88,11 +89,12 @@ namespace HaCreator.MapSimulator
                 _contextOwnedStageKeywordCache,
                 _contextOwnedStageQuestCache,
                 _contextOwnedStagePeriodCache);
+            _contextOwnedStageCurrentPeriod = period;
             _contextOwnedStageCurrentBackColorArgb = period.ResolveActiveBackColorArgb();
             _contextOwnedStageCurrentBackImages = period.ResolveActiveBackImages();
             _contextOwnedStageActiveKeywords = ContextOwnedStageSystemCatalog.CaptureEnabledKeywords(_contextOwnedStageKeywordCache);
             _contextOwnedStageActiveQuestIds = ContextOwnedStageSystemCatalog.CaptureEnabledQuestIds(_contextOwnedStageQuestCache);
-            _contextOwnedStageAffectedMapIds = catalog.ResolveAffectedMaps(period);
+            _contextOwnedStageAffectedMapIds = ResolveContextOwnedStageAffectedMaps(catalog, period);
 
             int mapId = _mapBoard?.MapInfo?.id ?? 0;
             if (mapId <= 0 || _mapBoard?.BoardItems == null)
@@ -223,6 +225,39 @@ namespace HaCreator.MapSimulator
             }
 
             return _contextOwnedStageAffectedMapIds.Count == 0 || _contextOwnedStageAffectedMapIds.Contains(mapId);
+        }
+
+        private HashSet<int> ResolveContextOwnedStageAffectedMaps(
+            ContextOwnedStageSystemCatalog catalog,
+            ContextOwnedStagePeriodCatalogEntry period)
+        {
+            Func<int, MapleLib.WzLib.WzStructure.Data.QuestStructure.QuestStateType> questStateProvider = _questRuntime != null
+                ? _questRuntime.GetCurrentState
+                : null;
+            return catalog?.ResolveAffectedMaps(period, questStateProvider) ?? new HashSet<int>();
+        }
+
+        private void RefreshContextOwnedStagePeriodQuestStateGates()
+        {
+            if (_contextOwnedStageCurrentPeriod == null
+                || !TryGetContextOwnedStageSystemCatalog(out ContextOwnedStageSystemCatalog catalog, out _))
+            {
+                return;
+            }
+
+            int mapId = _mapBoard?.MapInfo?.id ?? 0;
+            bool appliedBeforeRefresh = ShouldApplyContextOwnedStageBackData(mapId);
+            HashSet<int> refreshedAffectedMaps = ResolveContextOwnedStageAffectedMaps(catalog, _contextOwnedStageCurrentPeriod);
+            if (_contextOwnedStageAffectedMapIds.SetEquals(refreshedAffectedMaps))
+            {
+                return;
+            }
+
+            _contextOwnedStageAffectedMapIds = refreshedAffectedMaps;
+            if (mapId > 0 && appliedBeforeRefresh != ShouldApplyContextOwnedStageBackData(mapId))
+            {
+                ReloadContextOwnedStagePeriodBackLayers();
+            }
         }
 
         private string DescribeContextOwnedStagePeriodStatus()

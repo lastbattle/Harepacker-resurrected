@@ -225,6 +225,7 @@ namespace HaCreator.MapSimulator.Character
         {
             public int SkillId { get; init; }
             public IReadOnlyDictionary<string, SkillAnimation> ActionAnimations { get; init; }
+            public IReadOnlySet<string> SupportedRawActionNames { get; init; }
             public int HorizontalOffsetPx { get; init; }
             public Point CurrentClientOffsetPx { get; set; }
             public Point ClientOffsetStartPx { get; set; }
@@ -2421,11 +2422,13 @@ namespace HaCreator.MapSimulator.Character
 
         private int GetAttackCooldown()
         {
-            var weapon = Build?.GetWeapon();
-            if (weapon == null) return 500;
+            if (Build == null)
+            {
+                return 500;
+            }
 
             // Attack speed: 2 (fast) to 9 (slow)
-            int speed = weapon.AttackSpeed;
+            int speed = Build.GetEffectiveWeaponAttackSpeed();
             return MIN_ATTACK_DELAY + (speed - 2) * 50;
         }
 
@@ -2545,38 +2548,20 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
-            if (MeleeAfterimagePlaybackResolver.TryCaptureFadeSnapshot(
-                    Assembler,
-                    _activeMeleeAfterImage.ActionName,
-                    _activeMeleeAfterImage.AfterImageAction,
-                    animationTime,
-                    out MeleeAfterimagePlaybackResolver.Snapshot snapshot))
-            {
-                int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
-                SkillFrame lastResolvedFrame = _activeMeleeAfterImage.LastResolvedFrame;
-                float lastResolvedAlpha = _activeMeleeAfterImage.LastResolvedAlpha;
-                MeleeAfterimagePlaybackResolver.ApplySnapshotToCache(
-                    snapshot,
-                    ref lastFrameIndex,
-                    ref lastResolvedFrame,
-                    ref lastResolvedAlpha);
-                _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
-                _activeMeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
-                _activeMeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
-            }
-            else
-            {
-                int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
-                SkillFrame lastResolvedFrame = _activeMeleeAfterImage.LastResolvedFrame;
-                float lastResolvedAlpha = _activeMeleeAfterImage.LastResolvedAlpha;
-                MeleeAfterimagePlaybackResolver.ClearSnapshotCache(
-                    ref lastFrameIndex,
-                    ref lastResolvedFrame,
-                    ref lastResolvedAlpha);
-                _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
-                _activeMeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
-                _activeMeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
-            }
+            int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
+            SkillFrame lastResolvedFrame = _activeMeleeAfterImage.LastResolvedFrame;
+            float lastResolvedAlpha = _activeMeleeAfterImage.LastResolvedAlpha;
+            MeleeAfterimagePlaybackResolver.CaptureFadeSnapshotOrClearCache(
+                Assembler,
+                _activeMeleeAfterImage.ActionName,
+                _activeMeleeAfterImage.AfterImageAction,
+                animationTime,
+                ref lastFrameIndex,
+                ref lastResolvedFrame,
+                ref lastResolvedAlpha);
+            _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
+            _activeMeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
+            _activeMeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
 
             _activeMeleeAfterImage.FadeStartTime = currentTime;
         }
@@ -2715,6 +2700,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 SkillId = skillId,
                 ActionAnimations = skill.ShadowPartnerActionAnimations,
+                SupportedRawActionNames = skill.ShadowPartnerSupportedRawActionNames,
                 HorizontalOffsetPx = skill.ShadowPartnerHorizontalOffsetPx,
                 CurrentClientOffsetPx = ResolveShadowPartnerClientOffset(CurrentActionName, State, FacingRight),
                 ClientOffsetStartPx = ResolveShadowPartnerClientOffset(CurrentActionName, State, FacingRight),
@@ -4114,44 +4100,23 @@ namespace HaCreator.MapSimulator.Character
             if (activeAction)
             {
                 int animationTime = Math.Max(0, currentTime - _activeMeleeAfterImage.AnimationStartTime);
-                if (Assembler?.TryGetFrameTimingAtTime(_activeMeleeAfterImage.ActionName, animationTime, out int resolvedFrameIndex, out int frameElapsedMs) == true)
-                {
-                    MeleeAfterimagePlaybackResolver.TryResolveFrameSnapshot(
-                        _activeMeleeAfterImage.AfterImageAction,
-                        resolvedFrameIndex,
-                        frameElapsedMs,
-                        out MeleeAfterimagePlaybackResolver.Snapshot snapshot);
-                    int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
-                    SkillFrame lastResolvedFrame = _activeMeleeAfterImage.LastResolvedFrame;
-                    float lastResolvedAlpha = _activeMeleeAfterImage.LastResolvedAlpha;
-                    MeleeAfterimagePlaybackResolver.ApplySnapshotToCache(
-                        snapshot,
-                        ref lastFrameIndex,
-                        ref lastResolvedFrame,
-                        ref lastResolvedAlpha);
-                    _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
-                    _activeMeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
-                    _activeMeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
-                    frameIndex = _activeMeleeAfterImage.LastFrameIndex;
-                    frame = _activeMeleeAfterImage.LastResolvedFrame;
-                    alpha = _activeMeleeAfterImage.LastResolvedAlpha;
-                }
-                else
-                {
-                    int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
-                    SkillFrame lastResolvedFrame = _activeMeleeAfterImage.LastResolvedFrame;
-                    float lastResolvedAlpha = _activeMeleeAfterImage.LastResolvedAlpha;
-                    MeleeAfterimagePlaybackResolver.ClearSnapshotCache(
-                        ref lastFrameIndex,
-                        ref lastResolvedFrame,
-                        ref lastResolvedAlpha);
-                    _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
-                    _activeMeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
-                    _activeMeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
-                    frameIndex = _activeMeleeAfterImage.LastFrameIndex;
-                    frame = _activeMeleeAfterImage.LastResolvedFrame;
-                    alpha = _activeMeleeAfterImage.LastResolvedAlpha;
-                }
+                int lastFrameIndex = _activeMeleeAfterImage.LastFrameIndex;
+                SkillFrame lastResolvedFrame = _activeMeleeAfterImage.LastResolvedFrame;
+                float lastResolvedAlpha = _activeMeleeAfterImage.LastResolvedAlpha;
+                MeleeAfterimagePlaybackResolver.RefreshSnapshotCache(
+                    Assembler,
+                    _activeMeleeAfterImage.ActionName,
+                    _activeMeleeAfterImage.AfterImageAction,
+                    animationTime,
+                    ref lastFrameIndex,
+                    ref lastResolvedFrame,
+                    ref lastResolvedAlpha);
+                _activeMeleeAfterImage.LastFrameIndex = lastFrameIndex;
+                _activeMeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
+                _activeMeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
+                frameIndex = _activeMeleeAfterImage.LastFrameIndex;
+                frame = _activeMeleeAfterImage.LastResolvedFrame;
+                alpha = _activeMeleeAfterImage.LastResolvedAlpha;
             }
             else if (_activeMeleeAfterImage.FadeStartTime >= 0)
             {
@@ -4688,7 +4653,11 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Rectangle bounds = CalculateMirrorImageSourceLayerBounds(clonedParts);
-            Texture2D composedTexture = CreateMirrorImageLayerTexture(clonedParts, bounds);
+            Texture2D composedTexture = CreateMirrorImageLayerTexture(
+                clonedParts,
+                bounds,
+                preparedLayer.ComposedTexture,
+                preservesExistingLayerObject);
             ReplacePreparedMirrorImageSourceLayerTexture(preparedLayer, composedTexture);
             preparedLayer.RenderLayer = renderLayer;
             preparedLayer.SourceSignature = sourceSignature;
@@ -5007,7 +4976,11 @@ namespace HaCreator.MapSimulator.Character
             return preparedBounds;
         }
 
-        private Texture2D CreateMirrorImageLayerTexture(IReadOnlyList<AssembledPart> sourceParts, Rectangle bounds)
+        private Texture2D CreateMirrorImageLayerTexture(
+            IReadOnlyList<AssembledPart> sourceParts,
+            Rectangle bounds,
+            Texture2D existingTexture = null,
+            bool preservesExistingLayerObject = false)
         {
             if (_graphicsDevice == null
                 || sourceParts == null
@@ -5020,13 +4993,18 @@ namespace HaCreator.MapSimulator.Character
 
             RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
             Viewport previousViewport = _graphicsDevice.Viewport;
-            var renderTarget = new RenderTarget2D(
-                _graphicsDevice,
-                bounds.Width,
-                bounds.Height,
-                false,
-                SurfaceFormat.Color,
-                DepthFormat.None);
+            RenderTarget2D renderTarget = TryReuseMirrorImageLayerTexture(
+                existingTexture,
+                bounds,
+                preservesExistingLayerObject)
+                ?? new RenderTarget2D(
+                    _graphicsDevice,
+                    bounds.Width,
+                    bounds.Height,
+                    false,
+                    SurfaceFormat.Color,
+                    DepthFormat.None);
+            bool reusesExistingTexture = ReferenceEquals(renderTarget, existingTexture);
 
             try
             {
@@ -5045,7 +5023,11 @@ namespace HaCreator.MapSimulator.Character
             }
             catch
             {
-                renderTarget.Dispose();
+                if (!reusesExistingTexture)
+                {
+                    renderTarget.Dispose();
+                }
+
                 throw;
             }
             finally
@@ -5061,6 +5043,44 @@ namespace HaCreator.MapSimulator.Character
 
                 _graphicsDevice.Viewport = previousViewport;
             }
+        }
+
+        private static RenderTarget2D TryReuseMirrorImageLayerTexture(
+            Texture2D existingTexture,
+            Rectangle bounds,
+            bool preservesExistingLayerObject)
+        {
+            if (existingTexture is not RenderTarget2D renderTarget)
+            {
+                return null;
+            }
+
+            return CanRefreshMirrorImagePreparedSourceLayerTextureInPlace(
+                preservesExistingLayerObject,
+                renderTarget.Width,
+                renderTarget.Height,
+                bounds)
+                ? renderTarget
+                : null;
+        }
+
+        internal static bool CanRefreshMirrorImagePreparedSourceLayerTextureInPlace(
+            bool preservesExistingLayerObject,
+            int existingTextureWidth,
+            int existingTextureHeight,
+            Rectangle incomingBounds)
+        {
+            if (!preservesExistingLayerObject
+                || existingTextureWidth <= 0
+                || existingTextureHeight <= 0
+                || incomingBounds.Width <= 0
+                || incomingBounds.Height <= 0)
+            {
+                return false;
+            }
+
+            return existingTextureWidth == incomingBounds.Width
+                   && existingTextureHeight == incomingBounds.Height;
         }
 
         private static void DrawMirrorImageSourcePartToTexture(SpriteBatch spriteBatch, AssembledPart part, Rectangle bounds)
@@ -5597,7 +5617,8 @@ namespace HaCreator.MapSimulator.Character
                          State,
                          fallbackActionName,
                          normalizedWeaponType,
-                         rawActionCode))
+                         rawActionCode,
+                         _activeShadowPartner?.SupportedRawActionNames))
             {
                 if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
                 {
@@ -5617,7 +5638,8 @@ namespace HaCreator.MapSimulator.Character
                          State,
                          fallbackActionName,
                          Build?.GetWeapon()?.WeaponType,
-                         rawActionCode))
+                         rawActionCode,
+                         _activeShadowPartner?.SupportedRawActionNames))
             {
                 yield return candidate;
             }
@@ -6144,7 +6166,8 @@ namespace HaCreator.MapSimulator.Character
                 actionAnimations,
                 resolvedActionName,
                 playerActionName,
-                rawActionName);
+                rawActionName,
+                _activeShadowPartner?.SupportedRawActionNames);
         }
 
         private bool ShouldHoldShadowPartnerCurrentAction(int currentTime)
@@ -6858,6 +6881,13 @@ namespace HaCreator.MapSimulator.Character
             return ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation, isClientMovementOwner)
                 ? SkillAvatarEffectPlane.UnderFace
                 : SkillAvatarEffectPlane.OverCharacter;
+        }
+
+        internal static bool PrefersUnderFaceTransientSkillAvatarEffectPlaneForTesting(
+            SkillAnimation animation,
+            bool isClientMovementOwner = false)
+        {
+            return ResolveTransientSkillAvatarEffectPlane(animation, isClientMovementOwner) == SkillAvatarEffectPlane.UnderFace;
         }
 
         private static void AddAvatarEffectRenderable(

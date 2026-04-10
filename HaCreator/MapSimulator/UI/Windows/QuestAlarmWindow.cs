@@ -665,9 +665,13 @@ namespace HaCreator.MapSimulator.UI
             if (_autoTrackEnabled && _filteredEntriesBuffer.Count < MaxVisibleEntries)
             {
                 int remainingSlots = MaxVisibleEntries - _filteredEntriesBuffer.Count;
-                for (int i = 0; i < _orderedEntriesBuffer.Count && remainingSlots > 0; i++)
+                foreach (QuestAlarmEntrySnapshot entry in EnumerateAutoTrackCandidates(_orderedEntriesBuffer))
                 {
-                    QuestAlarmEntrySnapshot entry = _orderedEntriesBuffer[i];
+                    if (remainingSlots <= 0)
+                    {
+                        break;
+                    }
+
                     if (_trackedQuestIds.Contains(entry.QuestId) || _hiddenAutoQuestIds.Contains(entry.QuestId))
                     {
                         continue;
@@ -689,6 +693,36 @@ namespace HaCreator.MapSimulator.UI
                 HasAlertAnimation = ContainsRecentlyUpdatedEntry(_filteredEntriesBuffer)
             };
             return _currentSnapshot;
+        }
+
+        internal static IEnumerable<QuestAlarmEntrySnapshot> EnumerateAutoTrackCandidates(
+            IReadOnlyList<QuestAlarmEntrySnapshot> orderedEntries)
+        {
+            if (orderedEntries == null || orderedEntries.Count == 0)
+            {
+                yield break;
+            }
+
+            HashSet<int> yieldedQuestIds = new();
+            foreach (QuestAlarmEntrySnapshot recentEntry in orderedEntries
+                .Where(entry => entry?.IsRecentlyUpdated == true)
+                .OrderByDescending(entry => entry.UpdateSequence)
+                .ThenBy(entry => entry.QuestId))
+            {
+                if (recentEntry != null && yieldedQuestIds.Add(recentEntry.QuestId))
+                {
+                    yield return recentEntry;
+                }
+            }
+
+            for (int i = 0; i < orderedEntries.Count; i++)
+            {
+                QuestAlarmEntrySnapshot entry = orderedEntries[i];
+                if (entry != null && yieldedQuestIds.Add(entry.QuestId))
+                {
+                    yield return entry;
+                }
+            }
         }
 
         private void EnsureSelection(QuestAlarmSnapshot snapshot)
@@ -1212,14 +1246,14 @@ namespace HaCreator.MapSimulator.UI
                 return string.Empty;
             }
 
-            if (entry.IsRecentlyUpdated)
-            {
-                return QuestAlarmOwnerStringPoolText.GetRecentUpdateTooltip();
-            }
-
             if (!string.IsNullOrWhiteSpace(entry.TooltipText))
             {
                 return entry.TooltipText;
+            }
+
+            if (entry.IsRecentlyUpdated)
+            {
+                return QuestAlarmOwnerStringPoolText.GetRecentUpdateTooltip();
             }
 
             return string.Empty;

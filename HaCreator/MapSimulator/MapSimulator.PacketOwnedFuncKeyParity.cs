@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator
         private const byte PacketOwnedFuncKeyItemTypeAlt = 3;
         private const byte PacketOwnedFuncKeyFunctionType = 4;
         private const byte PacketOwnedFuncKeyClientControlType = 5;
+        private const byte PacketOwnedFuncKeyEmotionType = 6;
         private const byte PacketOwnedFuncKeyItemTypeCash = 7;
         private const byte PacketOwnedFuncKeyMacroType = 8;
         private const int PacketOwnedPetConsumeMpAttemptThrottleMs = 200;
@@ -60,6 +61,18 @@ namespace HaCreator.MapSimulator
             (53, InputAction.Jump),
             (54, InputAction.Interact),
             (15, InputAction.ToggleQuickSlot),
+        };
+        // CUIKeyConfig::ResetPaletteItems seeds palette slots 35-41 as type-6 ids 100-106,
+        // and the authored KeyConfig icon art matches the simulator's first seven face states.
+        private static readonly (int ClientEmotionId, int EmotionId)[] PacketOwnedKnownEmotionBindings =
+        {
+            (100, 0),
+            (101, 1),
+            (102, 2),
+            (103, 3),
+            (104, 4),
+            (105, 5),
+            (106, 6),
         };
         private static readonly (string StatusBarEntryName, string MenuEntryName, int ClientFunctionId, int StringPoolId, string FallbackFormat)[] PacketOwnedStatusBarShortcutTooltipBindings =
         {
@@ -841,6 +854,15 @@ namespace HaCreator.MapSimulator
             string quantityText = drawsStackNumber && itemCount > 1
                 ? itemCount.ToString(CultureInfo.InvariantCulture)
                 : string.Empty;
+            KeyConfigWindow.ShortcutVisualState.ClientDrawLayer drawLayer = packetEntryType switch
+            {
+                PacketOwnedFuncKeyItemType => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
+                PacketOwnedFuncKeyItemTypeAlt when drawsUnavailableOverlay => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemUnavailable,
+                PacketOwnedFuncKeyItemTypeAlt => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
+                PacketOwnedFuncKeyItemTypeCash => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.CashItem,
+                _ => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
+            };
+
             return new KeyConfigWindow.ShortcutVisualState(
                 ResolvePacketOwnedKeyConfigItemIcon(itemId, inventoryType),
                 title,
@@ -848,13 +870,7 @@ namespace HaCreator.MapSimulator
                 badgeText: badgeText,
                 quantityText: quantityText,
                 unavailable: drawsUnavailableOverlay,
-                drawLayer: packetEntryType switch
-                {
-                    PacketOwnedFuncKeyItemType => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
-                    PacketOwnedFuncKeyItemTypeAlt => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemUnavailable,
-                    PacketOwnedFuncKeyItemTypeCash => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.CashItem,
-                    _ => KeyConfigWindow.ShortcutVisualState.ClientDrawLayer.ItemStack,
-                });
+                drawLayer: drawLayer);
         }
 
         private Texture2D ResolvePacketOwnedKeyConfigItemIcon(int itemId, InventoryType inventoryType)
@@ -1188,6 +1204,24 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                if (entry.Type == PacketOwnedFuncKeyEmotionType
+                    && TryResolvePacketOwnedEmotionBinding(entry.Id, out int emotionId))
+                {
+                    Keys emotionKey = ResolvePacketOwnedScanCodeKey(scanCode);
+                    if (ShouldHandlePacketOwnedCastEntryViaRawRuntime(_playerManager?.Input, emotionKey, handledByLiveHotkeyBinding: false)
+                        && WasPacketOwnedFuncKeyPressed(keyboardState, previousKeyboardState, emotionKey))
+                    {
+                        _playerManager?.Player?.TryApplyPacketOwnedEmotion(
+                            emotionId,
+                            durationMs: 0,
+                            byItemOption: false,
+                            currentTime,
+                            out _);
+                    }
+
+                    continue;
+                }
+
                 if (!IsPacketOwnedCastEntryType(entry.Type)
                     || entry.Id <= 0)
                 {
@@ -1406,6 +1440,21 @@ namespace HaCreator.MapSimulator
         {
             // CUIKeyConfig::ResetPaletteItems seeds palette slots 30-34 as type 5 ids 50-54.
             return clientFunctionId >= 50 && clientFunctionId <= 54;
+        }
+
+        internal static bool TryResolvePacketOwnedEmotionBinding(int clientEmotionId, out int emotionId)
+        {
+            for (int i = 0; i < PacketOwnedKnownEmotionBindings.Length; i++)
+            {
+                if (PacketOwnedKnownEmotionBindings[i].ClientEmotionId == clientEmotionId)
+                {
+                    emotionId = PacketOwnedKnownEmotionBindings[i].EmotionId;
+                    return true;
+                }
+            }
+
+            emotionId = -1;
+            return false;
         }
 
         internal static PacketOwnedRawFunctionOwner ResolvePacketOwnedRawFunctionOwner(int clientFunctionId)

@@ -116,6 +116,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             14111000
         };
 
+        private static readonly IReadOnlyDictionary<int, int[]> ShadowPartnerRawActionSourceSkillIdsBySkillId =
+            new Dictionary<int, int[]>
+            {
+                [4111002] = new[]
+                {
+                    4111001, 4111003, 4111005, 4111007,
+                    4121000, 4121003, 4121004, 4121008
+                },
+                [4211008] = new[]
+                {
+                    4201002, 4201003, 4201005,
+                    4211002, 4211003, 4211005, 4211006, 4211007,
+                    4221001, 4221003, 4221006, 4221007
+                },
+                [14111000] = new[]
+                {
+                    14101006,
+                    14111001, 14111002
+                }
+            };
+
         private static readonly string[] PreferredShadowPartnerOffsetActions =
         {
             "stand1",
@@ -2027,7 +2048,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.ShadowPartnerActionAnimations[actionKey] = animation;
             }
 
-            SynthesizeClientOwnedShadowPartnerActionAnimations(skill.ShadowPartnerActionAnimations);
+            PopulateShadowPartnerSupportedRawActionNames(skill, skillNode);
+            SynthesizeClientOwnedShadowPartnerActionAnimations(
+                skill.ShadowPartnerActionAnimations,
+                skill.ShadowPartnerSupportedRawActionNames);
             ApplyClientReplayTailsToShadowPartnerActionAnimations(skill.ShadowPartnerActionAnimations);
             skill.ShadowPartnerHorizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(skill.ShadowPartnerActionAnimations);
         }
@@ -2101,11 +2125,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Where(static child =>
                     child != null
                     && (child is WzCanvasProperty || child.GetLinkedWzImageProperty() is WzCanvasProperty))
-                .OrderBy(static child =>
-                    int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int frameIndex)
-                        ? frameIndex
-                        : int.MaxValue)
-                .ThenBy(static child => child.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             if (orderedFrames.Count == 0)
@@ -2156,8 +2175,56 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && ShadowPartnerReplayTailActionNames.Contains(actionKey);
         }
 
+        private void PopulateShadowPartnerSupportedRawActionNames(SkillData skill, WzImageProperty skillNode)
+        {
+            if (skill == null)
+            {
+                return;
+            }
+
+            skill.ShadowPartnerSupportedRawActionNames.Clear();
+            foreach (WzImageProperty sourceSkillNode in EnumerateShadowPartnerRawActionSourceSkillNodes(skill, skillNode))
+            {
+                string rawActionName = sourceSkillNode?["action"]?["0"]?.GetString();
+                if (!string.IsNullOrWhiteSpace(rawActionName))
+                {
+                    skill.ShadowPartnerSupportedRawActionNames.Add(rawActionName);
+                }
+            }
+        }
+
+        private IEnumerable<WzImageProperty> EnumerateShadowPartnerRawActionSourceSkillNodes(
+            SkillData skill,
+            WzImageProperty skillNode)
+        {
+            var yieldedSkillIds = new HashSet<int>();
+            if (skillNode != null && skill?.SkillId > 0 && yieldedSkillIds.Add(skill.SkillId))
+            {
+                yield return skillNode;
+            }
+
+            if (skill == null
+                || !ShadowPartnerRawActionSourceSkillIdsBySkillId.TryGetValue(skill.SkillId, out int[] sourceSkillIds))
+            {
+                yield break;
+            }
+
+            foreach (int sourceSkillId in sourceSkillIds)
+            {
+                if (sourceSkillId <= 0
+                    || !yieldedSkillIds.Add(sourceSkillId)
+                    || !TryGetSkillNode(sourceSkillId, out WzImageProperty sourceSkillNode))
+                {
+                    continue;
+                }
+
+                yield return sourceSkillNode;
+            }
+        }
+
         internal static void SynthesizeClientOwnedShadowPartnerActionAnimations(
-            IDictionary<string, SkillAnimation> actionAnimations)
+            IDictionary<string, SkillAnimation> actionAnimations,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             if (actionAnimations == null || actionAnimations.Count == 0)
             {
@@ -2177,7 +2244,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 SkillAnimation piecedAnimation = ShadowPartnerClientActionResolver.TryBuildPiecedShadowPartnerActionAnimation(
                     readOnlyActionAnimations,
-                    actionName);
+                    actionName,
+                    supportedRawActionNames);
                 if (piecedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = piecedAnimation;
@@ -2197,7 +2265,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 SkillAnimation remappedAnimation = ShadowPartnerClientActionResolver.TryBuildRemappedShadowPartnerActionAnimation(
                     readOnlyActionAnimations,
-                    actionName);
+                    actionName,
+                    supportedRawActionNames);
                 if (remappedAnimation?.Frames.Count > 0)
                 {
                     actionAnimations[actionName] = remappedAnimation;
@@ -2867,6 +2936,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            if (TryResolveReverseAffectedSummonSourceProperty(skill, out summonNode))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryResolveReverseAffectedSummonSourceProperty(
+            SkillData skill,
+            out WzImageProperty summonNode)
+        {
+            summonNode = null;
+            if (skill?.SkillId <= 0)
+            {
+                return false;
+            }
+
+            foreach (int parentSkillId in FindAffectedSkillParentIds(skill.SkillId))
+            {
+                if (parentSkillId <= 0 || !TryGetSkillNode(parentSkillId, out WzImageProperty parentSkillNode))
+                {
+                    continue;
+                }
+
+                if (TryResolveSummonSourcePropertyFromSkillNode(parentSkillNode, out summonNode))
+                {
+                    return true;
+                }
+            }
+
             return false;
         }
 
@@ -2991,6 +3091,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (skill.DummySkillParents != null)
             {
                 foreach (int linkedSkillId in skill.DummySkillParents)
+                {
+                    if (linkedSkillId > 0)
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+
+            if (skill.RequiredSkillIds != null)
+            {
+                foreach (int linkedSkillId in skill.RequiredSkillIds)
                 {
                     if (linkedSkillId > 0)
                     {
@@ -5698,12 +5809,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return string.Empty;
             }
 
-            return string.Join(
+            string normalized = string.Join(
                 " ",
                 value.Replace("\\r", " ", StringComparison.Ordinal)
                     .Replace("\\n", " ", StringComparison.Ordinal)
                     .ToLowerInvariant()
                     .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+
+            return normalized
+                .Replace("maxhp", "max hp", StringComparison.Ordinal)
+                .Replace("maxmp", "max mp", StringComparison.Ordinal)
+                .Replace("avoidablity", "avoidability", StringComparison.Ordinal)
+                .Replace("accurary", "accuracy", StringComparison.Ordinal);
         }
 
         private static bool PlaceholderMatchesHintLabel(string normalizedSurface, string placeholderToken, params string[] labelTokens)

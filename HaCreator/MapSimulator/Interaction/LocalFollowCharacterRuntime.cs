@@ -68,6 +68,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int PendingOutgoingDriverId => _pendingOutgoingDriverId;
         internal bool PendingOutgoingAutoRequest => _pendingOutgoingAutoRequest;
         internal bool PendingOutgoingKeyInput => _pendingOutgoingKeyInput;
+        public bool HasAttachedDriver => _attachedDriverId > 0;
         public int AttachedDriverId => _attachedDriverId;
         public int AttachedPassengerId => _attachedPassengerId;
         public int IncomingRequesterId => _incomingRequesterId;

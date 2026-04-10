@@ -192,7 +192,8 @@ namespace HaCreator.MapSimulator
                 presentation: new InGameConfirmDialogPresentation(
                     InGameConfirmDialogAnchorMode.BottomLeft,
                     389,
-                    113));
+                    113,
+                    ShowIcon: true));
             _messengerInvitePromptOwnedDialogActive = true;
             ShowWindow(
                 MapSimulatorWindowNames.InGameConfirmDialog,

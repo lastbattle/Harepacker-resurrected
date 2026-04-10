@@ -14,6 +14,13 @@ namespace HaCreator.MapSimulator.Managers
         int SummonObjectId,
         int RequestedAt);
 
+    public readonly record struct PacketOwnedSkillEffectRequest(
+        int Opcode,
+        int SkillId,
+        int SkillLevel,
+        bool SendLocal,
+        byte[] Payload);
+
     internal static class PacketOwnedMechanicRepeatSkillRuntime
     {
         public const int RepeatSkillModeEndAckPacketType = 1020;
@@ -45,6 +52,33 @@ namespace HaCreator.MapSimulator.Managers
             payload[sizeof(int)] = (byte)skillLevel;
             payload[sizeof(int) + 1] = sendLocal ? (byte)1 : (byte)0;
             error = null;
+            return true;
+        }
+
+        public static bool TryCreateSkillEffectRequest(
+            int skillId,
+            int skillLevel,
+            bool sendLocal,
+            out PacketOwnedSkillEffectRequest request,
+            out string error)
+        {
+            request = default;
+            if (!TryEncodeSkillEffectRequestPayload(
+                    skillId,
+                    skillLevel,
+                    sendLocal,
+                    out byte[] payload,
+                    out error))
+            {
+                return false;
+            }
+
+            request = new PacketOwnedSkillEffectRequest(
+                SkillEffectRequestOpcode,
+                skillId,
+                skillLevel,
+                sendLocal,
+                payload);
             return true;
         }
 

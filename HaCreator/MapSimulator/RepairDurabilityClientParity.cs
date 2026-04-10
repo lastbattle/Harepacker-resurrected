@@ -241,7 +241,17 @@ namespace HaCreator.MapSimulator
 
             int offset = 0;
             short? operationCode = null;
-            if (payload.Length >= sizeof(short) + 1)
+            if (payload.Length >= sizeof(int) + 1)
+            {
+                int intOperationCode = BinaryPrimitives.ReadInt32LittleEndian(payload);
+                if (intOperationCode == 130 || intOperationCode == 131)
+                {
+                    operationCode = (short)intOperationCode;
+                    offset += sizeof(int);
+                }
+            }
+
+            if (!operationCode.HasValue && payload.Length >= sizeof(short) + 1)
             {
                 short shortOperationCode = BinaryPrimitives.ReadInt16LittleEndian(payload);
                 if (shortOperationCode == 130 || shortOperationCode == 131)

@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Physics;
 using HaSharedLibrary.Render;
@@ -86,6 +87,11 @@ namespace HaCreator.MapSimulator.Pools
     internal readonly record struct PacketOwnedExpiryTargetCandidate(
         int MobObjectId,
         Rectangle Hitbox);
+
+    internal readonly record struct PacketOwnedMobAttackFeedbackPresentation(
+        MobAnimationSet.AttackInfoMetadata AttackInfo,
+        MobAnimationSet.AttackHitEffectEntry HitEffectEntry,
+        string CharDamSoundKey);
 
     public sealed class SummonedPool
     {
@@ -228,6 +234,8 @@ namespace HaCreator.MapSimulator.Pools
         private SkillLoader _skillLoader;
         private MobPool _mobPool;
         private RemoteUserActorPool _remoteUserPool;
+        private TexturePool _texturePool;
+        private GraphicsDevice _graphicsDevice;
         private Func<PlayerCharacter> _localPlayerAccessor;
         private Func<int, int> _localSkillLevelAccessor;
         private Func<int, int, int> _localCancelFamilyRemainingDurationAccessor;
@@ -250,11 +258,15 @@ namespace HaCreator.MapSimulator.Pools
             Func<int, int, int> localCancelFamilyRemainingDurationAccessor = null,
             SoundManager soundManager = null,
             CombatEffects combatEffects = null,
-            AnimationEffects animationEffects = null)
+            AnimationEffects animationEffects = null,
+            TexturePool texturePool = null,
+            GraphicsDevice graphicsDevice = null)
         {
             _skillLoader = skillLoader;
             _mobPool = mobPool;
             _remoteUserPool = remoteUserPool;
+            _texturePool = texturePool;
+            _graphicsDevice = graphicsDevice;
             _localPlayerAccessor = localPlayerAccessor;
             _localSkillLevelAccessor = localSkillLevelAccessor;
             _localCancelFamilyRemainingDurationAccessor = localCancelFamilyRemainingDurationAccessor;
@@ -4135,10 +4147,27 @@ namespace HaCreator.MapSimulator.Pools
 
             string attackAction = $"attack{packet.AttackIndex + 1}";
             MobItem mob = ResolvePacketHitMob(packet);
+            PacketOwnedMobAttackFeedbackPresentation presentation = ResolvePacketMobAttackFeedbackPresentation(
+                mob,
+                packet.MobTemplateId,
+                attackAction,
+                currentMobAttackFrameIndex: ResolvePacketHitMobAttackFrameIndex(mob, attackAction),
+                soundManager: _soundManager,
+                texturePool: _texturePool,
+                graphicsDevice: _graphicsDevice,
+                damageSoundIndex: packet.AttackIndex >= 1 ? 2 : 1);
+            if (presentation.HitEffectEntry?.Frames?.Count > 0)
+            {
+                SpawnPacketMobAttackHitEffect(state.Summon, packet, presentation, currentTime);
+            }
+
             if (mob != null)
             {
-                SpawnPacketMobAttackHitEffect(state.Summon, mob, attackAction, packet, currentTime);
                 PlayPacketMobAttackSound(mob, packet.AttackIndex);
+            }
+            else if (!string.IsNullOrWhiteSpace(presentation.CharDamSoundKey))
+            {
+                _soundManager?.PlaySound(presentation.CharDamSoundKey);
             }
 
             if (packet.Damage > 0)
@@ -4162,22 +4191,18 @@ namespace HaCreator.MapSimulator.Pools
 
         private void SpawnPacketMobAttackHitEffect(
             ActiveSummon summon,
-            MobItem mob,
-            string attackAction,
             SummonedHitPacket packet,
+            PacketOwnedMobAttackFeedbackPresentation presentation,
             int currentTime)
         {
-            int? currentMobAttackFrameIndex = ResolvePacketHitMobAttackFrameIndex(mob, attackAction);
-            MobAnimationSet.AttackHitEffectEntry hitEffectEntry = mob?.GetAttackHitEffectEntry(
-                attackAction,
-                currentMobAttackFrameIndex);
+            MobAnimationSet.AttackHitEffectEntry hitEffectEntry = presentation.HitEffectEntry;
             List<IDXObject> frames = hitEffectEntry?.Frames;
             if (summon == null || frames == null || frames.Count == 0)
             {
                 return;
             }
 
-            MobAnimationSet.AttackInfoMetadata attackInfo = mob?.GetAttackInfo(attackAction);
+            MobAnimationSet.AttackInfoMetadata attackInfo = presentation.AttackInfo;
             int hitAnimationSourceFrameIndex = hitEffectEntry?.SourceFrameIndex ?? attackInfo?.HitAnimationSourceFrameIndex ?? 0;
             Vector2 hitPosition = ResolvePacketHitEffectPosition(
                 summon,
@@ -4217,6 +4242,75 @@ namespace HaCreator.MapSimulator.Pools
                 LastFrameTime = currentTime,
                 Flip = packet.MobFacingLeft != true
             });
+        }
+
+        internal static PacketOwnedMobAttackFeedbackPresentation ResolvePacketMobAttackFeedbackPresentation(
+            MobItem mob,
+            int? mobTemplateId,
+            string attackAction,
+            int? currentMobAttackFrameIndex,
+            SoundManager soundManager,
+            TexturePool texturePool,
+            GraphicsDevice graphicsDevice,
+            int damageSoundIndex)
+        {
+            MobAnimationSet.AttackInfoMetadata liveAttackInfo = mob?.GetAttackInfo(attackAction);
+            MobAnimationSet.AttackHitEffectEntry liveHitEffectEntry = mob?.GetAttackHitEffectEntry(
+                attackAction,
+                currentMobAttackFrameIndex);
+            PacketOwnedMobAttackFeedbackPresentation livePresentation = SelectPacketMobAttackFeedbackPresentation(
+                liveAttackInfo,
+                liveHitEffectEntry,
+                templateAttackInfo: null,
+                templateHitEffectEntry: null,
+                templateCharDamSoundKey: null);
+            if (livePresentation.HitEffectEntry?.Frames?.Count > 0)
+            {
+                return livePresentation;
+            }
+
+            if (mobTemplateId is not int resolvedMobTemplateId || resolvedMobTemplateId <= 0)
+            {
+                return default;
+            }
+
+            MobAnimationSet templateAnimationSet = LifeLoader.CreateMobAttackPresentationSet(
+                texturePool,
+                graphicsDevice,
+                resolvedMobTemplateId.ToString());
+            MobAnimationSet.AttackInfoMetadata templateAttackInfo = templateAnimationSet?.GetAttackInfoMetadata(attackAction);
+            MobAnimationSet.AttackHitEffectEntry templateHitEffectEntry = templateAnimationSet?.GetAttackHitEffectEntry(attackAction);
+            string charDamSoundKey = LifeLoader.ResolveMobCharDamSoundKey(
+                soundManager,
+                resolvedMobTemplateId.ToString(),
+                damageSoundIndex);
+            return SelectPacketMobAttackFeedbackPresentation(
+                liveAttackInfo,
+                liveHitEffectEntry,
+                templateAttackInfo,
+                templateHitEffectEntry,
+                charDamSoundKey);
+        }
+
+        internal static PacketOwnedMobAttackFeedbackPresentation SelectPacketMobAttackFeedbackPresentation(
+            MobAnimationSet.AttackInfoMetadata liveAttackInfo,
+            MobAnimationSet.AttackHitEffectEntry liveHitEffectEntry,
+            MobAnimationSet.AttackInfoMetadata templateAttackInfo,
+            MobAnimationSet.AttackHitEffectEntry templateHitEffectEntry,
+            string templateCharDamSoundKey)
+        {
+            if (liveHitEffectEntry?.Frames?.Count > 0)
+            {
+                return new PacketOwnedMobAttackFeedbackPresentation(
+                    liveAttackInfo,
+                    liveHitEffectEntry,
+                    CharDamSoundKey: null);
+            }
+
+            return new PacketOwnedMobAttackFeedbackPresentation(
+                templateAttackInfo ?? liveAttackInfo,
+                templateHitEffectEntry,
+                templateCharDamSoundKey);
         }
 
         private Vector2 ResolvePacketHitEffectPosition(

@@ -149,6 +149,7 @@ namespace HaCreator.MapSimulator.Character
         private static readonly IReadOnlyDictionary<string, string[]> ActionAliases =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
+                ["sit"] = new[] { "stand1", "stand2" },
                 ["stand1"] = new[] { "stand2", "sit" },
                 ["stand2"] = new[] { "stand1", "sit" },
                 ["walk1"] = new[] { "walk2", "sit", "move" },
@@ -163,24 +164,24 @@ namespace HaCreator.MapSimulator.Character
                 ["heal"] = new[] { "stand1", "stand2", "sit" },
                 ["dead"] = new[] { "sit", "stand1" },
                 ["ghost"] = new[] { "sit", "stand1" },
-                ["tank_jump"] = new[] { "jump", "fly", "stand1" },
-                ["tank_fly"] = new[] { "fly", "jump", "stand1" },
-                ["tank_swim"] = new[] { "fly", "jump", "stand1" },
-                ["tank_ladder"] = new[] { "ladder2", "rope2", "ladder", "rope", "stand1" },
-                ["tank_rope"] = new[] { "rope2", "ladder2", "rope", "ladder", "stand1" },
-                ["tank_hit"] = new[] { "alert3", "alert2", "alert", "stand1" },
-                ["siege_jump"] = new[] { "jump", "stand1" },
-                ["siege_fly"] = new[] { "fly", "stand1" },
-                ["siege_swim"] = new[] { "fly", "stand1" },
-                ["siege_ladder"] = new[] { "ladder2", "rope2", "ladder", "rope", "stand1" },
-                ["siege_rope"] = new[] { "rope2", "ladder2", "rope", "ladder", "stand1" },
-                ["siege_hit"] = new[] { "alert3", "alert2", "alert", "stand1" },
-                ["tank_siegejump"] = new[] { "jump", "stand1" },
-                ["tank_siegefly"] = new[] { "fly", "stand1" },
-                ["tank_siegeswim"] = new[] { "fly", "stand1" },
-                ["tank_siegeladder"] = new[] { "ladder2", "rope2", "ladder", "rope", "stand1" },
-                ["tank_siegerope"] = new[] { "rope2", "ladder2", "rope", "ladder", "stand1" },
-                ["tank_siegehit"] = new[] { "alert3", "alert2", "alert", "stand1" }
+                ["tank_jump"] = new[] { "tank_stand", "stand1" },
+                ["tank_fly"] = new[] { "tank_stand", "stand1" },
+                ["tank_swim"] = new[] { "tank_stand", "stand1" },
+                ["tank_ladder"] = new[] { "ladder2", "rope2", "tank_stand", "stand1" },
+                ["tank_rope"] = new[] { "rope2", "ladder2", "tank_stand", "stand1" },
+                ["tank_hit"] = new[] { "tank_stand", "alert2", "alert", "stand1" },
+                ["siege_jump"] = new[] { "siege_stand", "stand1" },
+                ["siege_fly"] = new[] { "siege_stand", "stand1" },
+                ["siege_swim"] = new[] { "siege_stand", "stand1" },
+                ["siege_ladder"] = new[] { "ladder2", "rope2", "siege_stand", "stand1" },
+                ["siege_rope"] = new[] { "rope2", "ladder2", "siege_stand", "stand1" },
+                ["siege_hit"] = new[] { "siege_stand", "alert2", "alert", "stand1" },
+                ["tank_siegejump"] = new[] { "tank_siegestand", "stand1" },
+                ["tank_siegefly"] = new[] { "tank_siegestand", "stand1" },
+                ["tank_siegeswim"] = new[] { "tank_siegestand", "stand1" },
+                ["tank_siegeladder"] = new[] { "ladder2", "rope2", "tank_siegestand", "stand1" },
+                ["tank_siegerope"] = new[] { "rope2", "ladder2", "tank_siegestand", "stand1" },
+                ["tank_siegehit"] = new[] { "tank_siegestand", "alert2", "alert", "stand1" }
             };
 
         private readonly Dictionary<string, string> _resolvedActionCache = new(StringComparer.OrdinalIgnoreCase);
@@ -317,7 +318,8 @@ namespace HaCreator.MapSimulator.Character
             }
 
             if (string.Equals(actionName, "stand1", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(actionName, "stand2", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(actionName, "stand2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "sit", StringComparison.OrdinalIgnoreCase))
             {
                 yield return "tank_stand";
                 yield return "siege_stand";
@@ -335,8 +337,8 @@ namespace HaCreator.MapSimulator.Character
 
             if (string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase))
             {
-                yield return "tank_jump";
-                yield return "siege_jump";
+                yield return "tank_stand";
+                yield return "siege_stand";
                 yield break;
             }
 
@@ -349,8 +351,8 @@ namespace HaCreator.MapSimulator.Character
             if (string.Equals(actionName, "fly", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(actionName, "swim", StringComparison.OrdinalIgnoreCase))
             {
-                yield return "tank_fly";
-                yield return "siege_fly";
+                yield return "tank_stand";
+                yield return "siege_stand";
                 yield break;
             }
 
@@ -373,8 +375,8 @@ namespace HaCreator.MapSimulator.Character
                 || string.Equals(actionName, "alert3", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(actionName, "hit", StringComparison.OrdinalIgnoreCase))
             {
-                yield return "tank_hit";
-                yield return "siege_hit";
+                yield return "tank_stand";
+                yield return "siege_stand";
             }
         }
 

@@ -1402,6 +1402,11 @@ namespace HaCreator.MapSimulator.UI
         private void DrawPageMarker(SpriteBatch sprite, int x, int y, bool active) { Texture2D marker = active ? _activePageMarkerTexture ?? _fullMarkTexture : _inactivePageMarkerTexture ?? _coveredSlotTexture; if (marker != null) sprite.Draw(marker, new Rectangle(x - marker.Width / 2, y - marker.Height / 2, marker.Width, marker.Height), Color.White); }
         private void DrawStatus(SpriteBatch sprite)
         {
+            if (UsesCollectionLayout)
+            {
+                return;
+            }
+
             string text = UsesCollectionLayout
                 ? _collectionSnapshot?.StatusText
                 : _contextMenuVisible
@@ -2279,12 +2284,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int removalStart = _searchCursorPosition;
-            while (removalStart > 0 && char.IsWhiteSpace(_searchQuery[removalStart - 1]))
+            while (removalStart > 0 && ClientEditWordNavigator.IsClientWordSeparator(_searchQuery[removalStart - 1]))
             {
                 removalStart--;
             }
 
-            while (removalStart > 0 && !char.IsWhiteSpace(_searchQuery[removalStart - 1]))
+            while (removalStart > 0 && !ClientEditWordNavigator.IsClientWordSeparator(_searchQuery[removalStart - 1]))
             {
                 removalStart--;
             }
@@ -2302,12 +2307,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int removalEnd = _searchCursorPosition;
-            while (removalEnd < _searchQuery.Length && char.IsWhiteSpace(_searchQuery[removalEnd]))
+            while (removalEnd < _searchQuery.Length && ClientEditWordNavigator.IsClientWordSeparator(_searchQuery[removalEnd]))
             {
                 removalEnd++;
             }
 
-            while (removalEnd < _searchQuery.Length && !char.IsWhiteSpace(_searchQuery[removalEnd]))
+            while (removalEnd < _searchQuery.Length && !ClientEditWordNavigator.IsClientWordSeparator(_searchQuery[removalEnd]))
             {
                 removalEnd++;
             }
@@ -2323,18 +2328,7 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            int cursor = _searchCursorPosition;
-            while (cursor > 0 && char.IsWhiteSpace(_searchQuery[cursor - 1]))
-            {
-                cursor--;
-            }
-
-            while (cursor > 0 && !char.IsWhiteSpace(_searchQuery[cursor - 1]))
-            {
-                cursor--;
-            }
-
-            return cursor;
+            return ClientEditWordNavigator.FindPreviousWordBoundary(_searchQuery, _searchCursorPosition);
         }
 
         private int FindNextSearchWordBoundary()
@@ -2344,18 +2338,7 @@ namespace HaCreator.MapSimulator.UI
                 return _searchQuery.Length;
             }
 
-            int cursor = _searchCursorPosition;
-            while (cursor < _searchQuery.Length && char.IsWhiteSpace(_searchQuery[cursor]))
-            {
-                cursor++;
-            }
-
-            while (cursor < _searchQuery.Length && !char.IsWhiteSpace(_searchQuery[cursor]))
-            {
-                cursor++;
-            }
-
-            return cursor;
+            return ClientEditWordNavigator.FindNextWordBoundary(_searchQuery, _searchCursorPosition);
         }
 
         private void SelectSearchWordAt(int mouseX)
@@ -2369,41 +2352,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int caretPosition = ResolveSearchCursorFromMouse(mouseX);
-            int textLength = _searchQuery.Length;
-            int clampedCaret = Math.Clamp(caretPosition, 0, textLength);
-            int charIndex = clampedCaret;
-            if (charIndex >= textLength)
-            {
-                charIndex = textLength - 1;
-            }
-
-            if (charIndex < 0)
-            {
-                ClearSearchSelection();
-                _searchCursorPosition = 0;
-                _caretBlinkTick = Environment.TickCount;
-                return;
-            }
-
-            char selectedCharacter = _searchQuery[charIndex];
-            if (char.IsWhiteSpace(selectedCharacter))
+            int clampedCaret = Math.Clamp(caretPosition, 0, _searchQuery.Length);
+            if (!ClientEditWordNavigator.TryGetWordSelectionRange(_searchQuery, clampedCaret, out int selectionStart, out int selectionEnd))
             {
                 ClearSearchSelection();
                 _searchCursorPosition = clampedCaret;
                 _caretBlinkTick = Environment.TickCount;
                 return;
-            }
-
-            int selectionStart = charIndex;
-            while (selectionStart > 0 && !char.IsWhiteSpace(_searchQuery[selectionStart - 1]))
-            {
-                selectionStart--;
-            }
-
-            int selectionEnd = charIndex;
-            while (selectionEnd < textLength && !char.IsWhiteSpace(_searchQuery[selectionEnd]))
-            {
-                selectionEnd++;
             }
 
             _searchSelectionAnchor = selectionStart;
@@ -3107,7 +3062,7 @@ namespace HaCreator.MapSimulator.UI
             WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
         }
 
-        private void ResetImePresentationPlacement()
+        protected override void ResetImePresentationPlacement()
         {
             if (_font == null || ResolveImeWindowHandle == null)
             {

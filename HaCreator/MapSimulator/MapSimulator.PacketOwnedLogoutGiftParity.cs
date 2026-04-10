@@ -376,6 +376,7 @@ namespace HaCreator.MapSimulator
 
             if (!PacketStageTransitionRuntime.TryDecodeTrailingLogoutGiftConfigPayload(
                 trailingPayload,
+                out int predictQuitRawValue,
                 out int[] commoditySerialNumbers,
                 out byte[] leadingOpaqueBytes,
                 out int[] leadingOpaqueInt32Values,
@@ -397,18 +398,17 @@ namespace HaCreator.MapSimulator
             _packetOwnedLogoutGiftLeadingOpaqueInt32Values = leadingOpaqueInt32Values ?? Array.Empty<int>();
             _packetOwnedLogoutGiftLeadingContextFields = DecodePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingOpaqueInt32Values);
             _packetOwnedLogoutGiftCommodityContextFields = DecodePacketOwnedLogoutGiftCommodityContextFields(_packetOwnedLogoutGiftCommoditySerialNumbers);
-            _packetOwnedLogoutGiftHasPredictQuitFlag = TryResolvePacketOwnedLogoutGiftPredictQuit(
-                _packetOwnedLogoutGiftLeadingContextFields,
-                out _packetOwnedLogoutGiftPredictQuitRawValue);
+            _packetOwnedLogoutGiftHasPredictQuitFlag = true;
+            _packetOwnedLogoutGiftPredictQuitRawValue = predictQuitRawValue;
             _packetOwnedLogoutGiftHasConfig = HasDecodedPacketOwnedLogoutGiftConfig(commoditySerialNumbers);
             _packetOwnedLogoutGiftSelectedIndex = ResolveFirstPacketOwnedLogoutGiftSelection();
             bool hasCommodity = HasAnyPacketOwnedLogoutGiftCommodity(commoditySerialNumbers);
             _lastPacketOwnedLogoutGiftSummary = _packetOwnedLogoutGiftHasConfig
                 ? _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                    ? $"Split the character-data SetField tail into {DescribePacketOwnedLogoutGiftLeadingTail()} plus the client `CWvsContext` logout-gift cache at dword[{PacketOwnedLogoutGiftCommodityContextDwordIndex.ToString(CultureInfo.InvariantCulture)}..{(PacketOwnedLogoutGiftCommodityContextDwordIndex + PacketOwnedLogoutGiftEntryCount - 1).ToString(CultureInfo.InvariantCulture)}]: {FormatPacketOwnedLogoutGiftCommodityList()}.{(hasCommodity ? string.Empty : " All three commodity slots are zero, but the decoded cache remains owned by the logout-gift context fields.")}"
+                    ? $"Split the character-data SetField tail into {DescribePacketOwnedLogoutGiftLeadingTail()} plus the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and commodity SNs at dword[{PacketOwnedLogoutGiftCommodityContextDwordIndex.ToString(CultureInfo.InvariantCulture)}..{(PacketOwnedLogoutGiftCommodityContextDwordIndex + PacketOwnedLogoutGiftEntryCount - 1).ToString(CultureInfo.InvariantCulture)}]): {FormatPacketOwnedLogoutGiftCommodityList()}.{(hasCommodity ? string.Empty : " All three commodity slots are zero, but the decoded cache remains owned by the logout-gift context fields.")}"
                     : hasCommodity
-                        ? $"Cached logout-gift commodity SNs from character-data SetField: {FormatPacketOwnedLogoutGiftCommodityList()}. Packet 432 now refreshes the dedicated owner instead of leaving the values hidden in stage payload tail bytes."
-                        : "Decoded the explicit logout-gift cache payload from SetField with all three commodity slots zero; the simulator preserves the client cache as present rather than collapsing it to missing config."
+                        ? $"Decoded `CWvsContext::OnSetLogoutGiftConfig` from character-data SetField with `m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}. Packet 432 now refreshes the dedicated owner instead of leaving the values hidden in stage payload tail bytes."
+                        : $"Decoded the explicit `CWvsContext::OnSetLogoutGiftConfig` payload from SetField with `m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and all three commodity slots zero; the simulator preserves the client cache as present rather than collapsing it to missing config."
                 : "Character-data SetField did not decode a complete logout-gift cache payload.";
             NotifyEventAlarmOwnerActivity("packet-owned logout gift");
 
@@ -907,7 +907,7 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<PacketOwnedLogoutGiftContextField>();
             }
 
-            int startDwordIndex = PacketOwnedLogoutGiftCommodityContextDwordIndex - leadingOpaqueInt32Values.Length;
+            int startDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - leadingOpaqueInt32Values.Length;
             if (startDwordIndex < 0)
             {
                 return Array.Empty<PacketOwnedLogoutGiftContextField>();
@@ -921,9 +921,7 @@ namespace HaCreator.MapSimulator
                     dwordIndex,
                     dwordIndex * sizeof(int),
                     leadingOpaqueInt32Values[i],
-                    dwordIndex == PacketOwnedLogoutGiftPredictQuitContextDwordIndex
-                        ? "CWvsContext::m_bPredictQuit"
-                        : null);
+                    null);
             }
 
             return fields;

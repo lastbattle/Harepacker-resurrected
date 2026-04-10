@@ -1362,6 +1362,8 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalFieldMetadata? metadata,
             IEnumerable<RemoteTownPortalOwnerFieldObservation> ownerObservations)
         {
+            _ = existingState;
+            _ = metadata;
             if (ownerObservations == null)
             {
                 return null;
@@ -1374,28 +1376,6 @@ namespace HaCreator.MapSimulator.Fields
             if (candidatesBySourceMap.Count == 0)
             {
                 return null;
-            }
-
-            if (metadata.HasValue)
-            {
-                RemoteTownPortalOwnerFieldObservation? metadataSourceObservation = SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(
-                    candidatesBySourceMap,
-                    metadata.Value.SourceMapId);
-                if (metadataSourceObservation.HasValue)
-                {
-                    return metadataSourceObservation;
-                }
-            }
-
-            if (existingState.HasValue && existingState.Value.Destination.HasValue)
-            {
-                RemoteTownPortalOwnerFieldObservation? existingSourceObservation = SelectPreferredRemoteTownPortalOwnerObservationForSourceMap(
-                    candidatesBySourceMap,
-                    existingState.Value.Destination.Value.MapId);
-                if (existingSourceObservation.HasValue)
-                {
-                    return existingSourceObservation;
-                }
             }
 
             RemoteTownPortalOwnerFieldObservation? selectedSourceObservation = SelectPreferredRemoteTownPortalOwnerObservationForSourceSelection(candidatesBySourceMap);
@@ -1434,15 +1414,11 @@ namespace HaCreator.MapSimulator.Fields
                 }
 
                 if (!preferredObservation.HasValue
-                    || ShouldReplaceRemoteTownPortalOwnerObservation(
-                        preferredObservation.Value.SourceMapId,
-                        preferredObservation.Value.TownMapId,
-                        preferredObservation.Value.ObservationSource,
-                        preferredObservation.Value.RecordedAt,
-                        candidate.Value.SourceMapId,
-                        candidate.Value.TownMapId,
+                    || CompareRemoteTownPortalObservationQuality(
                         candidate.Value.ObservationSource,
-                        candidate.Value.RecordedAt))
+                        candidate.Value.RecordedAt,
+                        preferredObservation.Value.ObservationSource,
+                        preferredObservation.Value.RecordedAt) > 0)
                 {
                     preferredObservation = candidate.Value;
                 }

@@ -403,7 +403,7 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    ActivateWhisperTargetPickerModalComboFocus();
+                    OpenWhisperTargetPickerModalComboDropdown();
                     MoveWhisperTargetPickerSelection(-1, WhisperTargetPickerNavigationMode.Step);
                     return true;
                 }
@@ -433,7 +433,7 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    ActivateWhisperTargetPickerModalComboFocus();
+                    OpenWhisperTargetPickerModalComboDropdown();
                     MoveWhisperTargetPickerSelection(1, WhisperTargetPickerNavigationMode.Step);
                     return true;
                 }
@@ -596,7 +596,7 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    ActivateWhisperTargetPickerModalComboFocus();
+                    OpenWhisperTargetPickerModalComboDropdown();
                     MoveWhisperTargetPickerSelectionToBoundary(moveToLast: false);
                     return true;
                 }
@@ -610,7 +610,7 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    ActivateWhisperTargetPickerModalComboFocus();
+                    OpenWhisperTargetPickerModalComboDropdown();
                     MoveWhisperTargetPickerSelectionToBoundary(moveToLast: true);
                     return true;
                 }
@@ -623,7 +623,7 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    ActivateWhisperTargetPickerModalComboFocus();
+                    OpenWhisperTargetPickerModalComboDropdown();
                     PageWhisperTargetPickerSelection(-1);
                     return true;
                 }
@@ -633,7 +633,7 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    ActivateWhisperTargetPickerModalComboFocus();
+                    OpenWhisperTargetPickerModalComboDropdown();
                     PageWhisperTargetPickerSelection(1);
                     return true;
                 }
@@ -2001,7 +2001,32 @@ namespace HaCreator.MapSimulator
             }
 
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
-            _isWhisperTargetPickerComboDropdownOpen = true;
+            _isWhisperTargetPickerComboDropdownOpen = false;
+        }
+
+        internal void OpenWhisperTargetPickerModalComboDropdown()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = _whisperCandidates.Count > 0;
+        }
+
+        internal void ToggleWhisperTargetPickerModalComboDropdown()
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _isWhisperTargetPickerComboDropdownOpen = !_isWhisperTargetPickerComboDropdownOpen
+                && _whisperCandidates.Count > 0;
         }
 
         internal void ToggleWhisperTargetPickerModalFocusTarget()
@@ -2020,7 +2045,7 @@ namespace HaCreator.MapSimulator
             }
 
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
-            _isWhisperTargetPickerComboDropdownOpen = true;
+            _isWhisperTargetPickerComboDropdownOpen = false;
         }
 
         internal static int ResolveWhisperTargetPickerFirstVisibleIndex(

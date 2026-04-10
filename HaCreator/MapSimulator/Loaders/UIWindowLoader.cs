@@ -2055,6 +2055,7 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D frameTexture = LoadCanvasTexture(fadeYesNoProperty, "backgrnd7", device)
                                      ?? LoadCanvasTexture(fadeYesNoProperty, "backgrnd", device)
                                      ?? CreatePlaceholderWindowTexture(device, 206, 70, "Confirm");
+            Texture2D defaultIcon = LoadCanvasTexture(fadeYesNoProperty, "icon0", device);
             UIObject confirmButton = LoadButton(fadeYesNoProperty, "BtOK", btClickSound, btOverSound, device);
             UIObject cancelButton = LoadButton(fadeYesNoProperty, "BtCancel", btClickSound, btOverSound, device);
 
@@ -2063,7 +2064,7 @@ namespace HaCreator.MapSimulator.Loaders
                 MapSimulatorWindowNames.InGameConfirmDialog,
                 confirmButton,
                 cancelButton,
-                null,
+                defaultIcon,
                 screenWidth,
                 screenHeight);
             manager.RegisterCustomWindow(window);
@@ -9058,7 +9059,12 @@ namespace HaCreator.MapSimulator.Loaders
                     position);
             }
 
-            PacketOwnedRewardNoticeWindow window = new(framesByLineCount)
+            Texture2D separatorLineTexture = LoadCanvasTexture(utilDialogProperty, "line", device);
+            IDXObject separatorLine = separatorLineTexture != null
+                ? new DXObject(0, 0, separatorLineTexture, 0)
+                : null;
+
+            PacketOwnedRewardNoticeWindow window = new(framesByLineCount, separatorLine)
             {
                 Position = position
             };

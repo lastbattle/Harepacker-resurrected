@@ -16,6 +16,29 @@ namespace HaCreator.MapSimulator.UI
 
     internal static class AdminShopUserSellMutationParity
     {
+        internal static int FindMatchingEntryIndex(
+            IReadOnlyList<AdminShopUserSellMutationRow> currentRows,
+            AdminShopUserSellMutationRow requestedRow)
+        {
+            if (currentRows == null)
+            {
+                return -1;
+            }
+
+            for (int index = 0; index < currentRows.Count; index++)
+            {
+                AdminShopUserSellMutationRow currentRow = currentRows[index];
+                if (currentRow.InventoryType == requestedRow.InventoryType
+                    && currentRow.ItemId == requestedRow.ItemId
+                    && currentRow.SlotPosition == requestedRow.SlotPosition)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
         internal static int ComputeCmpSellItemIndex(
             IReadOnlyList<AdminShopUserSellMutationRow> snapshotRows,
             IReadOnlyList<AdminShopUserSellMutationRow> currentRows)

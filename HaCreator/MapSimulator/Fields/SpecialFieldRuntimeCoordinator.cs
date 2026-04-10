@@ -71,12 +71,17 @@ namespace HaCreator.MapSimulator.Fields
     public sealed class SpecialFieldRuntimeCoordinator
     {
         public const int CurrentWrapperRelayOpcode = 163;
+        private const int KillCountPacketType = 178;
+        private const int EscortFailOverlayDurationMs = 2500;
 
         private readonly SpecialEffectFields _specialEffects = new();
         private readonly MinigameFields _minigames = new();
         private readonly CookieHouseField _cookieHouse = new();
         private readonly PartyRaidField _partyRaid = new();
         private Func<int> _cookieHousePointProvider;
+        private MapInfo _boundMapInfo;
+        private int? _killCountWrapperValue;
+        private int _escortFailOverlayUntilTick = int.MinValue;
         private readonly List<SpecialFieldBacklogEntry> _catalog = new()
         {
             new(SpecialFieldBacklogArea.GuildBossEventFields, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / GuildBossField", IsGuildBossMap),
@@ -101,6 +106,8 @@ namespace HaCreator.MapSimulator.Fields
         public MinigameFields Minigames => _minigames;
         public CookieHouseField CookieHouse => _cookieHouse;
         public PartyRaidField PartyRaid => _partyRaid;
+        public int? KillCountWrapperValue => _killCountWrapperValue;
+        public int EscortFailOverlayUntilTick => _escortFailOverlayUntilTick;
         public bool HasPendingTransfer =>
             _specialEffects.Battlefield.HasPendingTransfer
             || _specialEffects.Dojo.PendingTransferMapId > 0;
@@ -137,6 +144,7 @@ namespace HaCreator.MapSimulator.Fields
         private void BindMap(MapInfo mapInfo, Board board)
         {
             Reset();
+            _boundMapInfo = mapInfo;
             if (mapInfo == null)
             {
                 return;
@@ -247,6 +255,31 @@ namespace HaCreator.MapSimulator.Fields
             return TryDispatchCurrentWrapperPacketCore(packetType, payload, currentTimeMs, out message);
         }
 
+        public bool TryDispatchCurrentWrapperFieldValue(string key, string value, int currentTimeMs, out string message)
+        {
+            if (_partyRaid.IsActive
+                && _boundMapInfo?.fieldType == FieldType.FIELDTYPE_HUNTINGADBALLOON)
+            {
+                bool applied = _partyRaid.OnFieldSetVariable(key, value);
+                message = applied
+                    ? $"CField_HuntingAdballoon::OnFieldSetVariable accepted {key}={value}. {_partyRaid.DescribeStatus()}"
+                    : $"CField_HuntingAdballoon::OnFieldSetVariable rejected {key}={value}. field key not accepted";
+                return applied;
+            }
+
+            if (IsEscortResultWrapperMap(_boundMapInfo)
+                && MatchesEscortFailKey(key)
+                && string.Equals(value, "fail", StringComparison.OrdinalIgnoreCase))
+            {
+                _escortFailOverlayUntilTick = currentTimeMs + EscortFailOverlayDurationMs;
+                message = "CField_EscortResult::OnSessionValue accepted fail and armed the escort-result overlay.";
+                return true;
+            }
+
+            message = $"No active client-owned special-field wrapper field-value owner accepted {key}={value}.";
+            return false;
+        }
+
         public static byte[] BuildCurrentWrapperRelayPayload(int packetType, byte[] payload)
         {
             payload ??= Array.Empty<byte>();
@@ -337,7 +370,45 @@ namespace HaCreator.MapSimulator.Fields
                 return applied;
             }
 
+            if (TryDispatchSupplementalCurrentWrapperPacket(packetType, payload, currentTimeMs, out string supplementalOwnerName, out string supplementalOwnerMessage))
+            {
+                message = $"{supplementalOwnerName} accepted packet {packetType}. {supplementalOwnerMessage}";
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(supplementalOwnerName) && !string.IsNullOrWhiteSpace(supplementalOwnerMessage))
+            {
+                message = $"{supplementalOwnerName} rejected packet {packetType}. {supplementalOwnerMessage}";
+                return false;
+            }
+
             message = $"No active client-owned special-field wrapper accepted packet {packetType}.";
+            return false;
+        }
+
+        private bool TryDispatchSupplementalCurrentWrapperPacket(
+            int packetType,
+            byte[] payload,
+            int currentTimeMs,
+            out string ownerName,
+            out string message)
+        {
+            if (packetType == KillCountPacketType && IsKillCountWrapperMap(_boundMapInfo))
+            {
+                ownerName = "CField_KillCount::OnPacket";
+                if (payload == null || payload.Length < sizeof(int))
+                {
+                    message = "Kill-count packet requires a 4-byte payload.";
+                    return false;
+                }
+
+                _killCountWrapperValue = Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int))));
+                message = $"kill-count={_killCountWrapperValue.Value}";
+                return true;
+            }
+
+            ownerName = null;
+            message = null;
             return false;
         }
 
@@ -418,10 +489,35 @@ namespace HaCreator.MapSimulator.Fields
         public void Reset()
         {
             ActiveArea = null;
+            _boundMapInfo = null;
+            _killCountWrapperValue = null;
+            _escortFailOverlayUntilTick = int.MinValue;
             _specialEffects.ResetAll();
             _minigames.ResetAll();
             _cookieHouse.Reset();
             _partyRaid.Reset();
+        }
+
+        private static bool IsKillCountWrapperMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_KILLCOUNT
+                && !IsAranTutorialMap(mapInfo);
+        }
+
+        private static bool IsEscortResultWrapperMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_ESCORT_RESULT;
+        }
+
+        private static bool MatchesEscortFailKey(string key)
+        {
+            return string.Equals(key?.Trim(), "fail", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsAranTutorialMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_TUTORIAL
+                || (mapInfo?.id >= 914000000 && mapInfo?.id <= 914000500);
         }
 
         private static bool IsWeddingMap(MapInfo mapInfo)

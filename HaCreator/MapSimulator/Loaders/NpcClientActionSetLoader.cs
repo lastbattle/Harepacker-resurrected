@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps,
             CharacterGender? localPlayerGender = null,
+            bool hasQuestCheckContext = false,
             Func<int, QuestStateType> questStateProvider = null,
             Func<int, string> questRecordValueProvider = null,
             int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
@@ -61,6 +62,7 @@ namespace HaCreator.MapSimulator.Loaders
                 ClientActionSetIndex = ResolveClientActionSetIndex(
                     actionSets,
                     localPlayerGender,
+                    hasQuestCheckContext,
                     questStateProvider,
                     questRecordValueProvider,
                     requestedClientActionSetIndex)
@@ -103,6 +105,7 @@ namespace HaCreator.MapSimulator.Loaders
         internal static int ResolveClientActionSetIndex(
             IReadOnlyList<NpcClientActionSetDefinition> actionSets,
             CharacterGender? localPlayerGender = null,
+            bool hasQuestCheckContext = false,
             Func<int, QuestStateType> questStateProvider = null,
             Func<int, string> questRecordValueProvider = null,
             int requestedClientActionSetIndex = AutomaticClientActionSetIndex)
@@ -124,7 +127,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return actionSets[0].Index;
             }
 
-            if (!CanEvaluateQuestConditions(questStateProvider, questRecordValueProvider))
+            if (!CanEvaluateQuestConditions(hasQuestCheckContext, questStateProvider, questRecordValueProvider))
             {
                 return ResolveFirstConditionlessClientActionSetIndex(actionSets, localPlayerGender);
             }
@@ -688,10 +691,12 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         private static bool CanEvaluateQuestConditions(
+            bool hasQuestCheckContext,
             Func<int, QuestStateType> questStateProvider,
             Func<int, string> questRecordValueProvider)
         {
-            return questStateProvider != null || questRecordValueProvider != null;
+            return hasQuestCheckContext
+                   && (questStateProvider != null || questRecordValueProvider != null);
         }
 
         private static int ResolveFirstConditionlessClientActionSetIndex(

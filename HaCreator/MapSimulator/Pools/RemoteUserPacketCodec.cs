@@ -281,6 +281,22 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserPortableChairRecordRemovePacket(int CharacterId);
     public readonly record struct RemoteUserMountPacket(int CharacterId, int? TamingMobItemId);
     public readonly record struct RemoteUserActiveEffectItemPacket(int CharacterId, int? ItemId);
+    public readonly record struct RemoteUserHitPacket(
+        int CharacterId,
+        sbyte AttackIndex,
+        int Damage,
+        int? MobTemplateId,
+        bool MobHitFacingLeft,
+        bool HasMobHit,
+        bool PowerGuard,
+        int? MobId,
+        byte? MobHitAction,
+        short? MobHitX,
+        short? MobHitY,
+        byte IncDecType,
+        byte HitFlags,
+        int HpDelta,
+        int? SkillId);
     public readonly record struct RemoteUserEmotionPacket(int CharacterId, int EmotionId, int DurationMs, bool ByItemOption);
     public readonly record struct RemoteUserUpgradeTombPacket(int CharacterId, int ItemId, int PositionX, int PositionY);
     public readonly record struct RemoteUserReceiveHpPacket(int CharacterId, int CurrentHp, int MaxHp);
@@ -1105,6 +1121,96 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 packet = new RemoteUserEmotionPacket(characterId, emotionId, durationMs, byItemOption);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseHit(ReadOnlySpan<byte> payload, out RemoteUserHitPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int characterId = reader.ReadInt32();
+                sbyte attackIndex = unchecked((sbyte)reader.ReadByte());
+                int damage = reader.ReadInt32();
+                int? mobTemplateId = null;
+                bool mobHitFacingLeft = false;
+                bool hasMobHit = false;
+                bool powerGuard = false;
+                int? mobId = null;
+                byte? mobHitAction = null;
+                short? mobHitX = null;
+                short? mobHitY = null;
+                byte incDecType = 0;
+                byte hitFlags = 0;
+
+                if (attackIndex > -2)
+                {
+                    mobTemplateId = reader.ReadInt32();
+                    mobHitFacingLeft = reader.ReadByte() != 0;
+                    hasMobHit = reader.ReadByte() != 0;
+                    if (hasMobHit)
+                    {
+                        powerGuard = reader.ReadByte() != 0;
+                        mobId = reader.ReadInt32();
+                        mobHitAction = reader.ReadByte();
+                        mobHitX = reader.ReadInt16();
+                        mobHitY = reader.ReadInt16();
+                    }
+
+                    incDecType = reader.ReadByte();
+                    hitFlags = reader.ReadByte();
+                }
+
+                int hpDelta = reader.ReadInt32();
+                int? skillId = null;
+                if (hpDelta == -1)
+                {
+                    skillId = reader.ReadInt32();
+                }
+
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user hit packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                if (characterId <= 0)
+                {
+                    error = $"Remote user hit packet character ID {characterId} is invalid.";
+                    return false;
+                }
+
+                if (hpDelta == -1 && skillId.GetValueOrDefault() <= 0)
+                {
+                    error = "Remote user hit packet skill-effect branch must include a positive skill ID.";
+                    return false;
+                }
+
+                packet = new RemoteUserHitPacket(
+                    characterId,
+                    attackIndex,
+                    damage,
+                    mobTemplateId,
+                    mobHitFacingLeft,
+                    hasMobHit,
+                    powerGuard,
+                    mobId,
+                    mobHitAction,
+                    mobHitX,
+                    mobHitY,
+                    incDecType,
+                    hitFlags,
+                    hpDelta,
+                    skillId);
                 return true;
             }
             catch (InvalidOperationException ex)

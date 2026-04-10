@@ -161,6 +161,7 @@ namespace HaCreator.MapSimulator.Fields
         public int EnemyTeamTotalCp { get; private set; }
         public int? LastRequestCooldownResetTick { get; private set; }
         public string LastRequestOwnerName { get; private set; }
+        public string LastRequestResetOutcome { get; private set; }
         public int LastRequestTab { get; private set; } = -1;
         public int LastRequestIndex { get; private set; } = -1;
 
@@ -182,6 +183,7 @@ namespace HaCreator.MapSimulator.Fields
             EnemyTeamTotalCp = 0;
             LastRequestCooldownResetTick = null;
             LastRequestOwnerName = null;
+            LastRequestResetOutcome = null;
             LastRequestTab = -1;
             LastRequestIndex = -1;
         }
@@ -193,6 +195,11 @@ namespace HaCreator.MapSimulator.Fields
             SkillRows = definition?.SkillEntries.Count ?? 0;
             GuardianRows = definition?.GuardianEntries.Count ?? 0;
             ResetCount++;
+            LastRequestCooldownResetTick = null;
+            LastRequestOwnerName = null;
+            LastRequestResetOutcome = null;
+            LastRequestTab = -1;
+            LastRequestIndex = -1;
         }
 
         public void ApplyEnter(
@@ -213,10 +220,11 @@ namespace HaCreator.MapSimulator.Fields
             EnemyTeamTotalCp = Math.Max(EnemyTeamCp, enemyTeamTotalCp);
         }
 
-        public void MarkRequestCooldownReset(int tickCount, string ownerName, int tabCode, int entryIndex)
+        public void MarkRequestCooldownReset(int tickCount, string ownerName, string outcome, int tabCode, int entryIndex)
         {
             LastRequestCooldownResetTick = tickCount;
             LastRequestOwnerName = string.IsNullOrWhiteSpace(ownerName) ? null : ownerName.Trim();
+            LastRequestResetOutcome = string.IsNullOrWhiteSpace(outcome) ? null : outcome.Trim();
             LastRequestTab = tabCode;
             LastRequestIndex = entryIndex;
         }
@@ -230,7 +238,7 @@ namespace HaCreator.MapSimulator.Fields
 
             string teamText = Team.HasValue ? MonsterCarnivalField.FormatTeam(Team.Value) : "unset";
             string requestText = LastRequestCooldownResetTick.HasValue
-                ? $"requestReset={LastRequestTab}/{LastRequestIndex}@{LastRequestCooldownResetTick.Value}"
+                ? $"requestReset={LastRequestResetOutcome ?? "unknown"}:{LastRequestTab}/{LastRequestIndex}@{LastRequestCooldownResetTick.Value}"
                 : "requestReset=none";
             return $"CUIMonsterCarnival: created | rows mob/skill/guardian={MobRows}/{SkillRows}/{GuardianRows} total={TotalRows} | ResetUI={ResetCount} | team={teamText} | personalCP={PersonalCp}/{PersonalTotalCp} | myTeamCP={MyTeamCp}/{MyTeamTotalCp} | enemyTeamCP={EnemyTeamCp}/{EnemyTeamTotalCp} | {requestText}";
         }
@@ -904,6 +912,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             ClearRoundState();
+            RecreateClientOwnedUiWindowStateForEnter();
             _enteredField = true;
             _localTeam = localTeam;
             _personalCp = Math.Max(0, personalCp);
@@ -1095,7 +1104,10 @@ namespace HaCreator.MapSimulator.Fields
             string successMessage = BuildRequestSuccessMessage(entry, characterName);
             ShowStatus(successMessage, tickCount);
             MonsterCarnivalStringPoolMessage? successDefinition = GetRequestSuccessMessage(entry.Tab);
-            _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, (int)tab, entryIndex);
+            if (spendLocalCp)
+            {
+                _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, "success", (int)tab, entryIndex);
+            }
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.Request,
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} accepted tab {(int)tab}, index {entryIndex}, and advanced the request seam.");
@@ -1108,6 +1120,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             ShowStatus(DescribeRequestFailure(reasonCode), tickCount);
             MonsterCarnivalStringPoolMessage? definition = GetRequestFailureMessage(reasonCode);
+            _uiWindowState.MarkRequestCooldownReset(tickCount, _definition?.ClientOwnerLabel, "failure", _lastRequestTab, _lastRequestIndex);
             SetVariantSessionPhase(
                 MonsterCarnivalVariantSessionPhase.Request,
                 $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"} rejected request reason {reasonCode} on the shared Carnival seam.");
@@ -2537,6 +2550,19 @@ namespace HaCreator.MapSimulator.Fields
             _uiWindowState.CreateFromDefinition(definition);
             RecordClientOwnerAction(
                 "CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI.",
+                Array.Empty<int>());
+        }
+
+        private void RecreateClientOwnedUiWindowStateForEnter()
+        {
+            if (_definition == null || _definition.IsWaitingRoom || _definition.IsDeprecatedMode)
+            {
+                return;
+            }
+
+            _uiWindowState.CreateFromDefinition(_definition);
+            RecordClientOwnerAction(
+                "CField_MonsterCarnival::OnEnter -> CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI.",
                 Array.Empty<int>());
         }
 

@@ -249,7 +249,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
-                int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                int resolvedListenPort = listenPort < 0 ? DefaultListenPort : listenPort;
                 string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
                 if (HasAttachedClient)
                 {
@@ -283,6 +283,11 @@ namespace HaCreator.MapSimulator.Managers
                     _listenerCancellation = new CancellationTokenSource();
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
                     _listener.Start();
+                    if (_listener.LocalEndpoint is IPEndPoint localEndpoint)
+                    {
+                        ListenPort = localEndpoint.Port;
+                    }
+
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = $"Transport official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     status = LastStatus;
@@ -321,7 +326,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            int resolvedListenPort = listenPort < 0 ? DefaultListenPort : listenPort;
             if (HasAttachedClient)
             {
                 if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
@@ -351,7 +356,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            status = $"Transport official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus} {BuildDiscoveryAttachmentRequirementMessage(resolvedListenPort)}";
+            status = $"Transport official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus} {BuildDiscoveryAttachmentRequirementMessage(ListenPort)}";
             LastStatus = status;
             return true;
         }

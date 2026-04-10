@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Character;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
@@ -176,6 +177,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill != null
                    && HasMinionAbilityToken(skill.MinionAbility, "heal")
                    && string.Equals(skill.SummonCondition, "whenUserLieDown", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool CanAffectLocalPlayerFromFriendlySupport(SkillData skill, PlayerState localPlayerState)
+        {
+            return !IsSitdownHealingSupportSummon(skill)
+                   || localPlayerState == PlayerState.Sitting;
         }
 
         public static bool UsesReactiveDamageTriggerSummon(SkillData skill)
@@ -440,6 +447,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return 0;
+        }
+
+        internal static bool TryResolveExplicitSelfDestructPlayback(
+            SkillData skill,
+            SummonAssistType assistType,
+            string currentBranchName,
+            out string branchName,
+            out int actionCode)
+        {
+            branchName = currentBranchName;
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                branchName = ResolveSelfDestructFinalBranch(skill, assistType);
+            }
+
+            actionCode = ResolveLocalAttackActionCode(
+                skill,
+                assistType,
+                branchName,
+                isSelfDestructAction: true);
+            return !string.IsNullOrWhiteSpace(branchName) && actionCode > 0;
         }
 
         internal static string ResolveLocalSupportBranch(SkillData skill, bool preferHealFirst)

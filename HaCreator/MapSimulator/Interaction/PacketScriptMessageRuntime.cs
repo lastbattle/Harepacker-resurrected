@@ -103,7 +103,12 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (entry == null)
                 {
-                    request = new PacketScriptMessageOpenRequest(null, speaker.NpcId, CloseExistingDialog: decoded.CloseExistingDialog || entry == null, AutoResponse: autoResponse);
+                request = new PacketScriptMessageOpenRequest(
+                    null,
+                    speaker.NpcId,
+                    CloseExistingDialog: decoded.CloseExistingDialog || entry == null,
+                    AutoResponse: autoResponse,
+                    DedicatedOwner: decoded.DedicatedOwner);
                     _activePromptContext = null;
                     _statusMessage = autoResponse?.Summary ?? decoded.StatusMessage ?? $"Closed packet-authored script dialog for {speaker.DisplayName}.";
                     message = _statusMessage;
@@ -120,7 +125,8 @@ namespace HaCreator.MapSimulator.Interaction
                         PresentationStyle = NpcInteractionPresentationStyle.PacketScriptUtilDialog
                     },
                     speaker.NpcId,
-                    AutoResponse: autoResponse);
+                    AutoResponse: autoResponse,
+                    DedicatedOwner: decoded.DedicatedOwner);
 
                 _activePromptContext = new PacketScriptPromptContext(
                     speaker.DisplayName,
@@ -665,26 +671,37 @@ namespace HaCreator.MapSimulator.Interaction
                     return true;
                 }
 
-                result = CreateDecodedResult(CreatePetSelectionEntry(
-                    speaker,
-                    param,
-                    isPetAll,
-                    rawText,
-                    exceptionExists,
-                    selectablePets.Select((pet, index) => new NpcInteractionChoice
-                    {
-                        Label = BuildPetChoiceLabel(pet, index),
-                        SubmitSelection = true,
-                        SubmissionKind = NpcInteractionInputKind.None,
-                        SubmissionValue = pet.PetSerialNumber.ToString(),
-                        SubmissionNumericValue = null
-                    }).ToList(),
-                    selectablePets.Count == 0
-                        ? "No pet options were decoded from the packet payload."
-                        : string.Join("\n", selectablePets.Select((pet, index) => $"{index + 1}. {DescribePetOption(pet, index)}")),
-                    droppedSerialCount > 0
-                        ? $"Skipped {droppedSerialCount} packet serial entr{(droppedSerialCount == 1 ? "y" : "ies")} that did not resolve to selectable pets on the current runtime branch."
-                        : null));
+                IReadOnlyList<NpcInteractionChoice> choices = selectablePets.Select((pet, index) => new NpcInteractionChoice
+                {
+                    Label = BuildPetChoiceLabel(pet, index),
+                    SubmitSelection = true,
+                    SubmissionKind = NpcInteractionInputKind.None,
+                    SubmissionValue = pet.PetSerialNumber.ToString(),
+                    SubmissionNumericValue = null
+                }).ToList();
+                string optionDetails = selectablePets.Count == 0
+                    ? "No pet options were decoded from the packet payload."
+                    : string.Join("\n", selectablePets.Select((pet, index) => $"{index + 1}. {DescribePetOption(pet, index)}"));
+                string resolutionDetails = droppedSerialCount > 0
+                    ? $"Skipped {droppedSerialCount} packet serial entr{(droppedSerialCount == 1 ? "y" : "ies")} that did not resolve to selectable pets on the current runtime branch."
+                    : null;
+                string entryText = BuildPetSelectionEntryText(rawText, optionDetails, resolutionDetails, isPetAll, exceptionExists);
+                result = CreateDecodedResult(
+                    CreatePetSelectionEntry(
+                        speaker,
+                        param,
+                        isPetAll,
+                        rawText,
+                        exceptionExists,
+                        choices,
+                        optionDetails,
+                        resolutionDetails),
+                    dedicatedOwner: CreateDedicatedOwner(
+                        isPetAll ? PacketScriptDedicatedOwnerKind.MultiPetSelection : PacketScriptDedicatedOwnerKind.PetSelection,
+                        isPetAll ? "Pet Selection (All)" : "Pet Selection",
+                        rawText,
+                        entryText,
+                        choices));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
@@ -709,24 +726,27 @@ namespace HaCreator.MapSimulator.Interaction
                 petItemIds.Add(reader.ReadInt32());
             }
 
+            IReadOnlyList<NpcInteractionChoice> choices = petItemIds.Select((itemId, index) => new NpcInteractionChoice
+            {
+                Label = BuildPetItemChoiceLabel(itemId, index),
+                SubmitSelection = true,
+                SubmissionKind = NpcInteractionInputKind.None,
+                SubmissionValue = itemId.ToString(),
+                SubmissionNumericValue = null
+            }).ToList();
+            string optionDetails = petItemIds.Count == 0
+                ? "Compact helper payload did not decode any pet item ids."
+                : string.Join("\n", petItemIds.Select((itemId, index) => $"{index + 1}. {DescribePetItemOption(itemId, index)}"));
+            string resolutionDetails = "Compact helper payload does not include pet-serial resolution details.";
             return CreatePetSelectionEntry(
                 speaker,
                 param,
                 isPetAll,
                 rawText,
                 false,
-                petItemIds.Select((itemId, index) => new NpcInteractionChoice
-                {
-                    Label = BuildPetItemChoiceLabel(itemId, index),
-                    SubmitSelection = true,
-                    SubmissionKind = NpcInteractionInputKind.None,
-                    SubmissionValue = itemId.ToString(),
-                    SubmissionNumericValue = null
-                }).ToList(),
-                petItemIds.Count == 0
-                    ? "Compact helper payload did not decode any pet item ids."
-                    : string.Join("\n", petItemIds.Select((itemId, index) => $"{index + 1}. {DescribePetItemOption(itemId, index)}")),
-                "Compact helper payload does not include pet-serial resolution details.");
+                choices,
+                optionDetails,
+                resolutionDetails);
         }
 
         private static NpcInteractionEntry CreatePetSelectionEntry(
@@ -743,12 +763,7 @@ namespace HaCreator.MapSimulator.Interaction
                 isPetAll ? "Pet Selection (All)" : "Pet Selection",
                 BuildSpeakerSubtitle(speaker, isPetAll ? "AskPetAll" : "AskPet", param),
                 rawText,
-                AppendMetadata(
-                    NpcDialogueTextFormatter.Format(rawText),
-                    optionDetails,
-                    resolutionDetails,
-                    isPetAll ? $"Multi-pet exception flag: {(exceptionExists ? 1 : 0)}." : null,
-                    "WZ data exposes packet-owned pet utility surfaces under `UIWindow(.img|2.img)/UtilDlgEx_Pet` and `UtilDlgEx_MultiPetEquip`."),
+                BuildPetSelectionEntryText(rawText, optionDetails, resolutionDetails, isPetAll, exceptionExists),
                 choices);
         }
 
@@ -828,14 +843,24 @@ namespace HaCreator.MapSimulator.Interaction
                 int initialSelectionId = reader.ReadInt32();
                 string buttonInfo = ReadMapleString(reader);
                 IReadOnlyList<SlideMenuOption> options = ParseSlideMenuButtonInfo(buttonInfo);
-                result = CreateDecodedResult(CreateSlideMenuEntry(
+                NpcInteractionEntry entry = CreateSlideMenuEntry(
                     speaker,
                     param,
                     slideMenuType,
                     initialSelectionId,
                     buttonInfo,
                     options,
-                    "Decoded"));
+                    "Decoded");
+                result = CreateDecodedResult(
+                    entry,
+                    dedicatedOwner: CreateDedicatedOwner(
+                        PacketScriptDedicatedOwnerKind.SlideMenu,
+                        "Slide Menu",
+                        buttonInfo,
+                        entry.Pages.Count > 0 ? entry.Pages[0].Text : string.Empty,
+                        entry.Pages.Count > 0 ? entry.Pages[0].Choices : Array.Empty<NpcInteractionChoice>(),
+                        slideMenuType,
+                        initialSelectionId));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
@@ -900,9 +925,10 @@ namespace HaCreator.MapSimulator.Interaction
             bool closeExistingDialog = false,
             bool suppressDialogMutation = false,
             string statusMessage = null,
-            PacketScriptClientOwnerRuntimeSync clientOwnerRuntimeSync = null)
+            PacketScriptClientOwnerRuntimeSync clientOwnerRuntimeSync = null,
+            PacketScriptDedicatedOwnerRequest dedicatedOwner = null)
         {
-            return new PacketScriptDecodeResult(entry, autoResponse, closeExistingDialog, suppressDialogMutation, statusMessage, clientOwnerRuntimeSync);
+            return new PacketScriptDecodeResult(entry, autoResponse, closeExistingDialog, suppressDialogMutation, statusMessage, clientOwnerRuntimeSync, dedicatedOwner);
         }
 
         private static PacketScriptDecodeResult DecodeIgnoredUnsupportedMessage(BinaryReader reader, PacketScriptSpeaker speaker, int messageType, byte param)
@@ -1489,8 +1515,8 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     if (!submission.NumericValue.HasValue)
                     {
-                        error = "Menu-style submissions require a numeric selection id.";
-                        return false;
+                        writer.WriteByte(0);
+                        break;
                     }
 
                     writer.WriteByte(1);
@@ -1593,6 +1619,40 @@ namespace HaCreator.MapSimulator.Interaction
             return writer.ToArray();
         }
 
+        private static string BuildPetSelectionEntryText(
+            string rawText,
+            string optionDetails,
+            string resolutionDetails,
+            bool isPetAll,
+            bool exceptionExists)
+        {
+            return AppendMetadata(
+                NpcDialogueTextFormatter.Format(rawText),
+                optionDetails,
+                resolutionDetails,
+                isPetAll ? $"Multi-pet exception flag: {(exceptionExists ? 1 : 0)}." : null,
+                "WZ data exposes packet-owned pet utility surfaces under `UIWindow(.img|2.img)/UtilDlgEx_Pet` and `UtilDlgEx_MultiPetEquip`.");
+        }
+
+        private static PacketScriptDedicatedOwnerRequest CreateDedicatedOwner(
+            PacketScriptDedicatedOwnerKind kind,
+            string title,
+            string promptText,
+            string detailText,
+            IReadOnlyList<NpcInteractionChoice> choices,
+            int mode = 0,
+            int initialSelectionId = 0)
+        {
+            return new PacketScriptDedicatedOwnerRequest(
+                kind,
+                title ?? string.Empty,
+                promptText ?? string.Empty,
+                detailText ?? string.Empty,
+                choices ?? Array.Empty<NpcInteractionChoice>(),
+                mode,
+                initialSelectionId);
+        }
+
         internal static byte[] BuildInitialQuizOwnerResponsePacketBytes(string submittedValue)
         {
             PacketWriter writer = new PacketWriter();
@@ -1624,7 +1684,8 @@ namespace HaCreator.MapSimulator.Interaction
             NpcInteractionState State,
             int SpeakerNpcId,
             bool CloseExistingDialog = false,
-            PacketScriptResponsePacket AutoResponse = null);
+            PacketScriptResponsePacket AutoResponse = null,
+            PacketScriptDedicatedOwnerRequest DedicatedOwner = null);
         internal sealed record PacketScriptPetSelectionCandidate(
             long PetSerialNumber,
             int SlotIndex,
@@ -1638,7 +1699,8 @@ namespace HaCreator.MapSimulator.Interaction
             bool CloseExistingDialog = false,
             bool SuppressDialogMutation = false,
             string StatusMessage = null,
-            PacketScriptClientOwnerRuntimeSync ClientOwnerRuntimeSync = null);
+            PacketScriptClientOwnerRuntimeSync ClientOwnerRuntimeSync = null,
+            PacketScriptDedicatedOwnerRequest DedicatedOwner = null);
         internal sealed record PacketScriptResponsePacket(
             int MessageType,
             byte Param,
@@ -1671,6 +1733,22 @@ namespace HaCreator.MapSimulator.Interaction
             InitialQuiz,
             SpeedQuiz
         }
+
+        internal enum PacketScriptDedicatedOwnerKind
+        {
+            SlideMenu,
+            PetSelection,
+            MultiPetSelection
+        }
+
+        internal sealed record PacketScriptDedicatedOwnerRequest(
+            PacketScriptDedicatedOwnerKind Kind,
+            string Title,
+            string PromptText,
+            string DetailText,
+            IReadOnlyList<NpcInteractionChoice> Choices,
+            int Mode,
+            int InitialSelectionId);
 
         internal sealed record PacketScriptClientOwnerRuntimeSync(
             PacketScriptClientOwnerRuntimeKind Kind,

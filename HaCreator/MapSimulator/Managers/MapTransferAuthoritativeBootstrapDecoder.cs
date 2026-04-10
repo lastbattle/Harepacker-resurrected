@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -16,7 +17,8 @@ namespace HaCreator.MapSimulator.Managers
         private const ulong CharacterDataOpaquePreMapTransferFlag = 0x8000UL;
         private const ulong CharacterDataQuestRecordFlag = 0x10000UL;
         private const ulong CharacterDataShortFileTimeRecordFlag = 0x20000UL;
-        private const int LogoutGiftConfigByteLength = 3 * sizeof(int);
+        private const int LogoutGiftConfigByteLength =
+            sizeof(int) + (PacketStageTransitionRuntime.LogoutGiftEntryCount * sizeof(int));
         private const int SkillRecordBaseByteLength = sizeof(int) + sizeof(int);
         private const int SkillRecordOptionalMasterLevelByteLength = sizeof(int);
         private const int SkillExpirationRecordByteLength = sizeof(int) + sizeof(long);

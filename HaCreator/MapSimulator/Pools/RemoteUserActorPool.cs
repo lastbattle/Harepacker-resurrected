@@ -40,11 +40,20 @@ namespace HaCreator.MapSimulator.Pools
             int? ActionSpeed,
             bool FacingRight,
             int CurrentTime,
-            IReadOnlyList<string> BranchNames = null);
+            IReadOnlyList<string> BranchNames = null,
+            Vector2? WorldOrigin = null,
+            bool FollowOwnerPosition = true,
+            bool FollowOwnerFacing = true,
+            int? DelayRateOverride = null);
         public readonly record struct RemoteUpgradeTombPresentation(
             int CharacterId,
             int ItemId,
             Vector2 Position,
+            int CurrentTime);
+        public readonly record struct RemoteHitFeedbackPresentation(
+            int CharacterId,
+            Vector2 Position,
+            int Delta,
             int CurrentTime);
 
         private readonly record struct RemoteMechanicModePresentation(
@@ -101,6 +110,25 @@ namespace HaCreator.MapSimulator.Pools
             public SkillAnimation EffectAnimation { get; init; }
             public int AnimationStartTime { get; init; }
             public int ExpireTime { get; init; }
+        }
+
+        public sealed class RemoteHitState
+        {
+            public sbyte AttackIndex { get; init; }
+            public int Damage { get; init; }
+            public int? MobTemplateId { get; init; }
+            public bool MobHitFacingLeft { get; init; }
+            public bool HasMobHit { get; init; }
+            public bool PowerGuard { get; init; }
+            public int? MobId { get; init; }
+            public byte? MobHitAction { get; init; }
+            public short? MobHitX { get; init; }
+            public short? MobHitY { get; init; }
+            public byte IncDecType { get; init; }
+            public byte HitFlags { get; init; }
+            public int HpDelta { get; init; }
+            public int? SkillId { get; init; }
+            public int PacketTime { get; init; }
         }
 
         public sealed class RemoteTransientSkillUseAvatarEffectState
@@ -296,6 +324,7 @@ namespace HaCreator.MapSimulator.Pools
         public IEnumerable<RemoteUserActor> Actors => _actorsById.Values;
         public event Action<RemoteSkillUsePresentation> SkillUseRegistered;
         public event Action<RemoteUpgradeTombPresentation> UpgradeTombEffectRegistered;
+        public event Action<RemoteHitFeedbackPresentation> HitFeedbackRegistered;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
         public Action<int, string> ActorRemovedCallback { get; set; }
@@ -1883,6 +1912,84 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TryApplyHit(RemoteUserHitPacket packet, int currentTime, out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
+            {
+                message = $"Remote user {packet.CharacterId} is not active.";
+                return false;
+            }
+
+            actor.LastHit = new RemoteHitState
+            {
+                AttackIndex = packet.AttackIndex,
+                Damage = packet.Damage,
+                MobTemplateId = packet.MobTemplateId,
+                MobHitFacingLeft = packet.MobHitFacingLeft,
+                HasMobHit = packet.HasMobHit,
+                PowerGuard = packet.PowerGuard,
+                MobId = packet.MobId,
+                MobHitAction = packet.MobHitAction,
+                MobHitX = packet.MobHitX,
+                MobHitY = packet.MobHitY,
+                IncDecType = packet.IncDecType,
+                HitFlags = packet.HitFlags,
+                HpDelta = packet.HpDelta,
+                SkillId = packet.SkillId,
+                PacketTime = currentTime
+            };
+
+            if (packet.HpDelta > 0)
+            {
+                if (actor.PacketOwnedEmotion?.ByItemOption != true
+                    && PacketOwnedAvatarEmotionResolver.TryResolveEmotionName(1, out string hitEmotionName))
+                {
+                    ApplyRemoteEmotionState(
+                        actor,
+                        itemId: 0,
+                        emotionId: 1,
+                        emotionName: hitEmotionName,
+                        byItemOption: false,
+                        currentTime,
+                        durationMs: 1500,
+                        loadEffectAnimation: false);
+                }
+
+                HitFeedbackRegistered?.Invoke(new RemoteHitFeedbackPresentation(
+                    packet.CharacterId,
+                    ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f),
+                    -packet.HpDelta,
+                    currentTime));
+                message = $"Remote user {packet.CharacterId} hit packet applied for {packet.HpDelta} damage.";
+                return true;
+            }
+
+            if (packet.HpDelta == 0)
+            {
+                HitFeedbackRegistered?.Invoke(new RemoteHitFeedbackPresentation(
+                    packet.CharacterId,
+                    ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f),
+                    0,
+                    currentTime));
+            }
+
+            if (packet.SkillId is > 0)
+            {
+                SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                    packet.CharacterId,
+                    packet.SkillId.Value,
+                    null,
+                    actor.FacingRight,
+                    currentTime));
+            }
+
+            message = packet.SkillId is > 0
+                ? $"Remote user {packet.CharacterId} hit packet stored and registered skill effect {packet.SkillId.Value}."
+                : $"Remote user {packet.CharacterId} hit packet stored.";
+            return true;
+        }
+
         public bool TryApplyUpgradeTombEffect(RemoteUserUpgradeTombPacket packet, int currentTime, out string message)
         {
             message = null;
@@ -1939,6 +2046,17 @@ namespace HaCreator.MapSimulator.Pools
             actor.LastThrowGrenadeTarget = new Point(packet.X, packet.Y);
             actor.LastThrowGrenadeKeyDownTime = packet.KeyDownTime;
             actor.LastThrowGrenadePacketTime = currentTime;
+            SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                actor.CharacterId,
+                packet.SkillId,
+                null,
+                actor.FacingRight,
+                currentTime,
+                new[] { "special" },
+                new Vector2(packet.X, packet.Y),
+                FollowOwnerPosition: false,
+                FollowOwnerFacing: false,
+                DelayRateOverride: 1000));
             message = $"Remote user {packet.CharacterId} throw-grenade packet stored for skill {packet.SkillId} at ({packet.X}, {packet.Y}).";
             return true;
         }
@@ -2302,15 +2420,20 @@ namespace HaCreator.MapSimulator.Pools
 
         private static Vector2 ResolveStandardPreparedSkillWorldAnchor(RemoteUserActor actor, int currentTime)
         {
+            return ResolveStandardWorldAnchor(actor, currentTime, 18f);
+        }
+
+        private static Vector2 ResolveStandardWorldAnchor(RemoteUserActor actor, int currentTime, float verticalOffset)
+        {
             AssembledFrame frame = actor.Assembler?.GetFrameAtTime(actor.ActionName, currentTime)
                 ?? actor.Assembler?.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currentTime);
             if (frame != null)
             {
                 float topY = actor.Position.Y - frame.FeetOffset + frame.Bounds.Top;
-                return new Vector2(actor.Position.X, topY - 18f);
+                return new Vector2(actor.Position.X, topY - verticalOffset);
             }
 
-            return new Vector2(actor.Position.X, actor.Position.Y - 80f);
+            return new Vector2(actor.Position.X, actor.Position.Y - (verticalOffset + 62f));
         }
 
         private static bool TryResolveRemoteDragonKeyDownBarAnchor(
@@ -2415,7 +2538,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            WzImage image = global::HaCreator.Program.FindImage("Skill", $"Dragon/{dragonJob}.img");
+            WzImage image = FindRemoteDragonHudImage(dragonJob);
             if (image == null)
             {
                 return false;
@@ -2425,20 +2548,21 @@ namespace HaCreator.MapSimulator.Pools
             int standOriginX = 79;
             int moveOriginX = standOriginX;
 
-            foreach (WzSubProperty actionNode in image.WzProperties.OfType<WzSubProperty>())
+            foreach (string actionName in DragonActionLoader.EnumerateRenderableImageActionNames(image))
             {
-                if (string.Equals(actionNode.Name, "info", StringComparison.OrdinalIgnoreCase)
+                WzSubProperty actionNode = DragonActionLoader.FindActionNode(image, actionName);
+                if (actionNode == null
                     || !TryReadRemoteDragonFrameMetrics(actionNode, out int originX, out RemoteDragonHudAnimationTimeline timeline))
                 {
                     continue;
                 }
 
-                actionTimelines[actionNode.Name] = timeline;
-                if (string.Equals(actionNode.Name, "stand", StringComparison.OrdinalIgnoreCase))
+                actionTimelines[actionName] = timeline;
+                if (string.Equals(actionName, "stand", StringComparison.OrdinalIgnoreCase))
                 {
                     standOriginX = originX;
                 }
-                else if (string.Equals(actionNode.Name, "move", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase))
                 {
                     moveOriginX = originX;
                 }
@@ -2454,6 +2578,34 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        internal static bool TryResolveRemoteDragonHudMetadataForTesting(int jobId, out RemoteDragonHudMetadata metadata)
+        {
+            return TryResolveRemoteDragonHudMetadata(jobId, out metadata);
+        }
+
+        private static WzImage FindRemoteDragonHudImage(int dragonJob)
+        {
+            if (dragonJob <= 0)
+            {
+                return null;
+            }
+
+            string resolvedImagePath = DragonActionLoader.ResolveDragonImagePath(dragonJob);
+            if (!string.IsNullOrWhiteSpace(resolvedImagePath)
+                && resolvedImagePath.StartsWith("Skill/", StringComparison.OrdinalIgnoreCase))
+            {
+                string relativeImagePath = resolvedImagePath.Substring("Skill/".Length);
+                WzImage resolvedImage = global::HaCreator.Program.FindImage("Skill", relativeImagePath);
+                if (resolvedImage != null)
+                {
+                    return resolvedImage;
+                }
+            }
+
+            return global::HaCreator.Program.FindImage("Skill", $"Dragon/{dragonJob}.img")
+                ?? global::HaCreator.Program.FindImage("Skill", $"{dragonJob}.img");
+        }
+
         private static bool TryReadRemoteDragonFrameMetrics(
             WzSubProperty actionNode,
             out int originX,
@@ -2467,15 +2619,16 @@ namespace HaCreator.MapSimulator.Pools
                          .OfType<WzCanvasProperty>()
                          .OrderBy(static canvas => ParseRemoteDragonFrameIndex(canvas.Name)))
             {
-                if (frame["origin"] is not WzVectorProperty origin
-                    || frame["lt"] is not WzVectorProperty lt
-                    || frame["rb"] is not WzVectorProperty rb)
+                WzCanvasProperty metadataCanvas = ResolveRemoteDragonMetadataCanvas(frame);
+                if (metadataCanvas?["origin"] is not WzVectorProperty origin
+                    || metadataCanvas["lt"] is not WzVectorProperty lt
+                    || metadataCanvas["rb"] is not WzVectorProperty rb)
                 {
                     continue;
                 }
 
                 int height = Math.Max(1, rb.Y.Value - lt.Y.Value);
-                int delayMs = Math.Max(1, GetWzIntValue(frame["delay"]) ?? 100);
+                int delayMs = Math.Max(1, GetWzIntValue(metadataCanvas["delay"]) ?? 100);
                 frames.Add(new RemoteDragonHudFrameMetrics(origin.X.Value, height, delayMs));
                 if (frames.Count == 1)
                 {
@@ -2492,6 +2645,23 @@ namespace HaCreator.MapSimulator.Pools
                 IsRemoteDragonActionLooping(actionNode.Name),
                 frames);
             return true;
+        }
+
+        private static WzCanvasProperty ResolveRemoteDragonMetadataCanvas(WzCanvasProperty canvas)
+        {
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return canvas.GetLinkedWzImageProperty() as WzCanvasProperty ?? canvas;
+            }
+            catch
+            {
+                return canvas;
+            }
         }
 
         private static bool IsRemoteDragonActionLooping(string actionName)
@@ -4786,14 +4956,34 @@ namespace HaCreator.MapSimulator.Pools
 
         private void SyncPortableChairRecordFromChairState(int characterId, int? chairItemId, int? preferredPairCharacterId)
         {
-            int resolvedChairItemId = chairItemId ?? 0;
-            if (characterId <= 0 || resolvedChairItemId <= 0 || resolvedChairItemId / 1000 != 3012)
+            PortableChairPairRecord? record = ResolvePortableChairPairRecordFromChairState(
+                characterId,
+                chairItemId,
+                preferredPairCharacterId);
+            if (!record.HasValue)
             {
                 ClearPortableChairPairRecord(characterId);
                 return;
             }
 
-            SyncPortableChairPairRecord(characterId, resolvedChairItemId, preferredPairCharacterId);
+            _portableChairPairRecordsByCharacterId[characterId] = record.Value;
+        }
+
+        internal static PortableChairPairRecord? ResolvePortableChairPairRecordFromChairState(
+            int characterId,
+            int? chairItemId,
+            int? preferredPairCharacterId)
+        {
+            int resolvedChairItemId = chairItemId ?? 0;
+            if (characterId <= 0 || resolvedChairItemId <= 0 || resolvedChairItemId / 1000 != 3012)
+            {
+                return null;
+            }
+
+            return new PortableChairPairRecord(
+                characterId,
+                resolvedChairItemId,
+                preferredPairCharacterId);
         }
 
         private void ClearPortableChairPairRecord(int characterId)
@@ -5475,7 +5665,8 @@ namespace HaCreator.MapSimulator.Pools
             PlayerState state,
             string fallbackActionName = null,
             string weaponType = null,
-            int? rawActionCode = null)
+            int? rawActionCode = null,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             if (actionAnimations == null || actionAnimations.Count == 0)
             {
@@ -5487,7 +5678,8 @@ namespace HaCreator.MapSimulator.Pools
                          state,
                          fallbackActionName,
                          weaponType,
-                         rawActionCode))
+                         rawActionCode,
+                         supportedRawActionNames))
             {
                 if (!string.IsNullOrWhiteSpace(candidate)
                     && actionAnimations.ContainsKey(candidate))
@@ -5503,7 +5695,8 @@ namespace HaCreator.MapSimulator.Pools
             IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
             string resolvedActionName,
             string actionName,
-            int rawActionCode)
+            int rawActionCode,
+            IReadOnlySet<string> supportedRawActionNames = null)
         {
             string rawActionName = null;
             if (rawActionCode >= 0)
@@ -5515,7 +5708,8 @@ namespace HaCreator.MapSimulator.Pools
                 actionAnimations,
                 resolvedActionName,
                 actionName,
-                rawActionName);
+                rawActionName,
+                supportedRawActionNames);
         }
 
         private void ResolveRemoteShadowPartnerSkill(
@@ -6556,12 +6750,14 @@ namespace HaCreator.MapSimulator.Pools
                 state,
                 fallbackActionName,
                 actor.Build?.GetWeapon()?.WeaponType,
-                rawActionCode);
+                rawActionCode,
+                actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames);
             SkillAnimation resolvedObservedPlayback = ResolveRemoteShadowPartnerPlaybackAnimation(
                 actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
                 resolvedObservedAction,
                 observedPlayerActionName,
-                playbackRawActionCode);
+                playbackRawActionCode,
+                actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames);
 
             if (!presentation.IsActionInitialized)
             {
@@ -6586,7 +6782,8 @@ namespace HaCreator.MapSimulator.Pools
                             actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
                             createActionName,
                             observedPlayerActionName,
-                            playbackRawActionCode));
+                            playbackRawActionCode,
+                            actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames));
 
                     if (!string.IsNullOrWhiteSpace(resolvedObservedAction))
                     {
@@ -6703,7 +6900,8 @@ namespace HaCreator.MapSimulator.Pools
                     state,
                     fallbackActionName,
                     actor.Build?.GetWeapon()?.WeaponType,
-                    rawActionCode);
+                    rawActionCode,
+                    actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames);
                 SetRemoteShadowPartnerAction(
                     actor,
                     resolvedFallbackAction,
@@ -6713,7 +6911,8 @@ namespace HaCreator.MapSimulator.Pools
                         actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
                         resolvedFallbackAction,
                         fallbackAction,
-                        playbackRawActionCode));
+                        playbackRawActionCode,
+                        actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames));
             }
         }
 
@@ -6820,7 +7019,8 @@ namespace HaCreator.MapSimulator.Pools
                         actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
                         actionName,
                         presentation.ObservedPlayerActionName,
-                        presentation.ObservedRawActionCode.GetValueOrDefault(-1));
+                        presentation.ObservedRawActionCode.GetValueOrDefault(-1),
+                        actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames);
                 if (forceRestartWhenSameAction)
                 {
                     presentation.CurrentActionStartTime = currentTime;
@@ -6843,7 +7043,8 @@ namespace HaCreator.MapSimulator.Pools
                     actor.TemporaryStatShadowPartnerSkill.ShadowPartnerActionAnimations,
                     actionName,
                     presentation.ObservedPlayerActionName,
-                    presentation.ObservedRawActionCode.GetValueOrDefault(-1));
+                    presentation.ObservedRawActionCode.GetValueOrDefault(-1),
+                    actor.TemporaryStatShadowPartnerSkill.ShadowPartnerSupportedRawActionNames);
             presentation.CurrentActionStartTime = currentTime;
             presentation.CurrentFacingRight = facingRight;
         }
@@ -7503,44 +7704,23 @@ namespace HaCreator.MapSimulator.Pools
             if (activeAction)
             {
                 int animationTime = Math.Max(0, currentTime - state.AnimationStartTime);
-                if (actor.Assembler.TryGetFrameTimingAtTime(state.ActionName, animationTime, out int resolvedFrameIndex, out int frameElapsedMs))
-                {
-                    MeleeAfterimagePlaybackResolver.TryResolveFrameSnapshot(
-                        state.AfterImageAction,
-                        resolvedFrameIndex,
-                        frameElapsedMs,
-                        out MeleeAfterimagePlaybackResolver.Snapshot snapshot);
-                    int lastFrameIndex = state.LastFrameIndex;
-                    SkillFrame lastResolvedFrame = state.LastResolvedFrame;
-                    float lastResolvedAlpha = state.LastResolvedAlpha;
-                    MeleeAfterimagePlaybackResolver.ApplySnapshotToCache(
-                        snapshot,
-                        ref lastFrameIndex,
-                        ref lastResolvedFrame,
-                        ref lastResolvedAlpha);
-                    state.LastFrameIndex = lastFrameIndex;
-                    state.LastResolvedFrame = lastResolvedFrame;
-                    state.LastResolvedAlpha = lastResolvedAlpha;
-                    frameIndex = state.LastFrameIndex;
-                    frame = state.LastResolvedFrame;
-                    alpha = state.LastResolvedAlpha;
-                }
-                else
-                {
-                    int lastFrameIndex = state.LastFrameIndex;
-                    SkillFrame lastResolvedFrame = state.LastResolvedFrame;
-                    float lastResolvedAlpha = state.LastResolvedAlpha;
-                    MeleeAfterimagePlaybackResolver.ClearSnapshotCache(
-                        ref lastFrameIndex,
-                        ref lastResolvedFrame,
-                        ref lastResolvedAlpha);
-                    state.LastFrameIndex = lastFrameIndex;
-                    state.LastResolvedFrame = lastResolvedFrame;
-                    state.LastResolvedAlpha = lastResolvedAlpha;
-                    frameIndex = state.LastFrameIndex;
-                    frame = state.LastResolvedFrame;
-                    alpha = state.LastResolvedAlpha;
-                }
+                int lastFrameIndex = state.LastFrameIndex;
+                SkillFrame lastResolvedFrame = state.LastResolvedFrame;
+                float lastResolvedAlpha = state.LastResolvedAlpha;
+                MeleeAfterimagePlaybackResolver.RefreshSnapshotCache(
+                    actor.Assembler,
+                    state.ActionName,
+                    state.AfterImageAction,
+                    animationTime,
+                    ref lastFrameIndex,
+                    ref lastResolvedFrame,
+                    ref lastResolvedAlpha);
+                state.LastFrameIndex = lastFrameIndex;
+                state.LastResolvedFrame = lastResolvedFrame;
+                state.LastResolvedAlpha = lastResolvedAlpha;
+                frameIndex = state.LastFrameIndex;
+                frame = state.LastResolvedFrame;
+                alpha = state.LastResolvedAlpha;
             }
             else if (state.FadeStartTime >= 0)
             {
@@ -7847,6 +8027,7 @@ namespace HaCreator.MapSimulator.Pools
         public int? PartyMaxHp { get; set; }
         public int? PartyHpPercent { get; set; }
         public int? PartyHpGaugePos { get; set; }
+        public RemoteUserActorPool.RemoteHitState LastHit { get; set; }
         public int? LastThrowGrenadeSkillId { get; set; }
         public int? LastThrowGrenadeId { get; set; }
         public Point? LastThrowGrenadeTarget { get; set; }
@@ -7912,38 +8093,20 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            if (MeleeAfterimagePlaybackResolver.TryCaptureFadeSnapshot(
-                    Assembler,
-                    MeleeAfterImage.ActionName,
-                    MeleeAfterImage.AfterImageAction,
-                    Math.Max(0, currentTime - MeleeAfterImage.AnimationStartTime),
-                    out MeleeAfterimagePlaybackResolver.Snapshot snapshot))
-            {
-                int lastFrameIndex = MeleeAfterImage.LastFrameIndex;
-                SkillFrame lastResolvedFrame = MeleeAfterImage.LastResolvedFrame;
-                float lastResolvedAlpha = MeleeAfterImage.LastResolvedAlpha;
-                MeleeAfterimagePlaybackResolver.ApplySnapshotToCache(
-                    snapshot,
-                    ref lastFrameIndex,
-                    ref lastResolvedFrame,
-                    ref lastResolvedAlpha);
-                MeleeAfterImage.LastFrameIndex = lastFrameIndex;
-                MeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
-                MeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
-            }
-            else
-            {
-                int lastFrameIndex = MeleeAfterImage.LastFrameIndex;
-                SkillFrame lastResolvedFrame = MeleeAfterImage.LastResolvedFrame;
-                float lastResolvedAlpha = MeleeAfterImage.LastResolvedAlpha;
-                MeleeAfterimagePlaybackResolver.ClearSnapshotCache(
-                    ref lastFrameIndex,
-                    ref lastResolvedFrame,
-                    ref lastResolvedAlpha);
-                MeleeAfterImage.LastFrameIndex = lastFrameIndex;
-                MeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
-                MeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
-            }
+            int lastFrameIndex = MeleeAfterImage.LastFrameIndex;
+            SkillFrame lastResolvedFrame = MeleeAfterImage.LastResolvedFrame;
+            float lastResolvedAlpha = MeleeAfterImage.LastResolvedAlpha;
+            MeleeAfterimagePlaybackResolver.CaptureFadeSnapshotOrClearCache(
+                Assembler,
+                MeleeAfterImage.ActionName,
+                MeleeAfterImage.AfterImageAction,
+                Math.Max(0, currentTime - MeleeAfterImage.AnimationStartTime),
+                ref lastFrameIndex,
+                ref lastResolvedFrame,
+                ref lastResolvedAlpha);
+            MeleeAfterImage.LastFrameIndex = lastFrameIndex;
+            MeleeAfterImage.LastResolvedFrame = lastResolvedFrame;
+            MeleeAfterImage.LastResolvedAlpha = lastResolvedAlpha;
 
             MeleeAfterImage.FadeStartTime = currentTime;
         }

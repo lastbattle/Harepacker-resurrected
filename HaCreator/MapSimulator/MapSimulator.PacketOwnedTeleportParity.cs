@@ -1266,6 +1266,40 @@ namespace HaCreator.MapSimulator
             return TryResolvePacketOwnedTeleportUniqueCandidatePortalName(intersection, out uniquePortalName);
         }
 
+        private static bool TryIntersectPacketOwnedCandidateSets(
+            IEnumerable<string> currentCandidates,
+            IEnumerable<string> filterCandidates,
+            out string[] intersectedCandidates)
+        {
+            intersectedCandidates = Array.Empty<string>();
+            if (currentCandidates == null || filterCandidates == null)
+            {
+                return false;
+            }
+
+            var filterSet = new HashSet<string>(
+                filterCandidates.Where(candidate => !string.IsNullOrWhiteSpace(candidate)),
+                StringComparer.OrdinalIgnoreCase);
+            if (filterSet.Count == 0)
+            {
+                return false;
+            }
+
+            var intersection = new List<string>();
+            foreach (string candidate in currentCandidates)
+            {
+                if (string.IsNullOrWhiteSpace(candidate) || !filterSet.Contains(candidate))
+                {
+                    continue;
+                }
+
+                AddPacketOwnedTeleportCandidateName(intersection, candidate);
+            }
+
+            intersectedCandidates = intersection.ToArray();
+            return intersectedCandidates.Length > 0;
+        }
+
         internal static bool TryResolvePacketOwnedSourcePortalNameByPositionAndTargetMetadata(
             IEnumerable<PortalInstance> currentFieldPortals,
             int targetMapId,
@@ -1288,6 +1322,7 @@ namespace HaCreator.MapSimulator
                 sourceY,
                 out string[] coordinateSourcePortalNames,
                 out _);
+            string[] narrowedCoordinateSourcePortalNames = coordinateSourcePortalNames;
 
             if (!string.IsNullOrWhiteSpace(targetPortalName)
                 && TryCollectPacketOwnedSourcePortalNamesByTargetPortalName(
@@ -1295,12 +1330,18 @@ namespace HaCreator.MapSimulator
                     targetMapId,
                     targetPortalName,
                     out string[] targetSourcePortalNames)
-                && TryResolvePacketOwnedUniqueCandidateIntersection(
-                    coordinateSourcePortalNames,
+                && TryIntersectPacketOwnedCandidateSets(
+                    narrowedCoordinateSourcePortalNames,
                     targetSourcePortalNames,
-                    out sourcePortalName))
+                    out string[] explicitlyTargetedSourcePortalNames))
             {
-                return true;
+                narrowedCoordinateSourcePortalNames = explicitlyTargetedSourcePortalNames;
+                if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(
+                    narrowedCoordinateSourcePortalNames,
+                    out sourcePortalName))
+                {
+                    return true;
+                }
             }
 
             if (TryCollectPacketOwnedSourcePortalNamesByTargetPortalCandidates(
@@ -1308,12 +1349,18 @@ namespace HaCreator.MapSimulator
                 targetMapId,
                 targetPortalNameCandidates,
                 out string[] targetCandidateSourcePortalNames)
-                && TryResolvePacketOwnedUniqueCandidateIntersection(
-                    coordinateSourcePortalNames,
+                && TryIntersectPacketOwnedCandidateSets(
+                    narrowedCoordinateSourcePortalNames,
                     targetCandidateSourcePortalNames,
-                    out sourcePortalName))
+                    out string[] preservedTargetCandidateSourcePortalNames))
             {
-                return true;
+                narrowedCoordinateSourcePortalNames = preservedTargetCandidateSourcePortalNames;
+                if (TryResolvePacketOwnedTeleportUniqueCandidatePortalName(
+                    narrowedCoordinateSourcePortalNames,
+                    out sourcePortalName))
+                {
+                    return true;
+                }
             }
 
             bool hasTargetPortalMetadata =
@@ -1325,7 +1372,7 @@ namespace HaCreator.MapSimulator
                     targetMapId,
                     out string[] mapOnlySourcePortalNames)
                 && TryResolvePacketOwnedUniqueCandidateIntersection(
-                    coordinateSourcePortalNames,
+                    narrowedCoordinateSourcePortalNames,
                     mapOnlySourcePortalNames,
                     out sourcePortalName))
             {
@@ -1333,7 +1380,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (!hasTargetPortalMetadata
-                && TryResolvePacketOwnedTeleportUniqueCandidatePortalName(coordinateSourcePortalNames, out sourcePortalName))
+                && TryResolvePacketOwnedTeleportUniqueCandidatePortalName(narrowedCoordinateSourcePortalNames, out sourcePortalName))
             {
                 return true;
             }

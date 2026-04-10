@@ -539,6 +539,20 @@ namespace HaCreator.MapSimulator
                 : Math.Max(0, currentRemainingMs);
         }
 
+        internal static bool ShouldPreferPacketOwnedAntiMacroDeferredBridge(
+            bool officialSessionBridgeEnabled,
+            bool hasAttachedClient,
+            bool hasConnectedSession)
+        {
+            // `CUIAntiMacro::SetRet` and `CUIAdminAntiMacro::SetRet` always target the
+            // live Maple socket. When the bridge already has an attached client but is
+            // still waiting for init/crypto completion, keep opcode 117 on that bridge
+            // instead of leaking it onto the generic local-utility outbox first.
+            return officialSessionBridgeEnabled
+                && hasAttachedClient
+                && !hasConnectedSession;
+        }
+
         private static PacketOwnedAntiMacroNoticeDefinition ResolvePacketOwnedAntiMacroNoticeDefinition(int noticeType, int antiMacroType)
         {
             return (noticeType, antiMacroType) switch
@@ -707,6 +721,24 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            bool preferDeferredBridge = ShouldPreferPacketOwnedAntiMacroDeferredBridge(
+                _localUtilityOfficialSessionBridgeEnabled,
+                _localUtilityOfficialSessionBridge.HasAttachedClient,
+                _localUtilityOfficialSessionBridge.HasConnectedSession);
+
+            string deferredBridgeStatus = "Official-session bridge deferred delivery is disabled.";
+            if (preferDeferredBridge
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PacketOwnedAntiMacroAnswerSubmitOpcode,
+                    payload,
+                    out deferredBridgeStatus))
+            {
+                status =
+                    $"Mirrored the client anti-macro submit path with CWvsContext remaining={Math.Max(0, remainingMs)}ms and queued opcode {PacketOwnedAntiMacroAnswerSubmitOpcode} on the deferred official-session bridge while the attached Maple client is still waiting for init/crypto completion. Bridge: {bridgeStatus} Deferred bridge: {deferredBridgeStatus}";
+                transportPath = PacketOwnedAntiMacroSubmitTransportPath.DeferredOfficialSessionBridge;
+                return true;
+            }
+
             string outboxStatus;
             if (_localUtilityPacketOutbox.TrySendOutboundPacket(
                 PacketOwnedAntiMacroAnswerSubmitOpcode,
@@ -720,7 +752,6 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            string deferredBridgeStatus = "Official-session bridge deferred delivery is disabled.";
             if (_localUtilityOfficialSessionBridgeEnabled
                 && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
                     PacketOwnedAntiMacroAnswerSubmitOpcode,

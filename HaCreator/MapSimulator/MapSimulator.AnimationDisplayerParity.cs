@@ -756,6 +756,30 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private bool TryRegisterCollisionVerticalJumpEffect(int currentTime)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Physics == null
+                || !TryGetAnimationDisplayerFrames(
+                    "portalcollision:verticaljump",
+                    CollisionVerticalJumpEffectUol,
+                    out List<IDXObject> frames))
+            {
+                return false;
+            }
+
+            Vector2 fallbackPosition = player.Physics.GetPosition();
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                () => _playerManager?.Player?.Physics?.GetPosition() ?? fallbackPosition,
+                () => _playerManager?.Player?.FacingRight ?? player.FacingRight,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                player.FacingRight,
+                currentTime);
+            return true;
+        }
+
         private void SyncAnimationDisplayerRemoteUserState(int characterId)
         {
             if (characterId <= 0)
@@ -999,9 +1023,13 @@ namespace HaCreator.MapSimulator
                 presentation.CharacterId,
                 out Func<Vector2> getOwnerPosition,
                 out Func<bool> getOwnerFacingRight);
-            Vector2 fallbackPosition = getOwnerPosition?.Invoke() ?? Vector2.Zero;
+            Vector2 fallbackPosition = presentation.WorldOrigin
+                ?? getOwnerPosition?.Invoke()
+                ?? Vector2.Zero;
             bool fallbackFacingRight = getOwnerFacingRight?.Invoke() ?? presentation.FacingRight;
-            int delayRate = ResolveAnimationDisplayerSkillUseDelayRate(presentation.ActionSpeed);
+            int delayRate = presentation.DelayRateOverride is > 0
+                ? presentation.DelayRateOverride.Value
+                : ResolveAnimationDisplayerSkillUseDelayRate(presentation.ActionSpeed);
 
             foreach (AnimationDisplayerSkillUseBranchRequest branchRequest in EnumerateAnimationDisplayerSkillUseBranchRequests(presentation))
             {
@@ -1201,7 +1229,9 @@ namespace HaCreator.MapSimulator
 
             // Client evidence: `CWvsContext::OnSkillLearnItemResult` passes `CAvatar::GetLayerUnderFace`
             // as the overlay/anchor owner and `Effect_SkillBookUsed` loads the front UOL before the back UOL.
-            return _remoteUserPool?.TryApplyTransientSkillUseAvatarEffect(
+            // Simulator parity keeps that same owner/effect seam even if the remote actor is materialized later,
+            // so queue through the existing transient-avatar-effect path instead of dropping to chat-only feedback.
+            return _remoteUserPool?.TryQueueTransientSkillUseAvatarEffect(
                 ownerCharacterId,
                 registrationKey,
                 frontAnimation,
@@ -1732,7 +1762,11 @@ namespace HaCreator.MapSimulator
                         continue;
                     }
 
-                    yield return new AnimationDisplayerSkillUseBranchRequest(branchName, Point.Zero);
+                    yield return new AnimationDisplayerSkillUseBranchRequest(
+                        branchName,
+                        Point.Zero,
+                        presentation.FollowOwnerFacing,
+                        presentation.FollowOwnerPosition);
                 }
             }
 
@@ -1745,7 +1779,11 @@ namespace HaCreator.MapSimulator
             {
                 if (seen.Add(branchName))
                 {
-                    yield return new AnimationDisplayerSkillUseBranchRequest(branchName, Point.Zero);
+                    yield return new AnimationDisplayerSkillUseBranchRequest(
+                        branchName,
+                        Point.Zero,
+                        presentation.FollowOwnerFacing,
+                        presentation.FollowOwnerPosition);
                 }
             }
         }

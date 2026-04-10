@@ -30,7 +30,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         None,
         Item,
-        Meso
+        Meso,
+        ItemAndMeso
     }
 
     internal sealed class MemoMailboxDraftSnapshot
@@ -42,6 +43,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string ItemAttachmentSummary { get; init; } = string.Empty;
         public string LastActionSummary { get; init; } = string.Empty;
         public bool HasAttachment { get; init; }
+        public bool HasItemAttachment { get; init; }
+        public bool HasMesoAttachment { get; init; }
         public bool IsMesoAttachment { get; init; }
         public int AttachedMeso { get; init; }
         public bool CanSend { get; init; }

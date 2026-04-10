@@ -41,6 +41,28 @@ namespace HaCreator.MapSimulator
                 zOrder: 1);
         }
 
+        private void HandleRemoteHitFeedback(RemoteUserActorPool.RemoteHitFeedbackPresentation presentation)
+        {
+            if (_combatEffects == null)
+            {
+                return;
+            }
+
+            if (presentation.Delta < 0)
+            {
+                _combatEffects.AddPartyDamage(-presentation.Delta, presentation.Position.X, presentation.Position.Y, isCritical: false, presentation.CurrentTime);
+                return;
+            }
+
+            if (presentation.Delta > 0)
+            {
+                _combatEffects.AddHealNumber(presentation.Delta, presentation.Position.X, presentation.Position.Y, presentation.CurrentTime);
+                return;
+            }
+
+            _combatEffects.AddMiss(presentation.Position.X, presentation.Position.Y, presentation.CurrentTime);
+        }
+
         private void RememberRemoteTownPortalOwnerFieldObservation(
             uint ownerCharacterId,
             Vector2 position,
@@ -1053,6 +1075,21 @@ namespace HaCreator.MapSimulator
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {throwGrenadePacket.CharacterId}."
                     : throwGrenadeMessage;
                 return throwGrenadeApplied;
+            }
+
+            if (packetType == (int)RemoteUserPacketType.UserHitOfficial)
+            {
+                if (!RemoteUserPacketCodec.TryParseHit(payload, out RemoteUserHitPacket hitPacket, out string hitError))
+                {
+                    result = hitError;
+                    return false;
+                }
+
+                bool hitApplied = _remoteUserPool.TryApplyHit(hitPacket, currentTime, out string hitMessage);
+                result = hitApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {hitPacket.CharacterId}."
+                    : hitMessage;
+                return hitApplied;
             }
 
             switch ((RemoteUserPacketType)packetType)

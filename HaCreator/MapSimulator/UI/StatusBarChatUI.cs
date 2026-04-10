@@ -183,6 +183,7 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle? _whisperPromptBounds;
         private Rectangle? _whisperPickerBounds;
         private Rectangle? _whisperPickerComboBounds;
+        private Rectangle? _whisperPickerDropdownBounds;
         private Texture2D _whisperPickerSelectedTexture;
         private Texture2D _whisperPickerRowTexture;
         private Point _whisperPickerSelectedOrigin;
@@ -240,6 +241,7 @@ namespace HaCreator.MapSimulator.UI
         public Action WhisperTargetPickerCancelRequested { get; set; }
         public Action WhisperTargetPickerModalButtonFocusRequested { get; set; }
         public Action WhisperTargetPickerModalComboFocusRequested { get; set; }
+        public Action WhisperTargetPickerModalComboDropdownToggleRequested { get; set; }
 
         private enum WhisperPickerButtonAction
         {
@@ -604,6 +606,7 @@ namespace HaCreator.MapSimulator.UI
             _whisperPromptBounds = null;
             _whisperPickerBounds = null;
             _whisperPickerComboBounds = null;
+            _whisperPickerDropdownBounds = null;
 
             if (!HasTextRenderer())
             {
@@ -995,7 +998,7 @@ namespace HaCreator.MapSimulator.UI
             int bottomHeight = _whisperPickerDialogBottomTexture?.Height ?? 44;
             int modalHeight = Math.Max(
                 topHeight + bottomHeight + 1,
-                StatusBarChatLayoutRules.ResolveWhisperPickerModalClientHeight((int)Math.Ceiling(MeasureChatText(titleText).Y)));
+                StatusBarChatLayoutRules.ResolveWhisperPickerModalClientHeight(0));
             Viewport viewport = sprite.GraphicsDevice.Viewport;
             int modalX = viewport.X + Math.Max(0, (viewport.Width - modalWidth) / 2);
             int modalY = viewport.Y + Math.Max(0, (viewport.Height - modalHeight) / 2);
@@ -1056,6 +1059,7 @@ namespace HaCreator.MapSimulator.UI
                     visibleCount,
                     ResolveWhisperPickerMinimumRowWidth(),
                     ResolveWhisperPickerMaxCandidateWidth(chatState, firstVisibleIndex, visibleCount));
+                _whisperPickerDropdownBounds = listBounds;
                 _whisperPickerBounds = Rectangle.Union(_whisperPickerBounds.Value, listBounds);
 
                 for (int i = 0; i < visibleCount; i++)
@@ -1761,7 +1765,7 @@ namespace HaCreator.MapSimulator.UI
             if (comboHovered && string.IsNullOrWhiteSpace(_pressedWhisperTarget))
             {
                 _pressedWhisperPickerButtonAction = null;
-                WhisperTargetPickerModalComboFocusRequested?.Invoke();
+                WhisperTargetPickerModalComboDropdownToggleRequested?.Invoke();
                 return true;
             }
 
@@ -1877,10 +1881,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int steps = Math.Max(1, Math.Abs(scrollDelta) / 120);
-            if (_whisperPickerBounds?.Contains(mouseState.X, mouseState.Y) == true)
+            bool dropdownHovered = _whisperPickerDropdownBounds?.Contains(mouseState.X, mouseState.Y) == true;
+            bool comboHovered = _whisperPickerComboBounds?.Contains(mouseState.X, mouseState.Y) == true;
+            if (dropdownHovered || comboHovered)
             {
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
-                WhisperTargetPickerSelectionDeltaRequested?.Invoke(scrollDelta > 0 ? -steps : steps);
+                if (dropdownHovered)
+                {
+                    WhisperTargetPickerSelectionDeltaRequested?.Invoke(scrollDelta > 0 ? -steps : steps);
+                }
                 return;
             }
 

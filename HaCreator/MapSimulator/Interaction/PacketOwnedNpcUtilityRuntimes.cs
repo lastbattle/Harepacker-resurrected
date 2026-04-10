@@ -1259,42 +1259,8 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < _decodedItems.Count; i++)
             {
                 StoreBankItemEntry item = _decodedItems[i];
-                string primaryText = item.Quantity > 1
-                    ? $"{item.ItemName} x{item.Quantity.ToString(CultureInfo.InvariantCulture)}"
-                    : item.ItemName;
-
-                List<string> secondaryParts = new()
-                {
-                    item.InventoryType.ToString(),
-                    $"row {item.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)}"
-                };
-
-                if (item.PacketGroupInventoryType != item.InventoryType)
-                {
-                    secondaryParts.Add($"group {item.PacketGroupInventoryType}");
-                }
-
-                secondaryParts.Add(ResolveSlotTypeLabel(item));
-
-                if (item.IsRechargeBundle)
-                {
-                    secondaryParts.Add("recharge");
-                }
-
-                if (item.HasCashSerialNumber)
-                {
-                    secondaryParts.Add("cash");
-                }
-
-                if (item.WasRetainedFromPreviousSnapshot)
-                {
-                    secondaryParts.Add("retained");
-                }
-
-                if (!string.IsNullOrWhiteSpace(item.MetadataSummary))
-                {
-                    secondaryParts.Add(item.MetadataSummary);
-                }
+                string primaryText = ResolveOwnerPrimaryText(item.ItemName, item.ClientDisplayName);
+                string secondaryText = string.Empty;
 
                 rows[i] = new StoreBankOwnerRowSnapshot(
                     i,
@@ -1307,7 +1273,7 @@ namespace HaCreator.MapSimulator.Interaction
                     item.Title,
                     item.ClientStock,
                     primaryText,
-                    string.Join(" | ", secondaryParts),
+                    secondaryText,
                     BuildOwnerSelectionSummary(item),
                     ShowsClientStock(item),
                     IsCashItem(item),
@@ -1317,6 +1283,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return rows;
+        }
+
+        internal static string ResolveOwnerPrimaryText(string itemName, string clientDisplayName)
+        {
+            if (!string.IsNullOrWhiteSpace(clientDisplayName))
+            {
+                return clientDisplayName;
+            }
+
+            return string.IsNullOrWhiteSpace(itemName)
+                ? string.Empty
+                : itemName;
         }
 
         internal static int ResolveOwnerRowIndex(IReadOnlyList<StoreBankOwnerRowSnapshot> rows, StoreBankOwnerSelectionAnchor anchor)

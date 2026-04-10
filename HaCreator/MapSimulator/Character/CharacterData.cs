@@ -2154,6 +2154,18 @@ namespace HaCreator.MapSimulator.Character
                 : weaponSfx;
         }
 
+        public int GetEffectiveWeaponAttackSpeed()
+        {
+            int weaponAttackSpeed = GetWeapon()?.AttackSpeed ?? 6;
+            WeaponPart subWeapon = GetSubWeapon();
+            if (subWeapon == null || string.IsNullOrWhiteSpace(subWeapon.WeaponType))
+            {
+                return weaponAttackSpeed;
+            }
+
+            return Math.Max(weaponAttackSpeed, subWeapon.AttackSpeed);
+        }
+
         private static int DefaultRollInclusive(int min, int max)
         {
             return Random.Shared.Next(min, max + 1);

@@ -414,6 +414,7 @@ namespace HaCreator.MapSimulator
             }
 
             bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingMs);
+            DrawInitialQuizOwnerAnswerLabel(inputBounds);
             if (showInput)
             {
                 DrawInitialQuizOwnerInputField(inputBounds, currentTickCount);
@@ -446,6 +447,16 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void DrawInitialQuizOwnerAnswerLabel(Rectangle inputBounds)
+        {
+            string answerLabel = MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "Answer:");
+            DrawInitialQuizOwnerSingleLineText(
+                answerLabel,
+                new Rectangle(inputBounds.X - 64, inputBounds.Y, 60, inputBounds.Height),
+                Color.White,
+                0.37f);
+        }
+
         private void DrawInitialQuizOwnerInputField(Rectangle inputBounds, int currentTickCount)
         {
             bool inputFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
@@ -456,13 +467,6 @@ namespace HaCreator.MapSimulator
                 ? new Color(113, 78, 48)
                 : new Color(93, 80, 60);
             DrawPacketScriptOwnerFrame(inputBounds, fillColor, borderColor);
-
-            string answerLabel = MapleStoryStringPool.GetOrFallback(InitialQuizAnswerLabelStringPoolId, "Answer:");
-            DrawInitialQuizOwnerSingleLineText(
-                answerLabel,
-                new Rectangle(inputBounds.X - 64, inputBounds.Y, 60, inputBounds.Height),
-                Color.White,
-                0.37f);
 
             string inputText = _initialQuizOwnerInput.ToString();
             Vector2 drawPosition = new(inputBounds.X + 4, inputBounds.Y - 1);

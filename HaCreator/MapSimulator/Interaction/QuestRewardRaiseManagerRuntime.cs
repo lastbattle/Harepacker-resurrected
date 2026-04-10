@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _nextManagerSessionId = 1;
         private int _nextOwnerRequestId = 1;
         private readonly System.Collections.Generic.Dictionary<int, QuestRewardRaiseOwnerSnapshot> _ownerSnapshotsByQuestId = new();
+        private readonly System.Collections.Generic.Dictionary<int, QuestRewardRaiseState> _retainedClosedRaisesByQuestId = new();
         private readonly System.Collections.Generic.Dictionary<int, Point> _windowPositionsByOwnerItemId = new();
 
         public QuestRewardRaiseState ActiveRaise { get; private set; }
@@ -97,6 +98,25 @@ namespace HaCreator.MapSimulator.Interaction
             return ActiveRaise;
         }
 
+        public void RetainClosedRaise(QuestRewardRaiseState state)
+        {
+            int questId = Math.Max(0, state?.Prompt?.QuestId ?? 0);
+            if (questId <= 0 || state == null)
+            {
+                return;
+            }
+
+            BackupWindowPosition(state);
+            QuestRewardRaiseState retainedState = state.CloneShallow();
+            retainedState.IsWindowDismissedLocally = true;
+            _retainedClosedRaisesByQuestId[questId] = retainedState;
+            RememberState(retainedState);
+            if (ReferenceEquals(ActiveRaise, state))
+            {
+                ActiveRaise = null;
+            }
+        }
+
         public QuestRewardRaiseState DestroyActiveRaise()
         {
             QuestRewardRaiseState activeRaise = ActiveRaise;
@@ -110,6 +130,23 @@ namespace HaCreator.MapSimulator.Interaction
             QuestRewardRaiseState activeRaise = ActiveRaise;
             ActiveRaise = null;
             return activeRaise;
+        }
+
+        public QuestRewardRaiseState GetObservedRaiseByQuestId(int questId)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0)
+            {
+                return null;
+            }
+
+            if (ActiveRaise?.Prompt?.QuestId == questId)
+            {
+                return ActiveRaise;
+            }
+
+            _retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState);
+            return retainedState;
         }
 
         public bool TrySetQrDataForQuest(int questId, int qrData, out QuestRewardRaiseState updatedState)
@@ -126,13 +163,14 @@ namespace HaCreator.MapSimulator.Interaction
                 _ownerSnapshotsByQuestId[questId] = snapshot with { QrData = qrData };
             }
 
-            if (ActiveRaise?.Prompt?.QuestId != questId)
+            QuestRewardRaiseState observedRaise = GetObservedRaiseByQuestId(questId);
+            if (observedRaise == null)
             {
                 return snapshot != null;
             }
 
-            ActiveRaise.QrData = qrData;
-            updatedState = ActiveRaise;
+            observedRaise.QrData = qrData;
+            updatedState = observedRaise;
             return true;
         }
 
@@ -183,6 +221,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!isActiveQuest)
             {
+                if (_retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState))
+                {
+                    retainedState.OwnerItemId = ownerItemId;
+                    retainedState.QrData = qrData;
+                    retainedState.MaxDropCount = maxDropCount;
+                    retainedState.WindowMode = windowMode;
+                    retainedState.DisplayMode = resolvedDisplayMode;
+                }
                 return;
             }
 
@@ -200,6 +246,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (questId <= 0 || state == null)
             {
                 return;
+            }
+
+            if (!state.IsWindowDismissedLocally)
+            {
+                _retainedClosedRaisesByQuestId.Remove(questId);
             }
 
             _ownerSnapshotsByQuestId[questId] = new QuestRewardRaiseOwnerSnapshot(
@@ -226,12 +277,28 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (packet.Kind == QuestRewardRaiseInboundPacketKind.OwnerDestroyResult)
             {
+                _retainedClosedRaisesByQuestId.Remove(questId);
                 _ownerSnapshotsByQuestId.Remove(questId);
                 return;
             }
 
             _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
             bool isActiveQuest = ActiveRaise?.Prompt?.QuestId == questId;
+            if (_retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState))
+            {
+                retainedState.ManagerSessionId = Math.Max(0, payload.ManagerSessionId);
+                retainedState.RequestId = Math.Max(0, payload.OwnerRequestId);
+                retainedState.OwnerItemId = Math.Max(0, payload.OwnerItemId);
+                retainedState.QrData = payload.QrData;
+                retainedState.MaxDropCount = Math.Max(1, Math.Max(retainedState.MaxDropCount, payload.PlacedPieceCount));
+                retainedState.WindowMode = payload.WindowMode;
+                retainedState.DisplayMode = payload.DisplayMode;
+                retainedState.AwaitingConfirmAck = packet.Kind == QuestRewardRaiseInboundPacketKind.PutItemConfirmResult
+                    ? false
+                    : retainedState.AwaitingConfirmAck;
+                retainedState.LastInboundSummary = summary ?? string.Empty;
+            }
+
             _ownerSnapshotsByQuestId[questId] = new QuestRewardRaiseOwnerSnapshot(
                 Math.Max(0, payload.ManagerSessionId),
                 Math.Max(0, payload.OwnerRequestId),
@@ -256,6 +323,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return DestroyActiveRaise();
+        }
+
+        public QuestRewardRaiseState ClearRetainedRaiseByQuestId(int questId)
+        {
+            questId = Math.Max(0, questId);
+            if (questId <= 0 || !_retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState))
+            {
+                return null;
+            }
+
+            _retainedClosedRaisesByQuestId.Remove(questId);
+            return retainedState;
         }
 
         private void BackupWindowPosition(QuestRewardRaiseState state)

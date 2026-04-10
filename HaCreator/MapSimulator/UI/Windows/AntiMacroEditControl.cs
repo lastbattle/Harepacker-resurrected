@@ -261,6 +261,16 @@ namespace HaCreator.MapSimulator.UI
             EndMouseSelection();
         }
 
+        public void DoubleClickSelectAtMouseX(int mouseX, Rectangle ownerBounds)
+        {
+            HasFocus = true;
+            ClearCompositionText();
+            _caretIndex = ResolveCaretIndexFromMouseX(mouseX, ownerBounds);
+            SelectClientWordAtCaret();
+            _mouseSelecting = false;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
         public void BeginSelectionAtMouseX(int mouseX, Rectangle ownerBounds)
         {
             HasFocus = true;
@@ -1006,6 +1016,72 @@ namespace HaCreator.MapSimulator.UI
                 ? Math.Clamp(_compositionCaretIndex, 0, _compositionText.Length)
                 : _compositionText.Length;
             return insertionIndex + compositionCaret;
+        }
+
+        private void SelectClientWordAtCaret()
+        {
+            ResolveClientWordSelectionRange(_inputText, _caretIndex, out int selectionStart, out int selectionEnd);
+            _selectionAnchorIndex = selectionStart;
+            _caretIndex = selectionEnd;
+        }
+
+        internal static void ResolveClientWordSelectionRange(string text, int caretIndex, out int selectionStart, out int selectionEnd)
+        {
+            string resolvedText = text ?? string.Empty;
+            if (resolvedText.Length == 0)
+            {
+                selectionStart = 0;
+                selectionEnd = 0;
+                return;
+            }
+
+            int resolvedCaret = Math.Clamp(caretIndex, 0, resolvedText.Length);
+            int pivotIndex = resolvedCaret == resolvedText.Length
+                ? resolvedText.Length - 1
+                : resolvedCaret;
+            if (pivotIndex < 0)
+            {
+                selectionStart = 0;
+                selectionEnd = 0;
+                return;
+            }
+
+            char pivot = resolvedText[pivotIndex];
+            bool selectWordCharacters = IsClientWordCharacter(pivot);
+            bool selectWhitespace = char.IsWhiteSpace(pivot);
+
+            selectionStart = pivotIndex;
+            while (selectionStart > 0 && IsWithinClientWordSelectionGroup(resolvedText[selectionStart - 1], selectWordCharacters, selectWhitespace))
+            {
+                selectionStart--;
+            }
+
+            selectionEnd = pivotIndex + 1;
+            while (selectionEnd < resolvedText.Length && IsWithinClientWordSelectionGroup(resolvedText[selectionEnd], selectWordCharacters, selectWhitespace))
+            {
+                selectionEnd++;
+            }
+        }
+
+        private static bool IsWithinClientWordSelectionGroup(char character, bool selectWordCharacters, bool selectWhitespace)
+        {
+            if (selectWhitespace)
+            {
+                return char.IsWhiteSpace(character);
+            }
+
+            bool isWordCharacter = IsClientWordCharacter(character);
+            if (selectWordCharacters)
+            {
+                return isWordCharacter;
+            }
+
+            return !char.IsWhiteSpace(character) && !isWordCharacter;
+        }
+
+        private static bool IsClientWordCharacter(char character)
+        {
+            return char.IsLetterOrDigit(character) || character == '_';
         }
 
         private bool HasSelection => _selectionAnchorIndex >= 0 && _selectionAnchorIndex != _caretIndex;

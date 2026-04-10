@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Managers
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private BridgePair _activePair;
+        private SessionDiscoveryCandidate? _passiveEstablishedSession;
 
         public readonly record struct SessionDiscoveryCandidate(
             int ProcessId,
@@ -89,6 +90,8 @@ namespace HaCreator.MapSimulator.Managers
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
+        public bool HasAttachedClient => _activePair != null;
+        public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public string LastStatus { get; private set; } = "Massacre official-session bridge inactive.";
@@ -100,6 +103,8 @@ namespace HaCreator.MapSimulator.Managers
                 : "inactive";
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                : HasPassiveEstablishedSocketPair
+                    ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
             return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mapped inbound opcodes={DescribeMappedInboundOpcodes()}. {LastStatus}";
         }
@@ -235,6 +240,55 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public bool TryAttachEstablishedSession(int remotePort, string processSelector, int? localPort, out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            return TryAttachEstablishedSession(candidate, out status);
+        }
+
+        public bool TryAttachEstablishedSession(SessionDiscoveryCandidate candidate, out string status)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
+            {
+                status = "Massacre official-session attach requires an established Maple client socket pair.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (HasAttachedClient)
+                {
+                    status = $"Massacre official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before observing an already-established socket pair.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                StopInternal(clearPending: true);
+                _passiveEstablishedSession = candidate;
+                RemoteHost = candidate.RemoteEndpoint.Address.ToString();
+                RemotePort = candidate.RemoteEndpoint.Port;
+                LastStatus = $"Observed already-established Massacre Maple socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. This path cannot decrypt post-handshake Massacre clock/context/result traffic or inject wrapper packets after the Maple handshake; reconnect through the localhost proxy for live packet ownership.";
+                status = LastStatus;
+                return true;
+            }
+        }
+
         public string DescribeDiscoveredSessions(int remotePort, string processSelector = null, int? localPort = null)
         {
             int? owningProcessId = null;
@@ -283,6 +337,22 @@ namespace HaCreator.MapSimulator.Managers
                 LastStatus = status;
                 return true;
             }
+        }
+
+        public bool TryRemoveMappedInboundOpcode(int opcode, out string status)
+        {
+            lock (_sync)
+            {
+                if (_mappedInboundOpcodes.Remove(opcode))
+                {
+                    status = $"Massacre official-session bridge removed inbound opcode 0x{opcode:X4}.";
+                    LastStatus = status;
+                    return true;
+                }
+            }
+
+            status = $"Massacre inbound opcode 0x{opcode:X4} is not currently mapped.";
+            return false;
         }
 
         public void ClearMappedInboundOpcodes()
@@ -406,6 +476,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 lock (_sync)
                 {
+                    _passiveEstablishedSession = null;
                     _activePair = pair;
                 }
 
@@ -517,6 +588,7 @@ namespace HaCreator.MapSimulator.Managers
             _listenerCancellation = null;
 
             BridgePair pair = _activePair;
+            _passiveEstablishedSession = null;
             _activePair = null;
             pair?.Close();
 
@@ -774,6 +846,11 @@ namespace HaCreator.MapSimulator.Managers
                 : string.IsNullOrWhiteSpace(owningProcessName)
                     ? "the selected process"
                     : $"process '{owningProcessName}'";
+        }
+
+        private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"observing established socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}; proxy reconnect required for decrypt/inject";
         }
 
         internal static bool TryResolveDiscoveryCandidate(

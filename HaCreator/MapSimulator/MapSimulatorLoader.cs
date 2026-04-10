@@ -420,6 +420,7 @@ namespace HaCreator.MapSimulator {
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps,
             CharacterGender? localPlayerGender = null,
+            bool hasQuestCheckContext = false,
             Func<int, QuestStateType> questStateProvider = null,
             Func<int, string> questRecordValueProvider = null) {
             return LifeLoader.CreateNpcFromProperty(
@@ -429,6 +430,7 @@ namespace HaCreator.MapSimulator {
                 device,
                 usedProps,
                 localPlayerGender: localPlayerGender,
+                hasQuestCheckContext: hasQuestCheckContext,
                 questStateProvider: questStateProvider,
                 questRecordValueProvider: questRecordValueProvider);
         }

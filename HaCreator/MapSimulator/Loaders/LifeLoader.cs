@@ -127,6 +127,67 @@ namespace HaCreator.MapSimulator.Loaders
             return mobItem;
         }
 
+        internal static MobAnimationSet CreateMobAttackPresentationSet(
+            TexturePool texturePool,
+            GraphicsDevice device,
+            string mobTemplateId)
+        {
+            if (texturePool == null || device == null || string.IsNullOrWhiteSpace(mobTemplateId))
+            {
+                return null;
+            }
+
+            string normalizedTemplateId = NormalizeMobTemplateId(mobTemplateId);
+            MobInfo mobInfo = MobInfo.Get(normalizedTemplateId.TrimStart('0'));
+            if (mobInfo == null)
+            {
+                return null;
+            }
+
+            MobImgEntry source = GetMobImgEntry(mobInfo);
+            CachedMobAttackAssets cachedAttackAssets = GetOrBuildCachedMobAttackAssets(
+                texturePool,
+                mobInfo,
+                source,
+                device,
+                usedProps: null);
+            if (cachedAttackAssets == null)
+            {
+                return null;
+            }
+
+            var animationSet = new MobAnimationSet();
+            ApplyCachedMobAttackAssets(animationSet, cachedAttackAssets);
+            return animationSet;
+        }
+
+        internal static string ResolveMobCharDamSoundKey(
+            SoundManager soundManager,
+            string mobTemplateId,
+            int damageSoundIndex)
+        {
+            if (soundManager == null || string.IsNullOrWhiteSpace(mobTemplateId))
+            {
+                return null;
+            }
+
+            WzImage mobSoundImage = Program.FindImage("Sound", "Mob");
+            if (mobSoundImage == null)
+            {
+                return null;
+            }
+
+            string normalizedTemplateId = NormalizeMobTemplateId(mobTemplateId);
+            WzSubProperty mobSounds = mobSoundImage[normalizedTemplateId] as WzSubProperty;
+            if (mobSounds == null)
+            {
+                return null;
+            }
+
+            string soundName = damageSoundIndex >= 2 ? "CharDam2" : "CharDam1";
+            return RegisterSoundFromProperty(soundManager, normalizedTemplateId, soundName, mobSounds[soundName]);
+        }
+
         private static CachedMobActionAssets GetOrBuildCachedMobActionAssets(
             TexturePool texturePool,
             MobInfo mobInfo,
@@ -1844,6 +1905,7 @@ namespace HaCreator.MapSimulator.Loaders
             TexturePool texturePool, NpcInstance npcInstance, float UserScreenScaleFactor,
             GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool includeTooltips = true,
             CharacterGender? localPlayerGender = null,
+            bool hasQuestCheckContext = false,
             Func<int, QuestStateType> questStateProvider = null,
             Func<int, string> questRecordValueProvider = null)
         {
@@ -1857,6 +1919,7 @@ namespace HaCreator.MapSimulator.Loaders
                 device,
                 usedProps,
                 localPlayerGender,
+                hasQuestCheckContext,
                 questStateProvider,
                 questRecordValueProvider);
             if (animationSet.ActionCount == 0) // fix japan ms v186, (9000021.img「ガガ」) なぜだ？;(

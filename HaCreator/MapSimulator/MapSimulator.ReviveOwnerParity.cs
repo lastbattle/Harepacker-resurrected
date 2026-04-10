@@ -410,9 +410,16 @@ namespace HaCreator.MapSimulator
                     value = parsedInt != 0;
                     return true;
                 }
+
+                return false;
             }
 
-            value = InfoTool.GetInt(property, 0) != 0;
+            if (!TryReadReviveOwnerNumericScalar(property, out double numericValue))
+            {
+                return false;
+            }
+
+            value = Math.Abs(numericValue) > double.Epsilon;
             return true;
         }
 
@@ -441,8 +448,38 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            value = InfoTool.GetInt(property, 0);
+            if (!TryReadReviveOwnerNumericScalar(property, out double numericValue))
+            {
+                return false;
+            }
+
+            value = (int)Math.Round(numericValue, MidpointRounding.AwayFromZero);
             return true;
+        }
+
+        private static bool TryReadReviveOwnerNumericScalar(WzImageProperty property, out double value)
+        {
+            switch (property)
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty:
+                    value = longProperty.Value;
+                    return true;
+                case WzFloatProperty floatProperty:
+                    value = floatProperty.Value;
+                    return true;
+                case WzDoubleProperty doubleProperty:
+                    value = doubleProperty.Value;
+                    return true;
+                default:
+                    value = 0;
+                    return false;
+            }
         }
 
         private bool IsUpgradeTombReviveUsable()

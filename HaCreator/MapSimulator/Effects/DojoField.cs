@@ -54,6 +54,8 @@ namespace HaCreator.MapSimulator.Effects
         public const int PacketTypeStage = 2;
         public const int PacketTypeClear = 3;
         public const int PacketTypeTimeOver = 4;
+        internal const int TimeOverFieldSoundStringPoolId = 0x0A24;
+        internal const string TimeOverFieldSoundFallbackDescriptor = "Dojang/timeOver";
         private const int TimerLayerOffsetX = -55;
         private const int TimerLayerY = 16;
         private const int ClockOffsetY = 26;
@@ -111,6 +113,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _lastDecodedPacketPayloadLength;
         private string _lastDecodedPacketOption = string.Empty;
         private string _lastDecodedPacketTrailingPayloadHex = string.Empty;
+        private bool _pendingTimeOverFieldSound;
         private int _stageBannerStartTick = int.MinValue;
         private int _resultEffectStartTick = int.MinValue;
         private GraphicsDevice _device;
@@ -374,6 +377,7 @@ namespace HaCreator.MapSimulator.Effects
             _lastDecodedPacketPayloadLength = 0;
             _lastDecodedPacketOption = string.Empty;
             _lastDecodedPacketTrailingPayloadHex = string.Empty;
+            _pendingTimeOverFieldSound = false;
             EnsureAssetsLoaded();
             _stageBannerStartTick = Environment.TickCount;
             _resultEffectStartTick = int.MinValue;
@@ -410,6 +414,7 @@ namespace HaCreator.MapSimulator.Effects
                 _resultEffect = DojoResultEffect.None;
                 _resultEffectStartTick = int.MinValue;
             }
+            _pendingTimeOverFieldSound = false;
             _pendingTransferMapId = -1;
             _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
@@ -551,6 +556,7 @@ namespace HaCreator.MapSimulator.Effects
             _stage = Math.Clamp(stage, 0, 32);
             _resultEffect = DojoResultEffect.None;
             _resultEffectStartTick = int.MinValue;
+            _pendingTimeOverFieldSound = false;
             _pendingTransferMapId = -1;
             _pendingTransferPortalName = string.Empty;
             _pendingTransferAtTick = int.MinValue;
@@ -563,18 +569,20 @@ namespace HaCreator.MapSimulator.Effects
             _timeOverTick = int.MinValue;
             _timerDurationSec = 0;
             _lastClockUpdateTick = currentTimeMs;
+            _pendingTimeOverFieldSound = false;
             SchedulePresentationTransfer(nextMapId, nextPortalName, _clearFrames, currentTimeMs);
         }
         public void ShowClearResultForNextFloor(int currentTimeMs)
         {
             ShowClearResult(currentTimeMs, ResolveNextFloorMapId(), ResolveNextFloorPortalName());
         }
-        public void ShowTimeOverResult(int currentTimeMs, int exitMapId = -1)
+        public void ShowTimeOverResult(int currentTimeMs, int exitMapId = -1, bool queueExpirySound = false)
         {
             _resultEffect = DojoResultEffect.TimeOver;
             _resultEffectStartTick = currentTimeMs;
             _timeOverTick = 0;
             _timerDurationSec = 0;
+            _pendingTimeOverFieldSound = queueExpirySound;
             SchedulePresentationTransfer(exitMapId > 0 ? exitMapId : ResolveExitMapId(), null, _timeOverFrames, currentTimeMs);
         }
         public void Update(int currentTimeMs, float deltaSeconds)
@@ -585,7 +593,7 @@ namespace HaCreator.MapSimulator.Effects
             }
             if (_timeOverTick != int.MinValue && _timeOverTick > 0 && currentTimeMs >= _timeOverTick && _resultEffect != DojoResultEffect.TimeOver)
             {
-                ShowTimeOverResult(currentTimeMs);
+                ShowTimeOverResult(currentTimeMs, queueExpirySound: true);
             }
             if (_pendingTransferMapId > 0
                 && _pendingTransferAtTick != int.MinValue
@@ -673,9 +681,24 @@ namespace HaCreator.MapSimulator.Effects
             _lastDecodedPacketPayloadLength = 0;
             _lastDecodedPacketOption = string.Empty;
             _lastDecodedPacketTrailingPayloadHex = string.Empty;
+            _pendingTimeOverFieldSound = false;
             _stageBannerStartTick = int.MinValue;
             _resultEffectStartTick = int.MinValue;
             _resultEffect = DojoResultEffect.None;
+        }
+        internal bool TryConsumePendingTimeOverFieldSound(out int stringPoolId, out string descriptor)
+        {
+            stringPoolId = 0;
+            descriptor = string.Empty;
+            if (!_pendingTimeOverFieldSound)
+            {
+                return false;
+            }
+
+            _pendingTimeOverFieldSound = false;
+            stringPoolId = TimeOverFieldSoundStringPoolId;
+            descriptor = TimeOverFieldSoundFallbackDescriptor;
+            return true;
         }
         private static int ResolveStage(int mapId)
         {
