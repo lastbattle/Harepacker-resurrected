@@ -190,7 +190,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _packetPermissionMask = decodedMask;
             NormalizeDraftState();
-            return $"Decoded Guild BBS authority packet -> {DescribePermissionMask(decodedMask)}.";
+            return $"Decoded Guild BBS authority packet -> {DescribePermissionMask(decodedMask)} ({detail}).";
         }
 
         public string ApplyCashOwnershipPacket(byte[] payload)
@@ -208,7 +208,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _hasPacketCashOwnershipOverride = true;
             NormalizeDraftState();
-            return $"Decoded Guild BBS cash-entitlement packet -> {decodedOwnership.Count}/{_cashEmoticonCount} owned ({CashOwnershipSourceLabel}).";
+            return $"Decoded Guild BBS cash-entitlement packet -> {decodedOwnership.Count}/{_cashEmoticonCount} owned ({CashOwnershipSourceLabel}; {detail}).";
         }
 
         public string ClearCashOwnershipPacket()
@@ -1426,6 +1426,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (TryFindStructuredPermissionCandidate(payload, out GuildBbsPermissionMask structuredMask, out string structuredDetail))
+            {
+                mask = structuredMask;
+                detail = structuredDetail;
+                return true;
+            }
+
             if (TryFindPermissionMaskCandidate(payload, out GuildBbsPermissionMask decodedMask, out string decodedDetail))
             {
                 mask = decodedMask;
@@ -1436,6 +1443,27 @@ namespace HaCreator.MapSimulator.Interaction
             mask = NormalizePermissionMask((GuildBbsPermissionMask)payload[0]);
             detail = $"Fell back to authority mask byte 0x{payload[0]:X2} at offset 0 because no exact packet-shaped mask field was found.";
             return true;
+        }
+
+        private bool TryFindStructuredPermissionCandidate(byte[] payload, out GuildBbsPermissionMask mask, out string detail)
+        {
+            if (TryDecodePermissionFlagVector(payload, 0, out mask))
+            {
+                detail = "matched a direct five-flag authority vector at offset 0";
+                return true;
+            }
+
+            if (payload.Length >= 6
+                && payload[0] == 5
+                && TryDecodePermissionFlagVector(payload, 1, out mask))
+            {
+                detail = "matched a count-prefixed five-flag authority vector";
+                return true;
+            }
+
+            mask = GuildBbsPermissionMask.None;
+            detail = null;
+            return false;
         }
 
         private bool TryFindPermissionMaskCandidate(byte[] payload, out GuildBbsPermissionMask mask, out string detail)
@@ -1478,6 +1506,50 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        private static bool TryDecodePermissionFlagVector(byte[] payload, int offset, out GuildBbsPermissionMask mask)
+        {
+            mask = GuildBbsPermissionMask.None;
+            if (payload == null || offset < 0 || payload.Length - offset < 5)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < 5; index++)
+            {
+                if (payload[offset + index] > 1)
+                {
+                    return false;
+                }
+            }
+
+            if (payload[offset] != 0)
+            {
+                mask |= GuildBbsPermissionMask.WriteThread;
+            }
+
+            if (payload[offset + 1] != 0)
+            {
+                mask |= GuildBbsPermissionMask.WriteNotice;
+            }
+
+            if (payload[offset + 2] != 0)
+            {
+                mask |= GuildBbsPermissionMask.Reply;
+            }
+
+            if (payload[offset + 3] != 0)
+            {
+                mask |= GuildBbsPermissionMask.OwnThread;
+            }
+
+            if (payload[offset + 4] != 0)
+            {
+                mask |= GuildBbsPermissionMask.Moderate;
+            }
+
+            return true;
+        }
+
         private static bool TryResolvePermissionMaskCandidate(uint rawValue, out GuildBbsPermissionMask mask)
         {
             mask = GuildBbsPermissionMask.None;
@@ -1498,6 +1570,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 detail = "Guild BBS cash-entitlement packet payload is empty.";
                 return false;
+            }
+
+            if (TryFindStructuredCashOwnershipCandidate(payload, ownedItemIds, out detail))
+            {
+                return true;
             }
 
             foreach (byte value in payload)
@@ -1529,6 +1606,113 @@ namespace HaCreator.MapSimulator.Interaction
             detail = ownedItemIds.Count == 0
                 ? "Decoded Guild BBS cash-entitlement packet with no owned emoticons."
                 : $"Decoded {ownedItemIds.Count} Guild BBS cash emoticon entitlement(s).";
+            return true;
+        }
+
+        private bool TryFindStructuredCashOwnershipCandidate(byte[] payload, HashSet<int> ownedItemIds, out string detail)
+        {
+            detail = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (TryDecodeCashOwnershipFlagVector(payload, 0, ownedItemIds))
+            {
+                detail = "matched a direct cash-emoticon ownership flag vector";
+                return true;
+            }
+
+            if (payload.Length >= _cashEmoticonCount + 1
+                && payload[0] == _cashEmoticonCount
+                && TryDecodeCashOwnershipFlagVector(payload, 1, ownedItemIds))
+            {
+                detail = "matched a count-prefixed cash-emoticon ownership flag vector";
+                return true;
+            }
+
+            int byteCount = payload[0];
+            if (byteCount > 0
+                && byteCount <= _cashEmoticonCount
+                && payload.Length == byteCount + 1
+                && TryDecodeCashOwnershipByteList(payload, 1, byteCount, ownedItemIds))
+            {
+                detail = $"matched a count-prefixed byte list with {byteCount} cash emoticon id(s)";
+                return true;
+            }
+
+            if (byteCount > 0
+                && byteCount <= _cashEmoticonCount
+                && payload.Length == 1 + (byteCount * sizeof(int))
+                && TryDecodeCashOwnershipIntList(payload, 1, byteCount, ownedItemIds))
+            {
+                detail = $"matched a count-prefixed int list with {byteCount} cash emoticon id(s)";
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryDecodeCashOwnershipFlagVector(byte[] payload, int offset, HashSet<int> ownedItemIds)
+        {
+            if (payload == null || offset < 0 || payload.Length - offset < _cashEmoticonCount)
+            {
+                return false;
+            }
+
+            for (int slotIndex = 0; slotIndex < _cashEmoticonCount; slotIndex++)
+            {
+                if (payload[offset + slotIndex] > 1)
+                {
+                    ownedItemIds.Clear();
+                    return false;
+                }
+            }
+
+            ownedItemIds.Clear();
+            for (int slotIndex = 0; slotIndex < _cashEmoticonCount; slotIndex++)
+            {
+                if (payload[offset + slotIndex] != 0)
+                {
+                    ownedItemIds.Add(CashEmoticonItemIdStart + slotIndex);
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryDecodeCashOwnershipByteList(byte[] payload, int offset, int count, HashSet<int> ownedItemIds)
+        {
+            ownedItemIds.Clear();
+            for (int index = 0; index < count; index++)
+            {
+                if (!TryResolvePacketCashItemId(payload[offset + index], out int itemId))
+                {
+                    ownedItemIds.Clear();
+                    return false;
+                }
+
+                ownedItemIds.Add(itemId);
+            }
+
+            return true;
+        }
+
+        private bool TryDecodeCashOwnershipIntList(byte[] payload, int offset, int count, HashSet<int> ownedItemIds)
+        {
+            ownedItemIds.Clear();
+            for (int index = 0; index < count; index++)
+            {
+                int rawValue = BitConverter.ToInt32(payload, offset + (index * sizeof(int)));
+                if (!TryResolvePacketCashItemId(rawValue, out int itemId))
+                {
+                    ownedItemIds.Clear();
+                    return false;
+                }
+
+                ownedItemIds.Add(itemId);
+            }
+
             return true;
         }
 

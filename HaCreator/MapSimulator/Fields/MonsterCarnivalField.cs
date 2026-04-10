@@ -145,8 +145,38 @@ namespace HaCreator.MapSimulator.Fields
         public int ReactorRequiredHits { get; set; }
     }
 
+    public sealed class MonsterCarnivalUiDataRowState
+    {
+        public MonsterCarnivalUiDataRowState(MonsterCarnivalTab tab, int index, int id, int cost, string name, string description)
+        {
+            Tab = tab;
+            Index = index;
+            Id = id;
+            Cost = Math.Max(0, cost);
+            Name = string.IsNullOrWhiteSpace(name) ? $"{tab} {id}" : name.Trim();
+            Description = string.IsNullOrWhiteSpace(description) ? string.Empty : description.Trim();
+        }
+
+        public MonsterCarnivalTab Tab { get; }
+        public int Index { get; }
+        public int Id { get; }
+        public int Cost { get; }
+        public string Name { get; }
+        public string Description { get; }
+        public int ActiveCount { get; private set; }
+
+        public void SetActiveCount(int activeCount)
+        {
+            ActiveCount = Math.Max(0, activeCount);
+        }
+    }
+
     public sealed class MonsterCarnivalUiWindowState
     {
+        private readonly List<MonsterCarnivalUiDataRowState> _mobDataRows = new();
+        private readonly List<MonsterCarnivalUiDataRowState> _skillDataRows = new();
+        private readonly List<MonsterCarnivalUiDataRowState> _guardianDataRows = new();
+
         public bool IsCreated { get; private set; }
         public bool UsesWrapperOnlySurface { get; private set; }
         public bool UsesWindow2Assets { get; private set; }
@@ -171,8 +201,14 @@ namespace HaCreator.MapSimulator.Fields
         public string SecondaryAssetRoot { get; private set; }
         public string TertiaryAssetRoot { get; private set; }
         public string SurfaceSummary { get; private set; }
+        public int ActiveSpelledMobRows { get; private set; }
+        public int ActiveSpelledMobCount { get; private set; }
+        public string ActiveSpelledMobPreview { get; private set; }
 
         public int TotalRows => MobRows + SkillRows + GuardianRows;
+        public IReadOnlyList<MonsterCarnivalUiDataRowState> MobDataRows => _mobDataRows;
+        public IReadOnlyList<MonsterCarnivalUiDataRowState> SkillDataRows => _skillDataRows;
+        public IReadOnlyList<MonsterCarnivalUiDataRowState> GuardianDataRows => _guardianDataRows;
 
         public void Reset()
         {
@@ -200,6 +236,12 @@ namespace HaCreator.MapSimulator.Fields
             SecondaryAssetRoot = null;
             TertiaryAssetRoot = null;
             SurfaceSummary = null;
+            ActiveSpelledMobRows = 0;
+            ActiveSpelledMobCount = 0;
+            ActiveSpelledMobPreview = null;
+            _mobDataRows.Clear();
+            _skillDataRows.Clear();
+            _guardianDataRows.Clear();
         }
 
         public void CaptureWrapperOnlySurface(string ownerName, string summary)
@@ -221,6 +263,12 @@ namespace HaCreator.MapSimulator.Fields
             LastRequestResetOutcome = null;
             LastRequestTab = -1;
             LastRequestIndex = -1;
+            ActiveSpelledMobRows = 0;
+            ActiveSpelledMobCount = 0;
+            ActiveSpelledMobPreview = null;
+            _mobDataRows.Clear();
+            _skillDataRows.Clear();
+            _guardianDataRows.Clear();
         }
 
         public void CreateFromDefinition(MonsterCarnivalFieldDefinition definition, bool preferWindow2Assets = false)
@@ -252,6 +300,8 @@ namespace HaCreator.MapSimulator.Fields
             LastRequestResetOutcome = null;
             LastRequestTab = -1;
             LastRequestIndex = -1;
+            ApplyUiDataRows(definition);
+            SyncSpelledMobCounts(null);
         }
 
         public void ApplyEnter(
@@ -299,10 +349,76 @@ namespace HaCreator.MapSimulator.Fields
             string requestText = LastRequestCooldownResetTick.HasValue
                 ? $"requestReset={LastRequestResetOutcome ?? "unknown"}:{LastRequestTab}/{LastRequestIndex}@{LastRequestCooldownResetTick.Value}"
                 : "requestReset=none";
+            string spelledText = ActiveSpelledMobCount > 0
+                ? $"spelledMobs={ActiveSpelledMobCount} across {ActiveSpelledMobRows} row(s) preview={ActiveSpelledMobPreview}"
+                : "spelledMobs=none";
             string assetText = UsesWindow2Assets
                 ? $"assets=UIWindow2 ({PrimaryAssetRoot}, {SecondaryAssetRoot}, {TertiaryAssetRoot})"
                 : $"assets=UIWindow ({PrimaryAssetRoot}, {SecondaryAssetRoot}, {TertiaryAssetRoot})";
-            return $"CUIMonsterCarnival: created | rows mob/skill/guardian={MobRows}/{SkillRows}/{GuardianRows} total={TotalRows} | ResetUI={ResetCount} | team={teamText} | personalCP={PersonalCp}/{PersonalTotalCp} | myTeamCP={MyTeamCp}/{MyTeamTotalCp} | enemyTeamCP={EnemyTeamCp}/{EnemyTeamTotalCp} | {assetText} | {requestText}";
+            return $"CUIMonsterCarnival: created | rows mob/skill/guardian={MobRows}/{SkillRows}/{GuardianRows} total={TotalRows} | ResetUI={ResetCount} | team={teamText} | personalCP={PersonalCp}/{PersonalTotalCp} | myTeamCP={MyTeamCp}/{MyTeamTotalCp} | enemyTeamCP={EnemyTeamCp}/{EnemyTeamTotalCp} | {assetText} | {spelledText} | {requestText}";
+        }
+
+        public void SyncSpelledMobCounts(IReadOnlyDictionary<int, int> mobCounts)
+        {
+            ActiveSpelledMobRows = 0;
+            ActiveSpelledMobCount = 0;
+
+            foreach (MonsterCarnivalUiDataRowState row in _mobDataRows)
+            {
+                int nextCount = mobCounts != null && mobCounts.TryGetValue(row.Id, out int count)
+                    ? Math.Max(0, count)
+                    : 0;
+                row.SetActiveCount(nextCount);
+                if (nextCount <= 0)
+                {
+                    continue;
+                }
+
+                ActiveSpelledMobRows++;
+                ActiveSpelledMobCount += nextCount;
+            }
+
+            string preview = string.Join(", ",
+                _mobDataRows
+                    .Where(row => row.ActiveCount > 0)
+                    .Take(3)
+                    .Select(row => $"{row.Name} x{row.ActiveCount}"));
+            ActiveSpelledMobPreview = string.IsNullOrWhiteSpace(preview) ? "none" : preview;
+        }
+
+        private void ApplyUiDataRows(MonsterCarnivalFieldDefinition definition)
+        {
+            PopulateRows(_mobDataRows, definition?.MobEntries, MonsterCarnivalTab.Mob);
+            PopulateRows(_skillDataRows, definition?.SkillEntries, MonsterCarnivalTab.Skill);
+            PopulateRows(_guardianDataRows, definition?.GuardianEntries, MonsterCarnivalTab.Guardian);
+        }
+
+        private static void PopulateRows(
+            List<MonsterCarnivalUiDataRowState> destination,
+            IReadOnlyList<MonsterCarnivalEntry> source,
+            MonsterCarnivalTab tab)
+        {
+            destination.Clear();
+            if (source == null)
+            {
+                return;
+            }
+
+            foreach (MonsterCarnivalEntry entry in source)
+            {
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                destination.Add(new MonsterCarnivalUiDataRowState(
+                    tab,
+                    entry.Index,
+                    entry.Id,
+                    entry.Cost,
+                    entry.Name,
+                    entry.Description));
+            }
         }
     }
 
@@ -1134,6 +1250,7 @@ namespace HaCreator.MapSimulator.Fields
             int normalizedCount = Math.Max(0, count);
             SetEntryCount(_mobSpellCounts, entry.Id, normalizedCount);
             ReconcileSummonedMobStates(entry, normalizedCount);
+            RefreshClientOwnedUiWindowSpellState();
             message = $"{entry.Name} summon count set to {GetEntryCount(_mobSpellCounts, entry.Id)}.";
             return true;
         }
@@ -1289,6 +1406,7 @@ namespace HaCreator.MapSimulator.Fields
                 : string.Empty;
 
             message = $"{defeatedMob.Entry.Name} was defeated at slot {spawnPointIndex}.{rewardText}{reviveText}".Trim();
+            RefreshClientOwnedUiWindowSpellState();
             ShowStatus(message, tickCount);
             return true;
         }
@@ -1542,6 +1660,10 @@ namespace HaCreator.MapSimulator.Fields
                             ReconcileSummonedMobStates(entry, count);
                         }
 
+                        RefreshClientOwnedUiWindowSpellState();
+                        RecordRecoveredClientOwnerAction(
+                            $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter -> CUIMonsterCarnival::InsertSpelledData(activeRows={_uiWindowState.ActiveSpelledMobRows}, activeMobs={_uiWindowState.ActiveSpelledMobCount}, preview={_uiWindowState.ActiveSpelledMobPreview}).",
+                            Array.Empty<int>());
                         RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
                         EnsurePacketConsumed(stream, "raw-enter");
                         return true;
@@ -2440,6 +2562,7 @@ namespace HaCreator.MapSimulator.Fields
             if (entry.Tab == MonsterCarnivalTab.Mob)
             {
                 ReconcileSummonedMobStates(entry, nextCount);
+                RefreshClientOwnedUiWindowSpellState();
             }
             else if (entry.Tab == MonsterCarnivalTab.Guardian)
             {
@@ -2791,8 +2914,8 @@ namespace HaCreator.MapSimulator.Fields
             _uiWindowState.CreateFromDefinition(definition, preferWindow2Assets);
             RecordClientOwnerAction(
                 preferWindow2Assets
-                    ? $"{definition.ClientOwnerLabel}::CreateUIWindow -> UIWindow2.img/MonsterCarnival/main/summonList/sub -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI."
-                    : "CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI.",
+                    ? $"{definition.ClientOwnerLabel}::CreateUIWindow -> UIWindow2.img/MonsterCarnival/main/summonList/sub -> CUIMonsterCarnival::SetUIData(mob={_uiWindowState.MobRows},skill={_uiWindowState.SkillRows},guardian={_uiWindowState.GuardianRows}) -> CUIMonsterCarnival::ResetUI."
+                    : $"CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob={_uiWindowState.MobRows},skill={_uiWindowState.SkillRows},guardian={_uiWindowState.GuardianRows}) -> CUIMonsterCarnival::ResetUI.",
                 Array.Empty<int>());
         }
 
@@ -2823,8 +2946,8 @@ namespace HaCreator.MapSimulator.Fields
             }
             RecordClientOwnerAction(
                 preferWindow2Assets
-                    ? $"{_definition.ClientOwnerLabel}::OnEnter -> { _definition.ClientOwnerLabel}::CreateUIWindow -> UIWindow2.img/MonsterCarnival/main/summonList/sub -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI."
-                    : "CField_MonsterCarnival::OnEnter -> CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob/skill/guardian) -> CUIMonsterCarnival::ResetUI.",
+                    ? $"{_definition.ClientOwnerLabel}::OnEnter -> {_definition.ClientOwnerLabel}::CreateUIWindow -> UIWindow2.img/MonsterCarnival/main/summonList/sub -> CUIMonsterCarnival::SetUIData(mob={_uiWindowState.MobRows},skill={_uiWindowState.SkillRows},guardian={_uiWindowState.GuardianRows}) -> CUIMonsterCarnival::ResetUI."
+                    : $"CField_MonsterCarnival::OnEnter -> CField_MonsterCarnival::CreateUIWindow -> CUIMonsterCarnival::SetUIData(mob={_uiWindowState.MobRows},skill={_uiWindowState.SkillRows},guardian={_uiWindowState.GuardianRows}) -> CUIMonsterCarnival::ResetUI.",
                 Array.Empty<int>());
         }
 
@@ -2845,6 +2968,16 @@ namespace HaCreator.MapSimulator.Fields
                 myTeam.TotalCp,
                 enemyTeam.CurrentCp,
                 enemyTeam.TotalCp);
+        }
+
+        private void RefreshClientOwnedUiWindowSpellState()
+        {
+            if (!_uiWindowState.IsCreated)
+            {
+                return;
+            }
+
+            _uiWindowState.SyncSpelledMobCounts(_mobSpellCounts);
         }
 
         private string BuildInitialClientOwnerAction(MonsterCarnivalFieldDefinition definition)

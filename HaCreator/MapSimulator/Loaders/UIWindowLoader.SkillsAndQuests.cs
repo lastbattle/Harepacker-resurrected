@@ -379,86 +379,13 @@ namespace HaCreator.MapSimulator.Loaders
 
             try
             {
-                // Clear any previously loaded skills.
-                skillWindow.ClearSkills();
-                skillWindow.SetUseDualTabStrip(IsDualBladeJob(jobId));
-                skillWindow.SetCharacterJob(jobId, subJob);
-
-
-                var pathJobIds = GetVisibleSkillRootIdsForJob(jobId, subJob, learnedSkillIds);
-                skillWindow.ConfigureAranGuideButtons(GetAranGuideUnlockedGrade(jobId));
-
-
-                // Seed the default beginner book so tabs without a dedicated skill book
-                // can still render the same fallback icon the client uses.
-                Texture2D defaultBookIcon = SkillDataLoader.LoadJobIcon(0, device);
-                if (defaultBookIcon != null)
-                {
-                    skillWindow.SetDisplayedSkillRootId(0, 0);
-                    skillWindow.SetJobInfo(0, defaultBookIcon, SkillDataLoader.GetJobName(0));
-                }
-
-
-
-                foreach (int pathJobId in pathJobIds)
-                {
-                    int tabIndex = GetSkillTabFromJobId(pathJobId);
-                    System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for display job {pathJobId} into tab {tabIndex} (requested job {jobId})");
-
-                    var skillMap = new Dictionary<int, SkillDisplayData>();
-                    foreach (int bookJobId in GetSkillBookAliasesForJob(pathJobId).Distinct())
-                    {
-                        var skills = SkillDataLoader.LoadSkillsForJob(bookJobId, device);
-                        foreach (var skill in skills)
-                        {
-                            if (skill == null)
-                                continue;
-
-
-                            if (!skillMap.ContainsKey(skill.SkillId))
-                                skillMap[skill.SkillId] = skill;
-                        }
-                    }
-
-
-                    var mergedSkills = skillMap.Values.ToList();
-                    if (mergedSkills.Count == 0)
-                        continue;
-
-                    skillWindow.SetDisplayedSkillRootId(tabIndex, pathJobId);
-                    skillWindow.AddSkills(tabIndex, mergedSkills);
-                    skillWindow.SetRecommendedSkillEntries(
-                        pathJobId,
-                        SkillDataLoader.LoadRecommendedSkillEntries(pathJobId));
-                    System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab {tabIndex}: Loaded {mergedSkills.Count} skills for display job {pathJobId}");
-
-
-                    // Load and set the job icon and name for the populated tab.
-                    Texture2D jobIcon = SkillDataLoader.LoadJobIcon(pathJobId, device);
-                    if (jobIcon == null)
-                    {
-                        // Fallback for jobs where the icon lives in another book (e.g. GM).
-                        foreach (int bookJobId in GetSkillBookAliasesForJob(pathJobId).Distinct())
-                        {
-                            jobIcon = SkillDataLoader.LoadJobIcon(bookJobId, device);
-                            if (jobIcon != null)
-                                break;
-                        }
-                    }
-
-
-                    string jobName = SkillDataLoader.GetJobName(pathJobId);
-
-                    skillWindow.SetJobInfo(tabIndex, jobIcon, jobName);
-
-                }
-
-
-                // Mirror the client root refresh more closely by deciding visible books
-                // after the root objects are loaded rather than from the ancestry helper alone.
-                skillWindow.RefreshVisibleTabsFromLoadedSkillRoots();
-
-                // Show the populated tab by default.
+                ReloadVisibleSkillRoots(
+                    skillWindow,
+                    jobId,
+                    device,
+                    learnedSkillIds,
+                    subJob,
+                    clearLoadedSkillTabs: true);
                 skillWindow.CurrentTab = GetSkillTabFromJobId(jobId);
             }
             catch (Exception ex)
@@ -474,21 +401,13 @@ namespace HaCreator.MapSimulator.Loaders
             IEnumerable<int> learnedSkillIds = null,
             int subJob = 0)
         {
-            if (skillWindow == null)
-                return;
-
-            skillWindow.SetUseDualTabStrip(IsDualBladeJob(jobId));
-            skillWindow.SetCharacterJob(jobId, subJob);
-            skillWindow.ConfigureAranGuideButtons(GetAranGuideUnlockedGrade(jobId));
-            EnsureDefaultSkillBookHeader(skillWindow, device);
-
-            IReadOnlyList<int> visibleRootIds = GetVisibleSkillRootIdsForJob(jobId, subJob, learnedSkillIds);
-            foreach (int skillRootId in visibleRootIds)
-            {
-                EnsureSkillRootLoaded(skillWindow, skillRootId, device);
-            }
-
-            skillWindow.RefreshVisibleTabsFromLoadedSkillRoots();
+            ReloadVisibleSkillRoots(
+                skillWindow,
+                jobId,
+                device,
+                learnedSkillIds,
+                subJob,
+                clearLoadedSkillTabs: false);
         }
 
 
@@ -759,6 +678,36 @@ namespace HaCreator.MapSimulator.Loaders
 
             skillWindow.SetDisplayedSkillRootId(0, 0);
             skillWindow.SetJobInfo(0, defaultBookIcon, SkillDataLoader.GetJobName(0));
+        }
+
+        private static void ReloadVisibleSkillRoots(
+            SkillUIBigBang skillWindow,
+            int jobId,
+            GraphicsDevice device,
+            IEnumerable<int> learnedSkillIds,
+            int subJob,
+            bool clearLoadedSkillTabs)
+        {
+            if (skillWindow == null)
+                return;
+
+            if (clearLoadedSkillTabs)
+                skillWindow.ClearSkills();
+
+            skillWindow.SetUseDualTabStrip(IsDualBladeJob(jobId));
+            skillWindow.SetCharacterJob(jobId, subJob);
+            skillWindow.ConfigureAranGuideButtons(GetAranGuideUnlockedGrade(jobId));
+            EnsureDefaultSkillBookHeader(skillWindow, device);
+
+            IReadOnlyList<int> visibleRootIds = GetVisibleSkillRootIdsForJob(jobId, subJob, learnedSkillIds);
+            foreach (int skillRootId in visibleRootIds)
+            {
+                EnsureSkillRootLoaded(skillWindow, skillRootId, device);
+            }
+
+            // Keep both the full load and live record refresh on the same client-shaped
+            // root reload seam before the visible tab strip is re-filtered.
+            skillWindow.RefreshVisibleTabsFromLoadedSkillRoots();
         }
 
         private static void EnsureSkillRootLoaded(SkillUIBigBang skillWindow, int skillRootId, GraphicsDevice device)

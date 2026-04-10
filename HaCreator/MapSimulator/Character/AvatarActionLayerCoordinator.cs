@@ -71,12 +71,21 @@ namespace HaCreator.MapSimulator.Character
             int actionSpeed,
             int walkSpeed,
             bool heldShootAction,
-            int frameIndex)
+            int frameIndex,
+            bool isMorphAvatar = false,
+            bool isSuperManMorph = false)
         {
             int delay = Math.Max(0, authoredDelay);
             if (heldShootAction && IsHeldShootActionFrame(actionName, frameIndex))
             {
                 return MaxClientActionFrameDelay;
+            }
+
+            if (isMorphAvatar)
+            {
+                return ShouldAdaptMorphActionSpeed(actionName, isSuperManMorph)
+                    ? ResolveActionSpeedDelay(delay, actionSpeed)
+                    : delay;
             }
 
             if (UsesWalkSpeedTiming(actionName))
@@ -85,6 +94,11 @@ namespace HaCreator.MapSimulator.Character
                 return delay * 100 / clampedWalkSpeed;
             }
 
+            return ResolveActionSpeedDelay(delay, actionSpeed);
+        }
+
+        private static int ResolveActionSpeedDelay(int delay, int actionSpeed)
+        {
             int clampedActionSpeed = Math.Clamp(actionSpeed, 2, 10);
             return delay * (clampedActionSpeed + 10) / 16;
         }
@@ -218,6 +232,13 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return rawActionCode < 2 || rawActionCode == 124;
+        }
+
+        private static bool ShouldAdaptMorphActionSpeed(string actionName, bool isSuperManMorph)
+        {
+            return isSuperManMorph
+                   && CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
+                   && rawActionCode != 0;
         }
 
         private static bool IsHeldShootActionFrame(string actionName, int frameIndex)

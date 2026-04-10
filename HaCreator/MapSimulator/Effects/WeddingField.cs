@@ -2082,11 +2082,14 @@ namespace HaCreator.MapSimulator.Effects
             WeddingPacketResponse? packetResponse = null;
             if (_currentDialog.Mode == WeddingDialogMode.YesNo)
             {
-                packetResponse = new WeddingPacketResponse(
-                    WeddingPacketOpcode.GuestBless,
-                    _currentStep,
-                    accepted,
-                    currentTimeMs);
+                if (accepted)
+                {
+                    packetResponse = new WeddingPacketResponse(
+                        WeddingPacketOpcode.GuestBless,
+                        _currentStep,
+                        Accepted: true,
+                        currentTimeMs);
+                }
             }
             else if (ShouldSendParticipantAdvancePacket())
             {

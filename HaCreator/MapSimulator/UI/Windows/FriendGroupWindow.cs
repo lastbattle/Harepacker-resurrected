@@ -19,10 +19,14 @@ namespace HaCreator.MapSimulator.UI
         private readonly IDXObject _baseLayer;
         private readonly IDXObject _addFriendPopupLayer;
         private readonly IDXObject _groupWhisperPopupLayer;
+        private readonly IDXObject _groupDeletePopupLayer;
+        private readonly IDXObject _groupDeleteDenyPopupLayer;
         private readonly Point _overlayOffset;
         private readonly Point _baseOffset;
         private readonly Point _addFriendPopupOffset;
         private readonly Point _groupWhisperPopupOffset;
+        private readonly Point _groupDeletePopupOffset;
+        private readonly Point _groupDeleteDenyPopupOffset;
         private readonly Texture2D _pixel;
         private readonly UIObject _okButton;
         private readonly UIObject _cancelButton;
@@ -49,6 +53,10 @@ namespace HaCreator.MapSimulator.UI
             Point addFriendPopupOffset,
             IDXObject groupWhisperPopupLayer,
             Point groupWhisperPopupOffset,
+            IDXObject groupDeletePopupLayer,
+            Point groupDeletePopupOffset,
+            IDXObject groupDeleteDenyPopupLayer,
+            Point groupDeleteDenyPopupOffset,
             UIObject okButton,
             UIObject cancelButton,
             GraphicsDevice device)
@@ -58,10 +66,14 @@ namespace HaCreator.MapSimulator.UI
             _baseLayer = baseLayer;
             _addFriendPopupLayer = addFriendPopupLayer;
             _groupWhisperPopupLayer = groupWhisperPopupLayer;
+            _groupDeletePopupLayer = groupDeletePopupLayer;
+            _groupDeleteDenyPopupLayer = groupDeleteDenyPopupLayer;
             _overlayOffset = overlayOffset;
             _baseOffset = baseOffset;
             _addFriendPopupOffset = addFriendPopupOffset;
             _groupWhisperPopupOffset = groupWhisperPopupOffset;
+            _groupDeletePopupOffset = groupDeletePopupOffset;
+            _groupDeleteDenyPopupOffset = groupDeleteDenyPopupOffset;
             _okButton = okButton;
             _cancelButton = cancelButton;
             _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
@@ -158,7 +170,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             FriendGroupPopupSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
-            DrawEntryList(sprite, snapshot);
+            if (snapshot.ShowEntryList)
+            {
+                DrawEntryList(sprite, snapshot);
+            }
+
             DrawSummary(sprite, snapshot);
         }
 
@@ -171,6 +187,11 @@ namespace HaCreator.MapSimulator.UI
         private void UpdateButtonStates(FriendGroupPopupSnapshot snapshot)
         {
             _okButton?.SetEnabled(snapshot.CanConfirm);
+            if (_okButton != null)
+            {
+                _okButton.ButtonVisible = snapshot.Mode != FriendGroupPopupMode.DeleteGroupDeny;
+            }
+
             _cancelButton?.SetEnabled(true);
         }
 
@@ -195,13 +216,20 @@ namespace HaCreator.MapSimulator.UI
             SkeletonMeshRenderer skeletonMeshRenderer,
             GameTime gameTime)
         {
-            if ((_currentSnapshot?.Mode ?? FriendGroupPopupMode.AddFriend) == FriendGroupPopupMode.GroupWhisper)
+            switch (_currentSnapshot?.Mode ?? FriendGroupPopupMode.AddFriend)
             {
-                DrawLayer(sprite, _groupWhisperPopupLayer, _groupWhisperPopupOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
-            }
-            else
-            {
-                DrawLayer(sprite, _addFriendPopupLayer, _addFriendPopupOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+                case FriendGroupPopupMode.GroupWhisper:
+                    DrawLayer(sprite, _groupWhisperPopupLayer, _groupWhisperPopupOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+                    break;
+                case FriendGroupPopupMode.DeleteGroup:
+                    DrawLayer(sprite, _groupDeletePopupLayer, _groupDeletePopupOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+                    break;
+                case FriendGroupPopupMode.DeleteGroupDeny:
+                    DrawLayer(sprite, _groupDeleteDenyPopupLayer, _groupDeleteDenyPopupOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+                    break;
+                default:
+                    DrawLayer(sprite, _addFriendPopupLayer, _addFriendPopupOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+                    break;
             }
         }
 

@@ -155,6 +155,11 @@ namespace HaCreator.MapSimulator.Managers
 
         internal byte[] BuildSaveRequestPayload()
         {
+            if (!CanBuildSaveRequestPayload())
+            {
+                return null;
+            }
+
             byte[] payload = new byte[17];
             payload[0] = 3;
             BinaryPrimitives.WriteUInt32LittleEndian(payload.AsSpan(1, 4), (uint)(_areaGroup | (_areaDetail << 8)));
@@ -165,6 +170,11 @@ namespace HaCreator.MapSimulator.Managers
             _isFirstEntry = false;
             _statusText = "Queued an account-more-info save request and disabled further saves until server subtype 4 returns.";
             return payload;
+        }
+
+        internal bool CanBuildSaveRequestPayload()
+        {
+            return _isOpen && !_loadPending && !_savePending;
         }
 
         internal bool TryApplyLoadResult(byte[] payload, out string message)

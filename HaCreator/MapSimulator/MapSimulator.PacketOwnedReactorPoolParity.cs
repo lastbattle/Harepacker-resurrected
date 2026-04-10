@@ -141,6 +141,12 @@ namespace HaCreator.MapSimulator
                 packet.Y,
                 currentTick,
                 out string detail);
+            if (left)
+            {
+                _reactorPoolOfficialSessionBridge.TryRemoveQueuedTouchRequests(packet.ObjectId, out _);
+                _reactorTouchPacketOutbox.TryRemoveQueuedTouchRequests(packet.ObjectId, out _);
+            }
+
             return new PacketReactorPoolApplyResult(left, detail);
         }
 
@@ -152,6 +158,8 @@ namespace HaCreator.MapSimulator
         private void ClearPacketOwnedReactorPoolState()
         {
             _packetReactorPoolRuntime.Clear();
+            _reactorPoolOfficialSessionBridge.ClearQueuedTouchRequests();
+            _reactorTouchPacketOutbox.ClearQueuedTouchRequests();
         }
 
         private void EnsureReactorPoolPacketInboxState(bool shouldRun)

@@ -455,7 +455,10 @@ namespace HaCreator.MapSimulator.Interaction
             EmployeeTemplateProfile profile,
             bool preferContextualAction)
         {
-            string nextIdleAction = preferContextualAction
+            bool useContextualIdleBias =
+                preferContextualAction
+                && !profile.UsesClientIndexedActionCycle;
+            string nextIdleAction = useContextualIdleBias
                 ? ResolveContextualIdleAction(actorKey, actor, snapshot, profile)
                     ?? ResolveClientCycleAction(actorKey, actor, profile)
                     ?? ResolveNextAvailableAction(actorKey, actor, profile.IdleActions)

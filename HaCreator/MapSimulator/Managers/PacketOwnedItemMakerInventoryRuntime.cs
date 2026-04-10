@@ -12,6 +12,8 @@ namespace HaCreator.MapSimulator.Managers
         public bool IsDisassembly { get; init; }
         public int SourceSlotIndex { get; init; } = -1;
         public int SourceItemId { get; init; }
+        public int ExpectedRewardItemId { get; init; }
+        public int ExpectedRewardQuantity { get; init; }
         public int MesoCost { get; init; }
         public int CatalystItemId { get; init; }
         public IReadOnlyList<PacketOwnedItemMakerMaterialCost> Materials { get; init; }
@@ -99,7 +101,7 @@ namespace HaCreator.MapSimulator.Managers
                 inventory.AddMeso(-mesoDelta);
             }
 
-            foreach ((int itemId, int quantity) in EnumerateGrantedItems(packetResult))
+            foreach ((int itemId, int quantity) in EnumerateGrantedItems(packetResult, pendingRequest))
             {
                 if (itemId <= 0 || quantity <= 0)
                 {
@@ -127,6 +129,13 @@ namespace HaCreator.MapSimulator.Managers
 
         internal static IReadOnlyList<(int ItemId, int Quantity)> EnumerateGrantedItems(PacketOwnedItemMakerResult packetResult)
         {
+            return EnumerateGrantedItems(packetResult, pendingRequest: null);
+        }
+
+        internal static IReadOnlyList<(int ItemId, int Quantity)> EnumerateGrantedItems(
+            PacketOwnedItemMakerResult packetResult,
+            PacketOwnedItemMakerPendingRequest pendingRequest)
+        {
             List<(int ItemId, int Quantity)> items = new();
             if (packetResult == null || packetResult.ResultCode > 1)
             {
@@ -137,9 +146,9 @@ namespace HaCreator.MapSimulator.Managers
             {
                 case 1:
                 case 2:
-                    if (!packetResult.SuppressedPrimaryTargetNotice && packetResult.TargetItemId > 0)
+                    if (TryResolvePrimaryGrantedItem(packetResult, pendingRequest, out int primaryItemId, out int primaryQuantity))
                     {
-                        items.Add((packetResult.TargetItemId, Math.Max(1, packetResult.TargetItemCount)));
+                        items.Add((primaryItemId, primaryQuantity));
                     }
 
                     AppendRewardItems(items, packetResult.RewardItems);
@@ -168,6 +177,57 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return items;
+        }
+
+        internal static bool TryResolvePrimaryGrantedItem(
+            PacketOwnedItemMakerResult packetResult,
+            PacketOwnedItemMakerPendingRequest pendingRequest,
+            out int itemId,
+            out int quantity)
+        {
+            itemId = 0;
+            quantity = 0;
+            if (packetResult == null || packetResult.ResultCode > 1)
+            {
+                return false;
+            }
+
+            switch (packetResult.ResultType)
+            {
+                case 1:
+                case 2:
+                    if (!packetResult.SuppressedPrimaryTargetNotice && packetResult.TargetItemId > 0)
+                    {
+                        itemId = packetResult.TargetItemId;
+                        quantity = Math.Max(1, packetResult.TargetItemCount);
+                        return true;
+                    }
+
+                    if (pendingRequest != null
+                        && !pendingRequest.IsDisassembly
+                        && packetResult.SuppressedPrimaryTargetNotice
+                        && pendingRequest.ExpectedRewardItemId > 0)
+                    {
+                        itemId = pendingRequest.ExpectedRewardItemId;
+                        quantity = Math.Max(1, pendingRequest.ExpectedRewardQuantity);
+                        return true;
+                    }
+
+                    return false;
+
+                case 3:
+                    if (packetResult.TargetItemId > 0)
+                    {
+                        itemId = packetResult.TargetItemId;
+                        quantity = Math.Max(1, packetResult.TargetItemCount);
+                        return true;
+                    }
+
+                    return false;
+
+                default:
+                    return false;
+            }
         }
 
         private static void AppendRewardItems(List<(int ItemId, int Quantity)> items, IReadOnlyList<PacketOwnedItemMakerResultItemEntry> rewardItems)

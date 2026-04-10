@@ -1280,8 +1280,14 @@ namespace HaCreator.MapSimulator.UI
             float sectionWidth = tooltipWidth - CLIENT_TOOLTIP_TEXT_X - CLIENT_TOOLTIP_RIGHT_PADDING;
             string[] wrappedName = WrapTooltipText(skillName, titleWidth);
             TooltipLine[] wrappedDescription = WrapTooltipText(description, sectionWidth, Color.White);
-            TooltipLine[] wrappedCostLine = WrapTooltipText(
-                SanitizeFontText(GetTooltipCostLineMarkup(skill.SkillId, tooltipLevelData, currentTime)),
+            (string tooltipStateLineMarkup, string tooltipSecondaryLineMarkup) =
+                GetTooltipCooldownMarkup(skill.SkillId, tooltipLevelData, currentTime);
+            TooltipLine[] wrappedStateLine = WrapTooltipText(
+                SanitizeFontText(tooltipStateLineMarkup),
+                sectionWidth,
+                Color.White);
+            TooltipLine[] wrappedSecondaryLine = WrapTooltipText(
+                SanitizeFontText(tooltipSecondaryLineMarkup),
                 sectionWidth,
                 TOOLTIP_INLINE_HIGHLIGHT_COLOR);
             string[] wrappedCurrentHeader = WrapTooltipText(currentLevelHeader, sectionWidth);
@@ -1291,7 +1297,8 @@ namespace HaCreator.MapSimulator.UI
 
             float titleHeight = MeasureLinesHeight(wrappedName);
             float descriptionHeight = MeasureLinesHeight(wrappedDescription);
-            float costLineHeight = MeasureLinesHeight(wrappedCostLine);
+            float stateLineHeight = MeasureLinesHeight(wrappedStateLine);
+            float secondaryLineHeight = MeasureLinesHeight(wrappedSecondaryLine);
             float currentHeaderHeight = MeasureLinesHeight(wrappedCurrentHeader);
             float currentDescriptionHeight = MeasureLinesHeight(wrappedCurrentDescription);
             float nextHeaderHeight = MeasureLinesHeight(wrappedNextHeader);
@@ -1299,7 +1306,8 @@ namespace HaCreator.MapSimulator.UI
             int requirementSectionHeight = GetRequirementSectionHeight(skill);
             float sectionHeight = CalculateTooltipSectionHeight(
                 descriptionHeight,
-                costLineHeight,
+                stateLineHeight,
+                secondaryLineHeight,
                 currentHeaderHeight,
                 currentDescriptionHeight,
                 nextHeaderHeight,
@@ -1343,11 +1351,18 @@ namespace HaCreator.MapSimulator.UI
                 sectionY += descriptionHeight;
             }
 
-            if (costLineHeight > 0f)
+            if (stateLineHeight > 0f)
             {
                 sectionY += TOOLTIP_SECTION_GAP;
-                DrawTooltipLines(sprite, wrappedCostLine, textX, sectionY);
-                sectionY += costLineHeight;
+                DrawTooltipLines(sprite, wrappedStateLine, textX, sectionY);
+                sectionY += stateLineHeight;
+            }
+
+            if (secondaryLineHeight > 0f)
+            {
+                sectionY += stateLineHeight > 0f ? 2f : TOOLTIP_SECTION_GAP;
+                DrawTooltipLines(sprite, wrappedSecondaryLine, textX, sectionY);
+                sectionY += secondaryLineHeight;
             }
 
             if (currentHeaderHeight > 0f)
@@ -1387,26 +1402,27 @@ namespace HaCreator.MapSimulator.UI
             return skillData?.GetLevel(level);
         }
 
-        private string GetTooltipCostLineMarkup(int skillId, SkillLevelData levelData, int currentTime)
+        private (string StateLineMarkup, string SecondaryLineMarkup) GetTooltipCooldownMarkup(int skillId, SkillLevelData levelData, int currentTime)
         {
             if (levelData == null)
             {
-                return string.Empty;
+                return (string.Empty, string.Empty);
             }
 
             SkillManager.CooldownUiState cooldownState = default;
             bool hasCooldownState = _skillManager != null
                 && _skillManager.TryGetCooldownUiState(skillId, currentTime, out cooldownState);
-            return SkillCooldownTooltipText.FormatTooltipCostLineMarkup(
+            return SkillCooldownTooltipText.BuildSkillTooltipMarkup(
                 levelData,
-                hasCooldownState || levelData.Cooldown > 0,
+                hasCooldownState,
                 hasCooldownState ? cooldownState.RemainingMs : 0,
                 hasCooldownState ? cooldownState.TooltipStateText : null);
         }
 
         private static float CalculateTooltipSectionHeight(
             float descriptionHeight,
-            float costLineHeight,
+            float stateLineHeight,
+            float secondaryLineHeight,
             float currentHeaderHeight,
             float currentDescriptionHeight,
             float nextHeaderHeight,
@@ -1416,8 +1432,10 @@ namespace HaCreator.MapSimulator.UI
             float height = 0f;
             if (descriptionHeight > 0f)
                 height += descriptionHeight;
-            if (costLineHeight > 0f)
-                height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + costLineHeight;
+            if (stateLineHeight > 0f)
+                height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + stateLineHeight;
+            if (secondaryLineHeight > 0f)
+                height += (height > 0f ? (stateLineHeight > 0f ? 2f : TOOLTIP_SECTION_GAP) : 0f) + secondaryLineHeight;
             if (currentHeaderHeight > 0f)
                 height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + currentHeaderHeight;
             if (currentDescriptionHeight > 0f)

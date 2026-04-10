@@ -1983,6 +1983,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Duration { get; init; }
         public int AlphaStart { get; init; }
         public int AlphaEnd { get; init; }
+        public float FrameAlphaMultiplier { get; init; } = 1f;
 
         public bool IsExpired(int currentTime)
         {
@@ -1999,7 +2000,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return MathHelper.Lerp(
                 Math.Clamp(AlphaStart, 0, 255),
                 Math.Clamp(AlphaEnd, 0, 255),
-                progress) / 255f;
+                progress) / 255f * MathHelper.Clamp(FrameAlphaMultiplier, 0f, 1f);
         }
     }
 

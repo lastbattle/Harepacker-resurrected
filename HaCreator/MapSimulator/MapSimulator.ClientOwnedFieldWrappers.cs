@@ -9,7 +9,6 @@ using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
-using System.Buffers.Binary;
 using System.Linq;
 using System.Collections.Generic;
 using MapleLib.WzLib;
@@ -353,38 +352,6 @@ namespace HaCreator.MapSimulator
 
             ApplyShowaBathFieldAppearance(build, loader);
             return "showa-bath appearance override applied";
-        }
-
-        private bool TryApplyClientOwnedWrapperPacket(int packetType, byte[] payload, int currentTick, out string message)
-        {
-            message = null;
-            MapInfo mapInfo = _mapBoard?.MapInfo;
-            if (packetType == 178 && IsKillCountWrapperMap(mapInfo))
-            {
-                if (payload == null || payload.Length < sizeof(int))
-                {
-                    message = "Kill-count packet requires a 4-byte payload.";
-                    return false;
-                }
-
-                _killCountWrapperValue = Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int))));
-                message = $"kill-count={_killCountWrapperValue.Value}";
-                return true;
-            }
-
-            if (packetType == Effects.MassacreField.PacketTypeResult && _specialFieldRuntime.SpecialEffects.Massacre.IsActive)
-            {
-                if (_specialFieldRuntime.SpecialEffects.Massacre.TryApplyMassacreResultPayload(payload, currentTick, out string error))
-                {
-                    message = _specialFieldRuntime.SpecialEffects.Massacre.DescribeStatus();
-                    return true;
-                }
-
-                message = error;
-                return false;
-            }
-
-            return false;
         }
 
         private bool TryApplyClientOwnedWrapperFieldValue(string wrapperName, string key, string value, int currentTick, out string message)
@@ -1322,6 +1289,15 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryBuildTutorialAppearanceContract(MapInfo mapInfo, CharacterGender gender, out TutorialAppearanceContract contract)
         {
+            return TryBuildTutorialAppearanceContract(mapInfo, gender, out contract, null);
+        }
+
+        internal static bool TryBuildTutorialAppearanceContract(
+            MapInfo mapInfo,
+            CharacterGender gender,
+            out TutorialAppearanceContract contract,
+            Func<int, WzImage> linkedMapResolver)
+        {
             if (!TryBuildTutorialWrapperContract(mapInfo, out TutorialWrapperContract wrapperContract))
             {
                 contract = default;
@@ -1329,7 +1305,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (wrapperContract.Kind == TutorialWrapperKind.AranTutorial
-                && TryBuildAranTutorialAppearanceContract(mapInfo, gender, out TutorialAppearanceContract aranContract))
+                && TryBuildAranTutorialAppearanceContract(mapInfo, gender, out TutorialAppearanceContract aranContract, linkedMapResolver))
             {
                 contract = aranContract;
                 return true;
@@ -1382,11 +1358,15 @@ namespace HaCreator.MapSimulator
             return inAranTutorialRange && (hasAranMapMark || hasAranOnUserEnter);
         }
 
-        private static bool TryBuildAranTutorialAppearanceContract(MapInfo mapInfo, CharacterGender gender, out TutorialAppearanceContract contract)
+        private static bool TryBuildAranTutorialAppearanceContract(
+            MapInfo mapInfo,
+            CharacterGender gender,
+            out TutorialAppearanceContract contract,
+            Func<int, WzImage> linkedMapResolver = null)
         {
             contract = default;
 
-            WzImage mapImage = ResolveTutorialContractImage(mapInfo);
+            WzImage mapImage = ResolveTutorialContractImage(mapInfo, out _, linkedMapResolver);
             if (mapImage == null)
             {
                 return false;
@@ -1415,23 +1395,48 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryBuildWeddingPhotoSceneContract(MapInfo mapInfo, out WeddingPhotoSceneContract contract)
         {
-            TryGetWeddingPhotoSceneSafeArea(mapInfo, out int sceneSide, out int sceneTop, out int sceneBottom);
-            TryGetWeddingPhotoSceneViewport(mapInfo, out int sceneViewportLeft, out int sceneViewportTop, out int sceneViewportRight, out int sceneViewportBottom);
+            return TryBuildWeddingPhotoSceneContract(mapInfo, out contract, null);
+        }
 
-            if ((int?)mapInfo?.fieldType == ClientOwnedWeddingPhotoFieldType || HasWeddingPhotoSceneOwnerContract(mapInfo))
+        internal static bool TryBuildWeddingPhotoSceneContract(
+            MapInfo mapInfo,
+            out WeddingPhotoSceneContract contract,
+            Func<int, WzImage> linkedMapResolver)
+        {
+            WzImage contractImage = ResolveClientOwnedContractMapImage(mapInfo, out int contractMapId, linkedMapResolver);
+            WzImageProperty contractInfo = ResolveProperty(contractImage, "info");
+            string mapMark = GetResolvedContractStringValue(contractInfo, "mapMark") ?? mapInfo?.mapMark;
+            string onUserEnter = GetResolvedContractStringValue(contractInfo, "onUserEnter") ?? mapInfo?.onUserEnter;
+            string backgroundMusic = GetResolvedContractStringValue(contractInfo, "bgm") ?? mapInfo?.bgm;
+            int returnMapId = GetResolvedContractIntValue(contractInfo, "returnMap") ?? mapInfo?.returnMap ?? 0;
+            int? fieldType = GetResolvedContractIntValue(contractInfo, "fieldType") ?? (int?)mapInfo?.fieldType;
+            int sceneSide = GetResolvedContractIntValue(contractInfo, "LBSide") ?? Math.Max(0, mapInfo?.LBSide ?? 0);
+            int sceneTop = GetResolvedContractIntValue(contractInfo, "LBTop") ?? Math.Max(0, mapInfo?.LBTop ?? 0);
+            int sceneBottom = GetResolvedContractIntValue(contractInfo, "LBBottom") ?? Math.Max(0, mapInfo?.LBBottom ?? 0);
+            int sceneViewportLeft = GetResolvedContractIntValue(contractInfo, "VRLeft") ?? mapInfo?.VRLeft ?? 0;
+            int sceneViewportTop = GetResolvedContractIntValue(contractInfo, "VRTop") ?? mapInfo?.VRTop ?? 0;
+            int sceneViewportRight = GetResolvedContractIntValue(contractInfo, "VRRight") ?? mapInfo?.VRRight ?? 0;
+            int sceneViewportBottom = GetResolvedContractIntValue(contractInfo, "VRBottom") ?? mapInfo?.VRBottom ?? 0;
+            bool hasSceneSafeArea = sceneSide > 0 || sceneTop > 0 || sceneBottom > 0;
+            bool hasSceneViewport = sceneViewportRight > sceneViewportLeft && sceneViewportBottom > sceneViewportTop;
+            string linkedSourceSuffix = contractMapId > 0 && contractMapId != (mapInfo?.id ?? 0)
+                ? $", linked WZ contract map {contractMapId}"
+                : string.Empty;
+
+            if (fieldType == ClientOwnedWeddingPhotoFieldType || HasWeddingPhotoSceneOwnerContract(mapInfo, mapMark, onUserEnter))
             {
-                string sourceDescription = (int?)mapInfo?.fieldType == ClientOwnedWeddingPhotoFieldType
-                    ? $"CField_WeddingPhoto::GetFieldType = {ClientOwnedWeddingPhotoFieldType}"
-                    : $"WZ wedding scene owner contract (onUserEnter={mapInfo?.onUserEnter ?? "<none>"}, mapMark={mapInfo?.mapMark ?? "<none>"}, region={mapInfo?.id / 1000 ?? 0})";
-                string sceneDescription = sceneViewportRight > sceneViewportLeft && sceneViewportBottom > sceneViewportTop
+                string sourceDescription = fieldType == ClientOwnedWeddingPhotoFieldType
+                    ? $"CField_WeddingPhoto::GetFieldType = {ClientOwnedWeddingPhotoFieldType}{linkedSourceSuffix}"
+                    : $"WZ wedding scene owner contract (onUserEnter={onUserEnter ?? "<none>"}, mapMark={mapMark ?? "<none>"}, region={mapInfo?.id / 1000 ?? 0}{linkedSourceSuffix})";
+                string sceneDescription = hasSceneViewport
                     ? "wedding pledge/photo scene owner with WZ viewport envelope"
                     : "wedding pledge/photo scene owner";
                 contract = new WeddingPhotoSceneContract(
                     WeddingPhotoWrapperKind.SceneOwner,
                     sourceDescription,
                     sceneDescription,
-                    mapInfo?.bgm,
-                    mapInfo.returnMap,
+                    backgroundMusic,
+                    returnMapId,
                     sceneSide,
                     sceneTop,
                     sceneBottom,
@@ -1442,14 +1447,14 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (HasWeddingPhotoSafeAreaContract(mapInfo))
+            if (HasWeddingPhotoSafeAreaContract(mapInfo, mapMark, hasSceneSafeArea))
             {
                 contract = new WeddingPhotoSceneContract(
                     WeddingPhotoWrapperKind.PhotoContract,
-                    $"wedding photo safe-area contract (mapMark={mapInfo.mapMark}, region={mapInfo.id / 1000})",
+                    $"wedding photo safe-area contract (mapMark={mapMark}, region={mapInfo.id / 1000}{linkedSourceSuffix})",
                     "wedding ceremony/photo safe-area contract",
-                    mapInfo.bgm,
-                    mapInfo.returnMap,
+                    backgroundMusic,
+                    returnMapId,
                     sceneSide,
                     sceneTop,
                     sceneBottom,
@@ -1507,35 +1512,107 @@ namespace HaCreator.MapSimulator
             return TryResolveWeddingPhotoSceneViewportCenter(contract, out center);
         }
 
-        private static bool HasWeddingPhotoSafeAreaContract(MapInfo mapInfo)
+        private static bool HasWeddingPhotoSafeAreaContract(MapInfo mapInfo, string mapMark, bool hasSafeArea)
         {
             return mapInfo != null
                 && mapInfo.id / 1000 == WeddingPhotoMapRegionPrefix
-                && string.Equals(mapInfo.mapMark, WeddingMapMark, StringComparison.OrdinalIgnoreCase)
-                && TryGetWeddingPhotoSceneSafeArea(mapInfo, out _, out _, out _);
+                && string.Equals(mapMark, WeddingMapMark, StringComparison.OrdinalIgnoreCase)
+                && hasSafeArea;
         }
 
-        private static bool HasWeddingPhotoSceneOwnerContract(MapInfo mapInfo)
+        private static bool HasWeddingPhotoSceneOwnerContract(MapInfo mapInfo, string mapMark, string onUserEnter)
         {
             return mapInfo != null
                 && mapInfo.id / 1000 == WeddingPhotoMapRegionPrefix
-                && string.Equals(mapInfo.mapMark, WeddingMapMark, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(mapInfo.onUserEnter, WeddingPhotoSceneOnUserEnter, StringComparison.OrdinalIgnoreCase);
+                && string.Equals(mapMark, WeddingMapMark, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(onUserEnter, WeddingPhotoSceneOnUserEnter, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static WzImage ResolveTutorialContractImage(MapInfo mapInfo)
+        private static WzImage ResolveTutorialContractImage(MapInfo mapInfo, out int resolvedMapId, Func<int, WzImage> linkedMapResolver = null)
         {
+            return ResolveClientOwnedContractMapImage(mapInfo, out resolvedMapId, linkedMapResolver);
+        }
+
+        internal static WzImage ResolveClientOwnedContractMapImage(
+            MapInfo mapInfo,
+            out int resolvedMapId,
+            Func<int, WzImage> linkedMapResolver = null)
+        {
+            resolvedMapId = mapInfo?.id ?? 0;
             if (mapInfo?.Image != null)
             {
-                return mapInfo.Image;
+                WzImage linkedImage = TryResolveLinkedContractMapImage(mapInfo.Image, mapInfo.id, out resolvedMapId, linkedMapResolver);
+                return linkedImage ?? mapInfo.Image;
             }
 
             if (mapInfo?.id > 0 && Program.WzManager != null)
             {
-                return WzInfoTools.FindMapImage(mapInfo.id.ToString(), Program.WzManager);
+                WzImage mapImage = WzInfoTools.FindMapImage(mapInfo.id.ToString(), Program.WzManager);
+                if (mapImage == null)
+                {
+                    return null;
+                }
+
+                WzImage linkedImage = TryResolveLinkedContractMapImage(mapImage, mapInfo.id, out resolvedMapId, linkedMapResolver);
+                return linkedImage ?? mapImage;
             }
 
             return null;
+        }
+
+        private static WzImage TryResolveLinkedContractMapImage(
+            WzImage mapImage,
+            int fallbackMapId,
+            out int resolvedMapId,
+            Func<int, WzImage> linkedMapResolver = null)
+        {
+            resolvedMapId = fallbackMapId;
+            if (mapImage == null)
+            {
+                return null;
+            }
+
+            if (!mapImage.Parsed)
+            {
+                mapImage.ParseImage();
+            }
+
+            if (ResolveProperty(mapImage, "info/link") is not WzStringProperty linkedMapProperty
+                || string.IsNullOrWhiteSpace(linkedMapProperty.Value)
+                || !int.TryParse(linkedMapProperty.Value, out int linkedMapId)
+                || linkedMapId <= 0)
+            {
+                return null;
+            }
+
+            WzImage linkedMapImage = linkedMapResolver?.Invoke(linkedMapId);
+            if (linkedMapImage == null && Program.WzManager != null)
+            {
+                linkedMapImage = WzInfoTools.FindMapImage(linkedMapId.ToString(), Program.WzManager);
+            }
+
+            if (linkedMapImage == null)
+            {
+                return null;
+            }
+
+            resolvedMapId = linkedMapId;
+            return linkedMapImage;
+        }
+
+        private static int? GetResolvedContractIntValue(WzImageProperty contractInfo, string propertyName)
+        {
+            if (contractInfo?[propertyName] is WzIntProperty intProperty)
+            {
+                return intProperty.GetInt();
+            }
+
+            return null;
+        }
+
+        private static string GetResolvedContractStringValue(WzImageProperty contractInfo, string propertyName)
+        {
+            return (contractInfo?[propertyName] as WzStringProperty)?.Value;
         }
 
         private static bool TryBuildAranTutorialAppearanceContractFromEntry(

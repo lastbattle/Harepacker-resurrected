@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.Fields
         BattlefieldEventFlow,
         MuLungDojoFieldFlow,
         CookieHouseEventFlow,
+        CakePieEventTimerboardAndItemInfoParity,
         MonsterCarnivalFieldFlow,
         PartyRaidFieldFlow,
         SpaceGagaTimerboardFlow
@@ -96,6 +97,7 @@ namespace HaCreator.MapSimulator.Fields
             new(SpecialFieldBacklogArea.BattlefieldEventFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / BattlefieldField", IsBattlefieldMap),
             new(SpecialFieldBacklogArea.MuLungDojoFieldFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / DojoField", IsDojoMap),
             new(SpecialFieldBacklogArea.CookieHouseEventFlow, SpecialFieldBacklogStatus.Partial, "CookieHouseField.cs / special field runtime", IsCookieHouseMap),
+            new(SpecialFieldBacklogArea.CakePieEventTimerboardAndItemInfoParity, SpecialFieldBacklogStatus.Implemented, "SpecialEffectFields.cs / CakePieEventField", IsCakePieMap),
             new(SpecialFieldBacklogArea.MonsterCarnivalFieldFlow, SpecialFieldBacklogStatus.Partial, "MonsterCarnivalField.cs / event UI layer", IsMonsterCarnivalMap),
             new(SpecialFieldBacklogArea.PartyRaidFieldFlow, SpecialFieldBacklogStatus.Partial, "PartyRaidField.cs / PartyRaidField", IsPartyRaidMap),
             new(SpecialFieldBacklogArea.SpaceGagaTimerboardFlow, SpecialFieldBacklogStatus.Partial, "SpecialEffectFields.cs / SpaceGagaField", IsSpaceGagaMap),
@@ -231,13 +233,8 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryDispatchCurrentWrapperPacketRelay(int packetType, byte[] payload, int currentTimeMs, out string message)
         {
-            bool applied = TryDispatchCurrentWrapperPacketCore(packetType, payload, currentTimeMs, out string relayMessage);
-            string relayPrefix =
-                $"CField::OnPacket opcode {CurrentWrapperRelayOpcode} relayed wrapper packet {packetType}.";
-            message = string.IsNullOrWhiteSpace(relayMessage)
-                ? relayPrefix
-                : $"{relayPrefix} {relayMessage}";
-            return applied;
+            NormalizeCurrentWrapperRelayPacket(ref packetType, ref payload);
+            return TryDispatchCurrentWrapperRelayPayload(payload, currentTimeMs, out message);
         }
 
         public bool TryDispatchCurrentWrapperRelayPayload(byte[] relayPayload, int currentTimeMs, out string message)
@@ -248,7 +245,13 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return TryDispatchCurrentWrapperPacketRelay(packetType, wrapperPayload, currentTimeMs, out message);
+            bool applied = TryDispatchCurrentWrapperPacketCore(packetType, wrapperPayload, currentTimeMs, out string relayMessage);
+            string relayPrefix =
+                $"CField::OnPacket opcode {CurrentWrapperRelayOpcode} relayed wrapper packet {packetType}.";
+            message = string.IsNullOrWhiteSpace(relayMessage)
+                ? relayPrefix
+                : $"{relayPrefix} {relayMessage}";
+            return applied;
         }
 
         public bool TryDispatchCurrentWrapperPacket(int packetType, byte[] payload, int currentTimeMs, out string message)
@@ -447,7 +450,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (packetType == MassacreField.PacketTypeResult && _specialEffects.Massacre.IsActive)
             {
-                ownerName = "CField_Massacre::OnResult";
+                ownerName = _specialEffects.Massacre.GetPacketOwnerName(packetType);
                 bool applied = _specialEffects.Massacre.TryApplyMassacreResultPayload(payload, currentTimeMs, out string errorMessage);
                 message = applied ? _specialEffects.Massacre.DescribeStatus() : errorMessage;
                 return applied;
@@ -622,14 +625,7 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool IsMassacreMap(MapInfo mapInfo)
         {
-            if (mapInfo == null)
-            {
-                return false;
-            }
-
-            return mapInfo.fieldType == FieldType.FIELDTYPE_MASSACRE
-                || mapInfo.fieldType == FieldType.FIELDTYPE_MASSACRE_RESULT
-                || (mapInfo.id >= 910000000 && mapInfo.id <= 910000099);
+            return MassacreField.IsMassacreMap(mapInfo);
         }
 
         private static bool IsDojoMap(MapInfo mapInfo)
@@ -661,6 +657,11 @@ namespace HaCreator.MapSimulator.Fields
         private static bool IsCookieHouseMap(MapInfo mapInfo)
         {
             return mapInfo?.fieldType == FieldType.FIELDTYPE_COOKIEHOUSE;
+        }
+
+        private static bool IsCakePieMap(MapInfo mapInfo)
+        {
+            return mapInfo != null && CakePieEventField.IsSupportedField(mapInfo.id);
         }
 
         private static bool IsSnowBallMap(MapInfo mapInfo)

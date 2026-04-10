@@ -650,8 +650,7 @@ namespace HaCreator.MapSimulator
 
         private void ApplyPacketOwnedQuestRewardRaiseAddResult(QuestRewardRaiseState activeRaise, QuestRewardRaiseInboundPacket packet)
         {
-            QuestRewardRaisePlacedPiece placedPiece = activeRaise?.PlacedPieces?
-                .FirstOrDefault(piece => piece.RequestId == packet.Payload.PieceRequestId);
+            QuestRewardRaisePlacedPiece placedPiece = ResolveQuestRewardRaisePlacedPiece(activeRaise, packet, createIfMissing: packet.Success);
             if (placedPiece == null)
             {
                 return;
@@ -674,8 +673,7 @@ namespace HaCreator.MapSimulator
 
         private void ApplyPacketOwnedQuestRewardRaiseReleaseResult(QuestRewardRaiseState activeRaise, QuestRewardRaiseInboundPacket packet)
         {
-            QuestRewardRaisePlacedPiece placedPiece = activeRaise?.PlacedPieces?
-                .FirstOrDefault(piece => piece.RequestId == packet.Payload.PieceRequestId);
+            QuestRewardRaisePlacedPiece placedPiece = ResolveQuestRewardRaisePlacedPiece(activeRaise, packet, createIfMissing: !packet.Success);
             if (placedPiece == null)
             {
                 return;
@@ -694,6 +692,95 @@ namespace HaCreator.MapSimulator
             }
 
             placedPiece.LifecycleState = QuestRewardRaisePieceLifecycleState.Active;
+        }
+
+        private QuestRewardRaisePlacedPiece ResolveQuestRewardRaisePlacedPiece(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaiseInboundPacket packet,
+            bool createIfMissing)
+        {
+            if (activeRaise?.PlacedPieces == null || packet?.Payload == null)
+            {
+                return null;
+            }
+
+            QuestRewardRaisePacketPayload payload = packet.Payload;
+            QuestRewardRaisePlacedPiece placedPiece = activeRaise.PlacedPieces.FirstOrDefault(piece => piece.RequestId == payload.PieceRequestId);
+            if (placedPiece != null)
+            {
+                return placedPiece;
+            }
+
+            placedPiece = TryMatchQuestRewardRaisePlacedPieceByInventorySlot(activeRaise, payload);
+            if (placedPiece != null)
+            {
+                return placedPiece;
+            }
+
+            placedPiece = TryMatchQuestRewardRaisePlacedPieceByItem(activeRaise, payload);
+            if (placedPiece != null || !createIfMissing)
+            {
+                return placedPiece;
+            }
+
+            if (payload.ItemId <= 0)
+            {
+                return null;
+            }
+
+            placedPiece = new QuestRewardRaisePlacedPiece
+            {
+                RequestId = Math.Max(0, payload.PieceRequestId),
+                InventoryType = payload.InventoryType,
+                SlotIndex = Math.Max(-1, payload.SlotIndex),
+                ItemId = Math.Max(0, payload.ItemId),
+                Quantity = Math.Max(1, payload.Quantity),
+                Label = ResolveQuestRewardRaiseItemName(payload.ItemId),
+                PacketOpcode = packet.Kind switch
+                {
+                    QuestRewardRaiseInboundPacketKind.PutItemAddResult => QuestRewardRaiseOutboundRequest.PutItemAddOpcode,
+                    QuestRewardRaiseInboundPacketKind.PutItemReleaseResult => QuestRewardRaiseOutboundRequest.PutItemReleaseOpcode,
+                    _ => -1
+                },
+                LifecycleState = packet.Kind == QuestRewardRaiseInboundPacketKind.PutItemReleaseResult
+                    ? QuestRewardRaisePieceLifecycleState.PendingReleaseAck
+                    : QuestRewardRaisePieceLifecycleState.PendingAddAck
+            };
+            activeRaise.PlacedPieces.Add(placedPiece);
+            return placedPiece;
+        }
+
+        private static QuestRewardRaisePlacedPiece TryMatchQuestRewardRaisePlacedPieceByInventorySlot(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaisePacketPayload payload)
+        {
+            if (activeRaise?.PlacedPieces == null
+                || payload == null
+                || payload.InventoryType == InventoryType.NONE
+                || payload.SlotIndex < 0)
+            {
+                return null;
+            }
+
+            return activeRaise.PlacedPieces.FirstOrDefault(piece =>
+                piece.InventoryType == payload.InventoryType
+                && piece.SlotIndex == payload.SlotIndex
+                && (payload.ItemId <= 0 || piece.ItemId == payload.ItemId));
+        }
+
+        private static QuestRewardRaisePlacedPiece TryMatchQuestRewardRaisePlacedPieceByItem(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaisePacketPayload payload)
+        {
+            if (activeRaise?.PlacedPieces == null || payload == null || payload.ItemId <= 0)
+            {
+                return null;
+            }
+
+            QuestRewardRaisePlacedPiece[] matches = activeRaise.PlacedPieces
+                .Where(piece => piece.ItemId == payload.ItemId)
+                .ToArray();
+            return matches.Length == 1 ? matches[0] : null;
         }
 
         private static void ApplyPacketOwnedQuestRewardRaisePieceInboundState(

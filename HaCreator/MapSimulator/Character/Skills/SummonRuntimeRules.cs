@@ -583,6 +583,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static string ResolveSupportOwnedBranch(SkillData skill, bool preferHealFirst)
         {
+            if (preferHealFirst && IsSitdownHealingSupportSummon(skill))
+            {
+                return ResolveNamedSummonBranch(skill, "heal", "support", "skill1", "skill2", "stand");
+            }
+
             return preferHealFirst
                 ? ResolveNamedSummonBranch(skill, "skill1", "heal", "support", "skill2", "stand")
                 : ResolveNamedSummonBranch(skill, "skill2", "support", "heal", "skill1", "stand");

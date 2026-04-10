@@ -28,20 +28,7 @@ namespace HaCreator.MapSimulator
         private const byte PacketOwnedFuncKeyMacroType = 8;
         private const int PacketOwnedPetConsumeMpAttemptThrottleMs = 200;
         private static readonly int[] PacketOwnedFuncKeyLegacyLookupScanCodes = { 112, 115, 121, 123, 125 };
-        private static readonly InputAction[] PacketOwnedProtectedBindings =
-        {
-            InputAction.MoveLeft,
-            InputAction.MoveRight,
-            InputAction.MoveUp,
-            InputAction.MoveDown,
-            InputAction.Jump,
-            InputAction.Attack,
-            InputAction.Pickup,
-            InputAction.Interact,
-            InputAction.ToggleChat,
-            InputAction.ToggleQuickSlot,
-            InputAction.Escape
-        };
+        private static readonly InputAction[] PacketOwnedProtectedBindings = BuildPacketOwnedProtectedBindings();
         private static readonly PacketOwnedKeyActionSlot[] PacketOwnedBindableHotkeySlots = BuildPacketOwnedBindableHotkeySlots();
         private static readonly IReadOnlyDictionary<Keys, int> PacketOwnedPreferredBindableHotkeySlotIndicesByKey = BuildPacketOwnedPreferredBindableHotkeySlotIndicesByKey();
 
@@ -161,6 +148,29 @@ namespace HaCreator.MapSimulator
             int[] assignments = new int[PacketOwnedBindableHotkeySlots.Length];
             Array.Fill(assignments, -1);
             return assignments;
+        }
+
+        private static InputAction[] BuildPacketOwnedProtectedBindings()
+        {
+            var actions = new List<InputAction>
+            {
+                InputAction.MoveLeft,
+                InputAction.MoveRight,
+                InputAction.MoveUp,
+                InputAction.MoveDown,
+                InputAction.Escape
+            };
+
+            for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
+            {
+                InputAction action = PacketOwnedKnownFunctionBindings[i].Action;
+                if (!actions.Contains(action))
+                {
+                    actions.Add(action);
+                }
+            }
+
+            return actions.ToArray();
         }
 
         private void ApplyPersistedPacketOwnedFuncKeyConfig()

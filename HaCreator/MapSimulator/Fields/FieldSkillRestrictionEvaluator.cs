@@ -484,7 +484,10 @@ namespace HaCreator.MapSimulator.Fields
 
             if (jobId >= 430 && jobId <= 434)
             {
-                return Math.Min(4, (jobId - 430) + 2);
+                // Dual Blade roots advance through 430, 431, 432, 433, 434.
+                // The client-facing noSkill/class surface still uses the small
+                // advancement tiers 1-4 rather than those full irregular job ids.
+                return Math.Min(4, (jobId - 430) + 1);
             }
 
             if (jobId >= 2200 && jobId <= 2218)

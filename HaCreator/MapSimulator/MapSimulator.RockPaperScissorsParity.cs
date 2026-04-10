@@ -384,13 +384,24 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                bool preferOfficialSessionBridge = ShouldPreferRockPaperScissorsOfficialSessionBridge(
+                    _rockPaperScissorsOfficialSessionBridgeEnabled,
+                    _rockPaperScissorsOfficialSessionBridge.HasConnectedSession,
+                    _rockPaperScissorsOfficialSessionBridge.HasAttachedClient);
+                if (preferOfficialSessionBridge
+                    && _rockPaperScissorsOfficialSessionBridge.TrySendOrQueueClientPacket(packet, out _, out _))
+                {
+                    continue;
+                }
+
                 if (_rockPaperScissorsClientPacketOutbox.TrySendClientPacket(packet, out _))
                 {
                     continue;
                 }
 
                 string outboxStatus = "Rock-Paper-Scissors client outbox immediate delivery unavailable.";
-                if (_rockPaperScissorsOfficialSessionBridgeEnabled
+                if (!preferOfficialSessionBridge
+                    && _rockPaperScissorsOfficialSessionBridgeEnabled
                     && _rockPaperScissorsOfficialSessionBridge.TrySendOrQueueClientPacket(packet, out _, out _))
                 {
                     continue;
@@ -550,6 +561,14 @@ namespace HaCreator.MapSimulator
                 default:
                     return false;
             }
+        }
+
+        internal static bool ShouldPreferRockPaperScissorsOfficialSessionBridge(
+            bool bridgeEnabled,
+            bool hasConnectedSession,
+            bool hasAttachedClient)
+        {
+            return bridgeEnabled && (hasConnectedSession || hasAttachedClient);
         }
     }
 }

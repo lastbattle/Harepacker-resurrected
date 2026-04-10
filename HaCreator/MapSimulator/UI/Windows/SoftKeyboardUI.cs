@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
         int SoftKeyboardTextLength { get; }
         int SoftKeyboardMaxLength { get; }
         bool CanSubmitSoftKeyboard { get; }
+        string GetSoftKeyboardText() => string.Empty;
         bool TryInsertSoftKeyboardCharacter(char character, out string errorMessage);
         bool TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage);
         bool TryBackspaceSoftKeyboard(out string errorMessage);
@@ -153,6 +154,7 @@ namespace HaCreator.MapSimulator.UI
         private char _switchingCharacter = '\0';
         private SoftKeyboardTabMode _switchingTabMode = SoftKeyboardTabMode.Numeric;
         private int _switchingTextLength = -1;
+        private string _switchingTextSnapshot = string.Empty;
         private int _switchingStartedTick;
         private string _statusMessage = string.Empty;
 
@@ -295,6 +297,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (_host.SoftKeyboardTextLength != _switchingTextLength)
+            {
+                ClearSwitchingCharacter();
+                return;
+            }
+
+            string currentText = _host.GetSoftKeyboardText() ?? string.Empty;
+            if (_switchingTextLength >= 0
+                && (currentText.Length != _switchingTextLength
+                    || !string.Equals(currentText, _switchingTextSnapshot, StringComparison.Ordinal)))
             {
                 ClearSwitchingCharacter();
                 return;
@@ -1359,6 +1370,7 @@ namespace HaCreator.MapSimulator.UI
             _switchingCharacter = '\0';
             _switchingTabMode = SoftKeyboardTabMode.Numeric;
             _switchingTextLength = -1;
+            _switchingTextSnapshot = string.Empty;
             _switchingStartedTick = 0;
             _host?.SetSoftKeyboardCompositionText(string.Empty);
         }
@@ -1370,6 +1382,7 @@ namespace HaCreator.MapSimulator.UI
             _switchingCharacterOffset = offset;
             _switchingTabMode = _tabMode;
             _switchingTextLength = _host?.SoftKeyboardTextLength ?? -1;
+            _switchingTextSnapshot = _host?.GetSoftKeyboardText() ?? string.Empty;
             _switchingStartedTick = Environment.TickCount;
             _host?.SetSoftKeyboardCompositionText(character.ToString());
         }

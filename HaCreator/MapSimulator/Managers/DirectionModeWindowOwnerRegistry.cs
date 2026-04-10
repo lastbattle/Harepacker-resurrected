@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.QuestRewardRaise,
             MapSimulatorWindowNames.PacketOwnedRewardResultNotice,
             MapSimulatorWindowNames.RandomMesoBag,
+            MapSimulatorWindowNames.RandomMorph,
             MapSimulatorWindowNames.KeyConfig,
             MapSimulatorWindowNames.OptionMenu,
             MapSimulatorWindowNames.Ranking,

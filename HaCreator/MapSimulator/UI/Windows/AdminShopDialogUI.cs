@@ -64,6 +64,10 @@ namespace HaCreator.MapSimulator.UI
             public string PriceLabel { get; init; } = string.Empty;
             public string StateLabel { get; init; } = string.Empty;
             public bool IsSelected { get; init; }
+            public int CommoditySerialNumber { get; init; }
+            public int RewardItemId { get; init; }
+            public int RewardQuantity { get; init; } = 1;
+            public bool CommodityOnSale { get; init; }
         }
 
         public sealed class ListOwnerSnapshot
@@ -688,6 +692,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            bool preservePacketOwnedUserSelection = TryCapturePacketOwnedSetUserItemsSelection(
+                out InventoryType preservedUserSelectionInventoryType,
+                out int preservedUserSelectionItemId,
+                out int preservedUserSelectionSlotPosition,
+                out int preservedUserSelectionScrollOffset);
             AdminShopPacketOwnedOpenViewState reopenViewState = AdminShopPacketOwnedOpenViewParity.CaptureForSetAdminShopDlg(
                 _packetOwnedAdminShopSession.IsActive,
                 (int)_activePane,
@@ -704,6 +713,14 @@ namespace HaCreator.MapSimulator.UI
             if (reopenViewState.PreserveView)
             {
                 RestorePacketOwnedOpenViewState(reopenViewState);
+                if (preservePacketOwnedUserSelection)
+                {
+                    TryApplyPacketOwnedSetUserItemsOpenParity(
+                        preservedUserSelectionInventoryType,
+                        preservedUserSelectionItemId,
+                        preservedUserSelectionSlotPosition,
+                        preservedUserSelectionScrollOffset);
+                }
             }
             else
             {
@@ -977,7 +994,11 @@ namespace HaCreator.MapSimulator.UI
                     Seller = entry.Seller ?? string.Empty,
                     PriceLabel = entry.PriceLabel ?? string.Empty,
                     StateLabel = entry.StateLabel ?? string.Empty,
-                    IsSelected = entryIndex == selectedIndex
+                    IsSelected = entryIndex == selectedIndex,
+                    CommoditySerialNumber = Math.Max(0, entry.CommoditySerialNumber),
+                    RewardItemId = Math.Max(0, entry.RewardItemId),
+                    RewardQuantity = Math.Max(1, entry.RewardQuantity),
+                    CommodityOnSale = entry.CommodityOnSale
                 });
             }
 
@@ -1166,6 +1187,29 @@ namespace HaCreator.MapSimulator.UI
 
             SelectAbsoluteIndex(toEnd ? paneState.Entries.Count - 1 : 0);
             return _footerMessage;
+        }
+
+        public string ScrollListOwnerToOffset(int scrollOffset, int focusRowIndex)
+        {
+            AdminShopPaneState paneState = _paneStates[_activePane];
+            if (paneState.Entries.Count == 0)
+            {
+                _footerMessage = "CCSWnd_List has no entries to scroll on the active pane.";
+                UpdateActionButtonStates();
+                return _footerMessage;
+            }
+
+            int maxScroll = Math.Max(0, paneState.Entries.Count - MaxVisibleRows);
+            paneState.ScrollOffset = Math.Clamp(scrollOffset, 0, maxScroll);
+            int visibleCount = Math.Min(MaxVisibleRows, Math.Max(0, paneState.Entries.Count - paneState.ScrollOffset));
+            int clampedFocusRow = Math.Clamp(focusRowIndex, 0, Math.Max(0, visibleCount - 1));
+            paneState.SelectedIndex = Math.Clamp(paneState.ScrollOffset + clampedFocusRow, 0, paneState.Entries.Count - 1);
+            _pendingModalEntry = null;
+            ClampPaneState(paneState);
+            PersistBrowseSurfaceState(_activePane);
+            _footerMessage = BuildSelectionMessage(paneState.Entries[paneState.SelectedIndex], _activePane);
+            UpdateActionButtonStates();
+            return $"CCSWnd_List dragged the dedicated selector to rows {paneState.ScrollOffset + 1}-{Math.Min(paneState.ScrollOffset + MaxVisibleRows, paneState.Entries.Count)} on the {_activePane} pane. {_footerMessage}";
         }
 
         public string ToggleListOwnerPane()
@@ -3345,6 +3389,75 @@ namespace HaCreator.MapSimulator.UI
             UpdateRowButtons();
         }
 
+        private bool TryCapturePacketOwnedSetUserItemsSelection(
+            out InventoryType inventoryType,
+            out int itemId,
+            out int slotPosition,
+            out int scrollOffset)
+        {
+            inventoryType = InventoryType.NONE;
+            itemId = 0;
+            slotPosition = 0;
+            scrollOffset = 0;
+            if (!_packetOwnedAdminShopSession.IsActive || _activePane != AdminShopPane.User)
+            {
+                return false;
+            }
+
+            AdminShopEntry entry = GetSelectedEntry();
+            if (entry == null
+                || !entry.IsPacketOwnedSnapshotRow
+                || !RequiresInventorySource(entry)
+                || entry.SourceInventoryType == InventoryType.NONE
+                || entry.SourceItemId <= 0
+                || entry.InventorySlotIndex < 0)
+            {
+                return false;
+            }
+
+            inventoryType = entry.SourceInventoryType;
+            itemId = entry.SourceItemId;
+            slotPosition = entry.InventorySlotIndex + 1;
+            scrollOffset = Math.Max(0, _paneStates[AdminShopPane.User].ScrollOffset);
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedSetUserItemsOpenParity(
+            InventoryType inventoryType,
+            int itemId,
+            int slotPosition,
+            int scrollOffset)
+        {
+            if (inventoryType == InventoryType.NONE || itemId <= 0 || slotPosition <= 0)
+            {
+                return false;
+            }
+
+            _activePane = AdminShopPane.User;
+            _activeCategory = ResolveCategoryForInventoryType(inventoryType);
+            ApplyFilters(preserveActivePane: true);
+
+            AdminShopPaneState paneState = _paneStates[AdminShopPane.User];
+            AdminShopUserSellMutationResolution resolution = AdminShopPacketOwnedSetUserItemsParity.Resolve(
+                BuildUserSellMutationRows(paneState.Entries, inventoryType),
+                inventoryType,
+                itemId,
+                slotPosition,
+                scrollOffset,
+                MaxVisibleRows);
+            if (resolution.SelectedIndex < 0)
+            {
+                return false;
+            }
+
+            paneState.SelectedIndex = resolution.SelectedIndex;
+            paneState.ScrollOffset = resolution.ScrollOffset;
+            ClampPaneState(paneState);
+            PersistBrowseSurfaceState(AdminShopPane.User);
+            UpdateRowButtons();
+            return true;
+        }
+
         private void AdjustModalQuantity(int delta)
         {
             if (_modalMode != AdminShopModalMode.RequestQuantity)
@@ -5049,13 +5162,20 @@ namespace HaCreator.MapSimulator.UI
 
         private List<AdminShopUserSellMutationRow> BuildUserSellMutationRows(InventoryType inventoryType)
         {
+            return BuildUserSellMutationRows(_paneStates[AdminShopPane.User].SourceEntries, inventoryType);
+        }
+
+        private static List<AdminShopUserSellMutationRow> BuildUserSellMutationRows(
+            IEnumerable<AdminShopEntry> entries,
+            InventoryType inventoryType)
+        {
             List<AdminShopUserSellMutationRow> rows = new();
-            if (inventoryType == InventoryType.NONE)
+            if (inventoryType == InventoryType.NONE || entries == null)
             {
                 return rows;
             }
 
-            foreach (AdminShopEntry entry in _paneStates[AdminShopPane.User].SourceEntries)
+            foreach (AdminShopEntry entry in entries)
             {
                 if (entry == null
                     || !entry.IsPacketOwnedSnapshotRow

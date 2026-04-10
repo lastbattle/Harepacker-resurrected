@@ -925,9 +925,54 @@ namespace HaCreator.MapSimulator.Effects
                     placement.Top,
                     insertDescriptors,
                     recoveredLayerSettings,
-                    recoveredRegistrationTrace),
+                    recoveredRegistrationTrace,
+                    BuildRecoveredOwnerTrace(visual)),
                 recoveredLayerSettings,
                 recoveredRegistrationTrace);
+        }
+
+        internal static CanvasLayerRecoveredOwnerTrace? BuildRecoveredOwnerTrace(PreparedDamageNumberVisual visual)
+        {
+            if (visual == null)
+            {
+                return null;
+            }
+
+            PreparedDamageNumberCompositionTrace compositionTrace = visual.CompositionTrace;
+            PreparedDamageNumberCompositionInsertCommand[] insertCommands = compositionTrace.InsertCanvasCommands
+                ?? Array.Empty<PreparedDamageNumberCompositionInsertCommand>();
+            CanvasLayerRecoveredPreparedSourceTrace[] preparedSources = new CanvasLayerRecoveredPreparedSourceTrace[insertCommands.Length];
+            for (int i = 0; i < insertCommands.Length; i++)
+            {
+                PreparedDamageNumberCompositionInsertCommand command = insertCommands[i];
+                preparedSources[i] = new CanvasLayerRecoveredPreparedSourceTrace(
+                    command.SourceSetName,
+                    command.SpriteName,
+                    command.SourceCanvasPath,
+                    command.UseLargeDigitSet,
+                    command.SourceOrigin,
+                    command.SourceWidth,
+                    command.SourceHeight,
+                    command.CanvasOffset);
+            }
+
+            PreparedSpriteDrawInfo? overlaySprite = compositionTrace.CriticalBannerLayerSprite;
+            Point overlayOffset = overlaySprite.HasValue
+                ? new Point(overlaySprite.Value.DrawOffsetX, overlaySprite.Value.DrawOffsetY)
+                : Point.Zero;
+            string overlaySpriteName = overlaySprite.HasValue
+                ? overlaySprite.Value.SpriteName
+                : null;
+
+            return new CanvasLayerRecoveredOwnerTrace(
+                visual.DamageStringPoolId,
+                visual.DamageString,
+                compositionTrace.CanvasSettings,
+                preparedSources,
+                compositionTrace.KeepsCriticalBannerOnSeparateLayer,
+                compositionTrace.CriticalBannerLayerCanvasPath,
+                overlaySpriteName,
+                overlayOffset);
         }
 
         internal static CanvasLayerRecoveredLayerSettings ResolveRecoveredLayerSettings()

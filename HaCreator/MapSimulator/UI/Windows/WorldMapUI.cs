@@ -431,6 +431,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => _searchQuery?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => MaxSearchQueryLength;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _searchMode && GetFilteredSearchResults().Count > 0;
+        string ISoftKeyboardHost.GetSoftKeyboardText() => _searchQuery ?? string.Empty;
 
         public event Action<MapEntry> MapRequested;
 
@@ -2762,6 +2763,10 @@ namespace HaCreator.MapSimulator.UI
                 clauseAnchorWidth,
                 clauseWidth);
             WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+            if (WindowsImePresentationBridge.TryRefreshCandidateWindowForm(windowHandle, _candidateListState, out ImeCandidateListState refreshedCandidateState))
+            {
+                _candidateListState = refreshedCandidateState;
+            }
         }
 
         public override void RefreshImePresentationPlacement()

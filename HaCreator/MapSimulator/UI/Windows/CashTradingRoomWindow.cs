@@ -143,6 +143,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => _chatEditControl.Text?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => ChatMaxLength;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _chatEditControl.HasFocus && !string.IsNullOrWhiteSpace(_chatEditControl.Text);
+        string ISoftKeyboardHost.GetSoftKeyboardText() => _chatEditControl.Text ?? string.Empty;
 
         public override void Show()
         {

@@ -201,6 +201,7 @@ namespace HaCreator.MapSimulator
             if (IsLoginRuntimeSceneActive)
 
             {
+                EnsureRockPaperScissorsOfficialSessionBridgeState(shouldRun: false);
                 EnsureMapTransferOfficialSessionBridgeState(shouldRun: false);
                 EnsureComboCounterPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
@@ -254,7 +255,10 @@ namespace HaCreator.MapSimulator
 
             DrainPartyRaidPacketInbox(currTickCount);
             DrainTournamentPacketInbox(currTickCount);
+            EnsureRockPaperScissorsOfficialSessionBridgeState(shouldRun: true);
+            RefreshRockPaperScissorsOfficialSessionBridgeDiscovery(currTickCount);
             DrainRockPaperScissorsPacketInbox(currTickCount);
+            DrainRockPaperScissorsOfficialSessionBridge(currTickCount);
             DrainRockPaperScissorsPendingClientPackets();
 
             DrainCookieHousePointInbox();
@@ -460,6 +464,7 @@ namespace HaCreator.MapSimulator
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)
             {
+                RefreshCollisionScriptExclusiveRequestState(currTickCount);
                 HandlePortalUpInteract(currTickCount);
             }
 

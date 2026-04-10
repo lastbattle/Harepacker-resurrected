@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -617,9 +618,10 @@ namespace HaCreator.MapSimulator.UI
                 return new IntPtr(originalResult.ToInt32() | GetClientOwnedAntiMacroDialogCode());
             }
 
-            if (msg == WmKeyDown && wParam.ToInt32() == VkReturn)
+            bool controlHeld = IsControlKeyDown();
+            bool shiftHeld = IsShiftKeyDown();
+            if (msg == WmKeyDown && HandleClientOwnedKeyDown(wParam.ToInt32(), controlHeld, shiftHeld, wParam, lParam))
             {
-                SubmitRequested?.Invoke();
                 return IntPtr.Zero;
             }
 
@@ -634,8 +636,6 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
-            bool controlHeld = IsControlKeyDown();
-            bool shiftHeld = IsShiftKeyDown();
             if (ShouldSuppressClientUnsupportedEditKey(msg, wParam.ToInt32(), controlHeld, shiftHeld))
             {
                 return IntPtr.Zero;
@@ -682,6 +682,117 @@ namespace HaCreator.MapSimulator.UI
             return result;
         }
 
+        private bool HandleClientOwnedKeyDown(int virtualKey, bool controlHeld, bool shiftHeld, IntPtr wParam, IntPtr lParam)
+        {
+            switch (virtualKey)
+            {
+                case VkReturn:
+                    SubmitRequested?.Invoke();
+                    return true;
+                case VkBack:
+                    if (controlHeld)
+                    {
+                        return false;
+                    }
+
+                    TryBackspace();
+                    return true;
+                case VkDelete:
+                    if (controlHeld)
+                    {
+                        return false;
+                    }
+
+                    if (shiftHeld)
+                    {
+                        CutSelectionToClipboard();
+                    }
+                    else
+                    {
+                        TryDeleteForward();
+                    }
+
+                    return true;
+                case VkInsert:
+                    if (shiftHeld && !controlHeld)
+                    {
+                        PasteClipboardText();
+                        return true;
+                    }
+
+                    return false;
+                case VkC:
+                    if (!controlHeld)
+                    {
+                        return false;
+                    }
+
+                    CopySelectionToClipboard();
+                    return true;
+                case VkV:
+                    if (!controlHeld)
+                    {
+                        return false;
+                    }
+
+                    PasteClipboardText();
+                    return true;
+                case VkX:
+                    if (!controlHeld)
+                    {
+                        return false;
+                    }
+
+                    CutSelectionToClipboard();
+                    return true;
+                case VkLeft:
+                    if (controlHeld || shiftHeld)
+                    {
+                        return false;
+                    }
+
+                    MoveCaretHorizontally(moveRight: false);
+                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    return true;
+                case VkRight:
+                    if (controlHeld || shiftHeld)
+                    {
+                        return false;
+                    }
+
+                    MoveCaretHorizontally(moveRight: true);
+                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    return true;
+                case VkHome:
+                    if (controlHeld || shiftHeld)
+                    {
+                        return false;
+                    }
+
+                    MoveCaretToBoundary(moveToEnd: false);
+                    return true;
+                case VkEnd:
+                    if (controlHeld || shiftHeld)
+                    {
+                        return false;
+                    }
+
+                    MoveCaretToBoundary(moveToEnd: true);
+                    return true;
+                case VkUp:
+                case VkDown:
+                    if (controlHeld || shiftHeld)
+                    {
+                        return false;
+                    }
+
+                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private void ForwardKeyToParent(uint msg, IntPtr wParam, IntPtr lParam)
         {
             if (_parentHandle != IntPtr.Zero && IsWindow(_parentHandle))
@@ -700,11 +811,6 @@ namespace HaCreator.MapSimulator.UI
             if (msg != WmKeyDown)
             {
                 return false;
-            }
-
-            if (virtualKey is VkUp or VkDown)
-            {
-                return true;
             }
 
             if (controlHeld)
@@ -787,6 +893,209 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return Math.Clamp(caretIndex, 0, GetWindowTextLength(_editHandle));
+        }
+
+        private void MoveCaretHorizontally(bool moveRight)
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            string currentText = GetControlText();
+            GetSelection(out int selectionStart, out int selectionEnd);
+            int resolvedCaret = ResolveClientOwnedNavigationCaret(currentText, selectionStart, selectionEnd, moveRight);
+            SendMessage(_editHandle, EmSetSel, new IntPtr(resolvedCaret), new IntPtr(resolvedCaret));
+            UpdateImePlacement();
+        }
+
+        private void MoveCaretToBoundary(bool moveToEnd)
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            int target = moveToEnd ? GetWindowTextLength(_editHandle) : 0;
+            SendMessage(_editHandle, EmSetSel, new IntPtr(target), new IntPtr(target));
+            UpdateImePlacement();
+        }
+
+        private bool TryDeleteForward()
+        {
+            if (!IsAttached)
+            {
+                return false;
+            }
+
+            GetSelection(out int selectionStart, out int selectionEnd);
+            if (selectionStart == selectionEnd)
+            {
+                if (selectionStart >= GetWindowTextLength(_editHandle))
+                {
+                    return false;
+                }
+
+                selectionEnd = selectionStart + 1;
+            }
+
+            SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
+            ReplaceSelection(string.Empty);
+            UpdateImePlacement();
+            return true;
+        }
+
+        private void CopySelectionToClipboard()
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            GetSelection(out int selectionStart, out int selectionEnd);
+            if (selectionEnd <= selectionStart)
+            {
+                return;
+            }
+
+            string currentText = GetControlText();
+            if (selectionStart < 0 || selectionEnd > currentText.Length)
+            {
+                return;
+            }
+
+            try
+            {
+                System.Windows.Forms.Clipboard.SetText(currentText.Substring(selectionStart, selectionEnd - selectionStart));
+            }
+            catch
+            {
+            }
+        }
+
+        private void CutSelectionToClipboard()
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            GetSelection(out int selectionStart, out int selectionEnd);
+            if (selectionEnd <= selectionStart)
+            {
+                return;
+            }
+
+            CopySelectionToClipboard();
+            SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
+            ReplaceSelection(string.Empty);
+            UpdateImePlacement();
+        }
+
+        private void PasteClipboardText()
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            string clipboardText;
+            try
+            {
+                if (!System.Windows.Forms.Clipboard.ContainsText())
+                {
+                    return;
+                }
+
+                clipboardText = System.Windows.Forms.Clipboard.GetText();
+            }
+            catch
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(clipboardText))
+            {
+                return;
+            }
+
+            string sanitized = RemoveControlCharacters(clipboardText);
+            if (sanitized.Length == 0)
+            {
+                return;
+            }
+
+            GetSelection(out int selectionStart, out int selectionEnd);
+            int selectedLength = Math.Max(0, selectionEnd - selectionStart);
+            int currentLength = GetWindowTextLength(_editHandle);
+            int availableLength = Math.Max(0, _maxLength - (currentLength - selectedLength));
+            if (availableLength <= 0)
+            {
+                return;
+            }
+
+            string limitedText = TrimToMaxTextElements(sanitized, availableLength);
+            if (limitedText.Length == 0)
+            {
+                return;
+            }
+
+            SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
+            ReplaceSelection(limitedText);
+            UpdateImePlacement();
+        }
+
+        internal static int ResolveClientOwnedNavigationCaret(string text, int selectionStart, int selectionEnd, bool moveRight)
+        {
+            string resolvedText = text ?? string.Empty;
+            int resolvedSelectionStart = Math.Clamp(selectionStart, 0, resolvedText.Length);
+            int resolvedSelectionEnd = Math.Clamp(selectionEnd, 0, resolvedText.Length);
+            int currentCaret = Math.Max(resolvedSelectionStart, resolvedSelectionEnd);
+            int anchor = Math.Min(resolvedSelectionStart, resolvedSelectionEnd);
+            return AntiMacroEditControl.ResolveArrowCaretIndex(
+                resolvedText,
+                currentCaret,
+                anchor,
+                moveRight,
+                shiftHeld: false);
+        }
+
+        internal static string RemoveControlCharacters(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(text.Length);
+            foreach (char character in text)
+            {
+                if (!char.IsControl(character))
+                {
+                    builder.Append(character);
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        internal static string TrimToMaxTextElements(string text, int maxTextElements)
+        {
+            if (string.IsNullOrEmpty(text) || maxTextElements <= 0)
+            {
+                return string.Empty;
+            }
+
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(text);
+            StringBuilder builder = new(text.Length);
+            int count = 0;
+            while (count < maxTextElements && enumerator.MoveNext())
+            {
+                builder.Append(enumerator.GetTextElement());
+                count++;
+            }
+
+            return builder.ToString();
         }
 
         [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

@@ -8,7 +8,11 @@ namespace HaCreator.MapSimulator.Character
 {
     internal static class ShadowPartnerClientActionResolver
     {
-        internal readonly record struct ShadowPartnerActionPiece(int SlotIndex, string PieceActionName, int? SourceFrameIndex);
+        internal readonly record struct ShadowPartnerActionPiece(
+            int SlotIndex,
+            string PieceActionName,
+            int? SourceFrameIndex,
+            int? DelayOverrideMs = null);
 
         private static readonly string[] SwingHeuristicFragments =
         {
@@ -215,6 +219,43 @@ namespace HaCreator.MapSimulator.Character
                 // `Skill/421.img/skill/4211006/action/0 = prone2`; the loader
                 // disassembly shows hidden piece entries carry source frame slots.
                 ["prone2"] = CreateIndexedPieces(("prone", 1)),
+                // `Character/00002000.img` publishes full helper-piece rows for these
+                // indexed alert aliases, including per-piece frame delays.
+                ["alert2"] = CreateIndexedPieces(
+                    ("alert", 0, 200),
+                    ("alert", 1, 200),
+                    ("alert", 2, 200)),
+                ["alert3"] = CreateIndexedPieces(
+                    ("alert", 0, -500),
+                    ("alert", 1, -500),
+                    ("alert", 2, 500)),
+                ["alert4"] = CreateIndexedPieces(
+                    ("alert", 0, -300),
+                    ("alert", 1, -300),
+                    ("alert", 2, 300)),
+                ["alert5"] = CreateIndexedPieces(
+                    ("alert", 0, -300),
+                    ("alert", 1, 300),
+                    ("alert", 2, 300)),
+                // The mounted character action table also keeps `ladder2` and `rope2`
+                // as two-step helper rows instead of a single frame remap.
+                ["ladder2"] = CreateIndexedPieces(
+                    ("ladder", 0, 300),
+                    ("ladder", 1, 300)),
+                ["rope2"] = CreateIndexedPieces(
+                    ("rope", 0, 300),
+                    ("rope", 1, 300)),
+                // `Skill/422.img/skill/4221006/action/0 = smokeshell`, and
+                // `Character/00002000.img/smokeshell/*` shows the exact helper-piece
+                // transition from `swingOF` into `alert` with authored delays.
+                ["smokeshell"] = CreateIndexedPieces(
+                    ("swingOF", 0, -120),
+                    ("swingOF", 1, -120),
+                    ("swingOF", 2, -120),
+                    ("swingOF", 3, -180),
+                    ("alert", 0, -360),
+                    ("alert", 1, 270),
+                    ("alert", 2, 270)),
                 ["stabD1"] = CreateIndexedPieces(
                     ("stabO1", 0),
                     ("stabO1", 1),
@@ -277,19 +318,8 @@ namespace HaCreator.MapSimulator.Character
 
         private static readonly string[] LoaderSynthesizedRemappedActionNames =
         {
-            // Mounted skill WZ still recovers these non-authored helper raw action names
-            // through `action/0`, while `special/*` only publishes the base `alert` branch.
-            "alert2",
-            "alert3",
-            "alert4",
-            "alert5",
-            // The client raw-action table also surfaces back-action aliases that collapse onto
-            // the authored ladder/rope helper branches instead of their own WZ rows.
-            "ladder2",
-            "rope2",
-            // `Skill/422.img/skill/4221006/action/0 = smokeshell`, but Shadow Partner still
-            // resolves it through the authored `alert` helper branch.
-            "smokeshell"
+            // The remaining synthesized rows still collapse directly onto one authored
+            // helper branch without a recovered multi-piece action row of their own.
         };
 
         private static readonly IReadOnlyDictionary<string, string> SupportedRawActionCanonicalNames =
@@ -689,17 +719,29 @@ namespace HaCreator.MapSimulator.Character
         internal static SkillAnimation TryBuildPiecedShadowPartnerActionAnimation(
             IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
             string actionName,
-            IReadOnlySet<string> supportedRawActionNames = null)
+            IReadOnlySet<string> supportedRawActionNames = null,
+            IReadOnlyList<ShadowPartnerActionPiece> piecePlanOverride = null,
+            bool requireSupportedRawActionName = true)
         {
             if (actionAnimations == null
                 || actionAnimations.Count == 0
                 || string.IsNullOrWhiteSpace(actionName)
-                || !IsSupportedRawActionName(actionName, supportedRawActionNames)
-                || !PiecedShadowPartnerActionPlans.TryGetValue(actionName, out ShadowPartnerActionPiece[] piecePlan)
-                || piecePlan == null
-                || piecePlan.Length == 0)
+                || (requireSupportedRawActionName && !IsSupportedRawActionName(actionName, supportedRawActionNames)))
             {
                 return null;
+            }
+
+            IReadOnlyList<ShadowPartnerActionPiece> piecePlan = piecePlanOverride;
+            if (piecePlan == null || piecePlan.Count == 0)
+            {
+                if (!PiecedShadowPartnerActionPlans.TryGetValue(actionName, out ShadowPartnerActionPiece[] builtInPiecePlan)
+                    || builtInPiecePlan == null
+                    || builtInPiecePlan.Length == 0)
+                {
+                    return null;
+                }
+
+                piecePlan = builtInPiecePlan;
             }
 
             var frames = new List<SkillFrame>();
@@ -718,7 +760,7 @@ namespace HaCreator.MapSimulator.Character
                 if (piece.SourceFrameIndex.HasValue)
                 {
                     int frameIndex = Math.Clamp(piece.SourceFrameIndex.Value, 0, pieceAnimation.Frames.Count - 1);
-                    SkillFrame frame = pieceAnimation.Frames[frameIndex];
+                    SkillFrame frame = CloneSkillFrame(pieceAnimation.Frames[frameIndex], piece.DelayOverrideMs);
                     if (frame != null)
                     {
                         frames.Add(frame);
@@ -729,9 +771,10 @@ namespace HaCreator.MapSimulator.Character
 
                 foreach (SkillFrame frame in pieceAnimation.Frames)
                 {
-                    if (frame != null)
+                    SkillFrame clonedFrame = CloneSkillFrame(frame, piece.DelayOverrideMs);
+                    if (clonedFrame != null)
                     {
-                        frames.Add(frame);
+                        frames.Add(clonedFrame);
                     }
                 }
             }
@@ -752,6 +795,28 @@ namespace HaCreator.MapSimulator.Character
             };
             piecedAnimation.CalculateDuration();
             return piecedAnimation;
+        }
+
+        private static SkillFrame CloneSkillFrame(SkillFrame sourceFrame, int? delayOverrideMs = null)
+        {
+            if (sourceFrame == null)
+            {
+                return null;
+            }
+
+            return new SkillFrame
+            {
+                Texture = sourceFrame.Texture,
+                Origin = sourceFrame.Origin,
+                Delay = delayOverrideMs ?? sourceFrame.Delay,
+                Bounds = sourceFrame.Bounds,
+                Flip = sourceFrame.Flip,
+                Z = sourceFrame.Z,
+                AlphaStart = sourceFrame.AlphaStart,
+                AlphaEnd = sourceFrame.AlphaEnd,
+                ZoomStart = sourceFrame.ZoomStart,
+                ZoomEnd = sourceFrame.ZoomEnd
+            };
         }
 
         internal static IReadOnlyList<ShadowPartnerActionPiece> GetPiecedShadowPartnerActionPlan(string actionName)
@@ -1409,6 +1474,27 @@ namespace HaCreator.MapSimulator.Character
                     i,
                     pieceFrames[i].PieceActionName,
                     pieceFrames[i].SourceFrameIndex);
+            }
+
+            return pieces;
+        }
+
+        private static ShadowPartnerActionPiece[] CreateIndexedPieces(
+            params (string PieceActionName, int SourceFrameIndex, int DelayOverrideMs)[] pieceFrames)
+        {
+            if (pieceFrames == null || pieceFrames.Length == 0)
+            {
+                return Array.Empty<ShadowPartnerActionPiece>();
+            }
+
+            var pieces = new ShadowPartnerActionPiece[pieceFrames.Length];
+            for (int i = 0; i < pieceFrames.Length; i++)
+            {
+                pieces[i] = new ShadowPartnerActionPiece(
+                    i,
+                    pieceFrames[i].PieceActionName,
+                    pieceFrames[i].SourceFrameIndex,
+                    pieceFrames[i].DelayOverrideMs);
             }
 
             return pieces;

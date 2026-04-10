@@ -1783,22 +1783,7 @@ namespace HaCreator.MapSimulator.Entities
 
             // Some reactor event nodes encode multiple item/skill selectors under the same branch.
             // Preserve the whole authored set so dispatch can match any of them.
-            IEnumerable<int> namedSelectorValues = new[]
-            {
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["id"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["quest"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["questID"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["questid"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["reqQuest"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["item"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemID"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemid"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skill"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillID"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillid"]))
-            }
-                .Where(static value => value.HasValue)
-                .Select(static value => value.Value);
+            IEnumerable<int> namedSelectorValues = EnumerateNamedSelectorValues(eventNode);
 
             IEnumerable<int> indexedSelectorValues = eventNode.WzProperties
                 .Where(property => int.TryParse(property?.Name, out _))
@@ -1813,10 +1798,9 @@ namespace HaCreator.MapSimulator.Entities
 
         private static IEnumerable<int> ReadIndexedSelectorValues(WzImageProperty property)
         {
-            int? directValue = TryReadOptionalInt(property);
-            if (directValue.HasValue)
+            foreach (int directValue in EnumerateSelectorValues(property))
             {
-                yield return directValue.Value;
+                yield return directValue;
             }
 
             if (property is not WzSubProperty selectorNode)
@@ -1832,27 +1816,94 @@ namespace HaCreator.MapSimulator.Entities
 
         private static IEnumerable<int> ReadNamedSelectorValues(WzSubProperty eventNode)
         {
-            int?[] selectorValues =
+            foreach (int selectorValue in EnumerateNamedSelectorValues(eventNode))
             {
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["id"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["quest"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["questID"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["questid"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["reqQuest"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["item"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemID"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemid"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skill"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillID"])),
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillid"]))
+                yield return selectorValue;
+            }
+        }
+
+        private static IEnumerable<int> EnumerateNamedSelectorValues(WzSubProperty eventNode)
+        {
+            if (eventNode == null)
+            {
+                yield break;
+            }
+
+            string[] selectorNames =
+            {
+                "id",
+                "quest",
+                "questID",
+                "questid",
+                "reqQuest",
+                "item",
+                "itemID",
+                "itemid",
+                "skill",
+                "skillID",
+                "skillid"
             };
 
-            foreach (int? selectorValue in selectorValues)
+            for (int i = 0; i < selectorNames.Length; i++)
             {
-                if (selectorValue.HasValue)
+                foreach (int selectorValue in EnumerateSelectorValues(WzInfoTools.GetRealProperty(eventNode[selectorNames[i]])))
                 {
-                    yield return selectorValue.Value;
+                    yield return selectorValue;
                 }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateSelectorValues(WzImageProperty property)
+        {
+            int? directValue = TryReadOptionalInt(property);
+            if (directValue.HasValue)
+            {
+                yield return directValue.Value;
+                yield break;
+            }
+
+            if (property is not WzStringProperty stringProperty)
+            {
+                yield break;
+            }
+
+            foreach (int parsedValue in ParseDelimitedSelectorValues(stringProperty.Value))
+            {
+                yield return parsedValue;
+            }
+        }
+
+        private static IEnumerable<int> ParseDelimitedSelectorValues(string rawValue)
+        {
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                yield break;
+            }
+
+            int tokenStart = -1;
+            for (int i = 0; i <= rawValue.Length; i++)
+            {
+                char currentChar = i < rawValue.Length ? rawValue[i] : '\0';
+                bool tokenChar = char.IsDigit(currentChar)
+                    || (currentChar == '-' && tokenStart < 0 && i + 1 < rawValue.Length && char.IsDigit(rawValue[i + 1]));
+
+                if (tokenChar)
+                {
+                    tokenStart = tokenStart >= 0 ? tokenStart : i;
+                    continue;
+                }
+
+                if (tokenStart < 0)
+                {
+                    continue;
+                }
+
+                if (int.TryParse(rawValue.Substring(tokenStart, i - tokenStart), out int parsedValue))
+                {
+                    yield return parsedValue;
+                }
+
+                tokenStart = -1;
             }
         }
 

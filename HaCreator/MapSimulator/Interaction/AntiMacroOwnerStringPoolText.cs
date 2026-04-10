@@ -64,17 +64,23 @@ namespace HaCreator.MapSimulator.Interaction
             return GetResolvedOrFallback(AttemptMessageStringPoolId, AttemptMessageFallback, appendFallbackSuffix);
         }
 
-        public static string FormatAttemptMessageFromClientCounter(int answerCount, bool appendFallbackSuffix = false)
+        public static string FormatAttemptMessageFromClientFirstFlag(int firstAttemptFlag, bool appendFallbackSuffix = false)
         {
-            // Client draw path emits `!m_bRetry + 1`. In packet payload terms this maps to
-            // first-try counters (>1) => attempt 1, retry counters (<=1) => attempt 2.
-            int attemptNumber = answerCount > 1 ? 1 : 2;
+            // `CUIAntiMacro::SetValues` stores the launch byte in `m_bFirst`, and
+            // `CUIAntiMacro::Draw` formats StringPool 0x1A15 with `!m_bFirst + 1`.
+            int attemptNumber = firstAttemptFlag != 0 ? 1 : 2;
             return FormatAttemptMessage(attemptNumber, appendFallbackSuffix);
+        }
+
+        public static string FormatAttemptMessageFromClientFirstFlag(int firstAttemptFlag, string format)
+        {
+            int attemptNumber = firstAttemptFlag != 0 ? 1 : 2;
+            return FormatAttemptMessage(format, attemptNumber);
         }
 
         public static string FormatAttemptMessageFromClientCounter(int answerCount, string format)
         {
-            int attemptNumber = answerCount > 1 ? 1 : 2;
+            int attemptNumber = Math.Clamp(answerCount + 1, 1, 2);
             return FormatAttemptMessage(format, attemptNumber);
         }
 

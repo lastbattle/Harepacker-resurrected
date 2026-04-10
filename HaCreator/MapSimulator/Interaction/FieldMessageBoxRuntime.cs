@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<LeavingMessageBoxEntry> _leavingEntries = new();
         private readonly Dictionary<int, MessageBoxVisual> _visualCache = new();
         private readonly Dictionary<int, string> _itemNameCache = new();
+        private readonly Random _random = new();
         private GraphicsDevice _graphicsDevice;
         private Texture2D _pixelTexture;
         private SpriteBatch _snapshotSpriteBatch;
@@ -131,6 +132,7 @@ namespace HaCreator.MapSimulator.Interaction
                 new Point(hostPosition.X + DefaultBoxOffsetX, hostPosition.Y + DefaultBoxOffsetY),
                 ResolveVisual(resolvedItemId),
                 ResolveItemName(resolvedItemId),
+                ComputeInitialBobAngleRadians(),
                 currentTick,
                 source);
 
@@ -270,6 +272,12 @@ namespace HaCreator.MapSimulator.Interaction
                 string characterName = reader.ReadMapleString();
                 short hostX = reader.ReadShort();
                 short hostY = reader.ReadShort();
+
+                if (_entries.ContainsKey(messageBoxId))
+                {
+                    message = $"Ignored duplicate packet-owned message-box enter-field packet for id {messageBoxId}.";
+                    return true;
+                }
 
                 CreateLocalMessageBox(
                     itemId,
@@ -1761,11 +1769,9 @@ namespace HaCreator.MapSimulator.Interaction
                 : new Color(244, 246, 232);
         }
 
-        private static float ComputeInitialBobAngleRadians(int id, Point hostPosition, int currentTick)
+        private float ComputeInitialBobAngleRadians()
         {
-            int hash = HashCode.Combine(id, hostPosition.X, hostPosition.Y, currentTick);
-            int phase = Math.Abs(hash == int.MinValue ? 0 : hash) % ClientBobInitialPhaseModulo;
-            return phase;
+            return _random.Next(ClientBobInitialPhaseModulo);
         }
 
         private static int ComputeClientBobOffset(float angleRadians)
@@ -1892,6 +1898,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Point layerPosition,
                 MessageBoxVisual visual,
                 string itemName,
+                float initialBobAngleRadians,
                 int currentTick,
                 MessageBoxEntrySource source)
             {
@@ -1904,7 +1911,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Visual = visual;
                 ItemName = itemName ?? string.Empty;
                 Source = source;
-                _bobAngleRadians = ComputeInitialBobAngleRadians(id, hostPosition, currentTick);
+                _bobAngleRadians = initialBobAngleRadians;
                 _nextFrameTick = currentTick + (visual?.GetFrameDelay(0) ?? DefaultFrameDelayMs);
             }
 

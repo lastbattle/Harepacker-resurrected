@@ -216,6 +216,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => _inputBuffer.Length;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => GetSoftKeyboardMaxLength();
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => CanSubmitCurrentDraft();
+        string ISoftKeyboardHost.GetSoftKeyboardText() => _inputBuffer.ToString();
 
         public override void Hide()
         {
@@ -2264,6 +2265,10 @@ namespace HaCreator.MapSimulator.UI
                 clauseAnchorWidth,
                 clauseWidth);
             WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+            if (WindowsImePresentationBridge.TryRefreshCandidateWindowForm(windowHandle, _candidateListState, out ImeCandidateListState refreshedCandidateState))
+            {
+                _candidateListState = refreshedCandidateState;
+            }
         }
 
         public override void RefreshImePresentationPlacement()

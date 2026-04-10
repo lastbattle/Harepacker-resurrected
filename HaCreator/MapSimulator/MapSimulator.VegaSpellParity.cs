@@ -71,6 +71,8 @@ namespace HaCreator.MapSimulator
             public byte[] EncodedPayload { get; init; } = Array.Empty<byte>();
             public string RequestDispatchSummary { get; init; } = string.Empty;
             public bool ResultApplied { get; set; }
+            public bool OutcomeResolved { get; set; }
+            public bool? ResolvedSuccess { get; set; }
             public ItemUpgradeUI.ItemUpgradeAttemptResult Result { get; set; }
             public byte PrimaryResultCode { get; init; }
             public byte SecondaryResultCode { get; init; }
@@ -272,36 +274,80 @@ namespace HaCreator.MapSimulator
             itemUpgradeWindow.PrepareEquipmentSelection(_pendingVegaCastState.Request.Slot);
             itemUpgradeWindow.PrepareConsumableSelection(_pendingVegaCastState.Request.ModifierItemId);
 
-            ItemUpgradeUI.ItemUpgradeAttemptResult result = itemUpgradeWindow.TryApplyPreparedUpgradeAtSlots(
+            if (_pendingVegaCastState.OutcomeResolved)
+            {
+                string applyError = null;
+                if (!_pendingVegaCastState.ResolvedSuccess.HasValue ||
+                    !TryApplyPendingVegaPacketOwnedResult(
+                        _pendingVegaCastState.ResolvedSuccess.Value,
+                        out ItemUpgradeUI.ItemUpgradeAttemptResult appliedResult,
+                        out applyError))
+                {
+                    ItemUpgradeUI.ItemUpgradeAttemptResult failureResult = new(
+                        success: null,
+                        string.IsNullOrWhiteSpace(applyError)
+                            ? VegaOwnerStringPoolText.GetUnexpectedResultNotice()
+                            : applyError,
+                        _pendingVegaCastState.Request.ScrollItemId,
+                        _pendingVegaCastState.Request.ModifierItemId);
+                    _pendingVegaCastState = null;
+                    ClearVegaExclusiveRequestState(currTickCount);
+                    ShowUtilityFeedbackMessage(failureResult.StatusMessage);
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI failedWindow)
+                    {
+                        failedWindow.SetOwnerStatusMessage(failureResult.StatusMessage);
+                    }
+
+                    return;
+                }
+
+                appliedResult = RewriteVegaOwnerResultMessage(appliedResult, _pendingVegaCastState.UseWhiteScroll);
+                _pendingVegaCastState.ResultApplied = true;
+                _pendingVegaCastState.Result = appliedResult;
+
+                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI resolvedWindow)
+                {
+                    resolvedWindow.ApplyResolvedSpellResult(appliedResult);
+                }
+
+                return;
+            }
+
+            ItemUpgradeUI.ItemUpgradeAttemptResult result = itemUpgradeWindow.TryResolvePreparedUpgradeOutcomeAtSlots(
                 _pendingVegaCastState.ScrollInventoryType,
                 _pendingVegaCastState.ScrollSlotIndex,
                 _pendingVegaCastState.ModifierInventoryType,
                 _pendingVegaCastState.ModifierSlotIndex);
             if (!result.Success.HasValue)
             {
-                result = new ItemUpgradeUI.ItemUpgradeAttemptResult(
+                ItemUpgradeUI.ItemUpgradeAttemptResult failureResult = new(
                     success: null,
                     VegaOwnerStringPoolText.GetUnexpectedResultNotice(),
                     _pendingVegaCastState.Request.ScrollItemId,
                     _pendingVegaCastState.Request.ModifierItemId);
                 _pendingVegaCastState = null;
                 ClearVegaExclusiveRequestState(currTickCount);
-                ShowUtilityFeedbackMessage(result.StatusMessage);
+                ShowUtilityFeedbackMessage(failureResult.StatusMessage);
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI failedWindow)
                 {
-                    failedWindow.SetOwnerStatusMessage(result.StatusMessage);
+                    failedWindow.SetOwnerStatusMessage(failureResult.StatusMessage);
                 }
+
                 return;
             }
 
             result = RewriteVegaOwnerResultMessage(result, _pendingVegaCastState.UseWhiteScroll);
-
-            _pendingVegaCastState.ResultApplied = true;
+            _pendingVegaCastState.OutcomeResolved = true;
+            _pendingVegaCastState.ResolvedSuccess = result.Success;
             _pendingVegaCastState.Result = result;
+            _pendingVegaCastState.ResultReadyAtTick = currTickCount + ResolveVegaDeferredTerminalApplyDelayMs(
+                uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaWindow
+                    ? vegaWindow.GetResultPreludeDurationMs()
+                    : 0);
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
             {
-                vegaSpellWindow.ApplyResolvedSpellResult(result);
+                vegaSpellWindow.ApplyPacketOwnedResultPrelude(result);
             }
         }
 
@@ -719,6 +765,8 @@ namespace HaCreator.MapSimulator
                 _pendingVegaCastState.PacketOwnedPreludeCode = resultCode;
                 _pendingVegaCastState.PacketOwnedResultObserved = true;
                 _pendingVegaCastState.PacketOwnedPreludeSuccess = success;
+                _pendingVegaCastState.OutcomeResolved = true;
+                _pendingVegaCastState.ResolvedSuccess = success;
                 _pendingVegaCastState.Result = result;
                 _pendingVegaCastState.ResultReadyAtTick = currTickCount + VegaOwnerExternalResultFallbackDelayMs;
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
@@ -1092,6 +1140,11 @@ namespace HaCreator.MapSimulator
             return IsVegaExclusiveRequestBlocked(requestSent, lastRequestTick, currentTick);
         }
 
+        internal static int ResolveVegaDeferredTerminalApplyDelayMsForTests(int resultPreludeDurationMs)
+        {
+            return ResolveVegaDeferredTerminalApplyDelayMs(resultPreludeDurationMs);
+        }
+
         private static bool IsVegaExclusiveRequestBlocked(bool requestSent, int lastRequestTick, int currentTick)
         {
             if (requestSent)
@@ -1101,6 +1154,11 @@ namespace HaCreator.MapSimulator
 
             return lastRequestTick != int.MinValue
                 && unchecked(currentTick - lastRequestTick) < VegaOwnerExclusiveRequestCooldownMs;
+        }
+
+        private static int ResolveVegaDeferredTerminalApplyDelayMs(int resultPreludeDurationMs)
+        {
+            return Math.Max(VegaOwnerResultDelayMs, resultPreludeDurationMs);
         }
 
         private readonly record struct VegaRequestContext(

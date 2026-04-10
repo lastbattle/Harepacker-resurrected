@@ -88,13 +88,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             snapshot = default;
             if (assembler == null
                 || action == null
-                || string.IsNullOrWhiteSpace(actionName)
-                || !assembler.TryGetFrameTimingAtTime(actionName, Math.Max(0, animationTime), out int frameIndex, out int frameElapsedMs))
+                || string.IsNullOrWhiteSpace(actionName))
             {
                 return false;
             }
 
-            return TryResolveFrameSnapshot(action, frameIndex, frameElapsedMs, out snapshot);
+            return TryResolveSnapshotFromAnimationFrames(
+                assembler.GetAnimation(actionName),
+                action,
+                animationTime,
+                out snapshot);
         }
 
         internal static bool TryCaptureFadeSnapshot(
@@ -106,7 +109,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (assembler != null
                 && !string.IsNullOrWhiteSpace(actionName)
-                && assembler.TryGetFrameTimingAtTime(actionName, Math.Max(0, animationTime), out int frameIndex, out int frameElapsedMs))
+                && TryResolveNonLoopingFrameTimingAtTime(
+                    assembler.GetAnimation(actionName),
+                    animationTime,
+                    out int frameIndex,
+                    out int frameElapsedMs))
             {
                 if (TryResolveFrameSnapshot(action, frameIndex, frameElapsedMs, out snapshot))
                 {
@@ -118,14 +125,36 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             snapshot = default;
-            int fallbackFrameIndex = assembler?.GetFrameIndexAtTime(actionName, Math.Max(0, animationTime)) ?? -1;
-            if (fallbackFrameIndex < 0)
+            if (!TryResolveNonLoopingFrameTimingAtTime(
+                    assembler?.GetAnimation(actionName),
+                    animationTime,
+                    out int fallbackFrameIndex,
+                    out _))
             {
                 return false;
             }
 
             snapshot = new Snapshot(fallbackFrameIndex, 0, null);
             return true;
+        }
+
+        internal static bool TryResolveSnapshotFromAnimationFrames(
+            AssembledFrame[] animationFrames,
+            MeleeAfterImageAction action,
+            int animationTime,
+            out Snapshot snapshot)
+        {
+            snapshot = default;
+            if (!TryResolveNonLoopingFrameTimingAtTime(
+                    animationFrames,
+                    animationTime,
+                    out int frameIndex,
+                    out int frameElapsedMs))
+            {
+                return false;
+            }
+
+            return TryResolveFrameSnapshot(action, frameIndex, frameElapsedMs, out snapshot);
         }
 
         internal static bool TryResolveFrameSnapshot(
@@ -260,6 +289,47 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return layers ?? (IReadOnlyList<AfterimageRenderableLayer>)Array.Empty<AfterimageRenderableLayer>();
+        }
+
+        internal static bool TryResolveNonLoopingFrameTimingAtTime(
+            AssembledFrame[] frames,
+            int timeMs,
+            out int frameIndex,
+            out int frameElapsedMs)
+        {
+            frameIndex = -1;
+            frameElapsedMs = 0;
+
+            if (frames == null || frames.Length == 0)
+            {
+                return false;
+            }
+
+            if (frames.Length == 1)
+            {
+                frameIndex = 0;
+                frameElapsedMs = Math.Max(0, timeMs);
+                return true;
+            }
+
+            int clampedTime = Math.Max(0, timeMs);
+            int elapsed = 0;
+            for (int i = 0; i < frames.Length; i++)
+            {
+                int frameDuration = Math.Max(0, frames[i]?.Duration ?? 0);
+                if (clampedTime < elapsed + frameDuration)
+                {
+                    frameIndex = i;
+                    frameElapsedMs = Math.Max(0, clampedTime - elapsed);
+                    return true;
+                }
+
+                elapsed += frameDuration;
+            }
+
+            frameIndex = frames.Length - 1;
+            frameElapsedMs = Math.Max(0, frames[frameIndex]?.Duration ?? 0);
+            return true;
         }
 
         public static float ResolveFrameAlpha(SkillFrame frame, int frameElapsedMs)

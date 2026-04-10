@@ -299,6 +299,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => GetEffectiveEntryValue().Length;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => GetEntryMaxLength(_mesoEntryMode);
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _mesoEntryMode != MesoEntryMode.None;
+        string ISoftKeyboardHost.GetSoftKeyboardText() => GetEffectiveEntryValue();
 
         public override void Show()
         {

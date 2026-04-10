@@ -90,6 +90,8 @@ namespace HaCreator.MapSimulator.UI
         private Point? _dragStartOffset;
         private bool _searchFieldFocused;
         private bool _softKeyboardActive;
+        private bool _childAddOnRestoreSearchFieldFocused;
+        private bool _childAddOnRestoreSoftKeyboardActive;
         private string _selectedCategoryKey = "all";
         private int _selectedPriceRangeIndex;
         private int _categoryScrollOffset;
@@ -209,6 +211,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => _searchQuery?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => SearchMaxLength;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _searchFieldFocused && !string.IsNullOrWhiteSpace(_searchQuery);
+        string ISoftKeyboardHost.GetSoftKeyboardText() => _searchQuery ?? string.Empty;
         public Action<AdminShopWishListUI> ShowCategoryAddOnRequested { get; set; }
         public Action HideCategoryAddOnRequested { get; set; }
         public Func<bool> IsCategoryAddOnVisible { get; set; }
@@ -234,6 +237,7 @@ namespace HaCreator.MapSimulator.UI
         public void OnCategoryAddOnClosed(string selectedCategoryKey, IEnumerable<string> expandedCategoryKeys, string message)
         {
             SyncCategoryAddOnState(selectedCategoryKey, expandedCategoryKeys, message);
+            RestoreOwnerKeyboardStateAfterChildAddOn();
             UpdatePopupButtons();
         }
 
@@ -444,6 +448,7 @@ namespace HaCreator.MapSimulator.UI
                 _statusMessage = message;
             }
 
+            RestoreOwnerKeyboardStateAfterChildAddOn();
             UpdatePopupButtons();
         }
 
@@ -513,6 +518,8 @@ namespace HaCreator.MapSimulator.UI
             _candidateListState = ImeCandidateListState.Empty;
             _searchFieldFocused = true;
             _softKeyboardActive = false;
+            _childAddOnRestoreSearchFieldFocused = false;
+            _childAddOnRestoreSoftKeyboardActive = false;
             _popupMode = PopupMode.None;
             _statusMessage = $"CUIAdminShopWishList::OnCreate focused the search edit for {sourceDialog?.GetWishlistServiceName() ?? "cash-service"} browsing.";
             HideCategoryAddOnRequested?.Invoke();
@@ -540,6 +547,8 @@ namespace HaCreator.MapSimulator.UI
             _dragStartOffset = null;
             _searchFieldFocused = false;
             _softKeyboardActive = false;
+            _childAddOnRestoreSearchFieldFocused = false;
+            _childAddOnRestoreSoftKeyboardActive = false;
             _searchResults.Clear();
             ClearWishlistSearchResultSession();
             _categoryRows.Clear();
@@ -978,6 +987,7 @@ namespace HaCreator.MapSimulator.UI
             _compositionText = string.Empty;
             if (ShowSearchResultAddOnRequested != null)
             {
+                CaptureOwnerKeyboardStateForChildAddOn();
                 ShowSearchResultAddOnRequested(this, _searchResults);
                 _popupMode = PopupMode.None;
                 UpdatePopupButtons();
@@ -1019,6 +1029,7 @@ namespace HaCreator.MapSimulator.UI
             EnsureSelectedCategoryVisible();
             if (ShowCategoryAddOnRequested != null)
             {
+                CaptureOwnerKeyboardStateForChildAddOn();
                 ShowCategoryAddOnRequested(this);
                 _statusMessage = "ToggleAddOn opened the wish-list category add-on.";
                 UpdatePopupButtons();
@@ -1709,6 +1720,21 @@ namespace HaCreator.MapSimulator.UI
 
             ClearWishlistSearchResultSession();
             UpdatePopupButtons();
+        }
+
+        private void CaptureOwnerKeyboardStateForChildAddOn()
+        {
+            _childAddOnRestoreSearchFieldFocused = _searchFieldFocused;
+            _childAddOnRestoreSoftKeyboardActive = _softKeyboardActive;
+            _softKeyboardActive = false;
+        }
+
+        private void RestoreOwnerKeyboardStateAfterChildAddOn()
+        {
+            _searchFieldFocused = _childAddOnRestoreSearchFieldFocused;
+            _softKeyboardActive = _childAddOnRestoreSoftKeyboardActive && _searchFieldFocused;
+            _childAddOnRestoreSearchFieldFocused = false;
+            _childAddOnRestoreSoftKeyboardActive = false;
         }
 
         private List<AdminShopDialogUI.WishlistSearchResult> GetLiveWishlistSearchResultSessionResults()

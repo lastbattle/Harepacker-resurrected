@@ -345,6 +345,15 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (ShouldResistRemoteAffectedAreaStatus(
+                    skill,
+                    _skills?.GetActiveAbnormalStatusResistancePercent(currentTime) ?? 0,
+                    _skills?.GetActiveElementalResistancePercent(currentTime) ?? 0,
+                    Random.Shared.Next(100)))
+            {
+                return false;
+            }
+
             bool applied = false;
             for (int i = 0; i < statuses.Count; i++)
             {
@@ -368,6 +377,27 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return applied;
+        }
+
+        internal static bool ShouldResistRemoteAffectedAreaStatus(
+            SkillData skill,
+            int abnormalStatusResistancePercent,
+            int elementalResistancePercent,
+            int rollPercent)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            int resistancePercent = Math.Max(0, abnormalStatusResistancePercent);
+            if (skill.Element != SkillElement.Physical)
+            {
+                resistancePercent += Math.Max(0, elementalResistancePercent);
+            }
+
+            resistancePercent = Math.Clamp(resistancePercent, 0, 100);
+            return resistancePercent > 0 && rollPercent < resistancePercent;
         }
 
         internal static bool ShouldResistMobSkillStatus(

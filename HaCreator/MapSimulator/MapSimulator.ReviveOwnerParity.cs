@@ -72,7 +72,8 @@ namespace HaCreator.MapSimulator
             ReviveOwnerVariant variant = ResolveReviveOwnerVariant();
             bool hasPremiumChoice = ReviveOwnerRuntime.HasPremiumChoiceForVariant(variant);
             string ownerLabel = ReviveOwnerRuntime.GetOwnerLabel(variant);
-            Vector2 premiumRespawnPoint = ResolveCurrentFieldReviveRespawnPoint(variant, deathPoint);
+            ReviveOwnerRespawnPointResolution premiumRespawnResolution = ResolveCurrentFieldReviveRespawnPointResolution(variant, deathPoint);
+            Vector2 premiumRespawnPoint = premiumRespawnResolution.Point;
             if (variant == ReviveOwnerVariant.UpgradeTombChoice)
             {
                 Debug.WriteLine(DispatchReviveOwnerUpgradeTombEffectRequest(premiumRespawnPoint, currentTick));
@@ -80,7 +81,7 @@ namespace HaCreator.MapSimulator
 
             string normalDetail = BuildDefaultReviveDetail(variant, ownerLabel, spawnPoint);
             string premiumDetail = hasPremiumChoice
-                ? BuildPremiumReviveDetail(variant, ownerLabel, deathPoint, premiumRespawnPoint)
+                ? BuildPremiumReviveDetail(variant, ownerLabel, premiumRespawnResolution)
                 : string.Empty;
 
             _reviveOwnerRuntime.Open(
@@ -295,13 +296,22 @@ namespace HaCreator.MapSimulator
 
         private Vector2 ResolveCurrentFieldReviveRespawnPoint(ReviveOwnerVariant variant, Vector2 fallbackPoint)
         {
+            return ResolveCurrentFieldReviveRespawnPointResolution(variant, fallbackPoint).Point;
+        }
+
+        private ReviveOwnerRespawnPointResolution ResolveCurrentFieldReviveRespawnPointResolution(
+            ReviveOwnerVariant variant,
+            Vector2 fallbackPoint)
+        {
             if (!ReviveOwnerRuntime.UsesCurrentFieldRespawn(variant))
             {
-                return fallbackPoint;
+                return new ReviveOwnerRespawnPointResolution(
+                    fallbackPoint,
+                    ReviveOwnerRespawnPointSource.DeathPoint);
             }
 
             Vector2 spawnPoint = _playerManager?.GetSpawnPoint() ?? fallbackPoint;
-            return ResolveCurrentFieldReviveRespawnPoint(_mapBoard?.MapInfo, spawnPoint, fallbackPoint);
+            return ResolveCurrentFieldReviveRespawnPointWithSource(_mapBoard?.MapInfo, spawnPoint, fallbackPoint);
         }
 
         internal static Vector2 ResolveCurrentFieldReviveRespawnPoint(MapInfo mapInfo, Vector2 spawnPoint, Vector2 fallbackPoint)
@@ -401,14 +411,28 @@ namespace HaCreator.MapSimulator
         private static bool TryFindReviveOwnerMapInfoProperty(MapInfo mapInfo, string propertyName, out WzImageProperty property)
         {
             property = null;
-            if (mapInfo?.unsupportedInfoProperties == null || string.IsNullOrWhiteSpace(propertyName))
+            if (mapInfo == null || string.IsNullOrWhiteSpace(propertyName))
             {
                 return false;
             }
 
-            property = mapInfo.unsupportedInfoProperties.FirstOrDefault(
-                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.OrdinalIgnoreCase));
+            property = FindReviveOwnerPropertyCandidate(mapInfo.Image?["info"]?.WzProperties, propertyName)
+                ?? FindReviveOwnerPropertyCandidate(mapInfo.unsupportedInfoProperties, propertyName)
+                ?? FindReviveOwnerPropertyCandidate(mapInfo.additionalProps, propertyName);
             return property != null;
+        }
+
+        private static WzImageProperty FindReviveOwnerPropertyCandidate(
+            System.Collections.Generic.IEnumerable<WzImageProperty> properties,
+            string propertyName)
+        {
+            if (properties == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            return properties.FirstOrDefault(
+                candidate => string.Equals(candidate?.Name, propertyName, StringComparison.OrdinalIgnoreCase));
         }
 
         private static WzImageProperty FindReviveOwnerChildProperty(WzSubProperty property, string childName)
@@ -553,13 +577,20 @@ namespace HaCreator.MapSimulator
             return $"Default branch returns to the simulator respawn seam at ({spawnPoint.X:0}, {spawnPoint.Y:0}).";
         }
 
-        private static string BuildPremiumReviveDetail(ReviveOwnerVariant variant, string ownerLabel, Vector2 deathPoint, Vector2 respawnPoint)
+        private static string BuildPremiumReviveDetail(
+            ReviveOwnerVariant variant,
+            string ownerLabel,
+            ReviveOwnerRespawnPointResolution respawnResolution)
         {
             string detailPrefix = ResolveReviveOwnerDetailPrefix(variant, ownerLabel);
-            bool usesFieldAuthoredPoint = Vector2.DistanceSquared(respawnPoint, deathPoint) > 1f;
-            string pointSource = usesFieldAuthoredPoint
-                ? "the WZ-authored no-transfer revive point"
-                : "the death point";
+            string pointSource = respawnResolution.Source switch
+            {
+                ReviveOwnerRespawnPointSource.AuthoredCurrentFieldPoint => "the WZ-authored no-transfer revive point",
+                ReviveOwnerRespawnPointSource.SpawnApproximation => "the simulator spawn approximation",
+                ReviveOwnerRespawnPointSource.DeathPoint => "the death point",
+                _ => "the resolved revive point",
+            };
+            Vector2 respawnPoint = respawnResolution.Point;
             return $"{detailPrefix} revives in the current field at {pointSource} ({respawnPoint.X:0}, {respawnPoint.Y:0}).";
         }
 

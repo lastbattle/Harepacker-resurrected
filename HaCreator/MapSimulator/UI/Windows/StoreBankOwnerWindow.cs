@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator.UI
         private const int RowIconX = 12;
         private const int RowIconY = 1;
         private const int RowIconSize = 32;
-        private const int RowClientStockX = 10;
+        private const int RowClientStockRightX = 160;
         private const int RowCashIconRightX = 42;
         private const int RowPrimaryTextX = 53;
         private const int RowPrimaryTextY = 3;
@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<UIObject> _rowButtons = new();
         private readonly UIObject _getButton;
         private readonly Texture2D _rowTexture;
+        private readonly Texture2D _rowLineTexture;
         private readonly Texture2D[] _itemNumberDigits;
         private readonly Texture2D _cashIconTexture;
         private readonly VerticalScrollbarSkin _scrollbarSkin;
@@ -81,6 +82,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject getButton,
             UIObject exitButton,
             Texture2D rowTexture,
+            Texture2D rowLineTexture,
             Texture2D[] itemNumberDigits,
             Texture2D cashIconTexture,
             VerticalScrollbarSkin scrollbarSkin,
@@ -89,6 +91,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _getButton = getButton;
             _rowTexture = rowTexture;
+            _rowLineTexture = rowLineTexture;
             _itemNumberDigits = itemNumberDigits ?? Array.Empty<Texture2D>();
             _cashIconTexture = cashIconTexture;
             _scrollbarSkin = scrollbarSkin;
@@ -346,6 +349,8 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(drawX + RowPrimaryTextX, drawY + RowSecondaryTextY),
                     new Color(198, 214, 233),
                     0.52f);
+
+                DrawRowSeparator(sprite, drawX, drawY);
             }
         }
 
@@ -388,7 +393,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string text = row.ClientStock.ToString(CultureInfo.InvariantCulture);
-            int x = rowX + RowClientStockX;
+            int x = rowX + RowClientStockRightX - MeasureDigitWidth(text);
             int y = rowY + RowSecondaryTextY;
             for (int i = 0; i < text.Length; i++)
             {
@@ -407,6 +412,28 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(texture, new Vector2(x, y), Color.White);
                 x += texture.Width;
             }
+        }
+
+        private int MeasureDigitWidth(string text)
+        {
+            if (string.IsNullOrEmpty(text) || _itemNumberDigits.Length < 10)
+            {
+                return 0;
+            }
+
+            int width = 0;
+            for (int i = 0; i < text.Length; i++)
+            {
+                int digit = text[i] - '0';
+                if (digit < 0 || digit > 9)
+                {
+                    continue;
+                }
+
+                width += _itemNumberDigits[digit]?.Width ?? 0;
+            }
+
+            return width;
         }
 
         private void DrawCashIcon(SpriteBatch sprite, StoreBankOwnerRowSnapshot row, int rowX, int rowY)
@@ -433,16 +460,24 @@ namespace HaCreator.MapSimulator.UI
             int drawX = Position.X + MoneyRightX;
             int drawY = Position.Y + MoneyY;
             Vector2 size = _font.MeasureString(moneyText) * 0.62f;
-            sprite.DrawString(
+            Vector2 position = new(drawX - size.X, drawY);
+            InventoryRenderUtil.DrawOutlinedText(
+                sprite,
                 _font,
                 moneyText,
-                new Vector2(drawX - size.X, drawY),
-                Color.Black,
-                0f,
-                Vector2.Zero,
-                0.62f,
-                SpriteEffects.None,
-                0f);
+                position,
+                Color.White,
+                0.62f);
+        }
+
+        private void DrawRowSeparator(SpriteBatch sprite, int rowX, int rowY)
+        {
+            if (_rowLineTexture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(_rowLineTexture, new Vector2(rowX, rowY + RowHeight), Color.White);
         }
 
         private void DrawFooter(SpriteBatch sprite)

@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedRewardRouletteOffsetY = 260;
         private const int PacketOwnedBossTimerOffsetY = 25;
         private const int PacketOwnedBossTimerDigitSpacing = 2;
+        private const int PacketOwnedRewardRouletteMaxNumericSuffix = 31;
         private const byte PacketOwnedUiClientAlpha = 255;
         private const int PacketOwnedFieldClockReferenceWidth = 800;
         private const int PacketOwnedFieldClockReferenceHeight = 600;
@@ -296,58 +297,45 @@ namespace HaCreator.MapSimulator
         {
             const string animationKey = "reward-roulette";
             ClearPacketOwnedUiAnimations(animationKey);
-            foreach (IReadOnlyList<PacketOwnedRewardRouletteLayerCandidate> family in EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+
+            bool shown = false;
+            PacketOwnedRewardRouletteLayerCandidate[] directFamily = BuildPacketOwnedRewardRouletteDirectAnimationFamily(
                 rewardJobIndex,
                 rewardPartIndex,
-                rewardLevelIndex))
+                rewardLevelIndex);
+            if (TryEnqueuePacketOwnedRewardRouletteAnimationFamily(directFamily, animationKey))
             {
-                List<(List<PacketOwnedUiFrame> Frames, PacketOwnedRewardRouletteLayerCandidate Candidate)> resolvedLayers = new();
-                foreach (PacketOwnedRewardRouletteLayerCandidate candidate in family)
+                shown = true;
+            }
+
+            foreach (string suffix in EnumeratePacketOwnedRewardRouletteSuffixes())
+            {
+                bool resolvedSuffix = false;
+                foreach (PacketOwnedRewardRouletteLayerCandidate[] family in EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+                    rewardJobIndex,
+                    rewardPartIndex,
+                    rewardLevelIndex,
+                    suffix))
                 {
-                    string cacheKey = $"reward-roulette:{candidate.CategoryName}/{candidate.ImageName}:{candidate.PropertyPath}";
-                    if (!TryGetOrCreatePacketOwnedAnimationFrames(
-                        cacheKey,
-                        () => LoadPacketOwnedAnimationFrames(
-                            ResolvePacketOwnedPropertyPath(
-                                Program.FindImage(candidate.CategoryName, candidate.ImageName),
-                                candidate.PropertyPath)),
-                        out List<PacketOwnedUiFrame> frames))
+                    if (!TryEnqueuePacketOwnedRewardRouletteAnimationFamily(family, animationKey))
                     {
-                        resolvedLayers.Clear();
                         break;
                     }
 
-                    resolvedLayers.Add((frames, candidate));
+                    shown = true;
+                    resolvedSuffix = true;
+                    break;
                 }
 
-                if (resolvedLayers.Count != family.Count)
+                if (!resolvedSuffix)
                 {
-                    continue;
-                }
-
-                foreach ((List<PacketOwnedUiFrame> frames, PacketOwnedRewardRouletteLayerCandidate candidate) in resolvedLayers)
-                {
-                    EnqueuePacketOwnedUiAnimation(
-                        frames,
-                        ResolvePacketOwnedRewardRouletteRegistration(
-                            _renderParams.RenderWidth,
-                            Height,
-                            animationKey,
-                            candidate.LayerRole),
-                        currTickCount);
-                }
-
-                if (resolvedLayers.Count > 0)
-                {
-                    ShowUtilityFeedbackMessage(
-                        $"Packet-owned reward roulette: job={rewardJobIndex} part={rewardPartIndex} level={rewardLevelIndex}.");
-                    return true;
+                    break;
                 }
             }
 
             ShowUtilityFeedbackMessage(
                 $"Packet-owned reward roulette: job={rewardJobIndex} part={rewardPartIndex} level={rewardLevelIndex}.");
-            return false;
+            return shown;
         }
 
         private bool TryQueuePacketOwnedWhisperFindTransfer(int mapId, int x, int y)
@@ -1407,42 +1395,116 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static IEnumerable<IReadOnlyList<PacketOwnedRewardRouletteLayerCandidate>> EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+        private static IEnumerable<PacketOwnedRewardRouletteLayerCandidate[]> EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
             int rewardJobIndex,
             int rewardPartIndex,
             int rewardLevelIndex)
         {
-            PacketOwnedRewardRouletteLayerCandidate[] directFamily = BuildPacketOwnedRewardRouletteDirectAnimationFamily(
+            foreach (string suffix in EnumeratePacketOwnedRewardRouletteSuffixes())
+            {
+                foreach (PacketOwnedRewardRouletteLayerCandidate[] family in EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+                    rewardJobIndex,
+                    rewardPartIndex,
+                    rewardLevelIndex,
+                    suffix))
+                {
+                    yield return family;
+                }
+            }
+        }
+
+        private bool TryEnqueuePacketOwnedRewardRouletteAnimationFamily(
+            IReadOnlyList<PacketOwnedRewardRouletteLayerCandidate> family,
+            string animationKey)
+        {
+            if (family == null || family.Count == 0)
+            {
+                return false;
+            }
+
+            List<(List<PacketOwnedUiFrame> Frames, PacketOwnedRewardRouletteLayerCandidate Candidate)> resolvedLayers = new(family.Count);
+            foreach (PacketOwnedRewardRouletteLayerCandidate candidate in family)
+            {
+                string cacheKey = $"reward-roulette:{candidate.CategoryName}/{candidate.ImageName}:{candidate.PropertyPath}";
+                if (!TryGetOrCreatePacketOwnedAnimationFrames(
+                    cacheKey,
+                    () => LoadPacketOwnedAnimationFrames(
+                        ResolvePacketOwnedPropertyPath(
+                            Program.FindImage(candidate.CategoryName, candidate.ImageName),
+                            candidate.PropertyPath)),
+                    out List<PacketOwnedUiFrame> frames))
+                {
+                    return false;
+                }
+
+                resolvedLayers.Add((frames, candidate));
+            }
+
+            foreach ((List<PacketOwnedUiFrame> frames, PacketOwnedRewardRouletteLayerCandidate candidate) in resolvedLayers)
+            {
+                EnqueuePacketOwnedUiAnimation(
+                    frames,
+                    ResolvePacketOwnedRewardRouletteRegistration(
+                        _renderParams.RenderWidth,
+                        Height,
+                        animationKey,
+                        candidate.LayerRole),
+                    currTickCount);
+            }
+
+            return resolvedLayers.Count > 0;
+        }
+
+        private static IEnumerable<PacketOwnedRewardRouletteLayerCandidate[]> EnumeratePacketOwnedRewardRouletteAnimationCandidateFamilies(
+            int rewardJobIndex,
+            int rewardPartIndex,
+            int rewardLevelIndex,
+            string suffix)
+        {
+            PacketOwnedRewardRouletteLayerCandidate[] mapFamily = BuildPacketOwnedRewardRouletteStringPoolAnimationFamily(
                 rewardJobIndex,
                 rewardPartIndex,
-                rewardLevelIndex);
-            if (directFamily.Length > 0)
+                rewardLevelIndex,
+                suffix);
+            if (mapFamily.Length > 0)
             {
-                yield return directFamily;
+                yield return mapFamily;
             }
 
-            foreach (string suffix in new[] { "Default", "0" })
+            PacketOwnedRewardRouletteLayerCandidate[] fallbackFamily = BuildPacketOwnedRewardRouletteFallbackAnimationFamily(
+                rewardJobIndex,
+                rewardPartIndex,
+                rewardLevelIndex,
+                suffix);
+            if (fallbackFamily.Length > 0)
             {
-                PacketOwnedRewardRouletteLayerCandidate[] mapFamily = BuildPacketOwnedRewardRouletteStringPoolAnimationFamily(
-                    rewardJobIndex,
-                    rewardPartIndex,
-                    rewardLevelIndex,
-                    suffix);
-                if (mapFamily.Length > 0)
-                {
-                    yield return mapFamily;
-                }
-
-                PacketOwnedRewardRouletteLayerCandidate[] fallbackFamily = BuildPacketOwnedRewardRouletteFallbackAnimationFamily(
-                    rewardJobIndex,
-                    rewardPartIndex,
-                    rewardLevelIndex,
-                    suffix);
-                if (fallbackFamily.Length > 0)
-                {
-                    yield return fallbackFamily;
-                }
+                yield return fallbackFamily;
             }
+        }
+
+        private static IEnumerable<string> EnumeratePacketOwnedRewardRouletteSuffixes()
+        {
+            yield return "Default";
+            for (int suffix = 0; suffix <= PacketOwnedRewardRouletteMaxNumericSuffix; suffix++)
+            {
+                yield return suffix.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+
+        internal static IReadOnlyList<string> EnumeratePacketOwnedRewardRouletteSuffixesForTest(int maxNumericSuffix)
+        {
+            maxNumericSuffix = Math.Max(0, maxNumericSuffix);
+            List<string> suffixes = new(maxNumericSuffix + 2)
+            {
+                "Default"
+            };
+
+            for (int suffix = 0; suffix <= maxNumericSuffix; suffix++)
+            {
+                suffixes.Add(suffix.ToString(CultureInfo.InvariantCulture));
+            }
+
+            return suffixes;
         }
 
         private static PacketOwnedRewardRouletteLayerCandidate[] BuildPacketOwnedRewardRouletteDirectAnimationFamily(

@@ -148,6 +148,13 @@ namespace HaCreator.MapSimulator.Pools
             public int AnimationStartTime { get; init; }
         }
 
+        public sealed class RemoteTransientItemEffectState
+        {
+            public int ItemId { get; init; }
+            public ItemEffectAnimationSet Effect { get; init; }
+            public int AnimationStartTime { get; init; }
+        }
+
         private sealed class PendingRemoteTransientSkillUseAvatarEffectState
         {
             public int RegistrationKey { get; init; }
@@ -1324,6 +1331,40 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        private bool TryApplyTransientItemEffect(RemoteUserActor actor, int itemId, int currentTime, out string message)
+        {
+            message = null;
+            if (actor == null)
+            {
+                message = "Remote user item-effect target is not active.";
+                return false;
+            }
+
+            actor.LastEffectByItemId = itemId;
+            if (_loader == null)
+            {
+                message = $"Remote user {actor.CharacterId} effect-by-item {itemId} preserved without a character loader.";
+                return true;
+            }
+
+            ItemEffectAnimationSet effect = _loader.LoadItemEffectAnimationSet(itemId);
+            if (effect == null)
+            {
+                message = $"Remote user {actor.CharacterId} effect-by-item {itemId} preserved without a loadable Effect/ItemEff.img animation.";
+                return true;
+            }
+
+            actor.TransientItemEffects.RemoveAll(static state => state?.Effect == null);
+            actor.TransientItemEffects.Add(new RemoteTransientItemEffectState
+            {
+                ItemId = itemId,
+                Effect = effect,
+                AnimationStartTime = currentTime
+            });
+            message = $"Remote user {actor.CharacterId} effect subtype {(byte)RemoteUserEffectSubtype.EffectByItem} registered Effect/ItemEff.img/{itemId} presentation.";
+            return true;
+        }
+
         public bool TryApplyEnterFieldAvatarPresentation(
             RemoteUserEnterFieldPacket packet,
             int currentTime,
@@ -2049,6 +2090,16 @@ namespace HaCreator.MapSimulator.Pools
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered item-make {(itemMakeResultCode == 0 ? "success" : "failure")} presentation.";
                     return true;
 
+                case RemoteUserEffectSubtype.EffectByItem:
+                    int itemEffectItemId = packet.Int32Value.GetValueOrDefault();
+                    if (itemEffectItemId <= 0)
+                    {
+                        message = $"Remote user {packet.CharacterId} item-effect packet item ID {itemEffectItemId} is invalid.";
+                        return false;
+                    }
+
+                    return TryApplyTransientItemEffect(actor, itemEffectItemId, currentTime, out message);
+
                 case RemoteUserEffectSubtype.IncDecHp:
                     int delta = packet.Int32Value.GetValueOrDefault();
                     HitFeedbackRegistered?.Invoke(new RemoteHitFeedbackPresentation(
@@ -2250,6 +2301,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 UpdatePacketOwnedEmotionState(actor, currentTime);
+                UpdateTransientItemEffects(actor, currentTime);
                 UpdateTransientSkillUseAvatarEffects(actor, currentTime);
                 actor.UpdateMeleeAfterImage(currentTime);
             }
@@ -3120,6 +3172,13 @@ namespace HaCreator.MapSimulator.Pools
                     screenY,
                     tickCount,
                     drawFrontLayers: false);
+                DrawTransientItemEffects(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    screenX,
+                    screenY,
+                    tickCount);
                 if (statusBarUi != null
                     && actor.PreparedSkill != null
                     && PreparedSkillHudRules.IsDragonOverlaySkill(actor.PreparedSkill.SkillId))
@@ -3757,6 +3816,41 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private static void DrawTransientItemEffects(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            RemoteUserActor actor,
+            int screenX,
+            int screenY,
+            int currentTime)
+        {
+            if (actor?.TransientItemEffects == null
+                || actor.TransientItemEffects.Count == 0
+                || actor.HiddenLikeClient)
+            {
+                return;
+            }
+
+            for (int i = 0; i < actor.TransientItemEffects.Count; i++)
+            {
+                RemoteTransientItemEffectState state = actor.TransientItemEffects[i];
+                if (state?.Effect?.OwnerLayers == null)
+                {
+                    continue;
+                }
+
+                int elapsedTime = Math.Max(0, currentTime - state.AnimationStartTime);
+                DrawItemEffectLayers(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    state.Effect.OwnerLayers,
+                    screenX,
+                    screenY,
+                    actor.FacingRight,
+                    elapsedTime);
+            }
+        }
+
         public static int ResolveRelationshipOverlayStatus(
             Vector2 ownerPosition,
             Vector2 partnerPosition,
@@ -4141,6 +4235,34 @@ namespace HaCreator.MapSimulator.Pools
             {
                 ClearPacketOwnedEmotionState(actor);
             }
+        }
+
+        private static void UpdateTransientItemEffects(RemoteUserActor actor, int currentTime)
+        {
+            if (actor?.TransientItemEffects == null || actor.TransientItemEffects.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = actor.TransientItemEffects.Count - 1; i >= 0; i--)
+            {
+                RemoteTransientItemEffectState state = actor.TransientItemEffects[i];
+                if (state == null || IsTransientItemEffectExpired(state, currentTime))
+                {
+                    actor.TransientItemEffects.RemoveAt(i);
+                }
+            }
+        }
+
+        private static bool IsTransientItemEffectExpired(RemoteTransientItemEffectState state, int currentTime)
+        {
+            int duration = state?.Effect?.TotalDurationMs ?? 0;
+            if (duration <= 0)
+            {
+                return true;
+            }
+
+            return currentTime - state.AnimationStartTime >= duration;
         }
 
         private bool IsRelationshipOverlayPartnerSuppressed(PlayerCharacter localPlayer, int partnerCharacterId, int ownerCharacterId)
@@ -8217,6 +8339,7 @@ namespace HaCreator.MapSimulator.Pools
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatMagicShieldEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatFinalCutEffect { get; set; }
         public RemoteUserActorPool.RemotePacketOwnedEmotionState PacketOwnedEmotion { get; set; }
+        public List<RemoteUserActorPool.RemoteTransientItemEffectState> TransientItemEffects { get; } = new();
         public List<RemoteUserActorPool.RemoteTransientSkillUseAvatarEffectState> TransientSkillUseAvatarEffects { get; } = new();
         public int MovingShootPreparedSkillId { get; set; }
         public int? PartyCurrentHp { get; set; }
@@ -8225,6 +8348,7 @@ namespace HaCreator.MapSimulator.Pools
             public int? PartyHpGaugePos { get; set; }
             public int? PacketOwnedQuestDeliveryEffectItemId { get; set; }
             public RemoteUserEffectPacket LastEffect { get; set; }
+            public int? LastEffectByItemId { get; set; }
             public RemoteUserActorPool.RemoteHitState LastHit { get; set; }
             public int? LastThrowGrenadeSkillId { get; set; }
         public int? LastThrowGrenadeId { get; set; }

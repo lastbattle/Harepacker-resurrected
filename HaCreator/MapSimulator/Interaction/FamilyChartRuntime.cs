@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _preceptIndex;
         private FamilyEntitlementType _entitlementType = FamilyEntitlementType.DropAndExpBuff;
         private readonly Dictionary<FamilyEntitlementType, int> _entitlementUseCounts = new();
+        private readonly Dictionary<FamilyEntitlementType, FamilyPrivilegeMetadata> _packetPrivilegeMetadata = new();
         private string _familyName = string.Empty;
         private string _familyPrecept = string.Empty;
         private string _locationSummary = "Maple Island";
@@ -384,6 +385,31 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Family authority now follows the {resolvedProfile} profile ({authorityState.SourceLabel}).";
         }
 
+        internal bool TryApplyClientPacketPayload(int opcode, byte[] payload, out string message)
+        {
+            message = string.Empty;
+            switch (opcode)
+            {
+                case 99:
+                    message = ApplyInfoPacketPayload(payload);
+                    return true;
+                case 100:
+                    return TryApplyResultPacketPayload(payload, out message);
+                case 104:
+                    message = ApplyPrivilegeListPacketPayload(payload);
+                    return true;
+                case 107:
+                    message = ApplySetPrivilegePacketPayload(payload);
+                    return true;
+                case 98:
+                    message = "Family chart packet 98 (`CWvsContext::OnFamilyChartResult -> CUIFamilyChart::DecodeLocalChart`) is not modeled yet. Continue using the existing `/family packet upsert/remove/...` roster seam for chart topology.";
+                    return false;
+                default:
+                    message = $"Family client packet opcode {opcode} is not modeled by this runtime.";
+                    return false;
+            }
+        }
+
         internal string ApplyInfoPacketPayload(byte[] payload)
         {
             if (!FamilyPacketCodec.TryDecodeInfoPayload(payload, out FamilyInfoPacketSnapshot snapshot, out string error))
@@ -431,6 +457,60 @@ namespace HaCreator.MapSimulator.Interaction
             string familyName = string.IsNullOrWhiteSpace(_familyName) ? "(unnamed)" : _familyName;
             NotifySocialMessagesObserved(_familyName, _familyPrecept);
             return $"Applied packet-authored family info for {familyName}: current/total reputation {snapshot.CurrentReputation:N0}/{snapshot.TotalReputation:N0}, today {snapshot.TodayReputation:+#,#;-#,#;0}, juniors {snapshot.ChildCount}/{snapshot.ChildLimit}, total juniors {snapshot.TotalChildCount}.";
+        }
+
+        internal string ApplyPrivilegeListPacketPayload(byte[] payload)
+        {
+            if (!FamilyPacketCodec.TryDecodePrivilegeListPayload(payload, out IReadOnlyList<FamilyPrivilegePacketSnapshot> privileges, out string error))
+            {
+                return error;
+            }
+
+            _packetPrivilegeMetadata.Clear();
+            foreach (FamilyPrivilegePacketSnapshot privilege in privileges)
+            {
+                if (!TryResolveEntitlementType(privilege.Type, out FamilyEntitlementType entitlementType))
+                {
+                    continue;
+                }
+
+                _packetPrivilegeMetadata[entitlementType] = new FamilyPrivilegeMetadata(
+                    entitlementType,
+                    privilege.FameCost,
+                    privilege.DayLimit,
+                    privilege.Name,
+                    privilege.Description);
+            }
+
+            return $"Applied packet-authored family privilege metadata for {_packetPrivilegeMetadata.Count} entitlement(s) through `CWvsContext::OnFamilyPrivilegeList` (opcode 104).";
+        }
+
+        internal string ApplySetPrivilegePacketPayload(byte[] payload)
+        {
+            if (!FamilyPacketCodec.TryDecodeSetPrivilegePayload(payload, out FamilyPrivilegeStatePacketSnapshot snapshot, out string error))
+            {
+                return error;
+            }
+
+            if (snapshot.Type == 0)
+            {
+                _activePrivilege = null;
+                return "Cleared the packet-authored family privilege state through `CWvsContext::OnFamilySetPrivilege` (opcode 107).";
+            }
+
+            if (!TryResolveEntitlementType(snapshot.Type, out FamilyEntitlementType entitlementType))
+            {
+                return $"Family set-privilege packet type {snapshot.Type} is not mapped to a simulator entitlement.";
+            }
+
+            _activePrivilege = new FamilyPrivilegeState(
+                entitlementType,
+                ResolvePrivilegeExpiryTick(snapshot.EndTimeFileTimeUtc),
+                snapshot.Index,
+                snapshot.IncrementExpRate,
+                snapshot.IncrementDropRate,
+                "packet privilege state");
+            return $"Applied packet-authored family privilege state for {GetEntitlementLabel(entitlementType)} (+{snapshot.IncrementExpRate}% EXP, +{snapshot.IncrementDropRate}% drop, index {snapshot.Index}) through `CWvsContext::OnFamilySetPrivilege` (opcode 107).";
         }
 
         private string SetPreceptCore(string precept, bool packetAuthored)
@@ -612,7 +692,10 @@ namespace HaCreator.MapSimulator.Interaction
             int useLimit = GetEntitlementDailyLimit(_entitlementType);
             string precept = string.IsNullOrWhiteSpace(_familyPrecept) ? "(unset)" : _familyPrecept;
             string crossMapResolution = CanResolveCrossMapPrivileges() ? "enabled" : "local-only";
-            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}, authority {_authorityState.SourceLabel}, cross-map privilege resolution {crossMapResolution}.";
+            string activePrivilege = _activePrivilege == null
+                ? "inactive"
+                : $"{GetEntitlementLabel(_activePrivilege.Type)} ({_activePrivilege.SourceLabel})";
+            return $"Family roster: {_members.Count} members, family {familyName}, precept {precept}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {useCount}/{useLimit} uses on {GetEntitlementLabel(_entitlementType)}, packet privilege entries {_packetPrivilegeMetadata.Count}, active privilege {activePrivilege}, authority {_authorityState.SourceLabel}, cross-map privilege resolution {crossMapResolution}.";
         }
 
         internal string ResetToSeedFamily()
@@ -785,6 +868,7 @@ namespace HaCreator.MapSimulator.Interaction
             _preceptIndex = 0;
             _entitlementType = FamilyEntitlementType.DropAndExpBuff;
             _entitlementUseCounts.Clear();
+            _packetPrivilegeMetadata.Clear();
             _familyName = string.Empty;
             _familyPrecept = string.Empty;
             _activePrivilege = null;
@@ -1069,7 +1153,18 @@ namespace HaCreator.MapSimulator.Interaction
             if (activePrivilege != null)
             {
                 TimeSpan remaining = TimeSpan.FromMilliseconds(Math.Max(0, activePrivilege.ExpiresAtTick - Environment.TickCount));
-                lines.Add($"{GetEntitlementLabel(activePrivilege.Type)} active for {Math.Max(0, remaining.Minutes):00}:{Math.Max(0, remaining.Seconds):00}.");
+                string activeSummary = $"{GetEntitlementLabel(activePrivilege.Type)} active for {Math.Max(0, remaining.Minutes):00}:{Math.Max(0, remaining.Seconds):00}.";
+                if (activePrivilege.IncrementExpRate > 0 || activePrivilege.IncrementDropRate > 0)
+                {
+                    activeSummary = $"{activeSummary} +{activePrivilege.IncrementExpRate}% EXP, +{activePrivilege.IncrementDropRate}% drop.";
+                }
+
+                lines.Add(activeSummary);
+            }
+
+            if (TryGetPrivilegeMetadata(_entitlementType, out FamilyPrivilegeMetadata metadata))
+            {
+                lines.Add($"Packet privilege metadata: fame {metadata.FameCost}, limit {metadata.DayLimit}.");
             }
 
             if (selectedMember.Id == RemotePreviewMemberId && !string.IsNullOrWhiteSpace(_remotePreviewRequestSummary))
@@ -1257,6 +1352,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private int GetSpecialReputationCost(FamilyMemberState selectedMember)
         {
+            if (TryGetPrivilegeMetadata(_entitlementType, out FamilyPrivilegeMetadata metadata))
+            {
+                return Math.Max(0, metadata.FameCost);
+            }
+
             int baseCost = _entitlementType switch
             {
                 FamilyEntitlementType.MoveToMember => 300,
@@ -1278,6 +1378,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private int GetEntitlementDailyLimit(FamilyEntitlementType entitlementType)
         {
+            if (TryGetPrivilegeMetadata(entitlementType, out FamilyPrivilegeMetadata metadata))
+            {
+                return Math.Max(0, metadata.DayLimit);
+            }
+
             return entitlementType switch
             {
                 FamilyEntitlementType.MoveToMember => 3,
@@ -1389,23 +1494,77 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"Packet/session family authority has not enabled privilege use. Current profile: {_authorityState.SourceLabel}.";
             }
 
-            string description = _entitlementType switch
+            string description = ResolvePacketPrivilegeDescription(_entitlementType);
+            if (string.IsNullOrWhiteSpace(description))
             {
-                FamilyEntitlementType.MoveToMember => "Move to the selected family member's location when both members share the current field seam.",
-                FamilyEntitlementType.SummonMember => "Summon the selected online family member into the current field seam beside the local player.",
-                FamilyEntitlementType.DropBuff => "Apply the simulator's family drop-rate support buff for the current family session.",
-                FamilyEntitlementType.ExpBuff => "Apply the simulator's family EXP support buff for the current family session.",
-                _ => "Apply the simulator's combined family drop-rate and EXP support buff for the current family session."
-            };
+                description = _entitlementType switch
+                {
+                    FamilyEntitlementType.MoveToMember => "Move to the selected family member's location when both members share the current field seam.",
+                    FamilyEntitlementType.SummonMember => "Summon the selected online family member into the current field seam beside the local player.",
+                    FamilyEntitlementType.DropBuff => "Apply the simulator's family drop-rate support buff for the current family session.",
+                    FamilyEntitlementType.ExpBuff => "Apply the simulator's family EXP support buff for the current family session.",
+                    _ => "Apply the simulator's combined family drop-rate and EXP support buff for the current family session."
+                };
+            }
 
             if (activePrivilege?.Type == _entitlementType)
             {
                 TimeSpan remaining = TimeSpan.FromMilliseconds(Math.Max(0, activePrivilege.ExpiresAtTick - Environment.TickCount));
-                return $"{description} Active for {Math.Max(0, remaining.Minutes):00}:{Math.Max(0, remaining.Seconds):00}.";
+                string modifiers = string.Empty;
+                if (activePrivilege.IncrementExpRate > 0 || activePrivilege.IncrementDropRate > 0)
+                {
+                    modifiers = $" (+{activePrivilege.IncrementExpRate}% EXP, +{activePrivilege.IncrementDropRate}% drop)";
+                }
+
+                return $"{description} Active for {Math.Max(0, remaining.Minutes):00}:{Math.Max(0, remaining.Seconds):00}{modifiers}.";
             }
 
             int remainingUses = Math.Max(0, GetEntitlementDailyLimit(_entitlementType) - GetEntitlementUseCount(_entitlementType));
             return $"{description} {remainingUses} use(s) remain in this simulator session.";
+        }
+
+        private bool TryGetPrivilegeMetadata(FamilyEntitlementType entitlementType, out FamilyPrivilegeMetadata metadata)
+        {
+            return _packetPrivilegeMetadata.TryGetValue(entitlementType, out metadata);
+        }
+
+        private string ResolvePacketPrivilegeDescription(FamilyEntitlementType entitlementType)
+        {
+            return TryGetPrivilegeMetadata(entitlementType, out FamilyPrivilegeMetadata metadata)
+                && !string.IsNullOrWhiteSpace(metadata.Description)
+                ? metadata.Description
+                : string.Empty;
+        }
+
+        private static bool TryResolveEntitlementType(byte rawType, out FamilyEntitlementType entitlementType)
+        {
+            if (Enum.IsDefined(typeof(FamilyEntitlementType), (int)rawType))
+            {
+                entitlementType = (FamilyEntitlementType)rawType;
+                return true;
+            }
+
+            entitlementType = default;
+            return false;
+        }
+
+        private static int ResolvePrivilegeExpiryTick(long endTimeFileTimeUtc)
+        {
+            if (endTimeFileTimeUtc <= 0)
+            {
+                return Environment.TickCount;
+            }
+
+            try
+            {
+                DateTime endUtc = DateTime.FromFileTimeUtc(endTimeFileTimeUtc);
+                double remainingMilliseconds = Math.Max(0d, (endUtc - DateTime.UtcNow).TotalMilliseconds);
+                return Environment.TickCount + (int)Math.Min(int.MaxValue, remainingMilliseconds);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return Environment.TickCount;
+            }
         }
 
         private string BuildCompactTitle()
@@ -1615,14 +1774,51 @@ namespace HaCreator.MapSimulator.Interaction
 
         private sealed class FamilyPrivilegeState
         {
-            public FamilyPrivilegeState(FamilyEntitlementType type, int expiresAtTick)
+            public FamilyPrivilegeState(
+                FamilyEntitlementType type,
+                int expiresAtTick,
+                int index = 0,
+                int incrementExpRate = 0,
+                int incrementDropRate = 0,
+                string sourceLabel = "local entitlement")
             {
                 Type = type;
                 ExpiresAtTick = expiresAtTick;
+                Index = index;
+                IncrementExpRate = incrementExpRate;
+                IncrementDropRate = incrementDropRate;
+                SourceLabel = string.IsNullOrWhiteSpace(sourceLabel) ? "local entitlement" : sourceLabel;
             }
 
             public FamilyEntitlementType Type { get; }
             public int ExpiresAtTick { get; }
+            public int Index { get; }
+            public int IncrementExpRate { get; }
+            public int IncrementDropRate { get; }
+            public string SourceLabel { get; }
+        }
+
+        private sealed class FamilyPrivilegeMetadata
+        {
+            public FamilyPrivilegeMetadata(
+                FamilyEntitlementType type,
+                int fameCost,
+                int dayLimit,
+                string name,
+                string description)
+            {
+                Type = type;
+                FameCost = Math.Max(0, fameCost);
+                DayLimit = Math.Max(0, dayLimit);
+                Name = string.IsNullOrWhiteSpace(name) ? string.Empty : name.Trim();
+                Description = string.IsNullOrWhiteSpace(description) ? string.Empty : description.Trim();
+            }
+
+            public FamilyEntitlementType Type { get; }
+            public int FameCost { get; }
+            public int DayLimit { get; }
+            public string Name { get; }
+            public string Description { get; }
         }
 
         private sealed class FamilyAuthorityState

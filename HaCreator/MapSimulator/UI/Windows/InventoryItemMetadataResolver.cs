@@ -367,10 +367,24 @@ namespace HaCreator.MapSimulator.UI
             return IsNotConsumedOnUse(itemProperty?["info"] as WzSubProperty);
         }
 
+        public static bool IsConsumedOnPickup(int itemId)
+        {
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return IsConsumedOnPickup(
+                itemProperty?["spec"] as WzSubProperty,
+                itemProperty?["specEx"] as WzSubProperty);
+        }
+
         internal static bool IsNotConsumedOnUse(WzSubProperty infoProperty)
         {
             return GetIntOrStringValue(infoProperty?["noExpend"]) == 1
                    || GetIntOrStringValue(infoProperty?["notConsume"]) == 1;
+        }
+
+        internal static bool IsConsumedOnPickup(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return GetIntValue(specProperty?["consumeOnPickup"]) == 1
+                   || GetIntValue(specExProperty?["consumeOnPickup"]) == 1;
         }
 
         public static bool IsPetFoodItem(int itemId)
@@ -775,9 +789,19 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        internal static bool TryResolveNpcValueForTests(WzSubProperty property, out int npcId)
+        public static bool TryResolveNpcValueForTests(WzSubProperty property, out int npcId)
         {
             return TryResolveNpcValue(property, out npcId);
+        }
+
+        public static bool IsNotConsumedOnUseForTests(WzSubProperty infoProperty)
+        {
+            return IsNotConsumedOnUse(infoProperty);
+        }
+
+        public static bool IsConsumedOnPickupForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return IsConsumedOnPickup(specProperty, specExProperty);
         }
 
         internal static bool TryResolveSpecScript(WzSubProperty specProperty, out string script)
@@ -792,6 +816,11 @@ namespace HaCreator.MapSimulator.UI
 
             script = resolvedScript.Trim();
             return true;
+        }
+
+        public static bool TryResolveSpecScriptForTests(WzSubProperty specProperty, out string script)
+        {
+            return TryResolveSpecScript(specProperty, out script);
         }
 
         internal static bool HasAuthoredNpcInteraction(WzSubProperty itemProperty)
@@ -2472,14 +2501,15 @@ namespace HaCreator.MapSimulator.UI
 
             const int previewLineLimit = 4;
             int previewCount = Math.Min(scheduleRows.Count, previewLineLimit);
-            List<string> previewRows = scheduleRows.GetRange(0, previewCount).ConvertAll(row => row.Text);
-            string line = $"Available: {string.Join(", ", previewRows)}";
-            if (scheduleRows.Count > previewCount)
+            for (int i = 0; i < previewCount; i++)
             {
-                line += $", +{(scheduleRows.Count - previewCount).ToString(CultureInfo.InvariantCulture)} more";
+                metadataLines.Add($"Available: {scheduleRows[i].Text}");
             }
 
-            metadataLines.Add(line);
+            if (scheduleRows.Count > previewCount)
+            {
+                metadataLines.Add($"Available: ... and {(scheduleRows.Count - previewCount).ToString(CultureInfo.InvariantCulture)} more");
+            }
         }
 
         private static List<(int Index, string Text)> GetNumericNamedStringRows(WzSubProperty property)

@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Func<int, string> ResolveQuestRecordText { get; init; }
         public Func<string, string> ResolveQuestDetailRecordText { get; init; }
         public Func<string> ResolveJobNameText { get; init; }
+        public Func<string, string> ResolvePlaceholderText { get; init; }
     }
 
     internal enum PacketOwnedBalloonFontControlKind
@@ -61,6 +62,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L\d+#", RegexOptions.Compiled);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex PlaceholderRegex = new(@"#(?<token>[A-Za-z][A-Za-z0-9_]*)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public static string Format(string text, PacketOwnedBalloonTextFormattingContext context = null)
         {
@@ -105,6 +107,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = NumericPrefixedStyleRegex.Replace(formatted, static match => "#" + match.Groups["tag"].Value);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
+            formatted = PlaceholderRegex.Replace(formatted, match => ResolvePlaceholderText(match.Groups["token"].Value, context, match.Value));
             return formatted;
         }
 
@@ -188,6 +191,66 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "your job";
+        }
+
+        private static string ResolvePlaceholderText(string token, PacketOwnedBalloonTextFormattingContext context, string fallbackText)
+        {
+            string normalizedToken = token?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return fallbackText ?? string.Empty;
+            }
+
+            if (IsReservedControlPlaceholder(normalizedToken))
+            {
+                return fallbackText ?? string.Empty;
+            }
+
+            if (context?.ResolvePlaceholderText != null)
+            {
+                string resolvedText = context.ResolvePlaceholderText(normalizedToken);
+                if (!string.IsNullOrWhiteSpace(resolvedText))
+                {
+                    return resolvedText;
+                }
+            }
+
+            return normalizedToken;
+        }
+
+        private static bool IsReservedControlPlaceholder(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            if (token.Length == 1)
+            {
+                switch (char.ToLowerInvariant(token[0]))
+                {
+                    case 'b':
+                    case 'k':
+                    case 'r':
+                    case 'g':
+                    case 'd':
+                    case 'e':
+                    case 'n':
+                    case 'm':
+                    case 'c':
+                    case 'i':
+                    case 'v':
+                    case 'f':
+                    case 'w':
+                    case 'j':
+                        return true;
+                }
+            }
+
+            return token.StartsWith("fn", StringComparison.OrdinalIgnoreCase)
+                || token.StartsWith("fs", StringComparison.OrdinalIgnoreCase)
+                || token.StartsWith("w", StringComparison.OrdinalIgnoreCase)
+                || token.StartsWith("j", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string ResolveQuestDetailRecordText(string token, PacketOwnedBalloonTextFormattingContext context, string fallbackText)

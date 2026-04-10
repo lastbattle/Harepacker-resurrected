@@ -210,6 +210,14 @@ namespace HaCreator.MapSimulator.UI
             DiscardChanges = 3,
         }
 
+        private enum JoypadActionButtonKind
+        {
+            None = 0,
+            Default = 1,
+            Ok = 2,
+            Cancel = 3,
+        }
+
         private sealed class JoypadSessionSnapshot
         {
             public PlayerIndex GamepadIndex { get; set; } = PlayerIndex.One;
@@ -279,6 +287,7 @@ namespace HaCreator.MapSimulator.UI
         private int _previousMouseWheelValue;
         private bool _draggingJoypadScrollKnob;
         private JoypadPendingConfirmAction _pendingJoypadConfirmAction;
+        private JoypadActionButtonKind _selectedJoypadActionButton;
 
         public OptionMenuWindow(IDXObject frame, string windowName, Texture2D checkTexture, Texture2D highlightTexture, Texture2D[] scrollTextures)
             : base(frame)
@@ -306,8 +315,8 @@ namespace HaCreator.MapSimulator.UI
 
         public void InitializeButtons(UIObject okButton, UIObject cancelButton)
         {
-            RegisterActionButton(okButton, () => CommitAndHide());
-            RegisterActionButton(cancelButton, () => DiscardAndHide());
+            RegisterActionButton(okButton, JoypadActionButtonKind.Ok, () => CommitAndHide());
+            RegisterActionButton(cancelButton, JoypadActionButtonKind.Cancel, () => DiscardAndHide());
         }
 
         public void ConfigureRows(
@@ -516,6 +525,7 @@ namespace HaCreator.MapSimulator.UI
 
                     JoypadRow row = _joypadRows[i];
                     _selectedJoypadRowIndex = i;
+                    _selectedJoypadActionButton = JoypadActionButtonKind.None;
                     if (row.Action.HasValue)
                     {
                         if (leftPressedThisFrame)
@@ -691,12 +701,55 @@ namespace HaCreator.MapSimulator.UI
 
             if (!string.IsNullOrWhiteSpace(_statusMessage))
             {
-            DrawWindowText(
-                sprite,
-                _statusMessage,
-                new Vector2(Position.X + 16, Position.Y + (CurrentFrame?.Height ?? 320) - WindowLineSpacing - 12),
-                new Color(255, 228, 151));
+                DrawWindowText(
+                    sprite,
+                    _statusMessage,
+                    new Vector2(Position.X + 16, Position.Y + (CurrentFrame?.Height ?? 320) - WindowLineSpacing - 12),
+                    new Color(255, 228, 151));
             }
+        }
+
+        protected override void DrawOverlay(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            base.DrawOverlay(
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                drawReflectionInfo,
+                renderParameters,
+                TickCount);
+
+            if (_mode != OptionMenuMode.Joypad
+                || _selectedJoypadActionButton == JoypadActionButtonKind.None
+                || _highlightTexture == null)
+            {
+                return;
+            }
+
+            Rectangle bounds = GetJoypadActionButtonBounds(_selectedJoypadActionButton);
+            if (bounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            Color tint = _pendingJoypadConfirmAction != JoypadPendingConfirmAction.None
+                ? new Color(120, 92, 42, 120)
+                : new Color(92, 120, 190, 110);
+            sprite.Draw(_highlightTexture, new Rectangle(bounds.X - 2, bounds.Y - 2, bounds.Width + 4, bounds.Height + 4), tint);
         }
 
         private string GetTitle()
@@ -710,7 +763,7 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private void RegisterActionButton(UIObject button, Action action)
+        private void RegisterActionButton(UIObject button, JoypadActionButtonKind buttonKind, Action action)
         {
             if (button == null)
             {
@@ -718,7 +771,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AddButton(button);
-            button.ButtonClickReleased += _ => action?.Invoke();
+            button.ButtonClickReleased += _ =>
+            {
+                if (_mode == OptionMenuMode.Joypad && buttonKind != JoypadActionButtonKind.None)
+                {
+                    _selectedJoypadActionButton = buttonKind;
+                    _statusMessage = BuildJoypadActionButtonStatus(buttonKind);
+                }
+
+                action?.Invoke();
+            };
         }
 
         private string GetSubtitle()
@@ -1427,6 +1489,7 @@ namespace HaCreator.MapSimulator.UI
             _joypadScrollOffset = 0;
             _draggingJoypadScrollKnob = false;
             _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
+            _selectedJoypadActionButton = JoypadActionButtonKind.None;
             foreach (List<OptionRow> rows in _rows.Values)
             {
                 if (rows == null)
@@ -1511,6 +1574,7 @@ namespace HaCreator.MapSimulator.UI
                 && HasJoypadSessionChanges(_stagedJoypadSession))
             {
                 _pendingJoypadConfirmAction = JoypadPendingConfirmAction.DiscardChanges;
+                _selectedJoypadActionButton = JoypadActionButtonKind.Ok;
                 _statusMessage = "Discard staged joypad changes? Press Enter, Start, or BtOK to restore the live profile, or Escape / Back to keep editing.";
                 return;
             }
@@ -1520,6 +1584,7 @@ namespace HaCreator.MapSimulator.UI
             _armedJoypadBindingAction = null;
             _activeJoypadSliderRowIndex = -1;
             _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
+            _selectedJoypadActionButton = JoypadActionButtonKind.None;
             ResetJoypadCaptureState(_stagedJoypadSession);
             Hide();
         }
@@ -1697,6 +1762,8 @@ namespace HaCreator.MapSimulator.UI
                 || IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.Back)
                 || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.X)
                 || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.B);
+            bool jumpToButtons = IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.End)
+                || IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.Home);
 
             _previousJoypadNavigationKeyboardState = keyboard;
             _previousJoypadNavigationGamepadState = gamepad;
@@ -1708,27 +1775,67 @@ namespace HaCreator.MapSimulator.UI
 
             if (_pendingJoypadConfirmAction != JoypadPendingConfirmAction.None)
             {
-                return;
+                if (_selectedJoypadActionButton == JoypadActionButtonKind.None)
+                {
+                    _selectedJoypadActionButton = JoypadActionButtonKind.Ok;
+                }
             }
 
-            if (_selectedJoypadRowIndex < 0 || _selectedJoypadRowIndex >= _joypadRows.Count)
+            if (_selectedJoypadActionButton == JoypadActionButtonKind.None
+                && (_selectedJoypadRowIndex < 0 || _selectedJoypadRowIndex >= _joypadRows.Count))
             {
                 _selectedJoypadRowIndex = 0;
             }
 
             if (moveUp)
             {
-                _selectedJoypadRowIndex = (_selectedJoypadRowIndex - 1 + _joypadRows.Count) % _joypadRows.Count;
-                EnsureJoypadRowVisible(_selectedJoypadRowIndex);
-                _statusMessage = BuildJoypadSelectionStatus(_joypadRows[_selectedJoypadRowIndex], session);
+                MoveJoypadSelection(-1, session);
                 return;
             }
 
             if (moveDown)
             {
-                _selectedJoypadRowIndex = (_selectedJoypadRowIndex + 1) % _joypadRows.Count;
-                EnsureJoypadRowVisible(_selectedJoypadRowIndex);
-                _statusMessage = BuildJoypadSelectionStatus(_joypadRows[_selectedJoypadRowIndex], session);
+                MoveJoypadSelection(1, session);
+                return;
+            }
+
+            if (jumpToButtons)
+            {
+                if (_selectedJoypadActionButton == JoypadActionButtonKind.None)
+                {
+                    _selectedJoypadActionButton = JoypadActionButtonKind.Default;
+                    _statusMessage = BuildJoypadActionButtonStatus(_selectedJoypadActionButton);
+                }
+                else
+                {
+                    _selectedJoypadActionButton = JoypadActionButtonKind.None;
+                    EnsureJoypadRowVisible(_selectedJoypadRowIndex);
+                    _statusMessage = BuildJoypadSelectionStatus(_joypadRows[_selectedJoypadRowIndex], session);
+                }
+                return;
+            }
+
+            if (_selectedJoypadActionButton != JoypadActionButtonKind.None)
+            {
+                if (adjustLeft)
+                {
+                    _selectedJoypadActionButton = GetSteppedJoypadActionButton(-1, _pendingJoypadConfirmAction != JoypadPendingConfirmAction.None);
+                    _statusMessage = BuildJoypadActionButtonStatus(_selectedJoypadActionButton);
+                    return;
+                }
+
+                if (adjustRight)
+                {
+                    _selectedJoypadActionButton = GetSteppedJoypadActionButton(1, _pendingJoypadConfirmAction != JoypadPendingConfirmAction.None);
+                    _statusMessage = BuildJoypadActionButtonStatus(_selectedJoypadActionButton);
+                    return;
+                }
+
+                if (activate)
+                {
+                    ActivateJoypadActionButton();
+                }
+
                 return;
             }
 
@@ -1780,6 +1887,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            _selectedJoypadActionButton = JoypadActionButtonKind.None;
             if (row.Action.HasValue)
             {
                 if (allowBindingClear)
@@ -2049,6 +2157,7 @@ namespace HaCreator.MapSimulator.UI
             _pendingJoypadConfirmAction = direction < 0
                 ? JoypadPendingConfirmAction.RestoreLiveProfile
                 : JoypadPendingConfirmAction.ResetDefaults;
+            _selectedJoypadActionButton = JoypadActionButtonKind.Ok;
             _statusMessage = direction < 0
                 ? "Restore the live joypad profile captured when this owner opened? Press Enter, Start, or BtOK to confirm, or Escape / Back to keep the staged profile."
                 : "Stage the default MapleStory-style joypad profile? Press Enter, Start, or BtOK to confirm, or Escape / Back to keep the current staged profile.";
@@ -2058,6 +2167,7 @@ namespace HaCreator.MapSimulator.UI
         {
             JoypadPendingConfirmAction action = _pendingJoypadConfirmAction;
             _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
+            _selectedJoypadActionButton = JoypadActionButtonKind.None;
 
             switch (action)
             {
@@ -2092,9 +2202,138 @@ namespace HaCreator.MapSimulator.UI
 
             JoypadPendingConfirmAction cancelledAction = _pendingJoypadConfirmAction;
             _pendingJoypadConfirmAction = JoypadPendingConfirmAction.None;
+            _selectedJoypadActionButton = JoypadActionButtonKind.None;
             _statusMessage = cancelledAction == JoypadPendingConfirmAction.DiscardChanges
                 ? "Discard cancelled. The staged joypad profile is still open for editing."
                 : "Joypad confirmation cancelled. The staged profile is unchanged.";
+        }
+
+        private void MoveJoypadSelection(int direction, JoypadSessionSnapshot session)
+        {
+            if (_joypadRows.Count == 0)
+            {
+                return;
+            }
+
+            if (_selectedJoypadActionButton != JoypadActionButtonKind.None)
+            {
+                _selectedJoypadActionButton = JoypadActionButtonKind.None;
+                if (direction < 0)
+                {
+                    _selectedJoypadRowIndex = Math.Max(0, _joypadRows.Count - 1);
+                }
+
+                EnsureJoypadRowVisible(_selectedJoypadRowIndex);
+                _statusMessage = BuildJoypadSelectionStatus(_joypadRows[_selectedJoypadRowIndex], session);
+                return;
+            }
+
+            int nextIndex = _selectedJoypadRowIndex + (direction < 0 ? -1 : 1);
+            if (nextIndex < 0)
+            {
+                _selectedJoypadActionButton = JoypadActionButtonKind.Default;
+                _statusMessage = BuildJoypadActionButtonStatus(_selectedJoypadActionButton);
+                return;
+            }
+
+            if (nextIndex >= _joypadRows.Count)
+            {
+                _selectedJoypadActionButton = JoypadActionButtonKind.Default;
+                _statusMessage = BuildJoypadActionButtonStatus(_selectedJoypadActionButton);
+                return;
+            }
+
+            _selectedJoypadRowIndex = nextIndex;
+            EnsureJoypadRowVisible(_selectedJoypadRowIndex);
+            _statusMessage = BuildJoypadSelectionStatus(_joypadRows[_selectedJoypadRowIndex], session);
+        }
+
+        private JoypadActionButtonKind GetSteppedJoypadActionButton(int direction, bool confirmOnly)
+        {
+            JoypadActionButtonKind[] fullOrder =
+            {
+                JoypadActionButtonKind.Default,
+                JoypadActionButtonKind.Ok,
+                JoypadActionButtonKind.Cancel,
+            };
+            JoypadActionButtonKind[] confirmOrder =
+            {
+                JoypadActionButtonKind.Ok,
+                JoypadActionButtonKind.Cancel,
+            };
+
+            JoypadActionButtonKind[] order = confirmOnly ? confirmOrder : fullOrder;
+            int currentIndex = Array.IndexOf(order, _selectedJoypadActionButton);
+            if (currentIndex < 0)
+            {
+                return order[0];
+            }
+
+            int nextIndex = currentIndex + (direction < 0 ? -1 : 1);
+            if (nextIndex < 0)
+            {
+                nextIndex = order.Length - 1;
+            }
+            else if (nextIndex >= order.Length)
+            {
+                nextIndex = 0;
+            }
+
+            return order[nextIndex];
+        }
+
+        private void ActivateJoypadActionButton()
+        {
+            switch (_selectedJoypadActionButton)
+            {
+                case JoypadActionButtonKind.Default:
+                    if (_pendingJoypadConfirmAction == JoypadPendingConfirmAction.None)
+                    {
+                        QueueJoypadResetConfirmation(1);
+                    }
+
+                    return;
+                case JoypadActionButtonKind.Ok:
+                    CommitAndHide();
+                    return;
+                case JoypadActionButtonKind.Cancel:
+                    DiscardAndHide();
+                    return;
+                default:
+                    return;
+            }
+        }
+
+        private string BuildJoypadActionButtonStatus(JoypadActionButtonKind buttonKind)
+        {
+            return buttonKind switch
+            {
+                JoypadActionButtonKind.Default => _pendingJoypadConfirmAction == JoypadPendingConfirmAction.None
+                    ? "Button 1009 / Default selected. Press A or Space to stage the recovered MapleStory default combo assignment; Left/Right moves across the bottom action lane."
+                    : "Default is locked while a joypad confirm branch is pending. Use Left/Right to pick BtOK or BtCancle.",
+                JoypadActionButtonKind.Ok => _pendingJoypadConfirmAction == JoypadPendingConfirmAction.None
+                    ? "Button 1 / BtOK selected. Press A or Space to commit the staged joypad profile immediately."
+                    : "Button 1 / BtOK selected. Press A or Space to confirm the pending joypad branch.",
+                JoypadActionButtonKind.Cancel => _pendingJoypadConfirmAction == JoypadPendingConfirmAction.None
+                    ? "Button 2 / BtCancle selected. Press A or Space to discard the staged joypad profile and close the owner."
+                    : "Button 2 / BtCancle selected. Press A or Space to cancel the pending joypad branch and keep editing.",
+                _ => string.Empty,
+            };
+        }
+
+        private Rectangle GetJoypadActionButtonBounds(JoypadActionButtonKind buttonKind)
+        {
+            int x = buttonKind switch
+            {
+                JoypadActionButtonKind.Default => Position.X + JoypadClientDefaultButtonLeft,
+                JoypadActionButtonKind.Ok => Position.X + JoypadClientOkButtonLeft,
+                JoypadActionButtonKind.Cancel => Position.X + JoypadClientCancelButtonLeft,
+                _ => Position.X,
+            };
+
+            return buttonKind == JoypadActionButtonKind.None
+                ? Rectangle.Empty
+                : new Rectangle(x, Position.Y + JoypadClientButtonTop, 40, 16);
         }
 
         private bool HasJoypadSessionChanges(JoypadSessionSnapshot session)

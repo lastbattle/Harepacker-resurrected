@@ -104,6 +104,32 @@ namespace HaCreator.MapSimulator.UI
             return string.Concat(formattedFragments);
         }
 
+        public static (string StateLineMarkup, string SecondaryLineMarkup) BuildSkillTooltipMarkup(
+            SkillLevelData levelData,
+            bool hasCooldownState,
+            int remainingMs,
+            string tooltipStateText = null)
+        {
+            if (levelData == null)
+            {
+                return (string.Empty, string.Empty);
+            }
+
+            string stateLineMarkup = string.Empty;
+            if (hasCooldownState || levelData.Cooldown > 0 || !string.IsNullOrWhiteSpace(tooltipStateText))
+            {
+                stateLineMarkup = FormatTooltipStateLineMarkup(remainingMs, tooltipStateText);
+            }
+
+            string secondaryLineMarkup = FormatTooltipCostLineMarkup(
+                levelData,
+                includeCooldownState: false,
+                remainingMs,
+                tooltipStateText);
+
+            return (stateLineMarkup, secondaryLineMarkup);
+        }
+
         private static List<TooltipCostFragment> EnumerateTooltipCostFragments(
             SkillLevelData levelData,
             bool includeCooldownState,

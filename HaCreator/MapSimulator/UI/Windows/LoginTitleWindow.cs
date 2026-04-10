@@ -237,6 +237,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => GetFocusedFieldValue().Length;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => 16;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => !_busy && _focusedField != LoginFieldFocus.None;
+        string ISoftKeyboardHost.GetSoftKeyboardText() => GetFocusedFieldValue();
         public string AccountName => _accountName;
         public string Password => _password;
         public bool RememberId => _rememberId;

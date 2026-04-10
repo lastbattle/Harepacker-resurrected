@@ -14,11 +14,28 @@ namespace HaCreator.MapSimulator.Fields
 
     public static class FieldDropRequestEvaluator
     {
+        public static bool ShouldPromptForItemDropQuantity(
+            InventoryType inventoryType,
+            InventorySlotData slotData)
+        {
+            if (inventoryType == InventoryType.NONE || slotData == null || slotData.ItemId <= 0)
+            {
+                return false;
+            }
+
+            int stackQuantity = Math.Max(1, slotData.Quantity);
+            int maxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(inventoryType, slotData.MaxStackSize);
+            return inventoryType != InventoryType.EQUIP
+                && maxStackSize > 1
+                && stackQuantity > 1;
+        }
+
         public static bool TryResolveLocalItemDropRequest(
             long fieldLimit,
             InventoryType inventoryType,
             int slotIndex,
             InventorySlotData slotData,
+            int? requestedQuantity,
             out LocalFieldItemDropRequest request,
             out string restrictionMessage)
         {
@@ -41,11 +58,19 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            int stackQuantity = Math.Max(1, slotData.Quantity);
+            int normalizedQuantity = requestedQuantity ?? stackQuantity;
+            if (normalizedQuantity <= 0 || normalizedQuantity > stackQuantity)
+            {
+                restrictionMessage = "The drop request quantity is invalid.";
+                return false;
+            }
+
             request = new LocalFieldItemDropRequest(
                 inventoryType,
                 slotIndex,
                 slotData.ItemId,
-                Math.Max(1, slotData.Quantity));
+                normalizedQuantity);
             return true;
         }
 

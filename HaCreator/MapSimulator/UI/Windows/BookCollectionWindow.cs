@@ -184,6 +184,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => _searchQuery?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => MaxSearchLength;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _searchMatches.Count > 0;
+        string ISoftKeyboardHost.GetSoftKeyboardText() => _searchQuery ?? string.Empty;
         public Action ClientCloseRequested { get; set; }
         public Action OpenRequested { get; set; }
         public Action ClosingRequested { get; set; }
@@ -1446,12 +1447,8 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCollectionPage(SpriteBatch sprite, int pageIndex, Point pageOrigin, Rectangle contentBounds)
         {
-            CollectionBookPageSnapshot page = GetCollectionPage(pageIndex);
-
-            if (page == null)
+            if (!TryResolveCollectionPage(_collectionSnapshot?.Pages, pageIndex, out CollectionBookPageSnapshot page))
             {
-                DrawTextLine(sprite, "No entry", new Vector2(contentBounds.X + 12, contentBounds.Y + 18), GetBookStyle(0), contentBounds.Width - 24, HorizontalAlignment.Center);
-                DrawTextLine(sprite, "No ledger rows", new Vector2(contentBounds.X + 12, contentBounds.Y + 42), GetBookStyle(10), contentBounds.Width - 24, HorizontalAlignment.Center);
                 return;
             }
 
@@ -1568,9 +1565,19 @@ namespace HaCreator.MapSimulator.UI
 
         private CollectionBookPageSnapshot GetCollectionPage(int pageIndex)
         {
-            return pageIndex >= 0 && pageIndex < (_collectionSnapshot?.Pages?.Count ?? 0)
-                ? _collectionSnapshot.Pages[pageIndex]
+            TryResolveCollectionPage(_collectionSnapshot?.Pages, pageIndex, out CollectionBookPageSnapshot page);
+            return page;
+        }
+
+        internal static bool TryResolveCollectionPage(
+            IReadOnlyList<CollectionBookPageSnapshot> pages,
+            int pageIndex,
+            out CollectionBookPageSnapshot page)
+        {
+            page = pageIndex >= 0 && pageIndex < (pages?.Count ?? 0)
+                ? pages[pageIndex]
                 : null;
+            return page != null;
         }
 
         private readonly struct BookTextStyle
@@ -3099,6 +3106,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+            if (WindowsImePresentationBridge.TryRefreshCandidateWindowForm(windowHandle, _candidateListState, out ImeCandidateListState refreshedCandidateState))
+            {
+                _candidateListState = refreshedCandidateState;
+            }
         }
 
         protected override void ResetImePresentationPlacement()

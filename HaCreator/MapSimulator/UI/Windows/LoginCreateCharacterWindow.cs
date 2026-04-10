@@ -225,6 +225,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => _displayName?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => NameMaxLength;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => IsNameInputEditable && !string.IsNullOrWhiteSpace(_displayName);
+        string ISoftKeyboardHost.GetSoftKeyboardText() => _displayName ?? string.Empty;
 
         public event Action<int> RaceSelected;
         public event Action<int> JobSelected;

@@ -153,6 +153,11 @@ namespace HaCreator.MapSimulator
         private void HandlePacketOwnedAccountMoreInfoSaveRequested()
         {
             byte[] savePayload = _accountMoreInfoRuntime.BuildSaveRequestPayload();
+            if (savePayload == null || savePayload.Length == 0)
+            {
+                return;
+            }
+
             string dispatchStatus = DispatchPacketOwnedAccountMoreInfoClientRequest(
                 Managers.AccountMoreInfoRuntime.ClientOpcode,
                 savePayload,

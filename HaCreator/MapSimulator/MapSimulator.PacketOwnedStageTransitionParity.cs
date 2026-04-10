@@ -172,6 +172,7 @@ namespace HaCreator.MapSimulator
 
             questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.QuestRecordValues);
             questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.QuestExRecordValues);
+            questRuntime.ApplyPacketOwnedQuestRecordSnapshot(snapshot.VisitorQuestRecords);
         }
 
         private void UpdatePacketOwnedFollowRequestOptionFromSetField(PacketSetFieldPacket packet)

@@ -289,6 +289,7 @@ namespace HaCreator.MapSimulator.Pools
         GenericUserState = 0,
         SkillUse = 1,
         ItemMake = 18,
+        EffectByItem = 22,
         IncDecHp = 29,
         QuestDeliveryStart = 30,
         QuestDeliveryEnd = 31
@@ -308,6 +309,7 @@ namespace HaCreator.MapSimulator.Pools
             (byte)RemoteUserEffectSubtype.GenericUserState => RemoteUserEffectSubtype.GenericUserState,
             (byte)RemoteUserEffectSubtype.SkillUse => RemoteUserEffectSubtype.SkillUse,
             (byte)RemoteUserEffectSubtype.ItemMake => RemoteUserEffectSubtype.ItemMake,
+            (byte)RemoteUserEffectSubtype.EffectByItem => RemoteUserEffectSubtype.EffectByItem,
             (byte)RemoteUserEffectSubtype.IncDecHp => RemoteUserEffectSubtype.IncDecHp,
             (byte)RemoteUserEffectSubtype.QuestDeliveryStart => RemoteUserEffectSubtype.QuestDeliveryStart,
             (byte)RemoteUserEffectSubtype.QuestDeliveryEnd => RemoteUserEffectSubtype.QuestDeliveryEnd,
@@ -1327,6 +1329,7 @@ namespace HaCreator.MapSimulator.Pools
                         break;
 
                     case RemoteUserEffectSubtype.ItemMake:
+                    case RemoteUserEffectSubtype.EffectByItem:
                     case RemoteUserEffectSubtype.IncDecHp:
                     case RemoteUserEffectSubtype.QuestDeliveryStart:
                         if (effectPayload.Length != sizeof(int))

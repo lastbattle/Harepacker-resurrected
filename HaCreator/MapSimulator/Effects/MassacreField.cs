@@ -1901,6 +1901,31 @@ namespace HaCreator.MapSimulator.Effects
             return MassacreMapMode.Main;
         }
 
+        public static bool IsMassacreMap(MapInfo mapInfo)
+        {
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            if (mapInfo.fieldType == FieldType.FIELDTYPE_MASSACRE
+                || mapInfo.fieldType == FieldType.FIELDTYPE_MASSACRE_RESULT)
+            {
+                return true;
+            }
+
+            MassacreMapMode mapMode = ResolveMapMode(mapInfo);
+            if (mapMode is MassacreMapMode.Bonus or MassacreMapMode.Result)
+            {
+                return true;
+            }
+
+            // v115 WZ still keeps the legacy MonsterKilling stage family in 910320xxx even when
+            // the field type does not identify the wrapper. Keep that narrow id fallback only for
+            // the recovered stage block instead of the old broad 910000000-910000099 sweep.
+            return mapInfo.id >= 910320000 && mapInfo.id <= 910320099;
+        }
+
         private void ResetTransientMapPresentationState(MassacreMapMode nextMode)
         {
             _showedClearEffect = false;

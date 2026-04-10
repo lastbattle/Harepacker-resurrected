@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using HaCreator.MapSimulator.AI;
 using HaSharedLibrary.Render.DX;
 
 namespace HaCreator.MapSimulator.Entities
@@ -33,6 +34,19 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return totalDurationMs;
+        }
+
+        public static int ResolveRepeatIntervalMs(
+            IReadOnlyList<IDXObject> frames,
+            MobAttackEntry currentAttack,
+            int configuredSpecialAttackAfterMs)
+        {
+            if (currentAttack?.IsSpecialAttack == true && currentAttack.AttackAfter > 0)
+            {
+                return currentAttack.AttackAfter;
+            }
+
+            return ResolveRepeatIntervalMs(frames, configuredSpecialAttackAfterMs);
         }
 
         public static bool ShouldRegisterBurst(

@@ -88,6 +88,14 @@ namespace HaCreator.MapSimulator.Fields
                 : QueuedRetryDecision.Clear;
         }
 
+        public static bool ShouldCancelQueuedRetryOnHorizontalKeyDown(
+            bool hasPendingRequest,
+            bool leftKeyPressed,
+            bool rightKeyPressed)
+        {
+            return hasPendingRequest && (leftKeyPressed || rightKeyPressed);
+        }
+
         public static bool CanReplayHandleUpKeyDown(PassiveTransferFieldReplayState state)
         {
             return state.HasOneTimeActionCompleted

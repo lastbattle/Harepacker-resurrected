@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using System;
@@ -50,21 +51,24 @@ namespace HaCreator.MapSimulator
                 return applied;
             }
 
-            if (packetType == PartyRaidField.ClientSessionValuePacketType)
+            if (packetType == MassacreField.PacketTypeResult
+                || packetType == 178)
             {
-                return TryApplyClientOwnedSessionValuePacket(payload, currTickCount, out message);
-            }
-
-            if (TryApplyClientOwnedWrapperPacket(packetType, payload, currTickCount, out message))
-            {
+                bool applied = _specialFieldRuntime.TryDispatchCurrentWrapperPacketRelay(packetType, payload, currTickCount, out message);
                 if (TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out string portalImpactMessage))
                 {
                     message = string.IsNullOrWhiteSpace(message)
                         ? portalImpactMessage
                         : $"{message} {portalImpactMessage}";
+                    return true;
                 }
 
-                return true;
+                return applied;
+            }
+
+            if (packetType == PartyRaidField.ClientSessionValuePacketType)
+            {
+                return TryApplyClientOwnedSessionValuePacket(payload, currTickCount, out message);
             }
 
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);

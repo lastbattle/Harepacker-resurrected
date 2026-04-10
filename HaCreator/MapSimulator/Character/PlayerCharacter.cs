@@ -4683,6 +4683,16 @@ namespace HaCreator.MapSimulator.Character
             MirrorImagePreparedSourceLayer preparedLayer = existingLayer ?? new MirrorImagePreparedSourceLayer();
             if (sourceParts == null || sourceParts.Count == 0)
             {
+                if (CanPreserveMirrorImagePreparedSourceLayerWhenSourceMissing(
+                    preparedLayer.PreparedFacingRight,
+                    facingRight,
+                    preparedLayer.Parts?.Count ?? 0))
+                {
+                    preparedLayer.RenderLayer = renderLayer;
+                    preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
+                    return preparedLayer;
+                }
+
                 return ResetPreparedMirrorImageSourceLayer(preparedLayer, renderLayer, sourceSignature);
             }
 
@@ -4812,6 +4822,17 @@ namespace HaCreator.MapSimulator.Character
         {
             return existingPartCount > 0
                    && existingFacingRight == currentFacingRight;
+        }
+
+        internal static bool CanPreserveMirrorImagePreparedSourceLayerWhenSourceMissing(
+            bool existingFacingRight,
+            bool currentFacingRight,
+            int existingPartCount)
+        {
+            return CanPreserveMirrorImagePreparedSourceLayerObject(
+                existingFacingRight,
+                currentFacingRight,
+                existingPartCount);
         }
 
         internal static int ResolveMirrorImagePreparedSourceLayerUpdateTime(
@@ -7222,6 +7243,11 @@ namespace HaCreator.MapSimulator.Character
             CharacterPart mountedPart = ResolveMountedStateTamingMobPart();
             if (mountedPart?.Slot == EquipSlot.TamingMob)
             {
+                if (TryResolveCurrentMountedClientBodyRelMoveY(actionName, animationTime, out int mountedBodyRelMoveY))
+                {
+                    return mountedBodyRelMoveY;
+                }
+
                 CharacterAnimation mountedAnimation = CharacterAssembler.GetPartAnimation(mountedPart, actionName);
                 if (mountedAnimation?.Frames?.Count > 0)
                 {
@@ -7244,6 +7270,37 @@ namespace HaCreator.MapSimulator.Character
 
             int frameIndex = Assembler.GetFrameIndexAtTime(actionName, animationTime);
             return ResolveClientBodyRelMoveY(frames, frameIndex);
+        }
+
+        internal bool TryResolveCurrentMountedClientBodyRelMoveY(
+            string actionName,
+            int animationTime,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            if (Assembler == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            SyncAssemblerActionLayerContext();
+            AssembledFrame frame = Assembler.GetFrameAtTime(actionName, animationTime);
+            return TryResolveMountedClientBodyRelMoveY(frame, out bodyRelMoveY);
+        }
+
+        internal static bool TryResolveMountedClientBodyRelMoveY(
+            AssembledFrame frame,
+            out int bodyRelMoveY)
+        {
+            bodyRelMoveY = 0;
+            if (frame?.MapPoints == null
+                || !frame.MapPoints.TryGetValue(AvatarActionLayerCoordinator.ClientBodyOriginMapPoint, out Point bodyRelMove))
+            {
+                return false;
+            }
+
+            bodyRelMoveY = bodyRelMove.Y;
+            return true;
         }
 
         internal static int ResolveClientBodyRelMoveY(IReadOnlyList<CharacterFrame> frames, int frameIndex)

@@ -575,6 +575,7 @@ namespace HaCreator.MapSimulator.Fields
                 _scores[_currentTurnIndex]++;
                 _revealedCardIndices.Clear();
                 _turnDeadlineTick = tickCount + DefaultTurnSeconds * 1000;
+                _localTieRequestSentThisTurn = false;
 
 
                 if (AreAllCardsMatched())
@@ -600,6 +601,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = tickCount + DefaultMismatchHideDelayMs;
             _statusMessage = "Mismatch. Cards will flip back.";
             message = _statusMessage;
+            _localTieRequestSentThisTurn = false;
             _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Mismatch. Waiting for cards to flip back.");
             SyncMiniRoomRuntime();
             return true;
@@ -638,6 +640,12 @@ namespace HaCreator.MapSimulator.Fields
             if (_localTieRequestSent)
             {
                 message = "A Match Cards tie request is already pending.";
+                return false;
+            }
+
+            if (_localTieRequestSentThisTurn)
+            {
+                message = "A Match Cards tie request was already sent this turn.";
                 return false;
             }
 
@@ -1337,6 +1345,7 @@ namespace HaCreator.MapSimulator.Fields
             _packetCounts.Clear();
             ClearPendingPrompt();
             _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
             _localGiveUpRequestSent = false;
             SyncMiniRoomRuntime();
         }
@@ -1353,6 +1362,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingRemoteActions.Clear();
             ClearPendingPrompt();
             _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
             _localGiveUpRequestSent = false;
 
 
@@ -1432,6 +1442,9 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = tickCount + DefaultResultSeconds * 1000;
             _pendingHideTick = 0;
             _turnDeadlineTick = 0;
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
 
 
             if (_scores[0] == _scores[1])
@@ -1477,6 +1490,9 @@ namespace HaCreator.MapSimulator.Fields
             _turnDeadlineTick = 0;
             _resultExpireTick = 0;
             _lastWinnerIndex = -1;
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
             _stage = RoomStage.Lobby;
             if (string.IsNullOrWhiteSpace(_statusMessage))
             {
@@ -1503,6 +1519,9 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = 0;
             _lastWinnerIndex = -1;
             _pendingRemoteActions.Clear();
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
         }
 
 
@@ -1692,7 +1711,14 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (_localTieRequestSentThisTurn)
+            {
+                message = "A Match Cards tie request was already sent this turn.";
+                return false;
+            }
+
             _localTieRequestSent = true;
+            _localTieRequestSentThisTurn = true;
             _statusMessage = "Tie request sent. Waiting for the opponent's response.";
             _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
             SyncMiniRoomRuntime();
@@ -1834,6 +1860,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _currentTurnIndex = resultOwner;
                 _turnDeadlineTick = tickCount + 11600;
+                _localTieRequestSentThisTurn = false;
                 _statusMessage = $"Mismatch pending. {_playerNames[_currentTurnIndex]} takes the next turn after flip-back.";
                 _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Packet mismatch received. Waiting for time-over flip-back.");
             }
@@ -1853,6 +1880,7 @@ namespace HaCreator.MapSimulator.Fields
                 _currentTurnIndex = scoringPlayerIndex;
                 _turnDeadlineTick = tickCount + 10000;
                 _revealedCardIndices.Clear();
+                _localTieRequestSentThisTurn = false;
                 _statusMessage = $"{_playerNames[scoringPlayerIndex]} found a pair.";
                 _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_playerNames[scoringPlayerIndex]} matched cards {pairedCardIndex} and {cardIndex}.");
             }
@@ -1901,6 +1929,9 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = 0;
             _turnDeadlineTick = 0;
             _resultExpireTick = tickCount + DefaultResultSeconds * 1000;
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
 
 
             if (resultType == 1)
@@ -1945,6 +1976,9 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = 0;
             _resultExpireTick = 0;
             _pendingRemoteActions.Clear();
+            _localTieRequestSent = false;
+            _localTieRequestSentThisTurn = false;
+            _localGiveUpRequestSent = false;
 
 
             for (int i = 0; i < shuffle.Count; i++)

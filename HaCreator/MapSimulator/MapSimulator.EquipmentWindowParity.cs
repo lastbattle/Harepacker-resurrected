@@ -17,7 +17,7 @@ namespace HaCreator.MapSimulator
         private int _nextEquipmentChangeRequestId = 1;
         private int _lastEquipmentExclusiveRequestSentTick = int.MinValue;
         private readonly Dictionary<int, PendingEquipmentChangeEnvelope> _pendingEquipmentChangeRequests = new();
-        private readonly Dictionary<int, EquipmentChangeResult> _pendingCharacterEquipmentPacketResults = new();
+        private readonly Dictionary<int, QueuedCharacterEquipmentPacketResult> _pendingCharacterEquipmentPacketResults = new();
         private readonly Dictionary<int, EquipmentChangeResult> _pendingMechanicEquipmentPacketResults = new();
 
         private sealed class PendingEquipmentChangeEnvelope
@@ -29,6 +29,10 @@ namespace HaCreator.MapSimulator
             public bool AwaitingMechanicPacketAuthority { get; set; }
             public int MechanicPacketAuthorityDeadlineAtTick { get; set; }
         }
+
+        private readonly record struct QueuedCharacterEquipmentPacketResult(
+            EquipmentChangeResult Result,
+            CharacterEquipmentAuthorityResultKind ResultKind);
 
         private readonly record struct CharacterAuthoritySlotParts(
             CharacterPart VisiblePart,
@@ -142,11 +146,16 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            if (_pendingCharacterEquipmentPacketResults.TryGetValue(resolutionQuery.RequestId, out EquipmentChangeResult characterPacketResult))
+            if (_pendingCharacterEquipmentPacketResults.TryGetValue(resolutionQuery.RequestId, out QueuedCharacterEquipmentPacketResult queuedCharacterPacketResult))
             {
+                if (ShouldDeferQueuedCharacterPacketResultDrain(currTickCount, pendingEnvelope.ReadyAtTick))
+                {
+                    return null;
+                }
+
                 _pendingCharacterEquipmentPacketResults.Remove(resolutionQuery.RequestId);
                 _pendingEquipmentChangeRequests.Remove(resolutionQuery.RequestId);
-                return characterPacketResult;
+                return queuedCharacterPacketResult.Result;
             }
 
             if (_pendingMechanicEquipmentPacketResults.TryGetValue(resolutionQuery.RequestId, out EquipmentChangeResult packetResult))
@@ -417,7 +426,12 @@ namespace HaCreator.MapSimulator
                         payload.RequestedAtTick,
                         currTickCount,
                         payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken());
-                return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, rejectResult, out message);
+                return TryQueueCharacterEquipmentPacketResult(
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    rejectResult,
+                    CharacterEquipmentAuthorityResultKind.Reject,
+                    out message);
             }
 
             if (EquipmentChangeRequestValidator.TryGetRequestStateRejectReason(
@@ -431,7 +445,12 @@ namespace HaCreator.MapSimulator
                         payload.RequestedAtTick,
                         currTickCount,
                         build.ComputeEquipmentStateToken());
-                return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, staleReject, out message);
+                return TryQueueCharacterEquipmentPacketResult(
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    staleReject,
+                    CharacterEquipmentAuthorityResultKind.Reject,
+                    out message);
             }
 
             if (!TryCreatePacketOwnedCharacterAuthorityResult(request, build, payload, out EquipmentChangeResult acceptedResult, out string rejectReason))
@@ -442,10 +461,22 @@ namespace HaCreator.MapSimulator
                         payload.RequestedAtTick,
                         currTickCount,
                         payload.ResolvedBuildStateToken != 0 ? payload.ResolvedBuildStateToken : build.ComputeEquipmentStateToken());
-                return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, rejectResult, out message);
+                return TryQueueCharacterEquipmentPacketResult(
+                    payload.RequestId,
+                    payload.RequestedAtTick,
+                    rejectResult,
+                    payload.ResultKind == CharacterEquipmentAuthorityResultKind.Reject
+                        ? CharacterEquipmentAuthorityResultKind.Reject
+                        : CharacterEquipmentAuthorityResultKind.AuthoritativeStateAccept,
+                    out message);
             }
 
-            return TryQueueCharacterEquipmentPacketResult(payload.RequestId, payload.RequestedAtTick, acceptedResult, out message);
+            return TryQueueCharacterEquipmentPacketResult(
+                payload.RequestId,
+                payload.RequestedAtTick,
+                acceptedResult,
+                payload.ResultKind,
+                out message);
         }
 
         private bool TryCreatePacketOwnedCharacterAuthorityResult(
@@ -667,6 +698,7 @@ namespace HaCreator.MapSimulator
             int requestId,
             int requestedAtTick,
             EquipmentChangeResult result,
+            CharacterEquipmentAuthorityResultKind resultKind,
             out string message)
         {
             message = null;
@@ -691,13 +723,35 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            _pendingCharacterEquipmentPacketResults[requestId] = result;
+            if (_pendingCharacterEquipmentPacketResults.TryGetValue(requestId, out QueuedCharacterEquipmentPacketResult existingResult)
+                && !ShouldReplaceQueuedCharacterPacketResult(existingResult.ResultKind, resultKind))
+            {
+                pendingEnvelope.AwaitingCharacterPacketAuthority = false;
+                pendingEnvelope.CharacterPacketAuthorityDeadlineAtTick = currTickCount;
+                message = $"Ignored provisional packet-authored character equipment result for request {requestId} because an explicit result is already queued.";
+                return true;
+            }
+
+            _pendingCharacterEquipmentPacketResults[requestId] = new QueuedCharacterEquipmentPacketResult(result, resultKind);
             pendingEnvelope.AwaitingCharacterPacketAuthority = false;
             pendingEnvelope.CharacterPacketAuthorityDeadlineAtTick = currTickCount;
             message = result.Accepted
                 ? $"Queued packet-authored character equipment result for request {requestId}."
                 : $"Queued packet-authored character equipment rejection for request {requestId}.";
             return true;
+        }
+
+        internal static bool ShouldDeferQueuedCharacterPacketResultDrain(int currentTick, int readyAtTick)
+        {
+            return unchecked(currentTick - readyAtTick) < 0;
+        }
+
+        internal static bool ShouldReplaceQueuedCharacterPacketResult(
+            CharacterEquipmentAuthorityResultKind existingKind,
+            CharacterEquipmentAuthorityResultKind incomingKind)
+        {
+            return existingKind == CharacterEquipmentAuthorityResultKind.LocalRequestAccept
+                   || incomingKind != CharacterEquipmentAuthorityResultKind.LocalRequestAccept;
         }
 
         internal static bool TryValidatePacketOwnedCharacterAuthorityScope(

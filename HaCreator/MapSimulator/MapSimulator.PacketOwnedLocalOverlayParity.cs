@@ -693,7 +693,8 @@ namespace HaCreator.MapSimulator
                     ResolveQuestStateText = ResolvePacketOwnedBalloonQuestStateText,
                     ResolveQuestRecordText = ResolvePacketOwnedBalloonQuestRecordText,
                     ResolveQuestDetailRecordText = ResolvePacketOwnedBalloonQuestDetailRecordText,
-                    ResolveJobNameText = ResolvePacketOwnedBalloonJobNameText
+                    ResolveJobNameText = ResolvePacketOwnedBalloonJobNameText,
+                    ResolvePlaceholderText = ResolvePacketOwnedBalloonPlaceholderText
                 });
             for (int i = 0; i < sanitized.Length; i++)
             {
@@ -766,7 +767,8 @@ namespace HaCreator.MapSimulator
 
                 case PacketOwnedBalloonFontControlKind.FontTable:
                     if (string.IsNullOrWhiteSpace(value)
-                        || value == "0")
+                        || value == "0"
+                        || value.Equals("basic", StringComparison.OrdinalIgnoreCase))
                     {
                         style = new PacketOwnedBalloonTextStyle(baseColor, false);
                     }
@@ -960,6 +962,40 @@ namespace HaCreator.MapSimulator
             return jobId > 0
                 ? SkillDataLoader.GetJobName(jobId)
                 : "your job";
+        }
+
+        private string ResolvePacketOwnedBalloonPlaceholderText(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return string.Empty;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "name":
+                    return _playerManager?.Player?.Build?.Name ?? "You";
+
+                case "job":
+                    return ResolvePacketOwnedBalloonJobNameText();
+
+                case "map":
+                    int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
+                    if (currentMapId > 0 && Program.InfoManager?.MapsNameCache != null)
+                    {
+                        string normalizedMapId = currentMapId.ToString(CultureInfo.InvariantCulture).PadLeft(9, '0');
+                        if (Program.InfoManager.MapsNameCache.TryGetValue(normalizedMapId, out var mapInfo)
+                            && !string.IsNullOrWhiteSpace(mapInfo?.Item2))
+                        {
+                            return mapInfo.Item2;
+                        }
+                    }
+
+                    return "this map";
+
+                default:
+                    return token;
+            }
         }
 
         private string ResolvePacketOwnedBalloonQuestRecordText(int questId)

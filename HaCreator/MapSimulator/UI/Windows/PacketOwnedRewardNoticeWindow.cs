@@ -26,7 +26,7 @@ namespace HaCreator.MapSimulator.UI
         private const float BodyLineSpacing = 14f;
         private const int CenteredButtonX = 136;
         private const int ButtonBottomMargin = 15;
-        private const int SeparatorBottomOffset = 43;
+        private const int SeparatorTopFromBottom = 64;
         private const int CloseButtonRightMargin = 8;
         private const int CloseButtonTopMargin = 8;
 
@@ -72,7 +72,7 @@ namespace HaCreator.MapSimulator.UI
             int normalizedWidth = Math.Max(0, separatorWidth);
             int normalizedHeight = Math.Max(0, separatorHeight);
             int x = Math.Max(0, (Math.Max(0, frameWidth) - normalizedWidth) / 2);
-            int y = Math.Max(0, Math.Max(0, frameHeight) - SeparatorBottomOffset - normalizedHeight);
+            int y = Math.Max(0, Math.Max(0, frameHeight) - SeparatorTopFromBottom);
             return new Point(x, y);
         }
 

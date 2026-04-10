@@ -202,16 +202,24 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public static string BuildStatusMessage(PacketOwnedItemMakerResult result)
+        public static string BuildStatusMessage(
+            PacketOwnedItemMakerResult result,
+            PacketOwnedItemMakerPendingRequest pendingRequest = null)
         {
             if (result == null)
             {
                 return "Item Maker result is unavailable.";
             }
 
-            if (result.RepresentsSuccessfulCraft)
+            if (result.ResultCode == 0
+                && result.ResultType is 1 or 2
+                && PacketOwnedItemMakerInventoryRuntime.TryResolvePrimaryGrantedItem(
+                    result,
+                    pendingRequest,
+                    out int craftedItemId,
+                    out int craftedQuantity))
             {
-                return $"Created {ResolveItemName(result.TargetItemId)} x{Math.Max(1, result.TargetItemCount)}.";
+                return $"Created {ResolveItemName(craftedItemId)} x{craftedQuantity}.";
             }
 
             if (result.ResultType == 3)

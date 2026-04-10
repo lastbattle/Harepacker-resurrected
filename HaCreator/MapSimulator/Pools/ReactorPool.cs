@@ -1977,6 +1977,7 @@ namespace HaCreator.MapSimulator.Pools
                             data.PacketAnimationEndTime = ResolvePacketChangeStateNoHitLayerAnimationEndTime(
                                 currentTick,
                                 data.PacketProperEventIndex,
+                                data.PacketAnimationEndTime,
                                 remainingCurrentAnimationDuration);
                         }
                     }
@@ -1998,12 +1999,9 @@ namespace HaCreator.MapSimulator.Pools
                         StartPacketStateMovement(reactor, data, currentTick);
                     }
 
-                    if (data.PacketStateEndTime > 0
-                        && currentTick >= data.PacketStateEndTime
-                        && data.State == ReactorState.Activated
-                        && data.PacketHitStartTime <= 0
-                        && data.PacketAnimationEndTime <= 0)
+                    if (ShouldApplyPendingPacketVisualStateOnStateEnd(data, currentTick))
                     {
+                        ApplyPendingPacketVisualState(reactor, data, currentTick);
                         data.State = ReactorState.Active;
                         data.StateStartTime = currentTick;
                         data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
@@ -3295,11 +3293,17 @@ namespace HaCreator.MapSimulator.Pools
         internal static int ResolvePacketChangeStateNoHitLayerAnimationEndTime(
             int currentTick,
             int packetProperEventIndex,
+            int currentAnimationEndTime,
             int remainingCurrentAnimationDuration)
         {
             if (packetProperEventIndex == -2)
             {
                 return 0;
+            }
+
+            if (currentAnimationEndTime > currentTick)
+            {
+                return currentAnimationEndTime;
             }
 
             return ResolvePacketAnimationEndTime(currentTick, remainingCurrentAnimationDuration);
@@ -3453,12 +3457,34 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            bool packetHitLayerIsPendingOrActive = data.IsPacketOwned
-                && (data.PacketPendingVisualState >= 0 || data.PacketLeavePending)
-                && (data.PacketHitStartTime > 0 || data.PacketAnimationEndTime > 0);
-            return packetHitLayerIsPendingOrActive && data.PacketAnimationSourceState >= 0
+            return ShouldPreservePacketAnimationSourceState(data) && data.PacketAnimationSourceState >= 0
                 ? data.PacketAnimationSourceState
                 : data.VisualState;
+        }
+
+        internal static bool ShouldPreservePacketAnimationSourceState(ReactorRuntimeData data)
+        {
+            if (data == null || !data.IsPacketOwned || data.PacketAnimationSourceState < 0)
+            {
+                return false;
+            }
+
+            if (data.PacketLeavePending)
+            {
+                return true;
+            }
+
+            return data.PacketPendingVisualState >= 0;
+        }
+
+        internal static bool ShouldApplyPendingPacketVisualStateOnStateEnd(ReactorRuntimeData data, int currentTick)
+        {
+            return data != null
+                && data.PacketStateEndTime > 0
+                && currentTick >= data.PacketStateEndTime
+                && data.State == ReactorState.Activated
+                && data.PacketHitStartTime <= 0
+                && data.PacketAnimationEndTime <= 0;
         }
 
         internal static int ResolveReactorRenderSortKey(int page, int zMass, int templateLayerMode)

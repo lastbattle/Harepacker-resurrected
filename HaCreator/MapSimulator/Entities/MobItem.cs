@@ -1798,6 +1798,7 @@ namespace HaCreator.MapSimulator.Entities
             List<IDXObject> effectFrames = _animationSet.GetAngerGaugeEffect();
             int repeatIntervalMs = MobAngerGaugeBurstParity.ResolveRepeatIntervalMs(
                 effectFrames,
+                AI?.GetCurrentAttack(),
                 AI?.AngerGaugeFullChargeEffectIntervalMs ?? 0);
             if (repeatIntervalMs <= 0)
             {

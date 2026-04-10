@@ -78,6 +78,16 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static void ResetCacheData(
+            IDictionary<string, ContextOwnedStageUnitEnableState> keywordCache,
+            IDictionary<int, ContextOwnedStageUnitEnableState> questCache,
+            IDictionary<string, byte> stagePeriodCache)
+        {
+            keywordCache?.Clear();
+            questCache?.Clear();
+            stagePeriodCache?.Clear();
+        }
+
         internal static HashSet<string> CaptureEnabledKeywords(IDictionary<string, ContextOwnedStageUnitEnableState> keywordCache)
         {
             return CaptureEnabledValues(keywordCache);

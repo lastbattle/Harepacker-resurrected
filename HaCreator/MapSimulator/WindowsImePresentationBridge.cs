@@ -102,6 +102,63 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        internal static bool TryRefreshCandidateWindowForm(
+            IntPtr windowHandle,
+            ImeCandidateListState state,
+            out ImeCandidateListState refreshedState)
+        {
+            refreshedState = state ?? ImeCandidateListState.Empty;
+            if (windowHandle == IntPtr.Zero
+                || state == null
+                || !state.HasCandidates
+                || state.ListIndex < 0)
+            {
+                return false;
+            }
+
+            IntPtr inputContext = ImmGetContext(windowHandle);
+            if (inputContext == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            try
+            {
+                CANDIDATEFORM candidateForm = new()
+                {
+                    dwIndex = (uint)state.ListIndex
+                };
+
+                if (!ImmGetCandidateWindow(inputContext, (uint)state.ListIndex, ref candidateForm))
+                {
+                    return false;
+                }
+
+                int areaWidth = Math.Max(0, candidateForm.rcArea.right - candidateForm.rcArea.left);
+                int areaHeight = Math.Max(0, candidateForm.rcArea.bottom - candidateForm.rcArea.top);
+                refreshedState = new ImeCandidateListState(
+                    state.Candidates,
+                    state.PageStart,
+                    state.PageSize,
+                    state.Selection,
+                    state.Vertical,
+                    state.ListIndex,
+                    new ImeCandidateWindowForm(
+                        candidateForm.dwStyle,
+                        candidateForm.ptCurrentPos.x,
+                        candidateForm.ptCurrentPos.y,
+                        candidateForm.rcArea.left,
+                        candidateForm.rcArea.top,
+                        areaWidth,
+                        areaHeight));
+                return true;
+            }
+            finally
+            {
+                ImmReleaseContext(windowHandle, inputContext);
+            }
+        }
+
         private static POINT CreatePoint(Point point) => new() { x = point.X, y = point.Y };
 
         private static RECT CreateRect(Rectangle rectangle) => new()
@@ -156,6 +213,10 @@ namespace HaCreator.MapSimulator
 
         [DllImport("imm32.dll")]
         private static extern bool ImmSetCandidateWindow(IntPtr inputContext, ref CANDIDATEFORM candidateForm);
+
+        [DllImport("imm32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ImmGetCandidateWindow(IntPtr inputContext, uint deIndex, ref CANDIDATEFORM candidateForm);
 
         [DllImport("imm32.dll")]
         private static extern bool ImmNotifyIME(IntPtr inputContext, int action, uint index, uint value);

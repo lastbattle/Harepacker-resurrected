@@ -192,6 +192,43 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public bool TryRemoveQueuedTouchRequests(int objectId, out string status)
+        {
+            if (objectId <= 0)
+            {
+                status = "Reactor touch queue removal requires a positive reactor object id.";
+                LastStatus = status;
+                return false;
+            }
+
+            int removedCount;
+            lock (_sync)
+            {
+                removedCount = RemoveQueuedTouchRequestsUnsafe(objectId);
+            }
+
+            status = removedCount > 0
+                ? $"Removed {removedCount} queued reactor touch opcode {OutboundTouchReactorOpcode} request(s) for object {objectId}."
+                : $"No queued reactor touch opcode {OutboundTouchReactorOpcode} requests were pending for object {objectId}.";
+            LastStatus = status;
+            return removedCount > 0;
+        }
+
+        public int ClearQueuedTouchRequests()
+        {
+            lock (_sync)
+            {
+                int removedCount = _pendingTouchRequests.Count;
+                _pendingTouchRequests.Clear();
+                if (removedCount > 0)
+                {
+                    LastStatus = $"Cleared {removedCount} queued reactor touch opcode {OutboundTouchReactorOpcode} request(s).";
+                }
+
+                return removedCount;
+            }
+        }
+
         public bool WasLastInjectedTouchRequest(int objectId, bool isTouching)
         {
             return LastInjectedTouchObjectId == objectId && LastInjectedTouchFlag == isTouching;
@@ -582,13 +619,14 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private void RemoveQueuedTouchRequestsUnsafe(int objectId)
+        private int RemoveQueuedTouchRequestsUnsafe(int objectId)
         {
             if (objectId <= 0 || _pendingTouchRequests.Count == 0)
             {
-                return;
+                return 0;
             }
 
+            int removedCount = 0;
             int pendingCount = _pendingTouchRequests.Count;
             for (int i = 0; i < pendingCount; i++)
             {
@@ -597,7 +635,13 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     _pendingTouchRequests.Enqueue(pending);
                 }
+                else
+                {
+                    removedCount++;
+                }
             }
+
+            return removedCount;
         }
 
         private void EnqueueOrReplaceTouchRequestUnsafe(PendingTouchRequest next)

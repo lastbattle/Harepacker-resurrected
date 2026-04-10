@@ -201,6 +201,7 @@ namespace HaCreator.MapSimulator
         private int _lastQuestDemandItemQueryQuestId;
         private readonly List<int> _lastQuestDemandQueryVisibleItemIds = new();
         private readonly Dictionary<int, List<int>> _lastQuestDemandQueryVisibleItemMapIds = new();
+        private int _lastQuestDemandQueryPreferredItemId;
         private int _lastQuestDemandQueryHiddenItemCount;
         private bool _lastQuestDemandQueryHasPacketOwnedMapResults;
         private int _lastPacketOwnedResignQuestId;
@@ -338,6 +339,7 @@ namespace HaCreator.MapSimulator
             MapSimulatorWindowNames.QuestAlarm,
             MapSimulatorWindowNames.QuestDelivery,
             MapSimulatorWindowNames.QuestRewardRaise,
+            MapSimulatorWindowNames.RandomMorph,
             MapSimulatorWindowNames.ClassCompetition,
             MapSimulatorWindowNames.AccountMoreInfo,
             MapSimulatorWindowNames.NpcShop,
@@ -540,6 +542,7 @@ namespace HaCreator.MapSimulator
             _lastQuestDemandItemQueryQuestId = Math.Max(0, queryState?.QuestId ?? 0);
             _lastQuestDemandQueryVisibleItemIds.Clear();
             _lastQuestDemandQueryVisibleItemMapIds.Clear();
+            _lastQuestDemandQueryPreferredItemId = Math.Max(0, queryState?.PreferredItemId ?? 0);
             _lastQuestDemandQueryHiddenItemCount = Math.Max(0, queryState?.HiddenItemCount ?? 0);
             _lastQuestDemandQueryHasPacketOwnedMapResults = queryState?.HasPacketOwnedMapResults == true;
 
@@ -635,6 +638,12 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
+            if (_lastQuestDemandQueryPreferredItemId > 0 &&
+                _lastQuestDemandQueryVisibleItemIds.Contains(_lastQuestDemandQueryPreferredItemId))
+            {
+                return _lastQuestDemandQueryPreferredItemId;
+            }
+
             for (int i = 0; i < _lastQuestDemandQueryVisibleItemIds.Count; i++)
             {
                 int itemId = _lastQuestDemandQueryVisibleItemIds[i];
@@ -709,6 +718,7 @@ namespace HaCreator.MapSimulator
             _lastQuestDemandItemQueryQuestId = 0;
             _lastQuestDemandQueryVisibleItemIds.Clear();
             _lastQuestDemandQueryVisibleItemMapIds.Clear();
+            _lastQuestDemandQueryPreferredItemId = 0;
             _lastQuestDemandQueryHiddenItemCount = 0;
             _lastQuestDemandQueryHasPacketOwnedMapResults = false;
 
@@ -3938,6 +3948,102 @@ namespace HaCreator.MapSimulator
             return applied;
         }
 
+        private bool TryDispatchMessengerOfficialSessionRequest(int opcode, byte[] payload, string source, out string message)
+        {
+            byte[] safePayload = payload ?? Array.Empty<byte>();
+            string payloadHex = safePayload.Length > 0 ? Convert.ToHexString(safePayload) : "<empty>";
+            string dispatchStatus = "live Messenger bridge unavailable";
+            if (_messengerOfficialSessionBridge.TrySendOutboundPacket(opcode, safePayload, out dispatchStatus))
+            {
+                message = $"{source} dispatched opcode {opcode} [{payloadHex}] through the live Messenger session bridge. {dispatchStatus}";
+                return true;
+            }
+
+            string queuedStatus = "Messenger deferred queue unavailable";
+            if ((_messengerOfficialSessionBridgeEnabled || _messengerOfficialSessionBridge.IsRunning)
+                && _messengerOfficialSessionBridge.TryQueueOutboundPacket(opcode, safePayload, out queuedStatus))
+            {
+                message = $"{source} queued opcode {opcode} [{payloadHex}] for deferred Messenger session injection after the live path was unavailable. Bridge: {dispatchStatus} Deferred bridge: {queuedStatus}";
+                return true;
+            }
+
+            message = $"{source} remained simulator-local because the Messenger session bridge did not accept opcode {opcode} [{payloadHex}]. Bridge: {dispatchStatus} Deferred bridge: {queuedStatus}";
+            return false;
+        }
+
+        private bool TryMirrorMessengerInviteClientRequest(string contactName, out string message)
+        {
+            if (!_messengerRuntime.TryBuildClientInviteRequestPayload(contactName, out byte[] payload, out string resolvedContactName, out message))
+            {
+                return false;
+            }
+
+            if (!TryDispatchMessengerOfficialSessionRequest(
+                    MessengerPacketCodec.ClientMessengerRequestOpcode,
+                    payload,
+                    $"CUIMessenger::SendInviteMsg targeted {resolvedContactName}",
+                    out string dispatchStatus))
+            {
+                message = dispatchStatus;
+                return false;
+            }
+
+            string runtimeStatus = _messengerRuntime.QueueSessionOwnedInviteRequest(resolvedContactName);
+            message = $"{runtimeStatus} {dispatchStatus}";
+            return true;
+        }
+
+        private bool TryMirrorMessengerProcessChatClientRequest(string chatText, out string message)
+        {
+            if (!_messengerRuntime.TryBuildClientProcessChatRequestPayload(chatText, out byte[] payload, out string normalizedMessage, out message))
+            {
+                return false;
+            }
+
+            if (!TryDispatchMessengerOfficialSessionRequest(
+                    MessengerPacketCodec.ClientMessengerRequestOpcode,
+                    payload,
+                    "CUIMessenger::ProcessChat",
+                    out string dispatchStatus))
+            {
+                message = dispatchStatus;
+                return false;
+            }
+
+            string localStatus = _messengerRuntime.SendMessage(normalizedMessage);
+            message = $"{localStatus} {dispatchStatus}";
+            return true;
+        }
+
+        private bool TryMirrorMessengerChatEditInput(string text, out string message)
+        {
+            message = null;
+            string normalizedText = text?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedText))
+            {
+                return false;
+            }
+
+            if (!normalizedText.StartsWith("/", StringComparison.Ordinal))
+            {
+                return TryMirrorMessengerProcessChatClientRequest(normalizedText, out message);
+            }
+
+            string[] parts = normalizedText.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            string command = parts.Length > 0 ? parts[0].TrimStart('/').ToLowerInvariant() : string.Empty;
+            string argument = parts.Length > 1 ? parts[1].Trim() : string.Empty;
+            switch (command)
+            {
+                case "m":
+                case "msn":
+                case "invite":
+                    return !string.IsNullOrWhiteSpace(argument)
+                        && TryMirrorMessengerInviteClientRequest(argument, out message);
+                default:
+                    return false;
+            }
+        }
+
         private string DescribePacketOwnedQuestHelperStatus(int currentTickCount)
         {
             string resignStatus = _lastPacketOwnedResignQuestTick == int.MinValue
@@ -5181,15 +5287,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            audioProperty = ResolvePacketOwnedRadioAudioProperty(resolvedTrackNode);
-            if (audioProperty == null)
-            {
-                return false;
-            }
-
-            resolvedAudioDescriptor = ResolvePacketOwnedDescriptor(audioProperty)
-                ?? ResolvePacketOwnedDescriptor(resolvedTrackNode);
-            return true;
+            return false;
         }
 
         private static PacketOwnedRadioTrackResolution CreatePacketOwnedRadioTrackResolution(
@@ -5239,11 +5337,21 @@ namespace HaCreator.MapSimulator
             return null;
         }
 
-        private static string ResolvePacketOwnedRadioDisplayName(WzObject source, string fallback)
+        internal static string ResolvePacketOwnedRadioDisplayName(WzObject source, string fallback)
         {
             string normalizedFallback = string.IsNullOrWhiteSpace(fallback) ? "radio track" : fallback.Trim();
-            if (source is WzImageProperty propertyContainer
-                && propertyContainer["name"] is WzStringProperty nameProperty
+            if (source is not WzImageProperty propertyContainer)
+            {
+                return normalizedFallback;
+            }
+
+            if (propertyContainer["Name"] is WzStringProperty clientNameProperty
+                && !string.IsNullOrWhiteSpace(clientNameProperty.Value))
+            {
+                return clientNameProperty.Value.Trim();
+            }
+
+            if (propertyContainer["name"] is WzStringProperty nameProperty
                 && !string.IsNullOrWhiteSpace(nameProperty.Value))
             {
                 return nameProperty.Value.Trim();
@@ -10644,6 +10752,7 @@ namespace HaCreator.MapSimulator
             Dictionary<int, IReadOnlyList<int>> visibleItemMapIds = new();
             int hiddenItemCount = 0;
             bool hasPacketOwnedMapResults = false;
+            int preferredItemId = 0;
 
             if (records != null)
             {
@@ -10680,6 +10789,10 @@ namespace HaCreator.MapSimulator
                     if (!visibleItemIds.Contains(itemId))
                     {
                         visibleItemIds.Add(itemId);
+                        if (preferredItemId <= 0)
+                        {
+                            preferredItemId = itemId;
+                        }
                     }
 
                     IReadOnlyList<int> runtimeFallbackMapIds = ResolveRuntimeFallbackDemandItemMapIds(runtimeFallbackQuery, itemId);
@@ -10715,6 +10828,10 @@ namespace HaCreator.MapSimulator
                     }
 
                     visibleItemIds.Add(itemId);
+                    if (preferredItemId <= 0)
+                    {
+                        preferredItemId = itemId;
+                    }
                     IReadOnlyList<int> runtimeFallbackMapIds = ResolveRuntimeFallbackDemandItemMapIds(runtimeFallbackQuery, itemId);
                     if (runtimeFallbackMapIds.Count > 0)
                     {
@@ -10732,11 +10849,19 @@ namespace HaCreator.MapSimulator
                 hiddenItemCount = runtimeFallbackQuery.HiddenItemCount;
             }
 
+            if (runtimeFallbackQuery?.PreferredItemId is int runtimePreferredItemId &&
+                runtimePreferredItemId > 0 &&
+                visibleItemIds.Contains(runtimePreferredItemId))
+            {
+                preferredItemId = runtimePreferredItemId;
+            }
+
             return new QuestDemandItemQueryState
             {
                 QuestId = questId,
                 VisibleItemIds = visibleItemIds,
                 VisibleItemMapIds = visibleItemMapIds,
+                PreferredItemId = preferredItemId,
                 HiddenItemCount = hiddenItemCount,
                 FallbackNpcName = fallbackNpcName,
                 HasPacketOwnedMapResults = hasPacketOwnedMapResults
@@ -11569,6 +11694,12 @@ namespace HaCreator.MapSimulator
                 }
 
                 entries = parsedEntries.ToArray();
+                if (!clearRequested && !hasAlarmLines && entries.Length > 0)
+                {
+                    alarmLines = BuildFallbackPacketOwnedEventCalendarAlarmLines(entries);
+                    hasAlarmLines = alarmLines.Length > 0;
+                }
+
                 if (string.IsNullOrWhiteSpace(summary))
                 {
                     summary = clearRequested
@@ -11586,6 +11717,123 @@ namespace HaCreator.MapSimulator
                 message = $"Event-calendar JSON payload could not be parsed: {ex.Message}";
                 return false;
             }
+        }
+
+        private static EventAlarmLineSnapshot[] BuildFallbackPacketOwnedEventCalendarAlarmLines(IReadOnlyList<EventEntrySnapshot> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return Array.Empty<EventAlarmLineSnapshot>();
+            }
+
+            DateTime anchorDate = ResolvePacketOwnedEventCalendarAlarmAnchorDate(entries);
+            List<EventEntrySnapshot> selectedEntries = entries
+                .Where(entry => entry != null && entry.ScheduledAt.Date == anchorDate)
+                .OrderBy(ResolvePacketOwnedEventCalendarAlarmEntryRank)
+                .ThenByDescending(entry => entry.SourceTick)
+                .ThenBy(entry => entry.SortOrder)
+                .Take(EventAlarmOwnerMaxVisibleLines)
+                .ToList();
+            if (selectedEntries.Count == 0)
+            {
+                return Array.Empty<EventAlarmLineSnapshot>();
+            }
+
+            List<EventAlarmLineSnapshot> lines = new(selectedEntries.Count);
+            for (int i = 0; i < selectedEntries.Count; i++)
+            {
+                EventEntrySnapshot entry = selectedEntries[i];
+                lines.Add(new EventAlarmLineSnapshot
+                {
+                    Text = FormatPacketOwnedEventCalendarAlarmLine(entry, anchorDate),
+                    Left = 0,
+                    Top = i * 13,
+                    IsHighlighted = entry.Status is EventEntryStatus.Start or EventEntryStatus.InProgress
+                });
+            }
+
+            return lines.ToArray();
+        }
+
+        internal static EventAlarmLineSnapshot[] BuildFallbackPacketOwnedEventCalendarAlarmLinesForTests(IReadOnlyList<EventEntrySnapshot> entries)
+        {
+            return BuildFallbackPacketOwnedEventCalendarAlarmLines(entries);
+        }
+
+        private static DateTime ResolvePacketOwnedEventCalendarAlarmAnchorDate(IReadOnlyList<EventEntrySnapshot> entries)
+        {
+            DateTime today = DateTime.Today;
+            DateTime selectedDate = default;
+            long bestDistance = long.MaxValue;
+            int bestRank = int.MaxValue;
+            int bestSortOrder = int.MaxValue;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                EventEntrySnapshot entry = entries[i];
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                DateTime date = entry.ScheduledAt.Date;
+                if (date.Year <= 1)
+                {
+                    continue;
+                }
+
+                long distance = Math.Abs((date - today).Ticks);
+                int rank = ResolvePacketOwnedEventCalendarAlarmEntryRank(entry);
+                if (distance < bestDistance
+                    || (distance == bestDistance && rank < bestRank)
+                    || (distance == bestDistance && rank == bestRank && entry.SortOrder < bestSortOrder)
+                    || (distance == bestDistance && rank == bestRank && entry.SortOrder == bestSortOrder && (selectedDate == default || date < selectedDate)))
+                {
+                    selectedDate = date;
+                    bestDistance = distance;
+                    bestRank = rank;
+                    bestSortOrder = entry.SortOrder;
+                }
+            }
+
+            return selectedDate.Year > 1 ? selectedDate : today;
+        }
+
+        private static int ResolvePacketOwnedEventCalendarAlarmEntryRank(EventEntrySnapshot entry)
+        {
+            if (entry == null)
+            {
+                return int.MaxValue;
+            }
+
+            return entry.Status switch
+            {
+                EventEntryStatus.InProgress => 0,
+                EventEntryStatus.Start => 1,
+                EventEntryStatus.Clear => 2,
+                EventEntryStatus.Upcoming => 3,
+                _ => 4
+            };
+        }
+
+        private static string FormatPacketOwnedEventCalendarAlarmLine(EventEntrySnapshot entry, DateTime anchorDate)
+        {
+            if (entry == null)
+            {
+                return string.Empty;
+            }
+
+            string title = string.IsNullOrWhiteSpace(entry.Title) ? "Event" : entry.Title.Trim();
+            string datePrefix = entry.ScheduledAt.Date == anchorDate
+                ? string.Empty
+                : entry.ScheduledAt.ToString("MMM d", CultureInfo.InvariantCulture) + " ";
+            string statusPrefix = entry.Status switch
+            {
+                EventEntryStatus.InProgress => "Running: ",
+                EventEntryStatus.Start => "Start: ",
+                EventEntryStatus.Clear => "Clear: ",
+                _ => "Will: "
+            };
+            return $"{datePrefix}{statusPrefix}{title}";
         }
 
         private static void AppendPacketOwnedEventCalendarJsonEntries(JsonElement element, ICollection<EventEntrySnapshot> destination)
@@ -11776,6 +12024,95 @@ namespace HaCreator.MapSimulator
             int loadingStartTick = TryGetJsonInt32(element, "loadingStartTick", out int parsedLoadingStartTick)
                 ? parsedLoadingStartTick
                 : int.MinValue;
+            JsonElement requestElement = default;
+            bool hasRequestObject = element.TryGetProperty("request", out requestElement)
+                && requestElement.ValueKind == JsonValueKind.Object;
+            JsonElement landingElement = default;
+            bool hasLandingObject = element.TryGetProperty("landing", out landingElement)
+                && landingElement.ValueKind == JsonValueKind.Object;
+            JsonElement navigateElement = default;
+            bool hasNavigateObject = element.TryGetProperty("navigate", out navigateElement)
+                && navigateElement.ValueKind == JsonValueKind.Object;
+
+            string serverHost = ResolvePacketOwnedRankingOwnerString(
+                element,
+                hasRequestObject ? requestElement : default,
+                hasLandingObject ? landingElement : default,
+                hasNavigateObject ? navigateElement : default,
+                "serverHost",
+                "hostSeed",
+                "rankingHost",
+                "hostName",
+                "host");
+            int templateId = ResolvePacketOwnedRankingOwnerInt32(
+                defaultValue: 0xAA2,
+                element,
+                hasRequestObject ? requestElement : default,
+                hasLandingObject ? landingElement : default,
+                hasNavigateObject ? navigateElement : default,
+                "templateId",
+                "urlTemplateId",
+                "stringPoolId");
+            int? requestWorldId = ResolveOptionalPacketOwnedRankingOwnerInt32(
+                element,
+                hasRequestObject ? requestElement : default,
+                hasLandingObject ? landingElement : default,
+                hasNavigateObject ? navigateElement : default,
+                "worldId",
+                "worldid");
+            int? requestCharacterId = ResolveOptionalPacketOwnedRankingOwnerInt32(
+                element,
+                hasRequestObject ? requestElement : default,
+                hasLandingObject ? landingElement : default,
+                hasNavigateObject ? navigateElement : default,
+                "characterId",
+                "characterid");
+
+            if (string.IsNullOrWhiteSpace(navigateUrl)
+                && !string.IsNullOrWhiteSpace(serverHost)
+                && requestWorldId.HasValue
+                && requestCharacterId.HasValue)
+            {
+                navigateUrl = ProgressionUtilityParityRules.ResolveRankingLandingUrl(
+                    serverHost,
+                    templateId,
+                    requestWorldId.Value,
+                    requestCharacterId.Value,
+                    out _);
+            }
+
+            if (string.IsNullOrWhiteSpace(navigationCaption)
+                && !string.IsNullOrWhiteSpace(serverHost))
+            {
+                navigationCaption = ProgressionUtilityParityRules.FormatRankingLandingTemplateSeed(templateId, out _);
+            }
+
+            if (string.IsNullOrWhiteSpace(navigationHostText)
+                && !string.IsNullOrWhiteSpace(serverHost))
+            {
+                navigationHostText = $"get_server_string_0 => {serverHost.Trim()}";
+            }
+
+            if (string.IsNullOrWhiteSpace(navigationRequestText)
+                && requestWorldId.HasValue
+                && requestCharacterId.HasValue)
+            {
+                navigationRequestText = ProgressionUtilityParityRules.FormatRankingRequestParameters(
+                    requestWorldId.Value,
+                    requestCharacterId.Value);
+            }
+
+            if (string.IsNullOrWhiteSpace(navigationStateText))
+            {
+                if (isLoading == true)
+                {
+                    navigationStateText = "Packet-authored CWebWnd loading state remains active before NavigateUrl completes.";
+                }
+                else if (!string.IsNullOrWhiteSpace(navigateUrl))
+                {
+                    navigationStateText = "Packet-authored CWebWnd owner resolved the ranking landing request.";
+                }
+            }
 
             ownerState = new PacketOwnedRankingOwnerStateSnapshot
             {
@@ -11790,6 +12127,64 @@ namespace HaCreator.MapSimulator
                 LoadingStartTick = loadingStartTick
             };
             return ownerState.HasAnyState;
+        }
+
+        private static string ResolvePacketOwnedRankingOwnerString(
+            JsonElement primaryElement,
+            JsonElement requestElement,
+            JsonElement landingElement,
+            JsonElement navigateElement,
+            params string[] propertyNames)
+        {
+            foreach (string propertyName in propertyNames ?? Array.Empty<string>())
+            {
+                if (TryGetJsonString(primaryElement, propertyName, out string value)
+                    || TryGetJsonString(requestElement, propertyName, out value)
+                    || TryGetJsonString(landingElement, propertyName, out value)
+                    || TryGetJsonString(navigateElement, propertyName, out value))
+                {
+                    return value;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static int ResolvePacketOwnedRankingOwnerInt32(
+            int defaultValue,
+            JsonElement primaryElement,
+            JsonElement requestElement,
+            JsonElement landingElement,
+            JsonElement navigateElement,
+            params string[] propertyNames)
+        {
+            return ResolveOptionalPacketOwnedRankingOwnerInt32(
+                primaryElement,
+                requestElement,
+                landingElement,
+                navigateElement,
+                propertyNames) ?? defaultValue;
+        }
+
+        private static int? ResolveOptionalPacketOwnedRankingOwnerInt32(
+            JsonElement primaryElement,
+            JsonElement requestElement,
+            JsonElement landingElement,
+            JsonElement navigateElement,
+            params string[] propertyNames)
+        {
+            foreach (string propertyName in propertyNames ?? Array.Empty<string>())
+            {
+                if (TryGetJsonInt32(primaryElement, propertyName, out int value)
+                    || TryGetJsonInt32(requestElement, propertyName, out value)
+                    || TryGetJsonInt32(landingElement, propertyName, out value)
+                    || TryGetJsonInt32(navigateElement, propertyName, out value))
+                {
+                    return value;
+                }
+            }
+
+            return null;
         }
 
         internal static int ResolvePacketOwnedEventEntrySortPriority(EventEntryStatus status)

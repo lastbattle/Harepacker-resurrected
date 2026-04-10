@@ -37,6 +37,12 @@ namespace HaCreator.MapSimulator
         private PacketScriptDedicatedOwnerButtonKind _packetScriptDedicatedOwnerPressedButton;
 
         private sealed record PacketScriptOwnerLayer(Texture2D Texture, Point Origin);
+        private sealed record PacketScriptDedicatedOwnerLayout(
+            Rectangle PrevBounds,
+            Rectangle NextBounds,
+            Rectangle ConfirmBounds,
+            Rectangle CancelBounds,
+            Rectangle SelectionBounds);
 
         private enum PacketScriptDedicatedOwnerButtonKind
         {
@@ -62,24 +68,20 @@ namespace HaCreator.MapSimulator
             }
 
             Rectangle ownerBounds = ResolvePacketScriptDedicatedOwnerBounds(snapshot, currentTickCount);
-            ResolvePacketScriptDedicatedOwnerButtons(
+            PacketScriptDedicatedOwnerLayout layout = ResolvePacketScriptDedicatedOwnerLayout(
                 snapshot,
                 ownerBounds,
-                out Rectangle prevBounds,
-                out Rectangle nextBounds,
-                out Rectangle confirmBounds,
-                out Rectangle cancelBounds,
-                out Rectangle selectionBounds);
+                currentTickCount);
 
             Point cursor = mouseState.Position;
             _packetScriptDedicatedOwnerHoveredButton = ResolvePacketScriptDedicatedOwnerHoveredButton(
                 cursor,
-                prevBounds,
-                nextBounds,
-                confirmBounds,
-                cancelBounds);
+                layout.PrevBounds,
+                layout.NextBounds,
+                layout.ConfirmBounds,
+                layout.CancelBounds);
 
-            if (selectionBounds.Contains(cursor) &&
+            if (layout.SelectionBounds.Contains(cursor) &&
                 snapshot.Choices.Count > 0 &&
                 mouseState.LeftButton == ButtonState.Released &&
                 previousMouseState.LeftButton == ButtonState.Pressed)
@@ -226,16 +228,12 @@ namespace HaCreator.MapSimulator
             EnsurePacketScriptDedicatedOwnerVisualsLoaded();
 
             Rectangle ownerBounds = ResolvePacketScriptDedicatedOwnerBounds(snapshot, currentTickCount);
-            ResolvePacketScriptDedicatedOwnerButtons(
+            PacketScriptDedicatedOwnerLayout layout = ResolvePacketScriptDedicatedOwnerLayout(
                 snapshot,
                 ownerBounds,
-                out Rectangle prevBounds,
-                out Rectangle nextBounds,
-                out Rectangle confirmBounds,
-                out Rectangle cancelBounds,
-                out Rectangle selectionBounds);
-            Rectangle promptBounds = new(ownerBounds.X + 20, ownerBounds.Y + 18, ownerBounds.Width - 40, 52);
-            Rectangle detailBounds = new(ownerBounds.X + 20, selectionBounds.Bottom + 12, ownerBounds.Width - 40, Math.Max(42, cancelBounds.Y - selectionBounds.Bottom - 20));
+                currentTickCount);
+            Rectangle promptBounds = new(ownerBounds.X + 20, ownerBounds.Y + 18, ownerBounds.Width - 40, Math.Max(40, layout.SelectionBounds.Y - ownerBounds.Y - 24));
+            Rectangle detailBounds = new(ownerBounds.X + 20, layout.SelectionBounds.Bottom + 12, ownerBounds.Width - 40, Math.Max(42, layout.CancelBounds.Y - layout.SelectionBounds.Bottom - 20));
 
             DrawPacketScriptOwnerFrame(
                 new Rectangle(0, 0, _renderParams.RenderWidth, _renderParams.RenderHeight),
@@ -245,25 +243,25 @@ namespace HaCreator.MapSimulator
             switch (snapshot.Kind)
             {
                 case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.SlideMenu:
-                    DrawPacketScriptSlideMenuOwner(snapshot, ownerBounds, selectionBounds, currentTickCount);
-                    DrawPacketScriptDedicatedOwnerButton(_packetScriptSlideMenuLeftButtonVisuals, prevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
-                    DrawPacketScriptDedicatedOwnerButton(_packetScriptSlideMenuRightButtonVisuals, nextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
-                    DrawPacketScriptDedicatedOwnerButton(_packetScriptSlideMenuMoveButtonVisuals, confirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "Move");
-                    DrawPacketScriptDedicatedOwnerButton(_packetScriptSlideMenuCancelButtonVisuals, cancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
+                    DrawPacketScriptSlideMenuOwner(snapshot, ownerBounds, layout.SelectionBounds, currentTickCount);
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptSlideMenuLeftButtonVisuals, layout.PrevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptSlideMenuRightButtonVisuals, layout.NextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptSlideMenuMoveButtonVisuals, layout.ConfirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "Move");
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptSlideMenuCancelButtonVisuals, layout.CancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
                     break;
 
                 case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.MultiPetSelection:
                 case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.PetSelection:
-                    DrawPacketScriptPetSelectionOwner(snapshot, ownerBounds, selectionBounds);
-                    DrawPacketScriptDedicatedOwnerButton(_packetScriptPetPrevButtonVisuals, prevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
-                    DrawPacketScriptDedicatedOwnerButton(_packetScriptPetNextButtonVisuals, nextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
-                    DrawPacketScriptDedicatedOwnerButton(_packetScriptPetOkButtonVisuals, confirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "OK");
-                    DrawPacketScriptDedicatedOwnerButton(_packetScriptPetCancelButtonVisuals, cancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
+                    DrawPacketScriptPetSelectionOwner(snapshot, ownerBounds, layout.SelectionBounds);
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptPetPrevButtonVisuals, layout.PrevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptPetNextButtonVisuals, layout.NextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptPetOkButtonVisuals, layout.ConfirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "OK");
+                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptPetCancelButtonVisuals, layout.CancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
                     break;
             }
 
             DrawPacketScriptOwnerWrappedText(snapshot.PromptText, promptBounds, new Color(76, 46, 24), PacketScriptDedicatedOwnerPromptScale, maxLines: 3);
-            DrawPacketScriptOwnerWrappedText(ResolvePacketScriptDedicatedOwnerSelectionText(snapshot), selectionBounds, Color.Black, PacketScriptDedicatedOwnerChoiceScale, maxLines: 1);
+            DrawPacketScriptOwnerWrappedText(ResolvePacketScriptDedicatedOwnerSelectionText(snapshot), layout.SelectionBounds, Color.Black, PacketScriptDedicatedOwnerChoiceScale, maxLines: 1);
             if (!string.IsNullOrWhiteSpace(snapshot.DetailText))
             {
                 DrawPacketScriptOwnerWrappedText(snapshot.DetailText, detailBounds, new Color(92, 64, 38), PacketScriptDedicatedOwnerDetailScale, maxLines: 5);
@@ -321,6 +319,7 @@ namespace HaCreator.MapSimulator
         }
 
         private void DrawPacketScriptDedicatedOwnerButton(
+            Rectangle ownerBounds,
             PacketScriptButtonVisuals visuals,
             Rectangle bounds,
             PacketScriptDedicatedOwnerButtonKind buttonKind,
@@ -337,10 +336,14 @@ namespace HaCreator.MapSimulator
                 enabled: true,
                 hovered,
                 pressed);
-            Texture2D texture = visuals?.ResolveTexture(state);
-            if (texture != null)
+            PacketScriptButtonFrame frame = visuals?.ResolveFrame(state);
+            if (frame?.Texture != null)
             {
-                _spriteBatch.Draw(texture, bounds, Color.White);
+                Rectangle drawBounds = ResolvePacketScriptOwnerAnchoredBounds(
+                    ownerBounds,
+                    frame.Origin,
+                    new Point(frame.Texture.Width, frame.Texture.Height));
+                _spriteBatch.Draw(frame.Texture, drawBounds, Color.White);
                 return;
             }
 
@@ -373,6 +376,15 @@ namespace HaCreator.MapSimulator
                 mode == 0 ? _packetScriptSlideMenuType0Background : _packetScriptSlideMenuType1Background,
                 currentTickCount);
             return frame != null ? new Point(frame.Width, frame.Height) : new Point(284, 217);
+        }
+
+        internal static Rectangle ResolvePacketScriptOwnerAnchoredBounds(Rectangle ownerBounds, Point origin, Point size)
+        {
+            return new Rectangle(
+                ownerBounds.X - origin.X,
+                ownerBounds.Y - origin.Y,
+                Math.Max(1, size.X),
+                Math.Max(1, size.Y));
         }
 
         private static Point ResolvePacketScriptLayeredOwnerSize(PacketScriptOwnerLayer[] layers, Point fallback)
@@ -474,31 +486,85 @@ namespace HaCreator.MapSimulator
             return $"{index + 1}/{snapshot.Choices.Count}  {label}";
         }
 
-        private static void ResolvePacketScriptDedicatedOwnerButtons(
+        private PacketScriptDedicatedOwnerLayout ResolvePacketScriptDedicatedOwnerLayout(
             PacketScriptDedicatedOwnerSnapshot snapshot,
             Rectangle ownerBounds,
-            out Rectangle prevBounds,
-            out Rectangle nextBounds,
-            out Rectangle confirmBounds,
-            out Rectangle cancelBounds,
-            out Rectangle selectionBounds)
+            int currentTickCount)
         {
             int selectionWidth = Math.Max(144, ownerBounds.Width - 140);
             int selectionX = ownerBounds.X + Math.Max(34, (ownerBounds.Width - selectionWidth) / 2);
             int selectionY = ownerBounds.Y + Math.Max(78, ownerBounds.Height / 2 - (PacketScriptDedicatedOwnerRowHeight / 2));
-            selectionBounds = new Rectangle(selectionX, selectionY, selectionWidth, PacketScriptDedicatedOwnerRowHeight);
+            Rectangle selectionBounds = new Rectangle(selectionX, selectionY, selectionWidth, PacketScriptDedicatedOwnerRowHeight);
 
             int navWidth = 46;
             int navHeight = 20;
-            prevBounds = new Rectangle(selectionBounds.X - navWidth - 10, selectionBounds.Center.Y - (navHeight / 2), navWidth, navHeight);
-            nextBounds = new Rectangle(selectionBounds.Right + 10, selectionBounds.Center.Y - (navHeight / 2), navWidth, navHeight);
+            Rectangle prevBounds = new Rectangle(selectionBounds.X - navWidth - 10, selectionBounds.Center.Y - (navHeight / 2), navWidth, navHeight);
+            Rectangle nextBounds = new Rectangle(selectionBounds.Right + 10, selectionBounds.Center.Y - (navHeight / 2), navWidth, navHeight);
 
             int confirmWidth = snapshot.Kind == PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.SlideMenu ? 60 : 40;
             int confirmHeight = 16;
             int cancelWidth = 40;
             int buttonY = ownerBounds.Bottom - 34;
-            confirmBounds = new Rectangle(ownerBounds.X + ownerBounds.Width / 2 - confirmWidth - 8, buttonY, confirmWidth, confirmHeight);
-            cancelBounds = new Rectangle(ownerBounds.X + ownerBounds.Width / 2 + 8, buttonY, cancelWidth, confirmHeight);
+            Rectangle confirmBounds = new Rectangle(ownerBounds.X + ownerBounds.Width / 2 - confirmWidth - 8, buttonY, confirmWidth, confirmHeight);
+            Rectangle cancelBounds = new Rectangle(ownerBounds.X + ownerBounds.Width / 2 + 8, buttonY, cancelWidth, confirmHeight);
+
+            if (snapshot.Kind is PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.PetSelection or PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.MultiPetSelection)
+            {
+                prevBounds = TryResolveAnchoredButtonBounds(ownerBounds, _packetScriptPetPrevButtonVisuals, prevBounds);
+                nextBounds = TryResolveAnchoredButtonBounds(ownerBounds, _packetScriptPetNextButtonVisuals, nextBounds);
+                confirmBounds = TryResolveAnchoredButtonBounds(ownerBounds, _packetScriptPetOkButtonVisuals, confirmBounds);
+                cancelBounds = TryResolveAnchoredButtonBounds(ownerBounds, _packetScriptPetCancelButtonVisuals, cancelBounds);
+
+                int petSelectionLeft = Math.Max(ownerBounds.X + 28, prevBounds.Right + 10);
+                int petSelectionRight = Math.Min(ownerBounds.Right - 28, nextBounds.X - 10);
+                int petSelectionWidth = Math.Max(120, petSelectionRight - petSelectionLeft);
+                int petSelectionY = Math.Max(ownerBounds.Y + 132, prevBounds.Y - 2);
+                selectionBounds = new Rectangle(petSelectionLeft, petSelectionY, petSelectionWidth, PacketScriptDedicatedOwnerRowHeight);
+            }
+            else if (snapshot.Kind == PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.SlideMenu)
+            {
+                PacketScriptButtonVisuals leftVisuals = _packetScriptSlideMenuLeftButtonVisuals;
+                PacketScriptButtonVisuals rightVisuals = _packetScriptSlideMenuRightButtonVisuals;
+                PacketScriptButtonVisuals moveVisuals = _packetScriptSlideMenuMoveButtonVisuals;
+                PacketScriptButtonVisuals cancelVisuals = _packetScriptSlideMenuCancelButtonVisuals;
+                prevBounds = TryResolveAnchoredButtonBounds(ownerBounds, leftVisuals, prevBounds);
+                nextBounds = TryResolveAnchoredButtonBounds(ownerBounds, rightVisuals, nextBounds);
+                confirmBounds = TryResolveAnchoredButtonBounds(ownerBounds, moveVisuals, confirmBounds);
+                cancelBounds = TryResolveAnchoredButtonBounds(ownerBounds, cancelVisuals, cancelBounds);
+
+                PacketScriptOwnerLayer cover = snapshot.Mode == 0 ? _packetScriptSlideMenuType0Cover : _packetScriptSlideMenuType1Cover;
+                if (cover?.Texture != null)
+                {
+                    selectionBounds = ResolvePacketScriptOwnerAnchoredBounds(
+                        ownerBounds,
+                        cover.Origin,
+                        new Point(cover.Texture.Width, cover.Texture.Height));
+                }
+                else
+                {
+                    Texture2D background = ResolvePacketScriptAnimationFrame(
+                        snapshot.Mode == 0 ? _packetScriptSlideMenuType0Background : _packetScriptSlideMenuType1Background,
+                        currentTickCount);
+                    int slideSelectionWidth = background != null ? Math.Max(120, background.Width - 120) : selectionBounds.Width;
+                    selectionBounds = new Rectangle(
+                        ownerBounds.X + Math.Max(28, (ownerBounds.Width - slideSelectionWidth) / 2),
+                        ownerBounds.Y + (snapshot.Mode == 0 ? 54 : 42),
+                        slideSelectionWidth,
+                        PacketScriptDedicatedOwnerRowHeight);
+                }
+            }
+
+            return new PacketScriptDedicatedOwnerLayout(prevBounds, nextBounds, confirmBounds, cancelBounds, selectionBounds);
+        }
+
+        private static Rectangle TryResolveAnchoredButtonBounds(Rectangle ownerBounds, PacketScriptButtonVisuals visuals, Rectangle fallback)
+        {
+            if (visuals != null && visuals.TryGetAnchorMetrics(out Point origin, out Point size))
+            {
+                return ResolvePacketScriptOwnerAnchoredBounds(ownerBounds, origin, size);
+            }
+
+            return fallback;
         }
 
         private void EnsurePacketScriptDedicatedOwnerVisualsLoaded()

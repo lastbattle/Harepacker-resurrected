@@ -35,16 +35,19 @@ namespace HaCreator.MapSimulator.Interaction
 
             int questId = Math.Max(0, prompt.QuestId);
             _ownerSnapshotsByQuestId.TryGetValue(questId, out QuestRewardRaiseOwnerSnapshot snapshot);
+            _retainedClosedRaisesByQuestId.TryGetValue(questId, out QuestRewardRaiseState retainedState);
 
             QuestRewardRaiseWindowMode windowMode = prompt.OwnerContext?.WindowMode
+                ?? retainedState?.WindowMode
                 ?? snapshot?.WindowMode
                 ?? QuestRewardRaiseWindowMode.Selection;
             QuestRewardRaiseWindowMode displayMode = prompt.OwnerContext?.WindowMode
+                ?? retainedState?.DisplayMode
                 ?? snapshot?.DisplayMode
                 ?? windowMode;
-            int ownerItemId = Math.Max(0, prompt.OwnerContext?.OwnerItemId ?? snapshot?.OwnerItemId ?? 0);
-            int qrData = prompt.OwnerContext?.InitialQrData ?? snapshot?.QrData ?? 0;
-            int maxDropCount = Math.Max(1, prompt.OwnerContext?.MaxDropCount ?? snapshot?.MaxDropCount ?? 1);
+            int ownerItemId = Math.Max(0, prompt.OwnerContext?.OwnerItemId ?? retainedState?.OwnerItemId ?? snapshot?.OwnerItemId ?? 0);
+            int qrData = prompt.OwnerContext?.InitialQrData ?? retainedState?.QrData ?? snapshot?.QrData ?? 0;
+            int maxDropCount = Math.Max(1, prompt.OwnerContext?.MaxDropCount ?? retainedState?.MaxDropCount ?? snapshot?.MaxDropCount ?? 1);
             bool reuseObservedOwnerState = ShouldReuseObservedOwnerState(snapshot);
             Point windowPosition = defaultPosition;
             if (ActiveRaise != null
@@ -62,27 +65,39 @@ namespace HaCreator.MapSimulator.Interaction
                 windowPosition = backupPosition;
             }
 
-            ActiveRaise = new QuestRewardRaiseState
+            if (ShouldReuseRetainedClosedRaise(retainedState, prompt))
             {
-                Source = source,
-                Prompt = prompt,
-                GroupIndex = 0,
-                ManagerSessionId = reuseObservedOwnerState && snapshot.ManagerSessionId > 0
-                    ? snapshot.ManagerSessionId
-                    : GetNextManagerSessionId(),
-                RequestId = reuseObservedOwnerState && snapshot.OwnerRequestId > 0
-                    ? snapshot.OwnerRequestId
-                    : GetNextOwnerRequestId(),
-                OwnerItemId = ownerItemId,
-                QrData = qrData,
-                MaxDropCount = maxDropCount,
-                WindowMode = windowMode,
-                DisplayMode = displayMode,
-                WindowPosition = windowPosition,
-                LastInboundSummary = snapshot?.LastInboundSummary ?? string.Empty,
-                AwaitingConfirmAck = snapshot?.AwaitingConfirmAck ?? false,
-                AwaitingOwnerDestroyAck = snapshot?.AwaitingOwnerDestroyAck ?? false
-            };
+                ActiveRaise = retainedState.CloneShallow();
+                _retainedClosedRaisesByQuestId.Remove(questId);
+            }
+            else
+            {
+                ActiveRaise = new QuestRewardRaiseState();
+            }
+
+            ActiveRaise.Source = source;
+            ActiveRaise.Prompt = prompt;
+            ActiveRaise.GroupIndex = ResolveOpenGroupIndex(prompt, ActiveRaise, displayMode);
+            ActiveRaise.ManagerSessionId = reuseObservedOwnerState && snapshot.ManagerSessionId > 0
+                ? snapshot.ManagerSessionId
+                : GetNextManagerSessionId();
+            ActiveRaise.RequestId = reuseObservedOwnerState && snapshot.OwnerRequestId > 0
+                ? snapshot.OwnerRequestId
+                : GetNextOwnerRequestId();
+            ActiveRaise.OwnerItemId = ownerItemId;
+            ActiveRaise.QrData = qrData;
+            ActiveRaise.MaxDropCount = maxDropCount;
+            ActiveRaise.WindowMode = windowMode;
+            ActiveRaise.DisplayMode = displayMode;
+            ActiveRaise.WindowPosition = windowPosition;
+            if (string.IsNullOrWhiteSpace(ActiveRaise.LastInboundSummary))
+            {
+                ActiveRaise.LastInboundSummary = snapshot?.LastInboundSummary ?? string.Empty;
+            }
+
+            ActiveRaise.AwaitingConfirmAck = snapshot?.AwaitingConfirmAck ?? ActiveRaise.AwaitingConfirmAck;
+            ActiveRaise.AwaitingOwnerDestroyAck = snapshot?.AwaitingOwnerDestroyAck ?? ActiveRaise.AwaitingOwnerDestroyAck;
+            ActiveRaise.IsWindowDismissedLocally = false;
 
             if (questId > 0)
             {
@@ -90,6 +105,20 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return ActiveRaise;
+        }
+
+        private static int ResolveOpenGroupIndex(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState restoredState,
+            QuestRewardRaiseWindowMode displayMode)
+        {
+            int groupCount = prompt?.Groups?.Count ?? 0;
+            if (displayMode == QuestRewardRaiseWindowMode.PiecePlacement || groupCount <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Clamp(restoredState?.GroupIndex ?? 0, 0, Math.Max(0, groupCount - 1));
         }
 
         public QuestRewardRaiseState Restore(QuestRewardRaiseState state)
@@ -353,6 +382,32 @@ namespace HaCreator.MapSimulator.Interaction
                 && (snapshot.AwaitingConfirmAck
                     || snapshot.AwaitingOwnerDestroyAck
                     || !string.IsNullOrWhiteSpace(snapshot.LastInboundSummary));
+        }
+
+        private static bool ShouldReuseRetainedClosedRaise(QuestRewardRaiseState retainedState, QuestRewardChoicePrompt prompt)
+        {
+            if (retainedState?.Prompt == null || prompt == null)
+            {
+                return false;
+            }
+
+            if (Math.Max(0, retainedState.Prompt.QuestId) != Math.Max(0, prompt.QuestId))
+            {
+                return false;
+            }
+
+            int promptOwnerItemId = Math.Max(0, prompt.OwnerContext?.OwnerItemId ?? 0);
+            int retainedOwnerItemId = Math.Max(0, retainedState.OwnerItemId);
+            if (promptOwnerItemId > 0 && retainedOwnerItemId > 0 && promptOwnerItemId != retainedOwnerItemId)
+            {
+                return false;
+            }
+
+            return retainedState.PlacedPieces.Count > 0
+                || retainedState.AwaitingConfirmAck
+                || retainedState.AwaitingOwnerDestroyAck
+                || !string.IsNullOrWhiteSpace(retainedState.LastInboundSummary)
+                || !string.IsNullOrWhiteSpace(retainedState.OpenDispatchSummary);
         }
 
         private int GetNextManagerSessionId()

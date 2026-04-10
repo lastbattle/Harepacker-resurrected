@@ -110,8 +110,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex CompleteDestroyRegex = new Regex(@"(?:if\s+(?:it\s+)?fails?|upon\s+failure).*?(?:completely\s+destroyed|destroyed\s+completely)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|Physical\s+Attack(?:\s+Power)?|Weapon\s+ATT|Physical\s+ATT|W\.?\s*(?:Attack|ATT)|Attack\s+Power|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])ATT(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Attack(?:\s+Power)?|Magical\s+Power|Magic\s+Power|Magic\s+ATT|Magical\s+ATT|M\.?\s*ATT)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|Physical\s+Defense|Weapon\s+Def(?:ense)?|Weapon\s+DEF|Physical\s+DEF|PDD|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])DEF(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        private static readonly Regex MagicDefenseBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Defense|Magic\s+Def(?:ense)?|Magic\s+DEF|Magical\s+DEF|M\.?\s*DEF|MDD)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|Physical\s+Defense|Weapon\s+Def(?:ense)?\.?|Weapon\s+DEF\.?|Physical\s+DEF\.?|PDD|(?<!Magic\s)(?<!Magical\s)(?<!M\.)(?<!M\.\s)(?<!M\s)(?<![A-Za-z.])DEF(?![A-Za-z]))(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MagicDefenseBonusRegex = new Regex(@"(?:Magic(?:al)?\s+Defense|Magic\s+Def(?:ense)?\.?|Magic\s+DEF\.?|Magical\s+DEF\.?|M\.?\s*DEF|MDD)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex StrengthBonusRegex = new Regex(@"(?:STR|Strength)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex DexterityBonusRegex = new Regex(@"(?:DEX|Dexterity)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex IntelligenceBonusRegex = new Regex(@"(?:INT|Intelligence)(?:\s+increases)?\s*[+.:,]*\s*(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -4243,6 +4243,12 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.Medal);
             }
 
+            if (normalized.IndexOf("overall armor", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("body armor", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Longcoat);
+            }
+
             if (normalized.IndexOf("overall", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Longcoat);
@@ -4268,7 +4274,9 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.Cap);
             }
 
-            if (normalized.IndexOf("armor", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (normalized.IndexOf("armor", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                normalized.IndexOf("overall armor", StringComparison.OrdinalIgnoreCase) < 0 &&
+                normalized.IndexOf("body armor", StringComparison.OrdinalIgnoreCase) < 0)
             {
                 targetSlots.Add(EquipSlot.Cap);
                 targetSlots.Add(EquipSlot.Coat);
@@ -4370,6 +4378,12 @@ namespace HaCreator.MapSimulator.UI
             if (ContainsAny(normalized, "medals", "medal"))
             {
                 label = "medals";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "overall armor", "body armor"))
+            {
+                label = "overalls";
                 return true;
             }
 

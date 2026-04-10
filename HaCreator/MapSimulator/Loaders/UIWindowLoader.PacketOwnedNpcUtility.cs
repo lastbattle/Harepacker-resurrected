@@ -127,6 +127,7 @@ namespace HaCreator.MapSimulator.Loaders
                 getButton,
                 exitButton,
                 LoadCanvasTexture(storeBankProperty, "en", device),
+                LoadCanvasTexture(storeBankProperty, "line", device),
                 LoadDigitTextures(ResolveUiProperty(basicImage, numberImagePath) as WzSubProperty ?? basicImage?["ItemNo"] as WzSubProperty, device),
                 ResolveUiCanvasProperty(cashShopImage, cashIconPath) is WzCanvasProperty cashIconCanvas
                     ? LoadCanvasTexture(cashIconCanvas, device)

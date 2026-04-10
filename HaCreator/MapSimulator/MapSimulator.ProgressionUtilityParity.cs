@@ -189,11 +189,7 @@ namespace HaCreator.MapSimulator
                 string.Empty,
                 onConfirm: AcceptMessengerIncomingInvitePrompt,
                 onCancel: RejectMessengerIncomingInvitePrompt,
-                presentation: new InGameConfirmDialogPresentation(
-                    InGameConfirmDialogAnchorMode.BottomLeft,
-                    389,
-                    113,
-                    ShowIcon: true));
+                presentation: confirmDialogWindow.CreateMessengerInvitePresentation());
             _messengerInvitePromptOwnedDialogActive = true;
             ShowWindow(
                 MapSimulatorWindowNames.InGameConfirmDialog,

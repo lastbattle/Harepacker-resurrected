@@ -1861,6 +1861,8 @@ namespace HaCreator.MapSimulator.UI
             _pendingPacketOwnedRequest = new PacketOwnedItemMakerPendingRequest
             {
                 IsDisassembly = false,
+                ExpectedRewardItemId = recipe.UsesRandomReward ? 0 : recipe.OutputItemId,
+                ExpectedRewardQuantity = recipe.UsesRandomReward ? 0 : Math.Max(1, recipe.OutputQuantity),
                 MesoCost = recipe.MesoCost,
                 CatalystItemId = recipe.CatalystItemId,
                 Materials = recipe.Materials
@@ -1988,7 +1990,7 @@ namespace HaCreator.MapSimulator.UI
                 return BuildPacketOwnedDisassemblyStatusMessage(packetResult);
             }
 
-            return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+            return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult, _pendingPacketOwnedRequest);
         }
 
         private string BuildPacketOwnedDisassemblyStatusMessage(PacketOwnedItemMakerResult packetResult)
@@ -2006,10 +2008,12 @@ namespace HaCreator.MapSimulator.UI
             string sourceItemName = _pendingPacketOwnedDisassemblyItemId > 0
                 ? GetItemName(_pendingPacketOwnedDisassemblyItemId)
                 : "the selected equipment";
-            IReadOnlyList<(int ItemId, int Quantity)> grantedItems = PacketOwnedItemMakerInventoryRuntime.EnumerateGrantedItems(packetResult);
+            IReadOnlyList<(int ItemId, int Quantity)> grantedItems = PacketOwnedItemMakerInventoryRuntime.EnumerateGrantedItems(
+                packetResult,
+                _pendingPacketOwnedRequest);
             if (grantedItems.Count <= 0)
             {
-                return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+                return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult, _pendingPacketOwnedRequest);
             }
 
             string rewardSummary = string.Join(

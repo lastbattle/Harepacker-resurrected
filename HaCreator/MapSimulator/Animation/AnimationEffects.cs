@@ -154,7 +154,8 @@ namespace HaCreator.MapSimulator.Animation
             bool ownsCanvasTexture = false,
             AnimationCanvasLayerOwner owner = AnimationCanvasLayerOwner.Generic,
             CanvasLayerRecoveredLayerSettings? recoveredLayerSettings = null,
-            CanvasLayerRecoveredRegistrationTrace? recoveredRegistrationTrace = null)
+            CanvasLayerRecoveredRegistrationTrace? recoveredRegistrationTrace = null,
+            CanvasLayerRecoveredOwnerTrace? recoveredOwnerTrace = null)
         {
             if (canvasTexture == null)
             {
@@ -183,7 +184,8 @@ namespace HaCreator.MapSimulator.Animation
                 ownsCanvasTexture,
                 owner,
                 registration.RecoveredLayerSettings,
-                recoveredRegistrationTrace);
+                recoveredRegistrationTrace,
+                recoveredOwnerTrace);
             _oneTimeCanvasLayers.Add(anim);
         }
 
@@ -213,7 +215,8 @@ namespace HaCreator.MapSimulator.Animation
                 ownsCanvasTexture,
                 owner,
                 registration.RecoveredLayerSettings,
-                registration.RecoveredRegistrationTrace);
+                registration.RecoveredRegistrationTrace,
+                registration.RecoveredOwnerTrace);
             _oneTimeCanvasLayers.Add(anim);
         }
 
@@ -1185,7 +1188,8 @@ namespace HaCreator.MapSimulator.Animation
         float Top,
         CanvasLayerInsertDescriptor[] InsertDescriptors,
         CanvasLayerRecoveredLayerSettings RecoveredLayerSettings,
-        CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace);
+        CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace,
+        CanvasLayerRecoveredOwnerTrace? RecoveredOwnerTrace);
 
     /// <summary>
     /// Full recovered registration trace for the managed canvas-layer analogue.
@@ -1196,6 +1200,32 @@ namespace HaCreator.MapSimulator.Animation
         CanvasLayerRecoveredPositionSettings Position,
         CanvasLayerRecoveredInsertCommand[] InsertCommands,
         bool RegistersOneTimeAnimation);
+
+    /// <summary>
+    /// Owner-prepared source trace that stays attached to managed one-time canvas layers.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredPreparedSourceTrace(
+        string SourceSetName,
+        string SpriteName,
+        string SourceCanvasPath,
+        bool UseLargeDigitSet,
+        Point SourceOrigin,
+        int SourceWidth,
+        int SourceHeight,
+        Point CanvasOffset);
+
+    /// <summary>
+    /// Owner-side prepared canvas provenance preserved alongside the managed registration payload.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredOwnerTrace(
+        int FormatStringPoolId,
+        string FormattedText,
+        CanvasLayerRecoveredCanvasSettings CanvasSettings,
+        CanvasLayerRecoveredPreparedSourceTrace[] PreparedSources,
+        bool KeepsOverlayOnSeparateLayer,
+        string OverlayCanvasPath,
+        string OverlaySpriteName,
+        Point OverlayOffset);
 
     /// <summary>
     /// One-shot canvas-backed animation that mirrors RegisterOneTimeAnimation ownership.
@@ -1223,6 +1253,7 @@ namespace HaCreator.MapSimulator.Animation
             static operation => operation.Descriptor);
         internal CanvasLayerRecoveredLayerSettings RecoveredLayerSettings { get; private set; }
         internal CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace { get; private set; }
+        internal CanvasLayerRecoveredOwnerTrace? RecoveredOwnerTrace { get; private set; }
 
         internal static CanvasLayerInsertDescriptor[] BuildInsertDescriptors(
             int holdDurationMs,
@@ -1319,7 +1350,8 @@ namespace HaCreator.MapSimulator.Animation
             bool ownsCanvasTexture,
             AnimationCanvasLayerOwner owner,
             CanvasLayerRecoveredLayerSettings recoveredLayerSettings,
-            CanvasLayerRecoveredRegistrationTrace? recoveredRegistrationTrace = null)
+            CanvasLayerRecoveredRegistrationTrace? recoveredRegistrationTrace = null,
+            CanvasLayerRecoveredOwnerTrace? recoveredOwnerTrace = null)
         {
             _canvasTexture = canvasTexture;
             _overlayTexture = overlayTexture;
@@ -1339,6 +1371,7 @@ namespace HaCreator.MapSimulator.Animation
                 insertDescriptors,
                 recoveredLayerSettings,
                 registersOneTimeAnimation: true);
+            RecoveredOwnerTrace = recoveredOwnerTrace;
         }
 
         public bool Update(int currentTimeMs)
@@ -1389,6 +1422,7 @@ namespace HaCreator.MapSimulator.Animation
             Owner = AnimationCanvasLayerOwner.Generic;
             RecoveredLayerSettings = default;
             RecoveredRegistrationTrace = default;
+            RecoveredOwnerTrace = null;
         }
 
         internal static CanvasLayerRecoveredRegistrationTrace BuildRecoveredRegistrationTrace(

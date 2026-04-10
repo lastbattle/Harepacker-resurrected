@@ -196,6 +196,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => _manualTargetText?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => EditTargetMaxLength;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _editTargetFocused && TryParseManualTargetMapId(out _);
+        string ISoftKeyboardHost.GetSoftKeyboardText() => _manualTargetText ?? string.Empty;
 
         public Action<DestinationEntry> RegisterCurrentMapRequested { get; set; }
         public Action<DestinationEntry> DeleteDestinationRequested { get; set; }

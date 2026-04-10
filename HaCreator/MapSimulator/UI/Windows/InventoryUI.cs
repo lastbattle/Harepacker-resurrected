@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI.Controls;
 using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
@@ -141,6 +142,13 @@ namespace HaCreator.MapSimulator.UI
         private Point _draggedItemPosition;
         private bool _parcelAttachmentPickModeActive;
         private string _parcelAttachmentPickInstruction = string.Empty;
+        private KeyboardState _previousKeyboardState;
+        private bool _dropQuantityPromptVisible;
+        private InventoryType _pendingDropInventoryType = InventoryType.NONE;
+        private int _pendingDropSlotIndex = -1;
+        private InventorySlotData _pendingDropSlotData;
+        private int _dropQuantityPromptValue = 1;
+        private int _dropQuantityPromptMaximum = 1;
 
         protected Texture2D ActiveIconTexture;
         protected Texture2D DisabledSlotTexture;
@@ -155,7 +163,7 @@ namespace HaCreator.MapSimulator.UI
         public Action<string> ItemConsumptionBlocked { get; set; }
         public Func<int, InventoryType, bool> ItemUseRequested { get; set; }
         public Func<int, InventoryType, int, bool> ItemUseRequestedAtSlot { get; set; }
-        public Func<InventoryType, int, InventorySlotData, bool> InventoryDropRequested { get; set; }
+        public Func<InventoryType, int, InventorySlotData, int, bool> InventoryDropRequested { get; set; }
         public Func<bool> EquipmentDragStartBlocked { get; set; }
 
         public int CurrentTab
@@ -183,6 +191,7 @@ namespace HaCreator.MapSimulator.UI
         public InventoryType DraggedInventoryType => _draggedInventoryType;
         public int DraggedSlotIndex => _draggedSlotIndex;
         public InventorySlotData DraggedSlotData => _draggedSlotData?.Clone();
+        public bool HasPendingDropQuantityPrompt => _dropQuantityPromptVisible;
         #endregion
 
         #region Constructor
@@ -365,6 +374,7 @@ namespace HaCreator.MapSimulator.UI
             DrawMesoText(sprite, windowX, windowY, MESO_TEXT_RIGHT_X, MESO_TEXT_Y);
             DrawSlotGrid(sprite, windowX, windowY, inventoryType, slots, SLOT_ORIGIN_X, SLOT_ORIGIN_Y, _scrollOffset, TOTAL_SLOTS);
             DrawParcelAttachmentPickOverlay(sprite, windowX, windowY);
+            DrawDropQuantityPrompt(sprite, windowX, windowY);
         }
 
         protected void DrawMesoText(SpriteBatch sprite, int windowX, int windowY, int rightAnchorX, int textY)
@@ -481,6 +491,45 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawSlotHighlight(sprite, hoveredBounds, new Color(255, 214, 140, 84), new Color(255, 235, 191, 220));
             }
+        }
+
+        protected void DrawDropQuantityPrompt(SpriteBatch sprite, int windowX, int windowY)
+        {
+            if (!_dropQuantityPromptVisible || _debugTooltipTexture == null || _font == null)
+            {
+                return;
+            }
+
+            Rectangle bounds = new Rectangle(windowX + 8, windowY + 94, 146, 54);
+            sprite.Draw(_debugTooltipTexture, bounds, new Color(46, 37, 18, 225));
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(255, 222, 156, 220));
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(123, 96, 36, 220));
+
+            string title = "Discard Count";
+            string quantityText = $"Qty: {_dropQuantityPromptValue} / {_dropQuantityPromptMaximum}";
+            string detailText = "Enter/Space confirm  Esc cancel";
+
+            InventoryRenderUtil.DrawOutlinedText(
+                sprite,
+                _font,
+                title,
+                new Vector2(bounds.X + 24, bounds.Y + 5),
+                new Color(255, 232, 182),
+                0.42f);
+            InventoryRenderUtil.DrawOutlinedText(
+                sprite,
+                _font,
+                quantityText,
+                new Vector2(bounds.X + 16, bounds.Y + 21),
+                Color.White,
+                0.42f);
+            InventoryRenderUtil.DrawOutlinedText(
+                sprite,
+                _font,
+                detailText,
+                new Vector2(bounds.X + 6, bounds.Y + 37),
+                new Color(223, 214, 196),
+                0.28f);
         }
         #endregion
 
@@ -1136,6 +1185,26 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public bool TryHandleExternalDropRequest(int mouseX, int mouseY)
+        {
+            if (_draggedSlotData == null || InventoryDropRequested == null)
+            {
+                return false;
+            }
+
+            if (FieldDropRequestEvaluator.ShouldPromptForItemDropQuantity(_draggedInventoryType, _draggedSlotData))
+            {
+                OpenDropQuantityPrompt(_draggedInventoryType, _draggedSlotIndex, _draggedSlotData);
+                return true;
+            }
+
+            return CommitExternalDropRequest(
+                _draggedInventoryType,
+                _draggedSlotIndex,
+                _draggedSlotData,
+                Math.Max(1, _draggedSlotData.Quantity));
+        }
+
         public bool HandlesInventoryInteractionPoint(int mouseX, int mouseY)
         {
             return TryGetSlotAtPosition(mouseX, mouseY, out _, out int slotIndex)
@@ -1343,7 +1412,15 @@ namespace HaCreator.MapSimulator.UI
             UpdateTabStates();
 
             MouseState mouseState = Mouse.GetState();
+            KeyboardState keyboardState = Keyboard.GetState();
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
+
+            if (_dropQuantityPromptVisible)
+            {
+                HandleDropQuantityPromptInput(mouseState, keyboardState);
+                _previousKeyboardState = keyboardState;
+                return;
+            }
 
             if (TryGetSlotAtPosition(mouseState.X, mouseState.Y, out InventoryType inventoryType, out int slotIndex))
             {
@@ -1355,6 +1432,129 @@ namespace HaCreator.MapSimulator.UI
                 _hoveredInventoryType = InventoryType.NONE;
                 _hoveredSlotIndex = -1;
             }
+
+            _previousKeyboardState = keyboardState;
+        }
+
+        private void HandleDropQuantityPromptInput(MouseState mouseState, KeyboardState keyboardState)
+        {
+            if (!_dropQuantityPromptVisible)
+            {
+                return;
+            }
+
+            int wheelDelta = mouseState.ScrollWheelValue - _previousInteractionMouseState.ScrollWheelValue;
+            if (wheelDelta != 0)
+            {
+                AdjustDropQuantityPromptValue(wheelDelta > 0 ? 1 : -1);
+            }
+
+            if (WasPressed(keyboardState, Keys.Left) || WasPressed(keyboardState, Keys.Down))
+            {
+                AdjustDropQuantityPromptValue(-1);
+            }
+            else if (WasPressed(keyboardState, Keys.Right) || WasPressed(keyboardState, Keys.Up))
+            {
+                AdjustDropQuantityPromptValue(1);
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                AdjustDropQuantityPromptValue(-5);
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                AdjustDropQuantityPromptValue(5);
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                _dropQuantityPromptValue = 1;
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                _dropQuantityPromptValue = _dropQuantityPromptMaximum;
+            }
+
+            if (WasPressed(keyboardState, Keys.Enter) || WasPressed(keyboardState, Keys.Space))
+            {
+                ConfirmDropQuantityPrompt();
+            }
+            else if (WasPressed(keyboardState, Keys.Escape))
+            {
+                CloseDropQuantityPrompt();
+            }
+
+            _previousInteractionMouseState = mouseState;
+        }
+
+        private void OpenDropQuantityPrompt(InventoryType inventoryType, int slotIndex, InventorySlotData slotData)
+        {
+            _pendingDropInventoryType = inventoryType;
+            _pendingDropSlotIndex = slotIndex;
+            _pendingDropSlotData = slotData?.Clone();
+            _dropQuantityPromptMaximum = Math.Max(1, slotData?.Quantity ?? 1);
+            _dropQuantityPromptValue = 1;
+            _dropQuantityPromptVisible = _pendingDropSlotData != null;
+            _previousInteractionMouseState = Mouse.GetState();
+        }
+
+        private void ConfirmDropQuantityPrompt()
+        {
+            if (!_dropQuantityPromptVisible || _pendingDropSlotData == null)
+            {
+                CloseDropQuantityPrompt();
+                return;
+            }
+
+            CommitExternalDropRequest(
+                _pendingDropInventoryType,
+                _pendingDropSlotIndex,
+                _pendingDropSlotData,
+                _dropQuantityPromptValue);
+            CloseDropQuantityPrompt();
+        }
+
+        private bool CommitExternalDropRequest(
+            InventoryType inventoryType,
+            int slotIndex,
+            InventorySlotData slotData,
+            int quantity)
+        {
+            if (slotData == null || InventoryDropRequested == null)
+            {
+                return false;
+            }
+
+            InventorySlotData requestSlot = slotData.Clone();
+            requestSlot.Quantity = Math.Clamp(quantity, 1, Math.Max(1, slotData.Quantity));
+            if (InventoryDropRequested(inventoryType, slotIndex, requestSlot, requestSlot.Quantity) != true)
+            {
+                return false;
+            }
+
+            return TryConsumeItemAtSlot(inventoryType, slotIndex, slotData.ItemId, requestSlot.Quantity);
+        }
+
+        private void CloseDropQuantityPrompt()
+        {
+            _dropQuantityPromptVisible = false;
+            _pendingDropInventoryType = InventoryType.NONE;
+            _pendingDropSlotIndex = -1;
+            _pendingDropSlotData = null;
+            _dropQuantityPromptValue = 1;
+            _dropQuantityPromptMaximum = 1;
+        }
+
+        private void AdjustDropQuantityPromptValue(int delta)
+        {
+            _dropQuantityPromptValue = Math.Clamp(
+                _dropQuantityPromptValue + delta,
+                1,
+                Math.Max(1, _dropQuantityPromptMaximum));
+        }
+
+        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
         }
 
         private static bool IsStackable(InventoryType type, int maxStackSize)
@@ -1462,6 +1662,13 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (_dropQuantityPromptVisible)
+            {
+                _previousInteractionMouseState = mouseState;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
             foreach (UIObject uiBtn in uiButtons)
             {
@@ -1540,6 +1747,7 @@ namespace HaCreator.MapSimulator.UI
         private void DrawHoveredSlotTooltip(SpriteBatch sprite)
         {
             if (_isDraggingItem
+                || _dropQuantityPromptVisible
                 || _font == null
                 || _hoveredInventoryType == InventoryType.NONE
                 || _hoveredSlotIndex < 0

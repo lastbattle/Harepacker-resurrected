@@ -188,6 +188,12 @@ namespace HaCreator.MapSimulator.UI
             Wish
         }
 
+        private enum CollectSortMode
+        {
+            Time,
+            Name
+        }
+
         private readonly bool _isBigBang;
         private readonly IDXObject _defaultFrame;
         private readonly Dictionary<UserInfoPage, UIObject> _pageButtons = new Dictionary<UserInfoPage, UIObject>();
@@ -201,7 +207,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<string> _wishEntries = new List<string> { "White Scroll", "Brown Work Gloves", "Ilbi Throwing-Star" };
         private readonly Dictionary<ItemMakerRecipeFamily, IDXObject> _productSkillIcons = new Dictionary<ItemMakerRecipeFamily, IDXObject>();
         private readonly Dictionary<int, Texture2D> _itemIconCache = new Dictionary<int, Texture2D>();
-        private readonly HashSet<string> _collectRewardClaims = new HashSet<string>(StringComparer.Ordinal);
         private IDXObject _productSkillRecipeIcon;
         private IDXObject _marriedIcon;
 
@@ -259,7 +264,7 @@ namespace HaCreator.MapSimulator.UI
         private int _selectedWishIndex;
         private bool _petExceptionBlocksMeso = true;
         private int _selectedPetExceptionIndex = -1;
-        private bool _collectSortByName;
+        private CollectSortMode _collectSortMode = CollectSortMode.Time;
         private MouseState _previousMouseState;
         private CharacterBuild _snapshotCacheBuild;
         private ItemMakerProgressionSnapshot _currentCollectionSnapshot = ItemMakerProgressionSnapshot.Default;
@@ -299,6 +304,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<UserInfoActionContext, string> PartyRequested { get; set; }
         public Func<UserInfoActionContext, string> SearchRequested { get; set; }
         public Func<UserInfoActionContext, string> FollowRequested { get; set; }
+        public Func<UserInfoActionContext, bool> FollowActionAvailable { get; set; }
         public Func<UserInfoActionContext, string> TradingRoomRequested { get; set; }
         public Func<UserInfoActionContext, string> FamilyRequested { get; set; }
         public Func<UserInfoActionContext, PopularityChangeDirection, string> PopularityRequested { get; set; }
@@ -472,8 +478,8 @@ namespace HaCreator.MapSimulator.UI
             _collectClaimButton = collectClaimButton;
 
             BindActionButton(_petExceptionButton, "Pet exception list opened.", ToggleExceptionPopup);
-            BindActionButton(_collectSortButton, "Collection entries sorted by name.", ToggleCollectSortMode);
-            BindActionButton(_collectClaimButton, "Collection reward claimed.", ClaimCollectReward);
+            BindActionButton(_collectSortButton, "Collection entries sorted by name.", SortCollectEntriesByName);
+            BindActionButton(_collectClaimButton, "Collection entries sorted by time.", SortCollectEntriesByTime);
             UpdateButtonStates();
         }
 
@@ -1098,7 +1104,7 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(Position.X + 20, Position.Y + 188),
                 IsRemoteInspectionActive() && !hasAuthoritativeCollection
                     ? WarningColor
-                    : CanClaimCollectReward() ? SuccessColor : MutedColor,
+                    : MutedColor,
                 0.58f);
         }
 
@@ -1626,8 +1632,10 @@ namespace HaCreator.MapSimulator.UI
             if (_followButton != null)
             {
                 bool liveRemoteInspection = characterPage && IsLiveRemoteInspectionActive();
+                bool followAvailable = liveRemoteInspection
+                    && (FollowActionAvailable?.Invoke(BuildCurrentActionContext()) ?? true);
                 _followButton.ButtonVisible = liveRemoteInspection;
-                _followButton.SetEnabled(liveRemoteInspection && !_exceptionPopupOpen);
+                _followButton.SetEnabled(followAvailable && !_exceptionPopupOpen);
             }
 
             if (_tradeButton != null)
@@ -1705,13 +1713,19 @@ namespace HaCreator.MapSimulator.UI
                 bool showCollectButtons = _currentPage == UserInfoPage.Collect;
                 _collectSortButton.ButtonVisible = showCollectButtons;
                 _collectSortButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen);
+                _collectSortButton.SetButtonState(showCollectButtons && _collectSortMode == CollectSortMode.Name
+                    ? UIObjectState.Pressed
+                    : UIObjectState.Normal);
             }
 
             if (_collectClaimButton != null)
             {
-                bool showCollectButtons = _currentPage == UserInfoPage.Collect && !remoteInspection;
+                bool showCollectButtons = _currentPage == UserInfoPage.Collect;
                 _collectClaimButton.ButtonVisible = showCollectButtons;
-                _collectClaimButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen && CanClaimCollectReward() && !HasClaimedCollectReward());
+                _collectClaimButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen);
+                _collectClaimButton.SetButtonState(showCollectButtons && _collectSortMode == CollectSortMode.Time
+                    ? UIObjectState.Pressed
+                    : UIObjectState.Normal);
             }
 
             if (_exceptionRegisterButton != null)
@@ -2119,12 +2133,23 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
-        private void ToggleCollectSortMode()
+        private void SortCollectEntriesByName()
         {
-            _collectSortByName = !_collectSortByName;
-            _statusMessage = _collectSortByName
-                ? "Collection summary sorted by name."
-                : "Collection summary sorted by equipped slot order.";
+            SetCollectSortMode(CollectSortMode.Name, "Collection summary sorted by name.");
+        }
+
+        private void SortCollectEntriesByTime()
+        {
+            SetCollectSortMode(
+                CollectSortMode.Time,
+                "Collection summary sorted by time-style order. The simulator still approximates the client's exact collection timestamps.");
+        }
+
+        private void SetCollectSortMode(CollectSortMode sortMode, string statusMessage)
+        {
+            _collectSortMode = sortMode;
+            _statusMessage = statusMessage;
+            UpdateButtonStates();
         }
 
         private void OpenCollectionBook()
@@ -2139,32 +2164,6 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = string.IsNullOrWhiteSpace(message)
                 ? "Collection book opened."
                 : message;
-        }
-
-        private void ClaimCollectReward()
-        {
-            if (!CanClaimCollectReward())
-            {
-                _statusMessage = "Collection reward is not ready yet.";
-                return;
-            }
-
-            if (HasClaimedCollectReward())
-            {
-                _statusMessage = "Collection reward has already been claimed in this simulator session.";
-                return;
-            }
-
-            string claimKey = BuildCollectRewardClaimKey();
-            if (string.IsNullOrWhiteSpace(claimKey))
-            {
-                _statusMessage = "Collection reward claim could not resolve an active character owner.";
-                return;
-            }
-
-            _collectRewardClaims.Add(claimKey);
-            _statusMessage = "Collection reward claim acknowledged locally.";
-            UpdateButtonStates();
         }
 
         private void PresentWishEntry()
@@ -2187,50 +2186,6 @@ namespace HaCreator.MapSimulator.UI
                 : message;
         }
 
-        private bool CanClaimCollectReward()
-        {
-            if (IsRemoteInspectionActive())
-            {
-                return false;
-            }
-
-            ItemMakerProgressionSnapshot progression = GetCollectionSnapshot();
-            MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
-            return progression.SuccessfulCrafts > 0
-                || progression.DiscoveredRecipeCount > 0
-                || progression.UnlockedHiddenRecipeCount > 0
-                || snapshot.OwnedCardTypes > 0;
-        }
-
-        private bool HasClaimedCollectReward()
-        {
-            string claimKey = BuildCollectRewardClaimKey();
-            return !string.IsNullOrWhiteSpace(claimKey) && _collectRewardClaims.Contains(claimKey);
-        }
-
-        private string BuildCollectRewardClaimKey()
-        {
-            if (IsRemoteInspectionActive())
-            {
-                return null;
-            }
-
-            CharacterBuild build = GetDisplayedBuild();
-            if (build == null)
-            {
-                return null;
-            }
-
-            if (build.Id > 0)
-            {
-                return build.Id.ToString(CultureInfo.InvariantCulture);
-            }
-
-            return string.IsNullOrWhiteSpace(build.Name)
-                ? null
-                : build.Name.Trim();
-        }
-
         private List<(string Label, string Value)> BuildCollectEntries()
         {
             ItemMakerProgressionSnapshot snapshot = GetCollectionSnapshot();
@@ -2244,7 +2199,7 @@ namespace HaCreator.MapSimulator.UI
                 ("Recipes", BuildRecipeSummary(snapshot))
             };
 
-            return _collectSortByName
+            return _collectSortMode == CollectSortMode.Name
                 ? entries.OrderBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase).ToList()
                 : entries;
         }

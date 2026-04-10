@@ -163,25 +163,7 @@ namespace HaCreator.MapSimulator.Character
                 ["alert"] = new[] { "stand1", "stand2", "sit" },
                 ["heal"] = new[] { "stand1", "stand2", "sit" },
                 ["dead"] = new[] { "sit", "stand1" },
-                ["ghost"] = new[] { "sit", "stand1" },
-                ["tank_jump"] = new[] { "tank_stand" },
-                ["tank_fly"] = new[] { "tank_stand" },
-                ["tank_swim"] = new[] { "tank_stand" },
-                ["tank_ladder"] = new[] { "ladder2", "rope2", "tank_stand" },
-                ["tank_rope"] = new[] { "rope2", "ladder2", "tank_stand" },
-                ["tank_hit"] = new[] { "tank_stand", "alert2", "alert" },
-                ["siege_jump"] = new[] { "siege_stand" },
-                ["siege_fly"] = new[] { "siege_stand" },
-                ["siege_swim"] = new[] { "siege_stand" },
-                ["siege_ladder"] = new[] { "ladder2", "rope2", "siege_stand" },
-                ["siege_rope"] = new[] { "rope2", "ladder2", "siege_stand" },
-                ["siege_hit"] = new[] { "siege_stand", "alert2", "alert" },
-                ["tank_siegejump"] = new[] { "tank_siegestand" },
-                ["tank_siegefly"] = new[] { "tank_siegestand" },
-                ["tank_siegeswim"] = new[] { "tank_siegestand" },
-                ["tank_siegeladder"] = new[] { "ladder2", "rope2", "tank_siegestand" },
-                ["tank_siegerope"] = new[] { "rope2", "ladder2", "tank_siegestand" },
-                ["tank_siegehit"] = new[] { "tank_siegestand", "alert2", "alert" }
+                ["ghost"] = new[] { "sit", "stand1" }
             };
 
         private readonly Dictionary<string, string> _resolvedActionCache = new(StringComparer.OrdinalIgnoreCase);

@@ -1315,7 +1315,9 @@ namespace HaCreator.MapSimulator
                     officialChairPacket.ChairItemId,
                     out string chairMessage,
                     officialChairPacket.PairCharacterId,
-                    syncPairRecordFromChairState: true);
+                    // CUserPool keeps couple-chair record ownership separate from
+                    // packet 222 seat state; record add/remove packets own admission.
+                    syncPairRecordFromChairState: false);
                 result = chairApplied
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialChairPacket.CharacterId}."
                     : chairMessage;
@@ -2115,6 +2117,8 @@ namespace HaCreator.MapSimulator
                 "couplechairrecordremove" or "couplechairremove" => (int)RemoteUserPacketType.UserCoupleChairRecordRemove,
                 "commonchat" or "userchat" => (int)RemoteUserPacketType.UserChat,
                 "commonoutsidechat" or "useroutsidechat" => (int)RemoteUserPacketType.UserChatFromOutsideMap,
+                "tutorhire" or "hiretutor" or "onhiretutor" => (int)RemoteUserPacketType.UserTutorHire,
+                "tutormsg" or "tutormessage" or "ontutormsg" => (int)RemoteUserPacketType.UserTutorMessage,
                 "chair" => (int)RemoteUserPacketType.UserPortableChair,
                 "mount" => (int)RemoteUserPacketType.UserMount,
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,
@@ -2136,6 +2140,11 @@ namespace HaCreator.MapSimulator
             };
 
             return packetType != 0;
+        }
+
+        internal static bool TryParseRemoteUserPacketTypeForTesting(string text, out int packetType)
+        {
+            return TryParseRemoteUserPacketType(text, out packetType);
         }
 
         private static string DescribeRemoteUserPacketType(int packetType)

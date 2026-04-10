@@ -28,14 +28,19 @@ namespace HaCreator.MapSimulator
 
         private sealed record PacketScriptDigitStrip(Texture2D[] Digits, Texture2D CommaTexture);
         private sealed record PacketScriptAnimationStrip(Texture2D[] Frames, int[] FrameDurationsMs);
-        private sealed record PacketScriptButtonVisuals(
-            Texture2D Normal,
-            Texture2D Hover,
-            Texture2D Pressed,
-            Texture2D Disabled,
-            Texture2D KeyFocused)
+        private sealed record PacketScriptButtonFrame(Texture2D Texture, Point Origin)
         {
-            internal Texture2D ResolveTexture(PacketScriptOwnerButtonVisualState state)
+            internal int Width => Texture?.Width ?? 0;
+            internal int Height => Texture?.Height ?? 0;
+        }
+        private sealed record PacketScriptButtonVisuals(
+            PacketScriptButtonFrame Normal,
+            PacketScriptButtonFrame Hover,
+            PacketScriptButtonFrame Pressed,
+            PacketScriptButtonFrame Disabled,
+            PacketScriptButtonFrame KeyFocused)
+        {
+            internal PacketScriptButtonFrame ResolveFrame(PacketScriptOwnerButtonVisualState state)
             {
                 return state switch
                 {
@@ -44,6 +49,26 @@ namespace HaCreator.MapSimulator
                     PacketScriptOwnerButtonVisualState.Hover => Hover ?? KeyFocused ?? Normal ?? Pressed ?? Disabled,
                     _ => Normal ?? Hover ?? KeyFocused ?? Pressed ?? Disabled
                 };
+            }
+
+            internal bool TryGetAnchorMetrics(out Point origin, out Point size)
+            {
+                PacketScriptButtonFrame frame = Normal ?? Hover ?? Pressed ?? Disabled ?? KeyFocused;
+                if (frame?.Texture == null)
+                {
+                    origin = Point.Zero;
+                    size = Point.Zero;
+                    return false;
+                }
+
+                origin = frame.Origin;
+                size = new Point(frame.Texture.Width, frame.Texture.Height);
+                return true;
+            }
+
+            internal Texture2D ResolveTexture(PacketScriptOwnerButtonVisualState state)
+            {
+                return ResolveFrame(state)?.Texture;
             }
         }
 
@@ -416,14 +441,21 @@ namespace HaCreator.MapSimulator
 
         private PacketScriptButtonVisuals LoadPacketScriptButtonVisuals(WzSubProperty preferred, WzSubProperty fallback)
         {
-            Texture2D normal = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred, fallback, "normal"));
-            Texture2D hover = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred, fallback, "mouseOver"));
-            Texture2D pressed = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred, fallback, "pressed"));
-            Texture2D disabled = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred, fallback, "disabled"));
-            Texture2D keyFocused = LoadUiCanvasTexture(ResolvePacketScriptButtonCanvas(preferred, fallback, "keyFocused"));
+            PacketScriptButtonFrame normal = LoadPacketScriptButtonFrame(preferred, fallback, "normal");
+            PacketScriptButtonFrame hover = LoadPacketScriptButtonFrame(preferred, fallback, "mouseOver");
+            PacketScriptButtonFrame pressed = LoadPacketScriptButtonFrame(preferred, fallback, "pressed");
+            PacketScriptButtonFrame disabled = LoadPacketScriptButtonFrame(preferred, fallback, "disabled");
+            PacketScriptButtonFrame keyFocused = LoadPacketScriptButtonFrame(preferred, fallback, "keyFocused");
             return normal != null || hover != null || pressed != null || disabled != null || keyFocused != null
                 ? new PacketScriptButtonVisuals(normal, hover, pressed, disabled, keyFocused)
                 : null;
+        }
+
+        private PacketScriptButtonFrame LoadPacketScriptButtonFrame(WzSubProperty preferred, WzSubProperty fallback, string stateName)
+        {
+            WzCanvasProperty canvas = ResolvePacketScriptButtonCanvas(preferred, fallback, stateName);
+            Texture2D texture = LoadUiCanvasTexture(canvas);
+            return texture == null ? null : new PacketScriptButtonFrame(texture, ResolveCanvasOrigin(canvas));
         }
 
         private static WzCanvasProperty ResolvePacketScriptButtonCanvas(WzSubProperty preferred, WzSubProperty fallback, string stateName)

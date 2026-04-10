@@ -175,6 +175,10 @@ namespace HaCreator.MapSimulator
                 {
                     _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
                     _initialQuizOwnerPressedOkButton = false;
+                    _initialQuizOwnerCursorIndex = ResolveInitialQuizOwnerCursorIndexFromClick(
+                        _initialQuizOwnerInput.ToString(),
+                        inputBounds,
+                        cursor.X);
                 }
                 else
                 {
@@ -288,6 +292,20 @@ namespace HaCreator.MapSimulator
                     _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
                 }
 
+                return true;
+            }
+
+            if (newKeyboardState.IsKeyDown(Keys.Home) && oldKeyboardState.IsKeyUp(Keys.Home))
+            {
+                _initialQuizOwnerCursorIndex = 0;
+                _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+                return true;
+            }
+
+            if (newKeyboardState.IsKeyDown(Keys.End) && oldKeyboardState.IsKeyUp(Keys.End))
+            {
+                _initialQuizOwnerCursorIndex = _initialQuizOwnerInput.Length;
+                _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
                 return true;
             }
 
@@ -492,10 +510,17 @@ namespace HaCreator.MapSimulator
             DrawPacketScriptOwnerFrame(inputBounds, fillColor, borderColor);
 
             string inputText = _initialQuizOwnerInput.ToString();
+            int textAreaWidth = Math.Max(0, inputBounds.Width - 8);
+            int[] glyphWidths = MeasureInitialQuizOwnerInputGlyphWidths(inputText);
+            int visibleStart = ResolveInitialQuizOwnerVisibleStart(glyphWidths, _initialQuizOwnerCursorIndex, textAreaWidth);
+            int visibleLength = ResolveInitialQuizOwnerVisibleLength(glyphWidths, visibleStart, textAreaWidth);
+            string visibleInputText = visibleLength > 0
+                ? inputText.Substring(visibleStart, visibleLength)
+                : string.Empty;
             Vector2 drawPosition = new(inputBounds.X + 4, inputBounds.Y - 1);
-            if (!string.IsNullOrEmpty(inputText))
+            if (!string.IsNullOrEmpty(visibleInputText))
             {
-                _spriteBatch.DrawString(_fontChat, inputText, drawPosition, Color.Black, 0f, Vector2.Zero, InitialQuizOwnerInputTextScale, SpriteEffects.None, 0f);
+                _spriteBatch.DrawString(_fontChat, visibleInputText, drawPosition, Color.Black, 0f, Vector2.Zero, InitialQuizOwnerInputTextScale, SpriteEffects.None, 0f);
             }
 
             bool cursorVisible = inputFocused && ShouldDrawInitialQuizOwnerCursor(currentTickCount, _initialQuizOwnerCursorBlinkStartedAt);
@@ -504,10 +529,39 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            string prefix = inputText[..Math.Clamp(_initialQuizOwnerCursorIndex, 0, inputText.Length)];
-            int cursorX = inputBounds.X + 4 + (int)Math.Round(_fontChat.MeasureString(prefix).X * InitialQuizOwnerInputTextScale);
+            int cursorX = inputBounds.X + 4 + SumInitialQuizOwnerGlyphWidths(
+                glyphWidths,
+                visibleStart,
+                Math.Clamp(_initialQuizOwnerCursorIndex, visibleStart, inputText.Length) - visibleStart);
             Rectangle cursorBounds = new(cursorX, inputBounds.Y + 2, 1, Math.Max(9, inputBounds.Height - 4));
             _spriteBatch.Draw(_packetScriptOwnerPixelTexture, cursorBounds, Color.Black);
+        }
+
+        private int ResolveInitialQuizOwnerCursorIndexFromClick(string inputText, Rectangle inputBounds, int mouseX)
+        {
+            int textAreaWidth = Math.Max(0, inputBounds.Width - 8);
+            int[] glyphWidths = MeasureInitialQuizOwnerInputGlyphWidths(inputText);
+            int visibleStart = ResolveInitialQuizOwnerVisibleStart(glyphWidths, _initialQuizOwnerCursorIndex, textAreaWidth);
+            int relativeX = Math.Max(0, mouseX - (inputBounds.X + 4));
+            return ResolveInitialQuizOwnerCursorIndexFromRelativeX(glyphWidths, visibleStart, textAreaWidth, relativeX);
+        }
+
+        private int[] MeasureInitialQuizOwnerInputGlyphWidths(string inputText)
+        {
+            if (_fontChat == null || string.IsNullOrEmpty(inputText))
+            {
+                return Array.Empty<int>();
+            }
+
+            int[] glyphWidths = new int[inputText.Length];
+            for (int i = 0; i < inputText.Length; i++)
+            {
+                glyphWidths[i] = Math.Max(
+                    1,
+                    (int)Math.Ceiling(_fontChat.MeasureString(inputText[i].ToString()).X * InitialQuizOwnerInputTextScale));
+            }
+
+            return glyphWidths;
         }
 
         private void DrawInitialQuizOwnerAnimationFrame(Rectangle ownerBounds, int currentTickCount)
@@ -745,6 +799,107 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldDrawInitialQuizOwnerCursor(int currentTickCount, int cursorBlinkStartedAt)
         {
             return ((currentTickCount - cursorBlinkStartedAt) / 500) % 2 == 0;
+        }
+
+        internal static int ResolveInitialQuizOwnerVisibleStart(IReadOnlyList<int> glyphWidths, int cursorIndex, int maxWidth)
+        {
+            if (glyphWidths == null || glyphWidths.Count == 0 || maxWidth <= 0)
+            {
+                return 0;
+            }
+
+            int clampedCursorIndex = Math.Clamp(cursorIndex, 0, glyphWidths.Count);
+            int start = clampedCursorIndex;
+            int width = 0;
+            while (start > 0)
+            {
+                int nextWidth = width + Math.Max(1, glyphWidths[start - 1]);
+                if (nextWidth > maxWidth)
+                {
+                    break;
+                }
+
+                start--;
+                width = nextWidth;
+            }
+
+            return start;
+        }
+
+        internal static int ResolveInitialQuizOwnerVisibleLength(IReadOnlyList<int> glyphWidths, int visibleStart, int maxWidth)
+        {
+            if (glyphWidths == null || glyphWidths.Count == 0 || maxWidth <= 0)
+            {
+                return 0;
+            }
+
+            int start = Math.Clamp(visibleStart, 0, glyphWidths.Count);
+            int width = 0;
+            int end = start;
+            while (end < glyphWidths.Count)
+            {
+                int nextWidth = width + Math.Max(1, glyphWidths[end]);
+                if (nextWidth > maxWidth)
+                {
+                    break;
+                }
+
+                width = nextWidth;
+                end++;
+            }
+
+            return end - start;
+        }
+
+        internal static int ResolveInitialQuizOwnerCursorIndexFromRelativeX(
+            IReadOnlyList<int> glyphWidths,
+            int visibleStart,
+            int maxWidth,
+            int relativeX)
+        {
+            if (glyphWidths == null || glyphWidths.Count == 0)
+            {
+                return 0;
+            }
+
+            int start = Math.Clamp(visibleStart, 0, glyphWidths.Count);
+            int visibleLength = ResolveInitialQuizOwnerVisibleLength(glyphWidths, start, maxWidth);
+            int clampedX = Math.Max(0, relativeX);
+            int offset = 0;
+            for (int i = 0; i < visibleLength; i++)
+            {
+                int glyphWidth = Math.Max(1, glyphWidths[start + i]);
+                if (clampedX < offset + (glyphWidth / 2))
+                {
+                    return start + i;
+                }
+
+                offset += glyphWidth;
+                if (clampedX < offset)
+                {
+                    return start + i + 1;
+                }
+            }
+
+            return start + visibleLength;
+        }
+
+        internal static int SumInitialQuizOwnerGlyphWidths(IReadOnlyList<int> glyphWidths, int start, int count)
+        {
+            if (glyphWidths == null || glyphWidths.Count == 0 || count <= 0)
+            {
+                return 0;
+            }
+
+            int begin = Math.Clamp(start, 0, glyphWidths.Count);
+            int end = Math.Clamp(begin + count, begin, glyphWidths.Count);
+            int total = 0;
+            for (int i = begin; i < end; i++)
+            {
+                total += Math.Max(1, glyphWidths[i]);
+            }
+
+            return total;
         }
 
         internal static InitialQuizOwnerSubmissionValidation ValidateInitialQuizOwnerSubmission(

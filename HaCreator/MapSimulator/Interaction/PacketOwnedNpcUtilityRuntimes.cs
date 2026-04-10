@@ -1314,6 +1314,11 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add(item.MetadataSummary);
             }
 
+            if (item.Quantity > 1 && item.Quantity != item.ClientStock)
+            {
+                parts.Add($"Qty {item.Quantity.ToString(CultureInfo.InvariantCulture)}");
+            }
+
             if (item.CashSerialNumber > 0)
             {
                 parts.Add($"CashSN {item.CashSerialNumber.ToString(CultureInfo.InvariantCulture)}");
@@ -1328,7 +1333,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (item.EquipData != null && item.EquipData.PreviousBonusExpRate != 0)
             {
-                parts.Add($"PrevBonusEXP {item.EquipData.PreviousBonusExpRate.ToString(CultureInfo.InvariantCulture)}");
+                parts.Add($"nPrevBonusExpRate {item.EquipData.PreviousBonusExpRate.ToString(CultureInfo.InvariantCulture)}");
             }
 
             string expiration = FormatFileTime(item.BaseExpirationTime);
@@ -2149,12 +2154,12 @@ namespace HaCreator.MapSimulator.Interaction
                 string equippedTime = FormatFileTime(item.EquipData.EquippedTime);
                 if (!string.IsNullOrWhiteSpace(equippedTime))
                 {
-                    parts.Add($"Equipped {equippedTime}");
+                    parts.Add($"ftEquipped {equippedTime}");
                 }
 
-                if (item.EquipData.PreviousBonusExpRate >= 0)
+                if (item.EquipData.PreviousBonusExpRate != 0)
                 {
-                    parts.Add($"PrevBonusEXP {item.EquipData.PreviousBonusExpRate.ToString(CultureInfo.InvariantCulture)}");
+                    parts.Add($"nPrevBonusExpRate {item.EquipData.PreviousBonusExpRate.ToString(CultureInfo.InvariantCulture)}");
                 }
             }
 
@@ -2176,7 +2181,7 @@ namespace HaCreator.MapSimulator.Interaction
                 string dateDead = FormatFileTime(item.PetData.DateDead);
                 if (!string.IsNullOrWhiteSpace(dateDead))
                 {
-                    parts.Add($"PetDead {dateDead}");
+                    parts.Add($"dateDead {dateDead}");
                 }
 
                 if (item.PetData.Skill > 0)
@@ -2351,7 +2356,7 @@ namespace HaCreator.MapSimulator.Interaction
                 itemName = $"{itemName} ({title})";
             }
 
-            int clientStock = ResolveClientStock(slotType, quantity);
+            int clientStock = ResolveClientStock(slotType, itemId, quantity);
             int encodedByteLength = checked((int)(stream.Position - itemStartPosition));
             long itemSerialNumber = ResolveNativeItemSerialNumber(equipData, bundleData);
             int nativeItemTypeIndex = ResolveNativeItemTypeIndex(itemId);
@@ -2369,7 +2374,7 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketGroupInventoryType = expectedInventoryType,
                 PacketGroupRowIndex = Math.Max(1, packetGroupRowIndex + 1),
                 WasRetainedFromPreviousSnapshot = false,
-                Quantity = clientStock,
+                Quantity = Math.Max(1, quantity),
                 SlotType = slotType,
                 HasCashSerialNumber = hasCashSerialNumber,
                 ItemSerialNumber = itemSerialNumber,
@@ -2479,13 +2484,20 @@ namespace HaCreator.MapSimulator.Interaction
             return typeIndex is >= 1 and <= 5 ? typeIndex : 0;
         }
 
-        private static int ResolveClientStock(byte slotType, int quantity)
+        private static int ResolveClientStock(byte slotType, int itemId, int quantity)
         {
             return slotType switch
             {
-                2 => Math.Max(1, quantity),
+                2 => IsTreatSingly(itemId) ? 1 : Math.Max(1, quantity),
                 _ => 1
             };
+        }
+
+        private static bool IsTreatSingly(int itemId)
+        {
+            int typeIndex = itemId / 1_000_000;
+            return (typeIndex is not 2 and not 3 and not 4)
+                || itemId / 10_000 is 207 or 233;
         }
 
         private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title, out string metadataSummary, out StoreBankEquipData equipData)
@@ -2523,7 +2535,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             const int tailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
-            if (stream.Length - stream.Position < tailLength + sizeof(long) + sizeof(int))
+            int requiredTailLength = tailLength + (hasCashSerialNumber ? 0 : sizeof(long)) + sizeof(long) + sizeof(int);
+            if (stream.Length - stream.Position < requiredTailLength)
             {
                 return false;
             }
@@ -2618,6 +2631,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Socket1 = socket1,
                 Socket2 = socket2,
                 NonCashSerialNumber = nonCashSerialNumber,
+                ExpirationTime = equippedTime,
                 EquippedTime = equippedTime,
                 PreviousBonusExpRate = previousBonusExpRate
             };

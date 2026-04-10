@@ -90,6 +90,86 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static bool TryDecodePrivilegeListPayload(byte[] payload, out IReadOnlyList<FamilyPrivilegePacketSnapshot> privileges, out string error)
+        {
+            privileges = Array.Empty<FamilyPrivilegePacketSnapshot>();
+            error = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Family privilege-list packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload);
+                int count = Math.Max(0, reader.ReadInt());
+                List<FamilyPrivilegePacketSnapshot> results = new(count);
+                for (int i = 0; i < count; i++)
+                {
+                    results.Add(new FamilyPrivilegePacketSnapshot(
+                        reader.ReadByte(),
+                        Math.Max(0, reader.ReadInt()),
+                        Math.Max(0, reader.ReadInt()),
+                        reader.ReadMapleString(),
+                        reader.ReadMapleString()));
+                }
+
+                privileges = results;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "Family privilege-list packet ended before decoding completed.";
+                return false;
+            }
+            catch (IOException)
+            {
+                error = "Family privilege-list packet could not be read.";
+                return false;
+            }
+        }
+
+        internal static bool TryDecodeSetPrivilegePayload(byte[] payload, out FamilyPrivilegeStatePacketSnapshot snapshot, out string error)
+        {
+            snapshot = default;
+            error = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Family set-privilege packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload);
+                byte type = reader.ReadByte();
+                if (type == 0)
+                {
+                    snapshot = new FamilyPrivilegeStatePacketSnapshot(0, 0, 0, 0, 0);
+                    return true;
+                }
+
+                snapshot = new FamilyPrivilegeStatePacketSnapshot(
+                    type,
+                    reader.ReadInt(),
+                    Math.Max(0, reader.ReadInt()),
+                    Math.Max(0, reader.ReadInt()),
+                    reader.ReadLong());
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "Family set-privilege packet ended before decoding completed.";
+                return false;
+            }
+            catch (IOException)
+            {
+                error = "Family set-privilege packet could not be read.";
+                return false;
+            }
+        }
+
         internal static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int opcode, out byte[] payload, out string error)
         {
             opcode = -1;
@@ -223,6 +303,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return value;
             }
 
+            public byte ReadByte()
+            {
+                EnsureAvailable(sizeof(byte));
+                return _payload[_offset++];
+            }
+
+            public long ReadLong()
+            {
+                EnsureAvailable(sizeof(long));
+                long value = BinaryPrimitives.ReadInt64LittleEndian(_payload.Slice(_offset, sizeof(long)));
+                _offset += sizeof(long);
+                return value;
+            }
+
             public string ReadMapleString()
             {
                 ushort length = unchecked((ushort)ReadShort());
@@ -281,4 +375,18 @@ namespace HaCreator.MapSimulator.Interaction
     }
 
     internal readonly record struct FamilyResultPacket(int Type, int Value);
+
+    internal readonly record struct FamilyPrivilegePacketSnapshot(
+        byte Type,
+        int FameCost,
+        int DayLimit,
+        string Name,
+        string Description);
+
+    internal readonly record struct FamilyPrivilegeStatePacketSnapshot(
+        byte Type,
+        int Index,
+        int IncrementExpRate,
+        int IncrementDropRate,
+        long EndTimeFileTimeUtc);
 }

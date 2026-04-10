@@ -65,6 +65,8 @@ namespace HaCreator.MapSimulator.Fields
         private float _balrogStartX, _balrogEndX;
         private float _balrogStartY, _balrogEndY;
         private int _balrogMoveDuration = 1000;
+        private int _balrogApproachDirection = 1;
+        private bool _balrogFlip = true;
         #endregion
 
         #region Visual Properties
@@ -104,6 +106,9 @@ namespace HaCreator.MapSimulator.Fields
         public float BalrogX => _balrogX;
         public float BalrogY => _balrogY;
         public float BalrogAlpha => _balrogAlpha;
+        public int VoyageBalrogApproachDirection => _balrogApproachDirection;
+        public bool VoyageBalrogUsesLeftApproach => _balrogApproachDirection < 0;
+        public bool BalrogFlip => _balrogFlip;
         public float BackgroundScrollX => _bgScrollX;
         public bool HasShipTextures => _shipFrames != null && _shipFrames.Count > 0;
         public bool HasBalrogTextures => _balrogFrames != null && _balrogFrames.Count > 0;
@@ -174,6 +179,8 @@ namespace HaCreator.MapSimulator.Fields
 
             _state = ShipState.Idle;
             _balrogState = BalrogState.Hidden;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
 
             System.Diagnostics.Debug.WriteLine($"[TransportField] Initialized: kind={shipKind}, x={x}, y={y}, x0={x0}, f={f}, tMove={tMove}s");
         }
@@ -378,10 +385,12 @@ namespace HaCreator.MapSimulator.Fields
             _balrogState = BalrogState.Appearing;
             _balrogMoveStartTime = Environment.TickCount;
             _balrogMoveDuration = durationMs;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
 
-            // Balrog appears from the right side of the ship
-            _balrogStartX = _currentX + _shipWidth + 200;
-            _balrogEndX = _currentX + _shipWidth / 2 + 100;
+            // Keep the local voyage-attack choreography aligned to the authored route flip.
+            _balrogStartX = _currentX + (_balrogApproachDirection * (_shipWidth + 200));
+            _balrogEndX = _currentX + (_balrogApproachDirection * (_shipWidth / 2f + 100f));
             _balrogStartY = _currentY - 50;
             _balrogEndY = _currentY - _shipHeight / 2;
             _balrogX = _balrogStartX;
@@ -434,6 +443,8 @@ namespace HaCreator.MapSimulator.Fields
             _balrogEndX = 0f;
             _balrogStartY = 0f;
             _balrogEndY = 0f;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
             message = "Applied voyage Balrog reset.";
             return true;
         }
@@ -784,7 +795,7 @@ namespace HaCreator.MapSimulator.Fields
                         _balrogY = _balrogEndY + hover;
 
                         // Track ship position
-                        _balrogX = _currentX + _shipWidth / 2 + 100;
+                        _balrogX = _currentX + (_balrogApproachDirection * (_shipWidth / 2f + 100f));
 
                         if (elapsed >= _balrogMoveDuration)
                         {
@@ -800,7 +811,7 @@ namespace HaCreator.MapSimulator.Fields
                     {
                         float progress = Math.Clamp((float)elapsed / 1000f, 0f, 1f);
 
-                        _balrogX = MathHelper.Lerp(_balrogStartX, _balrogStartX + 200, progress);
+                        _balrogX = MathHelper.Lerp(_balrogStartX, _balrogStartX + (200f * _balrogApproachDirection), progress);
                         _balrogAlpha = MathHelper.Lerp(255f, 0f, progress);
 
                         if (progress >= 1f)
@@ -947,7 +958,7 @@ namespace HaCreator.MapSimulator.Fields
 
                     Color tint = new Color(255, 255, 255, (int)_balrogAlpha);
                     balrogFrame.DrawBackground(spriteBatch, skeletonMeshRenderer, gameTime,
-                        balrogScreenX, balrogScreenY, tint, true, null); // Flip to face ship
+                        balrogScreenX, balrogScreenY, tint, _balrogFlip, null);
                 }
             }
         }
@@ -1042,6 +1053,8 @@ namespace HaCreator.MapSimulator.Fields
             _deltaX = 0f;
             _deltaY = 0f;
             _balrogAlpha = 0f;
+            _balrogApproachDirection = ResolveShipFacingDirection();
+            _balrogFlip = _balrogApproachDirection > 0;
             _bgScrollX = 0;
             _announcements.Clear();
             _currentAnnouncement = null;
@@ -1053,7 +1066,17 @@ namespace HaCreator.MapSimulator.Fields
             string announcement = _currentAnnouncement?.Message ?? "<none>";
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"Transport state={_state}, balrog={_balrogState}, shipKind={_shipKind}, dock=({_x}, {_y}), awayX={_x0}, flip={_f}, tMove={_tMove}s, current=({_currentX:0.##}, {_currentY:0.##}), alpha={_currentAlpha:0.##}, voyageBalrogActive={HasActiveVoyageBalrogAttack}, shipPath={shipPath}, shipTextures={(_shipFrames?.Count ?? 0)}, balrogTextures={(_balrogFrames?.Count ?? 0)}, announcement={announcement}");
+                $"Transport state={_state}, balrog={_balrogState}, shipKind={_shipKind}, dock=({_x}, {_y}), awayX={_x0}, flip={_f}, tMove={_tMove}s, current=({_currentX:0.##}, {_currentY:0.##}), alpha={_currentAlpha:0.##}, voyageBalrogActive={HasActiveVoyageBalrogAttack}, voyageBalrogSide={DescribeBalrogApproachSide()}, shipPath={shipPath}, shipTextures={(_shipFrames?.Count ?? 0)}, balrogTextures={(_balrogFrames?.Count ?? 0)}, announcement={announcement}");
+        }
+
+        private int ResolveShipFacingDirection()
+        {
+            return _f == 0 ? 1 : -1;
+        }
+
+        private string DescribeBalrogApproachSide()
+        {
+            return _balrogApproachDirection < 0 ? "left" : "right";
         }
 
         #endregion

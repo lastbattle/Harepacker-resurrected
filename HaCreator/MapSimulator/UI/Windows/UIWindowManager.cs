@@ -1012,18 +1012,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (inventoryWindow.InventoryDropRequested(
-                    inventoryWindow.DraggedInventoryType,
-                    inventoryWindow.DraggedSlotIndex,
-                    inventoryWindow.DraggedSlotData.Clone()) != true)
-            {
-                return false;
-            }
-
-            return inventoryWindow.TryRemoveSlotAt(
-                inventoryWindow.DraggedInventoryType,
-                inventoryWindow.DraggedSlotIndex,
-                out _);
+            return inventoryWindow.TryHandleExternalDropRequest(mouseX, mouseY);
         }
 
         private bool HandleEquipmentInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased)

@@ -39,6 +39,8 @@ namespace HaCreator.MapSimulator.Interaction
         private string _itemName = "Maple TV";
         private string _defaultItemName = "Maple TV";
         private string _defaultMediaRootPath = "UI/MapleTV.img/TVmedia";
+        private string _defaultMediaPathTemplate = "UI/MapleTV.img/TVmedia/%d";
+        private string _defaultMediaResolutionSource = "fallback";
         private string _statusMessage = "Prepare a MapleTV draft, then publish it through the simulator window or /mapletv.";
         private int _itemId;
         private int _defaultItemId;
@@ -98,11 +100,15 @@ namespace HaCreator.MapSimulator.Interaction
             _defaultItemId = Math.Max(0, itemId);
             _defaultItemName = string.IsNullOrWhiteSpace(itemName) ? "Maple TV" : itemName.Trim();
             _defaultMediaRootPath = MapleStoryStringPool.GetOrFallback(0x0F8D, "UI/MapleTV.img/TVmedia");
+            _defaultMediaPathTemplate = MapleStoryStringPool.GetOrFallback(0x0F8E, "UI/MapleTV.img/TVmedia/%d");
             _availableMediaIndices = MapleTvMediaIndexResolver.NormalizeAvailableMediaIndices(availableMediaIndices, defaultMediaIndex);
-            _defaultMediaIndex = MapleTvMediaIndexResolver.ResolveClientInitDefaultMediaIndex(
+            MapleTvClientInitMediaResolution resolution = MapleTvMediaIndexResolver.ResolveClientInitDefaultMedia(
                 _defaultMediaRootPath,
+                _defaultMediaPathTemplate,
                 _availableMediaIndices,
                 defaultMediaIndex);
+            _defaultMediaIndex = resolution.MediaIndex;
+            _defaultMediaResolutionSource = resolution.Source;
             _mediaBranchCount = _availableMediaIndices.Count;
             _itemProfile = MapleTvItemProfile.CreateDefault(_defaultItemId, _defaultItemName, _defaultMediaIndex, DefaultDurationMs, _availableMediaIndices);
             if (_itemId == 0)
@@ -153,7 +159,9 @@ namespace HaCreator.MapSimulator.Interaction
                 DefaultItemId = _defaultItemId,
                 DefaultItemName = _defaultItemName,
                 DefaultMediaRootPath = _defaultMediaRootPath,
+                DefaultMediaPathTemplate = _defaultMediaPathTemplate,
                 DefaultMediaIndex = _defaultMediaIndex,
+                DefaultMediaResolutionSource = _defaultMediaResolutionSource,
                 MediaBranchCount = _mediaBranchCount,
                 ResolvedMediaIndex = _resolvedMediaIndex,
                 DraftLines = Array.AsReadOnly((string[])_draftLines.Clone()),
@@ -190,7 +198,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"{snapshot.ItemId} ({snapshot.ItemName})"
                 : $"{snapshot.DefaultItemId} ({snapshot.DefaultItemName})";
             string initMedia = snapshot.MediaBranchCount > 0
-                ? $" Init media root {snapshot.DefaultMediaRootPath} exposes {snapshot.MediaBranchCount} branch(es); default branch {snapshot.DefaultMediaIndex}."
+                ? $" Init media root {snapshot.DefaultMediaRootPath} exposes {snapshot.MediaBranchCount} branch(es); default branch {snapshot.DefaultMediaIndex} via {snapshot.DefaultMediaResolutionSource}."
                 : string.Empty;
             string queueConfirmationSuffix = snapshot.AwaitingQueueReuseConfirmation
                 ? " Queue reuse confirmation is pending."
@@ -838,7 +846,9 @@ namespace HaCreator.MapSimulator.Interaction
         public string DefaultItemName { get; init; } = string.Empty;
         public int DefaultItemId { get; init; }
         public string DefaultMediaRootPath { get; init; } = string.Empty;
+        public string DefaultMediaPathTemplate { get; init; } = string.Empty;
         public int DefaultMediaIndex { get; init; }
+        public string DefaultMediaResolutionSource { get; init; } = string.Empty;
         public int MediaBranchCount { get; init; }
         public int ResolvedMediaIndex { get; init; }
         public IReadOnlyList<string> DraftLines { get; init; } = Array.Empty<string>();
@@ -868,6 +878,8 @@ namespace HaCreator.MapSimulator.Interaction
         SenderOnly,
         ReceiverRequired
     }
+
+    internal sealed record MapleTvClientInitMediaResolution(int MediaIndex, string Source);
 
     internal static class MapleTvMediaIndexResolver
     {
@@ -917,8 +929,9 @@ namespace HaCreator.MapSimulator.Interaction
             return -1;
         }
 
-        internal static int ResolveClientInitDefaultMediaIndex(
+        internal static MapleTvClientInitMediaResolution ResolveClientInitDefaultMedia(
             string configuredPathOrToken,
+            string configuredPathTemplateOrToken,
             IReadOnlyList<int> availableMediaIndices,
             int fallbackDefaultMediaIndex)
         {
@@ -926,15 +939,23 @@ namespace HaCreator.MapSimulator.Interaction
             int configuredBranchIndex = TryResolveConfiguredDefaultMediaIndex(configuredPathOrToken, normalizedIndices);
             if (configuredBranchIndex >= 0)
             {
-                return configuredBranchIndex;
+                return new MapleTvClientInitMediaResolution(configuredBranchIndex, "client path");
+            }
+
+            int configuredTemplateIndex = TryResolveConfiguredDefaultMediaIndex(configuredPathTemplateOrToken, normalizedIndices);
+            if (configuredTemplateIndex >= 0)
+            {
+                return new MapleTvClientInitMediaResolution(configuredTemplateIndex, "client path template");
             }
 
             if (IsConfiguredDefaultMediaRoot(configuredPathOrToken) && normalizedIndices.Contains(1))
             {
-                return 1;
+                return new MapleTvClientInitMediaResolution(1, "client root inference");
             }
 
-            return ResolveKnownMediaIndex(fallbackDefaultMediaIndex, normalizedIndices);
+            return new MapleTvClientInitMediaResolution(
+                ResolveKnownMediaIndex(fallbackDefaultMediaIndex, normalizedIndices),
+                "fallback");
         }
 
         private static bool IsConfiguredDefaultMediaRoot(string configuredPathOrToken)

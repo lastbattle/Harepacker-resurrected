@@ -341,7 +341,12 @@ namespace HaCreator.MapSimulator.Interaction
                 packet.InviteType,
                 packet.InviteSequence,
                 packet.SkipBlacklistAutoReject,
-                Environment.TickCount + InvitePromptLifetimeMs);
+                Environment.TickCount + InvitePromptLifetimeMs,
+                MessengerPacketCodec.BuildInvitePayload(
+                    contact.Name,
+                    packet.InviteType,
+                    packet.InviteSequence,
+                    packet.SkipBlacklistAutoReject));
             _lastActionSummary = MessengerClientParityText.FormatIncomingInviteNotice(contact.Name);
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
@@ -477,15 +482,83 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            payload = MessengerPacketCodec.BuildInvitePayload(
-                pendingInvite.ContactName,
-                pendingInvite.InviteType,
-                pendingInvite.InviteSequence,
-                pendingInvite.SkipBlacklistAutoReject);
+            payload = pendingInvite.PacketPayload?.ToArray()
+                ?? MessengerPacketCodec.BuildInvitePayload(
+                    pendingInvite.ContactName,
+                    pendingInvite.InviteType,
+                    pendingInvite.InviteSequence,
+                    pendingInvite.SkipBlacklistAutoReject);
             message = accepted
                 ? $"Built packet-authored Messenger accept payload for {pendingInvite.ContactName}."
                 : $"Built packet-authored Messenger reject payload for {pendingInvite.ContactName}.";
             return true;
+        }
+
+        internal bool TryBuildClientInviteRequestPayload(
+            string contactName,
+            out byte[] payload,
+            out string resolvedContactName,
+            out string message)
+        {
+            payload = null;
+            resolvedContactName = null;
+            message = null;
+
+            if (!TryResolveInviteRequestContact(contactName, allowNextContact: false, out MessengerContactState contact, out message))
+            {
+                return false;
+            }
+
+            payload = MessengerPacketCodec.BuildInviteRequestPayload(contact.Name);
+            resolvedContactName = contact.Name;
+            message = $"Built CUIMessenger::SendInviteMsg request payload for {contact.Name}.";
+            return true;
+        }
+
+        internal bool TryBuildClientProcessChatRequestPayload(
+            string message,
+            out byte[] payload,
+            out string normalizedMessage,
+            out string status)
+        {
+            payload = null;
+            normalizedMessage = null;
+            status = null;
+
+            string resolvedMessage = NormalizeMessage(message);
+            if (resolvedMessage == null)
+            {
+                status = "Type a Messenger message before sending.";
+                return false;
+            }
+
+            if (resolvedMessage.StartsWith("/", StringComparison.Ordinal))
+            {
+                status = "CUIMessenger::ProcessChat mirroring only supports room-chat text, not slash commands.";
+                return false;
+            }
+
+            string localPlayerName = GetLocalParticipant()?.Name;
+            if (string.IsNullOrWhiteSpace(localPlayerName))
+            {
+                status = "Messenger room-chat request needs a local Messenger participant name.";
+                return false;
+            }
+
+            normalizedMessage = resolvedMessage;
+            payload = MessengerPacketCodec.BuildProcessChatRequestPayload(localPlayerName, resolvedMessage);
+            status = $"Built CUIMessenger::ProcessChat request payload for {localPlayerName}.";
+            return true;
+        }
+
+        internal string QueueSessionOwnedInviteRequest(string contactName)
+        {
+            if (!TryResolveInviteRequestContact(contactName, allowNextContact: false, out MessengerContactState contact, out string message))
+            {
+                return message;
+            }
+
+            return QueueInvite(contact, sessionOwned: true);
         }
 
         internal bool TryBuildPacketAvatarPayload(
@@ -1163,17 +1236,25 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Messenger {_windowState.ToDisplayName()} state. Occupants: {occupants}. Pending: {BuildPendingInviteSummary()}. Last action: {_lastActionSummary}. Packet: {_lastPacketSummary}";
         }
 
-        private string QueueInvite(MessengerContactState contact)
+        private string QueueInvite(MessengerContactState contact, bool sessionOwned = false)
         {
             int inviteId = _nextInviteId++;
             _pendingInvite = new PendingMessengerInviteState(
                 inviteId,
                 contact.Name,
-                Environment.TickCount + InviteResolutionDelayMs,
-                contact.AcceptsInvites);
-            _lastActionSummary = $"Sent Messenger invite #{inviteId} to {contact.Name}.";
-            AddSystemLog($"Invite sent to {contact.Name}.");
-            RecordPacketSummary($"Sent Messenger packet 0x8F/3 invite to {contact.Name}.");
+                sessionOwned ? int.MinValue : Environment.TickCount + InviteResolutionDelayMs,
+                contact.AcceptsInvites,
+                PacketPayload: MessengerPacketCodec.BuildInvitePayload(contact.Name),
+                SessionOwned: sessionOwned);
+            _lastActionSummary = sessionOwned
+                ? $"Queued live Messenger invite #{inviteId} to {contact.Name} and waiting for CUIMessenger::OnInviteResult."
+                : $"Sent Messenger invite #{inviteId} to {contact.Name}.";
+            AddSystemLog(sessionOwned
+                ? $"Live Messenger invite requested for {contact.Name}."
+                : $"Invite sent to {contact.Name}.");
+            RecordPacketSummary(sessionOwned
+                ? $"Mirrored CUIMessenger::SendInviteMsg request (opcode 0x8F/3) for {contact.Name}."
+                : $"Sent Messenger packet 0x8F/3 invite to {contact.Name}.");
             return _lastActionSummary;
         }
 
@@ -1235,7 +1316,10 @@ namespace HaCreator.MapSimulator.Interaction
                 NotifyIncomingInvitePromptChanged();
             }
 
-            if (_pendingInvite != null && tickCount >= _pendingInvite.ResolveAtTick)
+            if (_pendingInvite != null
+                && !_pendingInvite.SessionOwned
+                && _pendingInvite.ResolveAtTick != int.MinValue
+                && tickCount >= _pendingInvite.ResolveAtTick)
             {
                 ResolvePendingInvite(_pendingInvite.WillAccept, packetDriven: true);
             }
@@ -1571,6 +1655,69 @@ namespace HaCreator.MapSimulator.Interaction
 
             message = $"No simulator Messenger participant or contact named {normalizedToken} is available.";
             return false;
+        }
+
+        private bool TryResolveInviteRequestContact(
+            string contactName,
+            bool allowNextContact,
+            out MessengerContactState contact,
+            out string message)
+        {
+            contact = null;
+            message = null;
+
+            if (_participants.Count >= MaxParticipants)
+            {
+                message = "Messenger room is already full.";
+                return false;
+            }
+
+            if (_incomingInvite != null)
+            {
+                message = $"Respond to {_incomingInvite.ContactName}'s Messenger invite before sending another invite.";
+                return false;
+            }
+
+            if (_pendingInvite != null)
+            {
+                message = $"Waiting for {_pendingInvite.ContactName} to answer the current Messenger invite.";
+                return false;
+            }
+
+            string resolvedName = NormalizeParticipantName(contactName);
+            if (resolvedName == null)
+            {
+                if (!allowNextContact)
+                {
+                    message = MessengerClientParityText.GetPromptUserName();
+                    return false;
+                }
+
+                contact = FindNextInvitableContact();
+                if (contact == null)
+                {
+                    message = "No additional Messenger contacts are available in the simulator roster.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (!_contacts.TryGetValue(resolvedName, out contact))
+            {
+                message = MessengerClientParityText.FormatContactNotFound(resolvedName);
+                return false;
+            }
+
+            if (!contact.CanInvite)
+            {
+                message = contact.IsOnline
+                    ? $"{contact.Name} is already in the Messenger room."
+                    : $"{contact.Name} is offline and cannot receive a Messenger invite.";
+                return false;
+            }
+
+            return true;
         }
 
         private int FindFirstEmptyRemoteSlot()
@@ -2323,7 +2470,9 @@ namespace HaCreator.MapSimulator.Interaction
             byte InviteType = 0,
             int InviteSequence = 0,
             bool SkipBlacklistAutoReject = false,
-            int PromptExpireTick = int.MinValue);
+            int PromptExpireTick = int.MinValue,
+            byte[] PacketPayload = null,
+            bool SessionOwned = false);
 
         private sealed record MessengerParticipantState
         {

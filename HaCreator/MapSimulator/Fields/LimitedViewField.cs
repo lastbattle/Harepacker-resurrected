@@ -425,6 +425,7 @@ namespace HaCreator.MapSimulator.Fields
                     if (_clientOwnedUpdateParityMode && _clientOwnedViewrangeTexture != null)
                     {
                         IReadOnlyList<Vector2> maskTopLefts = GetClientOwnedUpdateParityMaskTopLefts(mapShiftX, mapShiftY, centerX, centerY);
+                        bool resetPreviousMaskHistoryForCurrentFrame = true;
                         for (int i = 0; i < maskTopLefts.Count; i++)
                         {
                             Vector2 topLeft = maskTopLefts[i];
@@ -434,10 +435,11 @@ namespace HaCreator.MapSimulator.Fields
                                 (int)MathF.Round(topLeft.Y),
                                 fogColorWithAlpha,
                                 drawClientOwnedDarkLayer: i == 0,
-                                restorePreviousClientOwnedViewranges: i == 0);
+                                restorePreviousClientOwnedViewranges: i == 0,
+                                resetPreviousClientOwnedViewrangesForCurrentFrame: resetPreviousMaskHistoryForCurrentFrame);
+                            TrackClientOwnedCurrentMaskTopLeft(topLeft);
+                            resetPreviousMaskHistoryForCurrentFrame = false;
                         }
-
-                        CommitClientOwnedUpdateParityMaskTopLefts(maskTopLefts);
                         break;
                     }
 
@@ -566,7 +568,8 @@ namespace HaCreator.MapSimulator.Fields
                 top,
                 fogColor,
                 drawDarkLayer,
-                restorePreviousClientOwnedViewranges: false);
+                restorePreviousClientOwnedViewranges: false,
+                resetPreviousClientOwnedViewrangesForCurrentFrame: false);
         }
 
         private void DrawClientOwnedViewrangeFogAtTopLeft(
@@ -575,7 +578,8 @@ namespace HaCreator.MapSimulator.Fields
             int top,
             Color fogColor,
             bool drawClientOwnedDarkLayer,
-            bool restorePreviousClientOwnedViewranges)
+            bool restorePreviousClientOwnedViewranges,
+            bool resetPreviousClientOwnedViewrangesForCurrentFrame)
         {
             int width = _clientOwnedViewrangeTexture.Width;
             int height = _clientOwnedViewrangeTexture.Height;
@@ -592,10 +596,15 @@ namespace HaCreator.MapSimulator.Fields
                 RestorePreviousClientOwnedViewrangePatches(spriteBatch, fogColor);
             }
 
+            if (resetPreviousClientOwnedViewrangesForCurrentFrame)
+            {
+                ResetClientOwnedPreviousMaskTopLeftsForCurrentFrame();
+            }
+
             // CField_LimitedView::DrawViewrange restores prior m_lpPrev entries
-            // with the 316x316 small-dark canvas, then copies Viewrange/0 over
-            // the current user positions. The current position is not restored
-            // with small-dark before the WZ canvas copy.
+            // with the small-dark canvas, clears m_lpPrev, then copies
+            // Viewrange/0 over the current user positions while appending each
+            // current top-left back into m_lpPrev.
             spriteBatch.Draw(_clientOwnedViewrangeTexture, new Vector2(left, top), new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, fogColor.A));
         }
 
@@ -645,8 +654,12 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            int width = _clientOwnedViewrangeTexture.Width;
-            int height = _clientOwnedViewrangeTexture.Height;
+            int width = _clientOwnedSmallDarkPatchWidth > 0
+                ? _clientOwnedSmallDarkPatchWidth
+                : _clientOwnedViewrangeTexture.Width;
+            int height = _clientOwnedSmallDarkPatchHeight > 0
+                ? _clientOwnedSmallDarkPatchHeight
+                : _clientOwnedViewrangeTexture.Height;
             Color smallDarkColor = new((byte)0, (byte)0, (byte)0, fogColor.A);
             for (int i = 0; i < _clientOwnedPreviousMaskTopLefts.Count; i++)
             {
@@ -851,6 +864,16 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _clientOwnedPreviousMaskTopLefts.Add(topLeft);
             }
+        }
+
+        internal void ResetClientOwnedPreviousMaskTopLeftsForCurrentFrame()
+        {
+            _clientOwnedPreviousMaskTopLefts.Clear();
+        }
+
+        internal void TrackClientOwnedCurrentMaskTopLeft(Vector2 topLeft)
+        {
+            _clientOwnedPreviousMaskTopLefts.Add(topLeft);
         }
 
         internal IReadOnlyList<Vector2> ClientOwnedPreviousMaskTopLefts => _clientOwnedPreviousMaskTopLefts;

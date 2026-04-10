@@ -261,6 +261,22 @@ namespace HaCreator.MapSimulator.Character
                 // `savage` still appears on the client morph request surface, but pirate
                 // morphs publish generic stab branches rather than a dedicated `savage` node.
                 ["savage"] = new[] { "stabO1", "stabO2", "proneStab" },
+                // WZ still publishes melee-only morph surfaces such as 1000/1100 on generic
+                // `stabO*` / `proneStab`, while newer warrior slash-family raw requests stay on
+                // skill-side action rows like 1121006 (`rush` / `rush2`), 1111010
+                // (`brandish1` / `brandish2`), 1221009 (`blast`), and 1221011 (`sanctuary`).
+                ["rush"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["rush2"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["brandish1"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["brandish2"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["blast"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["sanctuary"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                // WZ still publishes no verbatim `assaulter` / `assassination*` branches in
+                // Morph/*.img, while skill-side rows like 4211002 and 4221001 still request
+                // those raw action names. Keep them on the same generic melee surface.
+                ["assaulter"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["assassination"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["assassinationS"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 // The client raw table still exposes dual-blade swing-family names while
                 // archer morphs such as 1003/1103 only publish generic swingT branches.
                 ["swingC1"] = new[] { "swingT1", "swingT3" },
@@ -1055,8 +1071,11 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            // Keep jump-special promotion tied to explicit double-jump requests.
-            return actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0;
+            // Keep jump-special promotion tied to the currently confirmed client request
+            // surface instead of widening every future `*DoubleJump` string into the
+            // morph-owned double-jump family without evidence.
+            return string.Equals(actionName, "doubleJump", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "slayerDoubleJump", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumerateDoubleJumpAliases(CharacterPart morphPart)
@@ -1293,8 +1312,18 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // CAvatar morph action requests still include legacy raw names
-            // like "savage" that Morph/*.img does not commonly publish.
-            return string.Equals(actionName, "savage", StringComparison.OrdinalIgnoreCase);
+            // like "savage" and later warrior/thief melee roots that Morph/*.img
+            // still does not commonly publish verbatim.
+            return string.Equals(actionName, "savage", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rush", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rush2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "brandish1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "brandish2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "blast", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "sanctuary", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "assaulter", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "assassination", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "assassinationS", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsPublishedGenericMeleeAttackAlias(string actionName)

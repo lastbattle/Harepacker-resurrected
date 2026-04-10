@@ -7,7 +7,9 @@ namespace HaCreator.MapSimulator.Interaction
     internal enum FriendGroupPopupMode
     {
         AddFriend = 0,
-        GroupWhisper = 1
+        GroupWhisper = 1,
+        DeleteGroup = 2,
+        DeleteGroupDeny = 3
     }
 
     internal sealed partial class SocialListRuntime
@@ -64,6 +66,29 @@ namespace HaCreator.MapSimulator.Interaction
                     }
                 }
             }
+            else if (mode == FriendGroupPopupMode.DeleteGroup)
+            {
+                if (!TryGetFriendGroupLabel(anchorEntry.Name, out string existingGroupLabel))
+                {
+                    _friendGroupPopupMode = FriendGroupPopupMode.DeleteGroupDeny;
+                    _friendGroupPopupTargetGroupName = string.Empty;
+                    _friendGroupPopupSelectedIndex = Math.Max(0, eligibleEntries.FindIndex(entry =>
+                        string.Equals(entry.Name, anchorEntry.Name, StringComparison.OrdinalIgnoreCase)));
+                    EnsureFriendGroupPopupSelectionVisible(eligibleEntries.Count);
+                    return $"{anchorEntry.Name} is not assigned to a local friend group, so there is nothing to delete.";
+                }
+
+                _friendGroupPopupTargetGroupName = existingGroupLabel;
+                for (int i = 0; i < eligibleEntries.Count; i++)
+                {
+                    SocialEntryState candidate = eligibleEntries[i];
+                    if (TryGetFriendGroupLabel(candidate.Name, out string candidateGroupLabel)
+                        && string.Equals(candidateGroupLabel, existingGroupLabel, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _friendGroupPopupCheckedNames.Add(candidate.Name);
+                    }
+                }
+            }
             else
             {
                 _friendGroupPopupTargetGroupName = TryGetFriendGroupLabel(anchorEntry.Name, out string existingGroupLabel)
@@ -88,6 +113,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             return mode == FriendGroupPopupMode.AddFriend
                 ? $"Opened the dedicated friend-group assignment popup for {_friendGroupPopupTargetGroupName}."
+                : mode == FriendGroupPopupMode.DeleteGroup
+                    ? $"Opened the dedicated friend-group delete popup for {_friendGroupPopupTargetGroupName}."
                 : $"Opened the dedicated group-whisper popup for {(string.IsNullOrWhiteSpace(_friendGroupPopupTargetGroupName) ? anchorEntry.Name : _friendGroupPopupTargetGroupName)}.";
         }
 
@@ -128,7 +155,10 @@ namespace HaCreator.MapSimulator.Interaction
             _friendGroupPopupSnapshot.CheckedEntries = _friendGroupPopupCheckedNames.Count;
             _friendGroupPopupSnapshot.TargetGroupName = _friendGroupPopupTargetGroupName ?? string.Empty;
             _friendGroupPopupSnapshot.SummaryLines = _friendGroupPopupSummaryBuffer;
-            _friendGroupPopupSnapshot.CanConfirm = _friendGroupPopupCheckedNames.Count > 0;
+            _friendGroupPopupSnapshot.ShowEntryList = _friendGroupPopupMode != FriendGroupPopupMode.DeleteGroupDeny;
+            _friendGroupPopupSnapshot.CanToggleEntries = _friendGroupPopupMode != FriendGroupPopupMode.DeleteGroupDeny;
+            _friendGroupPopupSnapshot.CanConfirm = _friendGroupPopupMode != FriendGroupPopupMode.DeleteGroupDeny
+                && _friendGroupPopupCheckedNames.Count > 0;
             return _friendGroupPopupSnapshot;
         }
 
@@ -148,6 +178,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             SocialEntryState entry = entries[absoluteIndex];
             _friendGroupPopupSelectedIndex = absoluteIndex;
+            if (_friendGroupPopupMode == FriendGroupPopupMode.DeleteGroupDeny)
+            {
+                return;
+            }
+
             if (!_friendGroupPopupCheckedNames.Add(entry.Name))
             {
                 _friendGroupPopupCheckedNames.Remove(entry.Name);
@@ -191,6 +226,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 FriendGroupPopupMode.AddFriend => ConfirmFriendGroupAssignment(checkedNames),
                 FriendGroupPopupMode.GroupWhisper => ConfirmFriendGroupWhisper(checkedNames),
+                FriendGroupPopupMode.DeleteGroup => ConfirmFriendGroupDeletion(checkedNames),
                 _ => null
             };
             CloseFriendGroupPopup();
@@ -240,6 +276,44 @@ namespace HaCreator.MapSimulator.Interaction
             return message;
         }
 
+        private string ConfirmFriendGroupDeletion(IReadOnlyList<string> checkedNames)
+        {
+            string targetGroupName = _friendGroupPopupTargetGroupName;
+            if (string.IsNullOrWhiteSpace(targetGroupName))
+            {
+                return "There is no local friend group to delete.";
+            }
+
+            int removedAssignments = 0;
+            for (int i = 0; i < checkedNames.Count; i++)
+            {
+                string name = checkedNames[i];
+                if (!TryGetFriendGroupLabel(name, out string currentGroupLabel)
+                    || !string.Equals(currentGroupLabel, targetGroupName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (_friendGroupByName.Remove(name))
+                {
+                    removedAssignments++;
+                }
+            }
+
+            bool hasRemainingMembers = _friendGroupByName.Values.Any(groupName =>
+                string.Equals(groupName, targetGroupName, StringComparison.OrdinalIgnoreCase));
+            if (!hasRemainingMembers)
+            {
+                _friendGroups.RemoveAll(groupName => string.Equals(groupName, targetGroupName, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return removedAssignments <= 0
+                ? $"No members from \"{targetGroupName}\" were selected for deletion."
+                : hasRemainingMembers
+                    ? $"Removed {removedAssignments} entr{(removedAssignments == 1 ? "y" : "ies")} from the local friend group \"{targetGroupName}\"."
+                    : $"Deleted the local friend group \"{targetGroupName}\".";
+        }
+
         private string ResolveFriendGroupWhisperLabel(IReadOnlyList<string> checkedNames)
         {
             string[] labels = checkedNames
@@ -260,11 +334,29 @@ namespace HaCreator.MapSimulator.Interaction
         private void BuildFriendGroupPopupSummary(List<string> destination, IReadOnlyList<SocialEntryState> entries)
         {
             destination.Clear();
-            destination.Add(_friendGroupPopupMode == FriendGroupPopupMode.AddFriend
-                ? $"Assign checked friends into {_friendGroupPopupTargetGroupName}."
-                : $"Whisper the checked {(string.IsNullOrWhiteSpace(_friendGroupPopupTargetGroupName) ? "friend set" : _friendGroupPopupTargetGroupName)} roster.");
-            destination.Add($"{_friendGroupPopupCheckedNames.Count} checked / {entries.Count} available friend entr{(entries.Count == 1 ? "y" : "ies")}.");
-            destination.Add("Click rows to toggle checks. Mouse wheel scrolls the dedicated client-style roster.");
+            switch (_friendGroupPopupMode)
+            {
+                case FriendGroupPopupMode.AddFriend:
+                    destination.Add($"Assign checked friends into {_friendGroupPopupTargetGroupName}.");
+                    destination.Add($"{_friendGroupPopupCheckedNames.Count} checked / {entries.Count} available friend entr{(entries.Count == 1 ? "y" : "ies")}.");
+                    destination.Add("Click rows to toggle checks. Mouse wheel scrolls the dedicated client-style roster.");
+                    break;
+                case FriendGroupPopupMode.DeleteGroup:
+                    destination.Add($"Delete the local friend group {_friendGroupPopupTargetGroupName}.");
+                    destination.Add($"{_friendGroupPopupCheckedNames.Count} grouped entr{(_friendGroupPopupCheckedNames.Count == 1 ? "y is" : "ies are")} armed for removal.");
+                    destination.Add("Unchecked rows stay assigned. Confirm removes the selected group links.");
+                    break;
+                case FriendGroupPopupMode.DeleteGroupDeny:
+                    destination.Add("The selected friend does not belong to a local group.");
+                    destination.Add("`UserList/Group/Popup/GroupDelDeny` is now surfaced by the simulator.");
+                    destination.Add("Pick a grouped friend first, then reopen the dedicated delete popup.");
+                    break;
+                default:
+                    destination.Add($"Whisper the checked {(string.IsNullOrWhiteSpace(_friendGroupPopupTargetGroupName) ? "friend set" : _friendGroupPopupTargetGroupName)} roster.");
+                    destination.Add($"{_friendGroupPopupCheckedNames.Count} checked / {entries.Count} available friend entr{(entries.Count == 1 ? "y" : "ies")}.");
+                    destination.Add("Click rows to toggle checks. Mouse wheel scrolls the dedicated client-style roster.");
+                    break;
+            }
         }
 
         private FriendGroupPopupEntrySnapshot GetOrCreateFriendGroupPopupSnapshotEntry(int index)
@@ -347,6 +439,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int CheckedEntries { get; set; }
         public string TargetGroupName { get; set; } = string.Empty;
         public bool CanConfirm { get; set; }
+        public bool CanToggleEntries { get; set; }
+        public bool ShowEntryList { get; set; } = true;
     }
 
     internal sealed class FriendGroupPopupEntrySnapshot

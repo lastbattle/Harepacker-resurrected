@@ -201,6 +201,9 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<string, List<IDXObject>> _objectFrameCache = new(StringComparer.OrdinalIgnoreCase);
         private SoundManager _soundManager;
         private IDXObject _boardBackground;
+        private RenderTarget2D _boardLayerRenderTarget;
+        private SpriteBatch _boardLayerSpriteBatch;
+        private bool _boardLayerDirty = true;
         private List<IDXObject> _activeResultFrames;
         private int _resultFrameIndex;
         private int _resultFrameStartTime;
@@ -409,6 +412,7 @@ namespace HaCreator.MapSimulator.Fields
             _team0Score = team0;
             _team1Score = team1;
             _lastScorePacketTick = currentTimeMs ?? Environment.TickCount;
+            MarkBoardLayerDirty();
             if (_awaitingFinalScore || (!_gameActive && _timeRemaining <= 0))
             {
                 ResolveRoundResult(_lastScorePacketTick.Value);
@@ -425,6 +429,7 @@ namespace HaCreator.MapSimulator.Fields
             _runtimeActive = true;
             _finishTick = durationMs > 0 ? now + durationMs : 1;
             _timeRemaining = Math.Max(0, timeSeconds);
+            MarkBoardLayerDirty();
             if (timeSeconds > 0)
             {
                 _gameActive = true;
@@ -644,6 +649,7 @@ namespace HaCreator.MapSimulator.Fields
             _localBasicActionOwnerUntilTick = int.MinValue;
             ClearRoundResult();
             ShowMessage(_eventName, _messageDurationMs, startTick);
+            MarkBoardLayerDirty();
         }
         public void SimulateHit(int coconutId, int byTeam)
         {
@@ -766,6 +772,7 @@ namespace HaCreator.MapSimulator.Fields
             _pendingAttackPacketRequests.Clear();
             _localBasicActionOwnerUntilTick = int.MinValue;
             ShowMessage("Waiting for final score packet...", _finalScoreMessageDurationMs, currentTick);
+            MarkBoardLayerDirty();
         }
         private void ResolveRoundResult(int currentTick)
         {
@@ -795,10 +802,15 @@ namespace HaCreator.MapSimulator.Fields
                 _lastUpdateTime = tickCount;
                 if (_finishTick > 0)
                 {
+                    int previousTimeRemaining = _timeRemaining;
                     int remainingMs = _finishTick - tickCount;
                     _timeRemaining = remainingMs > 0
                         ? remainingMs / 1000
                         : 0;
+                    if (_timeRemaining != previousTimeRemaining)
+                    {
+                        MarkBoardLayerDirty();
+                    }
                     if (remainingMs <= 0)
                     {
                         BeginFinalScoreWait(tickCount);
@@ -1198,6 +1210,74 @@ namespace HaCreator.MapSimulator.Fields
             LoadAnimatedFrames(ResolveSlashPathProperty(effectImage, _loseEffectPath), _loseFrames);
             EnsureResultSoundRegistered();
             _assetsLoaded = true;
+            MarkBoardLayerDirty();
+        }
+
+        private bool CanUseBoardLayerCache()
+        {
+            return _graphicsDevice != null;
+        }
+
+        private void EnsureBoardLayerResources()
+        {
+            if (_graphicsDevice == null)
+            {
+                return;
+            }
+
+            if (_boardLayerSpriteBatch == null || _boardLayerSpriteBatch.GraphicsDevice != _graphicsDevice)
+            {
+                _boardLayerSpriteBatch?.Dispose();
+                _boardLayerSpriteBatch = new SpriteBatch(_graphicsDevice);
+            }
+
+            if (_boardLayerRenderTarget == null
+                || _boardLayerRenderTarget.IsDisposed
+                || _boardLayerRenderTarget.GraphicsDevice != _graphicsDevice
+                || _boardLayerRenderTarget.Width != BoardWidth
+                || _boardLayerRenderTarget.Height != BoardHeight)
+            {
+                _boardLayerRenderTarget?.Dispose();
+                _boardLayerRenderTarget = new RenderTarget2D(_graphicsDevice, BoardWidth, BoardHeight, false, SurfaceFormat.Color, DepthFormat.None);
+                _boardLayerDirty = true;
+            }
+        }
+
+        private void RedrawBoardLayerIfNeeded(
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            Texture2D pixelTexture,
+            SpriteFont font)
+        {
+            if (!CanUseBoardLayerCache())
+            {
+                return;
+            }
+
+            EnsureBoardLayerResources();
+            if (_boardLayerRenderTarget == null || _boardLayerSpriteBatch == null || !_boardLayerDirty)
+            {
+                return;
+            }
+
+            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
+            Viewport previousViewport = _graphicsDevice.Viewport;
+
+            _graphicsDevice.SetRenderTarget(_boardLayerRenderTarget);
+            _graphicsDevice.Clear(Color.Transparent);
+
+            _boardLayerSpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+            DrawBoardContents(_boardLayerSpriteBatch, skeletonMeshRenderer, gameTime, pixelTexture, font, 0, 0);
+            _boardLayerSpriteBatch.End();
+
+            _graphicsDevice.SetRenderTargets(previousTargets);
+            _graphicsDevice.Viewport = previousViewport;
+            _boardLayerDirty = false;
+        }
+
+        private void MarkBoardLayerDirty()
+        {
+            _boardLayerDirty = true;
         }
         private void EnsureResultSoundRegistered()
         {
@@ -1383,6 +1463,41 @@ namespace HaCreator.MapSimulator.Fields
             Point boardPosition = ResolveClientBoardLayerPosition(screenWidth);
             int boardX = boardPosition.X;
             int boardY = boardPosition.Y;
+            if (CanUseBoardLayerCache())
+            {
+                RedrawBoardLayerIfNeeded(skeletonMeshRenderer, gameTime, pixel, font);
+                if (_boardLayerRenderTarget != null)
+                {
+                    spriteBatch.Draw(_boardLayerRenderTarget, new Vector2(boardX, boardY), Color.White);
+                }
+                else
+                {
+                    DrawBoardContents(spriteBatch, skeletonMeshRenderer, gameTime, pixel, font, boardX, boardY);
+                }
+            }
+            else
+            {
+                DrawBoardContents(spriteBatch, skeletonMeshRenderer, gameTime, pixel, font, boardX, boardY);
+            }
+
+            if (_currentMessage != null && font != null)
+            {
+                Vector2 msgSize = font.MeasureString(_currentMessage);
+                Vector2 msgPos = new Vector2((screenWidth - msgSize.X) / 2, boardY + BoardHeight + 16);
+                spriteBatch.DrawString(font, _currentMessage, msgPos + Vector2.One, Color.Black);
+                spriteBatch.DrawString(font, _currentMessage, msgPos, Color.Yellow);
+            }
+        }
+
+        private void DrawBoardContents(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            Texture2D pixel,
+            SpriteFont font,
+            int boardX,
+            int boardY)
+        {
             if (_boardBackground != null)
             {
                 _boardBackground.DrawBackground(spriteBatch, skeletonMeshRenderer, gameTime, boardX + _boardBackground.X, boardY + _boardBackground.Y, Color.White, false, null);
@@ -1391,6 +1506,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 spriteBatch.Draw(pixel, new Rectangle(boardX, boardY, BoardWidth, BoardHeight), new Color(0, 0, 0, 150));
             }
+
             string team0Text = _team0Score.ToString();
             string team1Text = _team1Score.ToString();
             if (!DrawBitmapText(spriteBatch, skeletonMeshRenderer, gameTime, _scoreFont, team0Text, boardX + Team0ScoreX, boardY + ScoreY, ScoreDigitSpacing)
@@ -1398,29 +1514,26 @@ namespace HaCreator.MapSimulator.Fields
             {
                 spriteBatch.DrawString(font, team0Text, new Vector2(boardX + Team0ScoreX, boardY + ScoreY), new Color(120, 190, 255));
             }
+
             if (!DrawBitmapText(spriteBatch, skeletonMeshRenderer, gameTime, _scoreFont, team1Text, boardX + Team1ScoreX, boardY + ScoreY, ScoreDigitSpacing)
                 && font != null)
             {
                 spriteBatch.DrawString(font, team1Text, new Vector2(boardX + Team1ScoreX, boardY + ScoreY), new Color(255, 140, 140));
             }
-            if (HasClientClock)
+
+            if (!HasClientClock)
             {
-                int minutes = _timeRemaining / 60;
-                int seconds = _timeRemaining % 60;
-                string timerText = $"{minutes}:{seconds:D2}";
-                if (!DrawBitmapText(spriteBatch, skeletonMeshRenderer, gameTime, _timeFont, timerText, boardX + TimerX, boardY + TimerY, TimerDigitSpacing)
-                    && font != null)
-                {
-                    Color timerColor = _timeRemaining <= 10 ? Color.Red : Color.Yellow;
-                    spriteBatch.DrawString(font, timerText, new Vector2(boardX + TimerX, boardY + TimerY), timerColor);
-                }
+                return;
             }
-            if (_currentMessage != null && font != null)
+
+            int minutes = _timeRemaining / 60;
+            int seconds = _timeRemaining % 60;
+            string timerText = $"{minutes}:{seconds:D2}";
+            if (!DrawBitmapText(spriteBatch, skeletonMeshRenderer, gameTime, _timeFont, timerText, boardX + TimerX, boardY + TimerY, TimerDigitSpacing)
+                && font != null)
             {
-                Vector2 msgSize = font.MeasureString(_currentMessage);
-                Vector2 msgPos = new Vector2((screenWidth - msgSize.X) / 2, boardY + BoardHeight + 16);
-                spriteBatch.DrawString(font, _currentMessage, msgPos + Vector2.One, Color.Black);
-                spriteBatch.DrawString(font, _currentMessage, msgPos, Color.Yellow);
+                Color timerColor = _timeRemaining <= 10 ? Color.Red : Color.Yellow;
+                spriteBatch.DrawString(font, timerText, new Vector2(boardX + TimerX, boardY + TimerY), timerColor);
             }
         }
         private static bool DrawBitmapText(
@@ -1507,6 +1620,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastScorePacketTick = null;
             _localBasicActionOwnerUntilTick = int.MinValue;
             ClearRoundResult();
+            MarkBoardLayerDirty();
             foreach (var coconut in _coconuts)
             {
                 coconut.State = CoconutState.OnTree;

@@ -1083,16 +1083,16 @@ namespace HaCreator.MapSimulator.Fields
                 destination.MapId,
                 RemoteTownPortalObservationSource.PacketCast,
                 recordedAt);
-            RefreshActiveRemoteTownPortalDestination(ownerCharacterId, destination.MapId, recordedAt);
-
-            RememberRemoteTownPortalOwnerFieldObservation(
+            UpsertRemoteTownPortalOwnerFieldObservation(
                 ownerCharacterId,
                 sourceMapId,
                 sourceX,
                 sourceY,
                 destination.MapId,
                 RemoteTownPortalObservationSource.PacketCast,
-                recordedAt);
+                recordedAt,
+                refreshActiveDestination: false);
+            RefreshActiveRemoteTownPortalDestination(ownerCharacterId, destination.MapId, recordedAt);
         }
 
         private void RememberRemoteTownPortalObservedFieldMetadata(
@@ -1183,6 +1183,15 @@ namespace HaCreator.MapSimulator.Fields
                 townMapId,
                 observationSource,
                 recordedAt);
+            UpsertRemoteTownPortalOwnerFieldObservation(
+                ownerCharacterId,
+                resolvedDestination.MapId,
+                resolvedDestination.X,
+                resolvedDestination.Y,
+                townMapId,
+                observationSource,
+                recordedAt,
+                refreshActiveDestination: false);
             if (refreshActiveDestination)
             {
                 RefreshActiveRemoteTownPortalDestination(ownerCharacterId, townMapId, recordedAt, allowMetadataRefresh: false);
@@ -1197,6 +1206,27 @@ namespace HaCreator.MapSimulator.Fields
             int townMapId,
             RemoteTownPortalObservationSource observationSource,
             int recordedAt)
+        {
+            UpsertRemoteTownPortalOwnerFieldObservation(
+                ownerCharacterId,
+                sourceMapId,
+                sourceX,
+                sourceY,
+                townMapId,
+                observationSource,
+                recordedAt,
+                refreshActiveDestination: true);
+        }
+
+        private void UpsertRemoteTownPortalOwnerFieldObservation(
+            uint ownerCharacterId,
+            int sourceMapId,
+            float sourceX,
+            float sourceY,
+            int townMapId,
+            RemoteTownPortalObservationSource observationSource,
+            int recordedAt,
+            bool refreshActiveDestination)
         {
             RemoteTownPortalOwnerTownKey key = new(ownerCharacterId, townMapId);
             if (!_remoteTownPortalOwnerFieldObservations.TryGetValue(key, out Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>> observationsBySourceMap))
@@ -1232,7 +1262,10 @@ namespace HaCreator.MapSimulator.Fields
                 townMapId,
                 observationSource,
                 recordedAt);
-            RefreshActiveRemoteTownPortalDestination(ownerCharacterId, townMapId, recordedAt);
+            if (refreshActiveDestination)
+            {
+                RefreshActiveRemoteTownPortalDestination(ownerCharacterId, townMapId, recordedAt);
+            }
         }
 
         private RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestination(

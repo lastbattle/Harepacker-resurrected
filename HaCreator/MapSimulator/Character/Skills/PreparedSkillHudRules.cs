@@ -10,15 +10,19 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         private const int DefaultKeyDownGaugeDurationMs = 2000;
         private const int MinimumReleaseChargeDurationMs = 30;
+        private const int FireArrowIceArrowSkillId = 2111002;
+        private const int AssaulterShadowChargeSkillId = 4211001;
         private const int MonkeyWaveSkillId = 5311002;
         private const int WildHunterSwallowSkillId = 33101005;
         private const int WildHunterSwallowAttackSkillId = 33101007;
         private static readonly HashSet<int> ReleaseTriggeredSkillIds = new()
         {
+            FireArrowIceArrowSkillId,
             2121001,
             2221001,
             2321001,
             3221001,
+            AssaulterShadowChargeSkillId,
             22121000,
             22151001,
             4341002,

@@ -192,6 +192,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => GetSoftKeyboardTextLengthBytes(_editingMacroName);
         int ISoftKeyboardHost.SoftKeyboardMaxLength => SkillMacroNameRules.MaxNameBytes;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => CanSaveCurrentMacro();
+        string ISoftKeyboardHost.GetSoftKeyboardText() => _editingMacroName ?? string.Empty;
         public bool IsDraggingSkillSlot => _dragMode == MacroDragMode.Skill;
         public bool IsDraggingMacroBinding => _dragMode == MacroDragMode.MacroBinding;
         public int DraggedMacroIndex => IsDraggingMacroBinding ? _dragMacroIndex : -1;
@@ -2386,7 +2387,7 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
         {
-            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState))
+            if (ImeCandidateWindowRendering.ShouldPreferNativeWindow(_candidateListState, clientOwnedCandidateWindow: true))
             {
                 return Rectangle.Empty;
             }
@@ -2836,7 +2837,12 @@ namespace HaCreator.MapSimulator.UI
                 useClauseAnchor,
                 clauseAnchorWidth,
                 clauseWidth);
+            placement = SkillMacroImeWindowPlacementLayout.PreserveNativeCandidateWindowPlacement(placement, _candidateListState);
             WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+            if (WindowsImePresentationBridge.TryRefreshCandidateWindowForm(windowHandle, _candidateListState, out ImeCandidateListState refreshedCandidateState))
+            {
+                _candidateListState = refreshedCandidateState;
+            }
         }
 
         public override void RefreshImePresentationPlacement()

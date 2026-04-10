@@ -22,7 +22,7 @@ namespace HaCreator.MapSimulator
         }
 
         private readonly MapTransferOfficialSessionBridgeManager _mapTransferOfficialSessionBridge = new();
-        private readonly Queue<PendingOfficialMapTransferRequest> _pendingOfficialMapTransferRequests = new();
+        private readonly List<PendingOfficialMapTransferRequest> _pendingOfficialMapTransferRequests = new();
 
         private bool TryDispatchMapTransferRequest(
             CharacterBuild build,
@@ -57,7 +57,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            _pendingOfficialMapTransferRequests.Enqueue(new PendingOfficialMapTransferRequest
+            _pendingOfficialMapTransferRequests.Add(new PendingOfficialMapTransferRequest
             {
                 Build = build?.Clone(),
                 Request = request,
@@ -76,9 +76,24 @@ namespace HaCreator.MapSimulator
         {
             while (_mapTransferOfficialSessionBridge.TryDequeue(out MapTransferPacketInboxMessage message))
             {
-                PendingOfficialMapTransferRequest pendingRequest = _pendingOfficialMapTransferRequests.Count > 0
-                    ? _pendingOfficialMapTransferRequests.Dequeue()
+                if (!_mapTransferRuntime.TryPreviewMapTransferResultPayload(message.Payload, out MapTransferRuntimeResponse previewResponse))
+                {
+                    _mapTransferOfficialSessionBridge.RecordDispatchResult(message.Source, success: false, "map transfer result payload could not be decoded");
+                    continue;
+                }
+
+                int pendingRequestIndex = MapTransferOfficialSessionResultResolver.ResolvePendingRequestIndex(
+                    _pendingOfficialMapTransferRequests.ConvertAll(pending => pending?.Request),
+                    previewResponse);
+                PendingOfficialMapTransferRequest pendingRequest = pendingRequestIndex >= 0 &&
+                                                                  pendingRequestIndex < _pendingOfficialMapTransferRequests.Count
+                    ? _pendingOfficialMapTransferRequests[pendingRequestIndex]
                     : null;
+                if (pendingRequestIndex >= 0)
+                {
+                    _pendingOfficialMapTransferRequests.RemoveAt(pendingRequestIndex);
+                }
+
                 CharacterBuild targetBuild = pendingRequest?.Build ?? GetActiveMapTransferCharacterBuild();
                 bool applied = _mapTransferRuntime.ApplyMapTransferResultPayload(targetBuild, message.Payload, out MapTransferRuntimeResponse response);
                 if (!applied)
@@ -90,7 +105,8 @@ namespace HaCreator.MapSimulator
                 MapTransferRuntimeRequest request = pendingRequest?.Request;
                 response = MapTransferOfficialSessionResultResolver.Resolve(
                     pendingRequest?.PredictedResponse,
-                    response);
+                    response,
+                    request);
                 if (response.Applied)
                 {
                     if (request?.Type == MapTransferRuntimeRequestType.Register)

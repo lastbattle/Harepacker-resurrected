@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.UI
         internal const int CancelButtonX = 170;
         internal const int CancelButtonY = 100;
 
+        private readonly Texture2D _pixelTexture;
         private readonly AntiMacroEditControl _targetEditControl;
         private UIObject _okButton;
         private UIObject _cancelButton;
@@ -34,8 +35,9 @@ namespace HaCreator.MapSimulator.UI
         public RandomMorphWindow(IDXObject frame, Texture2D pixelTexture)
             : base(frame, new Point(ClientOwnerX, ClientOwnerY))
         {
+            _pixelTexture = pixelTexture ?? throw new ArgumentNullException(nameof(pixelTexture));
             _targetEditControl = new AntiMacroEditControl(
-                pixelTexture ?? throw new ArgumentNullException(nameof(pixelTexture)),
+                _pixelTexture,
                 new Point(TargetEditX, TargetEditY),
                 TargetEditWidth,
                 TargetEditHeight,
@@ -174,6 +176,40 @@ namespace HaCreator.MapSimulator.UI
         public override void HandleImeCandidateList(ImeCandidateListState state)
         {
             _targetEditControl.HandleImeCandidateList(state, CapturesKeyboardInput);
+        }
+
+        public override void Draw(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            if (!IsVisible)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                _pixelTexture,
+                new Rectangle(Position.X, Position.Y, ClientOwnerWidth, ClientOwnerHeight),
+                Color.Black);
+            base.Draw(
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                drawReflectionInfo,
+                renderParameters,
+                TickCount);
         }
 
         public override void ClearImeCandidateList()

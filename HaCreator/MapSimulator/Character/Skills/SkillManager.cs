@@ -1032,6 +1032,46 @@ namespace HaCreator.MapSimulator.Character.Skills
             return routedCount;
         }
 
+        internal static int RouteExpiredSkillZoneTimerBatchToClientCancel(
+            IReadOnlyList<ClientSkillTimerExpiration> expirations,
+            Func<int, int, bool> tryPrimeExpiredLocalSkillZone,
+            Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds,
+            Func<int, int, bool> requestClientSkillCancel)
+        {
+            if (expirations == null
+                || expirations.Count == 0
+                || tryPrimeExpiredLocalSkillZone == null
+                || requestClientSkillCancel == null)
+            {
+                return 0;
+            }
+
+            int routedCount = 0;
+            HashSet<int> routedCancelFamilies = new();
+            foreach (ClientSkillTimerExpiration expiration in expirations)
+            {
+                if (expiration.SkillId <= 0
+                    || !string.Equals(expiration.Source, ClientTimerSourceSkillZoneExpire, StringComparison.Ordinal)
+                    || !tryPrimeExpiredLocalSkillZone(expiration.SkillId, expiration.ExpireTime))
+                {
+                    continue;
+                }
+
+                int cancelFamilyKey = ResolveClientCancelFamilyBatchKey(expiration.SkillId, resolveCancelRequestSkillIds);
+                if (!routedCancelFamilies.Add(cancelFamilyKey))
+                {
+                    continue;
+                }
+
+                if (requestClientSkillCancel(expiration.SkillId, expiration.ExpireTime))
+                {
+                    routedCount++;
+                }
+            }
+
+            return routedCount;
+        }
+
         internal static int ResolveClientCancelFamilyBatchKey(int skillId, Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds)
         {
             if (skillId <= 0)
@@ -5478,15 +5518,40 @@ namespace HaCreator.MapSimulator.Character.Skills
             int currentTime,
             Vector2? worldOrigin)
         {
-            if (skill?.SkillId <= 0
-                || OnClientSkillEffectRequested == null
-                || !HasAnimationDisplayerSpecialBranch(skill.SkillId))
+            if (OnClientSkillEffectRequested == null
+                || !TryCreateSpecialSkillUseEffectRequest(
+                    skill,
+                    currentTime,
+                    worldOrigin,
+                    ResolveSharedSkillUseDelayRate,
+                    HasAnimationDisplayerSpecialBranch,
+                    out SkillUseEffectRequest request))
             {
                 return;
             }
 
+            OnClientSkillEffectRequested.Invoke(request);
+        }
+
+        internal static bool TryCreateSpecialSkillUseEffectRequest(
+            SkillData skill,
+            int currentTime,
+            Vector2? worldOrigin,
+            Func<int, int> resolveDelayRate,
+            Func<int, bool> hasSpecialBranch,
+            out SkillUseEffectRequest request)
+        {
+            request = null;
+            if (skill?.SkillId <= 0
+                || resolveDelayRate == null
+                || hasSpecialBranch == null
+                || !hasSpecialBranch(skill.SkillId))
+            {
+                return false;
+            }
+
             bool hasExplicitWorldOrigin = worldOrigin.HasValue;
-            OnClientSkillEffectRequested.Invoke(new SkillUseEffectRequest
+            request = new SkillUseEffectRequest
             {
                 EffectSkillId = skill.SkillId,
                 SourceSkillId = skill.SkillId,
@@ -5495,8 +5560,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 WorldOrigin = worldOrigin,
                 FollowOwnerPosition = !hasExplicitWorldOrigin,
                 FollowOwnerFacing = false,
-                DelayRateOverride = ResolveSharedSkillUseDelayRate(skill.SkillId)
-            });
+                DelayRateOverride = resolveDelayRate(skill.SkillId)
+            };
+            return true;
         }
 
         private void TryRequestExplicitSpecialAffectedSkillUseEffect(
@@ -6389,6 +6455,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             out int attackActionType)
         {
             attackActionType = default;
+            if (IsWzBackedMovingShootShootAttackActionType(currentWeaponAttackActionType, currentWeaponType))
+            {
+                // Post-v95 dual bowgun and cannon rows still lack recovered validator
+                // table coverage, but their published attack metadata must remain on
+                // the queued ranged-family path instead of degrading to unsupported.
+                attackActionType = MovingShootAttackActionTypeShoot;
+                return true;
+            }
+
             if (currentWeaponAttackActionType is < 1 or > 10)
             {
                 // `get_random_shoot_attack_action(...)` rejects values outside [1,10]
@@ -6854,13 +6929,29 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || attackActionType is 3 or 4 or 9;
         }
 
+        private static bool IsWzBackedMovingShootShootAttackActionType(int attackActionType, string currentWeaponType)
+        {
+            string normalizedWeaponType = currentWeaponType?.Trim().ToLowerInvariant();
+            return (attackActionType, normalizedWeaponType) switch
+            {
+                (11, "double bowgun") => true,
+                (12, "cannon") => true,
+                _ => false
+            };
+        }
+
         private static ClientRandomMovingShootActionFamily ResolveClientRandomMovingShootActionFamily(
             int? queuedAttackActionType,
             string currentActionName,
             int? currentRawActionCode,
             string currentWeaponType)
         {
-            if (queuedAttackActionType is > 10)
+            if (queuedAttackActionType.HasValue
+                && IsWzBackedMovingShootShootAttackActionType(queuedAttackActionType.Value, currentWeaponType))
+            {
+                queuedAttackActionType = MovingShootAttackActionTypeShoot;
+            }
+            else if (queuedAttackActionType is > 10)
             {
                 return ClientRandomMovingShootActionFamily.Unsupported;
             }
@@ -6972,7 +7063,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 9 => ClientRandomMovingShootActionFamily.GunShoot,
                 MovingShootAttackActionTypeUnsupported => ClientRandomMovingShootActionFamily.Unsupported,
                 MovingShootAttackActionTypeMagic => ClientRandomMovingShootActionFamily.Unsupported,
-                MovingShootAttackActionTypeMelee => ClientRandomMovingShootActionFamily.OneHandedSwing,
+                // `get_random_shoot_attack_action(...)` only exposed the hidden row index
+                // during recovery, not the exact melee row contents. Keep those rows
+                // closed until the client table itself is recovered instead of letting
+                // generic melee-family inference widen unsupported action owners.
+                MovingShootAttackActionTypeMelee => ClientRandomMovingShootActionFamily.Unsupported,
                 _ => ClientRandomMovingShootActionFamily.None
             };
         }
@@ -7008,7 +7103,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     : candidateFamily == requiredFamily;
             }
 
-            return !IsClientRandomMovingShootShootFamily(candidateFamily);
+            return candidateFamily == requiredFamily;
         }
 
         private static bool IsClientRandomMovingShootShootFamily(ClientRandomMovingShootActionFamily actionFamily)
@@ -8571,6 +8666,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 return;
             }
+
+            TryRequestExplicitSpecialSkillUseEffect(masterySkill, currentTime, worldOrigin: null);
 
             if (masterySkill.AttackType == SkillAttackType.Magic || masterySkill.IsMagicDamageSkill)
             {
@@ -11785,6 +11882,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return selection.UseItemId;
             }
 
+            if (fallbackVisualItemId > 0)
+            {
+                return fallbackVisualItemId;
+            }
+
             if (selection?.CashItemId > 0)
             {
                 return selection.CashItemId;
@@ -11794,8 +11896,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 return selection.UseItemId;
             }
-
-            return fallbackVisualItemId;
+            return 0;
         }
 
         internal static Vector2 ResolveBulletAnimationDestinationPoint(ActiveProjectile projectile)
@@ -11866,11 +11967,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             return fallbackFacingRight;
         }
 
-        private static int ResolveBulletAnimationZ(SkillAnimation animation)
+        internal static int ResolveBulletAnimationZ(SkillAnimation animation)
         {
-            if (animation?.Frames == null || animation.Frames.Count == 0)
+            if (animation == null)
             {
                 return 0;
+            }
+
+            if (animation.ZOrder != 0)
+            {
+                return animation.ZOrder;
+            }
+
+            if (animation.Frames == null || animation.Frames.Count == 0)
+            {
+                return 0;
+            }
+
+            foreach (SkillFrame frame in animation.Frames)
+            {
+                if (frame?.Z != 0)
+                {
+                    return frame.Z;
+                }
             }
 
             return animation.Frames[0]?.Z ?? 0;
@@ -12949,7 +13068,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             SkillAnimation animation = owner.Presentation.Animation;
-            if (animation?.TryGetFrameAtTime(currentTime - owner.Presentation.StartTime, out SkillFrame frame, out _) != true
+            if (animation?.TryGetFrameAtTime(
+                    currentTime - owner.Presentation.StartTime,
+                    out SkillFrame frame,
+                    out int frameElapsedMs) != true
                 || frame?.Texture == null)
             {
                 return;
@@ -12971,7 +13093,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 StartTime = currentTime,
                 Duration = updateInterval,
                 AlphaStart = ResolveBulletAfterimageStartAlpha(frame),
-                AlphaEnd = 0
+                AlphaEnd = 0,
+                FrameAlphaMultiplier = ResolveBulletAfterimageFrameAlphaMultiplier(frame, frameElapsedMs)
             });
         }
 
@@ -12983,6 +13106,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static int ResolveBulletAfterimageStartAlpha(SkillFrame frame)
         {
             return ClientBulletAfterimageStartAlpha;
+        }
+
+        internal static float ResolveBulletAfterimageFrameAlphaMultiplier(SkillFrame frame, int frameElapsedMs)
+        {
+            return MathHelper.Clamp(
+                MeleeAfterimagePlaybackResolver.ResolveFrameAlpha(frame, frameElapsedMs),
+                0f,
+                1f);
         }
 
         public IReadOnlyList<ActiveProjectile> ActiveProjectiles => _projectiles;
@@ -15190,7 +15321,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 int previousHp = _player.HP;
                 _player.Recover(hpHeal, 0);
                 int newHp = _player.HP;
-                healed = newHp > _player.HP;
                 healed = newHp > previousHp;
             }
 
@@ -18530,6 +18660,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, trayLaneTemporaryStat);
             BuffTemporaryStatPresentation displayOwnerTemporaryStat = ResolveDisplayOwnerTemporaryStat(
+                authoredExplicitFamilyOwnerTemporaryStat,
                 trayLaneTemporaryStat,
                 iconOwnerTemporaryStat,
                 familyOwnerTemporaryStat,
@@ -18565,12 +18696,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public IReadOnlyList<StatusBarBuffEntry> GetStatusBarBuffEntries(int currentTime)
         {
-            if (_buffs.Count == 0)
+            if (_buffs.Count == 0 && _cooldownUiPresentations.Count == 0)
             {
                 return Array.Empty<StatusBarBuffEntry>();
             }
 
-            var entries = new List<StatusBarBuffEntry>(_buffs.Count);
+            var entries = new List<StatusBarBuffEntry>(_buffs.Count + _cooldownUiPresentations.Count);
             foreach (var buff in _buffs)
             {
                 IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
@@ -18591,6 +18722,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, trayLaneTemporaryStat);
                 BuffTemporaryStatPresentation displayOwnerTemporaryStat = ResolveDisplayOwnerTemporaryStat(
+                    authoredExplicitFamilyOwnerTemporaryStat,
                     trayLaneTemporaryStat,
                     iconOwnerTemporaryStat,
                     familyOwnerTemporaryStat,
@@ -18623,11 +18755,76 @@ namespace HaCreator.MapSimulator.Character.Skills
                 });
             }
 
+            entries.AddRange(BuildPassiveCooldownStatusBarEntriesForParity(currentTime, entries));
+            if (entries.Count == 0)
+            {
+                return Array.Empty<StatusBarBuffEntry>();
+            }
+
             return entries
                 .OrderBy(entry => entry.SortOrder)
                 .ThenByDescending(entry => entry.StartTime)
                 .ThenBy(entry => entry.SkillId)
                 .ToArray();
+        }
+
+        private IReadOnlyList<StatusBarBuffEntry> BuildPassiveCooldownStatusBarEntriesForParity(int currentTime, IReadOnlyList<StatusBarBuffEntry> existingEntries)
+        {
+            if (_cooldownUiPresentations.Count == 0)
+            {
+                return Array.Empty<StatusBarBuffEntry>();
+            }
+
+            Dictionary<int, (CooldownUiState State, SkillData Skill, int StartTime)> passiveCooldownStates = new();
+            foreach (int skillId in _cooldownUiPresentations.Keys)
+            {
+                if (!TryGetCooldownUiState(skillId, currentTime, out CooldownUiState cooldownState)
+                    || cooldownState.PresentationKind != CooldownUiPresentationKind.VehicleDurability)
+                {
+                    continue;
+                }
+
+                int startTime = TryGetCooldownStartTime(skillId, out int resolvedStartTime)
+                    ? resolvedStartTime
+                    : currentTime;
+                passiveCooldownStates[skillId] = (cooldownState, GetSkillData(skillId), startTime);
+            }
+
+            return ResolvePassiveCooldownStatusBarEntriesForParity(existingEntries, passiveCooldownStates);
+        }
+
+        internal static IReadOnlyList<StatusBarBuffEntry> ResolvePassiveCooldownStatusBarEntriesForParity(
+            IReadOnlyList<StatusBarBuffEntry> existingEntries,
+            IReadOnlyDictionary<int, (CooldownUiState State, SkillData Skill, int StartTime)> passiveCooldownStates)
+        {
+            if (passiveCooldownStates == null || passiveCooldownStates.Count == 0)
+            {
+                return Array.Empty<StatusBarBuffEntry>();
+            }
+
+            HashSet<int> existingSkillIds = new(
+                existingEntries?.Select(entry => entry.SkillId)
+                ?? Enumerable.Empty<int>());
+            List<StatusBarBuffEntry> passiveEntries = new(passiveCooldownStates.Count);
+            foreach ((int skillId, (CooldownUiState state, SkillData skill, int startTime)) in passiveCooldownStates)
+            {
+                if (existingSkillIds.Contains(skillId)
+                    || state.RemainingMs <= 0
+                    || state.PresentationKind != CooldownUiPresentationKind.VehicleDurability)
+                {
+                    continue;
+                }
+
+                passiveEntries.Add(
+                    ResolveVehicleDurabilityPassiveStatusBarEntryForParity(
+                        skill,
+                        state,
+                        skillId,
+                        startTime));
+                existingSkillIds.Add(skillId);
+            }
+
+            return passiveEntries;
         }
 
         /// <summary>
@@ -19542,6 +19739,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 directBuffIconEligibleLabels);
 
             BuffTemporaryStatPresentation displayOwnerTemporaryStat = ResolveDisplayOwnerTemporaryStat(
+                authoredExplicitFamilyOwnerTemporaryStat,
                 trayLaneTemporaryStat,
                 iconOwnerTemporaryStat,
                 familyOwnerTemporaryStat,
@@ -19836,11 +20034,17 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         private static BuffTemporaryStatPresentation ResolveDisplayOwnerTemporaryStat(
+            BuffTemporaryStatPresentation authoredExplicitFamilyOwnerTemporaryStat,
             BuffTemporaryStatPresentation trayLaneTemporaryStat,
             BuffTemporaryStatPresentation iconOwnerTemporaryStat,
             BuffTemporaryStatPresentation familyOwnerTemporaryStat,
             ISet<string> directBuffIconEligibleLabels)
         {
+            if (authoredExplicitFamilyOwnerTemporaryStat != null)
+            {
+                return authoredExplicitFamilyOwnerTemporaryStat;
+            }
+
             if (HasResolvedExplicitBuffIcon(iconOwnerTemporaryStat, directBuffIconEligibleLabels))
             {
                 return iconOwnerTemporaryStat;
@@ -21414,12 +21618,30 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void UpdateSkillZones(int currentTime)
         {
-            for (int i = _skillZones.Count - 1; i >= 0; i--)
+            ActiveSkillZone[] expiredZones = _skillZones
+                .Where(zone => zone != null && zone.IsExpired(currentTime))
+                .ToArray();
+            if (expiredZones.Length == 0)
             {
-                if (_skillZones[i].IsExpired(currentTime))
+                return;
+            }
+
+            HashSet<int> routedCancelFamilies = new();
+            foreach (ActiveSkillZone zone in expiredZones)
+            {
+                if (zone?.SkillId <= 0)
                 {
-                    RemoveSkillZoneAt(i, cancelTimer: false);
+                    continue;
                 }
+
+                int cancelFamilyKey = ResolveClientCancelFamilyBatchKey(zone.SkillId, ResolveClientCancelRequestSkillIds);
+                if (routedCancelFamilies.Add(cancelFamilyKey)
+                    && TryRouteExpiredLocalSkillZoneToClientCancel(zone.SkillId, currentTime))
+                {
+                    continue;
+                }
+
+                RemoveExpiredSkillZonesBySkill(zone.SkillId, currentTime);
             }
         }
 
@@ -21466,7 +21688,37 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void ExpireSkillZoneFromClientTimer(int skillId, int currentTime)
         {
+            if (TryRouteExpiredLocalSkillZoneToClientCancel(skillId, currentTime))
+            {
+                return;
+            }
+
             RemoveExpiredSkillZonesBySkill(skillId, currentTime);
+        }
+
+        private bool TryRouteExpiredLocalSkillZoneToClientCancel(int skillId, int currentTime)
+        {
+            return TryPrimeExpiredLocalSkillZoneNaturalExpiry(skillId, currentTime)
+                   && RequestClientSkillCancel(skillId, currentTime);
+        }
+
+        private bool TryPrimeExpiredLocalSkillZoneNaturalExpiry(int skillId, int currentTime)
+        {
+            if (skillId <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _skillZones.Count; i++)
+            {
+                ActiveSkillZone zone = _skillZones[i];
+                if (zone?.SkillId == skillId && zone.IsExpired(currentTime))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void RemoveExpiredSkillZonesBySkill(int skillId, int currentTime)
@@ -22116,6 +22368,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .ToArray();
 
             OnClientSkillTimersExpiredBatch?.Invoke(expirations);
+            RouteExpiredSkillZoneTimerBatchToClientCancel(
+                expirations,
+                TryPrimeExpiredLocalSkillZoneNaturalExpiry,
+                ResolveClientCancelRequestSkillIds,
+                (skillId, tickCount) => RequestClientSkillCancel(skillId, tickCount));
             RouteExpiredLocalSummonTimerBatchToClientCancel(
                 expirations,
                 TryPrimeExpiredLocalSummonNaturalExpiry,

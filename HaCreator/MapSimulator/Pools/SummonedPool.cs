@@ -4020,6 +4020,8 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     return resolvedBallAnimation;
                 }
+
+                return null;
             }
 
             if (skill?.SummonProjectileAnimations != null)
@@ -4330,13 +4332,13 @@ namespace HaCreator.MapSimulator.Pools
                 SpawnPacketMobAttackHitEffect(state.Summon, packet, presentation, currentTime);
             }
 
-            if (mob != null)
+            string packetHitSoundKey = ResolvePacketMobAttackSoundKey(
+                mob,
+                packet.AttackIndex >= 1 ? 2 : 1,
+                presentation.CharDamSoundKey);
+            if (!string.IsNullOrWhiteSpace(packetHitSoundKey))
             {
-                PlayPacketMobAttackSound(mob, packet.AttackIndex);
-            }
-            else if (!string.IsNullOrWhiteSpace(presentation.CharDamSoundKey))
-            {
-                _soundManager?.PlaySound(presentation.CharDamSoundKey);
+                _soundManager?.PlaySound(packetHitSoundKey);
             }
 
             if (packet.Damage > 0)
@@ -4531,7 +4533,10 @@ namespace HaCreator.MapSimulator.Pools
                 graphicsDevice,
                 resolvedMobTemplateId.ToString());
             MobAnimationSet.AttackInfoMetadata templateAttackInfo = templateAnimationSet?.GetAttackInfoMetadata(attackAction);
-            MobAnimationSet.AttackHitEffectEntry templateHitEffectEntry = templateAnimationSet?.GetAttackHitEffectEntry(attackAction);
+            MobAnimationSet.AttackHitEffectEntry templateHitEffectEntry = ResolvePacketTemplateHitEffectEntry(
+                templateAnimationSet,
+                attackAction,
+                currentMobAttackFrameIndex);
             string charDamSoundKey = LifeLoader.ResolveMobCharDamSoundKey(
                 soundManager,
                 resolvedMobTemplateId.ToString(),
@@ -4596,14 +4601,58 @@ namespace HaCreator.MapSimulator.Pools
                 hitAnimationSourceFrameIndex);
         }
 
-        private static void PlayPacketMobAttackSound(MobItem mob, sbyte attackIndex)
+        internal static MobAnimationSet.AttackHitEffectEntry ResolvePacketTemplateHitEffectEntry(
+            MobAnimationSet templateAnimationSet,
+            string attackAction,
+            int? currentMobAttackFrameIndex)
         {
-            if (mob == null)
+            if (templateAnimationSet == null || string.IsNullOrWhiteSpace(attackAction))
             {
-                return;
+                return null;
             }
 
-            mob.PlayCharDamSound(attackIndex >= 1 ? 2 : 1);
+            return templateAnimationSet.GetAttackHitEffectEntry(attackAction, currentMobAttackFrameIndex)
+                   ?? templateAnimationSet.GetAttackHitEffectEntry(attackAction);
+        }
+
+        internal static string ResolvePacketMobAttackSoundKey(
+            MobItem mob,
+            int damageSoundIndex,
+            string templateCharDamSoundKey)
+        {
+            string liveCharDam1SoundKey = mob?.CharDam1SE;
+            string liveCharDam2SoundKey = mob?.CharDam2SE;
+            return ResolvePacketMobAttackSoundKey(
+                liveCharDam1SoundKey,
+                liveCharDam2SoundKey,
+                damageSoundIndex,
+                templateCharDamSoundKey);
+        }
+
+        internal static string ResolvePacketMobAttackSoundKey(
+            string liveCharDam1SoundKey,
+            string liveCharDam2SoundKey,
+            int damageSoundIndex,
+            string templateCharDamSoundKey)
+        {
+            if (damageSoundIndex >= 2)
+            {
+                if (!string.IsNullOrWhiteSpace(liveCharDam2SoundKey))
+                {
+                    return liveCharDam2SoundKey;
+                }
+
+                if (!string.IsNullOrWhiteSpace(liveCharDam1SoundKey))
+                {
+                    return liveCharDam1SoundKey;
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(liveCharDam1SoundKey))
+            {
+                return liveCharDam1SoundKey;
+            }
+
+            return templateCharDamSoundKey;
         }
 
         private void PlayPacketSummonHitSound(SkillData skill)
@@ -5287,9 +5336,18 @@ namespace HaCreator.MapSimulator.Pools
                 && skill.SummonNamedAnimations != null
                 && skill.SummonNamedAnimations.TryGetValue(summon.CurrentAnimationBranchName, out branchAnimation)
                 && branchAnimation?.Frames.Count > 0;
+            SkillAnimation retryAttackAnimation = hasBranchAnimation
+                ? null
+                : ResolveEmptyActionRetryAnimation(summon);
+            bool hasActionPlayback = hasBranchAnimation
+                                     || retryAttackAnimation?.Frames.Count > 0;
             SkillAnimation attackAnimation = hasBranchAnimation
                 ? branchAnimation
-                : skill.SummonAttackAnimation;
+                : retryAttackAnimation?.Frames.Count > 0
+                    ? retryAttackAnimation
+                    : string.IsNullOrWhiteSpace(summon.CurrentAnimationBranchName)
+                        ? skill.SummonAttackAnimation
+                        : null;
             if (attackAnimation?.Frames.Count <= 0)
             {
                 return false;
@@ -5297,13 +5355,13 @@ namespace HaCreator.MapSimulator.Pools
 
             int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
             int attackDuration = GetSkillAnimationDuration(attackAnimation) ?? 0;
-            int totalDuration = (hasBranchAnimation ? 0 : prepareDuration) + attackDuration;
+            int totalDuration = (hasActionPlayback ? 0 : prepareDuration) + attackDuration;
             if (attackElapsed < 0 || totalDuration <= 0 || attackElapsed >= totalDuration)
             {
                 return false;
             }
 
-            if (!hasBranchAnimation
+            if (!hasActionPlayback
                 && prepareAnimation?.Frames.Count > 0
                 && attackElapsed < prepareDuration)
             {
@@ -5313,7 +5371,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             animation = attackAnimation;
-            animationTime = hasBranchAnimation
+            animationTime = hasActionPlayback
                 ? attackElapsed
                 : Math.Max(0, attackElapsed - prepareDuration);
             return true;

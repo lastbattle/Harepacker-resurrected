@@ -596,7 +596,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _guildFundMeso = Math.Max(0, packetResolution.GuildFundMeso.Value);
             }
-            else if (gainedLevel)
+            else if (gainedLevel && ShouldApplyPendingLocalFundDebit(pendingRequest))
             {
                 _guildFundMeso = Math.Max(0, _guildFundMeso - pendingRequest.Cost);
             }
@@ -654,7 +654,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _guildFundMeso = Math.Max(0, packetResolution.GuildFundMeso.Value);
             }
-            else if (!hasExplicitRemaining || resolvedRemainingMinutes > previousRemainingMinutes)
+            else if ((!hasExplicitRemaining || resolvedRemainingMinutes > previousRemainingMinutes) &&
+                     ShouldApplyPendingLocalFundDebit(pendingRequest))
             {
                 _guildFundMeso = Math.Max(0, _guildFundMeso - pendingRequest.Cost);
             }
@@ -721,7 +722,11 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     if (resolvedLevel > previousLevel)
                     {
-                        _guildFundMeso = Math.Max(0, _guildFundMeso - pendingRequest.Cost);
+                        if (ShouldApplyPendingLocalFundDebit(pendingRequest))
+                        {
+                            _guildFundMeso = Math.Max(0, _guildFundMeso - pendingRequest.Cost);
+                        }
+
                         return $"Pending packet-owned level-up approval resolved through OnGuildResult(81). Guild fund: {FormatMeso(_guildFundMeso)}.";
                     }
 
@@ -732,7 +737,11 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     if (resolvedExpiration.HasValue && !Nullable.Equals(previousExpiration, resolvedExpiration))
                     {
-                        _guildFundMeso = Math.Max(0, _guildFundMeso - pendingRequest.Cost);
+                        if (ShouldApplyPendingLocalFundDebit(pendingRequest))
+                        {
+                            _guildFundMeso = Math.Max(0, _guildFundMeso - pendingRequest.Cost);
+                        }
+
                         int remainingMinutes = GetRemainingDurationMinutes(selectedSkill);
                         return $"Pending packet-owned renewal approval resolved through OnGuildResult(81) with {FormatDuration(remainingMinutes)} remaining. Guild fund: {FormatMeso(_guildFundMeso)}.";
                     }
@@ -835,8 +844,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _guildFundMeso = Math.Max(0, guildFundMeso.Value);
+            if (_pendingRequest != null)
+            {
+                _pendingRequest.FundAlreadySynced = true;
+            }
+
             SaveCurrentGuildState(_activeGuildStateKey);
             return $"Packet-owned guild-fund sync updated the dedicated guild-skill ledger to {FormatMeso(_guildFundMeso)}.";
+        }
+
+        private static bool ShouldApplyPendingLocalFundDebit(GuildSkillPendingRequest pendingRequest)
+        {
+            return pendingRequest != null && !pendingRequest.FundAlreadySynced;
         }
 
         private static string ResolvePacketActionLabel(GuildSkillResultPacketKind kind)
@@ -1000,16 +1019,17 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedSkill == null)
                 return string.Empty;
 
+            string header = SkillTooltipClientText.FormatCurrentLevelHeader(selectedSkill.CurrentLevel);
             string effectText = GetCurrentEffectDescription(selectedSkill);
             if (!string.IsNullOrWhiteSpace(effectText))
-                return $"Current: {effectText}";
+                return $"{header} {effectText}";
 
             if (selectedSkill.CurrentLevel > 0)
-                return $"Current: Lv. {selectedSkill.CurrentLevel}/{selectedSkill.MaxLevel}";
+                return $"{header} Lv. {selectedSkill.CurrentLevel}/{selectedSkill.MaxLevel}";
 
             return _isInGuild
-                ? "Current: Not learned."
-                : "Current: Join a guild.";
+                ? $"{header} Not learned."
+                : $"{header} Join a guild.";
         }
 
         private string BuildNextEffectSummary(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel)
@@ -1017,20 +1037,29 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedSkill == null)
                 return string.Empty;
 
+            int nextLevel = Math.Clamp(
+                selectedSkill.CurrentLevel <= 0 ? 1 : selectedSkill.CurrentLevel + 1,
+                1,
+                Math.Max(1, selectedSkill.MaxLevel));
+            int headerLevel = selectedSkill.CurrentLevel >= selectedSkill.MaxLevel
+                ? Math.Max(1, selectedSkill.MaxLevel)
+                : nextLevel;
+            string header = SkillTooltipClientText.FormatNextLevelHeader(headerLevel);
+
             if (selectedSkill.CurrentLevel >= selectedSkill.MaxLevel)
-                return "Next: Max level reached.";
+                return $"{header} Max level reached.";
 
             string nextEffect = GetNextEffectDescription(selectedSkill);
             if (!string.IsNullOrWhiteSpace(nextEffect))
-                return $"Next: {nextEffect}";
+                return $"{header} {nextEffect}";
 
             if (!_isInGuild)
-                return "Next: Requires guild membership.";
+                return $"{header} Requires guild membership.";
 
             if (selectedRequiredGuildLevel > _guildLevel)
-                return $"Next: Requires Guild Lv. {selectedRequiredGuildLevel}.";
+                return $"{header} Requires Guild Lv. {selectedRequiredGuildLevel}.";
 
-            return $"Next: Lv. {Math.Min(selectedSkill.MaxLevel, selectedSkill.CurrentLevel + 1)}/{selectedSkill.MaxLevel}";
+            return $"{header} Lv. {nextLevel}/{selectedSkill.MaxLevel}";
         }
 
         private string BuildActivationDetailSummary(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel, int remainingMinutes)
@@ -1392,6 +1421,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal int Cost { get; }
         internal int DurationMinutes { get; }
         internal int TargetLevel { get; }
+        internal bool FundAlreadySynced { get; set; }
         internal string ActionLabel => Kind == GuildSkillRuntime.GuildSkillPendingRequestKind.LevelUp ? "Level-up" : "Renewal";
     }
 

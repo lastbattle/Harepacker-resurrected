@@ -207,6 +207,7 @@ namespace HaCreator.MapSimulator
                 listWindow.SetExternalAction("PageDown", () => cashShopWindow.MoveListOwnerSelectionByPage(1));
                 listWindow.SetExternalAction("Home", () => cashShopWindow.SelectListOwnerBoundary(false));
                 listWindow.SetExternalAction("End", () => cashShopWindow.SelectListOwnerBoundary(true));
+                listWindow.SetListScrollOffsetAction(cashShopWindow.ScrollListOwnerToOffset);
                 listWindow.SetListStateProvider(() => BuildCashShopListOwnerState(cashShopWindow));
             }
 
@@ -1574,10 +1575,14 @@ namespace HaCreator.MapSimulator
             }
 
             _lastPlayedCashGachaponAnimationSequence = animationSequence;
-            uiWindowManager.ProductionEnhancementAnimationDisplayer.PlayCashGachaponResult(
+            bool animationRegistered = uiWindowManager.ProductionEnhancementAnimationDisplayer.PlayCashGachaponResult(
                 stageWindow.CashGachaponAnimationIsCopyResult,
                 stageWindow.CashGachaponAnimationIsJackpot,
                 currentTimeMs);
+            stageWindow.SetCashGachaponAnimationOwnerPlaybackSummary(
+                stageWindow.CashGachaponAnimationIsCopyResult,
+                stageWindow.CashGachaponAnimationIsJackpot,
+                animationRegistered);
         }
 
         private string ShowCashCouponDialog()
@@ -1629,22 +1634,17 @@ namespace HaCreator.MapSimulator
                 return cashShopWindow.ExecuteCashStageListAction("BtBuy");
             }
 
+            CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
             modalWindow.Configure(
                 "CConfirmPurchaseDlg",
                 $"Confirm purchase for {selectedEntry.Title}.",
-                new[]
-                {
-                    $"{listSnapshot?.PaneLabel} | {listSnapshot?.BrowseModeLabel} | {listSnapshot?.CategoryLabel}",
-                    $"{selectedEntry.Seller} | {selectedEntry.PriceLabel}",
-                    selectedEntry.Detail,
-                    selectedEntry.StateLabel,
-                    "Client evidence: Maple Point, Prepaid Cash, and Nexon Cash checkboxes plus an optional package combo box."
-                },
+                BuildCashPurchaseConfirmDialogLines(listSnapshot, selectedEntry, stageWindow),
                 new[]
                 {
                     new CashServiceModalOwnerWindow.ActionButtonState { Label = "OK", IsPrimary = true },
                     new CashServiceModalOwnerWindow.ActionButtonState { Label = "Cancel" }
-                });
+                },
+                footer: "Client evidence: CConfirmPurchaseDlg::OnCreate creates Maple Point (1000), Prepaid Cash (1001), and Nexon Cash (1002) selectors plus a package/period combo box when the selected commodity exposes multiple packed entries.");
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog);
             return $"CConfirmPurchaseDlg opened for {selectedEntry.Title}.";
         }
@@ -1683,7 +1683,9 @@ namespace HaCreator.MapSimulator
                     : "This is the last staged gift row in the current packet-owned modal sequence.",
                 inputPlaceholder: "Reply message",
                 inputActive: true,
-                inputMaxLength: 64);
+                inputMaxLength: 64,
+                giftRows: BuildCashReceiveGiftQueueLabels(stageWindow.CashGiftPacketEntries),
+                selectedGiftIndex: giftIndex);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
         }
 
@@ -1701,6 +1703,7 @@ namespace HaCreator.MapSimulator
                 {
                     $"Request id: {stageWindow.CashNameChangePossibleResult.RequestId.ToString(CultureInfo.InvariantCulture)}.",
                     $"Birth date payload: {stageWindow.CashNameChangePossibleResult.BirthDate.ToString(CultureInfo.InvariantCulture)}.",
+                    stageWindow.CashNameChangeLastSummary,
                     "WZ: CashShop.img/CSChangeName/Base/backgrndnotice."
                 },
                 new[]
@@ -1725,6 +1728,7 @@ namespace HaCreator.MapSimulator
                     $"Request id: {stageWindow.CashTransferWorldPossibleResult.RequestId.ToString(CultureInfo.InvariantCulture)}.",
                     $"Birth date payload: {stageWindow.CashTransferWorldPossibleResult.BirthDate.ToString(CultureInfo.InvariantCulture)}.",
                     $"Decoded world list: {stageWindow.CashTransferWorldPossibleResult.WorldNames.Count.ToString(CultureInfo.InvariantCulture)} world(s).",
+                    stageWindow.CashTransferWorldLastSummary,
                     "WZ: CashShop.img/CSTransferWorld/Base/backgrndnotice."
                 },
                 new[]
@@ -1733,6 +1737,69 @@ namespace HaCreator.MapSimulator
                 },
                 worldNames: stageWindow.CashTransferWorldPossibleResult.WorldNames);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashTransferWorldLicenseDialog);
+        }
+
+        private static IReadOnlyList<string> BuildCashPurchaseConfirmDialogLines(
+            AdminShopDialogUI.ListOwnerSnapshot listSnapshot,
+            AdminShopDialogUI.OwnerEntrySnapshot selectedEntry,
+            CashServiceStageWindow stageWindow)
+        {
+            List<string> lines = new()
+            {
+                $"{listSnapshot?.PaneLabel} | {listSnapshot?.BrowseModeLabel} | {listSnapshot?.CategoryLabel}",
+                $"{selectedEntry.Seller} | {selectedEntry.PriceLabel}",
+                selectedEntry.Detail,
+                selectedEntry.StateLabel
+            };
+
+            if (selectedEntry.CommoditySerialNumber > 0
+                && AdminShopDialogUI.TryResolveCommodityBySerialNumber(
+                    selectedEntry.CommoditySerialNumber,
+                    out int itemId,
+                    out long price,
+                    out int count,
+                    out bool onSale))
+            {
+                string itemLabel = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName)
+                    ? resolvedName
+                    : $"Item {itemId.ToString(CultureInfo.InvariantCulture)}";
+                lines.Add($"SN {selectedEntry.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)} -> {itemLabel} x{count.ToString(CultureInfo.InvariantCulture)} / {price.ToString("N0", CultureInfo.InvariantCulture)} NX{(onSale ? string.Empty : " (off-sale)")}");
+            }
+            else if (selectedEntry.RewardItemId > 0)
+            {
+                string itemLabel = InventoryItemMetadataResolver.TryResolveItemName(selectedEntry.RewardItemId, out string resolvedName)
+                    ? resolvedName
+                    : $"Item {selectedEntry.RewardItemId.ToString(CultureInfo.InvariantCulture)}";
+                lines.Add($"{itemLabel} x{Math.Max(1, selectedEntry.RewardQuantity).ToString(CultureInfo.InvariantCulture)} is staged in the selected purchase row.");
+            }
+
+            if (stageWindow != null)
+            {
+                lines.Add($"[ ] Maple Point: {stageWindow.MaplePointBalance.ToString("N0", CultureInfo.InvariantCulture)}");
+                lines.Add($"[ ] Prepaid Cash: {stageWindow.PrepaidCashBalance.ToString("N0", CultureInfo.InvariantCulture)}");
+                lines.Add($"[ ] Nexon Cash: {stageWindow.NexonCashBalance.ToString("N0", CultureInfo.InvariantCulture)}");
+            }
+
+            return lines.Where(line => !string.IsNullOrWhiteSpace(line)).ToArray();
+        }
+
+        private static IReadOnlyList<string> BuildCashReceiveGiftQueueLabels(IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> queueLabels = new(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                CashServiceStageWindow.PacketCatalogEntry entry = entries[i];
+                string sender = string.IsNullOrWhiteSpace(entry?.Seller) ? "Unknown sender" : entry.Seller;
+                string title = string.IsNullOrWhiteSpace(entry?.Title) ? "Gift" : entry.Title;
+                queueLabels.Add($"{(i + 1).ToString(CultureInfo.InvariantCulture)}. {title} / {sender}");
+            }
+
+            return queueLabels;
         }
 
         private bool TryGetCashServiceModalOwnerWindow(string windowName, out CashServiceModalOwnerWindow modalWindow)

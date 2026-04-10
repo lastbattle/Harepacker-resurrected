@@ -233,10 +233,11 @@ namespace HaCreator.MapSimulator.Effects
 
         private static bool IsMassacreMap(int mapId, FieldType? fieldType)
         {
-            // Massacre/hunting event maps
-            return fieldType == FieldType.FIELDTYPE_MASSACRE
-                || fieldType == FieldType.FIELDTYPE_MASSACRE_RESULT
-                || (mapId >= 910000000 && mapId <= 910000099);
+            return MassacreField.IsMassacreMap(new MapInfo
+            {
+                id = mapId,
+                fieldType = fieldType
+            });
         }
 
 

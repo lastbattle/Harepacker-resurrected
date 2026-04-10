@@ -1670,13 +1670,14 @@ namespace HaCreator.MapSimulator
             LoginUtilityDialogVisualStyle visualStyle = LoginUtilityDialogVisualStyle.Default;
             Rectangle? inputBoundsOverride = null;
             int durationMs = 2400;
+            bool trackDirectionModeOwner = false;
 
 
             for (int i = 0; i < args.Length; i++)
             {
                 if (!TrySplitLoginPacketPromptArgument(args[i], out string key, out string initialValue))
                 {
-                    error = "Usage: /loginpacket <packet> [payloadhex=<hex>|payloadb64=<base64>|clearpayload] [mode=utility|notice] [title=<text>] [body=<text>] [notice=<index>] [variant=notice|noticecog|loading|loadingsinglegauge] [buttons=ok|yesno|accept|nowlater|restartexit|nexon|enabledisablespw] [visualstyle=default|securityyesno|secondarypasswordchoice] [primary=<label>] [secondary=<label>] [inputlabel=<text>] [placeholder=<text>] [masked=true|false] [maxlength=<count>] [keyboardtype=alphanumeric|alphaedges|numeric|numericalt] [inputbounds=<x,y,w,h>] [duration=<ms>]";
+                    error = "Usage: /loginpacket <packet> [payloadhex=<hex>|payloadb64=<base64>|clearpayload] [mode=utility|notice] [title=<text>] [body=<text>] [notice=<index>] [variant=notice|noticecog|loading|loadingsinglegauge] [buttons=ok|yesno|accept|nowlater|restartexit|nexon|enabledisablespw] [visualstyle=default|securityyesno|secondarypasswordchoice] [primary=<label>] [secondary=<label>] [inputlabel=<text>] [placeholder=<text>] [masked=true|false] [maxlength=<count>] [keyboardtype=alphanumeric|alphaedges|numeric|numericalt] [inputbounds=<x,y,w,h>] [duration=<ms>] [trackowner=true|false]";
                     return false;
 
                 }
@@ -1856,6 +1857,16 @@ namespace HaCreator.MapSimulator
                         break;
 
 
+                    case "trackowner":
+                    case "trackdirectionmodeowner":
+                        if (!bool.TryParse(value, out trackDirectionModeOwner))
+                        {
+                            error = "trackowner must be true or false.";
+                            return false;
+                        }
+                        break;
+
+
                     default:
                         error = $"Unsupported dialog override option '{key}'.";
                         return false;
@@ -1881,6 +1892,7 @@ namespace HaCreator.MapSimulator
                 InputMaxLength = inputMaxLength,
                 SoftKeyboardType = softKeyboardType,
                 InputBoundsOverride = inputBoundsOverride,
+                TrackDirectionModeOwner = trackDirectionModeOwner,
                 DurationMs = durationMs,
             };
             return true;
@@ -2994,7 +3006,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "guildboss",
                 "Inspect or update guild boss healer and pulley state",
-                "/guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
+                "/guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
                 args =>
                 {
                     GuildBossField guildBoss = _specialFieldRuntime.SpecialEffects.GuildBoss;
@@ -3113,6 +3125,84 @@ namespace HaCreator.MapSimulator
 
 
 
+                        if (string.Equals(args[1], "attach", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !int.TryParse(args[2], out int attachRemotePort)
+                                || attachRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session attach <remotePort> [processName|pid] [localPort]");
+                            }
+
+
+                            string attachProcessSelector = args.Length >= 4 ? args[3] : null;
+                            int? attachLocalPortFilter = null;
+                            if (args.Length >= 5)
+                            {
+                                if (!int.TryParse(args[4], out int parsedAttachLocalPort) || parsedAttachLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session attach <remotePort> [processName|pid] [localPort]");
+                                }
+
+
+                                attachLocalPortFilter = parsedAttachLocalPort;
+
+                            }
+
+
+
+                            return _guildBossOfficialSessionBridge.TryAttachEstablishedSession(
+                                    attachRemotePort,
+                                    attachProcessSelector,
+                                    attachLocalPortFilter,
+                                    out string attachStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(attachStatus)
+                                : ChatCommandHandler.CommandResult.Error(attachStatus);
+
+                        }
+
+
+
+                        if (string.Equals(args[1], "attachproxy", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4
+                                || !int.TryParse(args[2], out int attachProxyListenPort)
+                                || attachProxyListenPort < 0
+                                || !int.TryParse(args[3], out int attachProxyRemotePort)
+                                || attachProxyRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                            }
+
+
+                            string attachProxyProcessSelector = args.Length >= 5 ? args[4] : null;
+                            int? attachProxyLocalPortFilter = null;
+                            if (args.Length >= 6)
+                            {
+                                if (!int.TryParse(args[5], out int parsedAttachProxyLocalPort) || parsedAttachProxyLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                                }
+
+
+                                attachProxyLocalPortFilter = parsedAttachProxyLocalPort;
+
+                            }
+
+
+
+                            return _guildBossOfficialSessionBridge.TryAttachEstablishedSessionAndStartProxy(
+                                    attachProxyListenPort,
+                                    attachProxyRemotePort,
+                                    attachProxyProcessSelector,
+                                    attachProxyLocalPortFilter,
+                                    out string attachProxyStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(attachProxyStatus)
+                                : ChatCommandHandler.CommandResult.Error(attachProxyStatus);
+                        }
+
+
+
                         if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 4
@@ -3154,7 +3244,7 @@ namespace HaCreator.MapSimulator
                         }
 
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /guildboss session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]");
 
                     }
 
@@ -3250,7 +3340,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
 
                 });
             _chat.CommandHandler.RegisterCommand(
@@ -3307,10 +3397,10 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "sociallist",
                 "Inspect or drive the Social List, guild-manage, alliance-editor, and packet-owned roster-authority seams",
-                "/sociallist [status|open [friend|party|guild|alliance|blacklist]|group open [add|whisper]|group close|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...|packetraw ...]",
+                "/sociallist [status|open [friend|party|guild|alliance|blacklist]|group open [add|whisper|delete]|group close|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...|packetraw ...]",
                 args =>
                 {
-                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|group open [add|whisper]|group close|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet [session ...|...]|packetraw ...]";
+                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|group open [add|whisper|delete]|group close|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet [session ...|...]|packetraw ...]";
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info($"{_socialListRuntime.DescribeStatus()}{Environment.NewLine}{DescribeSocialListOfficialSessionBridgeStatus()}");
@@ -3341,7 +3431,7 @@ namespace HaCreator.MapSimulator
 
                         if (args.Length < 2 || !string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase))
                         {
-                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group <open [add|whisper]|close>");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group <open [add|whisper|delete]|close>");
                         }
 
                         FriendGroupPopupMode mode = FriendGroupPopupMode.AddFriend;
@@ -3356,9 +3446,13 @@ namespace HaCreator.MapSimulator
                             {
                                 mode = FriendGroupPopupMode.GroupWhisper;
                             }
+                            else if (modeToken == "delete")
+                            {
+                                mode = FriendGroupPopupMode.DeleteGroup;
+                            }
                             else
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group open [add|whisper]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist group open [add|whisper|delete]");
                             }
                         }
 
@@ -3730,7 +3824,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "transport",
                 "Inspect or drive the transit/voyage transport packet inbox and official-session bridge",
-                        "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                        "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|voyagebalrog [status|start [durationMs]|reset]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     bool transportActive = IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) && _transportField.HasRouteConfiguration;
@@ -3836,6 +3930,11 @@ namespace HaCreator.MapSimulator
 
                     }
 
+                    if (string.Equals(args[0], "voyagebalrog", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return HandleTransportVoyageBalrogCommand(args);
+                    }
+
 
 
                     if (string.Equals(args[0], "inbox", StringComparison.OrdinalIgnoreCase))
@@ -3887,7 +3986,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|voyagebalrog [status|start [durationMs]|reset]|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|queue <historyIndex>|sendraw <hex>|queueraw <hex>|sendinit [fieldId] [shipKind]|queueinit [fieldId] [shipKind]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
 
                 });
 
@@ -5650,7 +5749,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Monster Carnival HUD state",
 
-                "/mcarnival [status|tab <mob|skill|guardian>|enter <team> <personalCP> <personalTotal> <myCP> <myTotal> <enemyCP> <enemyTotal>|cp <personalCP> <personalTotal> <team0CP> <team0Total> <team1CP> <team1Total>|cpdelta <personalDelta> <personalTotalDelta> <team0Delta> <team0TotalDelta> <team1Delta> <team1TotalDelta>|request <index> [message]|requestok <mob|skill|guardian> <index> [message]|requestfail <reason>|result <code>|death <team> <name> <remainingRevives>|spells <mobIndex> <count>|raw <type> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>|unmap <opcode>|clearmap|recent|stop]]",
+                "/mcarnival [status|tab <mob|skill|guardian>|enter <team> <personalCP> <personalTotal> <myCP> <myTotal> <enemyCP> <enemyTotal>|cp <personalCP> <personalTotal> <team0CP> <team0Total> <team1CP> <team1Total>|cpdelta <personalDelta> <personalTotalDelta> <team0Delta> <team0TotalDelta> <team1Delta> <team1TotalDelta>|request <index> [message]|requestok <mob|skill|guardian> <index> [message]|requestfail <reason>|result <code>|death <team> <name> <remainingRevives>|spells <mobIndex> <count>|raw <type> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>|unmap <opcode>|clearmap|recent|stop]]",
                 args =>
                 {
                     static bool TryParseMonsterCarnivalSessionPacketType(string text, out int packetType)
@@ -6003,6 +6102,36 @@ namespace HaCreator.MapSimulator
                                     : ChatCommandHandler.CommandResult.Error(startMessage);
                             }
 
+                            if (string.Equals(args[1], "attach", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 3
+                                    || !int.TryParse(args[2], out int attachRemotePort)
+                                    || attachRemotePort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session attach <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                string attachProcessSelector = args.Length >= 4 ? args[3] : null;
+                                int? attachLocalPortFilter = null;
+                                if (args.Length >= 5)
+                                {
+                                    if (!int.TryParse(args[4], out int parsedAttachLocalPort) || parsedAttachLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session attach <remotePort> [processName|pid] [localPort]");
+                                    }
+
+                                    attachLocalPortFilter = parsedAttachLocalPort;
+                                }
+
+                                return _monsterCarnivalOfficialSessionBridge.TryAttachEstablishedSession(
+                                    attachRemotePort,
+                                    attachProcessSelector,
+                                    attachLocalPortFilter,
+                                    out string attachStatus)
+                                    ? ChatCommandHandler.CommandResult.Ok(attachStatus)
+                                    : ChatCommandHandler.CommandResult.Error(attachStatus);
+                            }
+
                             if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
                             {
                                 if (args.Length < 4
@@ -6077,7 +6206,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Info(_monsterCarnivalOfficialSessionBridge.DescribeRecentPackets());
                             }
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>|unmap <opcode>|clearmap|recent|stop]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>|unmap <opcode>|clearmap|recent|stop]");
 
 
 
@@ -6215,11 +6344,11 @@ namespace HaCreator.MapSimulator
                         {
                             if (args.Length < 4
                                 || !int.TryParse(args[2], out int autoListenPort)
-                                || autoListenPort <= 0
+                                || autoListenPort < 0
                                 || !int.TryParse(args[3], out int autoRemotePort)
                                 || autoRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
                             }
 
                             string processSelector = args.Length >= 5 ? args[4] : null;
@@ -6228,7 +6357,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
                                 }
 
                                 localPortFilter = parsedLocalPort;
@@ -6286,12 +6415,12 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_dojoOfficialSessionBridge.LastStatus);
                         }
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /dojo session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|stage|clear|timeover>|unmap <opcode>|clearmap|recent|stop]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /dojo session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|stage|clear|timeover>|unmap <opcode>|clearmap|recent|stop]");
                     }
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo [status|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|stage|clear|timeover>|unmap <opcode>|clearmap|recent|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo [status|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|stage|clear|timeover>|unmap <opcode>|clearmap|recent|stop]]");
                 });
 
 
@@ -7144,8 +7273,12 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error($"Invalid Cookie House score: {args[0]}");
                     }
 
+                    if (!CookieHousePointInboxManager.TryValidateClientPoint(point, out int validatedPoint, out string pointError))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(pointError);
+                    }
 
-                    SetCookieHouseContextPoint(point);
+                    SetCookieHouseContextPoint(validatedPoint);
                     _specialFieldRuntime.CookieHouse.Update();
                     return ChatCommandHandler.CommandResult.Ok(_specialFieldRuntime.CookieHouse.DescribeStatus());
                 });
@@ -7157,7 +7290,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Guild BBS runtime",
 
-                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|submit|reply>|packet <authority|cash> <payloadhex=..|payloadb64=..>|packetraw <authority|cash> <hex>|packet clear <authority|cash|all>]",
+                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|packet <authority|cash> <payloadhex=..|payloadb64=..>|packetraw <authority|cash> <hex>|packet clear <authority|cash|all>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -7267,7 +7400,7 @@ namespace HaCreator.MapSimulator
                         case "preview":
                             if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs preview <register|comment|list|submit|reply>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>");
                             }
 
                             if (string.Equals(args[1], "register", StringComparison.OrdinalIgnoreCase))
@@ -7285,6 +7418,46 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientLoadListRequestPreview());
                             }
 
+                            if (string.Equals(args[1], "delete", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientDeleteRequestPreview());
+                            }
+
+                            if (string.Equals(args[1], "deleteseq", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientDeleteSequencePreview());
+                            }
+
+                            if (string.Equals(args[1], "replydelete", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length >= 3)
+                                {
+                                    if (!int.TryParse(args[2], out int visibleReplyIndex))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs preview replydelete [visibleIndex]");
+                                    }
+
+                                    return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientCommentDeleteRequestPreview(visibleReplyIndex));
+                                }
+
+                                return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientCommentDeleteRequestPreview());
+                            }
+
+                            if (string.Equals(args[1], "replydeleteseq", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length >= 3)
+                                {
+                                    if (!int.TryParse(args[2], out int visibleReplyIndex))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs preview replydeleteseq [visibleIndex]");
+                                    }
+
+                                    return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientCommentDeleteSequencePreview(visibleReplyIndex));
+                                }
+
+                                return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientCommentDeleteSequencePreview());
+                            }
+
                             if (string.Equals(args[1], "submit", StringComparison.OrdinalIgnoreCase))
                             {
                                 return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientSubmitSequencePreview());
@@ -7295,7 +7468,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Info(_guildBbsRuntime.BuildClientReplySequencePreview());
                             }
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs preview <register|comment|list|submit|reply>");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>");
                         case "packet":
                             if (args.Length < 2)
                             {
@@ -7373,7 +7546,7 @@ namespace HaCreator.MapSimulator
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|submit|reply>|packet <authority|cash> <payloadhex=..|payloadb64=..>|packetraw <authority|cash> <hex>|packet clear <authority|cash|all>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|packet <authority|cash> <payloadhex=..|payloadb64=..>|packetraw <authority|cash> <hex>|packet clear <authority|cash|all>]");
                     }
 
                 });
@@ -8582,7 +8755,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "family",
                 "Drive the family chart UI and packet-shaped family roster synchronization",
-                "/family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>]",
+                "/family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -8619,7 +8792,7 @@ namespace HaCreator.MapSimulator
                         case "packet":
                             if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
                             }
 
 
@@ -8649,6 +8822,56 @@ namespace HaCreator.MapSimulator
 
                                     return ChatCommandHandler.CommandResult.Ok(
                                         _familyChartRuntime.SetAuthorityProfileFromPacket(args[2]));
+                                case "info":
+                                    if (args.Length < 3)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /family packet info <payloadhex=..|payloadb64=..>");
+                                    }
+
+                                    if (!FamilyPacketCodec.TryParsePayloadToken(args[2], out byte[] familyInfoPayload, out string familyInfoError))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(familyInfoError);
+                                    }
+
+                                    return ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyInfoPacketPayload(familyInfoPayload));
+                                case "result":
+                                    if (args.Length < 3)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /family packet result <payloadhex=..|payloadb64=..>");
+                                    }
+
+                                    if (!FamilyPacketCodec.TryParsePayloadToken(args[2], out byte[] familyResultPayload, out string familyResultError))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(familyResultError);
+                                    }
+
+                                    return _familyChartRuntime.TryApplyResultPacketPayload(familyResultPayload, out string familyResultMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(familyResultMessage)
+                                        : ChatCommandHandler.CommandResult.Error(familyResultMessage);
+                                case "privilegelist":
+                                    if (args.Length < 3)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /family packet privilegelist <payloadhex=..|payloadb64=..>");
+                                    }
+
+                                    if (!FamilyPacketCodec.TryParsePayloadToken(args[2], out byte[] familyPrivilegeListPayload, out string familyPrivilegeListError))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(familyPrivilegeListError);
+                                    }
+
+                                    return ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyPrivilegeListPacketPayload(familyPrivilegeListPayload));
+                                case "setprivilege":
+                                    if (args.Length < 3)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /family packet setprivilege <payloadhex=..|payloadb64=..>");
+                                    }
+
+                                    if (!FamilyPacketCodec.TryParsePayloadToken(args[2], out byte[] familySetPrivilegePayload, out string familySetPrivilegeError))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(familySetPrivilegeError);
+                                    }
+
+                                    return ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplySetPrivilegePacketPayload(familySetPrivilegePayload));
                                 case "remove":
                                     if (args.Length < 3 || !int.TryParse(args[2], out int removedMemberId))
                                     {
@@ -8734,10 +8957,64 @@ namespace HaCreator.MapSimulator
                                             currentReputation,
                                             todayReputation));
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
                             }
+                        case "packetraw":
+                            if (args.Length < 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /family packetraw <info|result|privilegelist|setprivilege> <hex>");
+                            }
+
+                            if (!FamilyPacketCodec.TryParseHexBytes(string.Join(string.Empty, args.Skip(2)), out byte[] familyRawPayload, out string familyRawError))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(familyRawError);
+                            }
+
+                            return args[1].ToLowerInvariant() switch
+                            {
+                                "info" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyInfoPacketPayload(familyRawPayload)),
+                                "result" => _familyChartRuntime.TryApplyResultPacketPayload(familyRawPayload, out string familyRawResultMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(familyRawResultMessage)
+                                    : ChatCommandHandler.CommandResult.Error(familyRawResultMessage),
+                                "privilegelist" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyPrivilegeListPacketPayload(familyRawPayload)),
+                                "setprivilege" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplySetPrivilegePacketPayload(familyRawPayload)),
+                                _ => ChatCommandHandler.CommandResult.Error("Usage: /family packetraw <info|result|privilegelist|setprivilege> <hex>")
+                            };
+                        case "packetrecv":
+                            if (args.Length < 3 || !int.TryParse(args[1], out int familyRecvOpcode))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /family packetrecv <opcode> <hex>");
+                            }
+
+                            if (!FamilyPacketCodec.TryParseHexBytes(string.Join(string.Empty, args.Skip(2)), out byte[] familyRecvPayload, out string familyRecvError))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(familyRecvError ?? "Usage: /family packetrecv <opcode> <hex>");
+                            }
+
+                            return _familyChartRuntime.TryApplyClientPacketPayload(familyRecvOpcode, familyRecvPayload, out string familyRecvMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(familyRecvMessage)
+                                : ChatCommandHandler.CommandResult.Error(familyRecvMessage);
+                        case "packetclientraw":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /family packetclientraw <opcode-framed-hex>");
+                            }
+
+                            if (!FamilyPacketCodec.TryParseHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] familyClientRawPacket, out string familyClientRawError))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(familyClientRawError);
+                            }
+
+                            if (!FamilyPacketCodec.TryDecodeOpcodeFramedPacket(familyClientRawPacket, out int familyClientOpcode, out byte[] familyClientPayload, out string familyClientDecodeError))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(familyClientDecodeError);
+                            }
+
+                            return _familyChartRuntime.TryApplyClientPacketPayload(familyClientOpcode, familyClientPayload, out string familyClientMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(familyClientMessage)
+                                : ChatCommandHandler.CommandResult.Error(familyClientMessage);
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]");
                     }
                 });
 
@@ -8748,12 +9025,13 @@ namespace HaCreator.MapSimulator
 
                 "Drive Messenger state, invite, claim, and remote social lifecycle flows",
 
-                "/messenger [open|status|invite [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper> ...]",
+                "/messenger [open|status|invite [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|room <message>>|queue <invite <name>|room <message>>|sendraw <hex>|queueraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
-                        return ChatCommandHandler.CommandResult.Info(GetPacketOwnedSocialUtilityDialogDispatcher().DescribeMessengerStatus());
+                        return ChatCommandHandler.CommandResult.Info(
+                            $"{GetPacketOwnedSocialUtilityDialogDispatcher().DescribeMessengerStatus()}{Environment.NewLine}{DescribeMessengerOfficialSessionBridgeStatus()}");
                     }
 
 
@@ -8764,6 +9042,12 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok("Messenger window opened.");
                         case "invite":
                             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.Messenger);
+                            if (args.Length >= 2
+                                && TryMirrorMessengerInviteClientRequest(string.Join(" ", args.Skip(1)), out string mirroredInviteMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(mirroredInviteMessage);
+                            }
+
                             return ChatCommandHandler.CommandResult.Ok(
                                 args.Length >= 2
                                     ? _messengerRuntime.InviteContact(string.Join(" ", args.Skip(1)))
@@ -8854,10 +9138,12 @@ namespace HaCreator.MapSimulator
                                 (string participantToken, int? slotOverride, int? channelOverride, bool? isNewOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketEnterPayload(participantToken, () => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, slotOverride, channelOverride, isNewOverride, out payload, out message),
                                 (out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketMigratedPayload(() => _playerManager?.Player?.Build != null ? LoginAvatarLookCodec.CreateLook(_playerManager.Player.Build) : null, out payload, out message),
                                 (int? slotOverride, out byte[] payload, out string message) => _messengerRuntime.TryBuildPacketSelfEnterResultPayload(slotOverride, out payload, out message));
+                        case "session":
+                            return HandleMessengerSessionCommand(args.Skip(1).ToArray());
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("/messenger [open|status|invite [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper> ...]");
+                            return ChatCommandHandler.CommandResult.Error("/messenger [open|status|invite [name]|claim|leave|state <max|min|min2|next|prev>|presence <name> <online|offline>|packet <seed|clear|remove <name>|upsert <name>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|dispatch <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>|packetraw <dispatch|invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex>|remote <invite|accept|reject|leave|room|whisper|avatar|enter|migrated|selfenterresult> ...|session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|room <message>>|queue <invite <name>|room <message>>|sendraw <hex>|queueraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]]");
                     }
 
                 });
@@ -10076,6 +10362,10 @@ namespace HaCreator.MapSimulator
                     {
                         case "clear":
                             _contextOwnedStagePeriodRuntime.Clear();
+                            ContextOwnedStageSystemCatalog.ResetCacheData(
+                                _contextOwnedStageKeywordCache,
+                                _contextOwnedStageQuestCache,
+                                _contextOwnedStagePeriodCache);
                             _contextOwnedStageActiveKeywords.Clear();
                             _contextOwnedStageActiveQuestIds.Clear();
                             _contextOwnedStageAffectedMapIds.Clear();

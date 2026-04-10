@@ -953,6 +953,19 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public void ApplyPacketOwnedQuestRecordSnapshot(IReadOnlyDictionary<int, int> questRecordValues)
+        {
+            if (questRecordValues == null)
+            {
+                return;
+            }
+
+            foreach ((int questId, int value) in questRecordValues)
+            {
+                SetPacketOwnedQuestRecordValue(questId, value.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+
         public bool TryGetQuestRecordValue(int questId, out string value)
         {
             if (questId > 0 &&
@@ -1529,6 +1542,7 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<int, IReadOnlyList<int>> visibleItemMapIds = new();
             int hiddenItemCount = 0;
             int currentMapId = Math.Max(0, _currentMapIdProvider?.Invoke() ?? 0);
+            int preferredItemId = GetPreferredQuestGuideItemRequirement(definition.EndItemRequirements)?.ItemId ?? 0;
             for (int i = 0; i < definition.EndItemRequirements.Count; i++)
             {
                 QuestItemRequirement requirement = definition.EndItemRequirements[i];
@@ -1559,6 +1573,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestId = questId,
                 VisibleItemIds = visibleItemIds,
                 VisibleItemMapIds = visibleItemMapIds,
+                PreferredItemId = visibleItemIds.Contains(preferredItemId) ? preferredItemId : 0,
                 HiddenItemCount = hiddenItemCount,
                 FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
             };
@@ -1748,7 +1763,8 @@ namespace HaCreator.MapSimulator.Interaction
                 StateChanged = true,
                 QuestId = questId,
                 Messages = messages,
-                PublishedScriptNames = BuildPublishedScriptNames(
+                PublishedScriptNames = BuildQuestWindowPublishedScriptNames(
+                    QuestWindowActionKind.Accept,
                     definition.StartScriptNames,
                     definition.StartActions?.NpcActionName)
             };
@@ -1789,7 +1805,8 @@ namespace HaCreator.MapSimulator.Interaction
                 StateChanged = true,
                 QuestId = questId,
                 Messages = messages,
-                PublishedScriptNames = BuildPublishedScriptNames(
+                PublishedScriptNames = BuildQuestWindowPublishedScriptNames(
+                    QuestWindowActionKind.GiveUp,
                     definition.EndScriptNames,
                     definition.EndActions?.NpcActionName)
             };
@@ -1914,7 +1931,10 @@ namespace HaCreator.MapSimulator.Interaction
                 StateChanged = true,
                 QuestId = questId,
                 Messages = messages,
-                PublishedScriptNames = Array.Empty<string>()
+                PublishedScriptNames = BuildQuestWindowPublishedScriptNames(
+                    QuestWindowActionKind.Complete,
+                    definition.EndScriptNames,
+                    definition.EndActions?.NpcActionName)
             };
         }
 
@@ -6685,6 +6705,19 @@ namespace HaCreator.MapSimulator.Interaction
             return publishedNames.Count == 0 ? Array.Empty<string>() : publishedNames.ToArray();
         }
 
+        internal static IReadOnlyList<string> BuildQuestWindowPublishedScriptNames(
+            QuestWindowActionKind actionKind,
+            IEnumerable<string> scriptNames,
+            params string[] additionalRawScriptNames)
+        {
+            return actionKind switch
+            {
+                QuestWindowActionKind.Accept or QuestWindowActionKind.Complete =>
+                    BuildPublishedScriptNames(scriptNames, additionalRawScriptNames),
+                _ => Array.Empty<string>()
+            };
+        }
+
         internal static IReadOnlyList<string> ParseScriptNames(string value)
         {
             return ParseDelimitedStrings(value);
@@ -7920,7 +7953,7 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(property);
             if (branchPages.Count == 0)
             {
-                branchPages = CreateUnavailableSelectionPages(label);
+                branchPages = CreateUnavailableSelectionPages(label, ResolveConversationFlipSpeaker(property));
             }
 
             choices.Add(new NpcInteractionChoice
@@ -7967,7 +8000,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(child);
                 if (branchPages.Count == 0)
                 {
-                    branchPages = CreateUnavailableSelectionPages(label);
+                    branchPages = CreateUnavailableSelectionPages(label, ResolveConversationFlipSpeaker(child));
                 }
 
                 choices.Add(new NpcInteractionChoice
@@ -8010,7 +8043,9 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (selectionPages.Count == 0)
                 {
-                    selectionPages = CreateUnavailableSelectionPages(selection.Label);
+                    selectionPages = CreateUnavailableSelectionPages(
+                        selection.Label,
+                        ShouldFlipStopSelectionPages(stopProperties));
                 }
 
                 choices.Add(new NpcInteractionChoice
@@ -8316,14 +8351,17 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private static IReadOnlyList<NpcInteractionPage> CreateUnavailableSelectionPages(string selectionLabel)
+        private static IReadOnlyList<NpcInteractionPage> CreateUnavailableSelectionPages(
+            string selectionLabel,
+            bool flipSpeaker = false)
         {
             return new[]
             {
                 new NpcInteractionPage
                 {
                     RawText = $"\"{selectionLabel}\" requires simulator script execution that is not implemented yet.",
-                    Text = $"\"{selectionLabel}\" requires simulator script execution that is not implemented yet."
+                    Text = $"\"{selectionLabel}\" requires simulator script execution that is not implemented yet.",
+                    FlipSpeaker = flipSpeaker
                 }
             };
         }
@@ -9767,12 +9805,89 @@ namespace HaCreator.MapSimulator.Interaction
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
             if (string.IsNullOrWhiteSpace(summaryText))
             {
-                return string.Empty;
+                return string.Join(
+                    "\n",
+                    BuildClientPacketQuestResultSupplementalNoticeLines(
+                        actions,
+                        build,
+                        questId,
+                        suppressNegativeMesoLine: false));
             }
 
-            return actions.MesoReward < 0
+            string wrappedSummary = actions.MesoReward < 0
                 ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
                 : summaryText;
+            IReadOnlyList<string> supplementalLines = BuildClientPacketQuestResultSupplementalNoticeLines(
+                actions,
+                build,
+                questId,
+                suppressNegativeMesoLine: actions.MesoReward < 0);
+            if (supplementalLines.Count == 0)
+            {
+                return wrappedSummary;
+            }
+
+            return $"{wrappedSummary}\n{string.Join("\n", supplementalLines)}";
+        }
+
+        private List<string> BuildClientPacketQuestResultSupplementalNoticeLines(
+            QuestActionBundle actions,
+            CharacterBuild build,
+            int questId,
+            bool suppressNegativeMesoLine)
+        {
+            List<string> supplementalLines = BuildVisibleQuestActionLines(
+                actions,
+                build,
+                questId,
+                includeSelectionTag: false);
+            RemoveMatchingQuestActionLines(
+                supplementalLines,
+                BuildVisibleRewardItemActionLines(actions?.RewardItems, build, includeSelectionTag: false));
+
+            if (suppressNegativeMesoLine && actions?.MesoReward < 0)
+            {
+                RemoveFirstMatchingQuestActionLine(
+                    supplementalLines,
+                    $"Meso {actions.MesoReward:+#;-#;0}");
+            }
+
+            return supplementalLines;
+        }
+
+        private static void RemoveMatchingQuestActionLines(ICollection<string> sourceLines, IEnumerable<string> linesToRemove)
+        {
+            if (sourceLines == null || linesToRemove == null)
+            {
+                return;
+            }
+
+            foreach (string line in linesToRemove)
+            {
+                RemoveFirstMatchingQuestActionLine(sourceLines, line);
+            }
+        }
+
+        private static void RemoveFirstMatchingQuestActionLine(ICollection<string> sourceLines, string lineToRemove)
+        {
+            if (sourceLines == null || string.IsNullOrWhiteSpace(lineToRemove))
+            {
+                return;
+            }
+
+            if (sourceLines is not List<string> lines)
+            {
+                return;
+            }
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (string.Equals(lines[i], lineToRemove, StringComparison.Ordinal))
+                {
+                    lines.RemoveAt(i);
+                    return;
+                }
+            }
         }
 
         private static string ResolvePacketQuestResultPrimaryText(

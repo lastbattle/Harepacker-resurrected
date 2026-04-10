@@ -36,7 +36,7 @@ internal static class SummonClientPostEffectRules
     public static bool ShouldRegisterReactiveAttackChainEffect(int skillId, SkillData skillData)
     {
         return IsReactiveAttackChainSkill(skillId)
-               && HasClientOwnedReactiveAttackChainVisual(skillData);
+               && HasClientOwnedReactiveAttackChainBallVisual(skillData?.Projectile);
     }
 
     public static bool IsReactiveAttackChainSkill(int skillId)
@@ -133,32 +133,67 @@ internal static class SummonClientPostEffectRules
         return new Rectangle(x, y, Math.Max(1, width), Math.Max(1, height + 100));
     }
 
-    private static bool HasClientOwnedReactiveAttackChainVisual(SkillData skillData)
+    private static bool HasClientOwnedReactiveAttackChainBallVisual(ProjectileData projectile)
     {
-        if (skillData == null)
+        if (projectile == null)
         {
             return false;
         }
 
-        if (skillData.Projectile?.Animation?.Frames.Count > 0)
+        if (projectile.Animation?.Frames.Count > 0)
         {
             return true;
         }
 
-        if (!string.IsNullOrWhiteSpace(skillData.Projectile?.BallUolPath)
-            || !string.IsNullOrWhiteSpace(skillData.Projectile?.FlipBallUolPath)
-            || !string.IsNullOrWhiteSpace(skillData.Projectile?.AnimationPath))
+        if (!string.IsNullOrWhiteSpace(projectile.BallUolPath)
+            || !string.IsNullOrWhiteSpace(projectile.FlipBallUolPath)
+            || !string.IsNullOrWhiteSpace(projectile.AnimationPath))
         {
             return true;
         }
 
-        if (skillData.SummonProjectileAnimations?.Count > 0)
+        if (projectile.VariantAnimations?.Any(static animation => animation?.Frames.Count > 0) == true)
         {
             return true;
         }
 
-        return skillData.SummonProjectileAnimationsByBranch?.Values.Any(
-            static animations => animations?.Count > 0) == true;
+        if (projectile.VariantAnimationPaths?.Any(static path => !string.IsNullOrWhiteSpace(path)) == true)
+        {
+            return true;
+        }
+
+        if (projectile.CharacterLevelVariantAnimations?.Values.Any(
+                static animations => animations?.Any(animation => animation?.Frames.Count > 0) == true) == true)
+        {
+            return true;
+        }
+
+        if (projectile.CharacterLevelVariantAnimationPaths?.Values.Any(
+                static paths => paths?.Any(path => !string.IsNullOrWhiteSpace(path)) == true) == true)
+        {
+            return true;
+        }
+
+        if (projectile.CharacterLevelBallUolPaths?.Values.Any(static path => !string.IsNullOrWhiteSpace(path)) == true
+            || projectile.CharacterLevelFlipBallUolPaths?.Values.Any(static path => !string.IsNullOrWhiteSpace(path)) == true)
+        {
+            return true;
+        }
+
+        if (projectile.LevelVariantAnimations?.Values.Any(
+                static animations => animations?.Any(animation => animation?.Frames.Count > 0) == true) == true)
+        {
+            return true;
+        }
+
+        if (projectile.LevelVariantAnimationPaths?.Values.Any(
+                static paths => paths?.Any(path => !string.IsNullOrWhiteSpace(path)) == true) == true)
+        {
+            return true;
+        }
+
+        return projectile.LevelBallUolPaths?.Values.Any(static path => !string.IsNullOrWhiteSpace(path)) == true
+               || projectile.LevelFlipBallUolPaths?.Values.Any(static path => !string.IsNullOrWhiteSpace(path)) == true;
     }
 
     private static SkillAnimation ResolveSummonNamedEffectAnimation(SkillData skillData, bool secondary)

@@ -864,7 +864,8 @@ namespace HaCreator.MapSimulator.UI
             ClientStateTransition transition = ResolveToggleMiniMapStateTransitionForTesting(
                 _currentOption,
                 _previousExpandedOption,
-                _btnSmall != null && _expandedFrame != null);
+                _btnSmall != null && _expandedFrame != null,
+                _bIsCollapsedState);
 
             ApplyClientStateTransition(transition);
         }
@@ -951,9 +952,10 @@ namespace HaCreator.MapSimulator.UI
         internal static ClientStateTransition ResolveToggleMiniMapStateTransitionForTesting(
             int currentOption,
             int previousExpandedOption,
-            bool supportsExpandedOption)
+            bool supportsExpandedOption,
+            bool isCollapsed)
         {
-            int buttonId = currentOption == ClientOptionCollapsed
+            int buttonId = isCollapsed || currentOption == ClientOptionCollapsed
                 ? ClientButtonIdMinimapRestore
                 : ClientButtonIdMinimapState;
 

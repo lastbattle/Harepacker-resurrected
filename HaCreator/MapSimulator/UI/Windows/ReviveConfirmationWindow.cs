@@ -18,6 +18,9 @@ namespace HaCreator.MapSimulator.UI
         private const int ShellBottomHeight = 44;
         private const int CloseButtonRightMargin = 8;
         private const int CloseButtonTopMargin = 8;
+        private const int YesButtonX = 170;
+        private const int NoButtonX = 246;
+        private const int ButtonY = 145;
 
         private readonly Texture2D _shellTop;
         private readonly Texture2D _shellCenter;
@@ -205,8 +208,8 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_premiumButton != null)
             {
-                _premiumButton.X = 170;
-                _premiumButton.Y = 145;
+                _premiumButton.X = YesButtonX;
+                _premiumButton.Y = ButtonY;
                 _premiumButton.SetVisible(_snapshot.IsOpen && _snapshot.HasPremiumChoice);
                 _premiumButton.ButtonVisible = _snapshot.IsOpen && _snapshot.HasPremiumChoice;
                 _premiumButton.SetEnabled(_snapshot.IsOpen && _snapshot.HasPremiumChoice);
@@ -214,8 +217,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (_declineButton != null)
             {
-                _declineButton.X = 246;
-                _declineButton.Y = 145;
+                _declineButton.X = NoButtonX;
+                _declineButton.Y = ButtonY;
                 _declineButton.SetVisible(_snapshot.IsOpen && _snapshot.HasPremiumChoice);
                 _declineButton.ButtonVisible = _snapshot.IsOpen && _snapshot.HasPremiumChoice;
                 _declineButton.SetEnabled(_snapshot.IsOpen && _snapshot.HasPremiumChoice);
@@ -223,9 +226,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (_defaultButton != null)
             {
-                // CUIRevive::OnCreate applies an additional +42 X offset on the single-button branch.
-                _defaultButton.X = 212;
-                _defaultButton.Y = 145;
+                _defaultButton.X = YesButtonX + _snapshot.ClientYesButtonOffsetX;
+                _defaultButton.Y = ButtonY;
                 _defaultButton.SetVisible(_snapshot.IsOpen && !_snapshot.HasPremiumChoice);
                 _defaultButton.ButtonVisible = _snapshot.IsOpen && !_snapshot.HasPremiumChoice;
                 _defaultButton.SetEnabled(_snapshot.IsOpen && !_snapshot.HasPremiumChoice);

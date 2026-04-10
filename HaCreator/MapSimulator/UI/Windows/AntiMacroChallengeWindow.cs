@@ -121,6 +121,7 @@ namespace HaCreator.MapSimulator.UI
         int ISoftKeyboardHost.SoftKeyboardTextLength => CurrentInput?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => InputMaxLength;
         bool ISoftKeyboardHost.CanSubmitSoftKeyboard => CanSubmitAnswer();
+        string ISoftKeyboardHost.GetSoftKeyboardText() => CurrentInput ?? string.Empty;
 
         public event Action<string> SubmitRequested;
 

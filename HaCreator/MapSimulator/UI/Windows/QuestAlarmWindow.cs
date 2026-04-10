@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<QuestAlarmEntrySnapshot> _filteredEntriesBuffer = new();
         private readonly List<QuestAlarmEntrySnapshot> _visibleEntriesBuffer = new();
         private string _registrationLimitMessage = QuestAlarmTextLayout.ResolveRegistrationLimitMessage(DefaultQuestAlarmTooltipDescription);
+        private string _questButtonTooltipText = DefaultQuestAlarmTooltipDescription;
 
         private SpriteFont _font;
         private MouseState _previousMouseState;
@@ -165,10 +166,10 @@ namespace HaCreator.MapSimulator.UI
 
         internal void SetTooltipDescription(string tooltipDescription)
         {
-            _registrationLimitMessage = QuestAlarmTextLayout.ResolveRegistrationLimitMessage(
-                string.IsNullOrWhiteSpace(tooltipDescription)
-                    ? DefaultQuestAlarmTooltipDescription
-                    : tooltipDescription);
+            _questButtonTooltipText = string.IsNullOrWhiteSpace(tooltipDescription)
+                ? DefaultQuestAlarmTooltipDescription
+                : tooltipDescription.Trim();
+            _registrationLimitMessage = QuestAlarmTextLayout.ResolveRegistrationLimitMessage(_questButtonTooltipText);
         }
 
         internal void SetQuestChromeTextures(
@@ -1220,19 +1221,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawHoveredTitleTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
-            if (_font == null || _isMinimized)
+            if (_font == null)
             {
                 return;
             }
 
             MouseState mouseState = Mouse.GetState();
-            int questId = GetTitleQuestIdAtPoint(mouseState.X, mouseState.Y);
-            if (questId <= 0 || !TryGetQuestAlarmEntry(_currentSnapshot ?? RefreshFilteredSnapshot(), questId, out QuestAlarmEntrySnapshot entry))
-            {
-                return;
-            }
-
-            string tooltipText = ResolveTitleTooltipText(entry);
+            string tooltipText = ResolveHoveredTooltipText(mouseState.X, mouseState.Y);
             if (string.IsNullOrWhiteSpace(tooltipText))
             {
                 return;
@@ -1283,6 +1278,69 @@ namespace HaCreator.MapSimulator.UI
                     TitleTooltipScale,
                     _font);
             }
+        }
+
+        private string ResolveHoveredTooltipText(int mouseX, int mouseY)
+        {
+            UIObject hoveredButton = GetHoveredTooltipButton(mouseX, mouseY);
+            if (hoveredButton == _autoButton)
+            {
+                return QuestAlarmOwnerStringPoolText.GetAutoRegisterTooltip(_autoTrackEnabled);
+            }
+
+            if (hoveredButton == _questButton)
+            {
+                return _questButtonTooltipText;
+            }
+
+            if (!_isMinimized)
+            {
+                int questId = GetTitleQuestIdAtPoint(mouseX, mouseY);
+                if (questId > 0 && TryGetQuestAlarmEntry(_currentSnapshot ?? RefreshFilteredSnapshot(), questId, out QuestAlarmEntrySnapshot entry))
+                {
+                    return ResolveTitleTooltipText(entry);
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private UIObject GetHoveredTooltipButton(int mouseX, int mouseY)
+        {
+            if (ContainsButtonPoint(_autoButton, mouseX, mouseY))
+            {
+                return _autoButton;
+            }
+
+            if (ContainsButtonPoint(_questButton, mouseX, mouseY))
+            {
+                return _questButton;
+            }
+
+            return null;
+        }
+
+        private bool ContainsButtonPoint(UIObject button, int mouseX, int mouseY)
+        {
+            Rectangle bounds = GetButtonBounds(button);
+            return bounds != Rectangle.Empty && bounds.Contains(mouseX, mouseY);
+        }
+
+        private Rectangle GetButtonBounds(UIObject button)
+        {
+            if (button?.ButtonVisible != true)
+            {
+                return Rectangle.Empty;
+            }
+
+            Point drawPosition = button.GetDrawPositionByState();
+            int width = Math.Max(1, button.CanvasSnapshotWidth);
+            int height = Math.Max(1, button.CanvasSnapshotHeight);
+            return new Rectangle(
+                Position.X + drawPosition.X,
+                Position.Y + drawPosition.Y,
+                width,
+                height);
         }
 
         internal static string ResolveTitleTooltipText(QuestAlarmEntrySnapshot entry)

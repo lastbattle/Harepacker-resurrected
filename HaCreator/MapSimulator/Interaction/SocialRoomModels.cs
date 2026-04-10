@@ -409,7 +409,9 @@ namespace HaCreator.MapSimulator.Interaction
             int Quantity,
             InventoryType InventoryType,
             bool HasCashSerialNumber,
+            long ItemSerialNumber,
             long CashSerialNumber,
+            int NativeItemTypeIndex,
             string Title,
             string MetadataSummary,
             long? NonCashSerialNumber,
@@ -2060,18 +2062,18 @@ namespace HaCreator.MapSimulator.Interaction
             if (!TryDecodePacketOwnedItemBody(
                 payload.Slice(1),
                 slotType,
-                out long serialNumber,
-            out int itemId,
-            out int quantity,
-            out bool hasCashSerialNumber,
-            out long cashSerialNumber,
-            out string title,
-            out string metadataSummary,
-            out long? nonCashSerialNumber,
-            out long? baseExpirationTime,
-            out long? expirationTime,
-            out int? tailValue,
-            out string tailMetadataSummary))
+                out long itemSerialNumber,
+                out int itemId,
+                out int quantity,
+                out bool hasCashSerialNumber,
+                out long cashSerialNumber,
+                out string title,
+                out string metadataSummary,
+                out long? nonCashSerialNumber,
+                out long? baseExpirationTime,
+                out long? expirationTime,
+                out int? tailValue,
+                out string tailMetadataSummary))
             {
                 error = "Trading-room item payload did not contain a recognizable MapleStory item row.";
                 return false;
@@ -2091,7 +2093,9 @@ namespace HaCreator.MapSimulator.Interaction
                 quantity,
                 inventoryType,
                 hasCashSerialNumber,
+                itemSerialNumber,
                 cashSerialNumber,
+                ResolveTradePacketNativeItemTypeIndex(itemId),
                 title,
                 metadataSummary,
                 nonCashSerialNumber,
@@ -2162,9 +2166,9 @@ namespace HaCreator.MapSimulator.Interaction
             baseExpirationTime = reader.ReadInt64();
             return slotType switch
             {
-                1 => TryDecodePacketOwnedEquipBody(reader, hasCashSerialNumber, out title, out metadataSummary, out nonCashSerialNumber, out expirationTime, out tailValue, out tailMetadataSummary),
-                2 => TryDecodePacketOwnedBundleBody(reader, itemId, out quantity, out title, out metadataSummary, out tailMetadataSummary),
-                3 => TryDecodePacketOwnedPetBody(reader, out title, out metadataSummary, out expirationTime, out tailMetadataSummary),
+                1 => TryDecodePacketOwnedEquipBody(reader, hasCashSerialNumber, out serialNumber, out title, out metadataSummary, out nonCashSerialNumber, out expirationTime, out tailValue, out tailMetadataSummary),
+                2 => TryDecodePacketOwnedBundleBody(reader, itemId, out serialNumber, out quantity, out title, out metadataSummary, out tailMetadataSummary),
+                3 => TryDecodePacketOwnedPetBody(reader, out serialNumber, out title, out metadataSummary, out expirationTime, out tailMetadataSummary),
                 _ => false
             };
         }
@@ -2175,13 +2179,21 @@ namespace HaCreator.MapSimulator.Interaction
             string cashText = item.HasCashSerialNumber && item.CashSerialNumber > 0
                 ? $" | liCashItemSN {item.CashSerialNumber}"
                 : string.Empty;
+            string serialText = item.ItemSerialNumber > 0 && item.CashSerialNumber <= 0
+                ? $" | liSN {item.ItemSerialNumber}"
+                : string.Empty;
+            string nativeTypeText = item.NativeItemTypeIndex > 0
+                ? $" | native TI {item.NativeItemTypeIndex}"
+                : string.Empty;
             string titleText = string.IsNullOrWhiteSpace(item.Title)
                 ? string.Empty
                 : $" | sTitle {item.Title}";
             string metadataText = string.IsNullOrWhiteSpace(item.MetadataSummary)
                 ? string.Empty
                 : $" | {item.MetadataSummary}";
-            string nonCashText = item.NonCashSerialNumber.HasValue && item.NonCashSerialNumber.Value > 0
+            string nonCashText = item.NonCashSerialNumber.HasValue
+                && item.NonCashSerialNumber.Value > 0
+                && item.NonCashSerialNumber.Value != item.ItemSerialNumber
                 ? $" | liSN {item.NonCashSerialNumber.Value}"
                 : string.Empty;
             string tailText = item.TailValue.HasValue && item.TailValue.Value != 0
@@ -2190,12 +2202,13 @@ namespace HaCreator.MapSimulator.Interaction
             string tailMetadataText = string.IsNullOrWhiteSpace(item.TailMetadataSummary)
                 ? string.Empty
                 : $" | {item.TailMetadataSummary}";
-            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{baseExpirationText}{cashText}{titleText}{metadataText}{nonCashText}{tailText}{tailMetadataText}";
+            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{baseExpirationText}{cashText}{serialText}{nativeTypeText}{titleText}{metadataText}{nonCashText}{tailText}{tailMetadataText}";
         }
 
         private static bool TryDecodePacketOwnedEquipBody(
             BinaryReader reader,
             bool hasCashSerialNumber,
+            out long serialNumber,
             out string title,
             out string metadataSummary,
             out long? nonCashSerialNumber,
@@ -2203,6 +2216,7 @@ namespace HaCreator.MapSimulator.Interaction
             out int? tailValue,
             out string tailMetadataSummary)
         {
+            serialNumber = 0;
             title = string.Empty;
             metadataSummary = string.Empty;
             nonCashSerialNumber = null;
@@ -2266,6 +2280,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 nonCashSerialNumber = reader.ReadInt64();
+                serialNumber = nonCashSerialNumber.GetValueOrDefault();
             }
 
             expirationTime = reader.ReadInt64();
@@ -2309,6 +2324,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool TryDecodePacketOwnedBundleBody(BinaryReader reader, int itemId, out int quantity, out string title, out string metadataSummary, out string tailMetadataSummary)
         {
+            return TryDecodePacketOwnedBundleBody(reader, itemId, out _, out quantity, out title, out metadataSummary, out tailMetadataSummary);
+        }
+
+        private static bool TryDecodePacketOwnedBundleBody(BinaryReader reader, int itemId, out long serialNumber, out int quantity, out string title, out string metadataSummary, out string tailMetadataSummary)
+        {
+            serialNumber = 0;
             quantity = 1;
             title = string.Empty;
             metadataSummary = string.Empty;
@@ -2340,6 +2361,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 rechargeableSerialNumber = reader.ReadInt64();
+                serialNumber = rechargeableSerialNumber;
             }
 
             metadataSummary = BuildBundleTradeMetadataSummary(attribute, rechargeableSerialNumber);
@@ -2347,8 +2369,9 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private static bool TryDecodePacketOwnedPetBody(BinaryReader reader, out string title, out string metadataSummary, out long? expirationTime, out string tailMetadataSummary)
+        private static bool TryDecodePacketOwnedPetBody(BinaryReader reader, out long serialNumber, out string title, out string metadataSummary, out long? expirationTime, out string tailMetadataSummary)
         {
+            serialNumber = 0;
             title = string.Empty;
             metadataSummary = string.Empty;
             expirationTime = null;
@@ -2595,6 +2618,12 @@ namespace HaCreator.MapSimulator.Interaction
                 : $" | {label} {dateText}";
         }
 
+        private static int ResolveTradePacketNativeItemTypeIndex(int itemId)
+        {
+            int typeIndex = itemId / 1_000_000;
+            return typeIndex is >= 1 and <= 5 ? typeIndex : 0;
+        }
+
         private static string FormatTradePacketFileTime(long? fileTime)
         {
             if (!fileTime.HasValue)
@@ -2642,6 +2671,53 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             value = Encoding.ASCII.GetString(reader.ReadBytes(length)).TrimEnd('\0', ' ');
+            return true;
+        }
+
+        internal readonly record struct TradingRoomDecodedItemSnapshot(
+            byte SlotType,
+            int ItemId,
+            int Quantity,
+            InventoryType InventoryType,
+            bool HasCashSerialNumber,
+            long ItemSerialNumber,
+            long CashSerialNumber,
+            long? BaseExpirationTime,
+            int NativeItemTypeIndex,
+            string Title,
+            string MetadataSummary,
+            string TailMetadataSummary,
+            string DetailSummary);
+
+        internal static bool TryDecodeTradingRoomItemForTest(byte[] payload, out TradingRoomDecodedItemSnapshot snapshot, out string error)
+        {
+            snapshot = default;
+            error = null;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Trading-room item payload is empty.";
+                return false;
+            }
+
+            if (!TryDecodePacketOwnedTradeItem(payload, out PacketOwnedTradeItem item, out error))
+            {
+                return false;
+            }
+
+            snapshot = new TradingRoomDecodedItemSnapshot(
+                item.SlotType,
+                item.ItemId,
+                item.Quantity,
+                item.InventoryType,
+                item.HasCashSerialNumber,
+                item.ItemSerialNumber,
+                item.CashSerialNumber,
+                item.BaseExpirationTime,
+                item.NativeItemTypeIndex,
+                item.Title,
+                item.MetadataSummary,
+                item.TailMetadataSummary,
+                BuildTradingRoomPacketItemDetail("Owner", 1, item));
             return true;
         }
 

@@ -275,6 +275,12 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        internal bool TryPreviewMapTransferResultPayload(byte[] payload, out MapTransferRuntimeResponse response)
+        {
+            response = DecodeResponsePayload(payload);
+            return response != null;
+        }
+
         public void ApplyAuthoritativeBootstrap(
             CharacterBuild build,
             IReadOnlyList<int> regularFields,

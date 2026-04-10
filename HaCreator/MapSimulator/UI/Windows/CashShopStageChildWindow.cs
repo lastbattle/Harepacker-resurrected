@@ -156,6 +156,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<OneADayOwnerState> _oneADayStateProvider;
         private Func<int, string> _listRowSelectionAction;
         private Func<int, string> _listScrollAction;
+        private Func<int, int, string> _listScrollOffsetAction;
         private string _statusMessage = string.Empty;
         private Rectangle _contentBounds;
         private Point? _titlePositionOverride;
@@ -163,6 +164,8 @@ namespace HaCreator.MapSimulator.UI
         private int _lockerCharacterIndex;
         private int _lockerScrollOffset;
         private string _lockerActionState = "Locker selector idle.";
+        private bool _draggingLockerScrollThumb;
+        private int _lockerScrollThumbGrabOffset;
         private string _inventoryTabName = "Equip";
         private int _inventoryFirstPosition = 1;
         private int _inventoryScrollOffset;
@@ -170,8 +173,12 @@ namespace HaCreator.MapSimulator.UI
         private string _inventoryActionState = "Inventory selector idle.";
         private bool _inventoryRuntimeSeeded;
         private string _inventoryPacketFocusSignature = string.Empty;
+        private bool _draggingInventoryScrollThumb;
+        private int _inventoryScrollThumbGrabOffset;
         private int _listButtonFocusIndex = -1;
         private string _listActionState = "List selector idle.";
+        private bool _draggingListScrollThumb;
+        private int _listScrollThumbGrabOffset;
         private string _statusActionState = "Status strip idle.";
         private int _statusButtonFocusIndex;
         private int _oneADaySelectorIndex;
@@ -261,6 +268,11 @@ namespace HaCreator.MapSimulator.UI
             _listScrollAction = action;
         }
 
+        public void SetListScrollOffsetAction(Func<int, int, string> action)
+        {
+            _listScrollOffsetAction = action;
+        }
+
         public void SetStatusStateProvider(Func<StatusOwnerState> provider)
         {
             _statusStateProvider = provider;
@@ -323,6 +335,9 @@ namespace HaCreator.MapSimulator.UI
             base.Show();
             _previousKeyboardState = Keyboard.GetState();
             _previousMouseState = Mouse.GetState();
+            _draggingLockerScrollThumb = false;
+            _draggingInventoryScrollThumb = false;
+            _draggingListScrollThumb = false;
             if (_windowName == MapSimulatorWindowNames.CashShopOneADay)
             {
                 SyncOneADayOwnerState(force: true);
@@ -787,7 +802,8 @@ namespace HaCreator.MapSimulator.UI
         {
             Rectangle contentBounds = ResolveContentBounds();
             Rectangle absoluteBounds = new(Position.X + contentBounds.X, Position.Y + contentBounds.Y, contentBounds.Width, contentBounds.Height);
-            if (!absoluteBounds.Contains(mouseState.Position))
+            bool dragging = _draggingLockerScrollThumb || _draggingInventoryScrollThumb || _draggingListScrollThumb;
+            if (!dragging && !absoluteBounds.Contains(mouseState.Position))
             {
                 return false;
             }
@@ -816,6 +832,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            Rectangle scrollTrackBounds = GetLockerScrollTrackBounds(absoluteBounds);
+            Rectangle scrollThumbBounds = GetLockerScrollThumbBounds(absoluteBounds, state, _lockerScrollOffset);
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released
+                && _previousMouseState.LeftButton == ButtonState.Pressed;
+
             if (wheelDelta != 0)
             {
                 StepLockerSelector(wheelDelta > 0 ? -1 : 1);
@@ -823,9 +844,36 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (_draggingLockerScrollThumb && mouseState.LeftButton == ButtonState.Pressed)
+            {
+                ApplyLockerScrollThumbDrag(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (leftJustReleased)
+            {
+                _draggingLockerScrollThumb = false;
+            }
+
             if (!leftJustPressed)
             {
                 return false;
+            }
+
+            if (scrollThumbBounds.Contains(mouseState.Position))
+            {
+                _draggingLockerScrollThumb = true;
+                _lockerScrollThumbGrabOffset = mouseState.Y - scrollThumbBounds.Y;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (scrollTrackBounds.Contains(mouseState.Position))
+            {
+                ApplyLockerScrollTrackClick(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
             }
 
             Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 54, Math.Max(80, absoluteBounds.Width - 132), 72);
@@ -855,6 +903,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            Rectangle scrollTrackBounds = GetInventoryScrollTrackBounds(absoluteBounds);
+            Rectangle scrollThumbBounds = GetInventoryScrollThumbBounds(absoluteBounds, state, _inventoryTabName, _inventoryScrollOffset);
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released
+                && _previousMouseState.LeftButton == ButtonState.Pressed;
+
             if (wheelDelta != 0)
             {
                 StepInventoryScroll(state, wheelDelta > 0 ? -1 : 1);
@@ -862,9 +915,36 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (_draggingInventoryScrollThumb && mouseState.LeftButton == ButtonState.Pressed)
+            {
+                ApplyInventoryScrollThumbDrag(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (leftJustReleased)
+            {
+                _draggingInventoryScrollThumb = false;
+            }
+
             if (!leftJustPressed)
             {
                 return false;
+            }
+
+            if (scrollThumbBounds.Contains(mouseState.Position))
+            {
+                _draggingInventoryScrollThumb = true;
+                _inventoryScrollThumbGrabOffset = mouseState.Y - scrollThumbBounds.Y;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (scrollTrackBounds.Contains(mouseState.Position))
+            {
+                ApplyInventoryScrollTrackClick(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
             }
 
             Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 112, Math.Max(80, absoluteBounds.Width - 24), 72);
@@ -884,6 +964,12 @@ namespace HaCreator.MapSimulator.UI
 
         private bool HandleListOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor, Rectangle absoluteBounds, int wheelDelta, bool leftJustPressed)
         {
+            ListOwnerState state = _listStateProvider?.Invoke();
+            Rectangle scrollTrackBounds = GetListScrollTrackBounds(absoluteBounds);
+            Rectangle scrollThumbBounds = GetListScrollThumbBounds(absoluteBounds, state, state?.ScrollOffset ?? 0);
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released
+                && _previousMouseState.LeftButton == ButtonState.Pressed;
+
             if (wheelDelta != 0 && _listScrollAction != null)
             {
                 ApplyStatusMessage(_listScrollAction.Invoke(wheelDelta > 0 ? -1 : 1));
@@ -891,9 +977,36 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (_draggingListScrollThumb && mouseState.LeftButton == ButtonState.Pressed)
+            {
+                ApplyListScrollThumbDrag(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (leftJustReleased)
+            {
+                _draggingListScrollThumb = false;
+            }
+
             if (!leftJustPressed || _listRowSelectionAction == null)
             {
                 return false;
+            }
+
+            if (scrollThumbBounds.Contains(mouseState.Position))
+            {
+                _draggingListScrollThumb = true;
+                _listScrollThumbGrabOffset = mouseState.Y - scrollThumbBounds.Y;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (scrollTrackBounds.Contains(mouseState.Position))
+            {
+                ApplyListScrollTrackClick(mouseState.Y, absoluteBounds, state);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
             }
 
             Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 54, Math.Max(80, absoluteBounds.Width - 132), 140);
@@ -1498,6 +1611,100 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = _inventoryActionState;
         }
 
+        private void ApplyLockerScrollTrackClick(int mouseY, Rectangle absoluteBounds, LockerOwnerState state)
+        {
+            Rectangle thumbBounds = GetLockerScrollThumbBounds(absoluteBounds, state, _lockerScrollOffset);
+            StepLockerSelector(mouseY < thumbBounds.Y ? -3 : 3);
+            _lockerActionState = mouseY < thumbBounds.Y
+                ? "CCSWnd_Locker paged the dedicated scrollbar upward through shared owners."
+                : "CCSWnd_Locker paged the dedicated scrollbar downward through shared owners.";
+            _statusMessage = _lockerActionState;
+        }
+
+        private void ApplyLockerScrollThumbDrag(int mouseY, Rectangle absoluteBounds, LockerOwnerState state)
+        {
+            Rectangle trackBounds = GetLockerScrollTrackBounds(absoluteBounds);
+            int sharedCount = Math.Max(0, state?.SharedCharacterNames?.Count ?? 0);
+            int maxScroll = Math.Max(0, sharedCount - 3);
+            if (maxScroll <= 0)
+            {
+                _lockerScrollOffset = 0;
+                _lockerCharacterIndex = Math.Clamp(_lockerCharacterIndex, 0, Math.Max(0, sharedCount - 1));
+                return;
+            }
+
+            int thumbHeight = GetLockerScrollThumbBounds(absoluteBounds, state, _lockerScrollOffset).Height;
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int relativeY = Math.Clamp(mouseY - trackBounds.Y - _lockerScrollThumbGrabOffset, 0, travel);
+            _lockerScrollOffset = (int)Math.Round(relativeY / (double)travel * maxScroll, MidpointRounding.AwayFromZero);
+            int minIndex = _lockerScrollOffset;
+            int maxIndex = Math.Min(_lockerScrollOffset + 2, Math.Max(0, sharedCount - 1));
+            _lockerCharacterIndex = Math.Clamp(_lockerCharacterIndex, minIndex, maxIndex);
+            _lockerActionState = $"CCSWnd_Locker dragged the dedicated scrollbar thumb to owner offset {_lockerScrollOffset.ToString(CultureInfo.InvariantCulture)}.";
+            _statusMessage = _lockerActionState;
+        }
+
+        private void ApplyInventoryScrollTrackClick(int mouseY, Rectangle absoluteBounds, InventoryOwnerState state)
+        {
+            Rectangle thumbBounds = GetInventoryScrollThumbBounds(absoluteBounds, state, _inventoryTabName, _inventoryScrollOffset);
+            StepInventoryScroll(state, mouseY < thumbBounds.Y ? -4 : 4);
+            _inventoryActionState = mouseY < thumbBounds.Y
+                ? $"CCSWnd_Inventory paged the {_inventoryTabName} owner upward through the dedicated scrollbar."
+                : $"CCSWnd_Inventory paged the {_inventoryTabName} owner downward through the dedicated scrollbar.";
+            _statusMessage = _inventoryActionState;
+        }
+
+        private void ApplyInventoryScrollThumbDrag(int mouseY, Rectangle absoluteBounds, InventoryOwnerState state)
+        {
+            Rectangle trackBounds = GetInventoryScrollTrackBounds(absoluteBounds);
+            int maxScroll = Math.Max(0, ResolveInventoryActiveCount(state) - 4);
+            if (maxScroll <= 0)
+            {
+                _inventoryScrollOffset = 0;
+                _inventoryRowFocusIndex = 0;
+                return;
+            }
+
+            int thumbHeight = GetInventoryScrollThumbBounds(absoluteBounds, state, _inventoryTabName, _inventoryScrollOffset).Height;
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int relativeY = Math.Clamp(mouseY - trackBounds.Y - _inventoryScrollThumbGrabOffset, 0, travel);
+            _inventoryScrollOffset = (int)Math.Round(relativeY / (double)travel * maxScroll, MidpointRounding.AwayFromZero);
+            _inventoryPacketFocusSignature = string.Empty;
+            _inventoryActionState = $"CCSWnd_Inventory dragged the {_inventoryTabName} scrollbar thumb to offset {_inventoryScrollOffset.ToString(CultureInfo.InvariantCulture)}.";
+            _statusMessage = _inventoryActionState;
+        }
+
+        private void ApplyListScrollTrackClick(int mouseY, Rectangle absoluteBounds, ListOwnerState state)
+        {
+            Rectangle thumbBounds = GetListScrollThumbBounds(absoluteBounds, state, state?.ScrollOffset ?? 0);
+            ApplyStatusMessage(mouseY < thumbBounds.Y
+                ? InvokeExternalAction("PageUp")
+                : InvokeExternalAction("PageDown"));
+        }
+
+        private void ApplyListScrollThumbDrag(int mouseY, Rectangle absoluteBounds, ListOwnerState state)
+        {
+            if (state == null || _listScrollOffsetAction == null)
+            {
+                return;
+            }
+
+            int maxScroll = Math.Max(0, state.TotalCount - 5);
+            Rectangle trackBounds = GetListScrollTrackBounds(absoluteBounds);
+            if (maxScroll <= 0)
+            {
+                ApplyStatusMessage(_listScrollOffsetAction.Invoke(0, Math.Max(0, state.PlateFocusIndex)));
+                return;
+            }
+
+            int thumbHeight = GetListScrollThumbBounds(absoluteBounds, state, state?.ScrollOffset ?? 0).Height;
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int relativeY = Math.Clamp(mouseY - trackBounds.Y - _listScrollThumbGrabOffset, 0, travel);
+            int scrollOffset = (int)Math.Round(relativeY / (double)travel * maxScroll, MidpointRounding.AwayFromZero);
+            int focusIndex = Math.Clamp(state.PlateFocusIndex, 0, 4);
+            ApplyStatusMessage(_listScrollOffsetAction.Invoke(scrollOffset, focusIndex));
+        }
+
         private int ResolveInventoryActiveCount(InventoryOwnerState state)
         {
             return _inventoryTabName switch
@@ -1880,6 +2087,69 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return value.Substring(0, Math.Max(0, maxLength - 3)) + "...";
+        }
+
+        private static Rectangle GetLockerScrollTrackBounds(Rectangle absoluteBounds)
+        {
+            return new Rectangle(absoluteBounds.Right - 28, absoluteBounds.Y + 54, 16, 72);
+        }
+
+        private static Rectangle GetLockerScrollThumbBounds(Rectangle absoluteBounds, LockerOwnerState state, int currentScrollOffset)
+        {
+            Rectangle trackBounds = GetLockerScrollTrackBounds(absoluteBounds);
+            int count = Math.Max(0, state?.SharedCharacterNames?.Count ?? 0);
+            int maxScroll = Math.Max(0, count - 3);
+            int thumbHeight = maxScroll == 0
+                ? trackBounds.Height
+                : Math.Max(18, (trackBounds.Height * 3) / Math.Max(3, count));
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int scrollOffset = Math.Max(0, currentScrollOffset);
+            int thumbY = trackBounds.Y + (maxScroll == 0 ? 0 : (int)Math.Round((scrollOffset / (double)maxScroll) * travel, MidpointRounding.AwayFromZero));
+            return new Rectangle(trackBounds.X + 2, thumbY, Math.Max(10, trackBounds.Width - 4), thumbHeight);
+        }
+
+        private static Rectangle GetInventoryScrollTrackBounds(Rectangle absoluteBounds)
+        {
+            return new Rectangle(absoluteBounds.Right - 28, absoluteBounds.Y + 112, 16, 72);
+        }
+
+        private static Rectangle GetInventoryScrollThumbBounds(Rectangle absoluteBounds, InventoryOwnerState state, string activeTabName, int currentScrollOffset)
+        {
+            Rectangle trackBounds = GetInventoryScrollTrackBounds(absoluteBounds);
+            int count = state == null ? 0 : activeTabName switch
+            {
+                "Use" => state.UseCount,
+                "Setup" => state.SetupCount,
+                "Etc" => state.EtcCount,
+                _ => state.EquipCount
+            };
+            int maxScroll = Math.Max(0, count - 4);
+            int thumbHeight = maxScroll == 0
+                ? trackBounds.Height
+                : Math.Max(18, (trackBounds.Height * 4) / Math.Max(4, count));
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int scrollOffset = Math.Max(0, currentScrollOffset);
+            int thumbY = trackBounds.Y + (maxScroll == 0 ? 0 : (int)Math.Round((scrollOffset / (double)maxScroll) * travel, MidpointRounding.AwayFromZero));
+            return new Rectangle(trackBounds.X + 2, thumbY, Math.Max(10, trackBounds.Width - 4), thumbHeight);
+        }
+
+        private static Rectangle GetListScrollTrackBounds(Rectangle absoluteBounds)
+        {
+            return new Rectangle(absoluteBounds.Right - 28, absoluteBounds.Y + 54, 16, 140);
+        }
+
+        private static Rectangle GetListScrollThumbBounds(Rectangle absoluteBounds, ListOwnerState state, int currentScrollOffset)
+        {
+            Rectangle trackBounds = GetListScrollTrackBounds(absoluteBounds);
+            int totalCount = Math.Max(0, state?.TotalCount ?? 0);
+            int maxScroll = Math.Max(0, totalCount - 5);
+            int thumbHeight = maxScroll == 0
+                ? trackBounds.Height
+                : Math.Max(20, (trackBounds.Height * 5) / Math.Max(5, totalCount));
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int scrollOffset = Math.Max(0, currentScrollOffset);
+            int thumbY = trackBounds.Y + (maxScroll == 0 ? 0 : (int)Math.Round((scrollOffset / (double)maxScroll) * travel, MidpointRounding.AwayFromZero));
+            return new Rectangle(trackBounds.X + 2, thumbY, Math.Max(10, trackBounds.Width - 4), thumbHeight);
         }
 
         private IEnumerable<string> WrapText(string text, float maxWidth)

@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.UI
         private int _inputMaxLength = 32;
         private int _selectedGiftIndex;
         private bool _showGiftRows;
+        private bool _giftRowsSelectable;
         private bool _showWorldRows;
         private Rectangle _inputBounds;
 
@@ -107,6 +108,7 @@ namespace HaCreator.MapSimulator.UI
             int inputMaxLength = 32,
             IEnumerable<string> giftRows = null,
             int selectedGiftIndex = 0,
+            bool giftRowsSelectable = false,
             IEnumerable<string> worldNames = null)
         {
             _title = title ?? string.Empty;
@@ -138,6 +140,7 @@ namespace HaCreator.MapSimulator.UI
             _inputMaxLength = Math.Max(0, inputMaxLength);
             _selectedGiftIndex = ResolveSelectedGiftIndex(selectedGiftIndex, _giftRows.Count);
             _showGiftRows = _giftRows.Count > 0;
+            _giftRowsSelectable = _showGiftRows && giftRowsSelectable;
             _showWorldRows = _worldNames.Count > 0;
             UpdateLayout();
         }
@@ -178,11 +181,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 TriggerLastButton();
             }
-            else if (_showGiftRows && Pressed(keyboardState, Keys.Up))
+            else if (_showGiftRows && _giftRowsSelectable && Pressed(keyboardState, Keys.Up))
             {
                 _selectedGiftIndex = Math.Max(0, _selectedGiftIndex - 1);
             }
-            else if (_showGiftRows && Pressed(keyboardState, Keys.Down))
+            else if (_showGiftRows && _giftRowsSelectable && Pressed(keyboardState, Keys.Down))
             {
                 _selectedGiftIndex = Math.Min(Math.Max(0, _giftRows.Count - 1), _selectedGiftIndex + 1);
             }
@@ -233,7 +236,7 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (_showGiftRows)
+            if (_showGiftRows && _giftRowsSelectable)
             {
                 for (int i = 0; i < _giftRows.Count; i++)
                 {
@@ -345,12 +348,20 @@ namespace HaCreator.MapSimulator.UI
 
             if (!string.IsNullOrWhiteSpace(_footer))
             {
-                SelectorWindowDrawing.DrawShadowedText(
-                    sprite,
-                    _font,
-                    _footer,
-                    new Vector2(Position.X + BodyOffsetX, Position.Y + ResolveFrameHeight() - FooterPadding - _font.LineSpacing),
-                    new Color(255, 226, 158));
+                int footerLineCount = Math.Max(1, ResolveWrappedLineCount(_footer));
+                Vector2 footerCursor = new(
+                    Position.X + BodyOffsetX,
+                    Position.Y + ResolveFrameHeight() - FooterPadding - ButtonHeight - 4 - (footerLineCount * _font.LineSpacing));
+                foreach (string footerLine in WrapText(_footer, ResolveContentWidth()))
+                {
+                    SelectorWindowDrawing.DrawShadowedText(
+                        sprite,
+                        _font,
+                        footerLine,
+                        footerCursor,
+                        new Color(255, 226, 158));
+                    footerCursor.Y += _font.LineSpacing;
+                }
             }
 
             DrawButtons(sprite);
@@ -419,7 +430,32 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveFrameHeight()
         {
-            return Frame?.Height > 0 ? Frame.Height : DefaultHeight;
+            int minimumHeight = DefaultHeight;
+            int lineHeight = _font?.LineSpacing ?? 14;
+            minimumHeight += (ResolveWrappedLineCount(_body) + _detailLines.Count) * lineHeight;
+            if (_showGiftRows)
+            {
+                minimumHeight += ListTopPadding + (_giftRows.Count * ListRowHeight);
+            }
+
+            if (_showWorldRows)
+            {
+                minimumHeight += ListTopPadding + (Math.Min(5, _worldNames.Count) * lineHeight);
+            }
+
+            if (_inputActive)
+            {
+                minimumHeight += InputHeight + 8;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_footer))
+            {
+                minimumHeight += ResolveWrappedLineCount(_footer) * lineHeight;
+            }
+
+            minimumHeight += FooterPadding + ButtonHeight;
+            int frameHeight = Frame?.Height > 0 ? Frame.Height : DefaultHeight;
+            return Math.Max(frameHeight, minimumHeight);
         }
 
         private int ResolveContentWidth()
@@ -455,6 +491,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return lines;
+        }
+
+        private int ResolveWrappedLineCount(string text)
+        {
+            int lineCount = WrapText(text, ResolveContentWidth()).Count();
+            return lineCount > 0 ? lineCount : 0;
         }
 
         private void DrawBorder(SpriteBatch sprite, Rectangle bounds, Color color)

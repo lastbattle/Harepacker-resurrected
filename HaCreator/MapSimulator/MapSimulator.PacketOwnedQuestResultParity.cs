@@ -174,6 +174,10 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            // CUserLocal::OnQuestResult always issues DeleteFadeWnd(7, 0, questId, "", 0)
+            // before it consumes the trailing follow-up quest id, even when no modal pages open.
+            _packetQuestResultFadeWindowRuntime.RegisterQuestFadeWindow(questId);
+
             bool showedNotice = false;
             bool openedModal = presentation.ModalPages.Count > 0 &&
                                _npcInteractionOverlay != null;
@@ -374,7 +378,6 @@ namespace HaCreator.MapSimulator
         private void OpenPacketOwnedQuestResultModal(int speakerNpcId, PacketQuestResultPresentation presentation)
         {
             string npcName = ResolvePacketOwnedQuestResultSpeakerName(speakerNpcId, presentation.QuestName);
-            _packetQuestResultFadeWindowRuntime.RegisterQuestFadeWindow(presentation.QuestId);
             _npcInteractionOverlay.Open(new NpcInteractionState
             {
                 NpcName = npcName,
