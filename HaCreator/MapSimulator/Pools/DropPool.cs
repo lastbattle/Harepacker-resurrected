@@ -764,6 +764,7 @@ namespace HaCreator.MapSimulator.Pools
         private Action<DropPickupAttemptResult, int, bool> _onPickupFailed;
         private Func<DropItem, DropPickupFailureReason> _pickupAvailabilityEvaluator;
         private Func<DropItem, DropPickupFailureReason> _petPickupAvailabilityEvaluator;
+        private Func<DropItem, bool> _clientPickupBlockEvaluator;
         private Func<DropPickupActorKind, int, bool, string> _pickupActorNameResolver;
         private Action<DropItem, int, string> _onRemotePlayerPickedUp;
         private Action<DropItem, int, string> _onRemotePetPickedUp;
@@ -800,6 +801,7 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnPickupFailed(Action<DropPickupAttemptResult, int, bool> callback) => _onPickupFailed = callback;
         public void SetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _pickupAvailabilityEvaluator = callback;
         public void SetPetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _petPickupAvailabilityEvaluator = callback;
+        public void SetClientPickupBlockEvaluator(Func<DropItem, bool> callback) => _clientPickupBlockEvaluator = callback;
         public void SetPickupActorNameResolver(Func<DropPickupActorKind, int, bool, string> callback) => _pickupActorNameResolver = callback;
         public void SetGroundLevelLookup(Func<float, float, float> getGroundY) => _getGroundY = getGroundY;
         public void SetSourcePositionResolver(Func<int, Vector2?> resolver) => _sourcePositionResolver = resolver;
@@ -1137,6 +1139,9 @@ namespace HaCreator.MapSimulator.Pools
                 if (drop.State != DropState.Idle || !drop.CanPickup)
                     continue;
 
+                if (IsClientPickupBlocked(drop))
+                    continue;
+
                 if (!CanPlayerPickup(drop, playerId, currentTime))
                     continue;
 
@@ -1162,6 +1167,9 @@ namespace HaCreator.MapSimulator.Pools
         public bool TryPickup(DropItem drop, int playerId, int currentTime)
         {
             if (drop == null || drop.State != DropState.Idle || !drop.CanPickup)
+                return false;
+
+            if (IsClientPickupBlocked(drop))
                 return false;
 
             if (!CanPlayerPickup(drop, playerId, currentTime))
@@ -1285,6 +1293,11 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
+                if (IsClientPickupBlocked(drop))
+                {
+                    continue;
+                }
+
                 if (!CanPlayerPickup(drop, playerId, currentTime))
                 {
                     continue;
@@ -1338,6 +1351,11 @@ namespace HaCreator.MapSimulator.Pools
             foreach (var drop in _activeDrops)
             {
                 if (drop.State != DropState.Idle || !drop.CanPickup)
+                {
+                    continue;
+                }
+
+                if (IsClientPickupBlocked(drop))
                 {
                     continue;
                 }
@@ -1408,6 +1426,11 @@ namespace HaCreator.MapSimulator.Pools
             foreach (var drop in _activeDrops)
             {
                 if (drop.State != DropState.Idle || !drop.CanPickup)
+                {
+                    continue;
+                }
+
+                if (IsClientPickupBlocked(drop))
                 {
                     continue;
                 }
@@ -1690,6 +1713,9 @@ namespace HaCreator.MapSimulator.Pools
                 if (drop.State != DropState.Idle || !drop.CanPickup)
                     continue;
 
+                if (IsClientPickupBlocked(drop))
+                    continue;
+
                 float dx = drop.X - petX;
                 float dy = drop.Y - petY;
                 float distSq = dx * dx + dy * dy;
@@ -1857,6 +1883,9 @@ namespace HaCreator.MapSimulator.Pools
                 if (drop.State != DropState.Idle || !drop.CanPickup)
                     continue;
 
+                if (IsClientPickupBlocked(drop))
+                    continue;
+
                 if (!CanPetPickup(drop, playerId, currentTime))
                     continue;
 
@@ -1977,6 +2006,9 @@ namespace HaCreator.MapSimulator.Pools
             foreach (var drop in _activeDrops)
             {
                 if (drop.State != DropState.Idle || !drop.CanPickup)
+                    continue;
+
+                if (IsClientPickupBlocked(drop))
                     continue;
 
                 if (!CanMobPickup(drop))
@@ -2840,6 +2872,13 @@ namespace HaCreator.MapSimulator.Pools
         private static bool CanMobPickup(DropItem drop)
         {
             return drop != null && drop.IsReal;
+        }
+
+        private bool IsClientPickupBlocked(DropItem drop)
+        {
+            return drop != null
+                && drop.Type != DropType.Meso
+                && _clientPickupBlockEvaluator?.Invoke(drop) == true;
         }
 
         private bool AreActorsPartyLinked(int ownerId, int actorId)

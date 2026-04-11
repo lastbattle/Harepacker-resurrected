@@ -277,6 +277,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Z { get; set; }
         public int AlphaStart { get; set; } = 255;
         public int AlphaEnd { get; set; } = 255;
+        public bool HasAlphaStart { get; set; }
+        public bool HasAlphaEnd { get; set; }
         public int ZoomStart { get; set; }
         public int ZoomEnd { get; set; }
         public bool HasZoomStart { get; set; }

@@ -367,7 +367,10 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.IgnoreDefenseRate > 0
                    || levelData.X > 0
                    || levelData.Y != 0
-                   || levelData.Z > 0;
+                   || levelData.Z > 0
+                   || levelData.U != 0
+                   || levelData.V != 0
+                   || levelData.W != 0;
         }
 
         public static SkillLevelData CreateProjectedSupportBuffLevelData(SkillLevelData levelData)
@@ -1373,8 +1376,18 @@ namespace HaCreator.MapSimulator.Pools
             target.BossDamageRate = Math.Max(target.BossDamageRate, source.BossDamageRate);
             target.IgnoreDefenseRate = Math.Max(target.IgnoreDefenseRate, source.IgnoreDefenseRate);
             target.X = Math.Max(target.X, source.X);
-            target.Y = Math.Max(target.Y, source.Y);
+            target.Y = SelectGenericSupportMagnitude(target.Y, source.Y);
             target.Z = Math.Max(target.Z, source.Z);
+            target.U = SelectGenericSupportMagnitude(target.U, source.U);
+            target.V = SelectGenericSupportMagnitude(target.V, source.V);
+            target.W = SelectGenericSupportMagnitude(target.W, source.W);
+        }
+
+        private static int SelectGenericSupportMagnitude(int currentValue, int candidateValue)
+        {
+            return Math.Abs((long)candidateValue) > Math.Abs((long)currentValue)
+                ? candidateValue
+                : currentValue;
         }
 
         private static SkillLevelData ApplyDerivedSupportBuffMappings(

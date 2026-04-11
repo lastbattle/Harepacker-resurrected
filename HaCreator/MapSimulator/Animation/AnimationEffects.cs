@@ -113,20 +113,22 @@ namespace HaCreator.MapSimulator.Animation
             if (frames == null || frames.Count == 0 || string.IsNullOrWhiteSpace(sourceUol)) return;
 
             OneTimeAnimation anim = _oneTimePool.Count > 0 ? _oneTimePool.Dequeue() : new OneTimeAnimation();
+            OneTimeAnimationRecoveredRegistrationTrace registrationTrace =
+                OneTimeAnimationRecoveredRegistrationTrace.CreateFullChargedAngerGauge(sourceUol);
             anim.Initialize(
                 frames,
                 fallbackX,
                 fallbackY,
-                fallbackFlip,
+                registrationTrace.LoadLayerFlip,
                 currentTimeMs,
                 zOrder,
                 getOrigin,
-                getFlip,
+                getFlip: null,
                 AnimationOneTimeOwner.FullChargedAngerGauge,
                 AnimationOneTimePlaybackMode.GA_STOP,
                 sourceUol,
                 usesOverlayParent: true,
-                OneTimeAnimationRecoveredRegistrationTrace.CreateFullChargedAngerGauge(sourceUol));
+                registrationTrace);
             InsertOneTimeAnimation(anim);
         }
 
@@ -2094,6 +2096,11 @@ namespace HaCreator.MapSimulator.Animation
             int drawShiftY = -(int)position.Y - mapShiftY;
 
             frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
+        }
+
+        internal bool ResolveDrawFlipForTesting()
+        {
+            return _flipResolver?.Invoke() ?? _flip;
         }
     }
 

@@ -14,6 +14,8 @@ internal static class SummonClientPostEffectRules
     private const int ClientConfirmedFrostpreyCurrentSkillId = 3211005;
     private const int ClientConfirmedShadowMesoReactiveSkillId = 4111007;
     private const int ClientConfirmedShadowMesoReactiveSkillAliasId = 4211007;
+    private const int ClientConfirmedTeslaCoilSkillId = 35111002;
+    private const int ClientSummonedAttackDelayBaselineMs = 300;
     private const float ClientConfirmedReactiveChainSourceOffsetX = 25f;
     private const float ClientConfirmedReactiveChainSourceOffsetY = -25f;
     private const float ClientConfirmedReactiveChainMaxDistance = 600f;
@@ -101,6 +103,28 @@ internal static class SummonClientPostEffectRules
         int attackDelayMs = ResolvePostAttackEffectDelayMs(skillData, branchName);
         int elapsedMs = Math.Max(0, currentTime - attackStartedAt);
         return Math.Max(0, attackDelayMs - elapsedMs);
+    }
+
+    public static int ResolveSummonedAttackImpactDelayMs(
+        int skillId,
+        int attackAfterMs,
+        int summonedAttackDelayMs,
+        Func<int, int> randomNextExclusive)
+    {
+        int resolvedAttackAfterMs = Math.Max(0, attackAfterMs);
+        if (skillId != ClientConfirmedTeslaCoilSkillId)
+        {
+            return resolvedAttackAfterMs;
+        }
+
+        int jitterWindowMs = Math.Max(0, summonedAttackDelayMs - ClientSummonedAttackDelayBaselineMs);
+        if (jitterWindowMs <= 0)
+        {
+            return resolvedAttackAfterMs;
+        }
+
+        int jitterMs = randomNextExclusive?.Invoke(jitterWindowMs) ?? 0;
+        return resolvedAttackAfterMs + Math.Clamp(jitterMs, 0, jitterWindowMs - 1);
     }
 
     public static SkillAnimation ResolvePassiveEffectAnimation(SkillData skillData)

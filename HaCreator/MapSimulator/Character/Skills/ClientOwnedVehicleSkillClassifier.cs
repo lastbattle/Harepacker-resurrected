@@ -359,6 +359,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ContainsActionName(ClientConfirmedMechanicVehicleOneTimeActionNames, actionName);
         }
 
+        internal static bool IsOverlappingMechanicVehicleOneTimeActionName(string actionName)
+        {
+            return IsWzOnlyMechanicVehicleOneTimeActionName(actionName)
+                   || IsClientAdmittedMechanicVehicleOneTimeActionName(actionName);
+        }
+
         private static bool IsMechanicSkill(int skillId)
         {
             int skillBookId = skillId / 10000;

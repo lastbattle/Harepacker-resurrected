@@ -68,7 +68,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<string, List<IDXObject>> _animationDisplayerEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<List<IDXObject>>> _animationDisplayerSkillUseEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<AnimationDisplayerSkillUseAvatarEffectVariant>> _animationDisplayerSkillUseAvatarEffectCache = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<int, AnimationDisplayerFollowEquipmentDefinition> _animationDisplayerFollowEquipmentCache = new();
+        private readonly Dictionary<(int ItemId, EquipSlot Slot), AnimationDisplayerFollowEquipmentDefinition> _animationDisplayerFollowEquipmentCache = new();
         private readonly Dictionary<int, int> _animationDisplayerFollowAnimationIds = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
@@ -107,7 +107,10 @@ namespace HaCreator.MapSimulator
             public int ThetaDegrees { get; init; }
             public float Radius { get; init; }
             public int ZOrder { get; init; }
+            public EquipSlot SourceEquipSlot { get; init; }
         }
+
+        private readonly record struct AnimationDisplayerFollowEquipmentCandidate(int ItemId, EquipSlot Slot);
 
         private readonly record struct AnimationDisplayerSkillUseBranchRequest(
             string BranchName,
@@ -583,13 +586,17 @@ namespace HaCreator.MapSimulator
             Point spawnOffsetMax = BuildAnimationDisplayerFollowSpawnOffsetMax(relativeEmission, followDefinition);
             Func<bool> getOwnerFlip = ResolveAnimationDisplayerFollowOwnerFlip(ownerCharacterId);
             bool spawnOnlyOnOwnerMove = followDefinition?.SpawnOnlyOnOwnerMove ?? false;
+            Func<Vector2> getFollowTargetPosition = ResolveAnimationDisplayerFollowTargetPosition(
+                ownerCharacterId,
+                getPosition,
+                followDefinition);
 
             ClearAnimationDisplayerFollowRegistration(registrationKey);
             int followId = _animationEffects.AddFollow(
                 frames,
-                getPosition,
+                getFollowTargetPosition,
                 offsetX: 0f,
-                offsetY: AnimationDisplayerUserStateOffsetY,
+                offsetY: followDefinition == null ? AnimationDisplayerUserStateOffsetY : 0f,
                 durationMs: AnimationDisplayerFollowDurationMs,
                 currentTimeMs: currTickCount,
                 options: new Animation.AnimationEffects.FollowAnimationOptions
@@ -2416,14 +2423,15 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            foreach (int itemId in EnumerateAnimationDisplayerFollowEquipmentItemIds(build))
+            foreach (AnimationDisplayerFollowEquipmentCandidate candidate in EnumerateAnimationDisplayerFollowEquipmentCandidates(build))
             {
-                if (itemId <= 0)
+                if (candidate.ItemId <= 0)
                 {
                     continue;
                 }
 
-                if (_animationDisplayerFollowEquipmentCache.TryGetValue(itemId, out AnimationDisplayerFollowEquipmentDefinition cachedDefinition))
+                (int ItemId, EquipSlot Slot) cacheKey = (candidate.ItemId, candidate.Slot);
+                if (_animationDisplayerFollowEquipmentCache.TryGetValue(cacheKey, out AnimationDisplayerFollowEquipmentDefinition cachedDefinition))
                 {
                     if (cachedDefinition != null)
                     {
@@ -2433,8 +2441,8 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                AnimationDisplayerFollowEquipmentDefinition loadedDefinition = LoadAnimationDisplayerFollowEquipmentDefinition(itemId);
-                _animationDisplayerFollowEquipmentCache[itemId] = loadedDefinition;
+                AnimationDisplayerFollowEquipmentDefinition loadedDefinition = LoadAnimationDisplayerFollowEquipmentDefinition(candidate.ItemId, candidate.Slot);
+                _animationDisplayerFollowEquipmentCache[cacheKey] = loadedDefinition;
                 if (loadedDefinition != null)
                 {
                     return loadedDefinition;
@@ -2444,7 +2452,7 @@ namespace HaCreator.MapSimulator
             return null;
         }
 
-        private static IEnumerable<int> EnumerateAnimationDisplayerFollowEquipmentItemIds(CharacterBuild build)
+        private static IEnumerable<AnimationDisplayerFollowEquipmentCandidate> EnumerateAnimationDisplayerFollowEquipmentCandidates(CharacterBuild build)
         {
             if (build == null)
             {
@@ -2489,17 +2497,17 @@ namespace HaCreator.MapSimulator
                 EquipSlot slot = slots[i];
                 if (build.Equipment.TryGetValue(slot, out CharacterPart visiblePart) && visiblePart?.ItemId > 0 && seenItemIds.Add(visiblePart.ItemId))
                 {
-                    yield return visiblePart.ItemId;
+                    yield return new AnimationDisplayerFollowEquipmentCandidate(visiblePart.ItemId, slot);
                 }
 
                 if (build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart) && hiddenPart?.ItemId > 0 && seenItemIds.Add(hiddenPart.ItemId))
                 {
-                    yield return hiddenPart.ItemId;
+                    yield return new AnimationDisplayerFollowEquipmentCandidate(hiddenPart.ItemId, slot);
                 }
             }
         }
 
-        private AnimationDisplayerFollowEquipmentDefinition LoadAnimationDisplayerFollowEquipmentDefinition(int itemId)
+        private AnimationDisplayerFollowEquipmentDefinition LoadAnimationDisplayerFollowEquipmentDefinition(int itemId, EquipSlot sourceEquipSlot)
         {
             WzSubProperty effectProperty = ResolveAnimationDisplayerFollowEquipmentProperty(itemId);
             if (effectProperty == null)
@@ -2530,6 +2538,7 @@ namespace HaCreator.MapSimulator
             return new AnimationDisplayerFollowEquipmentDefinition
             {
                 ItemId = itemId,
+                SourceEquipSlot = sourceEquipSlot,
                 EffectUol = effectUol,
                 EffectFrameVariants = effectFrameVariants,
                 GenerationPoints = generationPoints,
@@ -2741,6 +2750,69 @@ namespace HaCreator.MapSimulator
         internal static int ResolveAnimationDisplayerFollowEquipmentZOrder(int? authoredZ)
         {
             return authoredZ ?? 0;
+        }
+
+        internal static bool ResolveAnimationDisplayerFollowOriginUsesFace(EquipSlot sourceEquipSlot, bool usesRelativeEmission)
+        {
+            if (usesRelativeEmission)
+            {
+                return true;
+            }
+
+            int clientEquipIndex = (int)sourceEquipSlot;
+            return clientEquipIndex is 0 or 1 or 2 or 3 or 4 or 9 or 12 or 13 or 15 or 16;
+        }
+
+        private Func<Vector2> ResolveAnimationDisplayerFollowTargetPosition(
+            int ownerCharacterId,
+            Func<Vector2> fallbackPosition,
+            AnimationDisplayerFollowEquipmentDefinition followDefinition)
+        {
+            if (followDefinition == null || fallbackPosition == null)
+            {
+                return fallbackPosition;
+            }
+
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (ownerCharacterId <= 0 || ownerCharacterId != localCharacterId)
+            {
+                return () => ResolveAnimationDisplayerFollowFallbackOrigin(fallbackPosition);
+            }
+
+            return () =>
+            {
+                PlayerCharacter player = _playerManager?.Player;
+                if (player == null)
+                {
+                    return ResolveAnimationDisplayerFollowFallbackOrigin(fallbackPosition);
+                }
+
+                bool useFaceOrigin = ResolveAnimationDisplayerFollowOriginUsesFace(
+                    followDefinition.SourceEquipSlot,
+                    followDefinition.UsesRelativeEmission);
+                if (useFaceOrigin)
+                {
+                    Point? faceOrigin = player.TryGetCurrentBodyMapPoint(
+                        AvatarActionLayerCoordinator.ClientFaceOriginMapPoint,
+                        currTickCount)
+                        ?? player.TryGetCurrentBodyMapPoint("brow", currTickCount);
+                    if (faceOrigin.HasValue)
+                    {
+                        return new Vector2(faceOrigin.Value.X, faceOrigin.Value.Y);
+                    }
+                }
+
+                Point? bodyOrigin = player.TryGetCurrentBodyOrigin(currTickCount);
+                return bodyOrigin.HasValue
+                    ? new Vector2(bodyOrigin.Value.X, bodyOrigin.Value.Y)
+                    : ResolveAnimationDisplayerFollowFallbackOrigin(fallbackPosition);
+            };
+        }
+
+        private static Vector2 ResolveAnimationDisplayerFollowFallbackOrigin(Func<Vector2> fallbackPosition)
+        {
+            Vector2 fallback = fallbackPosition();
+            return new Vector2(fallback.X, fallback.Y + AnimationDisplayerUserStateOffsetY);
         }
 
         private static Rectangle BuildAnimationDisplayerFollowEquipmentEmissionArea(WzImageProperty effectProperty)

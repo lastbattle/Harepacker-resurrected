@@ -236,7 +236,12 @@ namespace HaCreator.MapSimulator.Animation
             AddAttackHitEffect(attackAction, hitFrames, sourceFrameIndex: 0, isAttackFrameOwned: false);
         }
 
-        public void AddAttackHitEffect(string attackAction, List<IDXObject> hitFrames, int sourceFrameIndex, bool isAttackFrameOwned)
+        public void AddAttackHitEffect(
+            string attackAction,
+            List<IDXObject> hitFrames,
+            int sourceFrameIndex,
+            bool isAttackFrameOwned,
+            bool usesAttackInfoHitEffect = false)
         {
             if (hitFrames == null || hitFrames.Count == 0)
                 return;
@@ -252,7 +257,8 @@ namespace HaCreator.MapSimulator.Animation
             {
                 Frames = hitFrames,
                 SourceFrameIndex = sourceFrameIndex,
-                IsAttackFrameOwned = isAttackFrameOwned
+                IsAttackFrameOwned = isAttackFrameOwned,
+                UsesAttackInfoHitEffect = usesAttackInfoHitEffect
             });
 
             if (!_attackHitEffects.ContainsKey(key) || !isAttackFrameOwned)

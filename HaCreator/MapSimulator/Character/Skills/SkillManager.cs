@@ -2771,7 +2771,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool TryResolveCooldownMaskVisualState(
             CooldownUiState cooldownState,
             out int frameIndex,
-            out string remainingText)
+            out string remainingText,
+            bool includeCounterText = true)
         {
             frameIndex = 15;
             remainingText = string.Empty;
@@ -2798,7 +2799,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 frameIndex = ResolveCooldownMaskFrameIndex(remainingMs, durationMs);
             }
 
-            remainingText = cooldownState.SuppressCounterText
+            remainingText = !includeCounterText || cooldownState.SuppressCounterText
                 ? string.Empty
                 : string.IsNullOrWhiteSpace(cooldownState.CounterText)
                     ? Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString()
@@ -6841,27 +6842,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             string normalizedActionName = resolvedActionName.Trim();
-            if (normalizedActionName.StartsWith("magic", StringComparison.OrdinalIgnoreCase))
-            {
-                attackActionType = MovingShootAttackActionTypeMagic;
-                return true;
-            }
-
-            if (normalizedActionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
-                || normalizedActionName.StartsWith("shot", StringComparison.OrdinalIgnoreCase))
-            {
-                attackActionType = MovingShootAttackActionTypeShoot;
-                return true;
-            }
-
-            if (normalizedActionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase)
-                || normalizedActionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedActionName, "proneStab", StringComparison.OrdinalIgnoreCase))
-            {
-                attackActionType = MovingShootAttackActionTypeMelee;
-                return true;
-            }
-
             ClientRandomMovingShootActionFamily actionFamily = ResolveClientRandomMovingShootActionFamilyFromActionName(normalizedActionName);
             switch (actionFamily)
             {
@@ -6884,6 +6864,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 case ClientRandomMovingShootActionFamily.PolearmSwing:
                     attackActionType = MovingShootAttackActionTypeMelee;
                     return true;
+            }
+
+            if (normalizedActionName.StartsWith("magic", StringComparison.OrdinalIgnoreCase))
+            {
+                attackActionType = MovingShootAttackActionTypeMagic;
+                return true;
+            }
+
+            if (normalizedActionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
+                || normalizedActionName.StartsWith("shot", StringComparison.OrdinalIgnoreCase))
+            {
+                attackActionType = MovingShootAttackActionTypeShoot;
+                return true;
+            }
+
+            if (normalizedActionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase)
+                || normalizedActionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedActionName, "proneStab", StringComparison.OrdinalIgnoreCase))
+            {
+                attackActionType = MovingShootAttackActionTypeMelee;
+                return true;
             }
 
             return false;

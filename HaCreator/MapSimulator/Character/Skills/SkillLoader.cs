@@ -5032,7 +5032,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            foreach (int linkedSkillId in EnumerateClientSummonedUolLinkedSkillIds(normalizedPath))
+            foreach (int linkedSkillId in EnumerateClientSummonedUolLinkedSkillIds(normalizedPath, candidateNode))
             {
                 if (TryGetSkillNode(linkedSkillId, out WzImageProperty linkedSkillNode)
                     && !ReferenceEquals(linkedSkillNode, rootSkillNode)
@@ -5198,6 +5198,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             return EnumerateClientSummonedUolLinkedSkillIds(NormalizeClientSummonedUolPath(summonedUolPath));
         }
 
+        internal static IEnumerable<int> EnumerateClientSummonedUolLinkedSkillIdsForTest(
+            string summonedUolPath,
+            WzImageProperty resolvedProperty)
+        {
+            return EnumerateClientSummonedUolLinkedSkillIds(
+                NormalizeClientSummonedUolPath(summonedUolPath),
+                resolvedProperty);
+        }
+
         internal static bool TryParseNormalizedSkillAnimationPathForTest(
             string normalizedSkillAssetPath,
             out string imageName,
@@ -5345,7 +5354,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        private static IEnumerable<int> EnumerateClientSummonedUolLinkedSkillIds(string normalizedPath)
+        private static IEnumerable<int> EnumerateClientSummonedUolLinkedSkillIds(
+            string normalizedPath,
+            WzImageProperty resolvedProperty = null)
         {
             if (string.IsNullOrWhiteSpace(normalizedPath))
             {
@@ -5377,6 +5388,20 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 yield return linkedSkillId;
             }
+
+            if (!IsClientSummonedUolLinkedSkillValueLeaf(parts)
+                || resolvedProperty == null)
+            {
+                yield break;
+            }
+
+            foreach (int linkedSkillId in ParseLinkedSkillIds(resolvedProperty))
+            {
+                if (linkedSkillId > 0 && yieldedSkillIds.Add(linkedSkillId))
+                {
+                    yield return linkedSkillId;
+                }
+            }
         }
 
         private static bool IsClientSummonedUolLinkedSkillIdSegment(string previousSegment)
@@ -5384,6 +5409,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             return previousSegment != null
                    && (previousSegment.Equals("req", StringComparison.OrdinalIgnoreCase)
                        || previousSegment.Equals("psdSkill", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsClientSummonedUolLinkedSkillValueLeaf(string[] parts)
+        {
+            if (parts == null || parts.Length == 0)
+            {
+                return false;
+            }
+
+            string leafSegment = parts[^1];
+            return leafSegment.Equals("requireSkill", StringComparison.OrdinalIgnoreCase)
+                   || leafSegment.Equals("affectedSkill", StringComparison.OrdinalIgnoreCase)
+                   || leafSegment.Equals("dummyOf", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryParseNormalizedSkillAnimationPath(
@@ -5711,11 +5749,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             int? authoredAlphaEnd = TryResolveFrameInt(metadataNode, canvas, "a1", out int resolvedAlphaEnd)
                 ? resolvedAlphaEnd
                 : null;
+            frame.HasAlphaStart = authoredAlphaStart.HasValue;
+            frame.HasAlphaEnd = authoredAlphaEnd.HasValue;
             (frame.AlphaStart, frame.AlphaEnd) = ResolveClientInsertCanvasAlphaEndpoints(authoredAlphaStart, authoredAlphaEnd);
             frame.HasZoomStart = TryResolveFrameInt(metadataNode, canvas, "z0", out int resolvedZoomStart);
             frame.HasZoomEnd = TryResolveFrameInt(metadataNode, canvas, "z1", out int resolvedZoomEnd);
             frame.ZoomStart = frame.HasZoomStart ? resolvedZoomStart : 0;
             frame.ZoomEnd = frame.HasZoomEnd ? resolvedZoomEnd : 0;
+            frame.RotationDegrees = ResolveFrameInt(metadataNode, canvas, "rotate");
 
             return frame;
         }
@@ -6246,7 +6287,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (!LinksAuthoredSwallowDummySkill(skill, skillsById))
+            if (!HasAuthoredSwallowFamilySignal(skill, skillsById))
             {
                 return false;
             }
@@ -6262,13 +6303,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        private static bool LinksAuthoredSwallowDummySkill(
+        private static bool HasAuthoredSwallowFamilySignal(
             SkillData skill,
             IReadOnlyDictionary<int, SkillData> skillsById)
         {
             if (skill?.DummySkillParents == null || skillsById == null)
             {
                 return false;
+            }
+
+            if (skill.IsSwallowSkill)
+            {
+                return true;
             }
 
             foreach (int linkedSkillId in skill.DummySkillParents)

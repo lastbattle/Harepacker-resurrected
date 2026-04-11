@@ -2818,16 +2818,35 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             List<PacketEnterAuthoredReactorCandidate> scope = candidates.ToList();
-            Func<PacketEnterAuthoredReactorCandidate, bool>[] prioritizedFilters =
+            Func<PacketEnterAuthoredReactorCandidate, bool>[] identityFilters =
             {
                 static candidate => candidate.HasExactNameMatch,
                 static candidate => candidate.MatchesPacketName,
-                static candidate => candidate.ContainsCurrentLocalUserPosition,
+                static candidate => candidate.ContainsCurrentLocalUserPosition
+            };
+
+            foreach (Func<PacketEnterAuthoredReactorCandidate, bool> filter in identityFilters)
+            {
+                scope = PreferTrueCandidates(scope, filter);
+                if (TrySelectUniqueCandidate(scope, out index))
+                {
+                    selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
+                    return true;
+                }
+            }
+
+            if (HasDisjointTouchAndReturnedStateSignals(scope, initialState))
+            {
+                return false;
+            }
+
+            Func<PacketEnterAuthoredReactorCandidate, bool>[] statefulFilters =
+            {
                 static candidate => candidate.IsLocallyTouched,
                 candidate => candidate.VisualState == initialState
             };
 
-            foreach (Func<PacketEnterAuthoredReactorCandidate, bool> filter in prioritizedFilters)
+            foreach (Func<PacketEnterAuthoredReactorCandidate, bool> filter in statefulFilters)
             {
                 scope = PreferTrueCandidates(scope, filter);
                 if (TrySelectUniqueCandidate(scope, out index))
@@ -2844,6 +2863,32 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        private static bool HasDisjointTouchAndReturnedStateSignals(
+            IReadOnlyList<PacketEnterAuthoredReactorCandidate> candidates,
+            int initialState)
+        {
+            if (candidates == null || candidates.Count <= 1)
+            {
+                return false;
+            }
+
+            bool hasTouchedCandidate = false;
+            bool hasReturnedStateCandidate = false;
+            bool hasCandidateWithBothSignals = false;
+
+            foreach (PacketEnterAuthoredReactorCandidate candidate in candidates)
+            {
+                bool matchesReturnedState = candidate.VisualState == initialState;
+                hasTouchedCandidate |= candidate.IsLocallyTouched;
+                hasReturnedStateCandidate |= matchesReturnedState;
+                hasCandidateWithBothSignals |= candidate.IsLocallyTouched && matchesReturnedState;
+            }
+
+            return hasTouchedCandidate
+                && hasReturnedStateCandidate
+                && !hasCandidateWithBothSignals;
         }
 
         private static bool TrySelectFullyAmbiguousWzAuthoredOrderCandidate(

@@ -3602,9 +3602,11 @@ namespace HaCreator.MapSimulator.Pools
                 candidateList.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)),
                 ownerReferenceX);
             Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon, fallbackFacingRight);
-            IEnumerable<int> fallbackTargetIds = candidateList
-                .Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)
-                                    && IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, candidate.Hitbox, fallbackFacingRight))
+            IEnumerable<int> fallbackTargetIds = OrderPacketOwnedExpiryFallbackCandidates(
+                    summon,
+                    candidateList.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)
+                                                     && IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, candidate.Hitbox, fallbackFacingRight)),
+                    fallbackFacingRight)
                 .Select(static candidate => candidate.MobObjectId);
 
             foreach (int fallbackTargetId in fallbackTargetIds)
@@ -3618,6 +3620,48 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return orderedTargetIds.ToArray();
+        }
+
+        internal static IReadOnlyList<PacketOwnedExpiryTargetCandidate> OrderPacketOwnedExpiryFallbackCandidates(
+            ActiveSummon summon,
+            IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
+            bool facingRight)
+        {
+            if (summon == null || candidates == null)
+            {
+                return Array.Empty<PacketOwnedExpiryTargetCandidate>();
+            }
+
+            Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
+            return candidates
+                .Where(candidate => candidate.MobObjectId > 0
+                                    && !candidate.Hitbox.IsEmpty)
+                .Select(candidate =>
+                {
+                    float centerX = candidate.Hitbox.Left + (candidate.Hitbox.Width * 0.5f);
+                    float centerY = candidate.Hitbox.Top + (candidate.Hitbox.Height * 0.5f);
+                    float leadingEdgeDistance = facingRight
+                        ? MathF.Max(0f, candidate.Hitbox.Left - summonPosition.X)
+                        : MathF.Max(0f, summonPosition.X - candidate.Hitbox.Right);
+                    float centerDistanceSq = ((centerX - summonPosition.X) * (centerX - summonPosition.X))
+                                             + ((centerY - summonPosition.Y) * (centerY - summonPosition.Y));
+                    float facingOrderX = facingRight ? centerX : -centerX;
+                    return new
+                    {
+                        Candidate = candidate,
+                        LeadingEdgeDistance = leadingEdgeDistance,
+                        CenterDistanceSq = centerDistanceSq,
+                        VerticalDistance = MathF.Abs(centerY - summonPosition.Y),
+                        FacingOrderX = facingOrderX
+                    };
+                })
+                .OrderBy(static entry => entry.LeadingEdgeDistance)
+                .ThenBy(static entry => entry.CenterDistanceSq)
+                .ThenBy(static entry => entry.VerticalDistance)
+                .ThenBy(static entry => entry.FacingOrderX)
+                .ThenBy(static entry => entry.Candidate.MobObjectId)
+                .Select(static entry => entry.Candidate)
+                .ToArray();
         }
 
         private static bool IsCandidateInEitherPacketOwnedSummonAttackRange(
@@ -4403,26 +4447,14 @@ namespace HaCreator.MapSimulator.Pools
 
         private int ResolvePacketTeslaTargetImpactDelayMs(ActiveSummon summon, Vector2 source, MobItem target, int currentTime, int targetIndex = 0)
         {
-            int authoredDelayMs = ResolvePacketAttackImpactAuthoredDelayMs(
-                summon?.SkillData,
-                targetIndex,
-                summon?.CurrentAnimationBranchName);
-            int attackDelayWindowMs = authoredDelayMs > 0
-                ? Math.Max(TeslaMinimumImpactDelayMs, authoredDelayMs)
-                : ResolvePacketTeslaAttackDelayWindowMs(summon);
-            return ResolveTeslaImpactDelayMs(attackDelayWindowMs);
-        }
-
-        private int ResolveTeslaImpactDelayMs(int attackDelayMs)
-        {
-            int clampedDelayMs = Math.Max(TeslaMinimumImpactDelayMs, attackDelayMs);
-            int jitterWindowMs = Math.Max(0, clampedDelayMs - TeslaMinimumImpactDelayMs);
-            if (jitterWindowMs <= 0)
-            {
-                return TeslaMinimumImpactDelayMs;
-            }
-
-            return TeslaMinimumImpactDelayMs + _random.Next(jitterWindowMs);
+            int attackAfterMs = Math.Max(
+                0,
+                summon?.SkillData?.ResolveExplicitSummonAttackAfterMs(summon.CurrentAnimationBranchName) ?? 0);
+            return SummonClientPostEffectRules.ResolveSummonedAttackImpactDelayMs(
+                summon?.SkillId ?? 0,
+                attackAfterMs,
+                ResolvePacketTeslaAttackDelayWindowMs(summon),
+                _random.Next);
         }
 
         private static int ResolvePacketAttackImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime, int targetIndex = 0)

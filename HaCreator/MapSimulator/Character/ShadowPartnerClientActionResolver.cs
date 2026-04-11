@@ -484,7 +484,15 @@ namespace HaCreator.MapSimulator.Character
             "tank_mRush",
             "drillrush",
             "giant",
-            "rpunch"
+            "rpunch",
+            "flashRain",
+            "clawCut",
+            "mine",
+            "braveslash1",
+            "braveslash2",
+            "braveslash3",
+            "braveslash4",
+            "chargeBlow"
         };
 
         private static readonly string[] LoaderSynthesizedRemappedActionNames =
@@ -1151,8 +1159,12 @@ namespace HaCreator.MapSimulator.Character
                 Z = sourceFrame.Z,
                 AlphaStart = sourceFrame.AlphaStart,
                 AlphaEnd = sourceFrame.AlphaEnd,
+                HasAlphaStart = sourceFrame.HasAlphaStart,
+                HasAlphaEnd = sourceFrame.HasAlphaEnd,
                 ZoomStart = sourceFrame.ZoomStart,
                 ZoomEnd = sourceFrame.ZoomEnd,
+                HasZoomStart = sourceFrame.HasZoomStart,
+                HasZoomEnd = sourceFrame.HasZoomEnd,
                 RotationDegrees = sourceFrame.RotationDegrees + pieceRotationDegrees
             };
         }
@@ -1495,6 +1507,11 @@ namespace HaCreator.MapSimulator.Character
         public static bool IsAttackAction(string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (ClientActionManInitSkippedActionNames.Contains(actionName))
             {
                 return false;
             }

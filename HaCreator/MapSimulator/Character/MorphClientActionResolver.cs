@@ -584,7 +584,26 @@ namespace HaCreator.MapSimulator.Character
                 ["siege_pre"] = new[] { "sit" },
                 ["tank_pre"] = new[] { "sit" },
                 ["tank_laser"] = new[] { "sit" },
+                ["siege"] = new[] { "sit" },
+                ["siege_stand"] = new[] { "sit" },
+                ["siege_after"] = new[] { "sit" },
+                ["tank"] = new[] { "sit" },
+                ["tank_walk"] = new[] { "sit" },
+                ["tank_stand"] = new[] { "sit" },
+                ["tank_prone"] = new[] { "sit" },
+                ["tank_after"] = new[] { "sit" },
+                ["tank_siegepre"] = new[] { "sit" },
+                ["tank_siegeattack"] = new[] { "sit" },
+                ["tank_siegestand"] = new[] { "sit" },
+                ["tank_siegeafter"] = new[] { "sit" },
+                ["tank_msummon"] = new[] { "sit" },
+                ["tank_rbooster_pre"] = new[] { "sit" },
+                ["tank_rbooster_after"] = new[] { "sit" },
+                ["tank_msummon2"] = new[] { "sit" },
+                ["tank_mRush"] = new[] { "sit" },
                 ["rbooster_pre"] = new[] { "sit" },
+                ["rbooster"] = new[] { "sit" },
+                ["rbooster_after"] = new[] { "sit" },
                 ["drillrush"] = new[] { "sit" },
                 ["mbooster"] = new[] { "sit" },
                 ["crossRoad"] = new[] { "sit" },
@@ -599,6 +618,8 @@ namespace HaCreator.MapSimulator.Character
                 // Character/00002000.img starts that body sequence on alert/stab
                 // frames and Morph/*.img publishes no verbatim cyclone branch.
                 ["cyclone_pre"] = new[] { "alert", "stabO1", "swingO2" },
+                ["cyclone"] = new[] { "swingO2", "stabO1", "alert" },
+                ["cyclone_after"] = new[] { "alert", "stabO1", "swingO2" },
                 // Character/00002000.img backs the checked full-screen jaguar rain
                 // branch with `alert` rather than a morph-owned `*Rain` attack root.
                 ["flashRain"] = new[] { "alert" }
@@ -1415,6 +1436,11 @@ namespace HaCreator.MapSimulator.Character
                 {
                     yield return actionName;
                 }
+            }
+
+            if (HasPublishedAction(morphPart, "jump") && yielded.Add("jump"))
+            {
+                yield return "jump";
             }
         }
 

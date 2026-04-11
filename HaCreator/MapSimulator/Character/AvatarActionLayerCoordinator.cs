@@ -443,6 +443,11 @@ namespace HaCreator.MapSimulator.Character
             return rawActionCode >= 0 && rawActionCode < (isMorphAvatar ? 49 : 273);
         }
 
+        internal static bool HasActiveOneTimeActionOwner(string oneTimeActionName)
+        {
+            return !string.IsNullOrWhiteSpace(oneTimeActionName);
+        }
+
         private static bool IsExplicitMountedTransitionActionName(string actionName)
         {
             return string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)

@@ -114,6 +114,19 @@ namespace HaCreator.MapSimulator.Pools
             byte EffectType,
             string EffectName,
             int CurrentTime);
+        public readonly record struct RemoteGrenadePresentation(
+            int CharacterId,
+            int SkillId,
+            int SkillLevel,
+            Point Target,
+            int KeyDownTime,
+            Vector2 Impact,
+            int CurrentTime,
+            bool UsesMonsterBombGauge,
+            int InitDelayMs,
+            int ExplosionDelayMs,
+            int DragX,
+            int DragY);
 
         private readonly record struct RemoteMechanicModePresentation(
             string StandActionName,
@@ -287,6 +300,14 @@ namespace HaCreator.MapSimulator.Pools
         private const int RemoteReceiveHpGaugeWidth = 46;
         private const int RemoteReceiveHpGaugeHeight = 5;
         private const int RemoteReceiveHpGaugeVerticalPadding = 4;
+        private const int MonsterBombSkillId = 4341003;
+        private const int MonsterBombMinimumKeyDownMs = 500;
+        private const int MonsterBombGaugeDistance = 900;
+        private const int MonsterBombGaugeDistanceSquaredPlusFloor = 832500;
+        private const int MonsterBombInitDelayMs = 450;
+        private const int MonsterBombExplosionDelayMs = 950;
+        private const int GenericGrenadeImpactScale = 600;
+        private const int GrenadeDragScale = 100000;
         private static readonly int[] RemoteShadowPartnerSkillIds =
         {
             4111002,
@@ -434,6 +455,7 @@ namespace HaCreator.MapSimulator.Pools
         public event Action<RemoteStringEffectPresentation> StringEffectRegistered;
         public event Action<RemoteChatLogMessagePresentation> ChatLogMessageRegistered;
         public event Action<RemoteStatusBarEffectPresentation> StatusBarEffectRegistered;
+        public event Action<RemoteGrenadePresentation> GrenadeRegistered;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
         public Action<int, string> ActorRemovedCallback { get; set; }
@@ -2322,7 +2344,7 @@ namespace HaCreator.MapSimulator.Pools
                     skillId => RegisterRemoteHitSpecialSkillUseEffect(actor, skillId, currentTime),
                     out packetSpecialSkillId);
             }
-            else
+            else if (ShouldTryRegisterRemoteHitDamageReactiveSpecialEffect(packet.HpDelta, packet.SkillId))
             {
                 registeredDamageReactiveSkillEffect = TryRegisterRemoteHitDamageReactiveSpecialEffect(
                     actor?.Build?.Job ?? 0,
@@ -2714,6 +2736,15 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        internal static bool ShouldTryRegisterRemoteHitDamageReactiveSpecialEffect(
+            int hpDelta,
+            int? packetSkillId)
+        {
+            // Client `CUserRemote::OnHit` reserves `nHPDamage == -1` for an explicit packet skill id.
+            // The WZ `info/condition = damaged` fallback should only emulate a real damage branch.
+            return hpDelta > 0 && packetSkillId.GetValueOrDefault() <= 0;
+        }
+
         internal static IReadOnlyList<int> EnumerateRemoteHitDamageReactiveSkillCandidateIds(
             int jobId,
             RemoteUserTemporaryStatKnownState knownState)
@@ -2820,22 +2851,44 @@ namespace HaCreator.MapSimulator.Pools
 
         private void RegisterRemoteHitSpecialSkillUseEffect(RemoteUserActor actor, int skillId, int currentTime)
         {
-            if (actor == null || skillId <= 0)
+            if (!TryCreateRemoteHitSpecialSkillUsePresentation(
+                    actor?.CharacterId ?? 0,
+                    actor?.FacingRight ?? true,
+                    skillId,
+                    currentTime,
+                    out RemoteSkillUsePresentation presentation))
             {
                 return;
             }
 
-            SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
-                actor.CharacterId,
+            SkillUseRegistered?.Invoke(presentation);
+        }
+
+        internal static bool TryCreateRemoteHitSpecialSkillUsePresentation(
+            int characterId,
+            bool facingRight,
+            int skillId,
+            int currentTime,
+            out RemoteSkillUsePresentation presentation)
+        {
+            presentation = default;
+            if (characterId <= 0 || skillId <= 0)
+            {
+                return false;
+            }
+
+            presentation = new RemoteSkillUsePresentation(
+                characterId,
                 skillId,
                 null,
-                actor.FacingRight,
+                facingRight,
                 currentTime,
                 new[] { "special" },
                 WorldOrigin: null,
                 FollowOwnerPosition: true,
                 FollowOwnerFacing: false,
-                DelayRateOverride: 1000));
+                DelayRateOverride: 1000);
+            return true;
         }
 
         public bool TryApplyEffect(RemoteUserEffectPacket packet, int currentTime, out string message)
@@ -3314,6 +3367,16 @@ namespace HaCreator.MapSimulator.Pools
             actor.LastThrowGrenadeTarget = new Point(packet.X, packet.Y);
             actor.LastThrowGrenadeKeyDownTime = packet.KeyDownTime;
             actor.LastThrowGrenadePacketTime = currentTime;
+            RemoteGrenadePresentation grenadePresentation = BuildRemoteThrowGrenadePresentationForParity(
+                actor.CharacterId,
+                packet.SkillId,
+                packet.GrenadeId,
+                new Point(packet.X, packet.Y),
+                packet.KeyDownTime,
+                actor.FacingRight,
+                currentTime,
+                ResolveRemoteGrenadeMaxGaugeTimeMs(packet.SkillId));
+            GrenadeRegistered?.Invoke(grenadePresentation);
             SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
                 actor.CharacterId,
                 packet.SkillId,
@@ -3327,6 +3390,82 @@ namespace HaCreator.MapSimulator.Pools
                 DelayRateOverride: 1000));
             message = $"Remote user {packet.CharacterId} throw-grenade packet stored for skill {packet.SkillId} at ({packet.X}, {packet.Y}).";
             return true;
+        }
+
+        public static RemoteGrenadePresentation BuildRemoteThrowGrenadePresentationForParity(
+            int characterId,
+            int skillId,
+            int skillLevel,
+            Point target,
+            int keyDownTime,
+            bool facingRight,
+            int currentTime,
+            int maxGaugeTimeMs = 0)
+        {
+            int clampedKeyDownTime = Math.Max(0, keyDownTime);
+            if (skillId == MonsterBombSkillId)
+            {
+                int gaugeTime = Math.Max(MonsterBombMinimumKeyDownMs, clampedKeyDownTime);
+                int maxGauge = maxGaugeTimeMs > 0 ? maxGaugeTimeMs : ResolveRemoteGrenadeMaxGaugeTimeMs(skillId);
+                int impactMagnitudeX = (int)((double)gaugeTime / maxGauge * MonsterBombGaugeDistance);
+                int squaredY = Math.Max(0, MonsterBombGaugeDistanceSquaredPlusFloor - (impactMagnitudeX * impactMagnitudeX));
+                int impactMagnitudeY = (int)Math.Sqrt(squaredY);
+                float impactX = facingRight ? impactMagnitudeX : -impactMagnitudeX;
+                int dragDenominator = Math.Max(1, impactMagnitudeX + impactMagnitudeY);
+                return new RemoteGrenadePresentation(
+                    characterId,
+                    skillId,
+                    skillLevel,
+                    target,
+                    clampedKeyDownTime,
+                    new Vector2(impactX, impactMagnitudeY),
+                    currentTime,
+                    UsesMonsterBombGauge: true,
+                    InitDelayMs: MonsterBombInitDelayMs,
+                    ExplosionDelayMs: MonsterBombExplosionDelayMs,
+                    DragX: (int)(GrenadeDragScale * (impactMagnitudeX / (double)dragDenominator)),
+                    DragY: (int)(GrenadeDragScale * (impactMagnitudeY / (double)dragDenominator)));
+            }
+
+            int impactMagnitude = (int)(clampedKeyDownTime / 1000d * GenericGrenadeImpactScale);
+            return new RemoteGrenadePresentation(
+                characterId,
+                skillId,
+                skillLevel,
+                target,
+                clampedKeyDownTime,
+                new Vector2(facingRight ? impactMagnitude : -impactMagnitude, -impactMagnitude),
+                currentTime,
+                UsesMonsterBombGauge: false,
+                InitDelayMs: 0,
+                ExplosionDelayMs: 0,
+                DragX: 0,
+                DragY: 0);
+        }
+
+        private static int ResolveRemoteGrenadeMaxGaugeTimeMs(int skillId)
+        {
+            if (skillId != MonsterBombSkillId)
+            {
+                return 1000;
+            }
+
+            WzImage skillImage = Program.FindImage("Skill", $"{skillId / 10000}.img");
+            skillImage?.ParseImage();
+            if (skillImage?["skill"]?[skillId.ToString("D7", System.Globalization.CultureInfo.InvariantCulture)]?["common"]?["time"] is WzStringProperty stringTime
+                && int.TryParse(stringTime.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int seconds)
+                && seconds > 0)
+            {
+                return seconds * 1000;
+            }
+
+            if (skillImage?["skill"]?[skillId.ToString("D7", System.Globalization.CultureInfo.InvariantCulture)]?["common"]?["time"] is WzIntProperty intTime
+                && intTime.Value > 0)
+            {
+                return intTime.Value * 1000;
+            }
+
+            return 3000;
         }
 
         public bool TryClearPreparedSkill(int characterId, int currentTime, out string message)

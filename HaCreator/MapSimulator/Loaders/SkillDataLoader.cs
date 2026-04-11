@@ -1313,6 +1313,15 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
+            if (TryResolveTokenLocalSingleLetterContextLabel(
+                    clause,
+                    placeholderToken,
+                    normalizedClause,
+                    out label))
+            {
+                return true;
+            }
+
             if (normalizedClause.Contains("max movement speed", StringComparison.Ordinal)
                 || normalizedClause.Contains("movement speed limit", StringComparison.Ordinal))
             {
@@ -1673,6 +1682,114 @@ namespace HaCreator.MapSimulator.Loaders
             return !string.IsNullOrWhiteSpace(label);
         }
 
+        private static bool TryResolveTokenLocalSingleLetterContextLabel(
+            string clause,
+            string placeholderToken,
+            string normalizedClause,
+            out string label)
+        {
+            label = null;
+            if (string.IsNullOrWhiteSpace(clause) || string.IsNullOrWhiteSpace(placeholderToken))
+            {
+                return false;
+            }
+
+            string lowerClause = clause.ToLowerInvariant();
+            string lowerToken = placeholderToken.ToLowerInvariant();
+            int tokenIndex = lowerClause.IndexOf(lowerToken, StringComparison.Ordinal);
+            if (tokenIndex < 0)
+            {
+                return false;
+            }
+
+            string beforeToken = lowerClause[..tokenIndex];
+            string afterToken = lowerClause[(tokenIndex + lowerToken.Length)..];
+            string localBefore = beforeToken.Length > 32 ? beforeToken[^32..] : beforeToken;
+            string localAfter = afterToken.Length > 48 ? afterToken[..48] : afterToken;
+
+            if (normalizedClause.Contains("damage over time", StringComparison.Ordinal))
+            {
+                if (StartsWithPercentChance(localAfter))
+                {
+                    label = "Damage Over Time Chance";
+                    return true;
+                }
+
+                if (localBefore.Contains("for", StringComparison.Ordinal)
+                    && StartsWithSeconds(localAfter))
+                {
+                    label = "Damage Over Time Duration";
+                    return true;
+                }
+
+                if (localBefore.Contains("every", StringComparison.Ordinal)
+                    && StartsWithSeconds(localAfter))
+                {
+                    label = "Damage Over Time Interval";
+                    return true;
+                }
+
+                if (StartsWithPercentDamage(localAfter))
+                {
+                    label = "Damage Over Time";
+                    return true;
+                }
+            }
+
+            if (localBefore.Contains("chance for", StringComparison.Ordinal)
+                && StartsWithSeconds(localAfter))
+            {
+                label = "Duration";
+                return true;
+            }
+
+            if (localBefore.Contains("every", StringComparison.Ordinal)
+                && StartsWithSeconds(localAfter))
+            {
+                label = "Interval";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool StartsWithPercentChance(string value)
+        {
+            return StartsWithAfterOptionalPercent(value, "chance");
+        }
+
+        private static bool StartsWithPercentDamage(string value)
+        {
+            return StartsWithAfterOptionalPercent(value, "damage");
+        }
+
+        private static bool StartsWithAfterOptionalPercent(string value, string token)
+        {
+            if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            string trimmed = value.TrimStart();
+            if (trimmed.StartsWith("%", StringComparison.Ordinal))
+            {
+                trimmed = trimmed[1..].TrimStart();
+            }
+
+            return trimmed.StartsWith(token, StringComparison.Ordinal);
+        }
+
+        private static bool StartsWithSeconds(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string trimmed = value.TrimStart();
+            return trimmed.StartsWith("sec", StringComparison.Ordinal);
+        }
+
         private static string NormalizeSingleLetterContextClause(string clause, string placeholderToken)
         {
             if (string.IsNullOrWhiteSpace(clause))
@@ -1738,6 +1855,10 @@ namespace HaCreator.MapSimulator.Loaders
                 "Number of Bullets" => FormatSignedValue,
                 "Robot Factory Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 "Summon Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
+                "Damage Over Time Chance" => static value => $"{value.ToString(CultureInfo.InvariantCulture)}%",
+                "Damage Over Time" => static value => $"{value.ToString(CultureInfo.InvariantCulture)}%",
+                "Damage Over Time Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
+                "Damage Over Time Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 "Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 "Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 _ => null

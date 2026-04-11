@@ -1029,6 +1029,33 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : currentState;
         }
 
+        internal static bool TryRearmTeslaCoilAfterActionPlayback(
+            ActiveSummon summon,
+            int teslaCoilSkillId,
+            bool hasActiveOneTimeActionPlayback)
+        {
+            if (summon?.SkillId != teslaCoilSkillId)
+            {
+                return false;
+            }
+
+            byte resolvedState = ResolveTeslaCoilIdleRuntimeState(
+                summon.TeslaCoilState,
+                hasActiveOneTimeActionPlayback);
+            if (resolvedState == summon.TeslaCoilState)
+            {
+                return false;
+            }
+
+            summon.TeslaCoilState = resolvedState;
+            if (resolvedState == 1)
+            {
+                ClearTeslaCoilAttackPlaybackOwnership(summon);
+            }
+
+            return true;
+        }
+
         internal static void RearmTeslaCoilForRefresh(ActiveSummon summon, int teslaCoilSkillId)
         {
             if (summon?.SkillId != teslaCoilSkillId)
@@ -1037,7 +1064,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             summon.TeslaCoilState = 1;
+            ClearTeslaCoilAttackPlaybackOwnership(summon);
+        }
+
+        private static void ClearTeslaCoilAttackPlaybackOwnership(ActiveSummon summon)
+        {
             summon.TeslaTrianglePoints = Array.Empty<Point>();
+            summon.CurrentAnimationBranchName = null;
+            summon.LastAttackAnimationStartTime = int.MinValue;
+            summon.OneTimeActionFallbackAnimation = null;
+            summon.OneTimeActionFallbackStartTime = int.MinValue;
+            summon.OneTimeActionFallbackAnimationTime = int.MinValue;
+            summon.OneTimeActionFallbackEndTime = int.MinValue;
         }
 
         internal static int? ResolveBeholderBuffBranchIndex(

@@ -122,6 +122,8 @@ namespace HaCreator.MapSimulator.Character
             public string PersistentTamingMobActionName { get; init; }
             public string CurrentBodyActionName { get; set; }
             public string CurrentTamingMobActionName { get; set; }
+            public string CharacterOneTimeActionName { get; set; }
+            public string TamingMobOneTimeActionName { get; set; }
             public int BodyPreparedDurationMs { get; init; }
             public int TamingMobPreparedDurationMs { get; init; }
             public int TotalPreparedDurationMs { get; init; }
@@ -155,6 +157,8 @@ namespace HaCreator.MapSimulator.Character
             string PersistentTamingMobActionName,
             string CurrentBodyActionName,
             string CurrentTamingMobActionName,
+            string CharacterOneTimeActionName,
+            string TamingMobOneTimeActionName,
             int BodyPreparedDurationMs,
             int TamingMobPreparedDurationMs,
             int TotalPreparedDurationMs,
@@ -2233,6 +2237,8 @@ namespace HaCreator.MapSimulator.Character
                 state.PersistentTamingMobActionName,
                 state.CurrentBodyActionName,
                 state.CurrentTamingMobActionName,
+                state.CharacterOneTimeActionName,
+                state.TamingMobOneTimeActionName,
                 state.BodyPreparedDurationMs,
                 state.TamingMobPreparedDurationMs,
                 state.TotalPreparedDurationMs,
@@ -2294,6 +2300,8 @@ namespace HaCreator.MapSimulator.Character
                 PersistentTamingMobActionName = persistentBodyActionName,
                 CurrentBodyActionName = CurrentActionName,
                 CurrentTamingMobActionName = CurrentActionName,
+                CharacterOneTimeActionName = CurrentActionName,
+                TamingMobOneTimeActionName = CurrentActionName,
                 BodyPreparedDurationMs = bodyDuration,
                 TamingMobPreparedDurationMs = tamingMobDuration,
                 TotalPreparedDurationMs = Math.Max(bodyDuration, tamingMobDuration),
@@ -2406,10 +2414,12 @@ namespace HaCreator.MapSimulator.Character
 
             if (advanceBodyClock)
             {
+                mountedActionLayerState.CharacterOneTimeActionName = null;
                 mountedActionLayerState.CurrentBodyActionName = persistentActionName;
             }
             else
             {
+                mountedActionLayerState.TamingMobOneTimeActionName = null;
                 mountedActionLayerState.CurrentTamingMobActionName = persistentActionName;
             }
 
@@ -2540,15 +2550,10 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            string currentActionName = bodyLayer
-                ? mountedActionLayerState.CurrentBodyActionName
-                : mountedActionLayerState.CurrentTamingMobActionName;
-            string persistentActionName = bodyLayer
-                ? mountedActionLayerState.PersistentBodyActionName
-                : mountedActionLayerState.PersistentTamingMobActionName;
-            return !string.IsNullOrWhiteSpace(currentActionName)
-                   && !string.IsNullOrWhiteSpace(persistentActionName)
-                   && !string.Equals(currentActionName, persistentActionName, StringComparison.OrdinalIgnoreCase);
+            string oneTimeActionName = bodyLayer
+                ? mountedActionLayerState.CharacterOneTimeActionName
+                : mountedActionLayerState.TamingMobOneTimeActionName;
+            return AvatarActionLayerCoordinator.HasActiveOneTimeActionOwner(oneTimeActionName);
         }
 
         private void UpdateFaceExpression(int currentTime)
@@ -5703,32 +5708,32 @@ namespace HaCreator.MapSimulator.Character
                 currentFacingRight);
         }
 
-        private static int[] CountPreparedMirrorImageSourceLayerParts(IReadOnlyList<MirrorImagePreparedSourceLayer> preparedLayers)
+        private static int[] CollectPreparedMirrorImageLayerObjectIds(IReadOnlyList<MirrorImagePreparedSourceLayer> preparedLayers)
         {
             if (preparedLayers == null || preparedLayers.Count == 0)
             {
                 return Array.Empty<int>();
             }
 
-            int[] counts = new int[preparedLayers.Count];
+            int[] layerObjectIds = new int[preparedLayers.Count];
             for (int layerIndex = 0; layerIndex < preparedLayers.Count; layerIndex++)
             {
-                counts[layerIndex] = preparedLayers[layerIndex]?.Parts?.Count ?? 0;
+                layerObjectIds[layerIndex] = preparedLayers[layerIndex]?.PreparedLayerObjectId ?? 0;
             }
 
-            return counts;
+            return layerObjectIds;
         }
 
-        internal static bool ShouldResetMirrorImagePreparedSourceLayersWhenHidden(IReadOnlyList<int> preparedLayerPartCounts)
+        internal static bool ShouldReleaseMirrorImagePreparedSourceLayersWhenHidden(IReadOnlyList<int> preparedLayerObjectIds)
         {
-            if (preparedLayerPartCounts == null || preparedLayerPartCounts.Count == 0)
+            if (preparedLayerObjectIds == null || preparedLayerObjectIds.Count == 0)
             {
                 return false;
             }
 
-            for (int layerIndex = 0; layerIndex < preparedLayerPartCounts.Count; layerIndex++)
+            for (int layerIndex = 0; layerIndex < preparedLayerObjectIds.Count; layerIndex++)
             {
-                if (preparedLayerPartCounts[layerIndex] > 0)
+                if (preparedLayerObjectIds[layerIndex] > 0)
                 {
                     return true;
                 }
@@ -6575,8 +6580,8 @@ namespace HaCreator.MapSimulator.Character
             {
                 _activeMirrorImage.Visible = false;
                 _activeMirrorImage.CurrentOffsetPx = Point.Zero;
-                if (ShouldResetMirrorImagePreparedSourceLayersWhenHidden(
-                        CountPreparedMirrorImageSourceLayerParts(_activeMirrorImage.PreparedSourceLayers)))
+                if (ShouldReleaseMirrorImagePreparedSourceLayersWhenHidden(
+                        CollectPreparedMirrorImageLayerObjectIds(_activeMirrorImage.PreparedSourceLayers)))
                 {
                     ResetMirrorImagePreparedSourceLayers();
                 }
