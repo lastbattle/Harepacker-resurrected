@@ -950,7 +950,7 @@ namespace HaCreator.MapSimulator
             }
 
             EnsurePacketOwnedBossTimerAssetsLoaded();
-            Texture2D background = _packetFieldBossTimerHourBackgroundTexture ?? _packetFieldBossTimerBackgroundTexture;
+            Texture2D background = ResolvePacketOwnedFieldClockBackground(_packetFieldClockState, currentTickCount);
             PacketOwnedFieldClockLayout layout = ResolvePacketOwnedFieldClockLayout(
                 _packetFieldClockState,
                 _renderParams.RenderWidth,
@@ -1002,6 +1002,25 @@ namespace HaCreator.MapSimulator
             {
                 DrawPacketOwnedClockFallbackText(layoutBounds, background, timerText, layout.FallbackTextColor);
             }
+        }
+
+        private Texture2D ResolvePacketOwnedFieldClockBackground(PacketFieldClockVisualState state, int currentTickCount)
+        {
+            bool useHourBackground = ShouldUsePacketOwnedFieldClockHourBackground(state, currentTickCount);
+            return useHourBackground
+                ? _packetFieldBossTimerHourBackgroundTexture ?? _packetFieldBossTimerBackgroundTexture
+                : _packetFieldBossTimerBackgroundTexture ?? _packetFieldBossTimerHourBackgroundTexture;
+        }
+
+        private static bool ShouldUsePacketOwnedFieldClockHourBackground(PacketFieldClockVisualState state, int currentTickCount)
+        {
+            if (state?.Kind != PacketFieldClockVisualKind.Countdown
+                || state.Variant != PacketFieldClockVisualVariant.Default)
+            {
+                return true;
+            }
+
+            return PacketFieldFeedbackRuntime.GetFieldClockRemainingSecondsForTest(state, currentTickCount) >= 3600;
         }
 
         private bool TryDrawPacketOwnedClockTimerDigits(int remainingSeconds, bool showHours, Vector2 boardPosition, Texture2D background)
@@ -2406,6 +2425,24 @@ namespace HaCreator.MapSimulator
                 layout.BackColor.PackedValue,
                 layout.FallbackTextColor.PackedValue,
                 layout.DrawSolidWindow);
+        }
+
+        internal static bool ShouldUsePacketOwnedFieldClockHourBackgroundForTest(
+            PacketFieldClockVisualVariant variant,
+            int durationSeconds,
+            int currentTick)
+        {
+            PacketFieldClockVisualState state = new(
+                PacketFieldClockVisualKind.Countdown,
+                variant,
+                0,
+                durationSeconds,
+                false,
+                0,
+                0,
+                0,
+                "test");
+            return ShouldUsePacketOwnedFieldClockHourBackground(state, currentTick);
         }
 
         internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, PacketOwnedUiDrawOrder DrawOrder, byte Alpha) GetPacketOwnedScreenEffectRegistrationForTest(

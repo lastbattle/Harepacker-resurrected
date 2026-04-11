@@ -1209,6 +1209,7 @@ namespace HaCreator.MapSimulator
                     officialAttackPacket.ChargeSkillId,
                     officialAttackPacket.ActionSpeed,
                     officialAttackPacket.PreparedSkillReleaseFollowUpValue,
+                    officialAttackPacket.MobHits,
                     officialAttackPacket.FacingRight,
                     currentTime,
                     out string meleeMessage);
@@ -1889,6 +1890,7 @@ namespace HaCreator.MapSimulator
                         meleePacket.ChargeSkillId,
                         meleePacket.ActionSpeed,
                         meleePacket.PreparedSkillReleaseFollowUpValue,
+                        meleePacket.MobHits,
                         meleePacket.FacingRight,
                         currentTime,
                         out string meleeMessage);

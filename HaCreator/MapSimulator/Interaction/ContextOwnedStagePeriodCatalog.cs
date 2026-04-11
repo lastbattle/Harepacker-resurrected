@@ -15,6 +15,18 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class ContextOwnedStageSystemCatalog
     {
+        private const int StageBackXStringPoolId = 0x03E5;
+        private const int StageBackYStringPoolId = 0x03E6;
+        private const int MapBackBackgroundSetStringPoolId = 0x0610;
+        private const int MapBackRxStringPoolId = 0x0612;
+        private const int MapBackRyStringPoolId = 0x0613;
+        private const int MapBackCxStringPoolId = 0x0614;
+        private const int MapBackCyStringPoolId = 0x0615;
+        private const int MapBackAlphaStringPoolId = 0x0617;
+        private const int MapBackTypeStringPoolId = 0x0618;
+        private const int StageBackAbsRxStringPoolId = 0x17F1;
+        private const int StageBackAbsRyStringPoolId = 0x17F2;
+
         private readonly Dictionary<string, ContextOwnedStageThemeCatalogEntry> _themes;
         private readonly Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> _affectedMapsByFieldId;
 
@@ -391,14 +403,14 @@ namespace HaCreator.MapSimulator.Interaction
                 backgroundSet.Trim(),
                 number.ToString(CultureInfo.InvariantCulture),
                 infoType,
-                InfoTool.GetInt(property["x"]),
-                InfoTool.GetInt(property["y"]),
-                InfoTool.GetInt(property["absRX"], 1),
-                InfoTool.GetInt(property["absRY"], 1),
-                InfoTool.GetInt(property["cx"]),
-                InfoTool.GetInt(property["cy"]),
-                Math.Clamp(InfoTool.GetInt(property["a"], 255), 0, 255),
-                (BackgroundType)InfoTool.GetInt(property["type"]),
+                ReadClientInt(property, StageBackXStringPoolId, "x"),
+                ReadClientInt(property, StageBackYStringPoolId, "y"),
+                ReadClientInt(property, StageBackAbsRxStringPoolId, "absRX", 1),
+                ReadClientInt(property, StageBackAbsRyStringPoolId, "absRY", 1),
+                ReadClientInt(property, MapBackCxStringPoolId, "cx"),
+                ReadClientInt(property, MapBackCyStringPoolId, "cy"),
+                Math.Clamp(ReadClientInt(property, MapBackAlphaStringPoolId, "a", 255), 0, 255),
+                (BackgroundType)ReadClientInt(property, MapBackTypeStringPoolId, "type"),
                 property["front"] == null ? front : InfoTool.GetBool(property["front"]),
                 flipValue.HasValue && flipValue.Value,
                 InfoTool.GetInt(property["page"]),
@@ -417,7 +429,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            string backgroundSet = InfoTool.GetString(property["bS"]);
+            string backgroundSet = ReadClientString(property, MapBackBackgroundSetStringPoolId, "bS");
             string number = ResolveBackgroundNumber(property);
             if (string.IsNullOrWhiteSpace(backgroundSet) || string.IsNullOrWhiteSpace(number))
             {
@@ -437,14 +449,14 @@ namespace HaCreator.MapSimulator.Interaction
                 backgroundSet,
                 number,
                 infoType,
-                InfoTool.GetInt(property["x"]),
-                InfoTool.GetInt(property["y"]),
-                InfoTool.GetInt(property["rx"]),
-                InfoTool.GetInt(property["ry"]),
-                InfoTool.GetInt(property["cx"]),
-                InfoTool.GetInt(property["cy"]),
-                Math.Clamp(InfoTool.GetInt(property["a"], 255), 0, 255),
-                (BackgroundType)InfoTool.GetInt(property["type"]),
+                ReadClientInt(property, StageBackXStringPoolId, "x"),
+                ReadClientInt(property, StageBackYStringPoolId, "y"),
+                ReadClientInt(property, MapBackRxStringPoolId, "rx"),
+                ReadClientInt(property, MapBackRyStringPoolId, "ry"),
+                ReadClientInt(property, MapBackCxStringPoolId, "cx"),
+                ReadClientInt(property, MapBackCyStringPoolId, "cy"),
+                Math.Clamp(ReadClientInt(property, MapBackAlphaStringPoolId, "a", 255), 0, 255),
+                (BackgroundType)ReadClientInt(property, MapBackTypeStringPoolId, "type"),
                 InfoTool.GetBool(property["front"]),
                 flipValue.HasValue && flipValue.Value,
                 InfoTool.GetInt(property["page"]),
@@ -466,6 +478,25 @@ namespace HaCreator.MapSimulator.Interaction
             return !string.IsNullOrWhiteSpace(text)
                 ? text
                 : InfoTool.GetInt(property["no"]).ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static int ReadClientInt(
+            WzImageProperty property,
+            int stringPoolId,
+            string fallbackName,
+            int defaultValue = 0)
+        {
+            return InfoTool.GetInt(property[ResolveClientPropertyName(stringPoolId, fallbackName)], defaultValue);
+        }
+
+        private static string ReadClientString(WzImageProperty property, int stringPoolId, string fallbackName)
+        {
+            return InfoTool.GetString(property[ResolveClientPropertyName(stringPoolId, fallbackName)]);
+        }
+
+        private static string ResolveClientPropertyName(int stringPoolId, string fallbackName)
+        {
+            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackName);
         }
 
         private static HashSet<string> ParseStringSet(WzImageProperty property)

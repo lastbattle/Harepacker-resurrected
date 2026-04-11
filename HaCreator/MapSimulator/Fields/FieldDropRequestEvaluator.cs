@@ -15,6 +15,9 @@ namespace HaCreator.MapSimulator.Fields
 
     public static class FieldDropRequestEvaluator
     {
+        public const int ClientDropMoneyRequestOpcode = 106;
+        public const int ClientMaxMesoDropAmount = 50_000;
+
         public static bool ShouldPromptForItemDropQuantity(
             InventoryType inventoryType,
             InventorySlotData slotData)
@@ -96,9 +99,17 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
-            long normalizedAmount = Math.Min(parsedAmount, Math.Max(1L, maximum));
+            long normalizedAmount = Math.Min(parsedAmount, ResolveClientMesoDropMaximum(maximum));
             normalizedText = normalizedAmount.ToString(CultureInfo.InvariantCulture);
             return true;
+        }
+
+        public static byte[] BuildClientMesoDropRequestPayload(int currentTimeMs, int amount)
+        {
+            byte[] payload = new byte[sizeof(int) * 2];
+            BitConverter.GetBytes(currentTimeMs).CopyTo(payload, 0);
+            BitConverter.GetBytes(amount).CopyTo(payload, sizeof(int));
+            return payload;
         }
 
         public static bool TryResolveLocalItemDropRequest(
@@ -174,6 +185,12 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (requestedAmount > ClientMaxMesoDropAmount)
+            {
+                restrictionMessage = "The meso drop amount exceeds the client drop limit.";
+                return false;
+            }
+
             if (currentMeso < requestedAmount)
             {
                 restrictionMessage = "You do not have enough mesos to drop that amount.";
@@ -182,6 +199,11 @@ namespace HaCreator.MapSimulator.Fields
 
             request = new LocalFieldMesoDropRequest((int)requestedAmount);
             return true;
+        }
+
+        private static long ResolveClientMesoDropMaximum(long currentMeso)
+        {
+            return Math.Min(Math.Max(1L, currentMeso), ClientMaxMesoDropAmount);
         }
     }
 }

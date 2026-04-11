@@ -761,6 +761,7 @@ namespace HaCreator.MapSimulator.Fields
                 packet.ChargeSkillId,
                 packet.ActionSpeed,
                 packet.PreparedSkillReleaseFollowUpValue,
+                packet.MobHits,
                 packet.FacingRight,
                 currentTimeMs,
                 out errorMessage);

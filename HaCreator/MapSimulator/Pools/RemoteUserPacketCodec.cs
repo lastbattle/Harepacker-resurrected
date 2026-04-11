@@ -178,6 +178,9 @@ namespace HaCreator.MapSimulator.Pools
         public const int DarkAuraSkillId = 32001003;
         public const int BlueAuraSkillId = 32101002;
         public const int YellowAuraSkillId = 32101003;
+        public const int AdvancedBlueAuraSkillId = 32110000;
+        public const int AdvancedDarkAuraSkillId = 32120000;
+        public const int AdvancedYellowAuraSkillId = 32120001;
         public const int PaladinBlessingArmorSkillId = 1220013;
         public const int BishopBlessingArmorSkillId = 2311009;
 

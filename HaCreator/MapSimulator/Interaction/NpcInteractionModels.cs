@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Fields;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -148,6 +149,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string NpcActionName { get; init; } = string.Empty;
         public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> PublishedScriptNames { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<FieldObjectScriptPublication> PublishedScriptPublications { get; init; } =
+            Array.Empty<FieldObjectScriptPublication>();
         public QuestRewardChoicePrompt PendingRewardChoicePrompt { get; init; }
     }
 }

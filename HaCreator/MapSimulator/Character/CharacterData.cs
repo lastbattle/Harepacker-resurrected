@@ -717,6 +717,21 @@ namespace HaCreator.MapSimulator.Character
                 static pair => pair.Key,
                 StringComparer.OrdinalIgnoreCase);
 
+        private static readonly HashSet<string> ClientWzBackedPostV95PhysicalWeaponActionNames =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                "speedDualShot",
+                "jShot",
+                "dualVulcanPrep",
+                "dualVulcanLoop",
+                "dualVulcanEnd",
+                "swiftShot",
+                "cannonSmash",
+                "giganticBackstep",
+                "cannonSlam",
+                "cannonSpike"
+            };
+
         private static readonly IReadOnlyDictionary<string, string[]> ActionFallbackMap =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
@@ -1086,6 +1101,16 @@ namespace HaCreator.MapSimulator.Character
 
             actionCode = default;
             return false;
+        }
+
+        internal static bool IsClientWzBackedPostV95PhysicalWeaponActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return ClientWzBackedPostV95PhysicalWeaponActionNames.Contains(actionName.Trim());
         }
 
         public static string GetActionString(CharacterAction action)

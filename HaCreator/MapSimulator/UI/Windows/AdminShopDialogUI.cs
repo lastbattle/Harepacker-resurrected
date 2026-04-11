@@ -988,11 +988,10 @@ namespace HaCreator.MapSimulator.UI
                 string ownerState = openedWishlistBeforeClose
                     ? "The admin-shop close button confirmed the StringPool 0x1237 wish-list prompt, opened CUIAdminShopWishList, and closed the unique-modeless owner."
                     : "The admin-shop unique-modeless owner was closed locally.";
-                _packetOwnedAdminShopSession.RejectOpen(
-                    string.Empty,
+                _packetOwnedAdminShopSession.RecordLocalClose(
                     outboundSummary,
                     ownerState,
-                    AdminShopPacketOwnedOwnerVisibilityState.Hidden);
+                    openedWishlistBeforeClose);
                 _pendingPacketOwnedAdminShopResult = false;
                 _packetOwnedAdminShopRows.Clear();
                 _packetOwnedAdminShopSellTemplates.Clear();
@@ -3506,8 +3505,16 @@ namespace HaCreator.MapSimulator.UI
         private void BeginPendingRequest(AdminShopEntry entry, int requestQuantity)
         {
             _pendingModalEntry = null;
+            int normalizedRequestQuantity = Math.Max(1, requestQuantity);
+            if (!CanBeginRequestAfterPrompt(entry, normalizedRequestQuantity, out string blockedMessage))
+            {
+                _footerMessage = blockedMessage;
+                UpdateActionButtonStates();
+                return;
+            }
+
             _pendingRequestEntry = entry;
-            _pendingRequestQuantity = Math.Max(1, requestQuantity);
+            _pendingRequestQuantity = normalizedRequestQuantity;
             _pendingRequestPreviousState = entry?.State ?? default;
             _pendingRequestPreviousStateLabel = entry?.StateLabel ?? string.Empty;
             CapturePendingPacketOwnedUserSellSnapshot(entry);
@@ -3553,6 +3560,60 @@ namespace HaCreator.MapSimulator.UI
                         ? $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for simulator response."
                         : $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. {packetOwnedTradeSummary} Waiting for simulator response.";
             UpdateActionButtonStates();
+        }
+
+        private bool CanBeginRequestAfterPrompt(AdminShopEntry entry, int requestQuantity, out string blockedMessage)
+        {
+            blockedMessage = "The selected request is no longer available.";
+            if (entry == null)
+            {
+                return false;
+            }
+
+            if (entry.IsStorageExpansion)
+            {
+                if (CanRequestStorageExpansion(entry))
+                {
+                    return true;
+                }
+
+                blockedMessage = BuildStorageExpansionBlockedMessage(entry);
+                return false;
+            }
+
+            if (entry.InventoryExpansionType != InventoryType.NONE)
+            {
+                if (CanRequestInventoryExpansion(entry))
+                {
+                    return true;
+                }
+
+                blockedMessage = BuildInventoryExpansionBlockedMessage(entry);
+                return false;
+            }
+
+            if (entry.State != AdminShopEntryState.Available
+                && entry.State != AdminShopEntryState.RequestAccepted
+                && entry.State != AdminShopEntryState.RequestRejected)
+            {
+                blockedMessage = GetEntryStateText(entry);
+                return false;
+            }
+
+            if (!HasEnoughMesoForRequest(entry, requestQuantity))
+            {
+                blockedMessage = $"Need {FormatPriceLabel(ComputeRequestPrice(entry, requestQuantity))} before this request can be sent.";
+                return false;
+            }
+
+            if (RequiresInventorySource(entry)
+                && !TryValidateInventorySourceRequest(entry, requestQuantity, out string sourceMessage))
+            {
+                blockedMessage = sourceMessage;
+                return false;
+            }
+
+            return true;
         }
 
         private void ApplyPendingPacketOwnedSetUserItemsParity(AdminShopEntry entry)

@@ -588,8 +588,35 @@ namespace HaCreator.MapSimulator.Pools
 
         public static bool IsInvincibleZone(SkillData skill)
         {
-            return string.Equals(skill?.ZoneType, "invincible", StringComparison.OrdinalIgnoreCase)
-                   || skill?.HasInvincibleMetadata == true;
+            return HasInvincibleZoneMetadata(skill);
+        }
+
+        public static bool IsInvincibleZone(SkillData skill, IEnumerable<SkillData> supportSkills)
+        {
+            if (HasInvincibleZoneMetadata(skill))
+            {
+                return true;
+            }
+
+            if (supportSkills == null)
+            {
+                return false;
+            }
+
+            foreach (SkillData supportSkill in supportSkills)
+            {
+                if (supportSkill == null || ReferenceEquals(supportSkill, skill))
+                {
+                    continue;
+                }
+
+                if (HasInvincibleZoneMetadata(supportSkill))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public static bool CanAffectLocalPlayer(
@@ -1308,8 +1335,30 @@ namespace HaCreator.MapSimulator.Pools
                    && (skill.HasMagicStealMetadata
                        || skill.RedirectsDamageToMp
                        || skill.ReflectsIncomingDamage
-                       || skill.HasInvincibleMetadata
+                       || IsInvincibleZone(skill)
                        || skill.HasDispelMetadata);
+        }
+
+        private static bool HasInvincibleZoneMetadata(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (string.Equals(skill.ZoneType, "invincible", StringComparison.OrdinalIgnoreCase)
+                || skill.HasInvincibleMetadata)
+            {
+                return true;
+            }
+
+            return ContainsToken(
+                BuildCombinedSupportText(skill, supportSkills: null),
+                "invincible",
+                "invincib",
+                "invincibility",
+                "immune to damage",
+                "cannot be hit");
         }
 
         private static bool SupportsPartyMembers(SkillData skill)

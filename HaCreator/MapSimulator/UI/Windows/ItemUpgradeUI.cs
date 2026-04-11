@@ -72,6 +72,7 @@ namespace HaCreator.MapSimulator.UI
         private const int SuperMiracleCubeFragmentId = 2430481;
         private const int EnlighteningMiracleCubeShardId = 2430759;
         private const int UretesTimeLabId = 5534000;
+        private const int LucksKeyId = 5063000;
         private const int VegasSpellTenPercentId = 5610000;
         private const int VegasSpellSixtyPercentId = 5610001;
         private const int ViciousHammerId = 5570000;
@@ -103,6 +104,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Dictionary<int, IReadOnlyCollection<EquipSlot>> ScrollTargetSlotCache = new Dictionary<int, IReadOnlyCollection<EquipSlot>>();
         private static readonly Regex PercentRateRegex = new Regex(@"(?:Success\s*rate\s*:?\s*(\d+)\s*%|(\d+)\s*%\s*success\s*rate)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex VegaModifierRegex = new Regex(@"enables\s+a\s+(\d+)\s*%\s+success\s+rate\s+on\s+a\s+(\d+)\s*%\s+scroll", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex ScrollSuccessRateBoostRegex = new Regex(@"Increases\s+the\s+success\s+rate\s+of\s+the\s+next\s+scroll\s+use\s+by\s+(\d+)\s*%", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex ScrollTargetRegex = new Regex(@"Scroll\s+for\s+(.+?)\s+for\s", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex AccessorySubsetRegex = new Regex(@"accessories?\s*\(([^)]*)\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -165,6 +167,8 @@ namespace HaCreator.MapSimulator.UI
                 [EnlighteningMiracleCubeId] = new(EnlighteningMiracleCubeId, "Enlightening Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Enlightening, ModifierBehavior.None, 0f, EnlighteningMiracleCubeShardId),
                 // WZ Item/Cash/0506.img/05062100 carries a req list and a dedicated MiracleCube_8th UI path.
                 [MapleMiracleCubeId] = new(MapleMiracleCubeId, "Maple Miracle Cube", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Cube, PotentialTier.Rare, 0f, CubeBehavior.Maple),
+                // String/Cash.img/5063000: "Increases the success rate of the next scroll use by 10%."
+                [LucksKeyId] = new(LucksKeyId, "Luck's Key", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.ScrollSuccessRateBoost, 0.1f),
                 [VegasSpellTenPercentId] = new(VegasSpellTenPercentId, "Vega's Spell(10%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.VegaTenPercent, 0.3f),
                 [VegasSpellSixtyPercentId] = new(VegasSpellSixtyPercentId, "Vega's Spell(60%)", 0, false, false, 1.0f, InventoryType.CASH, ConsumableEffectType.Modifier, PotentialTier.Rare, 0f, CubeBehavior.Miracle, ModifierBehavior.VegaSixtyPercent, 0.9f),
                 // Item/Cash/0557.img/05570000 is the Vicious' Hammer cash variant described by String/Cash.img/5570000.
@@ -695,7 +699,7 @@ namespace HaCreator.MapSimulator.UI
             if (consumable == null)
             {
                 _statusMessage = _preferredModifierItemId.HasValue
-                    ? "No compatible enhancement scroll is available for the selected Vega modifier."
+                    ? "No compatible enhancement scroll is available for the selected modifier."
                     : "No enhancement scrolls are available in inventory.";
                 _lastUpgradeSucceeded = false;
                 return new ItemUpgradeAttemptResult(false, _statusMessage, 0);
@@ -1431,9 +1435,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (!consumable.Definition.UsesTieredSuccessRate)
             {
-                return modifier != null
-                    ? modifier.Definition.ModifiedSuccessRate
-                    : consumable.Definition.FlatSuccessRate;
+                return ApplyModifierSuccessRate(consumable.Definition.FlatSuccessRate, consumable, modifier);
             }
 
             int nextSuccessCount = state.SuccessCount + consumable.SuccessCountGain;
@@ -1470,14 +1472,20 @@ namespace HaCreator.MapSimulator.UI
                 };
             }
 
-            if (modifier == null)
+            return ApplyModifierSuccessRate(baseRate, consumable, modifier);
+        }
+
+        private static float ApplyModifierSuccessRate(float baseRate, EnhancementConsumable consumable, EnhancementConsumable modifier)
+        {
+            baseRate = MathHelper.Clamp(baseRate, 0f, 1.0f);
+            if (modifier == null || !IsModifierCompatible(modifier, consumable))
             {
                 return baseRate;
             }
 
-            return IsModifierCompatible(modifier, consumable)
-                ? Math.Max(baseRate, modifier.Definition.ModifiedSuccessRate)
-                : baseRate;
+            return modifier.Definition.ModifierBehavior == ModifierBehavior.ScrollSuccessRateBoost
+                ? MathHelper.Clamp(baseRate + modifier.Definition.ModifiedSuccessRate, 0f, 1.0f)
+                : Math.Max(baseRate, modifier.Definition.ModifiedSuccessRate);
         }
 
         private void MoveSelection(int delta)
@@ -2040,6 +2048,7 @@ namespace HaCreator.MapSimulator.UI
             if (_characterBuild?.Equipment == null ||
                 !_characterBuild.Equipment.TryGetValue(slot, out CharacterPart part) ||
                 !CanUpgrade(slot, part) ||
+                !IsVegaSpellConsumable(modifierItemId) ||
                 !TryGetConsumableDefinition(modifierItemId, out EnhancementConsumableDefinition modifierDefinition) ||
                 modifierDefinition.EffectType != ConsumableEffectType.Modifier)
             {
@@ -2118,6 +2127,7 @@ namespace HaCreator.MapSimulator.UI
 
             return modifier.Definition.ModifierBehavior switch
             {
+                ModifierBehavior.ScrollSuccessRateBoost => true,
                 ModifierBehavior.VegaTenPercent => consumable.Definition.UsesTieredSuccessRate && consumable.Definition.IsAdvancedFamily,
                 ModifierBehavior.VegaSixtyPercent => consumable.Definition.UsesTieredSuccessRate && !consumable.Definition.IsAdvancedFamily,
                 _ => false
@@ -2166,6 +2176,14 @@ namespace HaCreator.MapSimulator.UI
 
             return modifierDefinition.ModifierBehavior switch
             {
+                ModifierBehavior.ScrollSuccessRateBoost => GetFirstAvailableConsumable(
+                    state,
+                    selectedPart,
+                    EquipEnhancementScrollId,
+                    AlternateEquipEnhancementScrollId,
+                    AdvancedEnhancementScrollId,
+                    AlternateAdvancedEnhancementScrollId,
+                    AlternateAdvancedEnhancementScrollId2),
                 ModifierBehavior.VegaTenPercent => GetFirstAvailableConsumable(state, selectedPart, AdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId2),
                 ModifierBehavior.VegaSixtyPercent => GetFirstAvailableConsumable(state, selectedPart, EquipEnhancementScrollId, AlternateEquipEnhancementScrollId),
                 _ => null
@@ -2188,6 +2206,7 @@ namespace HaCreator.MapSimulator.UI
                     => $"a Vega-enabled {(int)Math.Round(tenProfile.RequiredBaseSuccessRate * 100f)}% scroll",
                 ModifierBehavior.VegaSixtyPercent when TryResolveVegaModifierProfile(definition.ItemId, out VegaModifierProfile sixtyProfile)
                     => $"a Vega-enabled {(int)Math.Round(sixtyProfile.RequiredBaseSuccessRate * 100f)}% scroll",
+                ModifierBehavior.ScrollSuccessRateBoost => "an enhancement scroll",
                 ModifierBehavior.VegaTenPercent => "a Vega-enabled 10% scroll",
                 ModifierBehavior.VegaSixtyPercent => "a Vega-enabled 60% scroll",
                 _ => "a compatible enhancement scroll"
@@ -3472,6 +3491,7 @@ namespace HaCreator.MapSimulator.UI
         private enum ModifierBehavior
         {
             None,
+            ScrollSuccessRateBoost,
             VegaTenPercent,
             VegaSixtyPercent
         }
@@ -3947,6 +3967,19 @@ namespace HaCreator.MapSimulator.UI
             return requiredBasePercent > 0 && modifiedPercent > 0;
         }
 
+        internal static bool TryParseScrollSuccessRateBoostText(string description, out int boostPercent)
+        {
+            boostPercent = 0;
+            Match match = ScrollSuccessRateBoostRegex.Match(description ?? string.Empty);
+            if (!match.Success || !int.TryParse(match.Groups[1].Value, out boostPercent))
+            {
+                return false;
+            }
+
+            boostPercent = Math.Clamp(boostPercent, 0, 100);
+            return boostPercent > 0;
+        }
+
         private static bool TryResolveVegaModifierProfile(int itemId, out VegaModifierProfile profile)
         {
             if (VegaModifierProfileCache.TryGetValue(itemId, out profile))
@@ -4090,6 +4123,11 @@ namespace HaCreator.MapSimulator.UI
             return TryParseSuccessRateText(description, out int percent)
                 ? MathHelper.Clamp(percent / 100f, 0f, 1.0f)
                 : 0f;
+        }
+
+        internal static float ApplyScrollSuccessRateBoostForTesting(float baseRate, float boostRate)
+        {
+            return MathHelper.Clamp(baseRate + boostRate, 0f, 1.0f);
         }
 
         internal static bool IsGenericEquipmentRandomStatScrollForTesting(string itemName, string description)

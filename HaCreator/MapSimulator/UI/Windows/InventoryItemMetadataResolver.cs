@@ -457,6 +457,14 @@ namespace HaCreator.MapSimulator.UI
                 itemProperty?["specEx"] as WzSubProperty);
         }
 
+        public static bool IsOnlyPickup(int itemId)
+        {
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return IsOnlyPickup(
+                itemProperty?["spec"] as WzSubProperty,
+                itemProperty?["specEx"] as WzSubProperty);
+        }
+
         public static bool ShouldAutoRunOnPickupInteraction(int itemId)
         {
             if (itemId <= 0)
@@ -484,6 +492,12 @@ namespace HaCreator.MapSimulator.UI
         {
             return GetIntValue(specProperty?["runOnPickup"]) == 1
                    || GetIntValue(specExProperty?["runOnPickup"]) == 1;
+        }
+
+        internal static bool IsOnlyPickup(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return GetIntValue(specProperty?["onlyPickup"]) == 1
+                   || GetIntValue(specExProperty?["onlyPickup"]) == 1;
         }
 
         internal static bool IsDeathMarkCureSpec(WzSubProperty specProperty)
@@ -947,6 +961,11 @@ namespace HaCreator.MapSimulator.UI
         public static bool IsRunOnPickupForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
         {
             return IsRunOnPickup(specProperty, specExProperty);
+        }
+
+        public static bool IsOnlyPickupForTests(WzSubProperty specProperty, WzSubProperty specExProperty)
+        {
+            return IsOnlyPickup(specProperty, specExProperty);
         }
 
         public static bool IsDeathMarkCureSpecForTests(WzSubProperty specProperty)

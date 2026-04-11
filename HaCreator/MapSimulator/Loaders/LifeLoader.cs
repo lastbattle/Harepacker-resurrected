@@ -543,6 +543,11 @@ namespace HaCreator.MapSimulator.Loaders
                     List<IDXObject> hitFrames = MapSimulatorLoader.LoadFrames(texturePool, hitNode, 0, 0, device, usedProps);
                     if (hitFrames.Count > 0)
                     {
+                        if (isAttackFrameOwned)
+                        {
+                            attackInfo?.RegisterFrameOwnedHitMetadataRange(sourceFrameIndex, hitFrames.Count);
+                        }
+
                         AddCachedAttackHitEffect(
                             cached,
                             actionName,

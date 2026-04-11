@@ -1041,6 +1041,33 @@ namespace HaCreator.MapSimulator.Effects
                     command.CanvasOffset);
             }
 
+            PreparedDamageNumberCompositionNativeOperation[] nativeOperations = compositionTrace.NativeOperations
+                ?? Array.Empty<PreparedDamageNumberCompositionNativeOperation>();
+            CanvasLayerRecoveredTemporaryCanvasOperation[] temporaryCanvasOperations =
+                new CanvasLayerRecoveredTemporaryCanvasOperation[nativeOperations.Length];
+            for (int i = 0; i < nativeOperations.Length; i++)
+            {
+                PreparedDamageNumberCompositionNativeOperation operation = nativeOperations[i];
+                PreparedDamageNumberCompositionInsertCommand command = operation.InsertCommand;
+                CanvasLayerRecoveredPreparedSourceTrace sourceTrace = operation.Kind == DamageNumberRecoveredCompositionOperationKind.InsertCanvas
+                    ? new CanvasLayerRecoveredPreparedSourceTrace(
+                        command.SourceSetName,
+                        command.SpriteName,
+                        command.SourceCanvasPath,
+                        command.UseLargeDigitSet,
+                        command.SourceOrigin,
+                        command.SourceWidth,
+                        command.SourceHeight,
+                        command.CanvasOffset)
+                    : default;
+                temporaryCanvasOperations[i] = new CanvasLayerRecoveredTemporaryCanvasOperation(
+                    operation.Kind == DamageNumberRecoveredCompositionOperationKind.CreateCanvas
+                        ? CanvasLayerRecoveredTemporaryCanvasOperationKind.CreateCanvas
+                        : CanvasLayerRecoveredTemporaryCanvasOperationKind.InsertCanvas,
+                    operation.CanvasSettings,
+                    sourceTrace);
+            }
+
             PreparedSpriteDrawInfo? overlaySprite = compositionTrace.CriticalBannerLayerSprite;
             Point overlayOffset = overlaySprite.HasValue
                 ? new Point(overlaySprite.Value.DrawOffsetX, overlaySprite.Value.DrawOffsetY)
@@ -1054,6 +1081,7 @@ namespace HaCreator.MapSimulator.Effects
                 visual.DamageString,
                 compositionTrace.CanvasSettings,
                 preparedSources,
+                temporaryCanvasOperations,
                 compositionTrace.KeepsCriticalBannerOnSeparateLayer,
                 compositionTrace.CriticalBannerLayerCanvasPath,
                 overlaySpriteName,

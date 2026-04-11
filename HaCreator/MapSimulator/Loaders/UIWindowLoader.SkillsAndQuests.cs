@@ -2427,20 +2427,8 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-            if (mainProperty != null)
-            {
-                Texture2D[] tooltipFrames = new Texture2D[3];
-                tooltipFrames[0] = LoadCanvasTexture(mainProperty, "tip0", device);
-                tooltipFrames[1] = LoadCanvasTexture(mainProperty, "tip1", device);
-                tooltipFrames[2] = LoadCanvasTexture(mainProperty, "tip2", device);
-                quickSlot.SetTooltipTextures(tooltipFrames);
-                quickSlot.SetTooltipOrigins(new[]
-                {
-                    ResolveTooltipOrigin(mainProperty["tip0"] as WzCanvasProperty),
-                    ResolveTooltipOrigin(mainProperty["tip1"] as WzCanvasProperty),
-                    ResolveTooltipOrigin(mainProperty["tip2"] as WzCanvasProperty)
-                });
-            }
+            quickSlot.SetTooltipTextures(UILoader.LoadSkillTooltipTextures(device));
+            quickSlot.SetTooltipOrigins(UILoader.LoadSkillTooltipOrigins());
 
             WzSubProperty equipTooltipProperty = uiWindow2Image?["ToolTip"]?["Equip"] as WzSubProperty;
             if (equipTooltipProperty != null)

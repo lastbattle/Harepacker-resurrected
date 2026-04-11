@@ -6,6 +6,7 @@ namespace HaCreator.MapSimulator
     internal enum PortalSessionValueImpactOwnerKind
     {
         None,
+        UnresolvedSessionValue,
         PartyRaid,
         ChaosZakum,
         HuntingAdBalloon
@@ -94,6 +95,8 @@ namespace HaCreator.MapSimulator
         {
             return ownerKind switch
             {
+                PortalSessionValueImpactOwnerKind.UnresolvedSessionValue => ingress.PacketType == Fields.PartyRaidField.ClientSessionValuePacketType
+                    || IsPacket149SessionFamilyIngress(ingress),
                 PortalSessionValueImpactOwnerKind.PartyRaid => ingress.PacketType == Fields.PartyRaidField.ClientSessionValuePacketType
                     || IsPacket149SessionFamilyIngress(ingress),
                 PortalSessionValueImpactOwnerKind.HuntingAdBalloon => ingress.PacketType == Fields.PartyRaidField.ClientFieldSetVariablePacketType

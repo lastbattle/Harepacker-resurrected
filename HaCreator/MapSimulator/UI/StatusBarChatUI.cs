@@ -371,8 +371,7 @@ namespace HaCreator.MapSimulator.UI
         {
             return pressedWhisperPickerCandidate
                 && !string.IsNullOrWhiteSpace(pressedWhisperTarget)
-                && !string.IsNullOrWhiteSpace(hoveredWhisperTarget)
-                && string.Equals(pressedWhisperTarget, hoveredWhisperTarget, StringComparison.OrdinalIgnoreCase);
+                && !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
         }
 
         internal static bool ShouldDeleteHoveredWhisperPickerCandidateOnRightRelease(
@@ -380,8 +379,7 @@ namespace HaCreator.MapSimulator.UI
             string hoveredWhisperTarget)
         {
             return !string.IsNullOrWhiteSpace(pressedWhisperTarget)
-                && !string.IsNullOrWhiteSpace(hoveredWhisperTarget)
-                && string.Equals(pressedWhisperTarget, hoveredWhisperTarget, StringComparison.OrdinalIgnoreCase);
+                && !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
         }
 
         internal static bool ShouldConsumeWhisperPickerPointerCapture(
@@ -394,6 +392,21 @@ namespace HaCreator.MapSimulator.UI
                 || pressedWhisperPickerCandidate
                 || hasPressedWhisperPickerButtonAction
                 || pressedWhisperPickerComboToggle;
+        }
+
+        internal static bool ShouldKeepWhisperPickerDropdownScrollThumbCapture(
+            bool wasDraggingScrollThumb,
+            ButtonState leftButtonState)
+        {
+            return wasDraggingScrollThumb && leftButtonState == ButtonState.Pressed;
+        }
+
+        internal static bool ShouldClearWhisperPickerDropdownScrollThumbCapture(MapSimulatorChatRenderState chatState)
+        {
+            return chatState == null
+                || !chatState.IsWhisperTargetPickerActive
+                || chatState.WhisperTargetPickerPresentation != MapSimulatorChat.WhisperTargetPickerPresentation.Modal
+                || !chatState.IsWhisperTargetPickerComboDropdownOpen;
         }
 
         /// <summary>
@@ -851,16 +864,22 @@ namespace HaCreator.MapSimulator.UI
             _whisperPickerDropdownScrollNextBounds = null;
             _whisperPickerDropdownScrollTrackBounds = null;
             _whisperPickerDropdownScrollThumbBounds = null;
-            _isDraggingWhisperPickerDropdownScrollThumb = false;
 
             if (!HasTextRenderer())
             {
+                _isDraggingWhisperPickerDropdownScrollThumb = false;
                 return;
             }
 
             if (chatState == null)
             {
+                _isDraggingWhisperPickerDropdownScrollThumb = false;
                 return;
+            }
+
+            if (ShouldClearWhisperPickerDropdownScrollThumbCapture(chatState))
+            {
+                _isDraggingWhisperPickerDropdownScrollThumb = false;
             }
 
             DrawChatTargetLabel(sprite, chatState.TargetType);
@@ -2505,7 +2524,9 @@ namespace HaCreator.MapSimulator.UI
                 && _previousLeftButtonState == ButtonState.Pressed;
             if (_isDraggingWhisperPickerDropdownScrollThumb)
             {
-                if (mouseState.LeftButton == ButtonState.Pressed)
+                if (ShouldKeepWhisperPickerDropdownScrollThumbCapture(
+                        _isDraggingWhisperPickerDropdownScrollThumb,
+                        mouseState.LeftButton))
                 {
                     if (_whisperPickerDropdownScrollTrackBounds.HasValue && _whisperPickerDropdownScrollThumbBounds.HasValue)
                     {

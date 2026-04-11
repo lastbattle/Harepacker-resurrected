@@ -7,6 +7,7 @@ namespace HaCreator.MapSimulator.Character
     internal sealed class TamingMobActionFrameOwner
     {
         private const int MechanicTamingMobItemId = 1932016;
+        private const int BattleshipTamingMobItemId = 1932000;
         private const int PortableChairRideFamily = 1983;
         private const int PortableChairRideClientActionCode = 48;
         private static readonly IReadOnlySet<int> EventVehicleType1ItemIds =
@@ -96,8 +97,21 @@ namespace HaCreator.MapSimulator.Character
                 "flamethrower_pre2",
                 "flamethrower2",
                 "flamethrower_after2",
+                "gatlingshot2",
+                "drillrush",
+                "mbooster",
+                "earthslug",
+                "rpunch",
                 "herbalism_mechanic",
                 "mining_mechanic"
+            };
+        private static readonly IReadOnlySet<string> BattleshipExclusiveActionNames =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "cannon",
+                "torpedo",
+                "fireburner",
+                "coolingeffect"
             };
         private static readonly IReadOnlySet<string> EventVehicleType2ExclusiveActionNames =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -431,6 +445,11 @@ namespace HaCreator.MapSimulator.Character
             if (MechanicExclusiveActionNames.Contains(actionName))
             {
                 return VehicleItemId == MechanicTamingMobItemId;
+            }
+
+            if (BattleshipExclusiveActionNames.Contains(actionName))
+            {
+                return VehicleItemId == BattleshipTamingMobItemId;
             }
 
             if (EventVehicleType2ExclusiveActionNames.Contains(actionName))

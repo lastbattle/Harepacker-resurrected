@@ -333,7 +333,7 @@ namespace HaCreator.MapSimulator
                 activeProjectedSupportAreaIds?.Add(area.ObjectId);
             }
 
-            if (RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill))
+            if (RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill, supportSkills))
             {
                 return true;
             }
@@ -653,7 +653,7 @@ namespace HaCreator.MapSimulator
                 SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel, preferPvpLevelData);
                 SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, preferPvpLevelData, supportSkills);
                 SkillLevelData effectiveLevelData = supportLevelData ?? levelData;
-                if (!RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill)
+                if (!RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill, supportSkills)
                     || !RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
                         skill,
                         supportSkills,

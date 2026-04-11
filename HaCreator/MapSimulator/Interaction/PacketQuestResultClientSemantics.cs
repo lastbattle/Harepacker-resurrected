@@ -91,7 +91,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return resultType switch
             {
-                10 or 11 or 12 or 13 or 15 or 16 => false,
+                10 or 11 or 13 or 15 or 16 => false,
+                12 => true,
                 _ => true
             };
         }

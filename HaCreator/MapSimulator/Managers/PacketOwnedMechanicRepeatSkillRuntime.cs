@@ -21,11 +21,25 @@ namespace HaCreator.MapSimulator.Managers
         bool SendLocal,
         byte[] Payload);
 
+    public readonly record struct PacketOwnedSg88FirstUseRequest(
+        int Opcode,
+        int SkillId,
+        int SkillLevel,
+        int RequestTime,
+        short X,
+        short Y,
+        byte MoveActionLowBit,
+        byte VecCtrlState,
+        byte[] Payload,
+        byte[] RawPacket);
+
     internal static class PacketOwnedMechanicRepeatSkillRuntime
     {
         public const int RepeatSkillModeEndAckPacketType = 1020;
         public const int Sg88ManualAttackConfirmPacketType = 1021;
         public const int SkillEffectRequestOpcode = 71;
+        public const int Sg88FirstUseSummonOpcode = 103;
+        public const int Sg88SkillId = 35121003;
 
         public static bool TryEncodeSkillEffectRequestPayload(
             int skillId,
@@ -79,6 +93,81 @@ namespace HaCreator.MapSimulator.Managers
                 skillLevel,
                 sendLocal,
                 payload);
+            return true;
+        }
+
+        public static bool TryEncodeSg88FirstUseRequestPayload(
+            int requestTime,
+            int skillLevel,
+            short x,
+            short y,
+            byte moveActionLowBit,
+            byte vecCtrlState,
+            out byte[] payload,
+            out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = "SG-88 first-use request skill level must fit in one byte.";
+            if (skillLevel < byte.MinValue || skillLevel > byte.MaxValue)
+            {
+                return false;
+            }
+
+            payload = new byte[(sizeof(int) * 2) + 1 + (sizeof(short) * 2) + 2];
+            int offset = 0;
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(offset, sizeof(int)), requestTime);
+            offset += sizeof(int);
+            BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(offset, sizeof(int)), Sg88SkillId);
+            offset += sizeof(int);
+            payload[offset++] = (byte)skillLevel;
+            BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(offset, sizeof(short)), x);
+            offset += sizeof(short);
+            BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(offset, sizeof(short)), y);
+            offset += sizeof(short);
+            payload[offset++] = (byte)(moveActionLowBit & 1);
+            payload[offset] = vecCtrlState;
+            error = null;
+            return true;
+        }
+
+        public static bool TryCreateSg88FirstUseRequest(
+            int requestTime,
+            int skillLevel,
+            short x,
+            short y,
+            byte moveActionLowBit,
+            byte vecCtrlState,
+            out PacketOwnedSg88FirstUseRequest request,
+            out string error)
+        {
+            request = default;
+            if (!TryEncodeSg88FirstUseRequestPayload(
+                    requestTime,
+                    skillLevel,
+                    x,
+                    y,
+                    moveActionLowBit,
+                    vecCtrlState,
+                    out byte[] payload,
+                    out error))
+            {
+                return false;
+            }
+
+            byte[] rawPacket = new byte[sizeof(ushort) + payload.Length];
+            BinaryPrimitives.WriteUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(ushort)), Sg88FirstUseSummonOpcode);
+            payload.CopyTo(rawPacket, sizeof(ushort));
+            request = new PacketOwnedSg88FirstUseRequest(
+                Sg88FirstUseSummonOpcode,
+                Sg88SkillId,
+                skillLevel,
+                requestTime,
+                x,
+                y,
+                (byte)(moveActionLowBit & 1),
+                vecCtrlState,
+                payload,
+                rawPacket);
             return true;
         }
 

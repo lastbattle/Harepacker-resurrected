@@ -5,6 +5,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Companions;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
@@ -275,6 +276,10 @@ namespace HaCreator.MapSimulator.Interaction
             public IReadOnlyList<string> ShowLayerTags { get; init; } = Array.Empty<string>();
             public IReadOnlyList<string> StartScriptNames { get; init; } = Array.Empty<string>();
             public IReadOnlyList<string> EndScriptNames { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<FieldObjectScriptPublication> StartScriptPublications { get; init; } =
+                Array.Empty<FieldObjectScriptPublication>();
+            public IReadOnlyList<FieldObjectScriptPublication> EndScriptPublications { get; init; } =
+                Array.Empty<FieldObjectScriptPublication>();
             public bool HasNormalAutoStart { get; init; }
             public bool HasFieldEnterAutoStart { get; init; }
             public bool HasEquipOnAutoStart { get; init; }
@@ -532,14 +537,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ResolveQuestDetailRecordTextForDialogue(int questId, string token)
         {
-            if (questId <= 0 ||
-                !TryGetQuestRecordValue(questId, out string recordValue) ||
-                !TryResolveQuestDetailRecordTokenValue(recordValue, token, out string value))
+            if (questId > 0 &&
+                TryGetQuestRecordValue(questId, out string recordValue) &&
+                TryResolveQuestDetailRecordTokenValue(recordValue, token, out string value))
+            {
+                return value;
+            }
+
+            if (!TryResolvePacketOwnedQuestDetailRecordText(token, out string sharedValue))
             {
                 return null;
             }
 
-            return value;
+            return sharedValue;
         }
 
         public void ConfigureMesoRuntime(Func<long> mesoCountProvider, Func<long, bool> consumeMeso, Action<long> addMeso)
@@ -1894,6 +1904,10 @@ namespace HaCreator.MapSimulator.Interaction
                 PublishedScriptNames = BuildQuestWindowPublishedScriptNames(
                     QuestWindowActionKind.Accept,
                     definition.StartScriptNames,
+                    definition.StartActions?.NpcActionName),
+                PublishedScriptPublications = BuildQuestWindowPublishedScriptPublications(
+                    QuestWindowActionKind.Accept,
+                    definition.StartScriptPublications,
                     definition.StartActions?.NpcActionName)
             };
         }
@@ -1936,6 +1950,10 @@ namespace HaCreator.MapSimulator.Interaction
                 PublishedScriptNames = BuildQuestWindowPublishedScriptNames(
                     QuestWindowActionKind.GiveUp,
                     definition.EndScriptNames,
+                    definition.EndActions?.NpcActionName),
+                PublishedScriptPublications = BuildQuestWindowPublishedScriptPublications(
+                    QuestWindowActionKind.GiveUp,
+                    definition.EndScriptPublications,
                     definition.EndActions?.NpcActionName)
             };
         }
@@ -2062,6 +2080,10 @@ namespace HaCreator.MapSimulator.Interaction
                 PublishedScriptNames = BuildQuestWindowPublishedScriptNames(
                     QuestWindowActionKind.Complete,
                     definition.EndScriptNames,
+                    definition.EndActions?.NpcActionName),
+                PublishedScriptPublications = BuildQuestWindowPublishedScriptPublications(
+                    QuestWindowActionKind.Complete,
+                    definition.EndScriptPublications,
                     definition.EndActions?.NpcActionName)
             };
         }
@@ -2810,6 +2832,9 @@ namespace HaCreator.MapSimulator.Interaction
                     Messages = messages,
                     PublishedScriptNames = BuildPublishedScriptNames(
                         definition.StartScriptNames,
+                        definition.StartActions?.NpcActionName),
+                    PublishedScriptPublications = BuildPublishedScriptPublications(
+                        definition.StartScriptPublications,
                         definition.StartActions?.NpcActionName)
                 };
             }
@@ -2911,6 +2936,9 @@ namespace HaCreator.MapSimulator.Interaction
                     Messages = messages,
                     PublishedScriptNames = BuildPublishedScriptNames(
                         definition.EndScriptNames,
+                        definition.EndActions?.NpcActionName),
+                    PublishedScriptPublications = BuildPublishedScriptPublications(
+                        definition.EndScriptPublications,
                         definition.EndActions?.NpcActionName)
                 };
             }
@@ -6906,6 +6934,8 @@ namespace HaCreator.MapSimulator.Interaction
                 ShowLayerTags = ParseLayerTags(questInfo["showLayerTag"]),
                 StartScriptNames = ParseScriptNames(startCheck?["startscript"]),
                 EndScriptNames = ParseScriptNames(endCheck?["endscript"]),
+                StartScriptPublications = FieldObjectScriptPublicationParser.Parse(startCheck?["startscript"]),
+                EndScriptPublications = FieldObjectScriptPublicationParser.Parse(endCheck?["endscript"]),
                 HasNormalAutoStart = ParseTruthyFlag(startCheck?["normalAutoStart"]),
                 HasFieldEnterAutoStart = startCheck?["fieldEnter"] != null,
                 HasEquipOnAutoStart = HasEquipOnAutoStart(startCheck),
@@ -7293,6 +7323,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             AddParsedScriptNames(names, property.GetString());
+            AddParsedScriptPublicationNames(names, FieldObjectScriptPublicationParser.Parse(property));
 
             if (property.WzProperties == null || property.WzProperties.Count == 0)
             {
@@ -7465,6 +7496,36 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private static void AddParsedScriptPublicationNames(
+            ISet<string> names,
+            IEnumerable<FieldObjectScriptPublication> publications)
+        {
+            if (names == null || publications == null)
+            {
+                return;
+            }
+
+            foreach (FieldObjectScriptPublication publication in publications)
+            {
+                if (publication == null || string.IsNullOrWhiteSpace(publication.ScriptName))
+                {
+                    continue;
+                }
+
+                string normalizedScriptName = publication.ScriptName.Trim();
+                if (publication.DelayMs <= 0)
+                {
+                    AddParsedScriptNames(names, normalizedScriptName);
+                    continue;
+                }
+
+                string escapedScriptName = normalizedScriptName
+                    .Replace("\\", "\\\\", StringComparison.Ordinal)
+                    .Replace("\"", "\\\"", StringComparison.Ordinal);
+                names.Add($"setTimeout(\"{escapedScriptName}\", {publication.DelayMs.ToString(CultureInfo.InvariantCulture)})");
+            }
+        }
+
         internal static IReadOnlyList<string> BuildPublishedScriptNames(
             IEnumerable<string> scriptNames,
             params string[] additionalRawScriptNames)
@@ -7489,6 +7550,37 @@ namespace HaCreator.MapSimulator.Interaction
             return publishedNames.Count == 0 ? Array.Empty<string>() : publishedNames.ToArray();
         }
 
+        internal static IReadOnlyList<FieldObjectScriptPublication> BuildPublishedScriptPublications(
+            IEnumerable<FieldObjectScriptPublication> scriptPublications,
+            params string[] additionalRawScriptNames)
+        {
+            var publications = new List<FieldObjectScriptPublication>();
+            var seenPublications = new HashSet<(string ScriptName, int DelayMs)>();
+            if (scriptPublications != null)
+            {
+                foreach (FieldObjectScriptPublication publication in scriptPublications)
+                {
+                    AddScriptPublication(publications, seenPublications, publication?.ScriptName, publication?.DelayMs ?? 0);
+                }
+            }
+
+            if (additionalRawScriptNames != null)
+            {
+                for (int i = 0; i < additionalRawScriptNames.Length; i++)
+                {
+                    IReadOnlyList<string> parsedNames = ParseScriptNames(additionalRawScriptNames[i]);
+                    for (int parsedIndex = 0; parsedIndex < parsedNames.Count; parsedIndex++)
+                    {
+                        AddScriptPublication(publications, seenPublications, parsedNames[parsedIndex], 0);
+                    }
+                }
+            }
+
+            return publications.Count == 0
+                ? Array.Empty<FieldObjectScriptPublication>()
+                : publications;
+        }
+
         internal static IReadOnlyList<string> BuildQuestWindowPublishedScriptNames(
             QuestWindowActionKind actionKind,
             IEnumerable<string> scriptNames,
@@ -7502,9 +7594,44 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        internal static IReadOnlyList<FieldObjectScriptPublication> BuildQuestWindowPublishedScriptPublications(
+            QuestWindowActionKind actionKind,
+            IEnumerable<FieldObjectScriptPublication> scriptPublications,
+            params string[] additionalRawScriptNames)
+        {
+            return actionKind switch
+            {
+                QuestWindowActionKind.Accept or QuestWindowActionKind.Complete =>
+                    BuildPublishedScriptPublications(scriptPublications, additionalRawScriptNames),
+                _ => Array.Empty<FieldObjectScriptPublication>()
+            };
+        }
+
         internal static IReadOnlyList<string> ParseScriptNames(string value)
         {
             return ParseDelimitedStrings(value);
+        }
+
+        private static void AddScriptPublication(
+            ICollection<FieldObjectScriptPublication> publications,
+            ISet<(string ScriptName, int DelayMs)> seenPublications,
+            string scriptName,
+            int delayMs)
+        {
+            string normalizedScriptName = scriptName?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedScriptName))
+            {
+                return;
+            }
+
+            int normalizedDelayMs = Math.Max(0, delayMs);
+            var key = (normalizedScriptName, normalizedDelayMs);
+            if (!seenPublications.Add(key))
+            {
+                return;
+            }
+
+            publications.Add(new FieldObjectScriptPublication(normalizedScriptName, normalizedDelayMs));
         }
 
         private static IReadOnlyList<string> ParseDelimitedStrings(string value)

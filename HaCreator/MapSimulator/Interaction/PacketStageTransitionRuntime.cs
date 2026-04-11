@@ -1707,6 +1707,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 IReadOnlyList<PacketCharacterDataSkillRecord> skillRecordEntries = null;
                 IReadOnlyDictionary<int, int> skillRecords = null;
+                IReadOnlyDictionary<int, int> rawSkillRecords = null;
                 IReadOnlyDictionary<int, int> skillMasterLevels = null;
                 IReadOnlyDictionary<int, int> rawSkillMasterLevels = null;
                 IReadOnlyList<PacketCharacterDataSkillExpirationRecord> skillExpirationRecordEntries = null;
@@ -1724,6 +1725,7 @@ namespace HaCreator.MapSimulator.Interaction
                         reader,
                         out skillRecordEntries,
                         out skillRecords,
+                        out rawSkillRecords,
                         out skillMasterLevels,
                         out rawSkillMasterLevels);
                     skillRecordCount = skillRecordEntries?.Count ?? 0;
@@ -1755,6 +1757,7 @@ namespace HaCreator.MapSimulator.Interaction
                     SkillCooldownRemainingSecondsBySkillId = skillCooldowns,
                     SkillCooldownRecordEntries = skillCooldownRecordEntries,
                     SkillRecordEntries = skillRecordEntries,
+                    RawSkillRecords = rawSkillRecords,
                     SkillMasterLevelRecordCount = skillMasterLevelRecordCount,
                     SkillMasterLevels = skillMasterLevels,
                     RawSkillMasterLevels = rawSkillMasterLevels,
@@ -1780,12 +1783,14 @@ namespace HaCreator.MapSimulator.Interaction
             BinaryReader reader,
             out IReadOnlyList<PacketCharacterDataSkillRecord> skillRecordEntries,
             out IReadOnlyDictionary<int, int> skillRecords,
+            out IReadOnlyDictionary<int, int> rawSkillRecords,
             out IReadOnlyDictionary<int, int> skillMasterLevels,
             out IReadOnlyDictionary<int, int> rawSkillMasterLevels)
         {
             ushort count = reader.ReadUInt16();
             List<PacketCharacterDataSkillRecord> entries = new(count);
             Dictionary<int, int> levelsBySkillId = new(count);
+            Dictionary<int, int> rawLevelsBySkillId = new(count);
             Dictionary<int, int> masterLevelsBySkillId = new(count);
             Dictionary<int, int> rawMasterLevelsBySkillId = new(count);
             for (int i = 0; i < count; i++)
@@ -1808,6 +1813,7 @@ namespace HaCreator.MapSimulator.Interaction
                         rawSkillLevel,
                         rawMasterLevel,
                         hasMasterLevelData));
+                    rawLevelsBySkillId[skillId] = rawSkillLevel;
                     levelsBySkillId[skillId] = normalizedSkillLevel;
                     if (hasMasterLevelData)
                     {
@@ -1823,6 +1829,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             skillRecordEntries = entries;
             skillRecords = levelsBySkillId;
+            rawSkillRecords = rawLevelsBySkillId;
             skillMasterLevels = masterLevelsBySkillId;
             rawSkillMasterLevels = rawMasterLevelsBySkillId;
         }
@@ -2639,6 +2646,7 @@ namespace HaCreator.MapSimulator.Interaction
         int SkillExpirationRecordCount = 0,
         int SkillCooldownRecordCount = 0,
         IReadOnlyDictionary<int, int> SkillRecords = null,
+        IReadOnlyDictionary<int, int> RawSkillRecords = null,
         IReadOnlyDictionary<int, long> SkillExpirationFileTimes = null,
         IReadOnlyDictionary<int, int> SkillCooldownRemainingSecondsBySkillId = null,
         IReadOnlyList<PacketCharacterDataSkillRecord> SkillRecordEntries = null,

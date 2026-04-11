@@ -83,6 +83,18 @@ namespace HaCreator.MapSimulator.Pools
         int OwnerCharacterId,
         bool OwnerIsLocal);
 
+    public readonly record struct PacketOwnedSelfDestructAttackRequest(
+        int OwnerCharacterId,
+        int SummonedObjectId,
+        int SkillId,
+        int SkillLevel,
+        int CurrentTime,
+        int DamagePercent,
+        bool FacingRight,
+        Vector2 Origin,
+        string AttackBranchName,
+        IReadOnlyList<int> TargetMobIds);
+
     internal readonly record struct PacketOwnedOneTimeActionClip(
         SkillAnimation Animation,
         int BaseAnimationTime,
@@ -282,6 +294,7 @@ namespace HaCreator.MapSimulator.Pools
         public Action<PacketOwnedSummonTimerExpiration[]> OnSummonExpiryTimersExpiredBatch { get; set; }
         public Action<PacketOwnedSummonTimerExpiration> OnSummonExpiryTimerExpired { get; set; }
         public Action<SummonedAttackPacket, int> OnLocalOwnerAttackPacketApplied { get; set; }
+        public Action<PacketOwnedSelfDestructAttackRequest> OnLocalOwnerSelfDestructAttackResolved { get; set; }
 
         public int Count => _summonsByObjectId.Count;
 
@@ -1087,6 +1100,7 @@ namespace HaCreator.MapSimulator.Pools
             state.OneTimeAction = normalizedAction;
             state.OneTimeActionEndTime = currentTime + duration;
             state.Summon.OneTimeActionFallbackAnimation = actionAnimation;
+            state.Summon.OneTimeActionFallbackActionCode = normalizedAction;
             state.Summon.OneTimeActionFallbackStartTime = currentTime;
             state.Summon.OneTimeActionFallbackAnimationTime = 0;
             state.Summon.OneTimeActionFallbackEndTime = currentTime + duration;
@@ -3465,6 +3479,7 @@ namespace HaCreator.MapSimulator.Pools
             SpawnPacketAttackVisuals(state, currentTime);
             if (state.OwnerIsLocal)
             {
+                DispatchLocalOwnerSelfDestructAttackRuntime(state, targets, currentTime);
                 TryRegisterClientOwnedAttackTileOverlay(state, currentTime);
             }
 
@@ -3507,7 +3522,57 @@ namespace HaCreator.MapSimulator.Pools
                 .Select(static target => new SummonedAttackTargetPacket(target.PoolId, 0, 0))
                 .ToArray();
             SpawnPacketAttackVisuals(state, currentTime);
+            if (state.OwnerIsLocal)
+            {
+                DispatchLocalOwnerSelfDestructAttackRuntime(state, targets, currentTime);
+            }
+
             return true;
+        }
+
+        private void DispatchLocalOwnerSelfDestructAttackRuntime(
+            PacketOwnedSummonState state,
+            IReadOnlyList<MobItem> targets,
+            int currentTime)
+        {
+            PacketOwnedSelfDestructAttackRequest request = CreateLocalOwnerSelfDestructAttackRequestForParity(
+                state?.OwnerCharacterId ?? 0,
+                state?.Summon,
+                Math.Max(1, state?.SkillLevel ?? state?.Summon?.Level ?? 1),
+                targets,
+                currentTime);
+            if (request.TargetMobIds?.Count > 0)
+            {
+                OnLocalOwnerSelfDestructAttackResolved?.Invoke(request);
+            }
+        }
+
+        internal static PacketOwnedSelfDestructAttackRequest CreateLocalOwnerSelfDestructAttackRequestForParity(
+            int ownerCharacterId,
+            ActiveSummon summon,
+            int skillLevel,
+            IReadOnlyList<MobItem> targets,
+            int currentTime)
+        {
+            int[] targetMobIds = targets?
+                .Where(static target => target?.PoolId > 0)
+                .Select(static target => target.PoolId)
+                .Distinct()
+                .ToArray()
+                ?? Array.Empty<int>();
+
+            int resolvedSkillLevel = Math.Max(1, skillLevel > 0 ? skillLevel : summon?.Level ?? 1);
+            return new PacketOwnedSelfDestructAttackRequest(
+                ownerCharacterId,
+                summon?.ObjectId ?? 0,
+                summon?.SkillId ?? 0,
+                resolvedSkillLevel,
+                currentTime,
+                summon?.SkillData?.ResolveSummonSelfDestructionDamagePercent(resolvedSkillLevel) ?? 0,
+                summon?.FacingRight ?? true,
+                summon != null ? new Vector2(summon.PositionX, summon.PositionY) : Vector2.Zero,
+                summon?.CurrentAnimationBranchName,
+                targetMobIds);
         }
 
         private void ScheduleExpirySelfDestructSupportHitEffect(ActiveSummon summon, int currentTime)
@@ -4975,22 +5040,16 @@ namespace HaCreator.MapSimulator.Pools
                 return templateAttackInfo ?? liveAttackInfo;
             }
 
-            if (ShouldBorrowTemplateAttackInfoForLiveHitEntry(liveAttackInfo, liveHitEffectEntry))
-            {
-                return templateAttackInfo ?? liveAttackInfo;
-            }
-
             if (liveAttackInfo == null || templateAttackInfo == null)
             {
                 return liveAttackInfo ?? templateAttackInfo;
             }
 
-            int sourceFrameIndex = liveHitEffectEntry.SourceFrameIndex;
             bool needsTemplateHitAfter = !liveAttackInfo.HasHitAfterMetadata && templateAttackInfo.HasHitAfterMetadata;
-            bool needsTemplateHitAttach = !liveAttackInfo.HasExplicitHitAttachMetadata(sourceFrameIndex)
-                                          && templateAttackInfo.HasExplicitHitAttachMetadata(sourceFrameIndex);
-            bool needsTemplateFacingAttach = !liveAttackInfo.HasExplicitFacingAttachMetadata(sourceFrameIndex)
-                                             && templateAttackInfo.HasExplicitFacingAttachMetadata(sourceFrameIndex);
+            bool needsTemplateHitAttach = !HasExplicitHitAttachMetadataForHitEntry(liveAttackInfo, liveHitEffectEntry)
+                                          && HasExplicitHitAttachMetadataForHitEntry(templateAttackInfo, liveHitEffectEntry);
+            bool needsTemplateFacingAttach = !HasExplicitFacingAttachMetadataForHitEntry(liveAttackInfo, liveHitEffectEntry)
+                                             && HasExplicitFacingAttachMetadataForHitEntry(templateAttackInfo, liveHitEffectEntry);
             bool needsTemplateRangeOrigin = !liveAttackInfo.HasRangeOrigin && templateAttackInfo.HasRangeOrigin;
             bool needsTemplateRangeBounds = !liveAttackInfo.HasRangeBounds && templateAttackInfo.HasRangeBounds;
             if (!needsTemplateHitAfter
@@ -5011,18 +5070,18 @@ namespace HaCreator.MapSimulator.Pools
 
             if (needsTemplateHitAttach)
             {
-                CopyExplicitHitAttachMetadataForSourceFrame(
+                CopyExplicitHitAttachMetadataForHitEntry(
                     mergedAttackInfo,
                     templateAttackInfo,
-                    sourceFrameIndex);
+                    liveHitEffectEntry);
             }
 
             if (needsTemplateFacingAttach)
             {
-                CopyExplicitFacingAttachMetadataForSourceFrame(
+                CopyExplicitFacingAttachMetadataForHitEntry(
                     mergedAttackInfo,
                     templateAttackInfo,
-                    sourceFrameIndex);
+                    liveHitEffectEntry);
             }
 
             if (needsTemplateRangeOrigin)
@@ -5040,46 +5099,135 @@ namespace HaCreator.MapSimulator.Pools
             return mergedAttackInfo;
         }
 
-        private static void CopyExplicitHitAttachMetadataForSourceFrame(
-            MobAnimationSet.AttackInfoMetadata destination,
-            MobAnimationSet.AttackInfoMetadata source,
-            int sourceFrameIndex)
+        private static bool HasExplicitHitAttachMetadataForHitEntry(
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            MobAnimationSet.AttackHitEffectEntry hitEffectEntry)
         {
-            if (destination == null || source == null)
+            if (attackInfo == null || hitEffectEntry?.Frames?.Count <= 0)
             {
-                return;
+                return false;
             }
 
-            if (sourceFrameIndex >= 0
-                && source.FrameHitAttachOverrides.TryGetValue(sourceFrameIndex, out bool frameOverride))
+            foreach (int metadataFrameIndex in EnumerateHitEntryMetadataFrameIndices(hitEffectEntry))
             {
-                destination.FrameHitAttachOverrides[sourceFrameIndex] = frameOverride;
-                return;
+                if (attackInfo.HasExplicitHitAttachMetadata(metadataFrameIndex))
+                {
+                    return true;
+                }
             }
 
-            destination.HitAttach = source.HitAttach;
-            destination.HasHitAttachMetadata = source.HasHitAttachMetadata;
+            return false;
         }
 
-        private static void CopyExplicitFacingAttachMetadataForSourceFrame(
+        private static bool HasExplicitFacingAttachMetadataForHitEntry(
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            MobAnimationSet.AttackHitEffectEntry hitEffectEntry)
+        {
+            if (attackInfo == null || hitEffectEntry?.Frames?.Count <= 0)
+            {
+                return false;
+            }
+
+            foreach (int metadataFrameIndex in EnumerateHitEntryMetadataFrameIndices(hitEffectEntry))
+            {
+                if (attackInfo.HasExplicitFacingAttachMetadata(metadataFrameIndex))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<int> EnumerateHitEntryMetadataFrameIndices(
+            MobAnimationSet.AttackHitEffectEntry hitEffectEntry)
+        {
+            if (hitEffectEntry?.Frames?.Count <= 0)
+            {
+                yield break;
+            }
+
+            int sourceFrameIndex = Math.Max(0, hitEffectEntry.SourceFrameIndex);
+            for (int i = 0; i < hitEffectEntry.Frames.Count; i++)
+            {
+                yield return sourceFrameIndex + i;
+            }
+        }
+
+        private static bool IsMetadataFrameInHitEntry(
+            MobAnimationSet.AttackHitEffectEntry hitEffectEntry,
+            int metadataFrameIndex)
+        {
+            if (hitEffectEntry?.Frames?.Count <= 0 || metadataFrameIndex < 0)
+            {
+                return false;
+            }
+
+            int sourceFrameIndex = Math.Max(0, hitEffectEntry.SourceFrameIndex);
+            return metadataFrameIndex >= sourceFrameIndex
+                   && metadataFrameIndex < sourceFrameIndex + hitEffectEntry.Frames.Count;
+        }
+
+        private static void CopyExplicitHitAttachMetadataForHitEntry(
             MobAnimationSet.AttackInfoMetadata destination,
             MobAnimationSet.AttackInfoMetadata source,
-            int sourceFrameIndex)
+            MobAnimationSet.AttackHitEffectEntry hitEffectEntry)
         {
             if (destination == null || source == null)
             {
                 return;
             }
 
-            if (sourceFrameIndex >= 0
-                && source.FrameFacingAttachOverrides.TryGetValue(sourceFrameIndex, out bool frameOverride))
+            if (source.HasHitAttachMetadata)
             {
-                destination.FrameFacingAttachOverrides[sourceFrameIndex] = frameOverride;
+                destination.HitAttach = source.HitAttach;
+                destination.HasHitAttachMetadata = true;
+            }
+
+            foreach (KeyValuePair<int, bool> entry in source.FrameHitAttachOverrides)
+            {
+                if (!IsMetadataFrameInHitEntry(hitEffectEntry, entry.Key))
+                {
+                    continue;
+                }
+
+                destination.FrameHitAttachOverrides[entry.Key] = entry.Value;
+                if (source.FrameHitAttachOverrideFrameCounts.TryGetValue(entry.Key, out int frameCount))
+                {
+                    destination.FrameHitAttachOverrideFrameCounts[entry.Key] = frameCount;
+                }
+            }
+        }
+
+        private static void CopyExplicitFacingAttachMetadataForHitEntry(
+            MobAnimationSet.AttackInfoMetadata destination,
+            MobAnimationSet.AttackInfoMetadata source,
+            MobAnimationSet.AttackHitEffectEntry hitEffectEntry)
+        {
+            if (destination == null || source == null)
+            {
                 return;
             }
 
-            destination.FacingAttach = source.FacingAttach;
-            destination.HasFacingAttachMetadata = source.HasFacingAttachMetadata;
+            if (source.HasFacingAttachMetadata)
+            {
+                destination.FacingAttach = source.FacingAttach;
+                destination.HasFacingAttachMetadata = true;
+            }
+
+            foreach (KeyValuePair<int, bool> entry in source.FrameFacingAttachOverrides)
+            {
+                if (!IsMetadataFrameInHitEntry(hitEffectEntry, entry.Key))
+                {
+                    continue;
+                }
+
+                destination.FrameFacingAttachOverrides[entry.Key] = entry.Value;
+                if (source.FrameFacingAttachOverrideFrameCounts.TryGetValue(entry.Key, out int frameCount))
+                {
+                    destination.FrameFacingAttachOverrideFrameCounts[entry.Key] = frameCount;
+                }
+            }
         }
 
         private static MobAnimationSet.AttackInfoMetadata CloneAttackInfoMetadata(
@@ -5126,9 +5274,19 @@ namespace HaCreator.MapSimulator.Pools
                 clone.FrameHitAttachOverrides[entry.Key] = entry.Value;
             }
 
+            foreach (KeyValuePair<int, int> entry in source.FrameHitAttachOverrideFrameCounts)
+            {
+                clone.FrameHitAttachOverrideFrameCounts[entry.Key] = entry.Value;
+            }
+
             foreach (KeyValuePair<int, bool> entry in source.FrameFacingAttachOverrides)
             {
                 clone.FrameFacingAttachOverrides[entry.Key] = entry.Value;
+            }
+
+            foreach (KeyValuePair<int, int> entry in source.FrameFacingAttachOverrideFrameCounts)
+            {
+                clone.FrameFacingAttachOverrideFrameCounts[entry.Key] = entry.Value;
             }
 
             return clone;
@@ -5148,14 +5306,11 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (!liveHitEffectEntry.IsAttackFrameOwned)
-            {
-                return false;
-            }
-
-            int frameIndex = liveHitEffectEntry.SourceFrameIndex;
-            return !liveAttackInfo.HasExplicitHitAttachMetadata(frameIndex)
-                   && !liveAttackInfo.HasExplicitFacingAttachMetadata(frameIndex);
+            return !liveAttackInfo.HasHitAfterMetadata
+                   || !HasExplicitHitAttachMetadataForHitEntry(liveAttackInfo, liveHitEffectEntry)
+                   || !HasExplicitFacingAttachMetadataForHitEntry(liveAttackInfo, liveHitEffectEntry)
+                   || !liveAttackInfo.HasRangeOrigin
+                   || !liveAttackInfo.HasRangeBounds;
         }
 
         internal static int ResolvePacketMobAttackFeedbackHitAfterMs(PacketOwnedMobAttackFeedbackPresentation presentation)
@@ -5632,8 +5787,25 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string normalizedImageSegment = imageSegment.Trim();
-            if (!normalizedImageSegment.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
-                && IsPacketMobAttackImageIdSegment(normalizedImageSegment))
+            if (IsPacketMobAttackMobCategory(categorySegment))
+            {
+                if (normalizedImageSegment.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+                {
+                    string imageId = normalizedImageSegment.Substring(
+                        0,
+                        normalizedImageSegment.Length - ".img".Length);
+                    if (IsPacketMobAttackImageIdSegment(imageId))
+                    {
+                        normalizedImageSegment = $"{imageId.PadLeft(7, '0')}.img";
+                    }
+                }
+                else if (IsPacketMobAttackImageIdSegment(normalizedImageSegment))
+                {
+                    normalizedImageSegment = $"{normalizedImageSegment.PadLeft(7, '0')}.img";
+                }
+            }
+            else if (!normalizedImageSegment.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
+                     && IsPacketMobAttackImageIdSegment(normalizedImageSegment))
             {
                 normalizedImageSegment = $"{normalizedImageSegment}.img";
             }
@@ -5663,6 +5835,11 @@ namespace HaCreator.MapSimulator.Pools
                    || string.Equals(segment, "UI", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "Npc", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(segment, "Reactor", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPacketMobAttackMobCategory(string segment)
+        {
+            return string.Equals(segment, "Mob", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsPacketMobAttackImageIdSegment(string segment)

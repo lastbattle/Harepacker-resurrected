@@ -440,12 +440,34 @@ namespace HaCreator.MapSimulator.Character
 
         internal static bool IsRawActionAllowed(int rawActionCode, bool isMorphAvatar)
         {
-            return rawActionCode >= 0 && rawActionCode < (isMorphAvatar ? 49 : 273);
+            if (rawActionCode < 0)
+            {
+                return false;
+            }
+
+            if (rawActionCode < (isMorphAvatar ? 49 : 273))
+            {
+                return true;
+            }
+
+            return !isMorphAvatar
+                   && CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
+                   && CharacterPart.IsClientWzBackedPostV95PhysicalWeaponActionName(actionName);
         }
 
         internal static bool HasActiveOneTimeActionOwner(string oneTimeActionName)
         {
             return !string.IsNullOrWhiteSpace(oneTimeActionName);
+        }
+
+        internal static bool ShouldKeepCompletedCharacterOneTimeActionFrame(string actionName)
+        {
+            if (!CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode))
+            {
+                return false;
+            }
+
+            return rawActionCode is 249 or 256;
         }
 
         internal static bool ShouldStallPositionGatedFrameUpdate(

@@ -3511,7 +3511,7 @@ namespace HaCreator.MapSimulator.Pools
             int packetProperEventIndex = data.PacketProperEventIndex;
             if (!TryResolvePacketLoadLayerProperEventIndex(
                     packetProperEventIndex,
-                    reactor.GetAuthoredEventTypes(sourceState),
+                    reactor.GetExactAuthoredEventTypes(sourceState),
                     data.HitOption,
                     data.ReactorType,
                     out int properEventIndex,

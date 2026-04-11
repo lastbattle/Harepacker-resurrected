@@ -1094,7 +1094,7 @@ namespace HaCreator.MapSimulator.Loaders
             return catalogEntries;
         }
 
-        private static Texture2D[] LoadSkillTooltipTextures(GraphicsDevice device)
+        internal static Texture2D[] LoadSkillTooltipTextures(GraphicsDevice device)
         {
             if (device == null)
             {
@@ -1123,7 +1123,7 @@ namespace HaCreator.MapSimulator.Loaders
             return tooltipFrames;
         }
 
-        private static Point[] LoadSkillTooltipOrigins()
+        internal static Point[] LoadSkillTooltipOrigins()
         {
             Point[] tooltipOrigins = new Point[3];
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");

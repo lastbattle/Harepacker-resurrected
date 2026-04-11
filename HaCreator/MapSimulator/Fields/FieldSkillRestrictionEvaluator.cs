@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.Fields
     {
         private const int RocketBoosterSkillId = 35101004;
         private const int WildHunterSwallowAbsorbSkillId = 33101005;
+        private const int MechanicSiegeModeSkillId = 35111005;
         private static readonly HashSet<int> MysticDoorSkillIds = new HashSet<int>
         {
             2311002,
@@ -341,6 +342,12 @@ namespace HaCreator.MapSimulator.Fields
             if (mapInfo == null || skill == null)
             {
                 return null;
+            }
+
+            if (mapInfo.fieldType == FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE
+                && skill.SkillId == MechanicSiegeModeSkillId)
+            {
+                return "This Mechanic skill cannot be used in Monster Carnival restricted fields.";
             }
 
             if (ClientDojoOrBalrogOnlySkillIds.Contains(skill.SkillId)

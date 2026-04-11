@@ -125,13 +125,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 [4111002] = new[]
                 {
+                    4101003, 4101004,
                     4111001, 4111003, 4111005, 4111007,
                     4121000, 4121003, 4121004, 4121008
                 },
                 [4211008] = new[]
                 {
                     4201002, 4201003, 4201005,
-                    4211002, 4211003, 4211005, 4211006, 4211007,
+                    4211001, 4211002, 4211003, 4211005, 4211006, 4211007,
                     4221000, 4221001, 4221003, 4221004, 4221006, 4221007
                 },
                 [14111000] = new[]
@@ -5561,13 +5562,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield return linkedSkillId;
             }
 
-            if (!IsClientSummonedUolLinkedSkillValueLeaf(parts)
-                || resolvedProperty == null)
+            if (resolvedProperty == null
+                || (!IsClientSummonedUolLinkedSkillValueLeaf(parts)
+                    && !IsClientSummonedUolLinkedSkillBranchLeaf(parts)))
             {
                 yield break;
             }
 
-            foreach (int linkedSkillId in ParseLinkedSkillIds(resolvedProperty))
+            foreach (int linkedSkillId in EnumerateClientSummonedUolLinkedSkillIdsFromResolvedProperty(parts, resolvedProperty))
             {
                 if (linkedSkillId > 0 && yieldedSkillIds.Add(linkedSkillId))
                 {
@@ -5594,6 +5596,83 @@ namespace HaCreator.MapSimulator.Character.Skills
             return leafSegment.Equals("requireSkill", StringComparison.OrdinalIgnoreCase)
                    || leafSegment.Equals("affectedSkill", StringComparison.OrdinalIgnoreCase)
                    || leafSegment.Equals("dummyOf", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsClientSummonedUolLinkedSkillBranchLeaf(string[] parts)
+        {
+            if (parts == null || parts.Length == 0)
+            {
+                return false;
+            }
+
+            string leafSegment = parts[^1];
+            return leafSegment.Equals("req", StringComparison.OrdinalIgnoreCase)
+                   || leafSegment.Equals("psdSkill", StringComparison.OrdinalIgnoreCase)
+                   || leafSegment.Equals("info", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static IEnumerable<int> EnumerateClientSummonedUolLinkedSkillIdsFromResolvedProperty(
+            string[] parts,
+            WzImageProperty resolvedProperty)
+        {
+            if (parts == null || parts.Length == 0 || resolvedProperty == null)
+            {
+                yield break;
+            }
+
+            string leafSegment = parts[^1];
+            if (leafSegment.Equals("req", StringComparison.OrdinalIgnoreCase)
+                || leafSegment.Equals("psdSkill", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromChildNames(resolvedProperty))
+                {
+                    yield return linkedSkillId;
+                }
+
+                yield break;
+            }
+
+            if (leafSegment.Equals("info", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (int linkedSkillId in EnumerateLinkedSkillIdsFromInfoLinkLeaves(resolvedProperty))
+                {
+                    yield return linkedSkillId;
+                }
+
+                yield break;
+            }
+
+            foreach (int linkedSkillId in ParseLinkedSkillIds(resolvedProperty))
+            {
+                yield return linkedSkillId;
+            }
+        }
+
+        private static IEnumerable<int> EnumerateLinkedSkillIdsFromChildNames(WzImageProperty property)
+        {
+            if (property?.WzProperties == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (child != null && TryParseRequiredSkillId(child.Name, out int linkedSkillId))
+                {
+                    yield return linkedSkillId;
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateLinkedSkillIdsFromInfoLinkLeaves(WzImageProperty infoProperty)
+        {
+            foreach (string leafName in new[] { "requireSkill", "affectedSkill", "dummyOf" })
+            {
+                foreach (int linkedSkillId in ParseLinkedSkillIds(infoProperty?[leafName]))
+                {
+                    yield return linkedSkillId;
+                }
+            }
         }
 
         private static bool TryParseNormalizedSkillAnimationPath(

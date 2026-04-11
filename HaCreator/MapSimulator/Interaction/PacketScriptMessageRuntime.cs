@@ -56,7 +56,7 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketScriptSpeaker speaker = ResolveSpeaker(speakerTypeId, speakerTemplateId, findNpcById, activeNpc);
                 PacketScriptDecodeResult decoded = messageType switch
                 {
-                    0 => CreateDecodedResult(DecodeSay(reader, speaker, ref speakerTemplateId, param)),
+                    0 => CreateDecodedResult(DecodeSay(reader, ref speaker, ref speakerTemplateId, param, findNpcById)),
                     1 => CreateDecodedResult(DecodeSayImage(reader, speaker, param)),
                     2 => CreateDecodedResult(DecodeAskYesNo(reader, speaker, param, false)),
                     3 => CreateDecodedResult(DecodeAskText(reader, speaker, param)),
@@ -148,12 +148,17 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static NpcInteractionEntry DecodeSay(BinaryReader reader, PacketScriptSpeaker speaker, ref int speakerTemplateId, byte param)
+        private static NpcInteractionEntry DecodeSay(
+            BinaryReader reader,
+            ref PacketScriptSpeaker speaker,
+            ref int speakerTemplateId,
+            byte param,
+            Func<int, NpcItem> findNpcById)
         {
             if ((param & 4) != 0)
             {
                 speakerTemplateId = reader.ReadInt32();
-                speaker = speaker.WithOverrideTemplateId(speakerTemplateId);
+                speaker = ResolveSpeaker(speaker.SpeakerTypeId, speakerTemplateId, findNpcById, activeNpc: null);
             }
 
             string rawText = ReadMapleString(reader);
@@ -166,7 +171,7 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     BuildNavigationMetadata(hasPrev, hasNext)),
-                null);
+                BuildSayNavigationChoices(hasPrev, hasNext));
         }
 
         private static NpcInteractionEntry DecodeSayImage(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -939,6 +944,23 @@ namespace HaCreator.MapSimulator.Interaction
                 choices);
         }
 
+        private static IReadOnlyList<NpcInteractionChoice> BuildSayNavigationChoices(bool hasPrev, bool hasNext)
+        {
+            List<NpcInteractionChoice> choices = new();
+            if (hasPrev)
+            {
+                choices.Add(CreateNumericResponseChoice("Previous", "Previous", -1));
+            }
+
+            choices.Add(CreateNumericResponseChoice(hasNext ? "End Chat" : "Close", "Close", 0));
+            if (hasNext)
+            {
+                choices.Add(CreateNumericResponseChoice("Next", "Next", 1));
+            }
+
+            return choices;
+        }
+
         private static PacketScriptDecodeResult CreateDecodedResult(
             NpcInteractionEntry entry,
             PacketScriptResponsePacket autoResponse = null,
@@ -1480,6 +1502,18 @@ namespace HaCreator.MapSimulator.Interaction
 
             switch (messageType)
             {
+                case 0:
+                {
+                    if (!submission.NumericValue.HasValue || submission.NumericValue.Value < -1 || submission.NumericValue.Value > 1)
+                    {
+                        error = "Say submissions require a numeric navigation value of -1, 0, or 1.";
+                        return false;
+                    }
+
+                    writer.WriteByte(unchecked((byte)(sbyte)submission.NumericValue.Value));
+                    break;
+                }
+
                 case 1:
                 {
                     if (!submission.NumericValue.HasValue || (submission.NumericValue.Value != 1 && submission.NumericValue.Value != -1))
@@ -1742,24 +1776,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private sealed record SlideMenuOption(int SelectionId, string Label);
 
-        private sealed record PacketScriptSpeaker(int SpeakerTypeId, int TemplateId, int NpcId, string DisplayName)
-        {
-            public PacketScriptSpeaker WithOverrideTemplateId(int templateId)
-            {
-                string displayName = ResolveNpcNameFromCache(templateId);
-                if (string.IsNullOrWhiteSpace(displayName))
-                {
-                    displayName = templateId > 0 ? $"NPC #{templateId}" : "Script";
-                }
-
-                return this with
-                {
-                    TemplateId = templateId,
-                    NpcId = templateId > 0 ? templateId : NpcId,
-                    DisplayName = displayName
-                };
-            }
-        }
+        private sealed record PacketScriptSpeaker(int SpeakerTypeId, int TemplateId, int NpcId, string DisplayName);
 
         internal enum PacketScriptClientOwnerRuntimeKind
         {

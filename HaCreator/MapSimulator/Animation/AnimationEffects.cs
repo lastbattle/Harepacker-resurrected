@@ -1815,6 +1815,12 @@ namespace HaCreator.MapSimulator.Animation
         GA_STOP = 1
     }
 
+    internal enum AnimationOneTimeOverlayParentKind
+    {
+        None = 0,
+        MobActionLayer = 1
+    }
+
     internal enum FollowParticleRecoveredNativeOperationKind
     {
         LoadLayer = 0,
@@ -1859,6 +1865,7 @@ namespace HaCreator.MapSimulator.Animation
         int LoadLayerOriginOffsetX,
         int LoadLayerOriginOffsetY,
         bool UsesOverlayLayer,
+        AnimationOneTimeOverlayParentKind OverlayParentKind,
         int LoadLayerOptionValue,
         int LoadLayerAlphaValue,
         int LoadLayerReservedValue,
@@ -1882,6 +1889,7 @@ namespace HaCreator.MapSimulator.Animation
                 LoadLayerOriginOffsetX: 0,
                 LoadLayerOriginOffsetY: 0,
                 UsesOverlayLayer: true,
+                OverlayParentKind: AnimationOneTimeOverlayParentKind.MobActionLayer,
                 LoadLayerOptionValue: unchecked((int)0xC00614A4),
                 LoadLayerAlphaValue: 255,
                 LoadLayerReservedValue: 0,
@@ -1911,6 +1919,7 @@ namespace HaCreator.MapSimulator.Animation
         int OriginOffsetX,
         int OriginOffsetY,
         bool UsesOverlayLayer,
+        AnimationOneTimeOverlayParentKind OverlayParentKind,
         int Value,
         int LoadLayerCanvasValue = 0,
         int LoadLayerAlphaValue = 0,
@@ -2070,6 +2079,22 @@ namespace HaCreator.MapSimulator.Animation
         int SourceHeight,
         Point CanvasOffset);
 
+    internal enum CanvasLayerRecoveredTemporaryCanvasOperationKind
+    {
+        CreateCanvas,
+        InsertCanvas
+    }
+
+    /// <summary>
+    /// Owner-side temporary canvas operation recovered from CAnimationDisplayer::Effect_HP.
+    /// This preserves the CreateCanvas and source InsertCanvas sequence before the
+    /// prepared canvas is handed to the managed one-time layer analogue.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredTemporaryCanvasOperation(
+        CanvasLayerRecoveredTemporaryCanvasOperationKind Kind,
+        CanvasLayerRecoveredCanvasSettings CanvasSettings,
+        CanvasLayerRecoveredPreparedSourceTrace Source);
+
     /// <summary>
     /// Owner-side prepared canvas provenance preserved alongside the managed registration payload.
     /// </summary>
@@ -2078,6 +2103,7 @@ namespace HaCreator.MapSimulator.Animation
         string FormattedText,
         CanvasLayerRecoveredCanvasSettings CanvasSettings,
         CanvasLayerRecoveredPreparedSourceTrace[] PreparedSources,
+        CanvasLayerRecoveredTemporaryCanvasOperation[] TemporaryCanvasOperations,
         bool KeepsOverlayOnSeparateLayer,
         string OverlayCanvasPath,
         string OverlaySpriteName,
@@ -2555,6 +2581,7 @@ namespace HaCreator.MapSimulator.Animation
         public AnimationOneTimePlaybackMode PlaybackMode { get; private set; } = AnimationOneTimePlaybackMode.Default;
         public string SourceUol { get; private set; }
         public bool UsesOverlayParent { get; private set; }
+        public AnimationOneTimeOverlayParentKind OverlayParentKind { get; private set; } = AnimationOneTimeOverlayParentKind.None;
         public OneTimeAnimationRecoveredRegistrationTrace? RecoveredRegistrationTrace { get; private set; }
         internal IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
             = Array.Empty<OneTimeAnimationRecoveredNativeOperation>();
@@ -2624,6 +2651,8 @@ namespace HaCreator.MapSimulator.Animation
             PlaybackMode = playbackMode;
             SourceUol = sourceUol;
             UsesOverlayParent = usesOverlayParent;
+            OverlayParentKind = recoveredRegistrationTrace?.OverlayParentKind
+                ?? (usesOverlayParent ? AnimationOneTimeOverlayParentKind.MobActionLayer : AnimationOneTimeOverlayParentKind.None);
             RecoveredRegistrationTrace = recoveredRegistrationTrace;
             RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(recoveredRegistrationTrace);
         }
@@ -2711,6 +2740,7 @@ namespace HaCreator.MapSimulator.Animation
                     trace.LoadLayerOriginOffsetX,
                     trace.LoadLayerOriginOffsetY,
                     trace.UsesOverlayLayer,
+                    trace.OverlayParentKind,
                     trace.LoadLayerOptionValue,
                     trace.LoadLayerCanvasValue,
                     trace.LoadLayerAlphaValue,
@@ -2724,6 +2754,7 @@ namespace HaCreator.MapSimulator.Animation
                     0,
                     0,
                     false,
+                    AnimationOneTimeOverlayParentKind.None,
                     (int)trace.AnimatePlaybackMode,
                     AnimateUsesMissingStartTime: trace.AnimateUsesMissingStartTime,
                     AnimateUsesMissingRepeatCount: trace.AnimateUsesMissingRepeatCount)
@@ -2739,6 +2770,7 @@ namespace HaCreator.MapSimulator.Animation
                     0,
                     0,
                     false,
+                    AnimationOneTimeOverlayParentKind.None,
                     trace.RegisterOneTimeAnimationDelayMs,
                     RegisterOneTimeAnimationHasCallback: trace.RegisterOneTimeAnimationHasCallback));
             }
@@ -3229,7 +3261,7 @@ namespace HaCreator.MapSimulator.Animation
                                 endOffset: particleEndOffset,
                                 zOrder: _spawnZOrder,
                                 durationMs: resolvedDurationMs,
-                                currentTimeMs: _nextSpawnTime);
+                                currentTimeMs: currentTimeMs);
                         }
                     }
                 }

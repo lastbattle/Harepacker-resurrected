@@ -318,6 +318,15 @@ namespace HaCreator.MapSimulator.Character
                 // publishes generic shoot roots for the same surface.
                 ["speedDualShot"] = new[] { "shoot1", "swingT2" },
                 ["shootDb1"] = new[] { "shoot1", "swingP2" },
+                // Beginner capture skill rows still request the raw `capture` action,
+                // while Character/00002000.img backs that sequence with shoot2 frames
+                // and Morph/*.img publishes only generic shoot-family branches.
+                ["capture"] = new[] { "shoot2", "shoot1", "shootF" },
+                // The first profession create rows use the same shoot2 body surface;
+                // later create2/create3/create4 rows are direct canvases in WZ and are
+                // intentionally not widened here without a client-side merge rule.
+                ["create0"] = new[] { "shoot2", "shoot1", "shootF" },
+                ["create1"] = new[] { "shoot2", "shoot1", "shootF" },
                 // Mercedes `strikeDual` skill rows still request the raw action name,
                 // while Character/00002000.img backs it with shoot-family frames before
                 // mixed swing/stab backstops and Morph/*.img publishes only generic
@@ -390,12 +399,14 @@ namespace HaCreator.MapSimulator.Character
                 ["sanctuary"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 // Additional warrior / aran melee rows still publish raw action requests
                 // like `souldriver`, `firestrike`, `blade`, `chargeBlow`,
-                // `doubleSwing`, `tripleSwing`, `finalCharge`, `finalToss`,
-                // `finalBlow`, `comboSmash`, `comboFenrir`, `fullSwing*`,
-                // `overSwing*`, `rollingSpin`, `comboTempest`, and
-                // `comboJudgement`, while checked morph images still expose only
-                // generic `swingT*` plus fallback stab roots instead of those
-                // verbatim branches.
+                // `braveslash*`, `doubleSwing`, `tripleSwing`, `finalCharge`,
+                // `finalToss`, `finalBlow`, `comboSmash`, `comboFenrir`,
+                // `fullSwing*`, `overSwing*`, `rollingSpin`, `comboTempest`,
+                // and `comboJudgement`, while checked morph images still expose
+                // no verbatim Aran branches. Keep the Aran entries on the
+                // Character/00002000.img body-action redirect order first, then
+                // let the generic melee surface backstop templates that publish
+                // only older swing/stab roots.
                 ["souldriver"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["firestrike"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["blade"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
@@ -404,27 +415,20 @@ namespace HaCreator.MapSimulator.Character
                 ["braveslash2"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["braveslash3"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["braveslash4"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["doubleSwing"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["tripleSwing"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["finalCharge"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["finalToss"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["finalBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["comboSmash"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["comboFenrir"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["fullSwingDouble"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["fullSwingTriple"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["overSwingDouble"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["overSwingTriple"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["rollingSpin"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["comboTempest"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["comboJudgement"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                // Resistance melee skill rows also keep publishing `tripleBlow`,
-                // `quadBlow`, `deathBlow`, and `finishBlow`, while checked morph
-                // templates still expose only generic swing/stab combat roots.
-                ["tripleBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["quadBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["deathBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["finishBlow"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["doubleSwing"] = new[] { "swingP2", "swingPF", "stabTF" },
+                ["tripleSwing"] = new[] { "swingPF", "proneStab", "swingP2" },
+                ["finalCharge"] = new[] { "stabTF", "stabT2" },
+                ["finalToss"] = new[] { "swingPF", "swingP2" },
+                ["finalBlow"] = new[] { "swingT2", "swingPF" },
+                ["comboSmash"] = new[] { "swingOF", "stabT2" },
+                ["comboFenrir"] = new[] { "alert", "swingT2", "swingPF", "swingP2", "stabTF", "stabT2" },
+                ["fullSwingDouble"] = new[] { "stabT2", "stabT1" },
+                ["fullSwingTriple"] = new[] { "swingT2", "swingPF" },
+                ["overSwingDouble"] = new[] { "swingPF", "stabT1" },
+                ["overSwingTriple"] = new[] { "stabTF", "swingPF" },
+                ["rollingSpin"] = new[] { "stabT1", "stabTF" },
+                ["comboTempest"] = new[] { "alert" },
+                ["comboJudgement"] = new[] { "alert", "swingP2", "swingPF" },
                 // WZ still publishes no verbatim `assaulter` / `assassination*` branches in
                 // Morph/*.img, while skill-side rows like 4211002 and 4221001 still request
                 // those raw action names. Keep them on the same generic melee surface.
@@ -436,17 +440,15 @@ namespace HaCreator.MapSimulator.Character
                 // and `Skill/433.img/skill/4331005/action/0 = flyingAssaulter`, while the
                 // checked morph templates keep only generic stab/swing families.
                 ["showdown"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["flyingAssaulter"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 // Dual-blade skill rows still publish these raw action names, but Morph/*.img
                 // keeps them on generic stab/swing roots instead of verbatim dual-blade nodes.
-                ["stabD1"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["tripleStab"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["fatalBlow"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["slashStorm1"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["slashStorm2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["bloodyStorm"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["upperStab"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["chainPull"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                // Skill/421.img keeps the raw `prone2` request, while the checked
+                // Character/00002000.img body row resolves it through proneStab frames
+                // and Morph/*.img publishes no verbatim `prone2` branch.
+                ["prone2"] = new[] { "proneStab" },
                 // A targeted WZ pass over Character/00002000.img plus the corresponding
                 // Dual Blade skill rows (430/431/432/433/434) shows these later raw
                 // requests already authored as ordered generic body-action sequences.
@@ -536,6 +538,10 @@ namespace HaCreator.MapSimulator.Character
                 ["darkChain"] = new[] { "swingO3", "swingO2", "stabO1", "swingT1", "swingT3", "stabO2", "proneStab" },
                 ["darkLightning"] = new[] { "swingO2", "stabO1", "stabO2" },
                 ["swingT2Giant"] = new[] { "alert", "stabO2" },
+                // Profession gather rows are authored as body-action redirects in
+                // Character/00002000.img, while Morph/*.img has no verbatim gather roots.
+                ["gather0"] = new[] { "swingT2", "swingT1" },
+                ["gather1"] = new[] { "swingT1" },
                 // The client raw table still exposes dual-blade swing-family names while
                 // archer morphs such as 1003/1103 only publish generic swingT branches.
                 ["swingC1"] = new[] { "swingT1", "swingT3" },
@@ -645,6 +651,10 @@ namespace HaCreator.MapSimulator.Character
                 ["msummon"] = new[] { "sit" },
                 ["msummon2"] = new[] { "sit" },
                 ["mine"] = new[] { "sit" },
+                // Skill/3310.img still publishes `knockback`, while Character/00002000.img
+                // backs the body row with `sit` frames and Morph/*.img publishes no
+                // verbatim knockback branch.
+                ["knockback"] = new[] { "sit" },
                 // Skill/3212.img still publishes the raw Battle Mage root, while
                 // Character/00002000.img backs it entirely with alert frames.
                 ["nemesis"] = new[] { "alert" },
@@ -656,7 +666,19 @@ namespace HaCreator.MapSimulator.Character
                 ["cyclone_after"] = new[] { "alert", "stabO1", "swingO2" },
                 // Character/00002000.img backs the checked full-screen jaguar rain
                 // branch with `alert` rather than a morph-owned `*Rain` attack root.
-                ["flashRain"] = new[] { "alert" }
+                ["flashRain"] = new[] { "alert" },
+                // Ride/getoff and jaguar-only profession rows are body-action redirects
+                // or sit-only mounted surfaces in Character/00002000.img. Morph/*.img
+                // publishes no verbatim branches for these raw requests.
+                ["ride"] = new[] { "stand1", "alert", "jump", "sit" },
+                ["getoff"] = new[] { "sit", "jump", "swingPF", "alert", "stand2" },
+                ["ride2"] = new[] { "alert", "swingPF", "jump", "swingOF", "sit" },
+                ["getoff2"] = new[] { "sit", "jump", "swingOF", "swingPF", "alert" },
+                ["proneStab_jaguar"] = new[] { "sit" },
+                ["herbalism_jaguar"] = new[] { "sit" },
+                ["mining_jaguar"] = new[] { "sit" },
+                ["herbalism_mechanic"] = new[] { "sit" },
+                ["mining_mechanic"] = new[] { "sit" }
             };
 
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)

@@ -14687,6 +14687,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool ShouldUseBulletAfterimageClockwiseBounds(BulletAnimationPresentation presentation)
         {
+            return ShouldUseBulletLayerClockwiseBounds(presentation);
+        }
+
+        internal static bool ShouldUseBulletLayerClockwiseBounds(BulletAnimationPresentation presentation)
+        {
             return IsRegisteredFlipBallUol(presentation?.EffectUol);
         }
 
@@ -26231,7 +26236,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int screenX = (int)owner.CurrentPosition.X - mapShiftX + centerX;
             int screenY = (int)owner.CurrentPosition.Y - mapShiftY + centerY;
-            DrawBulletAnimationOwnerFrame(spriteBatch, frame, screenX, screenY, owner.FacingRight, Color.White);
+            bool clockwiseBounds = ShouldUseBulletLayerClockwiseBounds(owner.Presentation);
+            DrawBulletAnimationOwnerFrame(
+                spriteBatch,
+                frame,
+                screenX,
+                screenY,
+                owner.FacingRight,
+                clockwiseBounds,
+                Color.White);
 
             SkillFrame effectFrame = owner.Presentation.EffectAnimation?.GetFrameAtTime(animationTime);
             if (effectFrame?.Texture != null)
@@ -26242,6 +26255,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     screenX,
                     screenY,
                     owner.FacingRight,
+                    clockwiseBounds,
                     Color.White);
             }
         }
@@ -26252,6 +26266,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int screenX,
             int screenY,
             bool facingRight,
+            bool clockwiseBounds,
             Color color)
         {
             if (frame?.Texture == null)
@@ -26264,11 +26279,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 spriteBatch,
                 null,
                 null,
-                GetFrameDrawX(screenX, frame, shouldFlip),
+                ResolveBulletLayerDrawX(screenX, frame, shouldFlip, clockwiseBounds),
                 screenY - frame.Origin.Y,
                 color,
                 shouldFlip,
                 null);
+        }
+
+        internal static int ResolveBulletLayerDrawX(
+            int anchorX,
+            SkillFrame frame,
+            bool shouldFlip,
+            bool clockwiseBounds)
+        {
+            int drawX = GetFrameDrawX(anchorX, frame, shouldFlip);
+            int width = ResolveBulletAfterimageFrameWidth(frame);
+            return clockwiseBounds && width > 0
+                ? drawX + width
+                : drawX;
         }
 
         private void DrawProjectile(SpriteBatch spriteBatch, ActiveProjectile proj,

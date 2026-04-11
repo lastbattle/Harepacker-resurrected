@@ -175,7 +175,6 @@ namespace HaCreator.MapSimulator.Managers
 
             lock (_queueLock)
             {
-                RemoveQueuedTouchRequestsUnsafe(objectId);
                 FlushQueuedOutboundPacketsUnsafe(clients);
             }
 
@@ -227,16 +226,25 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] rawPacket = ReactorPoolOfficialSessionBridgeManager.BuildTouchRequestPacket(objectId, isTouching);
+            bool queued;
             lock (_queueLock)
             {
-                EnqueueOrReplaceTouchRequestUnsafe(new PendingTouchRequest(objectId, isTouching, rawPacket));
+                queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(new PendingTouchRequest(objectId, isTouching, rawPacket));
             }
 
-            QueuedCount++;
-            LastQueuedObjectId = objectId;
-            LastQueuedTouchFlag = isTouching;
-            LastQueuedRawPacket = rawPacket;
-            status = $"Queued packetoutraw {Convert.ToHexString(rawPacket)} for deferred reactor touch delivery.";
+            if (queued)
+            {
+                QueuedCount++;
+                LastQueuedObjectId = objectId;
+                LastQueuedTouchFlag = isTouching;
+                LastQueuedRawPacket = rawPacket;
+                status = $"Queued packetoutraw {Convert.ToHexString(rawPacket)} for deferred reactor touch delivery.";
+            }
+            else
+            {
+                status = $"packetoutraw {Convert.ToHexString(rawPacket)} is already the latest deferred reactor touch ownership state.";
+            }
+
             LastStatus = status;
             return true;
         }
@@ -246,6 +254,16 @@ namespace HaCreator.MapSimulator.Managers
             lock (_queueLock)
             {
                 return _pendingOutboundPackets.Any(packet => packet.ObjectId == objectId && packet.IsTouching == isTouching);
+            }
+        }
+
+        internal IReadOnlyList<(int ObjectId, bool IsTouching)> GetQueuedTouchRequestSnapshot()
+        {
+            lock (_queueLock)
+            {
+                return _pendingOutboundPackets
+                    .Select(packet => (packet.ObjectId, packet.IsTouching))
+                    .ToArray();
             }
         }
 
@@ -449,10 +467,24 @@ namespace HaCreator.MapSimulator.Managers
             return removedCount;
         }
 
-        private void EnqueueOrReplaceTouchRequestUnsafe(PendingTouchRequest next)
+        private bool EnqueueOrCoalesceDuplicateTouchRequestUnsafe(PendingTouchRequest next)
         {
-            RemoveQueuedTouchRequestsUnsafe(next.ObjectId);
+            bool? latestQueuedStateForObject = null;
+            foreach (PendingTouchRequest pending in _pendingOutboundPackets)
+            {
+                if (pending.ObjectId == next.ObjectId)
+                {
+                    latestQueuedStateForObject = pending.IsTouching;
+                }
+            }
+
+            if (latestQueuedStateForObject.HasValue && latestQueuedStateForObject.Value == next.IsTouching)
+            {
+                return false;
+            }
+
             _pendingOutboundPackets.Enqueue(next);
+            return true;
         }
 
         private void RemoveClient(int clientId, string status)

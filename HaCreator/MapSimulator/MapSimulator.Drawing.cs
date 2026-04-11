@@ -139,6 +139,7 @@ namespace HaCreator.MapSimulator
             _renderingManager.DrawMapObjects(in renderContext); // tiles and objects
             _renderingManager.DrawMobs(in renderContext); // mobs - rendered behind portals
             _remoteUserPool.Draw(_spriteBatch, _skeletonMeshRenderer, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount, _fontDebugValues, _playerManager?.Player, statusBarUi);
+            DrawAnimationDisplayerRemoteGrenades(_spriteBatch, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);
             _summonedPool.Draw(_spriteBatch, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);
             DrawPlayer(gameTime, mapCenterX, mapCenterY, TickCount); // player character (has tombstone logic)
             _mobAttackSystem.Draw(_spriteBatch, _debugBoundaryTexture, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);

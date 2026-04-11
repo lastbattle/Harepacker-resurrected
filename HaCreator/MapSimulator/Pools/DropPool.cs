@@ -1599,8 +1599,30 @@ namespace HaCreator.MapSimulator.Pools
         private void RemoveDrop(DropItem drop)
         {
             _activeDrops.Remove(drop);
-            _dropById.Remove(drop.PoolId);
+            RemoveDropLookupIfCurrent(drop);
             _dropPool.Enqueue(drop);
+        }
+
+        private void RemoveDropLookupIfCurrent(DropItem drop)
+        {
+            if (drop == null)
+            {
+                return;
+            }
+
+            if (_dropById.TryGetValue(drop.PoolId, out DropItem mappedDrop)
+                && ReferenceEquals(mappedDrop, drop))
+            {
+                _dropById.Remove(drop.PoolId);
+            }
+        }
+
+        private void DetachPacketDropLookupForLeave(DropItem drop)
+        {
+            if (drop?.IsPacketControlled == true)
+            {
+                RemoveDropLookupIfCurrent(drop);
+            }
         }
         #endregion
 
@@ -2652,6 +2674,7 @@ namespace HaCreator.MapSimulator.Pools
             switch (packet.Reason)
             {
                 case PacketDropLeaveReason.Remove:
+                    DetachPacketDropLookupForLeave(drop);
                     if (drop.IsPacketControlled)
                     {
                         drop.SnapToTargetPosition();
@@ -2673,6 +2696,7 @@ namespace HaCreator.MapSimulator.Pools
                     return true;
 
                 case PacketDropLeaveReason.PlayerPickup:
+                    DetachPacketDropLookupForLeave(drop);
                     if (packet.ActorId == localCharacterId)
                     {
                         return CompletePickup(
@@ -2707,6 +2731,7 @@ namespace HaCreator.MapSimulator.Pools
                             : () => actorPositionResolver(packet.Reason, packet));
 
                 case PacketDropLeaveReason.MobPickup:
+                    DetachPacketDropLookupForLeave(drop);
                     return ResolveRemotePickup(
                         drop,
                         packet.ActorId,
@@ -2722,6 +2747,7 @@ namespace HaCreator.MapSimulator.Pools
                             : () => actorPositionResolver(packet.Reason, packet));
 
                 case PacketDropLeaveReason.PetPickup:
+                    DetachPacketDropLookupForLeave(drop);
                     if (packet.ActorId == localCharacterId)
                     {
                         int localPetId = petPickupActorIdResolver?.Invoke(packet) ?? packet.ActorId;

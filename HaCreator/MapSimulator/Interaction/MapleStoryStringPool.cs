@@ -383,6 +383,21 @@ namespace HaCreator.MapSimulator.Interaction
             [0x17BE] = "Etc/StageAffectedMap.img",
             [0x17BF] = "Etc/StageSystem.img",
             [0x17C0] = "Etc/StageKeyword.img",
+            // Recovered from MapleStory.exe v95 `LoadStageBackImgInfo`
+            // and `CMapLoadable::MakeBack`. The stage-period catalog uses
+            // these client-owned property-name ids when parsing native
+            // StageBackImg objects and the authored background fallback.
+            [0x03E5] = "x",
+            [0x03E6] = "y",
+            [0x0610] = "bS",
+            [0x0612] = "rx",
+            [0x0613] = "ry",
+            [0x0614] = "cx",
+            [0x0615] = "cy",
+            [0x0617] = "a",
+            [0x0618] = "type",
+            [0x17F1] = "absRX",
+            [0x17F2] = "absRY",
             // Recovered from MapleStory.exe v95 `CUIQuestAlarm::Draw` and
             // `CUIQuestAlarm::OnButtonClicked`. Keep these quest-alarm ids explicit so the
             // owner retains the exact client title and notice strings even if regenerated

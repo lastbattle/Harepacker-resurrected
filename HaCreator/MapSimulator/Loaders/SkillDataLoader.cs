@@ -1242,6 +1242,10 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 prefix = prefix[..colonIndex];
             }
+            else if (TryExtractAuthoredOperatorPrefixLabel(prefix, out string operatorPrefixLabel))
+            {
+                prefix = operatorPrefixLabel;
+            }
             else
             {
                 return false;
@@ -1256,6 +1260,39 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             label = prefix;
+            return true;
+        }
+
+        private static bool TryExtractAuthoredOperatorPrefixLabel(string prefix, out string label)
+        {
+            label = null;
+            if (string.IsNullOrWhiteSpace(prefix))
+            {
+                return false;
+            }
+
+            string candidate = Regex.Replace(
+                    prefix,
+                    @"(?:[+\-:]|\bby\b|\bto\b)\s*$",
+                    string.Empty,
+                    RegexOptions.IgnoreCase)
+                .Trim();
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                return false;
+            }
+
+            if (!candidate.Contains("chance", StringComparison.OrdinalIgnoreCase)
+                && !candidate.Contains("rate", StringComparison.OrdinalIgnoreCase)
+                && !candidate.Contains("damage", StringComparison.OrdinalIgnoreCase)
+                && !candidate.Contains("duration", StringComparison.OrdinalIgnoreCase)
+                && !candidate.Contains("distance", StringComparison.OrdinalIgnoreCase)
+                && !candidate.Contains("speed", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            label = candidate;
             return true;
         }
 
@@ -1297,6 +1334,10 @@ namespace HaCreator.MapSimulator.Loaders
                 "Bonus EXP" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Meso Rate" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Elemental Resistance" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Secondary Effect Chance" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "HP Recovery" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "MP Recovery" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Self-Destruction Damage" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 _ => false
             };
         }

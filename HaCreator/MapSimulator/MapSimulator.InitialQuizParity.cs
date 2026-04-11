@@ -776,6 +776,11 @@ namespace HaCreator.MapSimulator
                 && ShouldCaptureInitialQuizOwnerTextInput(true, snapshot.RemainingMs, _initialQuizOwnerFocusTarget);
         }
 
+        private bool DoesInitialQuizOwnerCaptureWindowInput()
+        {
+            return _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currTickCount, out _);
+        }
+
         private void HandleInitialQuizOwnerCommittedText(string text)
         {
             if (!ShouldCaptureInitialQuizOwnerTextInput())

@@ -372,9 +372,16 @@ namespace HaCreator.MapSimulator
             if (isWindowActive)
             {
                 _npcInteractionOverlay?.PumpPacketQuestResultModalHost();
-                bool initialQuizMouseConsumed = HandleInitialQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
-                bool speedQuizMouseConsumed = HandleSpeedQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
-                bool dedicatedOwnerMouseConsumed = HandlePacketScriptDedicatedOwnerMouse(newMouseState, _oldMouseState, currTickCount);
+                bool packetQuestResultModalBlocksInput = _npcInteractionOverlay?.BlocksUnderlyingInput == true;
+                bool initialQuizMouseConsumed =
+                    !packetQuestResultModalBlocksInput &&
+                    HandleInitialQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
+                bool speedQuizMouseConsumed =
+                    !packetQuestResultModalBlocksInput &&
+                    HandleSpeedQuizOwnerMouse(newMouseState, _oldMouseState, currTickCount);
+                bool dedicatedOwnerMouseConsumed =
+                    !packetQuestResultModalBlocksInput &&
+                    HandlePacketScriptDedicatedOwnerMouse(newMouseState, _oldMouseState, currTickCount);
                 NpcInteractionOverlayResult npcOverlayResult = _npcInteractionOverlay != null
                     ? _npcInteractionOverlay.HandleMouse(newMouseState, _oldMouseState, _renderParams.RenderWidth, _renderParams.RenderHeight)
                     : default;
@@ -500,8 +507,11 @@ namespace HaCreator.MapSimulator
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)
             {
-                RefreshCollisionScriptExclusiveRequestState(currTickCount);
-                HandlePortalUpInteract(currTickCount);
+                if (!DoesInitialQuizOwnerCaptureWindowInput())
+                {
+                    RefreshCollisionScriptExclusiveRequestState(currTickCount);
+                    HandlePortalUpInteract(currTickCount);
+                }
             }
 
 
@@ -541,9 +551,19 @@ namespace HaCreator.MapSimulator
                 HandleNpcOverlayInputSubmission(npcKeyboardResult.InputSubmission);
             }
 
-            bool initialQuizKeyboardConsumed = isWindowActive && HandleInitialQuizOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
-            bool speedQuizKeyboardConsumed = isWindowActive && HandleSpeedQuizOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
-            bool dedicatedOwnerKeyboardConsumed = isWindowActive && HandlePacketScriptDedicatedOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
+            bool packetQuestResultModalBlocksKeyboard = _npcInteractionOverlay?.BlocksUnderlyingInput == true;
+            bool initialQuizKeyboardConsumed =
+                isWindowActive &&
+                !packetQuestResultModalBlocksKeyboard &&
+                HandleInitialQuizOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
+            bool speedQuizKeyboardConsumed =
+                isWindowActive &&
+                !packetQuestResultModalBlocksKeyboard &&
+                HandleSpeedQuizOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
+            bool dedicatedOwnerKeyboardConsumed =
+                isWindowActive &&
+                !packetQuestResultModalBlocksKeyboard &&
+                HandlePacketScriptDedicatedOwnerKeyboard(newKeyboardState, _oldKeyboardState, currTickCount);
             bool uiCapturesKeyboard = uiWindowManager?.CapturesKeyboardInput == true
                 || _npcInteractionOverlay?.CapturesKeyboardInput == true
                 || initialQuizKeyboardConsumed
@@ -1021,6 +1041,7 @@ namespace HaCreator.MapSimulator
                 UpdatePacketOwnedPetConsumeMpRuntime(currTickCount);
                 SyncPacketOwnedLocalFollowCharacter();
                 SyncPacketOwnedAnimationDisplayerFollow();
+                UpdateAnimationDisplayerRemoteGrenades(currTickCount);
 
 
                 if (_playerManager.IsPlayerActive)

@@ -137,6 +137,7 @@ namespace HaCreator.MapSimulator.Character
             public int ActionSpeedDegree { get; init; }
             public int WalkSpeed { get; init; }
             public bool HeldActionFrameDelay { get; init; }
+            public bool CharacterOneTimeActionFrameHeld { get; set; }
         }
 
         private sealed class AvatarActionLayerState
@@ -658,6 +659,7 @@ namespace HaCreator.MapSimulator.Character
         private bool _packetOwnedEmotionByItemOption;
         private ShadowPartnerState _activeShadowPartner;
         private MirrorImageState _activeMirrorImage;
+        private int _mirrorImageAvatarScalePercent = MirrorImageClientDefaultScalePercent;
 
         // Preserve ladder context across hit knockback so holding UP can immediately re-grab it.
         private bool _pendingLadderRegrab;
@@ -699,6 +701,12 @@ namespace HaCreator.MapSimulator.Character
                 _observedTamingMobPart = GetEquippedTamingMobPart();
             }
             // If build is null, we're a placeholder - just track position
+        }
+
+        public int MirrorImageAvatarScalePercent
+        {
+            get => _mirrorImageAvatarScalePercent;
+            set => _mirrorImageAvatarScalePercent = NormalizeMirrorImageAvatarScalePercent(value);
         }
 
         public void SetPosition(float x, float y)
@@ -2401,10 +2409,13 @@ namespace HaCreator.MapSimulator.Character
                 advanceBodyClock: false);
             if (!stalledBodyClock)
             {
-                AdvanceMountedActionLayerClockOwner(
-                    mountedActionLayerState,
-                    advanceBodyClock: true,
-                    ref bodyElapsedSinceLastUpdateMs);
+                if (!mountedActionLayerState.CharacterOneTimeActionFrameHeld)
+                {
+                    AdvanceMountedActionLayerClockOwner(
+                        mountedActionLayerState,
+                        advanceBodyClock: true,
+                        ref bodyElapsedSinceLastUpdateMs);
+                }
             }
 
             if (!stalledTamingMobClock)
@@ -2506,6 +2517,15 @@ namespace HaCreator.MapSimulator.Character
 
             if (advanceBodyClock)
             {
+                if (AvatarActionLayerCoordinator.ShouldKeepCompletedCharacterOneTimeActionFrame(
+                        mountedActionLayerState.CharacterOneTimeActionName ?? currentBodyActionName))
+                {
+                    mountedActionLayerState.CharacterOneTimeActionName = null;
+                    mountedActionLayerState.CharacterOneTimeActionFrameHeld = true;
+                    elapsedSinceLastUpdateMs = remainingElapsedMs;
+                    return;
+                }
+
                 mountedActionLayerState.CharacterOneTimeActionName = null;
                 mountedActionLayerState.CurrentBodyActionName = persistentActionName;
             }
@@ -5444,6 +5464,7 @@ namespace HaCreator.MapSimulator.Character
                     recreatesLayerObject: false,
                     ResolveMirrorImageTargetOffsetForCurrentState());
                 bool hasSourceCanvas = HasMirrorImageInsertCanvasSource(
+                    HasMirrorImageLiveSourceCanvas(sourceParts),
                     preparedLayer.TextureSourceBounds,
                     preparedLayer.ComposedTexture);
                 ApplyMirrorImageInsertCanvasMetadata(
@@ -5508,7 +5529,10 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer,
                 sourceSignature,
                 currentTime,
-                HasMirrorImageInsertCanvasSource(preparedLayer.TextureSourceBounds, composedTexture));
+                HasMirrorImageInsertCanvasSource(
+                    HasMirrorImageLiveSourceCanvas(sourceParts),
+                    preparedLayer.TextureSourceBounds,
+                    composedTexture));
             preparedLayer.PreparedFacingRight = facingRight;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = clonedParts;
@@ -5525,7 +5549,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.RenderLayer = renderLayer;
             preparedLayer.PreparedLayerObjectId = 0;
             preparedLayer.PreparedLayerZ = ResolveMirrorImagePreparedLayerZ();
-            preparedLayer.PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilter(MirrorImageClientDefaultScalePercent);
+            preparedLayer.PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilter(ResolveMirrorImageAvatarScalePercent());
             preparedLayer.PreparedLayerColor = ResolveMirrorImagePreparedLayerColor();
             preparedLayer.SourceSignature = sourceSignature;
             preparedLayer.LastInsertedSourceSignature = 0;
@@ -5584,7 +5608,7 @@ namespace HaCreator.MapSimulator.Character
             return AvatarRenderLayer.UnderFace;
         }
 
-        private static void ApplyMirrorImagePreparedLayerClientProperties(
+        private void ApplyMirrorImagePreparedLayerClientProperties(
             MirrorImagePreparedSourceLayer preparedLayer,
             AvatarRenderLayer renderLayer)
         {
@@ -5595,7 +5619,7 @@ namespace HaCreator.MapSimulator.Character
 
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.PreparedLayerZ = ResolveMirrorImagePreparedLayerZ();
-            preparedLayer.PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilter(MirrorImageClientDefaultScalePercent);
+            preparedLayer.PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilter(ResolveMirrorImageAvatarScalePercent());
             preparedLayer.PreparedLayerColor = ResolveMirrorImagePreparedLayerColor();
         }
 
@@ -5609,6 +5633,18 @@ namespace HaCreator.MapSimulator.Character
             return scalePercent == MirrorImageClientDefaultScalePercent
                 ? MirrorImageClientDefaultLayerFilter
                 : MirrorImageClientScaledLayerFilter;
+        }
+
+        internal int ResolveMirrorImageAvatarScalePercent()
+        {
+            return NormalizeMirrorImageAvatarScalePercent(_mirrorImageAvatarScalePercent);
+        }
+
+        internal static int NormalizeMirrorImageAvatarScalePercent(int scalePercent)
+        {
+            return scalePercent > 0
+                ? scalePercent
+                : MirrorImageClientDefaultScalePercent;
         }
 
         internal static Color ResolveMirrorImagePreparedLayerColor()
@@ -5732,6 +5768,20 @@ namespace HaCreator.MapSimulator.Character
             return composedTexture != null
                    && sourceBounds.Width > 0
                    && sourceBounds.Height > 0;
+        }
+
+        internal static bool HasMirrorImageInsertCanvasSource(
+            bool hasLiveSourceCanvas,
+            Rectangle sourceBounds,
+            Texture2D composedTexture)
+        {
+            return hasLiveSourceCanvas || HasMirrorImageInsertCanvasSource(sourceBounds, composedTexture);
+        }
+
+        private static bool HasMirrorImageLiveSourceCanvas(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            return sourceParts != null
+                   && sourceParts.Count > 0;
         }
 
         internal static int ResolveMirrorImageLastInsertedSourceSignature(
@@ -5883,7 +5933,7 @@ namespace HaCreator.MapSimulator.Character
             return false;
         }
 
-        private static void RefreshMirrorImagePreparedSourceLayerMetadata(MirrorImagePreparedSourceLayer[] preparedLayers)
+        private void RefreshMirrorImagePreparedSourceLayerMetadata(MirrorImagePreparedSourceLayer[] preparedLayers)
         {
             if (preparedLayers == null)
             {
@@ -7531,9 +7581,12 @@ namespace HaCreator.MapSimulator.Character
             return ShadowPartnerClientActionResolver.IsBlockingAction(actionName);
         }
 
-        private static bool IsShadowPartnerAttackAction(string actionName)
+        private bool IsShadowPartnerAttackAction(string actionName)
         {
-            return ShadowPartnerClientActionResolver.IsAttackAction(actionName);
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
+                ? resolvedRawActionCode
+                : null;
+            return ShadowPartnerClientActionResolver.IsAttackAction(actionName, rawActionCode);
         }
 
         private bool ShouldSuppressSkillAvatarEffectRendering()

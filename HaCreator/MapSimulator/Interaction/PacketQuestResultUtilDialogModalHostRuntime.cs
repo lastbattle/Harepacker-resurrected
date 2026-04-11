@@ -16,10 +16,17 @@ namespace HaCreator.MapSimulator.Interaction
         int RunPumpCount,
         int ExitCount,
         int ModalLoopExitCount,
+        int PageTurnResultCount,
+        int TerminalResultCount,
         bool LastModalResultExitedLoop,
+        bool LastModalResultClosedDialog,
         PacketQuestResultSubtype10ContinuationDisposition LastContinuationDisposition,
         PacketQuestResultUtilDialogModalResult LastModalResult,
-        int LastDoModalReturnCode);
+        int LastDoModalReturnCode,
+        PacketQuestResultUtilDialogModalResult LastPageTurnModalResult,
+        int LastPageTurnDoModalReturnCode,
+        PacketQuestResultUtilDialogModalResult LastTerminalModalResult,
+        int LastTerminalDoModalReturnCode);
 
     internal sealed class PacketQuestResultUtilDialogModalHostRuntime
     {
@@ -39,10 +46,17 @@ namespace HaCreator.MapSimulator.Interaction
         internal int RunPumpCount { get; private set; }
         internal int ExitCount { get; private set; }
         internal int ModalLoopExitCount { get; private set; }
+        internal int PageTurnResultCount { get; private set; }
+        internal int TerminalResultCount { get; private set; }
         internal bool LastModalResultExitedLoop { get; private set; }
+        internal bool LastModalResultClosedDialog { get; private set; }
         internal PacketQuestResultSubtype10ContinuationDisposition LastContinuationDisposition { get; private set; }
         internal PacketQuestResultUtilDialogModalResult LastModalResult { get; private set; }
         internal int LastDoModalReturnCode { get; private set; } = ClosedDoModalReturnCode;
+        internal PacketQuestResultUtilDialogModalResult LastPageTurnModalResult { get; private set; }
+        internal int LastPageTurnDoModalReturnCode { get; private set; } = ClosedDoModalReturnCode;
+        internal PacketQuestResultUtilDialogModalResult LastTerminalModalResult { get; private set; }
+        internal int LastTerminalDoModalReturnCode { get; private set; } = ClosedDoModalReturnCode;
 
         internal void Begin(int questId, int speakerNpcId, int pageIndex, int pageCount)
         {
@@ -61,9 +75,10 @@ namespace HaCreator.MapSimulator.Interaction
             EnterCount++;
             RunPumpCount = 0;
             LastModalResultExitedLoop = false;
+            LastModalResultClosedDialog = false;
             LastContinuationDisposition = PacketQuestResultSubtype10ContinuationDisposition.Abandon;
             LastModalResult = PacketQuestResultUtilDialogModalResult.None;
-            LastDoModalReturnCode = 0;
+            LastDoModalReturnCode = ClosedDoModalReturnCode;
         }
 
         internal void PumpRunLoop()
@@ -74,7 +89,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        internal void End(PacketQuestResultUtilDialogModalResult modalResult, bool exitsModalLoop = true)
+        internal void End(
+            PacketQuestResultUtilDialogModalResult modalResult,
+            bool exitsModalLoop = true,
+            bool closesDialog = true)
         {
             if (!IsActive)
             {
@@ -89,13 +107,27 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             LastModalResultExitedLoop = exitsModalLoop;
-            LastContinuationDisposition =
-                PacketQuestResultClientSemantics.ResolveSubtype10ContinuationDisposition(
-                    exitsModalLoop && modalResult == PacketQuestResultUtilDialogModalResult.NextOrOk
-                        ? NpcInteractionOverlayCloseKind.Completed
-                        : NpcInteractionOverlayCloseKind.Dismissed);
+            LastModalResultClosedDialog = closesDialog;
             LastModalResult = modalResult;
             LastDoModalReturnCode = ResolveDoModalReturnCode(modalResult);
+            if (closesDialog)
+            {
+                TerminalResultCount++;
+                LastTerminalModalResult = modalResult;
+                LastTerminalDoModalReturnCode = LastDoModalReturnCode;
+                LastContinuationDisposition =
+                    PacketQuestResultClientSemantics.ResolveSubtype10ContinuationDisposition(
+                        exitsModalLoop && modalResult == PacketQuestResultUtilDialogModalResult.NextOrOk
+                            ? NpcInteractionOverlayCloseKind.Completed
+                            : NpcInteractionOverlayCloseKind.Dismissed);
+            }
+            else
+            {
+                PageTurnResultCount++;
+                LastPageTurnModalResult = modalResult;
+                LastPageTurnDoModalReturnCode = LastDoModalReturnCode;
+                LastContinuationDisposition = PacketQuestResultSubtype10ContinuationDisposition.Abandon;
+            }
         }
 
         internal PacketQuestResultUtilDialogModalHostSnapshot CaptureSnapshot()
@@ -114,10 +146,17 @@ namespace HaCreator.MapSimulator.Interaction
                 RunPumpCount,
                 ExitCount,
                 ModalLoopExitCount,
+                PageTurnResultCount,
+                TerminalResultCount,
                 LastModalResultExitedLoop,
+                LastModalResultClosedDialog,
                 LastContinuationDisposition,
                 LastModalResult,
-                LastDoModalReturnCode);
+                LastDoModalReturnCode,
+                LastPageTurnModalResult,
+                LastPageTurnDoModalReturnCode,
+                LastTerminalModalResult,
+                LastTerminalDoModalReturnCode);
         }
 
         internal static int ResolveDoModalReturnCode(PacketQuestResultUtilDialogModalResult modalResult)

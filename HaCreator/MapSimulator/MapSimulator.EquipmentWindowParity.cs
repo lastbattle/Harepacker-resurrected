@@ -1512,11 +1512,23 @@ namespace HaCreator.MapSimulator
 
             if (EquipmentChangeClientParity.HasAuthorityInventorySlotStates(result))
             {
+                IReadOnlyList<InventorySlotData> liveEquipInventory = CaptureInventorySnapshot(inventoryWindow, InventoryType.EQUIP);
+                IReadOnlyList<InventorySlotData> liveCashInventory = CaptureInventorySnapshot(inventoryWindow, InventoryType.CASH);
+                if (!TryValidateAuthorityInventoryStateRequestScope(
+                        request,
+                        result,
+                        liveEquipInventory,
+                        liveCashInventory,
+                        out rejectReason))
+                {
+                    return false;
+                }
+
                 if (!TryResolveAuthoritativeInventorySnapshots(
                         result,
-                        CaptureInventorySnapshot(inventoryWindow, InventoryType.EQUIP),
+                        liveEquipInventory,
                         inventoryWindow.GetSlotLimit(InventoryType.EQUIP),
-                        CaptureInventorySnapshot(inventoryWindow, InventoryType.CASH),
+                        liveCashInventory,
                         inventoryWindow.GetSlotLimit(InventoryType.CASH),
                         out IReadOnlyList<InventorySlotData> authoritativeEquipInventory,
                         out IReadOnlyList<InventorySlotData> authoritativeCashInventory,
@@ -1733,6 +1745,68 @@ namespace HaCreator.MapSimulator
                 out message);
         }
 
+        internal static bool TryValidateAuthorityInventoryStateRequestScope(
+            EquipmentChangeRequest request,
+            EquipmentChangeResult result,
+            IReadOnlyList<InventorySlotData> liveEquipInventory,
+            IReadOnlyList<InventorySlotData> liveCashInventory,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null || result == null)
+            {
+                rejectReason = "Character equipment authority inventory state did not match an active request.";
+                return false;
+            }
+
+            if (!EquipmentChangeClientParity.HasAuthorityInventorySlotStates(result))
+            {
+                return true;
+            }
+
+            HashSet<int> requestOwnedItemIds = BuildRequestOwnedAuthorityInventoryItemIds(result);
+            for (int i = 0; i < result.AuthorityInventorySlotStates.Count; i++)
+            {
+                CharacterEquipmentAuthorityInventorySlotState state = result.AuthorityInventorySlotStates[i];
+                int liveItemId = GetAuthorityInventorySnapshotItemId(
+                    state.InventoryType,
+                    state.SlotIndex,
+                    liveEquipInventory,
+                    liveCashInventory);
+                bool isFreedSourceSlot = IsFreedInventoryToCharacterSourceSlot(request, state.InventoryType, state.SlotIndex);
+
+                if (state.ItemId <= 0)
+                {
+                    if (liveItemId <= 0 || isFreedSourceSlot)
+                    {
+                        continue;
+                    }
+
+                    rejectReason = "Packet-authored inventory state cleared a slot outside the active equipment request.";
+                    return false;
+                }
+
+                if (state.ItemId == liveItemId)
+                {
+                    continue;
+                }
+
+                if (!requestOwnedItemIds.Contains(state.ItemId))
+                {
+                    rejectReason = "Packet-authored inventory state moved an item outside the active equipment request.";
+                    return false;
+                }
+
+                if (liveItemId > 0 && !isFreedSourceSlot)
+                {
+                    rejectReason = "Packet-authored inventory state overwrote a slot outside the active equipment request.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         internal static bool TryResolveAuthoritativeInventorySnapshots(
             EquipmentChangeResult result,
             IReadOnlyList<InventorySlotData> liveEquipInventory,
@@ -1803,6 +1877,53 @@ namespace HaCreator.MapSimulator
             resolvedEquipInventory = equipSnapshot.AsReadOnly();
             resolvedCashInventory = cashSnapshot.AsReadOnly();
             return true;
+        }
+
+        private static HashSet<int> BuildRequestOwnedAuthorityInventoryItemIds(EquipmentChangeResult result)
+        {
+            HashSet<int> itemIds = new();
+            if (result?.ReturnedPart?.ItemId > 0)
+            {
+                itemIds.Add(result.ReturnedPart.ItemId);
+            }
+
+            if (result?.DisplacedParts != null)
+            {
+                for (int i = 0; i < result.DisplacedParts.Count; i++)
+                {
+                    int itemId = result.DisplacedParts[i]?.ItemId ?? 0;
+                    if (itemId > 0)
+                    {
+                        itemIds.Add(itemId);
+                    }
+                }
+            }
+
+            return itemIds;
+        }
+
+        private static int GetAuthorityInventorySnapshotItemId(
+            InventoryType inventoryType,
+            int slotIndex,
+            IReadOnlyList<InventorySlotData> liveEquipInventory,
+            IReadOnlyList<InventorySlotData> liveCashInventory)
+        {
+            IReadOnlyList<InventorySlotData> slots = inventoryType == InventoryType.CASH
+                ? liveCashInventory
+                : liveEquipInventory;
+            return slotIndex >= 0 && slots != null && slotIndex < slots.Count
+                ? slots[slotIndex]?.ItemId ?? 0
+                : 0;
+        }
+
+        private static bool IsFreedInventoryToCharacterSourceSlot(
+            EquipmentChangeRequest request,
+            InventoryType inventoryType,
+            int slotIndex)
+        {
+            return request?.Kind == EquipmentChangeRequestKind.InventoryToCharacter
+                   && request.SourceInventoryType == inventoryType
+                   && request.SourceInventoryIndex == slotIndex;
         }
 
         private static bool TryValidateAuthorityInventorySnapshotTargets(

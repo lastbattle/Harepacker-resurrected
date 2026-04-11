@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Fields;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 
@@ -162,6 +163,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int? QuestId { get; init; }
         public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> PublishedScriptNames { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<FieldObjectScriptPublication> PublishedScriptPublications { get; init; } =
+            Array.Empty<FieldObjectScriptPublication>();
         public QuestRewardChoicePrompt PendingRewardChoicePrompt { get; init; }
     }
 

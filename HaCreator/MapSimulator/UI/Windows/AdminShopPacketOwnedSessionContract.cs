@@ -21,6 +21,7 @@ namespace HaCreator.MapSimulator.UI
         public bool WouldDisconnect { get; private set; }
         public bool HasObservableState => IsActive
             || OpenCount > 0
+            || CloseCount > 0
             || ResultCount > 0
             || BlockedByOwnerCount > 0
             || NpcTemplateId > 0
@@ -32,6 +33,7 @@ namespace HaCreator.MapSimulator.UI
         public int TrailingByteCount { get; private set; }
         public int ResultTrailingByteCount { get; private set; }
         public int OpenCount { get; private set; }
+        public int CloseCount { get; private set; }
         public int BlockedByOwnerCount { get; private set; }
         public int ResultCount { get; private set; }
         public int LastSubtype { get; private set; } = -1;
@@ -42,6 +44,7 @@ namespace HaCreator.MapSimulator.UI
         public string LastNotice { get; private set; } = string.Empty;
         public string LastOutboundSummary { get; private set; } = string.Empty;
         public string LastOwnerState { get; private set; } = string.Empty;
+        public bool LastCloseOpenedWishlist { get; private set; }
         public bool AskItemWishlist { get; private set; }
         public int PendingWishlistRegisterItemId { get; private set; }
         public string PendingWishlistRegisterTitle { get; private set; } = string.Empty;
@@ -78,6 +81,7 @@ namespace HaCreator.MapSimulator.UI
             LastNotice = string.Empty;
             LastOutboundSummary = string.Empty;
             LastOwnerState = ownerState ?? string.Empty;
+            LastCloseOpenedWishlist = false;
             ClearPendingWishlistRegister();
         }
 
@@ -108,6 +112,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             LastOwnerState = ownerState ?? LastOwnerState;
+            LastCloseOpenedWishlist = false;
+        }
+
+        public void RecordLocalClose(string outboundSummary, string ownerState = null, bool openedWishlistBeforeClose = false)
+        {
+            IsActive = false;
+            IsWaitingForResult = false;
+            IsOwnerSurfaceVisible = false;
+            WouldDisconnect = false;
+            OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
+            ResultTrailingByteCount = 0;
+            LastSubtype = -1;
+            LastResultCode = -1;
+            LastResultHadResultCode = false;
+            LastNotice = string.Empty;
+            LastOutboundSummary = outboundSummary ?? string.Empty;
+            LastOwnerState = ownerState ?? string.Empty;
+            LastCloseOpenedWishlist = openedWishlistBeforeClose;
+            CloseCount++;
+            ClearPendingWishlistRegister();
         }
 
         public void RecordBlockedByOwner(AdminShopPacketOwnedOpenPayloadSnapshot snapshot, string blockingOwner)
@@ -133,6 +157,7 @@ namespace HaCreator.MapSimulator.UI
             LastOwnerState = string.IsNullOrWhiteSpace(blockingOwner)
                 ? "Packet 367 was blocked by another unique-modeless owner."
                 : $"Packet 367 was blocked by the visible {blockingOwner} unique-modeless owner.";
+            LastCloseOpenedWishlist = false;
             ClearPendingWishlistRegister();
             BlockedByOwnerCount++;
         }
@@ -280,6 +305,8 @@ namespace HaCreator.MapSimulator.UI
                 TrailingByteCount,
                 ResultTrailingByteCount,
                 LastResultHadResultCode ? "1" : "0",
+                CloseCount,
+                LastCloseOpenedWishlist ? "1" : "0",
                 AskItemWishlist ? "1" : "0",
                 LastSubtype,
                 LastResultCode,
@@ -305,6 +332,9 @@ namespace HaCreator.MapSimulator.UI
             string resultText = ResultCount > 0
                 ? $"result {ResultCount}"
                 : "result 0";
+            string closeText = CloseCount > 0
+                ? $", close {CloseCount}"
+                : string.Empty;
             string phaseText = DescribeWishlistSearchPhase();
             string wishlistText = AskItemWishlist
                 ? "wish prompt on"
@@ -321,7 +351,7 @@ namespace HaCreator.MapSimulator.UI
             string pendingText = HasPendingWishlistRegister
                 ? $", pending {DescribePendingWishlistRegister()}"
                 : string.Empty;
-            return $"{packetText}, {resultText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}";
+            return $"{packetText}, {resultText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}";
         }
 
         public IReadOnlyList<string> BuildWishlistSearchStateDetailLines()
@@ -405,6 +435,9 @@ namespace HaCreator.MapSimulator.UI
             string pendingWishlistText = HasPendingWishlistRegister
                 ? $", pending {DescribePendingWishlistRegister()}"
                 : string.Empty;
+            string closeText = CloseCount > 0
+                ? $", close={CloseCount}{(LastCloseOpenedWishlist ? " via wishlist prompt" : string.Empty)}"
+                : string.Empty;
             string visibilityText = DescribeOwnerVisibility();
             string ownerText = string.IsNullOrWhiteSpace(LastOwnerState)
                 ? "owner state unresolved"
@@ -413,7 +446,7 @@ namespace HaCreator.MapSimulator.UI
                 ? $", blocked opens {BlockedByOwnerCount}"
                 : string.Empty;
 
-            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}), packets open={OpenCount}/result={ResultCount}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}, {visibilityText}, {ownerText}{blockedText}";
+            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}), packets open={OpenCount}/result={ResultCount}{closeText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}, {visibilityText}, {ownerText}{blockedText}";
         }
 
         private string DescribeLastResultState()

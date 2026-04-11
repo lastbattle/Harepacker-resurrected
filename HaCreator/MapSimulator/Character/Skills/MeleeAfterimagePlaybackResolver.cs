@@ -156,15 +156,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             int animationTime,
             out Snapshot snapshot)
         {
+            AssembledFrame[] animationFrames = assembler?.GetAnimation(actionName);
             if (assembler != null
                 && !string.IsNullOrWhiteSpace(actionName)
                 && TryResolveNonLoopingFrameTimingAtTime(
-                    assembler.GetAnimation(actionName),
+                    animationFrames,
                     animationTime,
                     out int frameIndex,
                     out int frameElapsedMs))
             {
-                if (TryResolveFrameSnapshot(action, frameIndex, frameElapsedMs, out snapshot))
+                if (TryResolveFrameSnapshot(animationFrames, action, frameIndex, frameElapsedMs, out snapshot))
                 {
                     return true;
                 }
@@ -175,7 +176,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             snapshot = default;
             if (!TryResolveNonLoopingFrameTimingAtTime(
-                    assembler?.GetAnimation(actionName),
+                    animationFrames,
                     animationTime,
                     out int fallbackFrameIndex,
                     out _))
@@ -203,7 +204,35 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            return TryResolveFrameSnapshot(action, frameIndex, frameElapsedMs, out snapshot);
+            return TryResolveFrameSnapshot(animationFrames, action, frameIndex, frameElapsedMs, out snapshot);
+        }
+
+        internal static bool TryResolveFrameSnapshot(
+            AssembledFrame[] animationFrames,
+            MeleeAfterImageAction action,
+            int frameIndex,
+            int frameElapsedMs,
+            out Snapshot snapshot)
+        {
+            snapshot = default;
+            if (action == null || frameIndex < 0)
+            {
+                return false;
+            }
+
+            if (!TryResolveFrameSet(action, frameIndex, out MeleeAfterImageFrameSet frameSet, out int authoredFrameIndex))
+            {
+                snapshot = new Snapshot(frameIndex, Math.Max(0, frameElapsedMs), Array.Empty<AfterimageRenderableLayer>());
+                return true;
+            }
+
+            int frameSetElapsedMs = ResolveFrameSetElapsedMs(
+                animationFrames,
+                authoredFrameIndex,
+                frameIndex,
+                frameElapsedMs);
+            snapshot = new Snapshot(frameIndex, frameSetElapsedMs, ResolveRenderableLayers(frameSet, frameSetElapsedMs));
+            return true;
         }
 
         internal static bool TryResolveFrameSnapshot(
@@ -220,6 +249,32 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             snapshot = new Snapshot(frameIndex, Math.Max(0, frameElapsedMs), ResolveRenderableLayers(action, frameIndex, frameElapsedMs));
             return true;
+        }
+
+        internal static int ResolveFrameSetElapsedMs(
+            AssembledFrame[] animationFrames,
+            int authoredFrameIndex,
+            int currentFrameIndex,
+            int currentFrameElapsedMs)
+        {
+            int elapsed = Math.Max(0, currentFrameElapsedMs);
+            if (animationFrames == null
+                || animationFrames.Length == 0
+                || authoredFrameIndex < 0
+                || currentFrameIndex < 0
+                || authoredFrameIndex >= animationFrames.Length
+                || currentFrameIndex >= animationFrames.Length
+                || authoredFrameIndex > currentFrameIndex)
+            {
+                return elapsed;
+            }
+
+            for (int i = authoredFrameIndex; i < currentFrameIndex; i++)
+            {
+                elapsed += Math.Max(0, animationFrames[i]?.Duration ?? 0);
+            }
+
+            return elapsed;
         }
 
         public static SkillFrame ResolveFrame(
@@ -243,7 +298,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             int frameIndex,
             out MeleeAfterImageFrameSet frameSet)
         {
+            return TryResolveFrameSet(action, frameIndex, out frameSet, out _);
+        }
+
+        internal static bool TryResolveFrameSet(
+            MeleeAfterImageAction action,
+            int frameIndex,
+            out MeleeAfterImageFrameSet frameSet,
+            out int authoredFrameIndex)
+        {
             frameSet = null;
+            authoredFrameIndex = -1;
             if (action?.FrameSets == null || action.FrameSets.Count == 0)
             {
                 return false;
@@ -251,6 +316,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (action.FrameSets.TryGetValue(frameIndex, out frameSet) && frameSet != null)
             {
+                authoredFrameIndex = frameIndex;
                 return true;
             }
 
@@ -259,7 +325,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 foreach (KeyValuePair<int, MeleeAfterImageFrameSet> entry in action.FrameSets)
                 {
                     frameSet = entry.Value;
-                    return frameSet != null;
+                    if (frameSet != null)
+                    {
+                        authoredFrameIndex = entry.Key;
+                        return true;
+                    }
+
+                    return false;
                 }
 
                 frameSet = null;
@@ -284,6 +356,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (latestAuthoredFrameSet != null)
             {
                 frameSet = latestAuthoredFrameSet;
+                authoredFrameIndex = latestAuthoredFrameIndex;
                 return true;
             }
 

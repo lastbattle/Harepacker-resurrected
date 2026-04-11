@@ -98,11 +98,11 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
-        private static bool TryValidateLength(ReadOnlySpan<byte> payload, int minimumLength, string label, out string error)
+        private static bool TryValidateLength(ReadOnlySpan<byte> payload, int expectedLength, string label, out string error)
         {
-            if (payload.Length < minimumLength)
+            if (payload.Length != expectedLength)
             {
-                error = $"{label} expects at least {minimumLength} bytes but received {payload.Length}.";
+                error = $"{label} expects exactly {expectedLength} bytes but received {payload.Length}.";
                 return false;
             }
 

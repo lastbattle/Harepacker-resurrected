@@ -75,7 +75,9 @@ namespace HaCreator.MapSimulator.Animation
             public int HitAfterMs { get; set; }
             public bool HasHitAfterMetadata { get; set; }
             public Dictionary<int, bool> FrameHitAttachOverrides { get; } = new();
+            public Dictionary<int, int> FrameHitAttachOverrideFrameCounts { get; } = new();
             public Dictionary<int, bool> FrameFacingAttachOverrides { get; } = new();
+            public Dictionary<int, int> FrameFacingAttachOverrideFrameCounts { get; } = new();
             public bool EffectFacingAttach { get; set; }
             public bool HasRangeBounds { get; set; }
             public Rectangle RangeBounds { get; set; }
@@ -105,7 +107,19 @@ namespace HaCreator.MapSimulator.Animation
                 }
 
                 if (frameIndex >= 0
+                    && TryResolveFrameHitAttachRangeOverride(frameIndex, out overrideValue))
+                {
+                    return overrideValue;
+                }
+
+                if (frameIndex >= 0
                     && FrameFacingAttachOverrides.TryGetValue(frameIndex, out bool frameFacingAttach))
+                {
+                    return HitAttach || frameFacingAttach;
+                }
+
+                if (frameIndex >= 0
+                    && TryResolveFrameFacingAttachRangeOverride(frameIndex, out frameFacingAttach))
                 {
                     return HitAttach || frameFacingAttach;
                 }
@@ -117,7 +131,8 @@ namespace HaCreator.MapSimulator.Animation
             {
                 return HasHitAttachMetadata
                        || (frameIndex >= 0
-                           && FrameHitAttachOverrides.ContainsKey(frameIndex));
+                           && (FrameHitAttachOverrides.ContainsKey(frameIndex)
+                               || HasFrameHitAttachRangeOverride(frameIndex)));
             }
 
             public bool ResolveHitAttachForHitAnimationFrame(int frameIndex)
@@ -130,6 +145,8 @@ namespace HaCreator.MapSimulator.Animation
                 return frameIndex >= 0
                        && FrameFacingAttachOverrides.TryGetValue(frameIndex, out bool overrideValue)
                     ? overrideValue
+                    : frameIndex >= 0 && TryResolveFrameFacingAttachRangeOverride(frameIndex, out overrideValue)
+                    ? overrideValue
                     : FacingAttach;
             }
 
@@ -137,7 +154,8 @@ namespace HaCreator.MapSimulator.Animation
             {
                 return HasFacingAttachMetadata
                        || (frameIndex >= 0
-                           && FrameFacingAttachOverrides.ContainsKey(frameIndex));
+                           && (FrameFacingAttachOverrides.ContainsKey(frameIndex)
+                               || HasFrameFacingAttachRangeOverride(frameIndex)));
             }
 
             public bool ResolveFacingAttachForHitAnimationFrame(int frameIndex)
@@ -150,6 +168,76 @@ namespace HaCreator.MapSimulator.Animation
                 return frameIndex < 0
                     ? frameIndex
                     : HitAnimationSourceFrameIndex + frameIndex;
+            }
+
+            public void RegisterFrameOwnedHitMetadataRange(int sourceFrameIndex, int frameCount)
+            {
+                if (sourceFrameIndex < 0 || frameCount <= 1)
+                {
+                    return;
+                }
+
+                if (FrameHitAttachOverrides.ContainsKey(sourceFrameIndex))
+                {
+                    FrameHitAttachOverrideFrameCounts[sourceFrameIndex] = frameCount;
+                }
+
+                if (FrameFacingAttachOverrides.ContainsKey(sourceFrameIndex))
+                {
+                    FrameFacingAttachOverrideFrameCounts[sourceFrameIndex] = frameCount;
+                }
+            }
+
+            private bool TryResolveFrameHitAttachRangeOverride(int frameIndex, out bool value)
+            {
+                foreach (KeyValuePair<int, int> entry in FrameHitAttachOverrideFrameCounts)
+                {
+                    int startFrameIndex = entry.Key;
+                    int frameCount = entry.Value;
+                    if (frameCount <= 1
+                        || frameIndex < startFrameIndex
+                        || frameIndex >= startFrameIndex + frameCount
+                        || !FrameHitAttachOverrides.TryGetValue(startFrameIndex, out value))
+                    {
+                        continue;
+                    }
+
+                    return true;
+                }
+
+                value = false;
+                return false;
+            }
+
+            private bool TryResolveFrameFacingAttachRangeOverride(int frameIndex, out bool value)
+            {
+                foreach (KeyValuePair<int, int> entry in FrameFacingAttachOverrideFrameCounts)
+                {
+                    int startFrameIndex = entry.Key;
+                    int frameCount = entry.Value;
+                    if (frameCount <= 1
+                        || frameIndex < startFrameIndex
+                        || frameIndex >= startFrameIndex + frameCount
+                        || !FrameFacingAttachOverrides.TryGetValue(startFrameIndex, out value))
+                    {
+                        continue;
+                    }
+
+                    return true;
+                }
+
+                value = false;
+                return false;
+            }
+
+            private bool HasFrameHitAttachRangeOverride(int frameIndex)
+            {
+                return TryResolveFrameHitAttachRangeOverride(frameIndex, out _);
+            }
+
+            private bool HasFrameFacingAttachRangeOverride(int frameIndex)
+            {
+                return TryResolveFrameFacingAttachRangeOverride(frameIndex, out _);
             }
         }
 

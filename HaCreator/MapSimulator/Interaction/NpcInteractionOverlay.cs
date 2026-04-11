@@ -144,6 +144,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool IsVisible { get; private set; }
         public bool CapturesKeyboardInput => IsVisible;
+        internal bool BlocksUnderlyingInput =>
+            IsVisible && _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog;
 
         public NpcInteractionEntry SelectedEntry =>
             _selectedEntryIndex >= 0 && _selectedEntryIndex < _entries.Count ? _entries[_selectedEntryIndex] : null;
@@ -1881,7 +1883,9 @@ namespace HaCreator.MapSimulator.Interaction
                             PacketQuestResultUtilDialogModalResult.Prev,
                             _currentPage,
                             closesDialog: false);
-                        _packetQuestResultModalHost.End(PacketQuestResultUtilDialogModalResult.Prev);
+                        _packetQuestResultModalHost.End(
+                            PacketQuestResultUtilDialogModalResult.Prev,
+                            closesDialog: false);
                         BeginPacketQuestResultModalHostForCurrentPage(_packetQuestResultModalHost.SpeakerNpcId);
                         RestartPacketQuestResultDialogLocalState();
                     }
@@ -1896,7 +1900,9 @@ namespace HaCreator.MapSimulator.Interaction
                             PacketQuestResultUtilDialogModalResult.NextOrOk,
                             _currentPage,
                             closesDialog: false);
-                        _packetQuestResultModalHost.End(PacketQuestResultUtilDialogModalResult.NextOrOk);
+                        _packetQuestResultModalHost.End(
+                            PacketQuestResultUtilDialogModalResult.NextOrOk,
+                            closesDialog: false);
                         BeginPacketQuestResultModalHostForCurrentPage(_packetQuestResultModalHost.SpeakerNpcId);
                         RestartPacketQuestResultDialogLocalState();
                         return defaultResult;

@@ -1607,6 +1607,19 @@ namespace HaCreator.MapSimulator.Character
                    || ClientInitializedAttackActionNames.Contains(actionName);
         }
 
+        public static bool IsAttackAction(string actionName, int? rawActionCode)
+        {
+            if (IsAttackAction(actionName))
+            {
+                return true;
+            }
+
+            return rawActionCode.HasValue
+                   && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string rawActionName)
+                   && !string.Equals(rawActionName, actionName, StringComparison.OrdinalIgnoreCase)
+                   && IsAttackAction(rawActionName);
+        }
+
         private static bool IsAuthoredAttackAction(string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))

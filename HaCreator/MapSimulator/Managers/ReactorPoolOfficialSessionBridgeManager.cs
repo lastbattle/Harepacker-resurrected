@@ -147,7 +147,6 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                RemoveQueuedTouchRequestsUnsafe(objectId);
                 FlushQueuedTouchRequestsUnsafe(pair);
                 byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
                 pair.ServerSession.SendPacket(packet);
@@ -171,15 +170,24 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
+            bool queued;
             lock (_sync)
             {
-                EnqueueOrReplaceTouchRequestUnsafe(new PendingTouchRequest(objectId, isTouching, packet));
+                queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(new PendingTouchRequest(objectId, isTouching, packet));
             }
 
-            LastQueuedTouchObjectId = objectId;
-            LastQueuedTouchFlag = isTouching;
-            LastQueuedTouchPacket = packet;
-            status = $"Queued reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) until a live Maple session is attached.";
+            if (queued)
+            {
+                LastQueuedTouchObjectId = objectId;
+                LastQueuedTouchFlag = isTouching;
+                LastQueuedTouchPacket = packet;
+                status = $"Queued reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) until a live Maple session is attached.";
+            }
+            else
+            {
+                status = $"Reactor touch opcode {OutboundTouchReactorOpcode} for object {objectId} ({(isTouching ? "enter" : "leave")}) is already the latest deferred ownership state.";
+            }
+
             LastStatus = status;
             return true;
         }
@@ -189,6 +197,16 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 return _pendingTouchRequests.Any(packet => packet.ObjectId == objectId && packet.IsTouching == isTouching);
+            }
+        }
+
+        internal IReadOnlyList<(int ObjectId, bool IsTouching)> GetQueuedTouchRequestSnapshot()
+        {
+            lock (_sync)
+            {
+                return _pendingTouchRequests
+                    .Select(packet => (packet.ObjectId, packet.IsTouching))
+                    .ToArray();
             }
         }
 
@@ -572,7 +590,11 @@ namespace HaCreator.MapSimulator.Managers
                 {
                 }
 
+                _pendingTouchRequests.Clear();
                 ReceivedCount = 0;
+                LastQueuedTouchObjectId = null;
+                LastQueuedTouchFlag = null;
+                LastQueuedTouchPacket = Array.Empty<byte>();
             }
         }
 
@@ -644,10 +666,24 @@ namespace HaCreator.MapSimulator.Managers
             return removedCount;
         }
 
-        private void EnqueueOrReplaceTouchRequestUnsafe(PendingTouchRequest next)
+        private bool EnqueueOrCoalesceDuplicateTouchRequestUnsafe(PendingTouchRequest next)
         {
-            RemoveQueuedTouchRequestsUnsafe(next.ObjectId);
+            bool? latestQueuedStateForObject = null;
+            foreach (PendingTouchRequest pending in _pendingTouchRequests)
+            {
+                if (pending.ObjectId == next.ObjectId)
+                {
+                    latestQueuedStateForObject = pending.IsTouching;
+                }
+            }
+
+            if (latestQueuedStateForObject.HasValue && latestQueuedStateForObject.Value == next.IsTouching)
+            {
+                return false;
+            }
+
             _pendingTouchRequests.Enqueue(next);
+            return true;
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

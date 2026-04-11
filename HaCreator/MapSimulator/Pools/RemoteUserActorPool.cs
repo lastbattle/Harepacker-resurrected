@@ -127,6 +127,12 @@ namespace HaCreator.MapSimulator.Pools
             int ExplosionDelayMs,
             int DragX,
             int DragY);
+        public readonly record struct RemoteHookingChainPresentation(
+            int CharacterId,
+            SkillData Skill,
+            IReadOnlyList<int> MobObjectIds,
+            bool FacingRight,
+            int CurrentTime);
 
         private readonly record struct RemoteMechanicModePresentation(
             string StandActionName,
@@ -323,6 +329,9 @@ namespace HaCreator.MapSimulator.Pools
         };
         private static readonly int[] RemoteAuraSkillIds =
         {
+            RemoteUserTemporaryStatKnownState.AdvancedDarkAuraSkillId,
+            RemoteUserTemporaryStatKnownState.AdvancedBlueAuraSkillId,
+            RemoteUserTemporaryStatKnownState.AdvancedYellowAuraSkillId,
             RemoteUserTemporaryStatKnownState.DarkAuraSkillId,
             RemoteUserTemporaryStatKnownState.BlueAuraSkillId,
             RemoteUserTemporaryStatKnownState.YellowAuraSkillId
@@ -455,6 +464,7 @@ namespace HaCreator.MapSimulator.Pools
         public event Action<RemoteChatLogMessagePresentation> ChatLogMessageRegistered;
         public event Action<RemoteStatusBarEffectPresentation> StatusBarEffectRegistered;
         public event Action<RemoteGrenadePresentation> GrenadeRegistered;
+        public event Action<RemoteHookingChainPresentation> HookingChainRegistered;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
         public Action<int, string> ActorRemovedCallback { get; set; }
@@ -1124,6 +1134,7 @@ namespace HaCreator.MapSimulator.Pools
             int chargeSkillId,
             int? actionSpeed,
             int? preparedSkillReleaseFollowUpValue,
+            IReadOnlyList<RemoteUserMeleeAttackMobHit> mobHits,
             bool? facingRight,
             int currentTime,
             out string message)
@@ -1177,6 +1188,7 @@ namespace HaCreator.MapSimulator.Pools
                     actionSpeed,
                     actor.FacingRight,
                     currentTime));
+                TryRegisterRemoteHookingChainPresentation(actor, skill, mobHits, currentTime);
             }
 
             return true;
@@ -1205,6 +1217,45 @@ namespace HaCreator.MapSimulator.Pools
 
             ApplyTransientSkillUseAvatarEffect(actor, registrationKey, overlayAnimation, underFaceAnimation, currentTime);
             return true;
+        }
+
+        private void TryRegisterRemoteHookingChainPresentation(
+            RemoteUserActor actor,
+            SkillData skill,
+            IReadOnlyList<RemoteUserMeleeAttackMobHit> mobHits,
+            int currentTime)
+        {
+            if (actor == null
+                || skill == null
+                || mobHits == null
+                || mobHits.Count == 0
+                || !SkillManager.ShouldRegisterSecondaryHookingChainOwner(skill)
+                || !SkillManager.TryResolveSecondaryHookingChainFrames(skill, out _, out _))
+            {
+                return;
+            }
+
+            List<int> mobObjectIds = new(mobHits.Count);
+            for (int i = 0; i < mobHits.Count; i++)
+            {
+                int mobObjectId = mobHits[i].MobId;
+                if (mobObjectId > 0 && !mobObjectIds.Contains(mobObjectId))
+                {
+                    mobObjectIds.Add(mobObjectId);
+                }
+            }
+
+            if (mobObjectIds.Count == 0)
+            {
+                return;
+            }
+
+            HookingChainRegistered?.Invoke(new RemoteHookingChainPresentation(
+                actor.CharacterId,
+                skill,
+                mobObjectIds,
+                actor.FacingRight,
+                currentTime));
         }
 
         public bool TryQueueTransientSkillUseAvatarEffect(
@@ -3509,6 +3560,54 @@ namespace HaCreator.MapSimulator.Pools
                 ExplosionDelayMs: 0,
                 DragX: 0,
                 DragY: 0);
+        }
+
+        public static int ResolveRemoteGrenadeFlightStartTimeForParity(RemoteGrenadePresentation presentation)
+        {
+            return presentation.CurrentTime + Math.Max(0, presentation.InitDelayMs);
+        }
+
+        public static int ResolveRemoteGrenadeExplosionTimeForParity(
+            RemoteGrenadePresentation presentation,
+            SkillAnimation ballAnimation)
+        {
+            if (presentation.ExplosionDelayMs > presentation.InitDelayMs)
+            {
+                return presentation.CurrentTime + presentation.ExplosionDelayMs;
+            }
+
+            return ResolveRemoteGrenadeFlightStartTimeForParity(presentation)
+                + ResolveRemoteGrenadeAnimationDurationMs(ballAnimation);
+        }
+
+        public static int ResolveRemoteGrenadeExpireTimeForParity(
+            RemoteGrenadePresentation presentation,
+            SkillAnimation ballAnimation,
+            SkillAnimation explosionAnimation)
+        {
+            return ResolveRemoteGrenadeExplosionTimeForParity(presentation, ballAnimation)
+                + ResolveRemoteGrenadeAnimationDurationMs(explosionAnimation);
+        }
+
+        public static Vector2 ResolveRemoteGrenadePositionForParity(Vector2 origin, Vector2 impact, int elapsedMs)
+        {
+            float progress = Math.Max(0, elapsedMs) / 1000f;
+            return origin + (impact * progress);
+        }
+
+        private static int ResolveRemoteGrenadeAnimationDurationMs(SkillAnimation animation)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return 0;
+            }
+
+            if (animation.TotalDuration <= 0)
+            {
+                animation.CalculateDuration();
+            }
+
+            return Math.Max(0, animation.TotalDuration);
         }
 
         private static int ResolveRemoteThrowGrenadeKeyDownTimeMs(int skillId, int keyDownTime)
@@ -7875,7 +7974,7 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static IReadOnlyList<int> EnumerateRemoteAuraSkillIds(int jobId, int? preferredSkillId)
         {
-            int resolvedPreferredSkillId = preferredSkillId.GetValueOrDefault();
+            int resolvedPreferredSkillId = ResolvePreferredRemoteAuraSkillId(jobId, preferredSkillId);
             if (resolvedPreferredSkillId <= 0)
             {
                 resolvedPreferredSkillId = jobId switch
@@ -7887,6 +7986,27 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return EnumeratePreferredSkillIds(RemoteAuraSkillIds, resolvedPreferredSkillId);
+        }
+
+        private static int ResolvePreferredRemoteAuraSkillId(int jobId, int? preferredSkillId)
+        {
+            int resolvedPreferredSkillId = preferredSkillId.GetValueOrDefault();
+            if (resolvedPreferredSkillId <= 0)
+            {
+                return 0;
+            }
+
+            int normalizedJob = Math.Abs(jobId);
+            return resolvedPreferredSkillId switch
+            {
+                RemoteUserTemporaryStatKnownState.DarkAuraSkillId when normalizedJob == 3212
+                    => RemoteUserTemporaryStatKnownState.AdvancedDarkAuraSkillId,
+                RemoteUserTemporaryStatKnownState.BlueAuraSkillId when normalizedJob >= 3211 && normalizedJob <= 3212
+                    => RemoteUserTemporaryStatKnownState.AdvancedBlueAuraSkillId,
+                RemoteUserTemporaryStatKnownState.YellowAuraSkillId when normalizedJob == 3212
+                    => RemoteUserTemporaryStatKnownState.AdvancedYellowAuraSkillId,
+                _ => resolvedPreferredSkillId
+            };
         }
 
         internal static IReadOnlyList<int> EnumerateRemoteBlessingArmorSkillIds(int jobId, int? preferredSkillId)

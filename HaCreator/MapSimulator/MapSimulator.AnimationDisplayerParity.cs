@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
@@ -84,6 +85,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<(int ItemId, EquipSlot Slot), AnimationDisplayerFollowEquipmentDefinition> _animationDisplayerFollowEquipmentCache = new();
         private readonly Dictionary<int, int> _animationDisplayerFollowAnimationIds = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
+        private readonly List<AnimationDisplayerRemoteGrenadeActor> _animationDisplayerRemoteGrenadeActors = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
         private int _packetOwnedAnimationDisplayerFollowDriverId;
 
@@ -100,6 +102,24 @@ namespace HaCreator.MapSimulator
             public SkillAnimation UnderFaceAnimation { get; init; }
 
             public bool HasAvatarAnimations => OverlayAnimation != null || UnderFaceAnimation != null;
+        }
+
+        private sealed class AnimationDisplayerRemoteGrenadeActor
+        {
+            public int CharacterId { get; init; }
+            public int SkillId { get; init; }
+            public int StartTime { get; init; }
+            public int FlightStartTime { get; init; }
+            public int ExplosionTime { get; init; }
+            public Vector2 Origin { get; init; }
+            public Vector2 Impact { get; init; }
+            public bool FacingRight { get; init; }
+            public SkillAnimation BallAnimation { get; init; }
+            public SkillAnimation ExplosionAnimation { get; init; }
+            public int ExpireTime { get; init; }
+
+            public bool IsExploding(int currentTime) => ExplosionAnimation != null && currentTime >= ExplosionTime;
+            public bool IsExpired(int currentTime) => currentTime >= ExpireTime;
         }
 
         private sealed class AnimationDisplayerFollowEquipmentDefinition
@@ -900,6 +920,29 @@ namespace HaCreator.MapSimulator
                 success ? "Success" : "Fail");
         }
 
+        internal static string ResolveAnimationDisplayerCoolEffectUol()
+        {
+            return AnimationDisplayerCoolEffectUol;
+        }
+
+        private bool TryRegisterAnimationDisplayerLocalCooldownReady(int currentTime)
+        {
+            if (!TryResolveAnimationDisplayerOwner(
+                    "local",
+                    out int ownerCharacterId,
+                    out Func<Vector2> getPosition,
+                    out _))
+            {
+                return false;
+            }
+
+            return TryRegisterAnimationDisplayerCool(
+                ownerCharacterId,
+                getPosition,
+                currentTime,
+                out _);
+        }
+
         internal static bool TryResolveAnimationDisplayerCombatFeedbackColor(
             string token,
             out DamageColorType colorType)
@@ -1663,6 +1706,152 @@ namespace HaCreator.MapSimulator
                 currentTimeMs: presentation.CurrentTime);
         }
 
+        private void HandleRemoteGrenadeEffect(RemoteUserActorPool.RemoteGrenadePresentation presentation)
+        {
+            if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor actor) != true
+                || actor == null
+                || !actor.IsVisibleInWorld
+                || _playerManager?.SkillLoader == null)
+            {
+                return;
+            }
+
+            SkillData skill = _playerManager.SkillLoader.LoadSkill(presentation.SkillId);
+            ProjectileData projectile = skill?.Projectile;
+            SkillAnimation ballAnimation = projectile?.ResolveGetBallLikeAnimation(
+                Math.Max(1, presentation.SkillLevel),
+                Math.Max(1, actor.Build?.Level ?? 1),
+                flip: presentation.Impact.X < 0,
+                skill?.MaxLevel ?? 0);
+            if (ballAnimation?.Frames?.Count <= 0)
+            {
+                return;
+            }
+
+            SkillAnimation explosionAnimation = ResolveRemoteGrenadeExplosionAnimation(skill, projectile);
+            int flightStartTime = RemoteUserActorPool.ResolveRemoteGrenadeFlightStartTimeForParity(presentation);
+            int explosionTime = RemoteUserActorPool.ResolveRemoteGrenadeExplosionTimeForParity(presentation, ballAnimation);
+            int expireTime = RemoteUserActorPool.ResolveRemoteGrenadeExpireTimeForParity(
+                presentation,
+                ballAnimation,
+                explosionAnimation);
+
+            _animationDisplayerRemoteGrenadeActors.RemoveAll(active =>
+                active.CharacterId == presentation.CharacterId
+                && active.SkillId == presentation.SkillId
+                && active.StartTime <= presentation.CurrentTime);
+            _animationDisplayerRemoteGrenadeActors.Add(new AnimationDisplayerRemoteGrenadeActor
+            {
+                CharacterId = presentation.CharacterId,
+                SkillId = presentation.SkillId,
+                StartTime = presentation.CurrentTime,
+                FlightStartTime = flightStartTime,
+                ExplosionTime = explosionTime,
+                Origin = new Vector2(presentation.Target.X, presentation.Target.Y),
+                Impact = presentation.Impact,
+                FacingRight = presentation.Impact.X >= 0,
+                BallAnimation = ballAnimation,
+                ExplosionAnimation = explosionAnimation,
+                ExpireTime = expireTime
+            });
+        }
+
+        private static SkillAnimation ResolveRemoteGrenadeExplosionAnimation(SkillData skill, ProjectileData projectile)
+        {
+            if (skill?.SkillId == 4341003)
+            {
+                return skill.Effect?.Frames?.Count > 0
+                    ? skill.Effect
+                    : skill.AvatarOverlayEffect?.Frames?.Count > 0
+                        ? skill.AvatarOverlayEffect
+                        : projectile?.HitAnimation;
+            }
+
+            return projectile?.HitAnimation?.Frames?.Count > 0
+                ? projectile.HitAnimation
+                : projectile?.ExplosionAnimation;
+        }
+
+        private void UpdateAnimationDisplayerRemoteGrenades(int currentTime)
+        {
+            if (_animationDisplayerRemoteGrenadeActors.Count == 0)
+            {
+                return;
+            }
+
+            _animationDisplayerRemoteGrenadeActors.RemoveAll(actor => actor == null || actor.IsExpired(currentTime));
+        }
+
+        private void DrawAnimationDisplayerRemoteGrenades(
+            SpriteBatch spriteBatch,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime)
+        {
+            if (spriteBatch == null || _animationDisplayerRemoteGrenadeActors.Count == 0)
+            {
+                return;
+            }
+
+            foreach (AnimationDisplayerRemoteGrenadeActor actor in _animationDisplayerRemoteGrenadeActors)
+            {
+                DrawAnimationDisplayerRemoteGrenade(
+                    spriteBatch,
+                    actor,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    currentTime);
+            }
+        }
+
+        private static void DrawAnimationDisplayerRemoteGrenade(
+            SpriteBatch spriteBatch,
+            AnimationDisplayerRemoteGrenadeActor actor,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime)
+        {
+            if (actor == null || currentTime < actor.FlightStartTime)
+            {
+                return;
+            }
+
+            SkillAnimation animation = actor.IsExploding(currentTime)
+                ? actor.ExplosionAnimation
+                : actor.BallAnimation;
+            int animationTime = actor.IsExploding(currentTime)
+                ? currentTime - actor.ExplosionTime
+                : currentTime - actor.FlightStartTime;
+            SkillFrame frame = animation?.GetFrameAtTime(Math.Max(0, animationTime));
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            Vector2 position = actor.IsExploding(currentTime)
+                ? RemoteUserActorPool.ResolveRemoteGrenadePositionForParity(actor.Origin, actor.Impact, actor.ExplosionTime - actor.FlightStartTime)
+                : RemoteUserActorPool.ResolveRemoteGrenadePositionForParity(actor.Origin, actor.Impact, currentTime - actor.FlightStartTime);
+            bool shouldFlip = actor.FacingRight ^ frame.Flip;
+            int screenX = (int)MathF.Round(position.X) - mapShiftX + centerX;
+            int screenY = (int)MathF.Round(position.Y) - mapShiftY + centerY;
+
+            frame.Texture.DrawBackground(
+                spriteBatch,
+                null,
+                null,
+                shouldFlip ? screenX + frame.Origin.X - frame.Bounds.Width : screenX - frame.Origin.X,
+                screenY - frame.Origin.Y,
+                Color.White,
+                shouldFlip,
+                null);
+        }
+
         private void SyncAnimationDisplayerRemoteUserState(int characterId)
         {
             if (characterId <= 0)
@@ -2045,6 +2234,51 @@ namespace HaCreator.MapSimulator
                     delayRate,
                     getOwnerPosition,
                     getOwnerFacingRight);
+            }
+        }
+
+        private void HandleRemoteAnimationDisplayerHookingChain(RemoteUserActorPool.RemoteHookingChainPresentation presentation)
+        {
+            if (_animationEffects == null
+                || presentation.Skill == null
+                || presentation.MobObjectIds == null
+                || presentation.MobObjectIds.Count == 0
+                || !SkillManager.TryResolveSecondaryHookingChainFrames(
+                    presentation.Skill,
+                    out List<IDXObject> hookFrames,
+                    out List<IDXObject> chainFrames))
+            {
+                return;
+            }
+
+            TryResolveAnimationDisplayerSkillUseOwner(
+                presentation.CharacterId,
+                out Func<Vector2> getOwnerPosition,
+                out Func<bool> getOwnerFacingRight);
+            Vector2 fallbackOwnerPosition = getOwnerPosition?.Invoke() ?? Vector2.Zero;
+            bool facingRight = getOwnerFacingRight?.Invoke() ?? presentation.FacingRight;
+            int attackTimeMs = presentation.CurrentTime + SkillManager.ResolveSecondaryHookingChainAttackWindowMs(presentation.Skill);
+
+            for (int i = 0; i < presentation.MobObjectIds.Count; i++)
+            {
+                int mobObjectId = presentation.MobObjectIds[i];
+                MobItem mob = _mobPool?.GetMob(mobObjectId);
+                if (mob?.MovementInfo == null)
+                {
+                    continue;
+                }
+
+                _animationEffects.RegisterHookingChainAnimation(
+                    hookFrames,
+                    chainFrames,
+                    presentation.CharacterId,
+                    getOwnerPosition,
+                    fallbackOwnerPosition,
+                    new Vector2(mob.MovementInfo.X, mob.MovementInfo.Y),
+                    left: !facingRight,
+                    attackTimeMs,
+                    presentation.CurrentTime,
+                    zOrder: 0);
             }
         }
 
