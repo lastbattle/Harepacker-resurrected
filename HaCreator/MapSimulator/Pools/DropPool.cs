@@ -1276,8 +1276,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             float rangeSq = pickupRange * pickupRange;
-            DropItem closestDrop = null;
-            float closestDistSq = float.MaxValue;
+            DropItem selectedDrop = null;
 
             foreach (var drop in _activeDrops)
             {
@@ -1299,25 +1298,22 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (distSq < closestDistSq)
-                {
-                    closestDistSq = distSq;
-                    closestDrop = drop;
-                }
+                selectedDrop = drop;
+                break;
             }
 
-            if (closestDrop == null)
+            if (selectedDrop == null)
             {
                 return null;
             }
 
             return ResolveRemotePickup(
-                closestDrop,
+                selectedDrop,
                 playerId,
                 currentTime,
                 DropPickupActorKind.Player,
                 playerName)
-                ? closestDrop
+                ? selectedDrop
                 : null;
         }
 
@@ -1337,8 +1333,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             float rangeSq = petPickupRange * petPickupRange;
-            DropItem closestDrop = null;
-            float closestDistSq = float.MaxValue;
+            DropItem selectedDrop = null;
 
             foreach (var drop in _activeDrops)
             {
@@ -1363,7 +1358,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (!CanPetPickup(drop, ownerId, currentTime))
+                if (ResolvePetPickupFailureReason(drop, ownerId, currentTime) != DropPickupFailureReason.None)
                 {
                     continue;
                 }
@@ -1373,21 +1368,18 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (distSq < closestDistSq)
-                {
-                    closestDistSq = distSq;
-                    closestDrop = drop;
-                }
+                selectedDrop = drop;
+                break;
             }
 
             return ResolveRemotePickup(
-                closestDrop,
+                selectedDrop,
                 petId,
                 currentTime,
                 DropPickupActorKind.Pet,
                 petName,
                 pickedByPet: true)
-                ? closestDrop
+                ? selectedDrop
                 : null;
         }
 
@@ -1409,11 +1401,9 @@ namespace HaCreator.MapSimulator.Pools
         {
             pickupValidator ??= _pickupAvailabilityEvaluator;
             float rangeSq = range * range;
-            DropItem closestAvailable = null;
-            float closestAvailableDistSq = float.MaxValue;
-            DropItem closestFailureDrop = null;
-            DropPickupFailureReason closestFailureReason = DropPickupFailureReason.NoDropInRange;
-            float closestFailureDistSq = float.MaxValue;
+            DropItem selectedAvailable = null;
+            DropItem firstFailureDrop = null;
+            DropPickupFailureReason firstFailureReason = DropPickupFailureReason.NoDropInRange;
 
             foreach (var drop in _activeDrops)
             {
@@ -1440,11 +1430,10 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (!CanPlayerPickup(drop, playerId, currentTime))
                 {
-                    if (distSq < closestFailureDistSq)
+                    if (firstFailureDrop == null)
                     {
-                        closestFailureDrop = drop;
-                        closestFailureDistSq = distSq;
-                        closestFailureReason = DropPickupFailureReason.OwnershipRestricted;
+                        firstFailureDrop = drop;
+                        firstFailureReason = DropPickupFailureReason.OwnershipRestricted;
                     }
 
                     continue;
@@ -1453,44 +1442,40 @@ namespace HaCreator.MapSimulator.Pools
                 DropPickupFailureReason validatorReason = pickupValidator?.Invoke(drop) ?? DropPickupFailureReason.None;
                 if (validatorReason != DropPickupFailureReason.None)
                 {
-                    if (distSq < closestFailureDistSq)
+                    if (firstFailureDrop == null)
                     {
-                        closestFailureDrop = drop;
-                        closestFailureDistSq = distSq;
-                        closestFailureReason = validatorReason;
+                        firstFailureDrop = drop;
+                        firstFailureReason = validatorReason;
                     }
 
                     continue;
                 }
 
-                if (distSq < closestAvailableDistSq)
-                {
-                    closestAvailableDistSq = distSq;
-                    closestAvailable = drop;
-                }
+                selectedAvailable = drop;
+                break;
             }
 
-            if (closestAvailable != null && TryPickup(closestAvailable, playerId, currentTime))
+            if (selectedAvailable != null && TryPickup(selectedAvailable, playerId, currentTime))
             {
                 return new DropPickupAttemptResult
                 {
-                    Drop = closestAvailable,
+                    Drop = selectedAvailable,
                     FailureReason = DropPickupFailureReason.None
                 };
             }
 
-            if (closestAvailable != null)
+            if (selectedAvailable != null)
             {
                 return new DropPickupAttemptResult
                 {
                     Drop = null,
-                    ContextDrop = closestAvailable,
+                    ContextDrop = selectedAvailable,
                     FailureReason = DropPickupFailureReason.Unavailable,
-                    RecentPickup = FindRecentPickup(closestAvailable.PoolId, currentTime)
+                    RecentPickup = FindRecentPickup(selectedAvailable.PoolId, currentTime)
                 };
             }
 
-            if (closestFailureDrop == null)
+            if (firstFailureDrop == null)
             {
                 RecentPickupRecord recentPickup = FindRecentPickupNear(x, y, range, currentTime);
                 if (recentPickup != null)
@@ -1508,8 +1493,8 @@ namespace HaCreator.MapSimulator.Pools
             return new DropPickupAttemptResult
             {
                 Drop = null,
-                ContextDrop = closestFailureDrop,
-                FailureReason = closestFailureReason
+                ContextDrop = firstFailureDrop,
+                FailureReason = firstFailureReason
             };
         }
         #endregion
@@ -1696,11 +1681,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             float rangeSq = petPickupRange * petPickupRange;
-            DropItem closestDrop = null;
-            float closestDistSq = float.MaxValue;
-            DropItem closestFailureDrop = null;
-            float closestFailureDistSq = float.MaxValue;
-            DropPickupFailureReason closestFailureReason = DropPickupFailureReason.NoDropInRange;
+            DropItem selectedDrop = null;
+            DropItem firstFailureDrop = null;
+            DropPickupFailureReason firstFailureReason = DropPickupFailureReason.NoDropInRange;
 
             foreach (var drop in _activeDrops)
             {
@@ -1721,13 +1704,13 @@ namespace HaCreator.MapSimulator.Pools
                         ClientPetPickupBottomOffset))
                     continue;
 
-                if (!CanPetPickup(drop, playerId, currentTime))
+                DropPickupFailureReason petGateFailureReason = ResolvePetPickupFailureReason(drop, playerId, currentTime);
+                if (petGateFailureReason != DropPickupFailureReason.None)
                 {
-                    if (distSq < closestFailureDistSq)
+                    if (petGateFailureReason != DropPickupFailureReason.NoDropInRange && firstFailureDrop == null)
                     {
-                        closestFailureDrop = drop;
-                        closestFailureDistSq = distSq;
-                        closestFailureReason = DropPickupFailureReason.OwnershipRestricted;
+                        firstFailureDrop = drop;
+                        firstFailureReason = petGateFailureReason;
                     }
 
                     continue;
@@ -1743,48 +1726,44 @@ namespace HaCreator.MapSimulator.Pools
                     ?? DropPickupFailureReason.None;
                 if (validatorReason != DropPickupFailureReason.None)
                 {
-                    if (distSq < closestFailureDistSq)
+                    if (firstFailureDrop == null)
                     {
-                        closestFailureDrop = drop;
-                        closestFailureDistSq = distSq;
-                        closestFailureReason = validatorReason;
+                        firstFailureDrop = drop;
+                        firstFailureReason = validatorReason;
                     }
 
                     continue;
                 }
 
-                if (distSq < closestDistSq)
-                {
-                    closestDistSq = distSq;
-                    closestDrop = drop;
-                }
+                selectedDrop = drop;
+                break;
             }
 
-            if (closestDrop != null)
+            if (selectedDrop != null)
             {
                 // Clear chase target if this was it
-                if (_petTargets.TryGetValue(petId, out var target) && target.DropId == closestDrop.PoolId)
+                if (_petTargets.TryGetValue(petId, out var target) && target.DropId == selectedDrop.PoolId)
                 {
                     _petTargets.Remove(petId);
                 }
 
                 _petLastPickupTime[petId] = currentTime;
-                CompletePickup(closestDrop, petId, pickedByPet: true, currentTime, DropPickupActorKind.Pet, notifyLocalPickup: true);
+                CompletePickup(selectedDrop, petId, pickedByPet: true, currentTime, DropPickupActorKind.Pet, notifyLocalPickup: true);
 
                 return new DropPickupAttemptResult
                 {
-                    Drop = closestDrop,
-                    ContextDrop = closestDrop,
+                    Drop = selectedDrop,
+                    ContextDrop = selectedDrop,
                     FailureReason = DropPickupFailureReason.None
                 };
             }
 
-            ReportPickupFailure(closestFailureDrop, closestFailureReason, petId, true, currentTime);
+            ReportPickupFailure(firstFailureDrop, firstFailureReason, petId, true, currentTime);
             return new DropPickupAttemptResult
             {
                 Drop = null,
-                ContextDrop = closestFailureDrop,
-                FailureReason = closestFailureReason
+                ContextDrop = firstFailureDrop,
+                FailureReason = firstFailureReason
             };
         }
 
@@ -1991,9 +1970,9 @@ namespace HaCreator.MapSimulator.Pools
             if (!_mobsWithPickupAbility.Contains(mobId))
                 return null;
 
-            // Find closest drop within range
-            DropItem closestDrop = null;
-            float closestDistSq = MOB_PICKUP_RANGE * MOB_PICKUP_RANGE;
+            // Client scans m_lDrop in pool order and sends the first eligible drop.
+            DropItem selectedDrop = null;
+            float rangeSq = MOB_PICKUP_RANGE * MOB_PICKUP_RANGE;
 
             foreach (var drop in _activeDrops)
             {
@@ -2006,6 +1985,8 @@ namespace HaCreator.MapSimulator.Pools
                 float dx = drop.X - mobX;
                 float dy = drop.Y - mobY;
                 float distSq = dx * dx + dy * dy;
+                if (distSq > rangeSq)
+                    continue;
 
                 if (!IsWithinClientPickupRect(
                         mobX,
@@ -2017,17 +1998,14 @@ namespace HaCreator.MapSimulator.Pools
                         ClientMobPickupBottomOffset))
                     continue;
 
-                if (distSq < closestDistSq)
-                {
-                    closestDistSq = distSq;
-                    closestDrop = drop;
-                }
+                selectedDrop = drop;
+                break;
             }
 
-            if (closestDrop != null)
+            if (selectedDrop != null)
             {
-                return ResolveRemotePickup(closestDrop, mobId, currentTime, DropPickupActorKind.Mob)
-                    ? closestDrop
+                return ResolveRemotePickup(selectedDrop, mobId, currentTime, DropPickupActorKind.Mob)
+                    ? selectedDrop
                     : null;
             }
 
@@ -2839,10 +2817,24 @@ namespace HaCreator.MapSimulator.Pools
 
         private bool CanPetPickup(DropItem drop, int ownerId, int currentTime)
         {
-            return drop != null
-                && drop.IsReal
-                && drop.AllowPetPickup
-                && !IsPlayerOwnershipBlocked(drop, ownerId, currentTime);
+            return ResolvePetPickupFailureReason(drop, ownerId, currentTime) == DropPickupFailureReason.None;
+        }
+
+        internal DropPickupFailureReason ResolvePetPickupFailureReason(DropItem drop, int ownerId, int currentTime)
+        {
+            if (drop == null || !drop.IsReal)
+            {
+                return DropPickupFailureReason.NoDropInRange;
+            }
+
+            if (!drop.AllowPetPickup)
+            {
+                return DropPickupFailureReason.PetPickupBlocked;
+            }
+
+            return IsPlayerOwnershipBlocked(drop, ownerId, currentTime)
+                ? DropPickupFailureReason.OwnershipRestricted
+                : DropPickupFailureReason.None;
         }
 
         private static bool CanMobPickup(DropItem drop)

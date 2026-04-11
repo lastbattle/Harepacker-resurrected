@@ -147,7 +147,10 @@ namespace HaCreator.MapSimulator
             }
 
             bool premiumRequested = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
-            string message = ResolveReviveOwnerChoice(premiumRequested, Environment.TickCount);
+            int clientButtonId = premiumRequested || !_reviveOwnerRuntime.HasPremiumChoice
+                ? ReviveOwnerRuntime.ClientYesButtonId
+                : ReviveOwnerRuntime.ClientNoButtonId;
+            string message = ResolveReviveOwnerClientButtonClick(clientButtonId, Environment.TickCount);
             if (!string.IsNullOrWhiteSpace(message))
             {
                 ShowUtilityFeedbackMessage(message);

@@ -623,11 +623,7 @@ namespace HaCreator.MapSimulator.Fields
         private void ApplyRemoteOpenGateCreate(RemoteOpenGateCreatedPacket packet, int currentMapId, int currentTime)
         {
             RemoteOpenGateKey key = new(packet.OwnerCharacterId, packet.IsFirstSlot);
-            bool hasExisting = _remoteOpenGates.TryGetValue(key, out RemoteOpenGateState existingState);
             RemoteOpenGateVisualPhase phase = packet.State == 0 ? RemoteOpenGateVisualPhase.Opening : RemoteOpenGateVisualPhase.Stable;
-            int phaseStartedAt = hasExisting && existingState.Phase == phase
-                ? existingState.PhaseStartedAt
-                : currentTime;
 
             _remoteOpenGates[key] = new RemoteOpenGateState(
                 packet.OwnerCharacterId,
@@ -638,7 +634,7 @@ namespace HaCreator.MapSimulator.Fields
                 packet.IsFirstSlot,
                 packet.PartyId,
                 phase,
-                phaseStartedAt);
+                currentTime);
             SyncRemoteOpenGateVisuals();
         }
 
@@ -663,8 +659,25 @@ namespace HaCreator.MapSimulator.Fields
                 _remoteOpenGates.Remove(key);
             }
 
+            RestartRemoteOpenGatePartnerAfterPartnerLoss(packet.OwnerCharacterId, packet.IsFirstSlot, currentTime);
             SyncRemoteOpenGateVisuals();
             return true;
+        }
+
+        private void RestartRemoteOpenGatePartnerAfterPartnerLoss(uint ownerCharacterId, bool removedFirstSlot, int currentTime)
+        {
+            RemoteOpenGateKey partnerKey = new(ownerCharacterId, !removedFirstSlot);
+            if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner)
+                || partner.Phase == RemoteOpenGateVisualPhase.Removing)
+            {
+                return;
+            }
+
+            _remoteOpenGates[partnerKey] = partner with
+            {
+                Phase = RemoteOpenGateVisualPhase.Stable,
+                PhaseStartedAt = currentTime
+            };
         }
 
         private void SyncRemoteTownPortalVisuals()
@@ -3411,6 +3424,14 @@ namespace HaCreator.MapSimulator.Fields
             RemoteOpenGateVisualPhase partnerPhase)
         {
             return ShouldLinkRemoteOpenGatePortal(phase, hasPartner, partnerPhase);
+        }
+
+        internal static RemoteOpenGateVisualPhase ResolveRemoteOpenGatePartnerLossPhaseForTesting(
+            RemoteOpenGateVisualPhase partnerPhase)
+        {
+            return partnerPhase == RemoteOpenGateVisualPhase.Removing
+                ? partnerPhase
+                : RemoteOpenGateVisualPhase.Stable;
         }
     }
 }

@@ -56,6 +56,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedClassCompetitionSyntheticAuthResponseDelayMs = 250;
         private const int PacketOwnedClassCompetitionAuthRequestOpcode = 291;
         private const int PacketOwnedClassCompetitionUrlTemplateStringPoolId = 0x11DC;
+        private const int PacketOwnedClassCompetitionMaxRemotePageLines = 12;
+        private const int PacketOwnedClassCompetitionMaxRemoteLadderLines = 12;
         private const int PacketOwnedSkillLearnSuccessSoundStringPoolId = 0x0507;
         private const int PacketOwnedSkillLearnFailureSoundStringPoolId = 0x0508;
         private const int PacketOwnedSkillLearnMasteryBookLabelStringPoolId = 0x0F2F;
@@ -145,6 +147,14 @@ namespace HaCreator.MapSimulator
         private readonly record struct PacketOwnedTutorDisplayState(
             TutorVariantSnapshot Variant,
             PacketOwnedTutorDisplayOwner Owner);
+
+        internal sealed class ClassCompetitionRemotePagePayload
+        {
+            public string NavigateUrl { get; init; } = string.Empty;
+            public string Source { get; init; } = string.Empty;
+            public IReadOnlyList<string> PageLines { get; init; } = Array.Empty<string>();
+            public IReadOnlyList<string> LadderLines { get; init; } = Array.Empty<string>();
+        }
 
         internal readonly record struct PacketOwnedTimeBombInvincibilityOptionLevelData(int DurationMs, int ProbabilityPercent);
 
@@ -2049,6 +2059,24 @@ namespace HaCreator.MapSimulator
             return $"Messenger session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, inbound opcode {_messengerOfficialSessionBridgeConfiguredInboundOpcode}. {_messengerOfficialSessionBridge.DescribeStatus()}";
         }
 
+        private string DescribeMapleTvOfficialSessionBridgeStatus()
+        {
+            string enabledText = _mapleTvOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _mapleTvOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _mapleTvOfficialSessionBridgeUseDiscovery
+                ? _mapleTvOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_mapleTvOfficialSessionBridgeConfiguredRemotePort} with local port {_mapleTvOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_mapleTvOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_mapleTvOfficialSessionBridgeConfiguredRemoteHost}:{_mapleTvOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_mapleTvOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_mapleTvOfficialSessionBridgeConfiguredProcessSelector}";
+            string listeningText = _mapleTvOfficialSessionBridge.IsRunning
+                ? $"listening on 127.0.0.1:{_mapleTvOfficialSessionBridge.ListenPort}"
+                : $"configured for 127.0.0.1:{_mapleTvOfficialSessionBridgeConfiguredListenPort}";
+            return $"MapleTV session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, inbound opcode {_mapleTvOfficialSessionBridgeConfiguredInboundOpcode}, additional inbound opcodes {MapleTvRuntime.PacketTypeClearMessage}/{MapleTvRuntime.PacketTypeSendMessageResult}, outbound opcode {MapleTvRuntime.ConsumeCashItemUseRequestOpcode}. {_mapleTvOfficialSessionBridge.DescribeStatus()}";
+        }
+
         private void EnsureLocalUtilityOfficialSessionBridgeState(bool shouldRun)
         {
             if (!shouldRun || !_localUtilityOfficialSessionBridgeEnabled)
@@ -2207,6 +2235,86 @@ namespace HaCreator.MapSimulator
                 _messengerOfficialSessionBridgeConfiguredInboundOpcode);
         }
 
+        private void EnsureMapleTvOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_mapleTvOfficialSessionBridgeEnabled)
+            {
+                if (_mapleTvOfficialSessionBridge.IsRunning)
+                {
+                    _mapleTvOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_mapleTvOfficialSessionBridgeConfiguredListenPort <= 0
+                || _mapleTvOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue
+                || _mapleTvOfficialSessionBridgeConfiguredInboundOpcode == 0)
+            {
+                if (_mapleTvOfficialSessionBridge.IsRunning)
+                {
+                    _mapleTvOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_mapleTvOfficialSessionBridgeUseDiscovery)
+            {
+                if (_mapleTvOfficialSessionBridgeConfiguredRemotePort <= 0
+                    || _mapleTvOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    if (_mapleTvOfficialSessionBridge.IsRunning)
+                    {
+                        _mapleTvOfficialSessionBridge.Stop();
+                    }
+
+                    return;
+                }
+
+                _mapleTvOfficialSessionBridge.TryRefreshFromDiscovery(
+                    _mapleTvOfficialSessionBridgeConfiguredListenPort,
+                    _mapleTvOfficialSessionBridgeConfiguredRemotePort,
+                    _mapleTvOfficialSessionBridgeConfiguredInboundOpcode,
+                    _mapleTvOfficialSessionBridgeConfiguredProcessSelector,
+                    _mapleTvOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_mapleTvOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _mapleTvOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || string.IsNullOrWhiteSpace(_mapleTvOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                if (_mapleTvOfficialSessionBridge.IsRunning)
+                {
+                    _mapleTvOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_mapleTvOfficialSessionBridge.IsRunning
+                && _mapleTvOfficialSessionBridge.ListenPort == _mapleTvOfficialSessionBridgeConfiguredListenPort
+                && _mapleTvOfficialSessionBridge.RemotePort == _mapleTvOfficialSessionBridgeConfiguredRemotePort
+                && _mapleTvOfficialSessionBridge.MessengerOpcode == _mapleTvOfficialSessionBridgeConfiguredInboundOpcode
+                && string.Equals(_mapleTvOfficialSessionBridge.RemoteHost, _mapleTvOfficialSessionBridgeConfiguredRemoteHost, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (_mapleTvOfficialSessionBridge.IsRunning)
+            {
+                _mapleTvOfficialSessionBridge.Stop();
+            }
+
+            _mapleTvOfficialSessionBridge.Start(
+                _mapleTvOfficialSessionBridgeConfiguredListenPort,
+                _mapleTvOfficialSessionBridgeConfiguredRemoteHost,
+                _mapleTvOfficialSessionBridgeConfiguredRemotePort,
+                _mapleTvOfficialSessionBridgeConfiguredInboundOpcode);
+        }
+
         private void RefreshLocalUtilityOfficialSessionBridgeDiscovery(int currentTickCount)
         {
             if (!_localUtilityOfficialSessionBridgeEnabled
@@ -2252,6 +2360,29 @@ namespace HaCreator.MapSimulator
                 out _);
         }
 
+        private void RefreshMapleTvOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (!_mapleTvOfficialSessionBridgeEnabled
+                || !_mapleTvOfficialSessionBridgeUseDiscovery
+                || _mapleTvOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _mapleTvOfficialSessionBridgeConfiguredInboundOpcode == 0
+                || _mapleTvOfficialSessionBridge.HasAttachedClient
+                || currentTickCount < _nextMapleTvOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextMapleTvOfficialSessionBridgeDiscoveryRefreshAt =
+                currentTickCount + MapleTvOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+            _mapleTvOfficialSessionBridge.TryRefreshFromDiscovery(
+                _mapleTvOfficialSessionBridgeConfiguredListenPort,
+                _mapleTvOfficialSessionBridgeConfiguredRemotePort,
+                _mapleTvOfficialSessionBridgeConfiguredInboundOpcode,
+                _mapleTvOfficialSessionBridgeConfiguredProcessSelector,
+                _mapleTvOfficialSessionBridgeConfiguredLocalPort,
+                out _);
+        }
+
         private void DrainMessengerOfficialSessionBridge()
         {
             while (_messengerOfficialSessionBridge.TryDequeue(out MessengerOfficialSessionBridgeMessage message))
@@ -2263,6 +2394,31 @@ namespace HaCreator.MapSimulator
 
                 bool applied = TryApplyPacketOwnedMessengerDispatchPayload(message.Payload, out string detail);
                 _messengerOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
+                if (!string.IsNullOrWhiteSpace(detail))
+                {
+                    if (applied)
+                    {
+                        _chat?.AddSystemMessage(detail, currTickCount);
+                    }
+                    else
+                    {
+                        _chat?.AddErrorMessage(detail, currTickCount);
+                    }
+                }
+            }
+        }
+
+        private void DrainMapleTvOfficialSessionBridge()
+        {
+            while (_mapleTvOfficialSessionBridge.TryDequeue(out MessengerOfficialSessionBridgeMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = TryApplyMapleTvPacket(message.Opcode, message.Payload, out string detail);
+                _mapleTvOfficialSessionBridge.RecordDispatchResult(message.Source, applied, $"CMapleTVMan::OnPacket {message.Opcode}: {detail}");
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
                     if (applied)
@@ -2541,7 +2697,7 @@ namespace HaCreator.MapSimulator
                     return TryApplyRepairDurabilityResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.ConsumeCashItemUseRequestPacketType:
-                    return TryApplyPacketOwnedVegaLaunchPayload(payload, out message);
+                    return TryApplyMapleTvConsumeCashItemUseRequestPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.VegaLaunchPacketType:
                     if (TryApplyPacketOwnedEventAlarmTextPayload(payload, out message))
@@ -4136,6 +4292,29 @@ namespace HaCreator.MapSimulator
             return applied;
         }
 
+        private bool TryApplyMapleTvConsumeCashItemUseRequestPayload(byte[] payload, out string message)
+        {
+            bool applied = _mapleTvRuntime.TryApplyConsumeCashItemUseRequestPayload(
+                payload,
+                currTickCount,
+                itemId =>
+                {
+                    string itemName = itemId > 0 ? ResolvePickupItemName(itemId) : "Maple TV";
+                    string itemDescription = itemId > 0 && InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string resolvedDescription)
+                        ? resolvedDescription
+                        : null;
+                    return (itemName, itemDescription);
+                },
+                out message);
+            if (applied)
+            {
+                PublishMapleTvMegassengerMirror(currTickCount);
+                ShowMapleTvWindow();
+            }
+
+            return applied;
+        }
+
         private bool TryApplyPacketOwnedMessengerPacket(MessengerPacketType packetType, byte[] payload, out string message)
         {
             bool applied = GetPacketOwnedSocialUtilityDialogDispatcher().TryApplyMessengerPacket(packetType, payload, out message);
@@ -4249,6 +4428,29 @@ namespace HaCreator.MapSimulator
             }
 
             string runtimeStatus = _messengerRuntime.QueueSessionOwnedIncomingInviteAccept(resolvedContactName);
+            message = $"{runtimeStatus} {dispatchStatus}";
+            return true;
+        }
+
+        private bool TryMirrorMessengerLeaveClientRequest(out string message, bool queueOnly = false)
+        {
+            if (!_messengerRuntime.TryBuildClientLeaveRequestPayload(out byte[] payload, out message))
+            {
+                return false;
+            }
+
+            if (!TryDispatchMessengerOfficialSessionRequest(
+                    MessengerPacketCodec.ClientMessengerRequestOpcode,
+                    payload,
+                    "CUIMessenger::OnDestroy",
+                    out string dispatchStatus,
+                    queueOnly))
+            {
+                message = dispatchStatus;
+                return false;
+            }
+
+            string runtimeStatus = _messengerRuntime.QueueSessionOwnedLeaveRequest();
             message = $"{runtimeStatus} {dispatchStatus}";
             return true;
         }
@@ -4769,6 +4971,8 @@ namespace HaCreator.MapSimulator
                 return ignoreMessage;
             }
 
+            SetPacketOwnedRadioScheduleContext(normalizedTrackDescriptor, timeValue, "packet-radio-schedule");
+
             if (!TryResolvePacketOwnedRadioTrack(
                 normalizedTrackDescriptor,
                 out PacketOwnedRadioTrackResolution trackResolution))
@@ -5042,6 +5246,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioStartTick = int.MinValue;
             _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
             _lastPacketOwnedRadioLastPollTick = int.MinValue;
+            ClearPacketOwnedRadioScheduleContext("radio-stop");
             ResetPacketOwnedRadioCreateLayerSessionState();
             ApplyUtilityAudioSettings();
 
@@ -5133,6 +5338,13 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < recentMutations.Count; i++)
             {
                 lines.Add($"Context mutation[{i + 1}]: {recentMutations[i]}");
+            }
+
+            lines.Add(_packetOwnedLocalUtilityContext.DescribeRadioScheduleContext());
+            IReadOnlyList<string> recentScheduleMutations = _packetOwnedLocalUtilityContext.GetRecentRadioScheduleMutations();
+            for (int i = 0; i < recentScheduleMutations.Count; i++)
+            {
+                lines.Add($"Schedule mutation[{i + 1}]: {recentScheduleMutations[i]}");
             }
 
             lines.Add(
@@ -6023,7 +6235,9 @@ namespace HaCreator.MapSimulator
                 _packetOwnedBattleshipDurabilityPresentation = null;
             }
 
-            SyncPacketOwnedBattleshipDurabilityPresentation(refreshRepairWindow: true);
+            SyncPacketOwnedBattleshipDurabilityPresentation(
+                refreshRepairWindow: true,
+                recordPassiveTemporaryStatUpdate: true);
         }
 
         private CharacterPart ResolveActivePacketOwnedBattleshipMountPart()
@@ -6046,7 +6260,9 @@ namespace HaCreator.MapSimulator
             return mountPart;
         }
 
-        private void SyncPacketOwnedBattleshipDurabilityPresentation(bool refreshRepairWindow)
+        private void SyncPacketOwnedBattleshipDurabilityPresentation(
+            bool refreshRepairWindow,
+            bool recordPassiveTemporaryStatUpdate = false)
         {
             if (_playerManager?.Skills == null)
             {
@@ -6090,7 +6306,10 @@ namespace HaCreator.MapSimulator
             _playerManager.Skills.SetAuthoritativeVehicleDurabilityPresentation(
                 PacketOwnedBattleshipSkillId,
                 currentValue,
-                maxValue);
+                maxValue,
+                currTickCount,
+                hasTemporaryObject: true,
+                recordPassiveTemporaryStatUpdate: recordPassiveTemporaryStatUpdate);
 
             CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
             if (mountPart == null)
@@ -6922,6 +7141,28 @@ namespace HaCreator.MapSimulator
                 runtimeCharacterId: runtimeCharacterId);
             PersistPacketOwnedRadioCreateLayerContextState(runtimeCharacterId);
             return $"Cleared packet-owned local utility CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] (radio bLeft) override.";
+        }
+
+        private string SetPacketOwnedRadioScheduleContext(string trackDescriptor, int timeValue, string source)
+        {
+            int runtimeCharacterId = ResolvePacketOwnedRadioRuntimeCharacterId();
+            _packetOwnedLocalUtilityContext.SetRadioScheduleContextValue(
+                trackDescriptor,
+                timeValue,
+                source,
+                Environment.TickCount,
+                runtimeCharacterId);
+            return "Set packet-owned local utility radio schedule context.";
+        }
+
+        private string ClearPacketOwnedRadioScheduleContext(string source)
+        {
+            int runtimeCharacterId = ResolvePacketOwnedRadioRuntimeCharacterId();
+            _packetOwnedLocalUtilityContext.ClearRadioScheduleContextValue(
+                source,
+                Environment.TickCount,
+                runtimeCharacterId);
+            return "Cleared packet-owned local utility radio schedule context.";
         }
 
         private void RestorePersistedPacketOwnedRadioCreateLayerContextIfNeeded(
@@ -8928,12 +9169,12 @@ namespace HaCreator.MapSimulator
 
                     if (optionLevel.ProbabilityPercent > 0)
                     {
-                        probabilisticChancePercent = Math.Max(probabilisticChancePercent, optionLevel.ProbabilityPercent);
-                        probabilisticDurationMs = Math.Max(probabilisticDurationMs, optionLevel.DurationMs);
+                        probabilisticChancePercent = optionLevel.ProbabilityPercent;
+                        probabilisticDurationMs = optionLevel.DurationMs;
                         continue;
                     }
 
-                    additionalDurationMs += optionLevel.DurationMs;
+                    additionalDurationMs = optionLevel.DurationMs;
                 }
             }
 
@@ -12572,8 +12813,13 @@ namespace HaCreator.MapSimulator
                 using BinaryReader reader = new(stream);
                 if (reader.ReadByte() != (byte)'E'
                     || reader.ReadByte() != (byte)'V'
-                    || reader.ReadByte() != (byte)'C'
-                    || reader.ReadByte() != 1)
+                    || reader.ReadByte() != (byte)'C')
+                {
+                    return false;
+                }
+
+                byte version = reader.ReadByte();
+                if (version is not 1 and not 2)
                 {
                     return false;
                 }
@@ -12599,6 +12845,9 @@ namespace HaCreator.MapSimulator
                     string title = ReadPacketOwnedMapleString(reader)?.Trim();
                     string detail = ReadPacketOwnedMapleString(reader)?.Trim();
                     string statusText = ReadPacketOwnedMapleString(reader)?.Trim();
+                    string alarmText = version >= 2
+                        ? ReadPacketOwnedMapleString(reader)?.Trim()
+                        : string.Empty;
                     if (!TryCreatePacketOwnedEventCalendarBinaryDate(year, month, day, out DateTime scheduledAt)
                         || string.IsNullOrWhiteSpace(title))
                     {
@@ -12614,7 +12863,7 @@ namespace HaCreator.MapSimulator
                         int.MinValue,
                         ResolvePacketOwnedEventEntrySortPriority(status),
                         parsedEntries.Count,
-                        alarmText: string.Empty));
+                        alarmText: alarmText));
                 }
 
                 if (includesAlarmLines)
@@ -12947,6 +13196,12 @@ namespace HaCreator.MapSimulator
             }
 
             string title = string.IsNullOrWhiteSpace(entry.Title) ? "Event" : entry.Title.Trim();
+            if (!string.IsNullOrWhiteSpace(entry.AlarmText))
+            {
+                // Client evidence: CUIEventAlarm::Draw emits each CT_INFO.sText verbatim inside the m_aCT clip rect.
+                return entry.AlarmText.Trim();
+            }
+
             string datePrefix = entry.ScheduledAt.Date == anchorDate
                 ? string.Empty
                 : entry.ScheduledAt.ToString("MMM d", CultureInfo.InvariantCulture) + " ";
@@ -13183,6 +13438,12 @@ namespace HaCreator.MapSimulator
                 && TryParsePacketOwnedEventEntryStatus(tokens[tokenIndex], out EventEntryStatus parsedStatus)
                 ? parsedStatus
                 : EventEntryStatus.Upcoming;
+            if (tokenIndex < tokens.Length && TryParsePacketOwnedEventEntryStatus(tokens[tokenIndex], out _))
+            {
+                tokenIndex++;
+            }
+
+            string alarmText = tokenIndex < tokens.Length ? tokens[tokenIndex].Trim() : string.Empty;
             entry = CreatePacketOwnedEventCalendarEntry(
                 scheduledAt,
                 title,
@@ -13192,7 +13453,7 @@ namespace HaCreator.MapSimulator
                 int.MinValue,
                 ResolvePacketOwnedEventEntrySortPriority(status),
                 sortOrder,
-                alarmText: string.Empty);
+                alarmText: alarmText);
             return true;
         }
 

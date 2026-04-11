@@ -360,11 +360,12 @@ namespace HaCreator.MapSimulator.Loaders
             try
             {
                 skillWindow.ClearSkills();
+                skillWindow.SetUseDualTabStrip(IsDualBladeJob(jobId));
 
                 IReadOnlyList<int> displayedSkillBookIds = GetDisplayedSkillBookJobIdsForJob(jobId);
                 foreach (int skillRootId in displayedSkillBookIds)
                 {
-                    int tabIndex = Math.Clamp(GetSkillTabFromJobId(skillRootId), 0, 4);
+                    int tabIndex = Math.Clamp(GetSkillTabFromJobId(skillRootId), 0, 6);
                     Dictionary<int, SkillDisplayData> skillMap = new();
                     foreach (int bookJobId in GetSkillBookAliasesForJob(skillRootId).Distinct())
                     {
@@ -395,7 +396,7 @@ namespace HaCreator.MapSimulator.Loaders
                     skillWindow.SetJobInfo(tabIndex, jobIcon, SkillDataLoader.GetJobName(skillRootId));
                 }
 
-                skillWindow.CurrentTab = Math.Clamp(GetSkillTabFromJobId(jobId), 0, 4);
+                skillWindow.CurrentTab = Math.Clamp(GetSkillTabFromJobId(jobId), 0, 6);
             }
             catch (Exception ex)
             {

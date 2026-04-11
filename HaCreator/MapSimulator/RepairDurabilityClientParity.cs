@@ -215,6 +215,39 @@ namespace HaCreator.MapSimulator
             return payload;
         }
 
+        internal static int CalculateRepairDurabilityPay(
+            int requiredLevel,
+            int sellPrice,
+            int maxDurability,
+            int currentDurability,
+            bool isEpic)
+        {
+            if (maxDurability <= 0 || currentDurability >= maxDurability)
+            {
+                return 0;
+            }
+
+            int clampedCurrentDurability = Math.Clamp(currentDurability, 0, maxDurability);
+            int level = Math.Max(0, requiredLevel);
+            int durabilityPercent = (100 * clampedCurrentDurability) / maxDurability;
+            double lostPercent = 100d - durabilityPercent;
+            double durabilityScale = maxDurability / 100d;
+            if (durabilityScale <= 0d)
+            {
+                return 0;
+            }
+
+            double cost = lostPercent
+                * ((double)(level * level) * (sellPrice / 50d) / durabilityScale)
+                * (isEpic ? 1.25d : 1d);
+            if (double.IsNaN(cost) || double.IsInfinity(cost) || cost <= 0d)
+            {
+                return 0;
+            }
+
+            return (int)cost;
+        }
+
         internal static HoverTooltipPlacement ResolveHoverTooltipPlacement(
             Point anchorPoint,
             int tooltipWidth,
@@ -305,6 +338,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodeResultFirstPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
             int offset = 0;
             short? operationCode = null;
             if (payload.Length >= sizeof(int) + 1)
@@ -372,6 +415,97 @@ namespace HaCreator.MapSimulator
 
             result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText);
             return true;
+        }
+
+        private static bool TryDecodeResultFirstPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+            if (payload == null || payload.Length <= 1 || payload[0] > 1)
+            {
+                return false;
+            }
+
+            int offset = 1;
+            if (!TryReadRepairOpcode(payload, ref offset, out short? operationCode))
+            {
+                return false;
+            }
+
+            int? encodedSlotPosition = null;
+            if (payload.Length - offset >= sizeof(int))
+            {
+                int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                if (LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition))
+                {
+                    encodedSlotPosition = candidateEncodedSlotPosition;
+                    offset += sizeof(int);
+                }
+            }
+
+            int remainingLength = payload.Length - offset;
+            if (remainingLength is not 0 && remainingLength < sizeof(int))
+            {
+                error = "Result-first repair-result payload has trailing bytes after the echoed opcode/slot.";
+                return false;
+            }
+
+            int? reasonCode = null;
+            string statusText = string.Empty;
+            if (remainingLength >= sizeof(int))
+            {
+                reasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                int textOffset = offset + sizeof(int);
+                int textLength = payload.Length - textOffset;
+                if (textLength > 0)
+                {
+                    statusText = DecodeResultStatusText(payload.AsSpan(textOffset, textLength));
+                }
+            }
+
+            result = new ResultPayload(
+                success: payload[0] == 0,
+                reasonCode,
+                operationCode,
+                encodedSlotPosition,
+                statusText);
+            return true;
+        }
+
+        private static bool TryReadRepairOpcode(byte[] payload, ref int offset, out short? operationCode)
+        {
+            operationCode = null;
+            int remainingLength = payload.Length - offset;
+            if (remainingLength >= sizeof(int))
+            {
+                int intOperationCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
+                if (intOperationCode == 130 || intOperationCode == 131)
+                {
+                    operationCode = (short)intOperationCode;
+                    offset += sizeof(int);
+                    return true;
+                }
+            }
+
+            if (remainingLength >= sizeof(short))
+            {
+                short shortOperationCode = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+                if (shortOperationCode == 130 || shortOperationCode == 131)
+                {
+                    operationCode = shortOperationCode;
+                    offset += sizeof(short);
+                    return true;
+                }
+            }
+
+            if (remainingLength >= 1 && (payload[offset] == 130 || payload[offset] == 131))
+            {
+                operationCode = payload[offset];
+                offset++;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryDecodeJsonResultPayload(byte[] payload, out ResultPayload result, out string error)

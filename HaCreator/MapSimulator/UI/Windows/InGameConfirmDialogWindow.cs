@@ -18,6 +18,9 @@ namespace HaCreator.MapSimulator.UI
         private const int MessengerInviteAnchorX = 389;
         private const int MessengerInviteBottomOffset = 113;
         private const int MessengerInviteStackStep = 5;
+        private const int ParcelAlarmAnchorX = 440;
+        private const int ParcelAlarmBottomOffset = 97;
+        private const int ParcelAlarmStackStep = 5;
         private const int TextOffsetX = 17;
         private const int TitleOffsetY = 13;
         private const int BodyStartY = 31;
@@ -37,6 +40,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _defaultIcon;
         private readonly IDXObject _messengerInviteFrame;
         private readonly Texture2D _messengerInviteIcon;
+        private readonly Texture2D _parcelAlarmIcon;
         private readonly List<string> _wrappedLines = new();
         private SpriteFont _font;
         private KeyboardState _previousKeyboardState;
@@ -54,6 +58,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D defaultIcon,
             IDXObject messengerInviteFrame,
             Texture2D messengerInviteIcon,
+            Texture2D parcelAlarmIcon,
             int screenWidth,
             int screenHeight)
             : base(frame ?? throw new ArgumentNullException(nameof(frame)))
@@ -67,6 +72,7 @@ namespace HaCreator.MapSimulator.UI
             _defaultIcon = defaultIcon;
             _messengerInviteFrame = messengerInviteFrame ?? frame;
             _messengerInviteIcon = messengerInviteIcon ?? defaultIcon;
+            _parcelAlarmIcon = parcelAlarmIcon ?? defaultIcon;
             ConfigureButtons();
             CenterFrame();
         }
@@ -105,6 +111,18 @@ namespace HaCreator.MapSimulator.UI
                 MessengerInviteBottomOffset + (resolvedStackIndex * MessengerInviteStackStep),
                 ShowIcon: true,
                 Icon: _messengerInviteIcon ?? _defaultIcon,
+                Frame: _messengerInviteFrame ?? _defaultFrame);
+        }
+
+        public InGameConfirmDialogPresentation CreateParcelAlarmPresentation(int stackIndex = 0)
+        {
+            int resolvedStackIndex = Math.Max(0, stackIndex);
+            return new InGameConfirmDialogPresentation(
+                InGameConfirmDialogAnchorMode.BottomLeft,
+                ParcelAlarmAnchorX,
+                ParcelAlarmBottomOffset + (resolvedStackIndex * ParcelAlarmStackStep),
+                ShowIcon: true,
+                Icon: _parcelAlarmIcon ?? _defaultIcon,
                 Frame: _messengerInviteFrame ?? _defaultFrame);
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -34,6 +35,64 @@ namespace HaCreator.MapSimulator.Interaction
         int PartyQuestId,
         string Detail);
 
+    internal enum ExpeditionIntermediaryOutboundOpcodeKind
+    {
+        Create,
+        Invite,
+        ResponseInvite,
+        Withdraw,
+        Kick,
+        ChangeMaster,
+        ChangePartyBoss,
+        RelocateParty
+    }
+
+    internal readonly record struct ExpeditionIntermediaryEncodedOutboundPacket(
+        ExpeditionIntermediaryOutboundOpcodeKind Kind,
+        ushort Opcode,
+        byte RequestCode,
+        byte[] RawPacket,
+        string Detail);
+
+    internal static class ExpeditionIntermediaryPacketTable
+    {
+        // IDA v95: CWvsContext::OnPacket case 64 dispatches CWvsContext::OnExpedtionResult.
+        public const ushort InboundResultOpcode = 64;
+
+        // IDA v95: ExpeditionIntermediary::SendExp* creates COutPacket(147) for all expedition requests below.
+        public const ushort OutboundRequestOpcode = 147;
+
+        public const byte OutboundCreateRequest = 49;
+        public const byte OutboundInviteRequest = 50;
+        public const byte OutboundResponseInviteRequest = 51;
+        public const byte OutboundWithdrawRequest = 52;
+        public const byte OutboundKickRequest = 53;
+        public const byte OutboundChangeMasterRequest = 54;
+        public const byte OutboundChangePartyBossRequest = 55;
+        public const byte OutboundRelocatePartyRequest = 56;
+
+        public const byte ResultFullSnapshotDraft = 57;
+        public const byte ResultFullSnapshot = 59;
+        public const byte ResultFullSnapshotAccepted = 61;
+        public const byte ResultNoticeJoined = 60;
+        public const byte ResultNoticeLeft = 64;
+        public const byte ResultNoticeRemoved = 66;
+        public const byte ResultMasterChanged = 69;
+        public const byte ResultModified = 70;
+        public const byte ResultInvite = 72;
+        public const byte ResultResponseInvite = 73;
+        public const byte ResultRemovedLeaveEarly = 58;
+        public const byte ResultRemovedLeave = 65;
+        public const byte ResultRemovedDisband = 67;
+        public const byte ResultRemovedKicked = 68;
+        public const byte ResultIgnoredAlreadyChanged = 62;
+        public const byte ResultIgnoredRequestFailed = 63;
+        public const byte ResultIgnoredModifiedFailure = 71;
+
+        public const int AcceptedInviteResponseValue = 8;
+        public const int DeclinedInviteResponseValue = 9;
+    }
+
     internal static class ExpeditionIntermediaryPacketCodec
     {
         private const int ExpeditionStructSize = 0x384;
@@ -52,6 +111,68 @@ namespace HaCreator.MapSimulator.Interaction
         private const int PartyLevelsOffset = 0x7E;
         private const int PartyChannelsOffset = 0x96;
         private const int PartyBossCharacterIdOffset = 0xAE;
+
+        public static bool TryEncodeOutboundRequest(
+            ExpeditionIntermediaryOutboundRequest request,
+            out ExpeditionIntermediaryEncodedOutboundPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+
+            switch (request.Kind)
+            {
+                case ExpeditionIntermediaryOutboundRequestKind.Start:
+                case ExpeditionIntermediaryOutboundRequestKind.Register:
+                    return TryEncodeCreateRequest(request, out packet, out error);
+
+                case ExpeditionIntermediaryOutboundRequestKind.QuickJoin:
+                case ExpeditionIntermediaryOutboundRequestKind.Request:
+                case ExpeditionIntermediaryOutboundRequestKind.Notice:
+                    return TryEncodeInviteRequest(request, out packet, out error);
+
+                case ExpeditionIntermediaryOutboundRequestKind.Response:
+                    return TryEncodeResponseInviteRequest(request, out packet, out error);
+
+                case ExpeditionIntermediaryOutboundRequestKind.Master:
+                    return TryEncodeCharacterIdRequest(
+                        request,
+                        ExpeditionIntermediaryOutboundOpcodeKind.ChangeMaster,
+                        ExpeditionIntermediaryPacketTable.OutboundChangeMasterRequest,
+                        "change-master",
+                        out packet,
+                        out error);
+
+                case ExpeditionIntermediaryOutboundRequestKind.Leave:
+                case ExpeditionIntermediaryOutboundRequestKind.Disband:
+                    return TryEncodeWithdrawRequest(request, out packet, out error);
+
+                case ExpeditionIntermediaryOutboundRequestKind.Remove:
+                    return TryEncodeCharacterIdRequest(
+                        request,
+                        ExpeditionIntermediaryOutboundOpcodeKind.Kick,
+                        ExpeditionIntermediaryPacketTable.OutboundKickRequest,
+                        "kick",
+                        out packet,
+                        out error);
+
+                case ExpeditionIntermediaryOutboundRequestKind.ChangePartyBoss:
+                    return TryEncodeCharacterIdRequest(
+                        request,
+                        ExpeditionIntermediaryOutboundOpcodeKind.ChangePartyBoss,
+                        ExpeditionIntermediaryPacketTable.OutboundChangePartyBossRequest,
+                        "change-party-boss",
+                        out packet,
+                        out error);
+
+                case ExpeditionIntermediaryOutboundRequestKind.RelocateParty:
+                    return TryEncodeRelocatePartyRequest(request, out packet, out error);
+
+                default:
+                    error = $"Unsupported expedition outbound request kind {request.Kind}.";
+                    return false;
+            }
+        }
 
         public static bool TryDecodeResultPayload(
             ReadOnlySpan<byte> payload,
@@ -474,6 +595,195 @@ namespace HaCreator.MapSimulator.Interaction
         private static string NormalizeName(string value, string fallback)
         {
             return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        }
+
+        private static bool TryEncodeCreateRequest(
+            ExpeditionIntermediaryOutboundRequest request,
+            out ExpeditionIntermediaryEncodedOutboundPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+            if (request.PartyQuestId <= 0)
+            {
+                error = "Expedition create/register outbound packets require pq=<partyQuestId>; the v95 client encodes SendExpCreatePacket with a non-zero party quest id.";
+                return false;
+            }
+
+            byte[] rawPacket = BuildOutboundRawPacket(writer =>
+            {
+                writer.Write(ExpeditionIntermediaryPacketTable.OutboundCreateRequest);
+                writer.Write(request.PartyQuestId);
+            });
+            packet = CreateEncodedPacket(
+                ExpeditionIntermediaryOutboundOpcodeKind.Create,
+                ExpeditionIntermediaryPacketTable.OutboundCreateRequest,
+                rawPacket,
+                $"Encoded expedition create request for party quest {request.PartyQuestId}.");
+            return true;
+        }
+
+        private static bool TryEncodeInviteRequest(
+            ExpeditionIntermediaryOutboundRequest request,
+            out ExpeditionIntermediaryEncodedOutboundPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+            string targetName = NormalizeName(request.CharacterName, NormalizeName(request.OwnerName, null));
+            if (string.IsNullOrWhiteSpace(targetName))
+            {
+                error = "Expedition invite/admission outbound packets require name=<characterName> or owner=<characterName>; the v95 client encodes SendExpInvitePacket with a target string.";
+                return false;
+            }
+
+            byte[] rawPacket = BuildOutboundRawPacket(writer =>
+            {
+                writer.Write(ExpeditionIntermediaryPacketTable.OutboundInviteRequest);
+                WriteMapleString(writer, targetName);
+            });
+            packet = CreateEncodedPacket(
+                ExpeditionIntermediaryOutboundOpcodeKind.Invite,
+                ExpeditionIntermediaryPacketTable.OutboundInviteRequest,
+                rawPacket,
+                $"Encoded expedition invite/admission request for {targetName}.");
+            return true;
+        }
+
+        private static bool TryEncodeResponseInviteRequest(
+            ExpeditionIntermediaryOutboundRequest request,
+            out ExpeditionIntermediaryEncodedOutboundPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+            string masterName = NormalizeName(request.OwnerName, NormalizeName(request.CharacterName, null));
+            if (string.IsNullOrWhiteSpace(masterName))
+            {
+                error = "Expedition response outbound packets require owner=<masterName> or name=<masterName>; the v95 client encodes SendResponseInvitePacket with the master name.";
+                return false;
+            }
+
+            int responseValue = request.ResponseAccepted
+                ? ExpeditionIntermediaryPacketTable.AcceptedInviteResponseValue
+                : ExpeditionIntermediaryPacketTable.DeclinedInviteResponseValue;
+            byte[] rawPacket = BuildOutboundRawPacket(writer =>
+            {
+                writer.Write(ExpeditionIntermediaryPacketTable.OutboundResponseInviteRequest);
+                WriteMapleString(writer, masterName);
+                writer.Write(responseValue);
+            });
+            packet = CreateEncodedPacket(
+                ExpeditionIntermediaryOutboundOpcodeKind.ResponseInvite,
+                ExpeditionIntermediaryPacketTable.OutboundResponseInviteRequest,
+                rawPacket,
+                $"Encoded expedition {(request.ResponseAccepted ? "accept" : "decline")} response for {masterName}.");
+            return true;
+        }
+
+        private static bool TryEncodeWithdrawRequest(
+            ExpeditionIntermediaryOutboundRequest request,
+            out ExpeditionIntermediaryEncodedOutboundPacket packet,
+            out string error)
+        {
+            error = null;
+            byte[] rawPacket = BuildOutboundRawPacket(writer =>
+            {
+                writer.Write(ExpeditionIntermediaryPacketTable.OutboundWithdrawRequest);
+            });
+            packet = CreateEncodedPacket(
+                ExpeditionIntermediaryOutboundOpcodeKind.Withdraw,
+                ExpeditionIntermediaryPacketTable.OutboundWithdrawRequest,
+                rawPacket,
+                "Encoded expedition withdraw/disband request.");
+            return true;
+        }
+
+        private static bool TryEncodeCharacterIdRequest(
+            ExpeditionIntermediaryOutboundRequest request,
+            ExpeditionIntermediaryOutboundOpcodeKind kind,
+            byte requestCode,
+            string actionName,
+            out ExpeditionIntermediaryEncodedOutboundPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+            if (request.CharacterId <= 0)
+            {
+                error = $"Expedition {actionName} outbound packets require charid=<characterId>; the v95 client encodes this request with a non-zero character id.";
+                return false;
+            }
+
+            byte[] rawPacket = BuildOutboundRawPacket(writer =>
+            {
+                writer.Write(requestCode);
+                writer.Write(request.CharacterId);
+            });
+            packet = CreateEncodedPacket(
+                kind,
+                requestCode,
+                rawPacket,
+                $"Encoded expedition {actionName} request for character id {request.CharacterId}.");
+            return true;
+        }
+
+        private static bool TryEncodeRelocatePartyRequest(
+            ExpeditionIntermediaryOutboundRequest request,
+            out ExpeditionIntermediaryEncodedOutboundPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+            if (request.CharacterId <= 0)
+            {
+                error = "Expedition relocate-party outbound packets require charid=<characterId>; the v95 client encodes this request with a non-zero character id.";
+                return false;
+            }
+
+            byte[] rawPacket = BuildOutboundRawPacket(writer =>
+            {
+                writer.Write(ExpeditionIntermediaryPacketTable.OutboundRelocatePartyRequest);
+                writer.Write(Math.Max(0, request.PartyIndex));
+                writer.Write(request.CharacterId);
+            });
+            packet = CreateEncodedPacket(
+                ExpeditionIntermediaryOutboundOpcodeKind.RelocateParty,
+                ExpeditionIntermediaryPacketTable.OutboundRelocatePartyRequest,
+                rawPacket,
+                $"Encoded expedition relocate-party request for character id {request.CharacterId} to party {Math.Max(0, request.PartyIndex) + 1}.");
+            return true;
+        }
+
+        private static byte[] BuildOutboundRawPacket(Action<BinaryWriter> writePayload)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write(ExpeditionIntermediaryPacketTable.OutboundRequestOpcode);
+            writePayload(writer);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        private static ExpeditionIntermediaryEncodedOutboundPacket CreateEncodedPacket(
+            ExpeditionIntermediaryOutboundOpcodeKind kind,
+            byte requestCode,
+            byte[] rawPacket,
+            string detail)
+        {
+            return new ExpeditionIntermediaryEncodedOutboundPacket(
+                kind,
+                ExpeditionIntermediaryPacketTable.OutboundRequestOpcode,
+                requestCode,
+                rawPacket,
+                $"{detail} opcode={ExpeditionIntermediaryPacketTable.OutboundRequestOpcode}; request={requestCode}; raw={Convert.ToHexString(rawPacket)}");
+        }
+
+        private static void WriteMapleString(BinaryWriter writer, string value)
+        {
+            byte[] bytes = Encoding.Default.GetBytes(value ?? string.Empty);
+            writer.Write((ushort)bytes.Length);
+            writer.Write(bytes);
         }
     }
 }

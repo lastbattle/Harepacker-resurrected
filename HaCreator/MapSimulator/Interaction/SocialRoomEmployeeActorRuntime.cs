@@ -1761,6 +1761,7 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed class EmployeeActionCatalog
         {
             private const string BaseActionName = AnimationKeys.Stand;
+            private const string TemplateInfoPropertyName = "info";
 
             private EmployeeActionCatalog(IReadOnlyList<Entry> actions, IReadOnlyList<string> orderedActionNames)
             {
@@ -1836,6 +1837,11 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     string normalizedActionName = actionName.Trim().ToLowerInvariant();
+                    if (string.Equals(normalizedActionName, TemplateInfoPropertyName, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
                     if (string.Equals(normalizedActionName, BaseActionName, StringComparison.Ordinal))
                     {
                         hasStand = true;

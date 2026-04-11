@@ -1007,7 +1007,7 @@ namespace HaCreator.MapSimulator
             return totalCount;
         }
 
-        private static int ResolvePacketOwnedKeyConfigPaletteSlotId(byte packetEntryType, int packetEntryId)
+        internal static int ResolvePacketOwnedKeyConfigPaletteSlotId(byte packetEntryType, int packetEntryId)
         {
             // `CUIKeyConfig::{ResetPaletteItems,GetPaletteSlotFromIdx}` keep the authored KeyConfig icon families
             // on explicit function (0-32), control (50-54), and emotion (100-106) ids.

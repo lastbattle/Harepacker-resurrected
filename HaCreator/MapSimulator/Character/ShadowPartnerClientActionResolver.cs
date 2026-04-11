@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using HaCreator.MapSimulator.Character.Skills;
+using MapleLib.WzLib;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework;
 
@@ -412,6 +413,9 @@ namespace HaCreator.MapSimulator.Character
             "snatch",
             "windspear",
             "windshot",
+            "swingT2PoleArm",
+            "swingP1PoleArm",
+            "swingP2PoleArm",
             "combatStep",
             "finalCharge",
             "finalToss",
@@ -504,6 +508,16 @@ namespace HaCreator.MapSimulator.Character
         };
 
         private const int ClientInitializedShadowPartnerActionCodeLimitExclusive = 0x111;
+        private const int ClientActionManInitVariantRowStartRawActionCode = 124;
+        private const int ClientActionManInitVariantRowEndRawActionCode = 131;
+        internal const int ClientActionManInitDefaultPieceDelayMs = 150;
+
+        private static readonly HashSet<string> ClientActionManInitSkippedActionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // CActionMan::Init walks get_action_name_from_code(action) for action < 0x111,
+            // but skips raw action code 55 before reading Character/00002000.
+            "iceStrike"
+        };
 
         private static readonly IReadOnlyDictionary<string, string> SupportedRawActionCanonicalNames =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -973,7 +987,47 @@ namespace HaCreator.MapSimulator.Character
 
         internal static IEnumerable<string> EnumerateClientInitializedShadowPartnerRawActionNames()
         {
-            return CharacterPart.EnumerateClientRawActionStrings(ClientInitializedShadowPartnerActionCodeLimitExclusive);
+            foreach (string actionName in CharacterPart.EnumerateClientRawActionStrings(ClientInitializedShadowPartnerActionCodeLimitExclusive))
+            {
+                if (!string.IsNullOrWhiteSpace(actionName)
+                    && !ClientActionManInitSkippedActionNames.Contains(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+        }
+
+        internal static WzImageProperty ResolveClientActionManInitPieceOwnerNode(
+            string actionName,
+            WzImageProperty actionNode)
+        {
+            if (actionNode == null
+                || string.IsNullOrWhiteSpace(actionName)
+                || !CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
+                || rawActionCode < ClientActionManInitVariantRowStartRawActionCode
+                || rawActionCode > ClientActionManInitVariantRowEndRawActionCode)
+            {
+                return actionNode;
+            }
+
+            WzImageProperty variantNode = actionNode["1"];
+            if (variantNode?.WzProperties == null || variantNode.WzProperties.Count == 0)
+            {
+                return actionNode;
+            }
+
+            // CActionMan::Init switches raw actions 124..131 to child row "1" before
+            // reading action-piece metadata. The mounted export used by the simulator is
+            // sometimes already flattened, so only descend when "1" is a variant
+            // container rather than a piece row with its own `action` property.
+            return IsClientActionPieceNode(variantNode)
+                ? actionNode
+                : variantNode;
+        }
+
+        internal static bool IsClientActionPieceNode(WzImageProperty pieceNode)
+        {
+            return !string.IsNullOrWhiteSpace(pieceNode?["action"]?.GetString());
         }
 
         internal static SkillAnimation TryBuildPiecedShadowPartnerActionAnimation(

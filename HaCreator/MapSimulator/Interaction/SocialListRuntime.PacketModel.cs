@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _packetGuildMarkRevision;
         private int _packetGuildPointsAndLevelRevision;
         private int _packetGuildRosterRevision;
+        private string _packetGuildBoardAuthKey = string.Empty;
 
         private const int DefaultGuildCreateCostMesos = 1_500_000;
         private const int DefaultGuildMarkCostMesos = 5_000_000;
@@ -42,6 +43,9 @@ namespace HaCreator.MapSimulator.Interaction
             string guildMarkContext = _packetGuildMarkSelection.HasValue
                 ? $"Guild mark shared bg={_packetGuildMarkSelection.Value.MarkBackground}:{_packetGuildMarkSelection.Value.MarkBackgroundColor}, mark={_packetGuildMarkSelection.Value.Mark}:{_packetGuildMarkSelection.Value.MarkColor}, points={_packetGuildPoints}"
                 : "Guild mark awaiting guild-result emblem sync";
+            string guildBoardAuthContext = string.IsNullOrWhiteSpace(_packetGuildBoardAuthKey)
+                ? "Guild board auth key awaiting OnGuildResult(80)"
+                : "Guild board auth key packet-owned from OnGuildResult(80)";
             string guildDialogRequestContext = DescribeGuildDialogRequestStatus();
             string allianceAuthority = _packetAllianceAuthority.HasValue
                 ? $"Alliance authority packet-owned ({_packetAllianceAuthority.Value.RoleLabel}: rank={FormatOnOff(_packetAllianceAuthority.Value.CanEditRanks)}, notice={FormatOnOff(_packetAllianceAuthority.Value.CanEditNotice)})"
@@ -50,7 +54,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? "Whisper user-list location idle"
                 : $"Whisper user-list location: {_packetWhisperLocationInfo}";
 
-            return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, guildUiContext, guildRankingContext, guildMarkContext, guildDialogRequestContext, allianceAuthority, whisperLocationInfo }));
+            return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, guildUiContext, guildRankingContext, guildMarkContext, guildBoardAuthContext, guildDialogRequestContext, allianceAuthority, whisperLocationInfo }));
         }
 
         internal string DescribeGuildDialogRequestStatus()
@@ -456,6 +460,17 @@ namespace HaCreator.MapSimulator.Interaction
                 $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) refreshed guild points={_packetGuildPoints}, level={_packetGuildLevel}.";
             TryFinalizePendingGuildDialogRequestFromPacket();
             return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.PointsAndLevel}) refreshed guild {guildId} to Lv. {_packetGuildLevel} with {_packetGuildPoints} point(s).";
+        }
+
+        internal string SetPacketGuildBoardAuthKey(string authKey)
+        {
+            _packetGuildBoardAuthKey = authKey?.Trim() ?? string.Empty;
+            _packetOwnedRosterByTab[SocialListTab.Guild] = true;
+            _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
+                string.IsNullOrWhiteSpace(_packetGuildBoardAuthKey)
+                    ? $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildBoardAuthKey}) cleared the guild-board auth key."
+                    : $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildBoardAuthKey}) refreshed the guild-board auth key.";
+            return _lastPacketSyncSummaryByTab[SocialListTab.Guild];
         }
 
         internal string SubmitLocalGuildMarkSelection(GuildMarkSelection selection)

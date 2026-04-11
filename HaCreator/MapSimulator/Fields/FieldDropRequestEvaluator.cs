@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
+using System.Globalization;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -28,6 +29,46 @@ namespace HaCreator.MapSimulator.Fields
             return inventoryType != InventoryType.EQUIP
                 && maxStackSize > 1
                 && stackQuantity > 1;
+        }
+
+        public static int ResolveDropPromptQuantityText(string text, int maximum)
+        {
+            return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int amount) && amount > 0
+                ? Math.Clamp(amount, 1, Math.Max(1, maximum))
+                : 1;
+        }
+
+        public static bool TryAppendDropPromptQuantityDigit(
+            string currentText,
+            char digit,
+            int maximum,
+            out string normalizedText,
+            out int normalizedQuantity)
+        {
+            normalizedText = currentText ?? string.Empty;
+            normalizedQuantity = ResolveDropPromptQuantityText(normalizedText, maximum);
+
+            if (!char.IsDigit(digit))
+            {
+                return false;
+            }
+
+            string candidate = normalizedText + digit;
+            if (!long.TryParse(candidate, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsedAmount))
+            {
+                return false;
+            }
+
+            if (parsedAmount <= 0)
+            {
+                normalizedText = string.Empty;
+                normalizedQuantity = 1;
+                return true;
+            }
+
+            normalizedQuantity = (int)Math.Min(parsedAmount, Math.Max(1, maximum));
+            normalizedText = normalizedQuantity.ToString(CultureInfo.InvariantCulture);
+            return true;
         }
 
         public static bool TryResolveLocalItemDropRequest(

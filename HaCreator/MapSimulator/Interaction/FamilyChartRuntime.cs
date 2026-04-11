@@ -391,6 +391,28 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Family authority now follows the {resolvedProfile} profile ({authorityState.SourceLabel}).";
         }
 
+        internal string SetAuthorityProfileFromPacket(IReadOnlyList<string> tokens)
+        {
+            if (tokens == null || tokens.Count == 0)
+            {
+                return SetAuthorityProfileFromPacket("local");
+            }
+
+            string profile = tokens[0];
+            if (!IsCustomAuthorityProfile(profile))
+            {
+                return SetAuthorityProfileFromPacket(profile);
+            }
+
+            if (!TryParseAuthorityFlags(tokens.Skip(1), out FamilyAuthorityState authorityState, out string error))
+            {
+                return error;
+            }
+
+            _authorityState = authorityState;
+            return $"Family authority now follows custom packet flags ({authorityState.SourceLabel}).";
+        }
+
         internal bool TryApplyClientPacketPayload(int opcode, byte[] payload, out string message)
         {
             message = string.Empty;
@@ -1944,6 +1966,125 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private static bool IsCustomAuthorityProfile(string profile)
+        {
+            string normalized = (profile ?? string.Empty).Trim().ToLowerInvariant();
+            return normalized is "flags" or "custom" or "mask";
+        }
+
+        private static bool TryParseAuthorityFlags(
+            IEnumerable<string> tokens,
+            out FamilyAuthorityState authorityState,
+            out string error)
+        {
+            bool canEditPrecept = false;
+            bool canRegisterJunior = false;
+            bool canRemoveMembers = false;
+            bool canUsePrivileges = false;
+            bool canResolveCrossMapPrivileges = false;
+            bool hasAnyFlag = false;
+
+            foreach (string token in tokens ?? Array.Empty<string>())
+            {
+                string normalizedToken = (token ?? string.Empty).Trim();
+                if (normalizedToken.Length == 0)
+                {
+                    continue;
+                }
+
+                int separator = normalizedToken.IndexOf('=');
+                if (separator <= 0 || separator == normalizedToken.Length - 1)
+                {
+                    authorityState = null;
+                    error = "Usage: /family packet authority flags precept=<0|1> junior=<0|1> remove=<0|1> privilege=<0|1> crossmap=<0|1>";
+                    return false;
+                }
+
+                string key = normalizedToken[..separator].Trim().ToLowerInvariant();
+                string valueText = normalizedToken[(separator + 1)..].Trim();
+                if (!TryParseAuthorityFlagValue(valueText, out bool value))
+                {
+                    authorityState = null;
+                    error = $"Family authority flag `{key}` must be 0/1, true/false, yes/no, or on/off.";
+                    return false;
+                }
+
+                hasAnyFlag = true;
+                switch (key)
+                {
+                    case "precept":
+                    case "editprecept":
+                    case "edit":
+                        canEditPrecept = value;
+                        break;
+                    case "junior":
+                    case "registerjunior":
+                    case "register":
+                        canRegisterJunior = value;
+                        break;
+                    case "remove":
+                    case "removemembers":
+                    case "bye":
+                        canRemoveMembers = value;
+                        break;
+                    case "privilege":
+                    case "privileges":
+                    case "useprivileges":
+                        canUsePrivileges = value;
+                        break;
+                    case "crossmap":
+                    case "crossmapprivileges":
+                    case "transfer":
+                        canResolveCrossMapPrivileges = value;
+                        break;
+                    default:
+                        authorityState = null;
+                        error = $"Family authority flag `{key}` is not recognized.";
+                        return false;
+                }
+            }
+
+            if (!hasAnyFlag)
+            {
+                authorityState = null;
+                error = "Usage: /family packet authority flags precept=<0|1> junior=<0|1> remove=<0|1> privilege=<0|1> crossmap=<0|1>";
+                return false;
+            }
+
+            authorityState = FamilyAuthorityState.CreateCustomPacket(
+                canEditPrecept,
+                canRegisterJunior,
+                canRemoveMembers,
+                canUsePrivileges,
+                canResolveCrossMapPrivileges);
+            error = string.Empty;
+            return true;
+        }
+
+        private static bool TryParseAuthorityFlagValue(string valueText, out bool value)
+        {
+            switch ((valueText ?? string.Empty).Trim().ToLowerInvariant())
+            {
+                case "1":
+                case "true":
+                case "yes":
+                case "on":
+                case "enabled":
+                    value = true;
+                    return true;
+                case "0":
+                case "false":
+                case "no":
+                case "off":
+                case "disabled":
+                    value = false;
+                    return true;
+                default:
+                    value = false;
+                    return false;
+            }
+        }
+
         private sealed class FamilyMemberState
         {
             public FamilyMemberState(
@@ -2104,6 +2245,19 @@ namespace HaCreator.MapSimulator.Interaction
                 canRemoveMembers: true,
                 canUsePrivileges: false,
                 canResolveCrossMapPrivileges: false);
+
+            public static FamilyAuthorityState CreateCustomPacket(
+                bool canEditPrecept,
+                bool canRegisterJunior,
+                bool canRemoveMembers,
+                bool canUsePrivileges,
+                bool canResolveCrossMapPrivileges) => new(
+                    $"packet custom flags precept={(canEditPrecept ? 1 : 0)}, junior={(canRegisterJunior ? 1 : 0)}, remove={(canRemoveMembers ? 1 : 0)}, privilege={(canUsePrivileges ? 1 : 0)}, crossmap={(canResolveCrossMapPrivileges ? 1 : 0)}",
+                    canEditPrecept,
+                    canRegisterJunior,
+                    canRemoveMembers,
+                    canUsePrivileges,
+                    canResolveCrossMapPrivileges);
         }
 
         private readonly record struct FamilyRecruitSeed(

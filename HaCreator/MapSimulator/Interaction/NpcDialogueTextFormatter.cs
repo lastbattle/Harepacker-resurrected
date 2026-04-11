@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex ItemNameRegex = new(@"#t(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MalformedItemNameRegex = new(@"#(?<id>\d{7,8}):?#", RegexOptions.Compiled);
         private static readonly Regex MobNameRegex = new(@"#o(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestRecordOrNameRegex = new(@"#Q(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex QuestNameRegex = new(@"#q(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CurrentQuestNameRegex = new(@"#q#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestReferenceNameRegex = new(@"#y(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -83,6 +84,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = MobNameRegex.Replace(formatted, static match => ResolveMobName(match.Groups[1].Value));
             formatted = ItemNameAliasRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
             formatted = MalformedItemNameRegex.Replace(formatted, static match => ResolveItemName(match.Groups["id"].Value));
+            formatted = QuestRecordOrNameRegex.Replace(formatted, match => ResolveQuestRecordOrNameText(match.Groups[1].Value, context));
             formatted = QuestNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
             formatted = CurrentQuestNameRegex.Replace(formatted, match => ResolveActiveQuestNameText(context));
             formatted = QuestReferenceNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
@@ -715,6 +717,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "0";
+        }
+
+        private static string ResolveQuestRecordOrNameText(string questIdText, NpcDialogueFormattingContext context)
+        {
+            string recordText = ResolveQuestRecordText(questIdText, context);
+            return string.IsNullOrWhiteSpace(recordText) || string.Equals(recordText, "0", StringComparison.Ordinal)
+                ? ResolveQuestName(questIdText)
+                : recordText;
         }
 
         private static string ResolveActiveQuestRecordText(NpcDialogueFormattingContext context)

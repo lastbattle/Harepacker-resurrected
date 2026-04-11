@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex UiCanvasRegex = new(@"#(?:f|F)([^#]+)#", RegexOptions.Compiled);
+        private static readonly Regex StandaloneColorBlockRegex = new(@"#c(?!\d)(?<text>[^#]*)#", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex RewardCategoryRegex = new(@"#W(?<category>[^#\s]*)#", RegexOptions.Compiled);
         private static readonly Regex FontNameRegex = new(@"#fn[^#]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex FontSizeRegex = new(@"#fs-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -94,6 +95,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = QuestValueRegex.Replace(formatted, static match => ResolveQuestValueText(match.Groups[1].Value));
             formatted = ItemIconRegex.Replace(formatted, static match => BuildItemIconMarker(match.Groups[1].Value));
             formatted = UiCanvasRegex.Replace(formatted, static match => BuildUiCanvasMarker(match.Groups[1].Value));
+            formatted = StandaloneColorBlockRegex.Replace(formatted, static match => match.Groups["text"].Value);
             formatted = RewardCategoryRegex.Replace(formatted, static match => ResolveRewardCategoryMarker(match.Groups["category"].Value));
             formatted = FontNameRegex.Replace(formatted, static match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontName, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));
             formatted = FontSizeRegex.Replace(formatted, static match => BuildFontControlMarker(PacketOwnedBalloonFontControlKind.FontSize, match.Value.Length > 3 ? match.Value[3..^1] : string.Empty));

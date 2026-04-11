@@ -4012,6 +4012,16 @@ namespace HaCreator.MapSimulator.UI
         private static HashSet<EquipSlot> ResolveTargetSlotsFromItemMetadata(string itemName, string description)
         {
             string normalizedName = itemName ?? string.Empty;
+            string normalizedDescription = description ?? string.Empty;
+            if (ContainsPreciseDescriptionTargetFamily(normalizedDescription))
+            {
+                HashSet<EquipSlot> descriptionSlots = ResolveTargetSlotsFromText(normalizedDescription);
+                if (descriptionSlots.Count > 0)
+                {
+                    return descriptionSlots;
+                }
+            }
+
             Match nameMatch = ScrollTargetRegex.Match(normalizedName);
             HashSet<EquipSlot> nameSlots = nameMatch.Success
                 ? ResolveTargetSlotsFromText(nameMatch.Groups[1].Value)
@@ -4022,6 +4032,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return ResolveTargetSlotsFromText(description);
+        }
+
+        private static bool ContainsPreciseDescriptionTargetFamily(string description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+            {
+                return false;
+            }
+
+            return AccessorySubsetRegex.IsMatch(description) ||
+                   ContainsAny(description, "overall armor", "body armor");
         }
 
         private static string ResolveTargetFamilyLabelFromItemMetadata(string itemName, string description)
@@ -4257,6 +4278,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (normalized.IndexOf("top", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("topwear", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 normalized.IndexOf("coat", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 normalized.IndexOf("upper garment", StringComparison.OrdinalIgnoreCase) >= 0)
             {
@@ -4264,6 +4286,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (normalized.IndexOf("bottom", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("bottomwear", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 normalized.IndexOf("pants", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 normalized.IndexOf("under garment", StringComparison.OrdinalIgnoreCase) >= 0)
             {
@@ -4406,13 +4429,13 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (ContainsAny(normalized, "tops", "top", "coats", "coat", "upper garment", "upper garments"))
+            if (ContainsAny(normalized, "tops", "top", "topwear", "coats", "coat", "upper garment", "upper garments"))
             {
                 label = "tops";
                 return true;
             }
 
-            if (ContainsAny(normalized, "bottoms", "bottom", "pants", "under garment", "under garments"))
+            if (ContainsAny(normalized, "bottoms", "bottom", "bottomwear", "pants", "under garment", "under garments"))
             {
                 label = "bottoms";
                 return true;

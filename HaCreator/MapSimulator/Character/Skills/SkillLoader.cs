@@ -1045,6 +1045,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (hitNode != null)
             {
                 skill.HitEffect = LoadSkillAnimation(hitNode, "hit");
+                skill.TargetHitEffects = LoadIndexedSkillAnimations(hitNode, "hit");
             }
 
             // Load affected (buff visual)
@@ -2103,6 +2104,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             return animation;
         }
 
+        private List<SkillAnimation> LoadIndexedSkillAnimations(WzImageProperty rootNode, string baseName)
+        {
+            var animations = new List<SkillAnimation>();
+            if (rootNode == null)
+            {
+                return animations;
+            }
+
+            foreach (WzImageProperty child in rootNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out int index) || index < 0)
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadSkillAnimation(child, $"{baseName}/{child.Name}");
+                if (animation.Frames.Count <= 0)
+                {
+                    continue;
+                }
+
+                while (animations.Count <= index)
+                {
+                    animations.Add(null);
+                }
+
+                animations[index] = animation;
+            }
+
+            return animations;
+        }
+
         private void LoadShadowPartnerActionAnimations(SkillData skill, WzImageProperty skillNode)
         {
             if (!IsShadowPartnerSkill(skill, skillNode))
@@ -2596,7 +2629,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (!TryParseShadowPartnerClientActionPieces(actionNode, out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> parsedPieces))
+            if (!TryParseShadowPartnerClientActionPieces(actionName, actionNode, out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> parsedPieces))
             {
                 _missingShadowPartnerClientActionPieceKeys.Add(actionName);
                 return false;
@@ -2611,15 +2644,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             WzImageProperty actionNode,
             out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan)
         {
+            return TryParseShadowPartnerClientActionPieces(null, actionNode, out piecePlan);
+        }
+
+        internal static bool TryParseShadowPartnerClientActionPieces(
+            string actionName,
+            WzImageProperty actionNode,
+            out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan)
+        {
             piecePlan = null;
-            if (actionNode?.WzProperties == null || actionNode.WzProperties.Count == 0)
+            WzImageProperty pieceOwnerNode = ShadowPartnerClientActionResolver.ResolveClientActionManInitPieceOwnerNode(
+                actionName,
+                actionNode);
+            if (pieceOwnerNode?.WzProperties == null || pieceOwnerNode.WzProperties.Count == 0)
             {
                 return false;
             }
 
-            var pieces = new List<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece>(actionNode.WzProperties.Count);
+            var pieces = new List<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece>(pieceOwnerNode.WzProperties.Count);
             int fallbackSlotIndex = 0;
-            foreach (WzImageProperty pieceNode in EnumerateShadowPartnerClientActionPieceNodesInClientOrder(actionNode))
+            foreach (WzImageProperty pieceNode in EnumerateShadowPartnerClientActionPieceNodesInClientOrder(pieceOwnerNode))
             {
                 if (pieceNode == null)
                 {
@@ -2636,7 +2680,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ResolveShadowPartnerClientActionPieceSlotIndex(pieceNode.Name, fallbackSlotIndex++),
                     pieceActionName,
                     GetInt(pieceNode, "frame"),
-                    pieceNode["delay"] != null ? GetInt(pieceNode, "delay") : null,
+                    pieceNode["delay"] != null ? GetInt(pieceNode, "delay") : ShadowPartnerClientActionResolver.ClientActionManInitDefaultPieceDelayMs,
                     GetInt(pieceNode, "flip") != 0,
                     GetVector(pieceNode, "move"),
                     GetInt(pieceNode, "rotate")));
@@ -2896,8 +2940,33 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Get z-order
             animation.ZOrder = GetInt(node, "z");
             animation.PositionCode = node["pos"] != null ? GetInt(node, "pos") : null;
+            if (GetInt(node, "flip") != 0)
+            {
+                ApplyBranchFlipToAnimationFrames(animation);
+            }
 
             return animation;
+        }
+
+        private static void ApplyBranchFlipToAnimationFrames(SkillAnimation animation)
+        {
+            if (animation?.Frames == null)
+            {
+                return;
+            }
+
+            foreach (SkillFrame frame in animation.Frames)
+            {
+                if (frame != null)
+                {
+                    frame.Flip = !frame.Flip;
+                }
+            }
+        }
+
+        internal static void ApplyBranchFlipToAnimationFramesForTesting(SkillAnimation animation)
+        {
+            ApplyBranchFlipToAnimationFrames(animation);
         }
 
         private ZoneEffectData LoadZoneEffect(WzImageProperty tileNode, WzImageProperty skillNode)
@@ -4963,6 +5032,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            foreach (int linkedSkillId in EnumerateClientSummonedUolLinkedSkillIds(normalizedPath))
+            {
+                if (TryGetSkillNode(linkedSkillId, out WzImageProperty linkedSkillNode)
+                    && !ReferenceEquals(linkedSkillNode, rootSkillNode)
+                    && TryResolveSummonSourcePropertyFromSkillNode(linkedSkillNode, out summonNode))
+                {
+                    return true;
+                }
+            }
+
             return TryResolveVisibleSummonSourcePropertyFromClientSummonedUolPath(normalizedPath, out summonNode);
         }
 
@@ -5114,6 +5193,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return TryParseClientSummonedUolRootSkillId(NormalizeClientSummonedUolPath(summonedUolPath), out skillId);
         }
 
+        internal static IEnumerable<int> EnumerateClientSummonedUolLinkedSkillIdsForTest(string summonedUolPath)
+        {
+            return EnumerateClientSummonedUolLinkedSkillIds(NormalizeClientSummonedUolPath(summonedUolPath));
+        }
+
         internal static bool TryParseNormalizedSkillAnimationPathForTest(
             string normalizedSkillAssetPath,
             out string imageName,
@@ -5143,7 +5227,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             const string skillArchivePrefix = "Skill.wz/";
             if (normalizedPath.StartsWith(skillArchivePrefix, StringComparison.OrdinalIgnoreCase))
             {
-                normalizedPath = $"Skill/{normalizedPath[skillArchivePrefix.Length..]}";
+                normalizedPath = normalizedPath[skillArchivePrefix.Length..].TrimStart('/');
+                if (!normalizedPath.StartsWith("Skill/", StringComparison.OrdinalIgnoreCase))
+                {
+                    normalizedPath = $"Skill/{normalizedPath}";
+                }
             }
 
             normalizedPath = normalizedPath.TrimStart('/');
@@ -5255,6 +5343,47 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             skillId = 0;
             return false;
+        }
+
+        private static IEnumerable<int> EnumerateClientSummonedUolLinkedSkillIds(string normalizedPath)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                yield break;
+            }
+
+            string[] parts = normalizedPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 4
+                || !parts[0].Equals("Skill", StringComparison.OrdinalIgnoreCase))
+            {
+                yield break;
+            }
+
+            var yieldedSkillIds = new HashSet<int>();
+            if (TryParseClientSummonedUolRootSkillId(normalizedPath, out int rootSkillId))
+            {
+                yieldedSkillIds.Add(rootSkillId);
+            }
+
+            for (int i = 3; i < parts.Length; i++)
+            {
+                if (!IsClientSummonedUolLinkedSkillIdSegment(parts[i - 1])
+                    || !TryParseRequiredSkillId(parts[i], out int linkedSkillId)
+                    || !yieldedSkillIds.Add(linkedSkillId))
+                {
+                    continue;
+                }
+
+                yield return linkedSkillId;
+            }
+        }
+
+        private static bool IsClientSummonedUolLinkedSkillIdSegment(string previousSegment)
+        {
+            return previousSegment != null
+                   && (previousSegment.Equals("req", StringComparison.OrdinalIgnoreCase)
+                       || previousSegment.Equals("psdSkill", StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool TryParseNormalizedSkillAnimationPath(
@@ -6079,7 +6208,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .GroupBy(static skill => skill.SkillId)
                 .ToDictionary(static group => group.Key, static group => group.First());
             SkillData[] swallowRoots = skillsById.Values
-                .Where(IsExplicitSwallowFamilyRoot)
+                .Where(skill => IsExplicitSwallowFamilyRoot(skill, skillsById))
                 .ToArray();
             HashSet<int> swallowSkillIds = new(swallowRoots.Select(static skill => skill.SkillId));
 
@@ -6106,7 +6235,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        private static bool IsExplicitSwallowFamilyRoot(SkillData skill)
+        private static bool IsExplicitSwallowFamilyRoot(
+            SkillData skill,
+            IReadOnlyDictionary<int, SkillData> skillsById)
         {
             if (skill == null
                 || skill.DummySkillParents == null
@@ -6115,7 +6246,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (!skill.IsSwallowSkill)
+            if (!LinksAuthoredSwallowDummySkill(skill, skillsById))
             {
                 return false;
             }
@@ -6123,6 +6254,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (string actionName in EnumerateSwallowFamilyActionNames(skill))
             {
                 if (IsSwallowFamilyActionName(actionName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool LinksAuthoredSwallowDummySkill(
+            SkillData skill,
+            IReadOnlyDictionary<int, SkillData> skillsById)
+        {
+            if (skill?.DummySkillParents == null || skillsById == null)
+            {
+                return false;
+            }
+
+            foreach (int linkedSkillId in skill.DummySkillParents)
+            {
+                if (linkedSkillId > 0
+                    && skillsById.TryGetValue(linkedSkillId, out SkillData linkedSkill)
+                    && linkedSkill?.IsSwallowSkill == true)
                 {
                     return true;
                 }
@@ -6883,19 +7036,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                 requirePercentSuffix: null,
                 placeholders,
                 "critical rate",
-                "critical chance");
+                "critical hit rate",
+                "critical chance",
+                "crit rate",
+                "crit chance");
             levelData.MaxHPPercent = ApplyDescriptionBackedLabelAliases(
                 levelData.MaxHPPercent,
                 normalizedSurface,
                 requirePercentSuffix: true,
                 placeholders,
-                "max hp");
+                "max hp",
+                "maxhp",
+                "maximum hp",
+                "maximum health");
             levelData.MaxMPPercent = ApplyDescriptionBackedLabelAliases(
                 levelData.MaxMPPercent,
                 normalizedSurface,
                 requirePercentSuffix: true,
                 placeholders,
-                "max mp");
+                "max mp",
+                "maxmp",
+                "maximum mp",
+                "maximum mana");
             levelData.DefensePercent = ApplyDescriptionBackedLabelAliases(
                 levelData.DefensePercent,
                 normalizedSurface,
@@ -6905,6 +7067,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 "weapon defense",
                 "physical def",
                 "physical defense");
+            levelData.DefensePercent = ApplyDescriptionBackedAliasValue(
+                levelData.DefensePercent,
+                zValue,
+                PlaceholderMatchesGenericDefenseHint(normalizedSurface, "#z", requirePercentSuffix: true));
             levelData.MagicDefensePercent = ApplyDescriptionBackedLabelAliases(
                 levelData.MagicDefensePercent,
                 normalizedSurface,
@@ -7082,6 +7248,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                                   && !context.Contains("magic attack", StringComparison.Ordinal)
                                   && !context.Contains("battle mode att", StringComparison.Ordinal)
                                   && !context.Contains("enemy att", StringComparison.Ordinal));
+        }
+
+        private static bool PlaceholderMatchesGenericDefenseHint(
+            string normalizedSurface,
+            string placeholderToken,
+            bool requirePercentSuffix)
+        {
+            return PlaceholderMatchesGenericHint(
+                normalizedSurface,
+                placeholderToken,
+                requirePercentSuffix,
+                static context => (context.Contains("def", StringComparison.Ordinal)
+                                   || context.Contains("defense", StringComparison.Ordinal))
+                                  && !context.Contains("weapon def", StringComparison.Ordinal)
+                                  && !context.Contains("weapon defense", StringComparison.Ordinal)
+                                  && !context.Contains("magic def", StringComparison.Ordinal)
+                                  && !context.Contains("magic defense", StringComparison.Ordinal)
+                                  && !context.Contains("battle mode def", StringComparison.Ordinal)
+                                  && !context.Contains("enemy def", StringComparison.Ordinal));
         }
 
         private static bool PlaceholderMatchesGenericSpeedHint(string normalizedSurface, string placeholderToken)

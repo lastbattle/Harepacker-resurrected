@@ -26,6 +26,7 @@ namespace HaCreator.MapSimulator
         private string _lastRankingLaunchSource = string.Empty;
         private int _lastEventOpenTick = int.MinValue;
         private string _lastEventLaunchSource = string.Empty;
+        private bool _eventAlarmOwnerAutoShowConsumed;
 
         private void RecordProgressionUtilityOwnerLaunch(string windowName, string source)
         {
@@ -68,10 +69,18 @@ namespace HaCreator.MapSimulator
 
         private void TryAutoShowEventAlarmOwner(string source)
         {
-            TryShowRecordedProgressionUtilityWindow(
+            if (_eventAlarmOwnerAutoShowConsumed)
+            {
+                return;
+            }
+
+            if (TryShowRecordedProgressionUtilityWindow(
                 MapSimulatorWindowNames.Event,
                 source,
-                allowVisibleReset: false);
+                allowVisibleReset: false))
+            {
+                _eventAlarmOwnerAutoShowConsumed = true;
+            }
         }
 
         private void NotifyEventAlarmOwnerActivity(string source)

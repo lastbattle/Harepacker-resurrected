@@ -657,13 +657,30 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static Rectangle ResolveSitdownHealingAttemptRange(SkillData skill, bool facingRight)
         {
+            return TryResolveSitdownHealingAttemptRange(skill, facingRight, out Rectangle range)
+                ? range
+                : Rectangle.Empty;
+        }
+
+        internal static bool TryResolveSitdownHealingAttemptRange(
+            SkillData skill,
+            bool facingRight,
+            out Rectangle range)
+        {
+            range = Rectangle.Empty;
             if (!IsSitdownHealingSupportSummon(skill))
             {
-                return Rectangle.Empty;
+                return false;
             }
 
             string healBranchName = ResolveSupportOwnedBranch(skill, preferHealFirst: true);
-            return ResolveSupportOwnedRange(skill, facingRight, healBranchName);
+            if (string.IsNullOrWhiteSpace(healBranchName))
+            {
+                return false;
+            }
+
+            return skill.TryGetSummonAttackRange(facingRight, healBranchName, out range)
+                   && !range.IsEmpty;
         }
 
         internal static Rectangle ResolveSupportOwnedExpiryRange(

@@ -1323,16 +1323,37 @@ namespace HaCreator.MapSimulator
             }
 
             _whisperCandidates.RemoveAt(removedIndex);
+            ResetWhisperTargetPickerAfterClientComboDelete();
+            return true;
+        }
+
+        internal bool DeleteWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(int clientRowIndex)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen
+                || _whisperCandidates.Count == 0)
+            {
+                return false;
+            }
+
+            int removedIndex = Math.Clamp(clientRowIndex, 0, _whisperCandidates.Count - 1);
+            _whisperCandidates.RemoveAt(removedIndex);
+            ResetWhisperTargetPickerAfterClientComboDelete();
+            return true;
+        }
+
+        private void ResetWhisperTargetPickerAfterClientComboDelete()
+        {
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
             if (_whisperCandidates.Count == 0)
             {
                 _whisperTargetPickerSelectionIndex = -1;
                 _isWhisperTargetPickerComboDropdownOpen = false;
-                return true;
+                return;
             }
 
             _whisperTargetPickerSelectionIndex = 0;
-            return true;
         }
 
         internal void PageWhisperTargetPickerSelection(int deltaPages)

@@ -609,82 +609,13 @@ namespace HaCreator.MapSimulator.Fields
             }
             WzBinaryProperty sound =
                 WzInfoTools.GetRealProperty(global::HaCreator.Program.FindImage("Sound", "MiniGame.img")?["Show"]) as WzBinaryProperty
-                ?? WzInfoTools.GetRealProperty(global::HaCreator.Program.FindImage("Sound", "MiniGame.img")?["Win"]) as WzBinaryProperty
-                ?? FindBestAriantResultSound(
-                    global::HaCreator.Program.FindImage("Sound", "MiniGame.img"),
-                    global::HaCreator.Program.FindImage("Sound", "Game.img"));
+                ?? WzInfoTools.GetRealProperty(global::HaCreator.Program.FindImage("Sound", "MiniGame.img")?["Win"]) as WzBinaryProperty;
             if (sound == null)
             {
                 return;
             }
             _resultSoundKey = "AriantArena:Result";
             _soundManager.RegisterSound(_resultSoundKey, sound);
-        }
-        private static WzBinaryProperty FindBestAriantResultSound(params WzImage[] sources)
-        {
-            WzBinaryProperty best = null;
-            int bestScore = 0;
-            foreach (WzImage source in sources)
-            {
-                if (source?.WzProperties == null)
-                {
-                    continue;
-                }
-                foreach (WzImageProperty child in source.WzProperties)
-                {
-                    FindBestAriantResultSoundRecursive(child, child?.Name ?? string.Empty, ref best, ref bestScore);
-                }
-            }
-            return best;
-        }
-        private static void FindBestAriantResultSoundRecursive(
-            WzImageProperty property,
-            string path,
-            ref WzBinaryProperty best,
-            ref int bestScore)
-        {
-            if (property == null)
-            {
-                return;
-            }
-            WzImageProperty resolved = WzInfoTools.GetRealProperty(property);
-            string currentPath = string.IsNullOrWhiteSpace(path)
-                ? property.Name ?? string.Empty
-                : path;
-            string lowerPath = currentPath.ToLowerInvariant();
-            if (resolved is WzBinaryProperty binary)
-            {
-                int score = 0;
-                if (lowerPath.Contains("ariant"))
-                {
-                    score += 8;
-                }
-                if (lowerPath.Contains("result") || lowerPath.Contains("clear"))
-                {
-                    score += 4;
-                }
-                if (lowerPath.Contains("win"))
-                {
-                    score += 2;
-                }
-                if (score > bestScore)
-                {
-                    best = binary;
-                    bestScore = score;
-                }
-                return;
-            }
-            if (resolved?.WzProperties == null)
-            {
-                return;
-            }
-            foreach (WzImageProperty child in resolved.WzProperties)
-            {
-                string childPath = string.IsNullOrWhiteSpace(currentPath)
-                    ? child?.Name ?? string.Empty
-                    : $"{currentPath}/{child?.Name}";
-                FindBestAriantResultSoundRecursive(child, childPath, ref best, ref bestScore);
-            }
         }
         private static IEnumerable<AriantArenaScoreUpdate> DecodeUserScorePacket(byte[] payload)
         {

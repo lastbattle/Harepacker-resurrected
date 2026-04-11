@@ -87,6 +87,10 @@ namespace HaCreator.MapSimulator
                 layout.NextBounds,
                 layout.ConfirmBounds,
                 layout.CancelBounds);
+            if (!IsPacketScriptDedicatedOwnerButtonEnabled(snapshot, _packetScriptDedicatedOwnerHoveredButton))
+            {
+                _packetScriptDedicatedOwnerHoveredButton = PacketScriptDedicatedOwnerButtonKind.None;
+            }
 
             if (layout.SelectionBounds.Contains(cursor) &&
                 snapshot.Choices.Count > 0 &&
@@ -123,13 +127,25 @@ namespace HaCreator.MapSimulator
             switch (confirmedButton)
             {
                 case PacketScriptDedicatedOwnerButtonKind.Prev:
-                    _packetScriptDedicatedOwnerRuntime.MoveSelection(-1);
+                    if (IsPacketScriptDedicatedOwnerButtonEnabled(snapshot, confirmedButton))
+                    {
+                        _packetScriptDedicatedOwnerRuntime.MoveSelection(-1);
+                    }
+
                     return true;
                 case PacketScriptDedicatedOwnerButtonKind.Next:
-                    _packetScriptDedicatedOwnerRuntime.MoveSelection(1);
+                    if (IsPacketScriptDedicatedOwnerButtonEnabled(snapshot, confirmedButton))
+                    {
+                        _packetScriptDedicatedOwnerRuntime.MoveSelection(1);
+                    }
+
                     return true;
                 case PacketScriptDedicatedOwnerButtonKind.Confirm:
-                    SubmitPacketScriptDedicatedOwnerSelection(confirm: true, showFeedback: true);
+                    if (IsPacketScriptDedicatedOwnerButtonEnabled(snapshot, confirmedButton))
+                    {
+                        SubmitPacketScriptDedicatedOwnerSelection(confirm: true, showFeedback: true);
+                    }
+
                     return true;
                 case PacketScriptDedicatedOwnerButtonKind.Cancel:
                     SubmitPacketScriptDedicatedOwnerSelection(confirm: false, showFeedback: true);
@@ -154,21 +170,33 @@ namespace HaCreator.MapSimulator
 
             if (newKeyboardState.IsKeyDown(Keys.Enter) && oldKeyboardState.IsKeyUp(Keys.Enter))
             {
-                SubmitPacketScriptDedicatedOwnerSelection(confirm: true, showFeedback: true);
+                if (IsPacketScriptDedicatedOwnerButtonEnabled(snapshot, PacketScriptDedicatedOwnerButtonKind.Confirm))
+                {
+                    SubmitPacketScriptDedicatedOwnerSelection(confirm: true, showFeedback: true);
+                }
+
                 return true;
             }
 
             if ((newKeyboardState.IsKeyDown(Keys.Left) && oldKeyboardState.IsKeyUp(Keys.Left)) ||
                 (newKeyboardState.IsKeyDown(Keys.Up) && oldKeyboardState.IsKeyUp(Keys.Up)))
             {
-                _packetScriptDedicatedOwnerRuntime.MoveSelection(-1);
+                if (IsPacketScriptDedicatedOwnerButtonEnabled(snapshot, PacketScriptDedicatedOwnerButtonKind.Prev))
+                {
+                    _packetScriptDedicatedOwnerRuntime.MoveSelection(-1);
+                }
+
                 return true;
             }
 
             if ((newKeyboardState.IsKeyDown(Keys.Right) && oldKeyboardState.IsKeyUp(Keys.Right)) ||
                 (newKeyboardState.IsKeyDown(Keys.Down) && oldKeyboardState.IsKeyUp(Keys.Down)))
             {
-                _packetScriptDedicatedOwnerRuntime.MoveSelection(1);
+                if (IsPacketScriptDedicatedOwnerButtonEnabled(snapshot, PacketScriptDedicatedOwnerButtonKind.Next))
+                {
+                    _packetScriptDedicatedOwnerRuntime.MoveSelection(1);
+                }
+
                 return true;
             }
 
@@ -252,27 +280,27 @@ namespace HaCreator.MapSimulator
                 case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.AvatarSelection:
                 case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.MembershopAvatarSelection:
                     DrawPacketScriptAvatarSelectionOwner(ownerBounds, layout.SelectionBounds);
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptAvatarPrevButtonVisuals, layout.PrevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptAvatarNextButtonVisuals, layout.NextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptAvatarOkButtonVisuals, layout.ConfirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "OK");
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptAvatarCancelButtonVisuals, layout.CancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptAvatarPrevButtonVisuals, layout.PrevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptAvatarNextButtonVisuals, layout.NextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptAvatarOkButtonVisuals, layout.ConfirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "OK");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptAvatarCancelButtonVisuals, layout.CancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
                     break;
 
                 case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.SlideMenu:
                     DrawPacketScriptSlideMenuOwner(snapshot, ownerBounds, layout.SelectionBounds, currentTickCount);
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptSlideMenuLeftButtonVisuals, layout.PrevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptSlideMenuRightButtonVisuals, layout.NextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptSlideMenuMoveButtonVisuals, layout.ConfirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "Move");
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptSlideMenuCancelButtonVisuals, layout.CancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptSlideMenuLeftButtonVisuals, layout.PrevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptSlideMenuRightButtonVisuals, layout.NextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptSlideMenuMoveButtonVisuals, layout.ConfirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "Move");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptSlideMenuCancelButtonVisuals, layout.CancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
                     break;
 
                 case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.MultiPetSelection:
                 case PacketScriptMessageRuntime.PacketScriptDedicatedOwnerKind.PetSelection:
                     DrawPacketScriptPetSelectionOwner(snapshot, ownerBounds, layout.SelectionBounds);
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptPetPrevButtonVisuals, layout.PrevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptPetNextButtonVisuals, layout.NextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptPetOkButtonVisuals, layout.ConfirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "OK");
-                    DrawPacketScriptDedicatedOwnerButton(ownerBounds, _packetScriptPetCancelButtonVisuals, layout.CancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptPetPrevButtonVisuals, layout.PrevBounds, PacketScriptDedicatedOwnerButtonKind.Prev, "Prev");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptPetNextButtonVisuals, layout.NextBounds, PacketScriptDedicatedOwnerButtonKind.Next, "Next");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptPetOkButtonVisuals, layout.ConfirmBounds, PacketScriptDedicatedOwnerButtonKind.Confirm, "OK");
+                    DrawPacketScriptDedicatedOwnerButton(snapshot, ownerBounds, _packetScriptPetCancelButtonVisuals, layout.CancelBounds, PacketScriptDedicatedOwnerButtonKind.Cancel, "Cancel");
                     break;
             }
 
@@ -359,6 +387,7 @@ namespace HaCreator.MapSimulator
         }
 
         private void DrawPacketScriptDedicatedOwnerButton(
+            PacketScriptDedicatedOwnerSnapshot snapshot,
             Rectangle ownerBounds,
             PacketScriptButtonVisuals visuals,
             Rectangle bounds,
@@ -370,10 +399,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            bool hovered = _packetScriptDedicatedOwnerHoveredButton == buttonKind;
-            bool pressed = hovered && _packetScriptDedicatedOwnerPressedButton == buttonKind;
+            bool enabled = IsPacketScriptDedicatedOwnerButtonEnabled(snapshot, buttonKind);
+            bool hovered = enabled && _packetScriptDedicatedOwnerHoveredButton == buttonKind;
+            bool pressed = enabled && hovered && _packetScriptDedicatedOwnerPressedButton == buttonKind;
             PacketScriptOwnerButtonVisualState state = PacketScriptOwnerVisualStateResolver.ResolveButtonState(
-                enabled: true,
+                enabled,
                 hovered,
                 pressed);
             PacketScriptButtonFrame frame = visuals?.ResolveFrame(state);
@@ -391,10 +421,25 @@ namespace HaCreator.MapSimulator
             {
                 PacketScriptOwnerButtonVisualState.Pressed => new Color(132, 82, 47, 220),
                 PacketScriptOwnerButtonVisualState.Hover => new Color(176, 121, 68, 208),
+                PacketScriptOwnerButtonVisualState.Disabled => new Color(84, 65, 49, 180),
                 _ => new Color(148, 98, 56, 196)
             };
             DrawPacketScriptOwnerFrame(bounds, fill, new Color(224, 189, 124, 220));
             DrawPacketScriptOwnerWrappedText(fallbackLabel, bounds, new Color(255, 241, 205), 0.36f, maxLines: 1);
+        }
+
+        private static bool IsPacketScriptDedicatedOwnerButtonEnabled(
+            PacketScriptDedicatedOwnerSnapshot snapshot,
+            PacketScriptDedicatedOwnerButtonKind buttonKind)
+        {
+            int choiceCount = snapshot?.Choices?.Count ?? 0;
+            return buttonKind switch
+            {
+                PacketScriptDedicatedOwnerButtonKind.Prev or PacketScriptDedicatedOwnerButtonKind.Next => choiceCount > 1,
+                PacketScriptDedicatedOwnerButtonKind.Confirm => choiceCount > 0 && snapshot.SelectedChoiceIndex >= 0,
+                PacketScriptDedicatedOwnerButtonKind.Cancel => snapshot != null,
+                _ => false
+            };
         }
 
         private Rectangle ResolvePacketScriptDedicatedOwnerBounds(PacketScriptDedicatedOwnerSnapshot snapshot, int currentTickCount)

@@ -1268,6 +1268,7 @@ namespace HaCreator.MapSimulator.UI
             AppendReturnMapRecordEffectLine(effectLines, effectSpecProperty["returnMapQR"]);
             AppendRandomMoveInFieldSetEffectLine(effectLines, effectSpecProperty["randomMoveInFieldSet"]);
             AppendExperienceEffectLines(effectLines, effectSpecProperty);
+            AppendEventPointEffectLine(effectLines, effectSpecProperty["eventPoint"]);
             AppendDeathmarkEffectLine(effectLines, itemId, effectSpecProperty);
             AppendMobEffectLines(effectLines, effectSpecProperty["mob"] as WzSubProperty);
             AppendSpecExMobSkillEffectLines(effectLines, specExProperty);
@@ -1848,6 +1849,17 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendEventPointEffectLine(List<string> effectLines, WzImageProperty property)
+        {
+            int eventPoint = GetIntOrStringValue(property);
+            if (eventPoint <= 0)
+            {
+                return;
+            }
+
+            effectLines.Add($"Cookie House points +{eventPoint.ToString("N0", CultureInfo.InvariantCulture)}");
+        }
+
         private static void AppendDeathmarkEffectLine(List<string> effectLines, int itemId, WzSubProperty specProperty)
         {
             if (GetIntValue(specProperty?["deathmark"]) != 1)
@@ -1895,6 +1907,7 @@ namespace HaCreator.MapSimulator.UI
             AppendSkillBookMetadataLines(metadataLines, infoProperty);
             AppendRequiredMapMetadataLines(metadataLines, infoProperty);
             AppendTargetMobMetadataLines(metadataLines, infoProperty, specProperty);
+            AppendInfoNpcMetadataLines(metadataLines, infoProperty, specProperty);
             AppendStateChangeItemMetadataLines(metadataLines, infoProperty);
             AppendItemPeriodMetadataLines(metadataLines, infoProperty);
             AppendCashItemExtensionMetadataLines(metadataLines, infoProperty);
@@ -2049,6 +2062,23 @@ namespace HaCreator.MapSimulator.UI
             {
                 metadataLines.Add($"Linked Cash Effect: {ResolveTooltipItemLabel(stateChangeItemId)}");
             }
+        }
+
+        private static void AppendInfoNpcMetadataLines(
+            List<string> metadataLines,
+            WzSubProperty infoProperty,
+            WzSubProperty specProperty)
+        {
+            int npcId = GetIntOrStringValue(infoProperty?["npc"]);
+            if (npcId <= 0 || GetIntOrStringValue(specProperty?["npc"]) == npcId)
+            {
+                return;
+            }
+
+            string npcName = ResolveNpcName(npcId);
+            metadataLines.Add(string.IsNullOrWhiteSpace(npcName)
+                ? $"Linked NPC: #{npcId.ToString(CultureInfo.InvariantCulture)}"
+                : $"Linked NPC: {npcName}");
         }
 
         private static void AppendItemPeriodMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
@@ -2435,6 +2465,12 @@ namespace HaCreator.MapSimulator.UI
             if (requiredCurrentUpgradeCount > 0)
             {
                 metadataLines.Add($"Required Upgrade Count: {requiredCurrentUpgradeCount.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int upgradeSlotCount = GetIntOrStringValue(infoProperty["tuc"]);
+            if (upgradeSlotCount > 0)
+            {
+                metadataLines.Add($"Upgrade Slots Added: {upgradeSlotCount.ToString(CultureInfo.InvariantCulture)}");
             }
         }
 
@@ -3066,6 +3102,12 @@ namespace HaCreator.MapSimulator.UI
             if (nickSkillId > 0)
             {
                 metadataLines.Add($"Nickname Effect: {ResolveSkillTooltipLabel(nickSkillId)}");
+            }
+
+            int setItemId = GetIntOrStringValue(infoProperty["setItemID"]);
+            if (setItemId > 0)
+            {
+                metadataLines.Add($"Set Item ID: {setItemId.ToString(CultureInfo.InvariantCulture)}");
             }
 
             AppendPersonalityExperienceMetadataLines(metadataLines, infoProperty, specProperty);

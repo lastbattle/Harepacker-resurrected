@@ -209,6 +209,7 @@ namespace HaCreator.MapSimulator
                 EnsureAdminShopPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: false);
                 EnsureMessengerOfficialSessionBridgeState(shouldRun: false);
+                EnsureMapleTvOfficialSessionBridgeState(shouldRun: false);
                 EnsureExpeditionIntermediaryPacketInboxState(shouldRun: false);
                 EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: false);
                 EnsureSocialListOfficialSessionBridgeState(shouldRun: false);
@@ -338,6 +339,8 @@ namespace HaCreator.MapSimulator
             RefreshLocalUtilityOfficialSessionBridgeDiscovery(currTickCount);
             EnsureMessengerOfficialSessionBridgeState(shouldRun: true);
             RefreshMessengerOfficialSessionBridgeDiscovery(currTickCount);
+            EnsureMapleTvOfficialSessionBridgeState(shouldRun: true);
+            RefreshMapleTvOfficialSessionBridgeDiscovery(currTickCount);
             EnsureExpeditionIntermediaryPacketInboxState(shouldRun: true);
             EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: true);
             RefreshExpeditionIntermediaryOfficialSessionBridgeDiscovery(currTickCount);
@@ -347,6 +350,7 @@ namespace HaCreator.MapSimulator
             DrainAdminShopPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
             DrainMessengerOfficialSessionBridge();
+            DrainMapleTvOfficialSessionBridge();
             DrainExpeditionIntermediaryPacketInbox();
             DrainExpeditionIntermediaryOfficialSessionBridge();
             DrainSocialListOfficialSessionBridge();

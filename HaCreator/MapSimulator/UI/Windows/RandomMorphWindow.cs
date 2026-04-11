@@ -198,7 +198,7 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(
                 _pixelTexture,
                 new Rectangle(Position.X, Position.Y, ClientOwnerWidth, ClientOwnerHeight),
-                Color.Black);
+                Color.White);
             base.Draw(
                 sprite,
                 skeletonMeshRenderer,

@@ -186,7 +186,7 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedBattleRecordCommand(args.Skip(1).ToArray());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility [status|packet <364|365|366|367|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|366|367|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|clear <damage|recovery|all>|page <summary|dot|packets>|close]]");
             }
         }
 
@@ -931,6 +931,46 @@ namespace HaCreator.MapSimulator
                             toggleMessage,
                             hasToggleOutbound ? null : toggleMessage));
 
+                case "timer":
+                case "timerset":
+                    if (args.Length < 2
+                        || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int timerSeconds)
+                        || timerSeconds <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord timer <seconds>");
+                    }
+
+                    bool hasTimerOutbound = _packetOwnedBattleRecordRuntime.TryBuildTimerSetOutboundRequest(
+                        timerSeconds,
+                        out PacketOwnedNpcUtilityOutboundRequest timerRequest,
+                        out string timerMessage);
+                    return ChatCommandHandler.CommandResult.Ok(
+                        DispatchPacketOwnedBattleRecordOutboundRequest(
+                            hasTimerOutbound,
+                            timerRequest,
+                            timerMessage,
+                            hasTimerOutbound ? null : timerMessage));
+
+                case "timerstop":
+                case "timerpause":
+                case "timerresume":
+                case "timerstopresume":
+                    bool hasTimerStopResumeOutbound = _packetOwnedBattleRecordRuntime.TryBuildTimerStopResumeOutboundRequest(
+                        out PacketOwnedNpcUtilityOutboundRequest timerStopResumeRequest,
+                        out string timerStopResumeMessage);
+                    return ChatCommandHandler.CommandResult.Ok(
+                        DispatchPacketOwnedBattleRecordOutboundRequest(
+                            hasTimerStopResumeOutbound,
+                            timerStopResumeRequest,
+                            timerStopResumeMessage,
+                            hasTimerStopResumeOutbound ? null : timerStopResumeMessage));
+
+                case "viewtoggle":
+                case "shelltoggle":
+                case "fold":
+                case "expand":
+                    return ChatCommandHandler.CommandResult.Ok(_packetOwnedBattleRecordRuntime.ToggleExtended());
+
                 case "dot":
                     return HandlePacketOwnedBattleRecordIncludeCommand(args.Skip(1).ToArray(), option: 0);
 
@@ -976,7 +1016,7 @@ namespace HaCreator.MapSimulator
                             hasCloseOutbound ? null : closeOnCalcMessage));
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|dot <on|off>|summon <on|off>|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /npcutility battlerecord [status|show|on|off|toggle|timer <seconds>|timerstop|viewtoggle|dot <on|off>|summon <on|off>|clear <damage|recovery|all>|page <summary|dot|packets>|close]");
             }
         }
 

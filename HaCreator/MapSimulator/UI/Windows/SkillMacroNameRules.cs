@@ -191,6 +191,46 @@ namespace HaCreator.MapSimulator.UI
             return insertedAny;
         }
 
+        internal static bool TryInsertBestEffortReplacingSelection(
+            string currentText,
+            int selectionAnchor,
+            int caretIndex,
+            string insertedText,
+            out string updatedText,
+            out int updatedCaretIndex,
+            out int insertedLength,
+            out string error,
+            Encoding encoding = null)
+        {
+            string original = currentText ?? string.Empty;
+            if (!ClientEditSelectionHelper.TryDeleteSelection(
+                original,
+                selectionAnchor,
+                caretIndex,
+                out string insertionText,
+                out int insertionIndex))
+            {
+                insertionText = original;
+                insertionIndex = Math.Clamp(caretIndex, 0, original.Length);
+            }
+
+            if (TryInsertBestEffort(
+                insertionText,
+                insertionIndex,
+                insertedText,
+                out updatedText,
+                out insertedLength,
+                out error,
+                encoding))
+            {
+                updatedCaretIndex = Math.Clamp(insertionIndex + insertedLength, 0, updatedText.Length);
+                return true;
+            }
+
+            updatedCaretIndex = insertionIndex;
+            return false;
+        }
+
         internal static string GetInsertablePrefix(string currentText, int insertionIndex, string insertedText, out string error, Encoding encoding = null)
         {
             string original = currentText ?? string.Empty;

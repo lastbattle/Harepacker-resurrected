@@ -63,6 +63,11 @@ namespace HaCreator.MapSimulator.UI
         public virtual bool CapturesKeyboardInput => false;
 
         /// <summary>
+        /// Whether the visible window behaves like a client modal dialog and blocks lower owners.
+        /// </summary>
+        public virtual bool IsModalDialogOwner => false;
+
+        /// <summary>
         /// Whether the window should be skipped when the manager hides the topmost or all windows.
         /// Used for client-owned overlay hosts that should stay resident.
         /// </summary>

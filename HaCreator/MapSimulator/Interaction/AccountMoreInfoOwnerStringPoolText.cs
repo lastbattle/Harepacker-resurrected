@@ -5,19 +5,38 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal readonly struct AccountMoreInfoBackgroundResourceCandidate
     {
-        internal AccountMoreInfoBackgroundResourceCandidate(string path, bool mirrorsClientSetBackgrnd)
+        internal AccountMoreInfoBackgroundResourceCandidate(
+            string path,
+            bool mirrorsClientSetBackgrnd,
+            int composedWidth = 0,
+            int composedHeight = 0)
         {
             Path = path ?? string.Empty;
             MirrorsClientSetBackgrnd = mirrorsClientSetBackgrnd;
+            ComposedWidth = Math.Max(0, composedWidth);
+            ComposedHeight = Math.Max(0, composedHeight);
         }
 
         internal string Path { get; }
 
         internal bool MirrorsClientSetBackgrnd { get; }
+
+        internal int ComposedWidth { get; }
+
+        internal int ComposedHeight { get; }
+
+        internal bool RequiresSimulatorComposition => !MirrorsClientSetBackgrnd
+            && ComposedWidth > 0
+            && ComposedHeight > 0;
     }
 
     internal static class AccountMoreInfoOwnerStringPoolText
     {
+        // CUIAccountMoreInfo's recovered control coordinates extend to the OK /
+        // Cancel buttons at x=345, so mounted fallback shells need this owner
+        // size even when the exact StringPool 0x16AE canvas is unavailable.
+        internal const int ClientOwnerWidth = 398;
+        internal const int ClientOwnerHeight = 355;
         internal const int OkButtonUolStringPoolId = 0x512;
         internal const int CancelButtonUolStringPoolId = 0x513;
         internal const int BackgroundStringPoolId = 0x16AE;
@@ -109,10 +128,20 @@ namespace HaCreator.MapSimulator.Interaction
             // the exact string-pool path can use raw SetBackgrnd canvas sizing.
             foreach (string candidate in MountedBackgroundRecoveryCandidates)
             {
-                AddDistinctCandidate(typedCandidates, candidates, candidate, mirrorsClientSetBackgrnd: false);
+                AddDistinctCandidate(
+                    typedCandidates,
+                    candidates,
+                    candidate,
+                    mirrorsClientSetBackgrnd: false,
+                    composedWidth: ClientOwnerWidth,
+                    composedHeight: ClientOwnerHeight);
             }
 
-            AddDistinctCandidate(typedCandidates, candidates, ResolveExactBackgroundResourcePath(), mirrorsClientSetBackgrnd: true);
+            AddDistinctCandidate(
+                typedCandidates,
+                candidates,
+                ResolveExactBackgroundResourcePath(),
+                mirrorsClientSetBackgrnd: true);
             return typedCandidates;
         }
 
@@ -138,7 +167,9 @@ namespace HaCreator.MapSimulator.Interaction
             ICollection<AccountMoreInfoBackgroundResourceCandidate> typedCandidates,
             ICollection<string> pathCandidates,
             string candidate,
-            bool mirrorsClientSetBackgrnd)
+            bool mirrorsClientSetBackgrnd,
+            int composedWidth = 0,
+            int composedHeight = 0)
         {
             if (typedCandidates == null || pathCandidates == null || string.IsNullOrWhiteSpace(candidate))
             {
@@ -154,7 +185,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             pathCandidates.Add(candidate);
-            typedCandidates.Add(new AccountMoreInfoBackgroundResourceCandidate(candidate, mirrorsClientSetBackgrnd));
+            typedCandidates.Add(new AccountMoreInfoBackgroundResourceCandidate(
+                candidate,
+                mirrorsClientSetBackgrnd,
+                composedWidth,
+                composedHeight));
         }
 
         internal static string ResolveExitWithoutInfoNotice()

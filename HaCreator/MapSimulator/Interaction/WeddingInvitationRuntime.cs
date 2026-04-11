@@ -22,6 +22,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal const string AcceptButtonAssetName = "BtOK";
         internal const int AcceptButtonUolStringPoolId = WeddingInvitationDialogText.AcceptButtonUolStringPoolId;
         internal const int AcceptStringPoolId = AcceptButtonUolStringPoolId;
+        internal const int NeatBackgroundUolStringPoolId = WeddingInvitationDialogText.NeatBackgroundUolStringPoolId;
+        internal const int SweetBackgroundUolStringPoolId = WeddingInvitationDialogText.SweetBackgroundUolStringPoolId;
+        internal const int PremiumBackgroundUolStringPoolId = WeddingInvitationDialogText.PremiumBackgroundUolStringPoolId;
         internal const int DefaultDialogUolStringPoolId = WeddingInvitationDialogText.DefaultDialogUolStringPoolId;
         internal const int AlternateDialogUolStringPoolId = WeddingInvitationDialogText.AlternateDialogUolStringPoolId;
         internal const int BasicBlackFontFaceStringPoolId = WeddingInvitationDialogText.BasicBlackFontFaceStringPoolId;
@@ -56,6 +59,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _brideName = DefaultBrideName;
         private string _statusMessage = "No wedding invitation is active.";
         private string _sourceDescription = DefaultSourceDescription;
+        private string _backgroundUolText = WeddingInvitationDialogText.ResolveBackgroundUolText(WeddingInvitationStyle.Neat);
         private string _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
         private string _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(DefaultClientDialogType);
         private string _basicBlackFontFaceName = WeddingInvitationDialogText.GetBasicBlackFontFaceName();
@@ -86,6 +90,7 @@ namespace HaCreator.MapSimulator.Interaction
             _brideName = NormalizeName(brideName, DefaultBrideName);
             _style = style;
             _clientDialogType = NormalizeClientDialogType(clientDialogType);
+            _backgroundUolText = WeddingInvitationDialogText.ResolveBackgroundUolText(_style);
             _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
             _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(NormalizeClientDialogType(_clientDialogType));
             _basicBlackFontFaceName = WeddingInvitationDialogText.GetBasicBlackFontFaceName();
@@ -97,7 +102,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? DefaultSourceDescription
                 : sourceDescription.Trim();
             SetObservedSocialMessages(_groomName, _brideName);
-            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} with SetRet({PriorOwnerCloseRetValue}) before opening; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText} with args ({ClientCreateDialogAutoSeparated},{ClientCreateDialogX},{ClientCreateDialogY}); accept control id {AcceptButtonControlId} UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; WZ primary button normal origin=({PrimaryAcceptButtonWzOriginX},{PrimaryAcceptButtonWzOriginY}) size={PrimaryAcceptButtonWidth}x{PrimaryAcceptButtonHeight}, while client control anchor stays ({AcceptButtonX},{AcceptButtonY}); name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}.";
+            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} with SetRet({PriorOwnerCloseRetValue}) before opening; background StringPool 0x{ResolveBackgroundUolStringPoolId(style):X} => {_backgroundUolText}; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText} with args ({ClientCreateDialogAutoSeparated},{ClientCreateDialogX},{ClientCreateDialogY}); accept control id {AcceptButtonControlId} UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; WZ primary button normal origin=({PrimaryAcceptButtonWzOriginX},{PrimaryAcceptButtonWzOriginY}) size={PrimaryAcceptButtonWidth}x{PrimaryAcceptButtonHeight}, while client control anchor stays ({AcceptButtonX},{AcceptButtonY}); name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}.";
             return _statusMessage;
         }
 
@@ -162,6 +167,7 @@ namespace HaCreator.MapSimulator.Interaction
             _brideName = DefaultBrideName;
             _style = WeddingInvitationStyle.Neat;
             _clientDialogType = null;
+            _backgroundUolText = WeddingInvitationDialogText.ResolveBackgroundUolText(WeddingInvitationStyle.Neat);
             _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
             _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(DefaultClientDialogType);
             _basicBlackFontFaceName = WeddingInvitationDialogText.GetBasicBlackFontFaceName();
@@ -209,8 +215,12 @@ namespace HaCreator.MapSimulator.Interaction
                 ClientOpenResultSubtype = ClientOpenResultSubtype,
                 ClientPresentationMode = ClientPresentationMode,
                 ClientDialogType = resolvedClientDialogType,
+                BackgroundUolStringPoolId = ResolveBackgroundUolStringPoolId(_style),
                 DialogUolStringPoolId = ResolveDialogTitleStringPoolId(resolvedClientDialogType),
                 AcceptButtonControlId = AcceptButtonControlId,
+                NeatBackgroundUolStringPoolId = NeatBackgroundUolStringPoolId,
+                SweetBackgroundUolStringPoolId = SweetBackgroundUolStringPoolId,
+                PremiumBackgroundUolStringPoolId = PremiumBackgroundUolStringPoolId,
                 DefaultDialogUolStringPoolId = DefaultDialogUolStringPoolId,
                 AlternateDialogUolStringPoolId = AlternateDialogUolStringPoolId,
                 AcceptButtonUolStringPoolId = AcceptButtonUolStringPoolId,
@@ -218,6 +228,7 @@ namespace HaCreator.MapSimulator.Interaction
                 NameFontToken = NameFontToken,
                 NameFontFaceStringPoolId = BasicBlackFontFaceStringPoolId,
                 InvitationAssetPath = ResolveBackgroundAssetPath(_style),
+                BackgroundUolText = _backgroundUolText,
                 AcceptButtonAssetPath = _acceptButtonUolText,
                 FallbackInvitationAssetPath = ResolveFallbackBackgroundAssetPath(_style),
                 DialogUolText = _dialogUolText,
@@ -313,6 +324,11 @@ namespace HaCreator.MapSimulator.Interaction
         private static int ResolveDialogTitleStringPoolId(int? clientDialogType)
         {
             return WeddingInvitationDialogText.ResolveDialogUolStringPoolId(NormalizeClientDialogType(clientDialogType));
+        }
+
+        private static int ResolveBackgroundUolStringPoolId(WeddingInvitationStyle style)
+        {
+            return WeddingInvitationDialogText.ResolveBackgroundUolStringPoolId(style);
         }
 
         private static int NormalizeClientDialogType(int? clientDialogType)
@@ -423,8 +439,12 @@ namespace HaCreator.MapSimulator.Interaction
         public bool LastOpenUsedMarriageResultPacket { get; init; }
         public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
         public int ClientOpenResultSubtype { get; init; }
+        public int BackgroundUolStringPoolId { get; init; }
         public int DialogUolStringPoolId { get; init; }
         public int AcceptButtonControlId { get; init; }
+        public int NeatBackgroundUolStringPoolId { get; init; }
+        public int SweetBackgroundUolStringPoolId { get; init; }
+        public int PremiumBackgroundUolStringPoolId { get; init; }
         public int AcceptButtonUolStringPoolId { get; init; }
         public int DefaultDialogUolStringPoolId { get; init; }
         public int AlternateDialogUolStringPoolId { get; init; }
@@ -438,6 +458,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string ClientOwnerEntryPoint { get; init; } = string.Empty;
         public string ClientPresentationMode { get; init; } = string.Empty;
         public string InvitationAssetPath { get; init; } = string.Empty;
+        public string BackgroundUolText { get; init; } = string.Empty;
         public string AcceptButtonAssetPath { get; init; } = string.Empty;
         public string FallbackInvitationAssetPath { get; init; } = string.Empty;
         public string DialogUolText { get; init; } = string.Empty;

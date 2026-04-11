@@ -2182,6 +2182,7 @@ namespace HaCreator.MapSimulator.Loaders
                 defaultIcon,
                 new DXObject(0, 0, messengerInviteFrameTexture, 0),
                 messengerInviteIcon,
+                defaultIcon,
                 screenWidth,
                 screenHeight);
             manager.RegisterCustomWindow(window);

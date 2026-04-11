@@ -545,7 +545,7 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             _transientHitLayerSourceProperty = sourceProperty;
-            _transientHitLayerSourceState = ResolveState(state);
+            _transientHitLayerSourceState = state;
             _transientHitLayerProperEventIndex = properEventIndex;
 
             if (frames != null && frames.Length > 0)
@@ -614,9 +614,7 @@ namespace HaCreator.MapSimulator.Entities
         internal bool HasAuthoredEventIndex(int currentState, int properEventIndex)
         {
             int resolvedState = ResolveState(currentState);
-            return properEventIndex >= 0
-                && _stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
-                && properEventIndex < transitions.Length;
+            return HasExactAuthoredEventIndex(resolvedState, properEventIndex);
         }
 
         internal IReadOnlyList<int> GetAuthoredEventTypes(int currentState)
@@ -682,13 +680,14 @@ namespace HaCreator.MapSimulator.Entities
             out HitAnimationSourceKind sourceKind,
             out WzImageProperty sourceProperty)
         {
-            int resolvedState = ResolveState(state);
             sourceKind = HitAnimationSourceKind.None;
             sourceProperty = null;
 
             if (properEventIndex < 0)
             {
-                if (_stateLayerProperties.TryGetValue(resolvedState, out sourceProperty) && sourceProperty != null)
+                if (HasAuthoredState(state)
+                    && _stateLayerProperties.TryGetValue(state, out sourceProperty)
+                    && sourceProperty != null)
                 {
                     sourceKind = HitAnimationSourceKind.StateLayer;
                     return true;
@@ -697,19 +696,19 @@ namespace HaCreator.MapSimulator.Entities
                 return TryResolveRootHitSource(out sourceKind, out sourceProperty);
             }
 
-            if (!HasAuthoredState(resolvedState)
-                || !HasAuthoredEventIndex(resolvedState, properEventIndex))
+            if (!HasAuthoredState(state)
+                || !HasExactAuthoredEventIndex(state, properEventIndex))
             {
                 return TryResolveRootHitSource(out sourceKind, out sourceProperty);
             }
 
-            if (_stateIndexedHitProperties.TryGetValue((resolvedState, properEventIndex), out sourceProperty) && sourceProperty != null)
+            if (_stateIndexedHitProperties.TryGetValue((state, properEventIndex), out sourceProperty) && sourceProperty != null)
             {
                 sourceKind = HitAnimationSourceKind.IndexedHit;
                 return true;
             }
 
-            if (TryResolveStateHitSource(resolvedState, out sourceKind, out sourceProperty))
+            if (TryResolveStateHitSource(state, out sourceKind, out sourceProperty))
             {
                 return true;
             }
@@ -861,6 +860,13 @@ namespace HaCreator.MapSimulator.Entities
         private bool HasAuthoredState(int state)
         {
             return _authoredStates.Contains(state);
+        }
+
+        private bool HasExactAuthoredEventIndex(int state, int properEventIndex)
+        {
+            return properEventIndex >= 0
+                && _stateTransitions.TryGetValue(state, out AuthoredStateTransition[] transitions)
+                && properEventIndex < transitions.Length;
         }
 
         private bool HasRenderableState(int state)

@@ -929,6 +929,11 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class PacketOwnedStoreBankDialogRuntime
     {
+        internal const int StoreBankOutboundOpcode = 69;
+        internal const byte CalculateFeeRequestMode = 26;
+        internal const byte GetAllRequestMode = 27;
+        internal const byte CloseRequestMode = 28;
+
         private const int StoreBankGetAllFeePromptStringPoolId = 0x0DC4;
         private const int StoreBankGetAllNoFeePromptStringPoolId = 0x0DC5;
 
@@ -1077,6 +1082,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool HasDecodedItems => _decodedItems.Count > 0;
         internal bool HasAcceptedGetAllRequestInFlight => _hasAcceptedGetAllRequestInFlight;
         internal int OwnerRowRevision => _ownerRowRevision;
+        internal int OwnerSlotCount => _slotCount;
         internal bool IsOwnerGetButtonEnabled =>
             IsOpen
             && !HasPendingFeeCalculationRequest
@@ -1121,8 +1127,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             request = new PacketOwnedNpcUtilityOutboundRequest(
-                69,
-                new byte[] { 27 },
+                StoreBankOutboundOpcode,
+                BuildGetAllRequestPayload(),
                 $"Mirrored CStoreBankDlg::SendGetAllRequest for {BuildPendingRetrievalRequestLabel()} after {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) and fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()} (opcode 69, mode 27; IDA 0x7449f0 confirms no selected-row body bytes are encoded after the mode byte).");
             return true;
         }
@@ -1145,8 +1151,8 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = "CStoreBankDlg::SetRet closed the owner and mirrored the return packet.";
             AppendNote(StatusMessage);
             request = new PacketOwnedNpcUtilityOutboundRequest(
-                69,
-                new byte[] { 28 },
+                StoreBankOutboundOpcode,
+                BuildCloseRequestPayload(),
                 "Mirrored CStoreBankDlg::SetRet close/return request (opcode 69, mode 28).");
             message = StatusMessage;
             return true;
@@ -1467,11 +1473,41 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = $"CStoreBankDlg BtGet mirrored SendCalculateFeeRequest for selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); IDA confirms the immediate outbound body is only 69 [26], with the selected row retained in owner-local state until the subtype-36 fee result.";
             AppendNote(StatusMessage);
             request = new PacketOwnedNpcUtilityOutboundRequest(
-                69,
-                new byte[] { 26 },
+                StoreBankOutboundOpcode,
+                BuildCalculateFeeRequestPayload(),
                 $"Mirrored CStoreBankDlg::SendCalculateFeeRequest for owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)} / packet row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); client decompile 0x743f70 encodes only 69 [26], with no selected-row body bytes and selection retained in owner state until subtype 36.");
             message = StatusMessage;
             return true;
+        }
+
+        private static byte[] BuildCalculateFeeRequestPayload()
+        {
+            return new[] { CalculateFeeRequestMode };
+        }
+
+        private static byte[] BuildGetAllRequestPayload()
+        {
+            return new[] { GetAllRequestMode };
+        }
+
+        private static byte[] BuildCloseRequestPayload()
+        {
+            return new[] { CloseRequestMode };
+        }
+
+        internal static byte[] BuildCalculateFeeRequestPayloadForTesting()
+        {
+            return BuildCalculateFeeRequestPayload();
+        }
+
+        internal static byte[] BuildGetAllRequestPayloadForTesting()
+        {
+            return BuildGetAllRequestPayload();
+        }
+
+        internal static byte[] BuildCloseRequestPayloadForTesting()
+        {
+            return BuildCloseRequestPayload();
         }
 
         internal bool TryBuildOwnerSelectionAnchor(int ownerRowIndex, out StoreBankOwnerSelectionAnchor anchor)

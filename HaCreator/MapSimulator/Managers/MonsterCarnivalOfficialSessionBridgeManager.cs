@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -806,9 +807,15 @@ namespace HaCreator.MapSimulator.Managers
 
             if (!_opcodeMappings.TryGetValue(opcode, out int mappedPacketType))
             {
-                RecordRecentPacket(opcode, rawPacket, mappedPacketType: null, "unmapped");
-                LastStatus = $"Ignored unmapped Monster Carnival opcode {opcode}; add /mcarnival session map <opcode> <rawPacketType> to route it into the recovered 346-353 seam.";
-                return false;
+                if (!TryInferInboundCarnivalPacketType(payload, out mappedPacketType, out string inferenceReason))
+                {
+                    RecordRecentPacket(opcode, rawPacket, mappedPacketType: null, "unmapped");
+                    LastStatus = $"Ignored unmapped Monster Carnival opcode {opcode}; payload did not match the recovered 346-353 CField_MonsterCarnival handler shapes. Add /mcarnival session map <opcode> <rawPacketType> to route it manually.";
+                    return false;
+                }
+
+                _opcodeMappings[opcode] = mappedPacketType;
+                LastStatus = $"Auto-mapped Monster Carnival opcode {opcode} to {DescribePacketType(mappedPacketType)} from payload inference ({inferenceReason}).";
             }
 
             int relayOpcode = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
@@ -819,7 +826,7 @@ namespace HaCreator.MapSimulator.Managers
                 source,
                 $"packetraw {Convert.ToHexString(rawPacket)}",
                 mappedPacketType);
-            RecordRecentPacket(opcode, rawPacket, mappedPacketType, "configured-relay");
+            RecordRecentPacket(opcode, rawPacket, mappedPacketType, "configured-or-inferred-relay");
             return true;
         }
 
@@ -973,7 +980,10 @@ namespace HaCreator.MapSimulator.Managers
 
             if (!IsSupportedCarnivalPacketType(opcode))
             {
-                return false;
+                if (!TryInferInboundCarnivalPacketType(payload, out opcode, out _))
+                {
+                    return false;
+                }
             }
 
             byte[] relayPayload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(opcode, payload);
@@ -983,6 +993,169 @@ namespace HaCreator.MapSimulator.Managers
                 source,
                 $"packetraw {Convert.ToHexString(rawPacket)}",
                 opcode);
+            return true;
+        }
+
+        internal static bool TryInferInboundCarnivalPacketType(byte[] payload, out int packetType, out string reason)
+        {
+            packetType = 0;
+            reason = null;
+            payload ??= Array.Empty<byte>();
+
+            if (payload.Length == 1)
+            {
+                byte code = payload[0];
+                if (code is >= 1 and <= 5)
+                {
+                    packetType = (int)MonsterCarnivalRawPacketType.RequestFailure;
+                    reason = $"single-byte request-failure reason {code}";
+                    return true;
+                }
+
+                if (code is >= 8 and <= 11)
+                {
+                    packetType = (int)MonsterCarnivalRawPacketType.GameResult;
+                    reason = $"single-byte game-result code {code}";
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (payload.Length == 4
+                && TryReadNonNegativeInt16Pair(payload, 0, out int personalCp, out int personalTotalCp)
+                && personalTotalCp >= personalCp)
+            {
+                packetType = (int)MonsterCarnivalRawPacketType.PersonalCp;
+                reason = $"two CP shorts {personalCp}/{personalTotalCp}";
+                return true;
+            }
+
+            if (payload.Length == 5
+                && IsTeamByte(payload[0])
+                && TryReadNonNegativeInt16Pair(payload, 1, out int teamCp, out int teamTotalCp)
+                && teamTotalCp >= teamCp)
+            {
+                packetType = (int)MonsterCarnivalRawPacketType.TeamCp;
+                reason = $"team byte plus CP shorts team={payload[0]} {teamCp}/{teamTotalCp}";
+                return true;
+            }
+
+            if (payload.Length >= 13
+                && IsTeamByte(payload[0])
+                && HasNonNegativeShorts(payload, 1, 6)
+                && PayloadRemainderLooksLikeSummonedMobCounts(payload, 13))
+            {
+                packetType = (int)MonsterCarnivalRawPacketType.Enter;
+                reason = $"enter payload with team byte, six CP shorts, and {payload.Length - 13} summoned-mob count byte(s)";
+                return true;
+            }
+
+            if (payload.Length >= 4
+                && IsTabByte(payload[0])
+                && TryReadMapleString(payload, 2, out string requestOwner, out int requestResultEnd)
+                && requestResultEnd == payload.Length)
+            {
+                packetType = (int)MonsterCarnivalRawPacketType.RequestResult;
+                reason = $"request-result tab={payload[0]} index={payload[1]} ownerLen={requestOwner.Length}";
+                return true;
+            }
+
+            if (payload.Length >= 4
+                && IsTeamByte(payload[0])
+                && TryReadMapleString(payload, 1, out string deathName, out int deathNameEnd)
+                && deathNameEnd + 1 == payload.Length)
+            {
+                packetType = (int)MonsterCarnivalRawPacketType.ProcessForDeath;
+                reason = $"death payload team={payload[0]} nameLen={deathName.Length} lostCp={payload[^1]}";
+                return true;
+            }
+
+            if (payload.Length >= 5
+                && payload[0] is 5 or 6
+                && IsTeamByte(payload[1])
+                && TryReadMapleString(payload, 2, out string memberName, out int memberNameEnd)
+                && memberNameEnd == payload.Length)
+            {
+                packetType = (int)MonsterCarnivalRawPacketType.ShowMemberOutMessage;
+                reason = $"member-out payload type={payload[0]} team={payload[1]} nameLen={memberName.Length}";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsTeamByte(byte value)
+        {
+            return value <= 1;
+        }
+
+        private static bool IsTabByte(byte value)
+        {
+            return value <= (byte)MonsterCarnivalTab.Guardian;
+        }
+
+        private static bool TryReadNonNegativeInt16Pair(byte[] payload, int offset, out int first, out int second)
+        {
+            first = 0;
+            second = 0;
+            if (payload == null || offset < 0 || payload.Length < offset + (sizeof(short) * 2))
+            {
+                return false;
+            }
+
+            first = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+            second = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset + sizeof(short), sizeof(short)));
+            return first >= 0 && second >= 0;
+        }
+
+        private static bool HasNonNegativeShorts(byte[] payload, int offset, int count)
+        {
+            if (payload == null || offset < 0 || count < 0 || payload.Length < offset + (sizeof(short) * count))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                int value = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset + (i * sizeof(short)), sizeof(short)));
+                if (value < 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool PayloadRemainderLooksLikeSummonedMobCounts(byte[] payload, int offset)
+        {
+            return payload != null && payload.Length >= offset;
+        }
+
+        private static bool TryReadMapleString(byte[] payload, int offset, out string value, out int endOffset)
+        {
+            value = string.Empty;
+            endOffset = offset;
+            if (payload == null || offset < 0 || payload.Length < offset + sizeof(short))
+            {
+                return false;
+            }
+
+            int byteLength = BinaryPrimitives.ReadInt16LittleEndian(payload.AsSpan(offset, sizeof(short)));
+            if (byteLength < 0)
+            {
+                return false;
+            }
+
+            int stringOffset = offset + sizeof(short);
+            endOffset = stringOffset + byteLength;
+            if (endOffset > payload.Length)
+            {
+                return false;
+            }
+
+            value = System.Text.Encoding.Default.GetString(payload, stringOffset, byteLength);
             return true;
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -86,11 +87,11 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                int firstDelayCandidateIndex = call.Arguments.Count > 1 ? 1 : 0;
+                int firstDelayCandidateIndex = call.Arguments.Count > 1 ? 1 : call.Arguments.Count;
                 for (int i = firstDelayCandidateIndex; i < call.Arguments.Count; i++)
                 {
                     string argument = NormalizeFunctionAliasArgument(call.Arguments[i]);
-                    if (!int.TryParse(argument, out int parsedDelayMs) || parsedDelayMs <= 0)
+                    if (!TryParsePositiveDelayMs(argument, out int parsedDelayMs))
                     {
                         continue;
                     }
@@ -466,12 +467,12 @@ namespace HaCreator.MapSimulator.Fields
                 int dueDelayMs = inheritedDelayMs >= int.MaxValue - callbackDelayMs
                     ? int.MaxValue
                     : inheritedDelayMs + callbackDelayMs;
-                int firstDelayCandidateIndex = call.Arguments.Count > 1 ? 1 : 0;
+                int firstDelayCandidateIndex = call.Arguments.Count > 1 ? 1 : call.Arguments.Count;
                 for (int i = 0; i < call.Arguments.Count; i++)
                 {
                     string argument = NormalizeFunctionAliasArgument(call.Arguments[i]);
                     if (string.IsNullOrWhiteSpace(argument)
-                        || (i >= firstDelayCandidateIndex && TryParsePositiveInt(argument, out _)))
+                        || (i >= firstDelayCandidateIndex && TryParsePositiveDelayMs(argument, out _)))
                     {
                         continue;
                     }
@@ -495,12 +496,12 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            bool foundDelay = false;
-            int firstDelayCandidateIndex = arguments.Count > 1 ? 1 : 0;
+            bool foundDelay = arguments.Count == 1;
+            int firstDelayCandidateIndex = arguments.Count > 1 ? 1 : arguments.Count;
             for (int i = firstDelayCandidateIndex; i < arguments.Count; i++)
             {
                 string argument = NormalizeFunctionAliasArgument(arguments[i]);
-                if (!TryParsePositiveInt(argument, out int parsedDelayMs))
+                if (!TryParsePositiveDelayMs(argument, out int parsedDelayMs))
                 {
                     continue;
                 }
@@ -512,9 +513,22 @@ namespace HaCreator.MapSimulator.Fields
             return foundDelay;
         }
 
-        private static bool TryParsePositiveInt(string value, out int parsedInt)
+        private static bool TryParsePositiveDelayMs(string value, out int parsedInt)
         {
-            return int.TryParse(value, out parsedInt) && parsedInt > 0;
+            if (int.TryParse(value, out parsedInt) && parsedInt > 0)
+            {
+                return true;
+            }
+
+            if (double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double parsedDouble)
+                && parsedDouble > 0)
+            {
+                parsedInt = checked((int)Math.Round(parsedDouble, MidpointRounding.AwayFromZero));
+                return parsedInt > 0;
+            }
+
+            parsedInt = 0;
+            return false;
         }
 
         private static void AddPublication(
@@ -530,6 +544,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int normalizedDelayMs = Math.Max(0, delayMs);
+            IReadOnlyList<string> parsedScriptNames = QuestRuntimeManager.ParseScriptNames(normalizedScriptName);
+            if (parsedScriptNames.Count > 1
+                || (parsedScriptNames.Count == 1
+                    && !string.Equals(parsedScriptNames[0], normalizedScriptName, StringComparison.OrdinalIgnoreCase)))
+            {
+                for (int i = 0; i < parsedScriptNames.Count; i++)
+                {
+                    AddPublication(parsedScriptNames[i], normalizedDelayMs, publications, seen);
+                }
+
+                return;
+            }
+
             var key = (normalizedScriptName, normalizedDelayMs);
             if (!seen.Add(key))
             {
@@ -661,8 +688,12 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return leafName.Equals("setTimeout", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("setInterval", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("setImmediate", StringComparison.OrdinalIgnoreCase)
                 || leafName.Equals("setTimer", StringComparison.OrdinalIgnoreCase)
                 || leafName.Equals("setDelay", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("requestAnimationFrame", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("queueMicrotask", StringComparison.OrdinalIgnoreCase)
                 || leafName.Equals("schedule", StringComparison.OrdinalIgnoreCase)
                 || leafName.StartsWith("schedule", StringComparison.OrdinalIgnoreCase)
                 || (leafName.StartsWith("set", StringComparison.OrdinalIgnoreCase)

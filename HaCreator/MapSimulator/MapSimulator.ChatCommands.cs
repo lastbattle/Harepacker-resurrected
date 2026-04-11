@@ -2094,17 +2094,20 @@ namespace HaCreator.MapSimulator
                 return "MapleTV consume-cash item request requires a positive inventory position.";
             }
 
-            using MemoryStream stream = new();
-            using (BinaryWriter writer = new(stream, Encoding.UTF8, leaveOpen: true))
+            _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
+            if (!_mapleTvRuntime.TryBuildConsumeCashItemUseRequestPayload(
+                    currTickCount,
+                    inventoryPosition,
+                    itemId,
+                    out byte[] payload,
+                    out string error))
             {
-                writer.Write(currTickCount);
-                writer.Write((short)inventoryPosition);
-                writer.Write(itemId);
+                return error;
             }
 
             _localUtilityPacketInbox.EnqueueLocal(
                 LocalUtilityPacketInboxManager.ConsumeCashItemUseRequestPacketType,
-                stream.ToArray(),
+                payload,
                 "CUserLocal::ConsumeCashItem MapleTV send request");
             StampPacketOwnedUtilityRequestState();
             return $"CUserLocal::ConsumeCashItem MapleTV SendConsumeCashItemUseRequest mirrored at inventory position {inventoryPosition}.";
@@ -3150,7 +3153,9 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Error(wishListMessage);
 
                         case "clear":
-                            return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Clear(uiWindowManager));
+                            string clearMessage = _engagementProposalController.Clear(uiWindowManager);
+                            string invitationClearMessage = _weddingInvitationController.Clear(uiWindowManager);
+                            return ChatCommandHandler.CommandResult.Ok($"{clearMessage} {invitationClearMessage}");
 
                         default:
                             return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|result <subtype> [serverText...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
@@ -6654,8 +6659,7 @@ namespace HaCreator.MapSimulator
 
                         if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
                         {
-                            return ChatCommandHandler.CommandResult.Info(
-                                $"{_specialFieldRuntime.SpecialEffects.Dojo.DescribeStatus()}{Environment.NewLine}{_dojoOfficialSessionBridge.DescribeStatus()}");
+                            return ChatCommandHandler.CommandResult.Info(_dojoOfficialSessionBridge.DescribeRecentPackets());
                         }
 
                         if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
@@ -8192,15 +8196,74 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Info(
                                     _memoryGameOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
                             }
+                            if (string.Equals(args[1], "attach", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 3
+                                    || !int.TryParse(args[2], out int attachRemotePort)
+                                    || attachRemotePort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error(MemoryGameSessionCommandParsing.AttachUsage);
+                                }
+
+                                string attachProcessSelector = args.Length >= 4 ? args[3] : null;
+                                int? attachLocalPortFilter = null;
+                                if (args.Length >= 5)
+                                {
+                                    if (!int.TryParse(args[4], out int parsedAttachLocalPort) || parsedAttachLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(MemoryGameSessionCommandParsing.AttachUsage);
+                                    }
+
+                                    attachLocalPortFilter = parsedAttachLocalPort;
+                                }
+
+                                return _memoryGameOfficialSessionBridge.TryAttachEstablishedSession(
+                                        attachRemotePort,
+                                        attachProcessSelector,
+                                        attachLocalPortFilter,
+                                        out string attachStatus)
+                                    ? ChatCommandHandler.CommandResult.Ok(attachStatus)
+                                    : ChatCommandHandler.CommandResult.Error(attachStatus);
+                            }
+                            if (string.Equals(args[1], "attachproxy", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 4
+                                    || !MemoryGameSessionCommandParsing.TryParseProxyListenPort(args[2], out int attachProxyListenPort)
+                                    || !int.TryParse(args[3], out int attachProxyRemotePort)
+                                    || attachProxyRemotePort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error(MemoryGameSessionCommandParsing.AttachProxyUsage);
+                                }
+
+                                string attachProxyProcessSelector = args.Length >= 5 ? args[4] : null;
+                                int? attachProxyLocalPortFilter = null;
+                                if (args.Length >= 6)
+                                {
+                                    if (!int.TryParse(args[5], out int parsedAttachProxyLocalPort) || parsedAttachProxyLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(MemoryGameSessionCommandParsing.AttachProxyUsage);
+                                    }
+
+                                    attachProxyLocalPortFilter = parsedAttachProxyLocalPort;
+                                }
+
+                                return _memoryGameOfficialSessionBridge.TryAttachEstablishedSessionAndStartProxy(
+                                        attachProxyListenPort,
+                                        attachProxyRemotePort,
+                                        attachProxyProcessSelector,
+                                        attachProxyLocalPortFilter,
+                                        out string attachProxyStatus)
+                                    ? ChatCommandHandler.CommandResult.Ok(attachProxyStatus)
+                                    : ChatCommandHandler.CommandResult.Error(attachProxyStatus);
+                            }
                             if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                             {
                                 if (args.Length < 5
-                                    || !int.TryParse(args[2], out int listenPort)
-                                    || listenPort <= 0
+                                    || !MemoryGameSessionCommandParsing.TryParseProxyListenPort(args[2], out int listenPort)
                                     || !int.TryParse(args[4], out int remotePort)
                                     || remotePort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /memorygame session start <listenPort> <serverHost> <serverPort>");
+                                    return ChatCommandHandler.CommandResult.Error(MemoryGameSessionCommandParsing.StartUsage);
                                 }
 
 
@@ -8210,12 +8273,11 @@ namespace HaCreator.MapSimulator
                             if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
                             {
                                 if (args.Length < 4
-                                    || !int.TryParse(args[2], out int autoListenPort)
-                                    || autoListenPort <= 0
+                                    || !MemoryGameSessionCommandParsing.TryParseProxyListenPort(args[2], out int autoListenPort)
                                     || !int.TryParse(args[3], out int autoRemotePort)
                                     || autoRemotePort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /memorygame session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(MemoryGameSessionCommandParsing.StartAutoUsage);
                                 }
                                 string processSelector = args.Length >= 5 ? args[4] : null;
                                 int? localPortFilter = null;
@@ -8223,7 +8285,7 @@ namespace HaCreator.MapSimulator
                                 {
                                     if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
                                     {
-                                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                        return ChatCommandHandler.CommandResult.Error(MemoryGameSessionCommandParsing.StartAutoUsage);
                                     }
 
                                     localPortFilter = parsedLocalPort;
@@ -8239,7 +8301,7 @@ namespace HaCreator.MapSimulator
                             }
 
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /memorygame session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+                            return ChatCommandHandler.CommandResult.Error(MemoryGameSessionCommandParsing.SessionUsage);
                         case "remote":
                         {
                             if (args.Length < 2)
@@ -9929,7 +9991,7 @@ namespace HaCreator.MapSimulator
 
                 "mapletv",
                 "Inspect or drive the MapleTV send board and broadcast lifecycle",
-                "/mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|sendrequest|result|packet|packetraw] [...]",
+                "/mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|sendrequest|result|packet|packetraw|session] [...]",
                 args =>
                 {
                     _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -9943,6 +10005,10 @@ namespace HaCreator.MapSimulator
                     string action = args[0].ToLowerInvariant();
                     switch (action)
                     {
+                        case "session":
+                        case "bridge":
+                            return HandleMapleTvSessionCommand(args.Skip(1).ToArray());
+
                         case "open":
                             ShowMapleTvWindow();
                             return ChatCommandHandler.CommandResult.Ok(GetPacketOwnedSocialUtilityDialogDispatcher().DescribeMapleTvStatus(currTickCount));
@@ -9950,7 +10016,8 @@ namespace HaCreator.MapSimulator
 
                         case "status":
 
-                            return ChatCommandHandler.CommandResult.Info(GetPacketOwnedSocialUtilityDialogDispatcher().DescribeMapleTvStatus(currTickCount));
+                            return ChatCommandHandler.CommandResult.Info(
+                                $"{GetPacketOwnedSocialUtilityDialogDispatcher().DescribeMapleTvStatus(currTickCount)}{Environment.NewLine}{DescribeMapleTvOfficialSessionBridgeStatus()}");
 
 
 
@@ -10103,7 +10170,7 @@ namespace HaCreator.MapSimulator
                         case "packet":
                             if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv packet <set|clear|result> [payloadhex=..|payloadb64=..]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv packet <set|clear|result|clientraw> [payloadhex=..|payloadb64=..]");
                             }
 
 
@@ -10152,10 +10219,25 @@ namespace HaCreator.MapSimulator
                                         : ChatCommandHandler.CommandResult.Error(resultPacketMessage);
 
 
+                                case "clientraw":
+                                case "opcode":
+                                    byte[] clientRawPayload = null;
+                                    string clientRawPayloadError = null;
+                                    if (args.Length < 3 || !TryParseBinaryPayloadArgument(args[2], out clientRawPayload, out clientRawPayloadError))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(clientRawPayloadError ?? "Usage: /mapletv packet clientraw <payloadhex=..|payloadb64=..>");
+                                    }
+
+
+                                    return TryApplyMapleTvOpcodeFramedClientPacket(clientRawPayload, out string clientRawMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(clientRawMessage)
+                                        : ChatCommandHandler.CommandResult.Error(clientRawMessage);
+
+
 
                                 default:
 
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /mapletv packet <set|clear|result> [payloadhex=..|payloadb64=..]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /mapletv packet <set|clear|result|clientraw> [payloadhex=..|payloadb64=..]");
 
                             }
 
@@ -10164,7 +10246,7 @@ namespace HaCreator.MapSimulator
                         case "packetraw":
                             if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv packetraw <set|clear|result> [hex bytes]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv packetraw <set|clear|result|clientraw> [hex bytes]");
                             }
 
 
@@ -10209,10 +10291,23 @@ namespace HaCreator.MapSimulator
                                         : ChatCommandHandler.CommandResult.Error(rawResultMessage);
 
 
+                                case "clientraw":
+                                case "opcode":
+                                    if (args.Length < 3 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out byte[] rawClientPayload))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /mapletv packetraw clientraw <opcode-framed-hex>");
+                                    }
+
+
+                                    return TryApplyMapleTvOpcodeFramedClientPacket(rawClientPayload, out string rawClientMessage)
+                                        ? ChatCommandHandler.CommandResult.Ok(rawClientMessage)
+                                        : ChatCommandHandler.CommandResult.Error(rawClientMessage);
+
+
 
                                 default:
 
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /mapletv packetraw <set|clear|result> [hex bytes]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /mapletv packetraw <set|clear|result|clientraw> [hex bytes]");
 
                             }
 
@@ -10220,7 +10315,7 @@ namespace HaCreator.MapSimulator
 
                         default:
                             return ChatCommandHandler.CommandResult.Error(
-                                "Usage: /mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|sendrequest|result|packet|packetraw] [...]");
+                                "Usage: /mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|sendrequest|result|packet|packetraw|session] [...]");
                     }
                 });
 

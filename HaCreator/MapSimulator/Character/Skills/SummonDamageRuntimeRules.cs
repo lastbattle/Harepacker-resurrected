@@ -46,5 +46,25 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return 1;
         }
+
+        public static int ResolveBodyContactRelativeMotionX(
+            float mobCurrentX,
+            float mobVelocityX,
+            float summonCurrentX,
+            float summonPreviousX)
+        {
+            float summonDeltaX = summonCurrentX - summonPreviousX;
+            return (int)MathF.Round(mobVelocityX - summonDeltaX);
+        }
+
+        public static bool? ResolveBodyContactHitFacingRight(int relativeMotionX)
+        {
+            if (relativeMotionX == 0)
+            {
+                return null;
+            }
+
+            return relativeMotionX > 0;
+        }
     }
 }

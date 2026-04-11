@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int EmotionPacketType = 232;
         public const int TeleportClientPacketType = 234;
         public const int MessageClientPacketType = 38;
+        public const int InventoryOperationClientPacketType = 28;
         public const int MesoGiveSucceededPacketType = 236;
         public const int MesoGiveFailedPacketType = 237;
         public const int RandomMesobagSucceededPacketType = 238;
@@ -937,6 +938,14 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("inventoryoperation", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("oninventoryoperation", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("inventoryop", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = InventoryOperationClientPacketType;
+                return true;
+            }
+
             if (token.Equals("repairresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("repairdurabilityresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("repairreply", StringComparison.OrdinalIgnoreCase))
@@ -1110,6 +1119,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == SitResultPacketType
                 || packetType == TeleportClientPacketType
                 || packetType == EmotionPacketType
+                || packetType == InventoryOperationClientPacketType
                 || packetType == MessageClientPacketType
                 || packetType == MesoGiveSucceededPacketType
                 || packetType == MesoGiveFailedPacketType
@@ -1289,6 +1299,7 @@ namespace HaCreator.MapSimulator.Managers
                 EmotionPacketType => "OnEmotion(232)",
                 TeleportClientPacketType => "OnTeleport(234)",
                 MessageClientPacketType => "OnMessage(38)",
+                InventoryOperationClientPacketType => "OnInventoryOperation(28)",
                 OpenUiPacketType => "OpenUI(1000)",
                 OpenUiWithOptionPacketType => "OpenUIWithOption(1001)",
                 GoToCommoditySnPacketType => "GoToCommoditySN(1002)",

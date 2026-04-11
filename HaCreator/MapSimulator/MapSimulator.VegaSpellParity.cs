@@ -825,8 +825,21 @@ namespace HaCreator.MapSimulator
             }
 
             ShowUtilityFeedbackMessage(VegaOwnerStringPoolText.FormatUnknownResultNotice(resultCode));
+            HandleUnknownPacketOwnedVegaResult();
             message = $"Observed unknown packet-owned Vega result code {resultCode}.";
             return true;
+        }
+
+        private void HandleUnknownPacketOwnedVegaResult()
+        {
+            _pendingVegaCastState = null;
+            _pendingVegaPromptState = null;
+            ClearVegaExclusiveRequestState(currTickCount);
+            StopVegaResultLoopSound();
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
+            {
+                vegaSpellWindow.Hide();
+            }
         }
 
         private bool TryResolveVegaRequestContext(

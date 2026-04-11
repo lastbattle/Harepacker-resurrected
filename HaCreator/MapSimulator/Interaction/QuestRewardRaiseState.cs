@@ -33,6 +33,70 @@ namespace HaCreator.MapSimulator.Interaction
         public Dictionary<int, int> SelectedItemsByGroup { get; } = new Dictionary<int, int>();
         public List<QuestRewardRaisePlacedPiece> PlacedPieces { get; } = new List<QuestRewardRaisePlacedPiece>();
 
+        internal bool HasEnabledDropItemList => EnumerateEnabledDropItemIds(Prompt).Any();
+
+        internal bool CanDropItem(int itemId, out int enabledDropItemIndex)
+        {
+            enabledDropItemIndex = GetEnableDropItemIndex(itemId);
+            if (enabledDropItemIndex < 0)
+            {
+                return !HasEnabledDropItemList;
+            }
+
+            int enabledItemId = EnumerateEnabledDropItemIds(Prompt).ElementAt(enabledDropItemIndex);
+            return !PlacedPieces.Any(piece => piece.ItemId == enabledItemId);
+        }
+
+        internal int GetEnableDropItemIndex(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return -1;
+            }
+
+            int index = 0;
+            foreach (int enabledItemId in EnumerateEnabledDropItemIds(Prompt))
+            {
+                if (enabledItemId == itemId)
+                {
+                    return index;
+                }
+
+                index++;
+            }
+
+            return -1;
+        }
+
+        internal static int CountEnabledDropItems(QuestRewardChoicePrompt prompt)
+        {
+            return EnumerateEnabledDropItemIds(prompt).Count();
+        }
+
+        private static IEnumerable<int> EnumerateEnabledDropItemIds(QuestRewardChoicePrompt prompt)
+        {
+            if (prompt?.Groups == null)
+            {
+                yield break;
+            }
+
+            foreach (QuestRewardChoiceGroup group in prompt.Groups)
+            {
+                if (group?.Options == null)
+                {
+                    continue;
+                }
+
+                foreach (QuestRewardChoiceOption option in group.Options)
+                {
+                    if (option?.ItemId > 0)
+                    {
+                        yield return option.ItemId;
+                    }
+                }
+            }
+        }
+
         internal void SyncSelectionProgressFromPayload(QuestRewardRaisePacketPayload payload)
         {
             if (payload?.SelectedItemsByGroup == null || payload.SelectedItemsByGroup.Count == 0)

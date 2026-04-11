@@ -1586,7 +1586,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                CharacterFrame frame = LoadFrame(canvas, child.Name);
+                CharacterFrame frame = LoadPortableChairFrame(child, canvas);
                 if (frame == null)
                 {
                     continue;
@@ -1615,6 +1615,50 @@ namespace HaCreator.MapSimulator.Character
                 RelativeZ = relativeZ ?? 0,
                 PositionHint = GetIntValue(layerProperty["pos"]) ?? 0
             };
+        }
+
+        private CharacterFrame LoadPortableChairFrame(WzImageProperty frameProperty, WzCanvasProperty canvas)
+        {
+            if (frameProperty == null || canvas == null)
+            {
+                return null;
+            }
+
+            CharacterFrame frame = LoadFrame(
+                canvas,
+                frameProperty.Name,
+                frameProperty is WzUOLProperty uolProperty ? uolProperty.LinkValue?.FullPath : null);
+            if (frame == null)
+            {
+                return null;
+            }
+
+            if (frameProperty != canvas)
+            {
+                if (GetIntValue(frameProperty["delay"]) is int delay)
+                {
+                    frame.Delay = delay;
+                }
+
+                if (frameProperty["origin"] is WzVectorProperty origin)
+                {
+                    frame.Origin = new Point(origin.X.Value, origin.Y.Value);
+                }
+
+                string z = GetStringValue(frameProperty["z"]);
+                if (!string.IsNullOrWhiteSpace(z))
+                {
+                    frame.Z = ResolveZLayer(z, frameProperty.Name);
+                }
+
+                frame.Bounds = new Rectangle(
+                    -frame.Origin.X,
+                    -frame.Origin.Y,
+                    frame.Texture?.Width ?? 0,
+                    frame.Texture?.Height ?? 0);
+            }
+
+            return frame;
         }
 
         internal static IReadOnlyList<ItemEffectLayerSource> ResolveItemEffectLayerSources(WzSubProperty itemEffectProperty)

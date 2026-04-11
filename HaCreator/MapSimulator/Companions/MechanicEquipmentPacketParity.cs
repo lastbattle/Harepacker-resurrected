@@ -242,13 +242,15 @@ namespace HaCreator.MapSimulator.Companions
                     }
                     case MechanicEquipPacketPayloadMode.SlotMutation:
                     {
-                        if (stream.Length - stream.Position != sizeof(byte) + sizeof(int))
+                        long slotMutationLength = stream.Length - stream.Position;
+                        if (slotMutationLength != sizeof(int) * 2
+                            && slotMutationLength != sizeof(byte) + sizeof(int))
                         {
                             errorMessage = "Mechanic slot-mutation payload must contain a client body-part Int32 followed by an Int32 item id. Legacy one-byte slot ids are still accepted. Use item id 0 to clear that slot.";
                             return false;
                         }
 
-                        if (!TryReadMechanicSlot(reader, out MechanicEquipSlot slot, out errorMessage))
+                        if (!TryReadMechanicSlot(reader, slotMutationLength == sizeof(byte) + sizeof(int), out MechanicEquipSlot slot, out errorMessage))
                         {
                             return false;
                         }

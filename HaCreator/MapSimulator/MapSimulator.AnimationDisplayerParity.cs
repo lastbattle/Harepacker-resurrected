@@ -1217,6 +1217,7 @@ namespace HaCreator.MapSimulator
                 effectSkill?.EffectSecondary,
                 casterPosition,
                 request.BranchNames,
+                request.OriginOffset,
                 request.FollowOwnerPosition,
                 request.FollowOwnerFacing);
             castInfo.CasterId = localCharacterId;
@@ -1233,6 +1234,7 @@ namespace HaCreator.MapSimulator
             SkillAnimation secondaryEffectAnimation,
             Vector2? casterPositionOverride = null,
             IReadOnlyList<string> requestedBranchNames = null,
+            Point originOffset = default,
             bool followOwnerPosition = true,
             bool followOwnerFacing = true)
         {
@@ -1256,6 +1258,7 @@ namespace HaCreator.MapSimulator
                     requestedBranchNames,
                     effectAnimation,
                     secondaryEffectAnimation),
+                OriginOffset = originOffset,
                 FollowOwnerPosition = followOwnerPosition,
                 FollowOwnerFacing = followOwnerFacing
             };
@@ -1969,7 +1972,7 @@ namespace HaCreator.MapSimulator
 
                     yield return new AnimationDisplayerSkillUseBranchRequest(
                         branchName,
-                        Point.Zero,
+                        castInfo.OriginOffset,
                         castInfo.FollowOwnerFacing,
                         castInfo.FollowOwnerPosition);
                 }
@@ -1989,7 +1992,7 @@ namespace HaCreator.MapSimulator
 
                 yield return new AnimationDisplayerSkillUseBranchRequest(
                     branchName,
-                    Point.Zero,
+                    castInfo?.OriginOffset ?? Point.Zero,
                     castInfo?.FollowOwnerFacing ?? true,
                     castInfo?.FollowOwnerPosition ?? true);
             }
@@ -2036,7 +2039,7 @@ namespace HaCreator.MapSimulator
 
                     yield return new AnimationDisplayerSkillUseBranchRequest(
                         branchName,
-                        Point.Zero,
+                        presentation.OriginOffset,
                         presentation.FollowOwnerFacing,
                         presentation.FollowOwnerPosition);
                 }
@@ -2053,7 +2056,7 @@ namespace HaCreator.MapSimulator
                 {
                     yield return new AnimationDisplayerSkillUseBranchRequest(
                         branchName,
-                        Point.Zero,
+                        presentation.OriginOffset,
                         presentation.FollowOwnerFacing,
                         presentation.FollowOwnerPosition);
                 }

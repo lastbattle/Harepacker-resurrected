@@ -30,11 +30,13 @@ namespace HaCreator.MapSimulator.UI
         public int NpcTemplateId { get; private set; }
         public int DecodedItemCount { get; private set; }
         public int TrailingByteCount { get; private set; }
+        public int ResultTrailingByteCount { get; private set; }
         public int OpenCount { get; private set; }
         public int BlockedByOwnerCount { get; private set; }
         public int ResultCount { get; private set; }
         public int LastSubtype { get; private set; } = -1;
         public int LastResultCode { get; private set; } = -1;
+        public bool LastResultHadResultCode { get; private set; }
         public int LastOutboundOpcode { get; private set; } = -1;
         public byte[] LastOutboundPayload { get; private set; } = Array.Empty<byte>();
         public string LastNotice { get; private set; } = string.Empty;
@@ -66,9 +68,11 @@ namespace HaCreator.MapSimulator.UI
             NpcTemplateId = snapshot.NpcTemplateId;
             DecodedItemCount = snapshot.CommodityCount;
             TrailingByteCount = snapshot.TrailingByteCount;
+            ResultTrailingByteCount = 0;
             OpenCount++;
             LastSubtype = -1;
             LastResultCode = -1;
+            LastResultHadResultCode = false;
             LastOutboundOpcode = -1;
             LastOutboundPayload = Array.Empty<byte>();
             LastNotice = string.Empty;
@@ -91,9 +95,11 @@ namespace HaCreator.MapSimulator.UI
             DecodedItemCount = 0;
             NpcTemplateId = 0;
             TrailingByteCount = 0;
+            ResultTrailingByteCount = 0;
             AskItemWishlist = false;
             LastSubtype = -1;
             LastResultCode = -1;
+            LastResultHadResultCode = false;
             LastNotice = noticeText ?? string.Empty;
             ClearPendingWishlistRegister();
             if (!string.IsNullOrWhiteSpace(outboundSummary))
@@ -116,8 +122,10 @@ namespace HaCreator.MapSimulator.UI
             NpcTemplateId = Math.Max(0, snapshot.NpcTemplateId);
             DecodedItemCount = Math.Max(0, snapshot.CommodityCount);
             TrailingByteCount = Math.Max(0, snapshot.TrailingByteCount);
+            ResultTrailingByteCount = 0;
             LastSubtype = -1;
             LastResultCode = -1;
+            LastResultHadResultCode = false;
             LastOutboundOpcode = -1;
             LastOutboundPayload = Array.Empty<byte>();
             LastNotice = string.Empty;
@@ -129,19 +137,23 @@ namespace HaCreator.MapSimulator.UI
             BlockedByOwnerCount++;
         }
 
-        public void RecordResultPacket(byte subtype, byte resultCode)
+        public void RecordResultPacket(byte subtype, byte resultCode, int trailingByteCount = 0, bool hasResultCode = true)
         {
             ResultCount++;
             LastSubtype = subtype;
             LastResultCode = resultCode;
+            LastResultHadResultCode = hasResultCode;
+            ResultTrailingByteCount = Math.Max(0, trailingByteCount);
             WouldDisconnect = false;
         }
 
-        public void RecordResultIgnoredByOwner(byte subtype, byte resultCode, string ownerState)
+        public void RecordResultIgnoredByOwner(byte subtype, byte resultCode, string ownerState, int trailingByteCount = 0, bool hasResultCode = true)
         {
             ResultCount++;
             LastSubtype = subtype;
             LastResultCode = resultCode;
+            LastResultHadResultCode = hasResultCode;
+            ResultTrailingByteCount = Math.Max(0, trailingByteCount);
             IsActive = false;
             IsWaitingForResult = false;
             IsOwnerSurfaceVisible = false;
@@ -266,6 +278,8 @@ namespace HaCreator.MapSimulator.UI
                 NpcTemplateId,
                 DecodedItemCount,
                 TrailingByteCount,
+                ResultTrailingByteCount,
+                LastResultHadResultCode ? "1" : "0",
                 AskItemWishlist ? "1" : "0",
                 LastSubtype,
                 LastResultCode,
@@ -325,7 +339,10 @@ namespace HaCreator.MapSimulator.UI
             string tailText = TrailingByteCount > 0
                 ? $", tail {TrailingByteCount} byte(s)"
                 : string.Empty;
-            lines.Add($"{visibilityText}, {DescribeDisconnectHazard()}{blockedText}{tailText}");
+            string resultTailText = ResultTrailingByteCount > 0
+                ? $", result tail {ResultTrailingByteCount} byte(s)"
+                : string.Empty;
+            lines.Add($"{visibilityText}, {DescribeDisconnectHazard()}{blockedText}{tailText}{resultTailText}");
 
             string phaseText = DescribeWishlistSearchPhase();
             if (!string.IsNullOrWhiteSpace(LastNotice))
@@ -377,6 +394,9 @@ namespace HaCreator.MapSimulator.UI
             string trailingText = TrailingByteCount > 0
                 ? $", opaque tail {TrailingByteCount} byte(s)"
                 : string.Empty;
+            string resultTrailingText = ResultTrailingByteCount > 0
+                ? $", result opaque tail {ResultTrailingByteCount} byte(s)"
+                : string.Empty;
             string waitText = IsWaitingForResult
                 ? ", waiting for packet 366"
                 : string.Empty;
@@ -391,7 +411,7 @@ namespace HaCreator.MapSimulator.UI
                 ? $", blocked opens {BlockedByOwnerCount}"
                 : string.Empty;
 
-            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}), packets open={OpenCount}/result={ResultCount}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}, {visibilityText}, {ownerText}{blockedText}";
+            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}), packets open={OpenCount}/result={ResultCount}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}, {visibilityText}, {ownerText}{blockedText}";
         }
 
         private string DescribeLastResultState()

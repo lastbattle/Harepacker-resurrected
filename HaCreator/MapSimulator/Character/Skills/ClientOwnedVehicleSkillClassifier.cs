@@ -136,17 +136,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             "clawCut"
         };
 
+        private static readonly string[] ClientConfirmedMechanicVehicleOneTimeActionNames =
+        {
+            "gatlingshot2",
+            "drillrush",
+            "mbooster",
+            "earthslug",
+            "rpunch"
+        };
+
         private static readonly string[] ClientConfirmedMechanicVehicleCurrentActionNames =
         {
             // WZ publishes these exact roots on Character/TamingMob/01932016, and the client
             // taming-mob action gates key the extra coverage by vehicle id rather than prefix.
             // The active transform-owner seam still comes from MoveAction2RawAction and the
-            // active 35121005 tank path in PrepareActionLayer. Even though
-            // IsAbleTamingMobOneTimeAction admits raw action 241 (gatlingshot2) for vehicle
-            // 1932016, PrepareActionLayer only rewrites that one-time root after the tank owner
-            // is already active, so gatlingshot2 stays out of the standalone current-action /
-            // transform-owner surface alongside gatlingshot, drillrush, earthslug, mbooster,
-            // and rpunch until explicit client owner evidence promotes them.
+            // active 35121005 tank path in PrepareActionLayer, so the one-time surface above
+            // is admitted only after a 1932016 taming-mob owner is already known.
             "tank_pre",
             "tank",
             "tank_walk",
@@ -346,12 +351,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool IsWzOnlyMechanicVehicleOneTimeActionName(string actionName)
         {
-            return string.Equals(actionName, "gatlingshot", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "gatlingshot2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "drillrush", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "earthslug", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "mbooster", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "rpunch", StringComparison.OrdinalIgnoreCase);
+            return string.Equals(actionName, "gatlingshot", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsClientAdmittedMechanicVehicleOneTimeActionName(string actionName)
+        {
+            return ContainsActionName(ClientConfirmedMechanicVehicleOneTimeActionNames, actionName);
         }
 
         private static bool IsMechanicSkill(int skillId)
@@ -416,6 +421,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
+            if (IsClientAdmittedMechanicVehicleOneTimeActionName(actionName))
+            {
+                return true;
+            }
+
             return IsMountedMoveActionName(actionName)
                    || ContainsActionName(MechanicClientOwnedVehicleMountedMoveActions, actionName);
         }
@@ -468,7 +478,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             return IsMountedMoveActionName(actionName)
                    || ContainsActionName(MechanicClientOwnedVehicleMountedMoveActions, actionName)
                    || ContainsActionName(ClientConfirmedMechanicVehicleCurrentActionNames, actionName)
-                   || ContainsActionName(ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames, actionName);
+                   || ContainsActionName(ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames, actionName)
+                   || IsClientAdmittedMechanicVehicleOneTimeActionName(actionName);
         }
 
         private static bool ContainsActionName(string[] candidates, string actionName)

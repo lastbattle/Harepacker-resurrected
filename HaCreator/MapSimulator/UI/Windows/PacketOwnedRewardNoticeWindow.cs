@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.PacketOwnedRewardResultNotice;
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => IsVisible;
+        public override bool IsModalDialogOwner => IsVisible;
 
         internal static int ResolveCenteredBodyLineX(float measuredWidth)
         {

@@ -625,7 +625,7 @@ namespace HaCreator.MapSimulator.Managers
                 return;
             }
 
-            string summary = MessengerPacketCodec.TryDescribeClientRequest(opcode, payload, out string described)
+            string summary = TryDescribeOwnerClientRequest(opcode, payload, out string described)
                 ? described
                 : $"{_ownerName} request opcode={opcode} type={payload[0]}";
 
@@ -663,6 +663,28 @@ namespace HaCreator.MapSimulator.Managers
                 ? Array.Empty<byte>()
                 : rawPacket[sizeof(ushort)..];
             return true;
+        }
+
+        private bool TryDescribeOwnerClientRequest(int opcode, byte[] payload, out string summary)
+        {
+            summary = null;
+            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase)
+                && opcode == MapleTvRuntime.ConsumeCashItemUseRequestOpcode)
+            {
+                if (MapleTvRuntime.TryDecodeConsumeCashItemUseRequestPayload(payload, out MapleTvConsumeCashItemUseRequest request, out _))
+                {
+                    string receiver = string.IsNullOrWhiteSpace(request.ReceiverName)
+                        ? "self broadcast"
+                        : $"receiver={request.ReceiverName}";
+                    summary = $"MapleTV consume-cash request slot={request.InventoryPosition} item={request.ItemId} {receiver}";
+                    return true;
+                }
+
+                summary = "MapleTV consume-cash request";
+                return true;
+            }
+
+            return MessengerPacketCodec.TryDescribeClientRequest(opcode, payload, out summary);
         }
 
         private void StopInternal(bool clearPending)

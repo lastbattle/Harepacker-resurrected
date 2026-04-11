@@ -117,8 +117,11 @@ namespace HaCreator.MapSimulator.UI
         {
             for (int i = windows.Count - 1; i >= 0; i--)
             {
-                if (windows[i].IsVisible && windows[i].ContainsPoint(x, y))
+                if (windows[i].IsVisible
+                    && (windows[i].ContainsPoint(x, y) || windows[i].IsModalDialogOwner))
+                {
                     return true;
+                }
             }
             return false;
         }
@@ -728,6 +731,12 @@ namespace HaCreator.MapSimulator.UI
                         // Mouse is over this window but didn't click a button - stop checking windows below
                         _previousMouseState = mouseState;
                         return false;
+                    }
+
+                    if (window.IsModalDialogOwner)
+                    {
+                        _previousMouseState = mouseState;
+                        return true;
                     }
                 }
             }

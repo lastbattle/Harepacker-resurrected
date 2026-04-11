@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.RandomMesoBag;
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => IsVisible;
+        public override bool IsModalDialogOwner => IsVisible;
 
         public void Configure(PacketOwnedRandomMesoBagPresentation presentation)
         {

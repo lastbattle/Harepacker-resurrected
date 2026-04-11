@@ -19,6 +19,9 @@ namespace HaCreator.MapSimulator
         private string _pendingPacketOwnedQuestResultDeferredNoticeText = string.Empty;
         private PacketQuestResultNoticeSurface _pendingPacketOwnedQuestResultDeferredNoticeSurface;
         private bool _pendingPacketOwnedQuestResultDeferredNoticeAutoSeparated = true;
+        private IReadOnlyList<int> _pendingPacketOwnedQuestResultAvailableQuestIdsBeforePacket = Array.Empty<int>();
+        private bool _hasPendingPacketOwnedQuestResultAvailabilityRefresh;
+        private bool _deferPacketOwnedQuestAvailabilityRefreshForCurrentPayload;
         private int _pendingQuestDeliveryResultQuestId;
         private bool _pendingQuestDeliveryResultCompletionPhase;
         private int _pendingQuestDeliveryResultCashItemId;
@@ -30,6 +33,7 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedQuestResultPayload(byte[] payload, out string message)
         {
             message = null;
+            _deferPacketOwnedQuestAvailabilityRefreshForCurrentPayload = false;
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             IReadOnlyList<int> availableQuestIdsBeforePacket = _questRuntime.CaptureAvailableQuestIds(_playerManager?.Player?.Build);
 
@@ -50,7 +54,7 @@ namespace HaCreator.MapSimulator
                     7 => TryApplyPacketOwnedQuestTimerRemoveRange(reader, timeKeepQuestTimer: false, out message),
                     8 => TryApplyPacketOwnedQuestTimerAddSingle(reader, timeKeepQuestTimer: true, out message),
                     9 => TryApplyPacketOwnedQuestTimerRemoveRange(reader, timeKeepQuestTimer: true, out message),
-                    10 => TryApplyPacketOwnedQuestResultPresentation(reader, out message),
+                    10 => TryApplyPacketOwnedQuestResultPresentation(reader, availableQuestIdsBeforePacket, out message),
                     11 => TryApplyPacketOwnedQuestResultFixedNotice(resultType, out message),
                     12 => TryApplyPacketOwnedQuestResultActionNotice(reader, out message),
                     13 => TryApplyPacketOwnedQuestResultFixedNotice(resultType, out message),
@@ -68,7 +72,7 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                if (applied)
+                if (applied && !_deferPacketOwnedQuestAvailabilityRefreshForCurrentPayload)
                 {
                     AppendPacketOwnedQuestAvailabilityRefreshSummary(ref message, availableQuestIdsBeforePacket);
                 }
@@ -82,6 +86,7 @@ namespace HaCreator.MapSimulator
             }
             finally
             {
+                _deferPacketOwnedQuestAvailabilityRefreshForCurrentPayload = false;
                 RefreshQuestUiState();
             }
         }
@@ -147,7 +152,10 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryApplyPacketOwnedQuestResultPresentation(BinaryReader reader, out string message)
+        private bool TryApplyPacketOwnedQuestResultPresentation(
+            BinaryReader reader,
+            IReadOnlyList<int> availableQuestIdsBeforePacket,
+            out string message)
         {
             int questId = reader.ReadUInt16();
             int speakerNpcId = reader.ReadInt32();
@@ -230,8 +238,13 @@ namespace HaCreator.MapSimulator
             if (openedModal)
             {
                 QueuePendingPacketOwnedQuestResultContinuation(questId, trailingFollowUpPayload, speakerNpcId);
+                QueuePendingPacketOwnedQuestResultAvailabilityRefresh(availableQuestIdsBeforePacket);
+                _deferPacketOwnedQuestAvailabilityRefreshForCurrentPayload =
+                    PacketQuestResultClientSemantics.ResolveAvailabilityRefreshDisposition(
+                        resultType: 10,
+                        openedModal: true) == PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation;
                 followUpStatus =
-                    "Queued packet-owned subtype 10 trailing follow-up quest processing after the quest-result dialog returns through Next or OK.";
+                    "Queued packet-owned subtype 10 trailing follow-up quest processing and availability refresh after the quest-result dialog returns through Next or OK.";
             }
             else
             {
@@ -450,6 +463,13 @@ namespace HaCreator.MapSimulator
             _pendingPacketOwnedQuestResultDeferredNoticeAutoSeparated = autoSeparated;
         }
 
+        private void QueuePendingPacketOwnedQuestResultAvailabilityRefresh(IReadOnlyList<int> availableQuestIdsBeforePacket)
+        {
+            _pendingPacketOwnedQuestResultAvailableQuestIdsBeforePacket =
+                availableQuestIdsBeforePacket ?? Array.Empty<int>();
+            _hasPendingPacketOwnedQuestResultAvailabilityRefresh = true;
+        }
+
         private void DispatchPacketOwnedQuestResultNotice(
             string noticeText,
             PacketQuestResultNoticeSurface surface,
@@ -492,6 +512,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            PacketQuestResultAvailabilityRefreshDisposition availabilityRefreshDisposition =
+                PacketQuestResultClientSemantics.ResolveAvailabilityRefreshDisposition(
+                    resultType: 10,
+                    openedModal: true,
+                    closeKind);
             PacketQuestResultSubtype10ContinuationDisposition continuationDisposition =
                 PacketQuestResultClientSemantics.ResolveSubtype10ContinuationDisposition(closeKind);
             if (continuationDisposition == PacketQuestResultSubtype10ContinuationDisposition.Continue)
@@ -506,7 +531,17 @@ namespace HaCreator.MapSimulator
                 }
 
                 _pendingPacketOwnedQuestResultContinuationQuestId = 0;
+                if (!_pendingPacketOwnedQuestResultFollowUpReady)
+                {
+                    DispatchPendingPacketOwnedQuestAvailabilityRefresh(availabilityRefreshDisposition);
+                }
+
                 return;
+            }
+
+            if (availabilityRefreshDisposition == PacketQuestResultAvailabilityRefreshDisposition.Abandon)
+            {
+                ClearPendingPacketOwnedQuestResultAvailabilityRefresh();
             }
 
             ClearPendingPacketOwnedQuestResultContinuation();
@@ -536,6 +571,25 @@ namespace HaCreator.MapSimulator
             if (!string.IsNullOrWhiteSpace(followUpStatus))
             {
                 _chat?.AddSystemMessage(followUpStatus, currTickCount);
+            }
+        }
+
+        private void DispatchPendingPacketOwnedQuestAvailabilityRefresh(
+            PacketQuestResultAvailabilityRefreshDisposition availabilityRefreshDisposition)
+        {
+            if (availabilityRefreshDisposition != PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation)
+            {
+                ClearPendingPacketOwnedQuestResultAvailabilityRefresh();
+                return;
+            }
+
+            string refreshStatus = string.Empty;
+            AppendPacketOwnedQuestAvailabilityRefreshSummary(
+                ref refreshStatus,
+                ConsumePendingPacketOwnedQuestResultAvailabilitySnapshot());
+            if (!string.IsNullOrWhiteSpace(refreshStatus))
+            {
+                _chat?.AddSystemMessage(refreshStatus, currTickCount);
             }
         }
 
@@ -601,6 +655,7 @@ namespace HaCreator.MapSimulator
             _pendingPacketOwnedQuestResultDeferredNoticeText = string.Empty;
             _pendingPacketOwnedQuestResultDeferredNoticeSurface = PacketQuestResultNoticeSurface.Chat;
             _pendingPacketOwnedQuestResultDeferredNoticeAutoSeparated = true;
+            ClearPendingPacketOwnedQuestResultAvailabilityRefresh();
         }
 
         private bool IsPacketOwnedQuestResultNoticeVisible()
@@ -616,7 +671,8 @@ namespace HaCreator.MapSimulator
                 return string.Empty;
             }
 
-            IReadOnlyList<int> availableQuestIdsBeforeFollowUp = _questRuntime.CaptureAvailableQuestIds(_playerManager?.Player?.Build);
+            IReadOnlyList<int> availableQuestIdsBeforeFollowUp =
+                ConsumePendingPacketOwnedQuestResultAvailabilitySnapshot();
             QuestWindowActionResult result = _questRuntime.TryAcceptFromQuestWindow(followUpQuestId, _playerManager?.Player?.Build);
             HandleQuestWindowActionResult(result);
 
@@ -631,6 +687,24 @@ namespace HaCreator.MapSimulator
 
             AppendPacketOwnedQuestAvailabilityRefreshSummary(ref status, availableQuestIdsBeforeFollowUp);
             return status;
+        }
+
+        private IReadOnlyList<int> ConsumePendingPacketOwnedQuestResultAvailabilitySnapshot()
+        {
+            if (!_hasPendingPacketOwnedQuestResultAvailabilityRefresh)
+            {
+                return _questRuntime.CaptureAvailableQuestIds(_playerManager?.Player?.Build);
+            }
+
+            IReadOnlyList<int> snapshot = _pendingPacketOwnedQuestResultAvailableQuestIdsBeforePacket;
+            ClearPendingPacketOwnedQuestResultAvailabilityRefresh();
+            return snapshot ?? Array.Empty<int>();
+        }
+
+        private void ClearPendingPacketOwnedQuestResultAvailabilityRefresh()
+        {
+            _pendingPacketOwnedQuestResultAvailableQuestIdsBeforePacket = Array.Empty<int>();
+            _hasPendingPacketOwnedQuestResultAvailabilityRefresh = false;
         }
 
         private void RegisterPendingQuestDeliveryQuestResult(

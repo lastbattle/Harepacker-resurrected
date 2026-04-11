@@ -1210,11 +1210,13 @@ namespace HaCreator.MapSimulator.Animation
         int LoadLayerOptionValue,
         int LoadLayerAlphaValue,
         int LoadLayerReservedValue,
+        bool LoadLayerFlip,
         AnimationOneTimePlaybackMode AnimatePlaybackMode,
         bool AnimateUsesMissingStartTime,
         bool AnimateUsesMissingRepeatCount,
         bool RegistersOneTimeAnimation,
         int RegisterOneTimeAnimationDelayMs,
+        bool RegisterOneTimeAnimationUsesFlipOrigin,
         bool RegisterOneTimeAnimationHasCallback)
     {
         public static OneTimeAnimationRecoveredRegistrationTrace CreateFullChargedAngerGauge(string sourceUol)
@@ -1231,14 +1233,33 @@ namespace HaCreator.MapSimulator.Animation
                 LoadLayerOptionValue: unchecked((int)0xC00614A4),
                 LoadLayerAlphaValue: 255,
                 LoadLayerReservedValue: 0,
+                LoadLayerFlip: false,
                 AnimatePlaybackMode: AnimationOneTimePlaybackMode.GA_STOP,
                 AnimateUsesMissingStartTime: true,
                 AnimateUsesMissingRepeatCount: true,
                 RegistersOneTimeAnimation: true,
                 RegisterOneTimeAnimationDelayMs: 0,
+                RegisterOneTimeAnimationUsesFlipOrigin: false,
                 RegisterOneTimeAnimationHasCallback: false);
         }
     }
+
+    internal enum OneTimeAnimationRecoveredNativeOperationKind
+    {
+        LoadLayer = 0,
+        Animate = 1,
+        RegisterOneTimeAnimation = 2
+    }
+
+    internal readonly record struct OneTimeAnimationRecoveredNativeOperation(
+        OneTimeAnimationRecoveredNativeOperationKind Kind,
+        string SourceUol,
+        AnimationOneTimePlaybackMode PlaybackMode,
+        bool UsesOriginVector,
+        int OriginOffsetX,
+        int OriginOffsetY,
+        bool UsesOverlayLayer,
+        int Value);
 
     internal enum AnimationCanvasLayerContent
     {
@@ -1365,6 +1386,19 @@ namespace HaCreator.MapSimulator.Animation
         int Value);
 
     /// <summary>
+    /// Snapshot of the recovered layer state after the native Effect_HP call sequence has run.
+    /// This is the managed analogue for the IWzGr2DLayer writes the simulator does not instantiate.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeLayerState(
+        CanvasLayerRecoveredCanvasSettings CanvasSettings,
+        CanvasLayerRecoveredLayerSettings LayerSettings,
+        CanvasLayerRecoveredPositionSettings PrimaryPosition,
+        bool HasOverlayPosition,
+        CanvasLayerRecoveredPositionSettings OverlayPosition,
+        int ActiveLayerOptionValue,
+        bool RegistersOneTimeAnimation);
+
+    /// <summary>
     /// Owner-prepared source trace that stays attached to managed one-time canvas layers.
     /// </summary>
     internal readonly record struct CanvasLayerRecoveredPreparedSourceTrace(
@@ -1419,6 +1453,7 @@ namespace HaCreator.MapSimulator.Animation
         internal CanvasLayerRecoveredOwnerTrace? RecoveredOwnerTrace { get; private set; }
         internal IReadOnlyList<CanvasLayerRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
             = Array.Empty<CanvasLayerRecoveredNativeOperation>();
+        internal CanvasLayerRecoveredNativeLayerState RecoveredNativeLayerState { get; private set; }
 
         internal static CanvasLayerInsertDescriptor[] BuildInsertDescriptors(
             int holdDurationMs,
@@ -1540,6 +1575,9 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(
                 RecoveredRegistrationTrace,
                 recoveredOwnerTrace);
+            RecoveredNativeLayerState = BuildRecoveredNativeLayerState(
+                RecoveredRegistrationTrace,
+                recoveredOwnerTrace);
         }
 
         public bool Update(int currentTimeMs)
@@ -1592,6 +1630,28 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredRegistrationTrace = default;
             RecoveredOwnerTrace = null;
             RecoveredNativeExecutionTrace = Array.Empty<CanvasLayerRecoveredNativeOperation>();
+            RecoveredNativeLayerState = default;
+        }
+
+        internal static CanvasLayerRecoveredNativeLayerState BuildRecoveredNativeLayerState(
+            CanvasLayerRecoveredRegistrationTrace registrationTrace,
+            CanvasLayerRecoveredOwnerTrace? ownerTrace)
+        {
+            bool hasOverlayPosition = ownerTrace?.KeepsOverlayOnSeparateLayer == true;
+            CanvasLayerRecoveredPositionSettings overlayPosition = hasOverlayPosition
+                ? new CanvasLayerRecoveredPositionSettings(
+                    registrationTrace.Position.Left,
+                    registrationTrace.Position.Top - 30)
+                : default;
+
+            return new CanvasLayerRecoveredNativeLayerState(
+                registrationTrace.CanvasSettings,
+                registrationTrace.LayerSettings,
+                registrationTrace.Position,
+                hasOverlayPosition,
+                overlayPosition,
+                registrationTrace.LayerSettings.FinalizeLayerOptionValue,
+                registrationTrace.RegistersOneTimeAnimation);
         }
 
         internal static CanvasLayerRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
@@ -1837,6 +1897,8 @@ namespace HaCreator.MapSimulator.Animation
         public string SourceUol { get; private set; }
         public bool UsesOverlayParent { get; private set; }
         public OneTimeAnimationRecoveredRegistrationTrace? RecoveredRegistrationTrace { get; private set; }
+        internal IReadOnlyList<OneTimeAnimationRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
+            = Array.Empty<OneTimeAnimationRecoveredNativeOperation>();
         internal int CurrentFrameIndex => _currentFrame;
 
         public void Initialize(List<IDXObject> frames, float x, float y, bool flip, int currentTimeMs, int zOrder)
@@ -1904,6 +1966,7 @@ namespace HaCreator.MapSimulator.Animation
             SourceUol = sourceUol;
             UsesOverlayParent = usesOverlayParent;
             RecoveredRegistrationTrace = recoveredRegistrationTrace;
+            RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(recoveredRegistrationTrace);
         }
 
         public bool Update(int currentTimeMs)
@@ -1967,6 +2030,54 @@ namespace HaCreator.MapSimulator.Animation
         private static int ResolveFrameDelay(IDXObject frame)
         {
             return Math.Max(10, frame?.Delay ?? 100);
+        }
+
+        private static OneTimeAnimationRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
+            OneTimeAnimationRecoveredRegistrationTrace? registrationTrace)
+        {
+            if (registrationTrace == null)
+            {
+                return Array.Empty<OneTimeAnimationRecoveredNativeOperation>();
+            }
+
+            OneTimeAnimationRecoveredRegistrationTrace trace = registrationTrace.GetValueOrDefault();
+            var operations = new List<OneTimeAnimationRecoveredNativeOperation>(
+                trace.RegistersOneTimeAnimation ? 3 : 2)
+            {
+                new(
+                    OneTimeAnimationRecoveredNativeOperationKind.LoadLayer,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    trace.UsesOriginVector,
+                    trace.LoadLayerOriginOffsetX,
+                    trace.LoadLayerOriginOffsetY,
+                    trace.UsesOverlayLayer,
+                    trace.LoadLayerOptionValue),
+                new(
+                    OneTimeAnimationRecoveredNativeOperationKind.Animate,
+                    trace.SourceUol,
+                    trace.AnimatePlaybackMode,
+                    false,
+                    0,
+                    0,
+                    false,
+                    (int)trace.AnimatePlaybackMode)
+            };
+
+            if (trace.RegistersOneTimeAnimation)
+            {
+                operations.Add(new OneTimeAnimationRecoveredNativeOperation(
+                    OneTimeAnimationRecoveredNativeOperationKind.RegisterOneTimeAnimation,
+                    trace.SourceUol,
+                    AnimationOneTimePlaybackMode.Default,
+                    trace.RegisterOneTimeAnimationUsesFlipOrigin,
+                    0,
+                    0,
+                    false,
+                    trace.RegisterOneTimeAnimationDelayMs));
+            }
+
+            return operations.ToArray();
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
@@ -2353,7 +2464,7 @@ namespace HaCreator.MapSimulator.Animation
                 }
             }
 
-            while (_nextSpawnTime <= currentTimeMs)
+            if (_nextSpawnTime <= currentTimeMs)
             {
                 bool hasGenerationPoints = _generationPoints != null && _generationPoints.Count > 0;
                 int spawnAngleDegrees = AnimationEffects.ResolveFollowSpawnAngleDegrees(

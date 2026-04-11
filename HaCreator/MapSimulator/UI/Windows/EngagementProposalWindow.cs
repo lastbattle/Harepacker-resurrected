@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TextSlotHeight = 16;
         private const int TextDrawHeight = 14;
         private const int CenterBandTop = 20;
+        private const int CenterBandStride = 16;
         private const int TextBoxTopFromBottom = 47;
         private const int BottomBandTopFromBottom = 31;
         private const int BottomTextTopFromBottom = 15;
@@ -187,17 +188,19 @@ namespace HaCreator.MapSimulator.UI
 
             int centerTop = Position.Y + CenterBandTop;
             int textBoxTop = Position.Y + Math.Max(CenterBandTop, _frameHeight - TextBoxTopFromBottom);
-            int centerHeight = Math.Max(0, textBoxTop - centerTop);
-            for (int y = 0; y < centerHeight; y += _assets.CenterHeight)
+            for (int y = centerTop; y < textBoxTop; y += CenterBandStride)
             {
-                DrawHorizontalBand(sprite, _assets.Center, Position.X, centerTop + y, Math.Min(_assets.CenterHeight, centerHeight - y));
+                DrawHorizontalBand(sprite, _assets.Center, Position.X, y, _assets.CenterHeight);
             }
 
-            DrawHorizontalBand(sprite, _assets.TextBox, Position.X, textBoxTop, Math.Min(_assets.TextBoxHeight, _frameHeight - (_frameHeight - TextBoxTopFromBottom)));
+            DrawHorizontalBand(sprite, _assets.TextBox, Position.X, textBoxTop, _assets.TextBoxHeight);
 
             int bottomBandTop = Position.Y + Math.Max(0, _frameHeight - BottomBandTopFromBottom);
-            int bottomBandHeight = Math.Max(0, _frameHeight - (bottomBandTop - Position.Y));
-            DrawHorizontalBand(sprite, _assets.Bottom, Position.X, bottomBandTop, bottomBandHeight);
+            int bottomBandEnd = Position.Y + Math.Max(0, _frameHeight - BottomTextTopFromBottom);
+            for (int y = bottomBandTop; y < bottomBandEnd; y += CenterBandStride)
+            {
+                DrawHorizontalBand(sprite, _assets.Bottom, Position.X, y, _assets.BottomHeight);
+            }
         }
 
         private void DrawBottomText(SpriteBatch sprite)

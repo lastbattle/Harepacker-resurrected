@@ -107,7 +107,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,234,250,253,254,255,256,261,269,270,274,275,291,366,367,405,406,407,1011,1023,1025; outbound opcodes=45,74,77,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,234,248,250,253,254,255,256,261,269,270,274,275,291,366,367,405,406,407,1011,1023,1025; outbound opcodes=45,74,77,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -613,6 +613,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == LocalUtilityPacketInboxManager.DamageMeterPacketType
                 || packetType == LocalUtilityPacketInboxManager.PassiveMoveClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.MakerResultClientPacketType
                 || packetType == LocalUtilityPacketInboxManager.OpenClassCompetitionPagePacketType
                 || packetType == LocalUtilityPacketInboxManager.QuestGuideResultPacketType
                 || packetType == LocalUtilityPacketInboxManager.DeliveryQuestPacketType
@@ -646,6 +647,7 @@ namespace HaCreator.MapSimulator.Managers
                 LocalUtilityPacketInboxManager.DamageMeterPacketType => "DamageMeter(267)",
                 LocalUtilityPacketInboxManager.PassiveMoveClientPacketType => "PassiveMove(269)",
                 LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
+                LocalUtilityPacketInboxManager.MakerResultClientPacketType => "OnMakerResult(248)",
                 LocalUtilityPacketInboxManager.OpenClassCompetitionPagePacketType => "OpenClassCompetitionPage(250)",
                 LocalUtilityPacketInboxManager.QuestGuideResultPacketType => "QuestGuideResult(274)",
                 LocalUtilityPacketInboxManager.DeliveryQuestPacketType => "DeliveryQuest(275)",

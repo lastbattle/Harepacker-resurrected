@@ -82,16 +82,31 @@ namespace HaCreator.MapSimulator.Fields
             public ClientOwnedDrawViewrangeOperation(
                 ClientOwnedDrawViewrangeOperationKind kind,
                 Vector2 topLeft,
-                int maskIndex)
+                int maskIndex,
+                int sourceX = 0,
+                int sourceY = 0,
+                int sourceWidth = 0,
+                int sourceHeight = 0,
+                bool usesRemoveAlphaCopy = false)
             {
                 Kind = kind;
                 TopLeft = topLeft;
                 MaskIndex = maskIndex;
+                SourceX = Math.Max(0, sourceX);
+                SourceY = Math.Max(0, sourceY);
+                SourceWidth = Math.Max(0, sourceWidth);
+                SourceHeight = Math.Max(0, sourceHeight);
+                UsesRemoveAlphaCopy = usesRemoveAlphaCopy;
             }
 
             public ClientOwnedDrawViewrangeOperationKind Kind { get; }
             public Vector2 TopLeft { get; }
             public int MaskIndex { get; }
+            public int SourceX { get; }
+            public int SourceY { get; }
+            public int SourceWidth { get; }
+            public int SourceHeight { get; }
+            public bool UsesRemoveAlphaCopy { get; }
         }
 
         #region View Mode
@@ -922,7 +937,22 @@ namespace HaCreator.MapSimulator.Fields
             IReadOnlyList<Vector2> previousMaskTopLefts,
             IReadOnlyList<Vector2> currentMaskTopLefts)
         {
+            return BuildClientOwnedDrawViewrangeOperationPlan(
+                previousMaskTopLefts,
+                currentMaskTopLefts,
+                ClientOwnedSmallDarkCanvasWidth,
+                ClientOwnedSmallDarkCanvasHeight);
+        }
+
+        internal static IReadOnlyList<ClientOwnedDrawViewrangeOperation> BuildClientOwnedDrawViewrangeOperationPlan(
+            IReadOnlyList<Vector2> previousMaskTopLefts,
+            IReadOnlyList<Vector2> currentMaskTopLefts,
+            int viewrangeWidth,
+            int viewrangeHeight)
+        {
             List<ClientOwnedDrawViewrangeOperation> operations = new();
+            int sourceWidth = Math.Max(0, viewrangeWidth);
+            int sourceHeight = Math.Max(0, viewrangeHeight);
 
             if (previousMaskTopLefts != null)
             {
@@ -953,7 +983,10 @@ namespace HaCreator.MapSimulator.Fields
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     copyKind,
                     currentMaskTopLefts[i],
-                    i));
+                    i,
+                    sourceWidth: sourceWidth,
+                    sourceHeight: sourceHeight,
+                    usesRemoveAlphaCopy: true));
                 operations.Add(new ClientOwnedDrawViewrangeOperation(
                     ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory,
                     currentMaskTopLefts[i],
@@ -961,6 +994,34 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return operations;
+        }
+
+        internal static IReadOnlyList<ClientOwnedInitOperation> BuildClientOwnedInitOperationPlan(
+            int viewrangeWidth,
+            int viewrangeHeight,
+            string viewrangeSource)
+        {
+            int smallDarkWidth = Math.Max(1, viewrangeWidth);
+            int smallDarkHeight = Math.Max(1, viewrangeHeight);
+            string source = string.IsNullOrWhiteSpace(viewrangeSource)
+                ? $"StringPool[0x{ClientOwnedViewrangePathStringPoolId:X}]"
+                : viewrangeSource.Trim();
+
+            return new[]
+            {
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.CreateDarkCanvas, ClientOwnedDarkCanvasWidth, ClientOwnedDarkCanvasHeight, source: $"StringPool[0x{ClientOwnedCanvasClassStringPoolId:X}]"),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.FillDarkCanvasBlack, ClientOwnedDarkCanvasWidth, ClientOwnedDarkCanvasHeight),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.CreateDarkLayer),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.InsertDarkCanvasIntoLayer, ClientOwnedDarkCanvasWidth, ClientOwnedDarkCanvasHeight),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.BindDarkLayerToGraphicsCenter),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.MoveDarkLayer, x: ClientOwnedDarkLayerOffsetX, y: ClientOwnedDarkLayerOffsetY),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.SetDarkLayerColor, source: "0xC006060A"),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.SetDarkLayerZ, source: "-1"),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.CreateSmallDarkCanvas, smallDarkWidth, smallDarkHeight, source: $"StringPool[0x{ClientOwnedCanvasClassStringPoolId:X}]"),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.FillSmallDarkCanvasBlack, smallDarkWidth, smallDarkHeight),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.LoadViewrangeCanvas, smallDarkWidth, smallDarkHeight, source: source),
+                new ClientOwnedInitOperation(ClientOwnedInitOperationKind.DrawInitialViewrange, smallDarkWidth, smallDarkHeight)
+            };
         }
 
         internal void CommitClientOwnedUpdateParityMaskTopLefts(IReadOnlyList<Vector2> maskTopLefts)

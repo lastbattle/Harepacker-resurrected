@@ -165,6 +165,7 @@ namespace HaCreator.MapSimulator.UI
         private InventorySlotData _pendingDropSlotData;
         private int _dropQuantityPromptValue = 1;
         private int _dropQuantityPromptMaximum = 1;
+        private string _dropQuantityPromptText = string.Empty;
         private bool _mesoDropPromptVisible;
         private string _mesoDropPromptText = string.Empty;
         private long _mesoDropPromptMaximum = 1L;
@@ -554,10 +555,10 @@ namespace HaCreator.MapSimulator.UI
             string title = _mesoDropPromptVisible ? "Drop Mesos" : "Discard Count";
             string quantityText = _mesoDropPromptVisible
                 ? $"Amount: {FormatMesoDropPromptAmount()} / {_mesoDropPromptMaximum.ToString("N0", CultureInfo.InvariantCulture)}"
-                : $"Qty: {_dropQuantityPromptValue} / {_dropQuantityPromptMaximum}";
+                : $"Qty: {FormatDropQuantityPromptAmount()} / {_dropQuantityPromptMaximum}";
             string detailText = _mesoDropPromptVisible
                 ? "Type amount. OK confirms, Close cancels."
-                : "Prev/Next adjusts. OK confirms, Close cancels.";
+                : "Type count or use Prev/Next. OK confirms, Close cancels.";
 
             InventoryRenderUtil.DrawOutlinedText(
                 sprite,
@@ -1591,10 +1592,17 @@ namespace HaCreator.MapSimulator.UI
             else if (WasPressed(keyboardState, Keys.Home))
             {
                 _dropQuantityPromptValue = 1;
+                _dropQuantityPromptText = _dropQuantityPromptValue.ToString(CultureInfo.InvariantCulture);
             }
             else if (WasPressed(keyboardState, Keys.End))
             {
                 _dropQuantityPromptValue = _dropQuantityPromptMaximum;
+                _dropQuantityPromptText = _dropQuantityPromptValue.ToString(CultureInfo.InvariantCulture);
+            }
+            else if (HandleDropQuantityPromptTextInput(keyboardState))
+            {
+                _previousInteractionMouseState = mouseState;
+                return;
             }
 
             if (WasPressed(keyboardState, Keys.Enter) || WasPressed(keyboardState, Keys.Space))
@@ -1607,6 +1615,49 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _previousInteractionMouseState = mouseState;
+        }
+
+        private bool HandleDropQuantityPromptTextInput(KeyboardState keyboardState)
+        {
+            for (Keys key = Keys.D0; key <= Keys.D9; key++)
+            {
+                if (WasPressed(keyboardState, key))
+                {
+                    AppendDropQuantityPromptDigit((char)('0' + ((int)key - (int)Keys.D0)));
+                    return true;
+                }
+            }
+
+            for (Keys key = Keys.NumPad0; key <= Keys.NumPad9; key++)
+            {
+                if (WasPressed(keyboardState, key))
+                {
+                    AppendDropQuantityPromptDigit((char)('0' + ((int)key - (int)Keys.NumPad0)));
+                    return true;
+                }
+            }
+
+            if (WasPressed(keyboardState, Keys.Back))
+            {
+                if (_dropQuantityPromptText.Length > 0)
+                {
+                    _dropQuantityPromptText = _dropQuantityPromptText[..^1];
+                    _dropQuantityPromptValue = FieldDropRequestEvaluator.ResolveDropPromptQuantityText(
+                        _dropQuantityPromptText,
+                        _dropQuantityPromptMaximum);
+                }
+
+                return true;
+            }
+
+            if (WasPressed(keyboardState, Keys.Delete))
+            {
+                _dropQuantityPromptText = string.Empty;
+                _dropQuantityPromptValue = 1;
+                return true;
+            }
+
+            return false;
         }
 
         private void HandleMesoDropPromptInput(KeyboardState keyboardState)
@@ -1683,6 +1734,7 @@ namespace HaCreator.MapSimulator.UI
             _pendingDropSlotData = slotData?.Clone();
             _dropQuantityPromptMaximum = Math.Max(1, slotData?.Quantity ?? 1);
             _dropQuantityPromptValue = 1;
+            _dropQuantityPromptText = string.Empty;
             _dropQuantityPromptVisible = _pendingDropSlotData != null;
             _previousInteractionMouseState = Mouse.GetState();
         }
@@ -1732,6 +1784,7 @@ namespace HaCreator.MapSimulator.UI
             _pendingDropSlotData = null;
             _dropQuantityPromptValue = 1;
             _dropQuantityPromptMaximum = 1;
+            _dropQuantityPromptText = string.Empty;
         }
 
         private void AdjustDropQuantityPromptValue(int delta)
@@ -1740,6 +1793,22 @@ namespace HaCreator.MapSimulator.UI
                 _dropQuantityPromptValue + delta,
                 1,
                 Math.Max(1, _dropQuantityPromptMaximum));
+            _dropQuantityPromptText = _dropQuantityPromptValue.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private void AppendDropQuantityPromptDigit(char digit)
+        {
+            if (!char.IsDigit(digit))
+            {
+                return;
+            }
+
+            FieldDropRequestEvaluator.TryAppendDropPromptQuantityDigit(
+                _dropQuantityPromptText,
+                digit,
+                _dropQuantityPromptMaximum,
+                out _dropQuantityPromptText,
+                out _dropQuantityPromptValue);
         }
 
         private bool TryOpenMesoDropPrompt(int mouseX, int mouseY)
@@ -1798,6 +1867,13 @@ namespace HaCreator.MapSimulator.UI
                 && amount > 0
                     ? amount.ToString("N0", CultureInfo.InvariantCulture)
                     : "0";
+        }
+
+        private string FormatDropQuantityPromptAmount()
+        {
+            return !string.IsNullOrEmpty(_dropQuantityPromptText)
+                ? _dropQuantityPromptValue.ToString(CultureInfo.InvariantCulture)
+                : "1";
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

@@ -118,6 +118,9 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public int ForwardedOutboundCount { get; private set; }
+        public int InjectedOutboundCount { get; private set; }
+        public int LastInjectedOutboundOpcode { get; private set; }
+        public byte[] LastInjectedOutboundRawPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Social-list official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -128,7 +131,10 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Social-list official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; {DescribeConfiguredOpcodes(FriendResultOpcode, PartyResultOpcode, GuildResultOpcode, AllianceResultOpcode)}. {LastStatus}";
+            string injectedText = InjectedOutboundCount > 0
+                ? $"; injectedOutbound={InjectedOutboundCount}, lastInjectedOpcode={LastInjectedOutboundOpcode}"
+                : $"; injectedOutbound={InjectedOutboundCount}";
+            return $"Social-list official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}{injectedText}; {DescribeConfiguredOpcodes(FriendResultOpcode, PartyResultOpcode, GuildResultOpcode, AllianceResultOpcode)}. {LastStatus}";
         }
 
         public void Start(
@@ -277,6 +283,47 @@ namespace HaCreator.MapSimulator.Managers
             LastStatus = success
                 ? $"Applied {summary} from {source}."
                 : $"Ignored {summary} from {source}.";
+        }
+
+        public bool TrySendOutboundRawPacket(byte[] rawPacket, out string status)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode))
+            {
+                status = "Social-list outbound raw packet must include a 2-byte opcode.";
+                LastStatus = status;
+                return false;
+            }
+
+            BridgePair pair;
+            lock (_sync)
+            {
+                pair = _activePair;
+            }
+
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = "Social-list official-session bridge has no connected Maple session for outbound injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedRawPacket = (byte[])rawPacket.Clone();
+            try
+            {
+                pair.ServerSession.SendPacket(clonedRawPacket);
+                InjectedOutboundCount++;
+                LastInjectedOutboundOpcode = opcode;
+                LastInjectedOutboundRawPacket = clonedRawPacket;
+                status = $"Injected social-list outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ClearActivePair(pair, $"Social-list official-session outbound injection failed: {ex.Message}");
+                status = LastStatus;
+                return false;
+            }
         }
 
         public void Dispose()
@@ -532,11 +579,26 @@ namespace HaCreator.MapSimulator.Managers
         {
             ReceivedCount = 0;
             ForwardedOutboundCount = 0;
+            InjectedOutboundCount = 0;
+            LastInjectedOutboundOpcode = 0;
+            LastInjectedOutboundRawPacket = Array.Empty<byte>();
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)
         {
             return new MapleCrypto((byte[])iv.Clone(), version);
+        }
+
+        private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode)
+        {
+            opcode = 0;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            opcode = BitConverter.ToUInt16(rawPacket, 0);
+            return true;
         }
 
         private static bool TryResolveProcessSelector(string selector, out int? owningProcessId, out string owningProcessName, out string error)

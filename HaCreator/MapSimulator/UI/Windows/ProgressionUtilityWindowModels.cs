@@ -176,8 +176,8 @@ namespace HaCreator.MapSimulator.UI
         private const float ClientCollectionTextLaneWidth = 190f;
         private const int ClientCollectionAnalyzedBlockCarry = 10;
         private const int ClientCollectionEntryRuleGap = 6;
-        private const int ClientCollectionDetailLineStep = 9;
-        private const int ClientCollectionAnalyzedTextLineHeight = 9;
+        private const int ClientCollectionDetailLineStep = 12;
+        private const int ClientCollectionAnalyzedTextLineHeight = 12;
         private const int ClientCollectionStandardEntryFirstTop = 66;
         private const int ClientCollectionFooterRuleTop = 221;
         private const int ClientCollectionTextLaneLeft = 0;

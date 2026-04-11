@@ -64,6 +64,13 @@ namespace HaCreator.MapSimulator
             Deferred = 5
         }
 
+        internal enum PacketOwned1026PetConsumeRouting
+        {
+            QuestRewardFallback = 0,
+            DedicatedPetConsumeResult = 1,
+            TargetedPetConsumeResult = 2
+        }
+
         private readonly record struct FieldHazardHpPotionCandidate(int ItemId, InventoryType InventoryType, string ItemName);
         internal readonly record struct FieldHazardPetConsumeInboundResult(
             FieldHazardPetConsumeInboundResultKind Kind,
@@ -4437,8 +4444,8 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldHandlePacketOwned1026AsPetConsumeResult(bool hasPendingFieldHazardRequest, byte[] payload)
         {
-            return hasPendingFieldHazardRequest
-                && TryDecodeFieldHazardPetConsumeResultPayload(payload, out _, out _);
+            return ClassifyPacketOwned1026PetConsumeRouting(hasPendingFieldHazardRequest, payload)
+                != PacketOwned1026PetConsumeRouting.QuestRewardFallback;
         }
 
         internal static bool ShouldHandlePacketOwned1026AsPetConsumeResult(
@@ -4448,13 +4455,35 @@ namespace HaCreator.MapSimulator
             int expectedItemId,
             int expectedRequestIndex)
         {
-            return hasPendingFieldHazardRequest
-                && TryDecodeFieldHazardPetConsumeResultPayload(payload, out FieldHazardPetConsumeInboundResult result, out _)
-                && MatchesFieldHazardPetConsumeInboundResult(
+            return ClassifyPacketOwned1026PetConsumeRouting(
+                    hasPendingFieldHazardRequest,
+                    payload,
+                    expectedSlot,
+                    expectedItemId,
+                    expectedRequestIndex)
+                == PacketOwned1026PetConsumeRouting.TargetedPetConsumeResult;
+        }
+
+        internal static PacketOwned1026PetConsumeRouting ClassifyPacketOwned1026PetConsumeRouting(
+            bool hasPendingFieldHazardRequest,
+            byte[] payload,
+            int expectedSlot = 0,
+            int expectedItemId = 0,
+            int expectedRequestIndex = -1)
+        {
+            if (!hasPendingFieldHazardRequest
+                || !TryDecodeFieldHazardPetConsumeResultPayload(payload, out FieldHazardPetConsumeInboundResult result, out _))
+            {
+                return PacketOwned1026PetConsumeRouting.QuestRewardFallback;
+            }
+
+            return MatchesFieldHazardPetConsumeInboundResult(
                     expectedSlot,
                     expectedItemId,
                     expectedRequestIndex,
-                    result);
+                    result)
+                ? PacketOwned1026PetConsumeRouting.TargetedPetConsumeResult
+                : PacketOwned1026PetConsumeRouting.DedicatedPetConsumeResult;
         }
 
         private bool ShouldHandlePacketOwned1026AsPetConsumeResult(byte[] payload)

@@ -92,6 +92,17 @@ internal static class SummonClientPostEffectRules
         return Math.Max(0, skillData?.ResolveExplicitSummonAttackAfterMs(branchName) ?? 0);
     }
 
+    public static int ResolveRemainingPostAttackEffectDelayMs(
+        SkillData skillData,
+        string branchName,
+        int attackStartedAt,
+        int currentTime)
+    {
+        int attackDelayMs = ResolvePostAttackEffectDelayMs(skillData, branchName);
+        int elapsedMs = Math.Max(0, currentTime - attackStartedAt);
+        return Math.Max(0, attackDelayMs - elapsedMs);
+    }
+
     public static SkillAnimation ResolvePassiveEffectAnimation(SkillData skillData)
     {
         return ResolveSummonNamedEffectAnimation(skillData, secondary: false)

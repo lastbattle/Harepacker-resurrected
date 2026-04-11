@@ -73,11 +73,6 @@ namespace HaCreator.MapSimulator.Fields
             3001
         };
 
-        private static readonly HashSet<int> ClientFacingNoSkillClassExcludedRoots = new HashSet<int>
-        {
-            3000
-        };
-
         private static readonly HashSet<int> ClientDojoOrBalrogOnlySkillIds = new HashSet<int>
         {
             1009,
@@ -648,11 +643,6 @@ namespace HaCreator.MapSimulator.Fields
             // WZ noSkill/class entries are authored as advancement tiers, not full job ids.
             jobId = Math.Abs(jobId);
             if (jobId < 100)
-            {
-                return 0;
-            }
-
-            if (ClientFacingNoSkillClassExcludedRoots.Contains(jobId))
             {
                 return 0;
             }

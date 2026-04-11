@@ -489,6 +489,11 @@ namespace HaCreator.MapSimulator.Fields
             return aliasList;
         }
 
+        internal static IReadOnlyList<string> BuildDynamicObjectTagAliasCandidatesForPacketParity(string tagsValue, int? piece, int? x, int? y)
+        {
+            return BuildDynamicObjectTagAliasCandidates(tagsValue, piece, x, y);
+        }
+
         private static IEnumerable<string> SplitDynamicObjectTags(string tagsValue)
         {
             if (string.IsNullOrWhiteSpace(tagsValue))
@@ -518,30 +523,78 @@ namespace HaCreator.MapSimulator.Fields
 
         private static string ResolveDynamicObjectName(WzImageProperty layer, WzImageProperty mapObject, int fallbackIndex)
         {
-            if (TryReadStringProperty(mapObject, "name", out string name)
-                || TryReadStringProperty(mapObject, "objName", out name)
-                || TryReadStringProperty(mapObject, "tag", out name))
+            string authoredName = TryReadStringProperty(mapObject, "name", out string name)
+                ? name
+                : null;
+            string authoredObjName = TryReadStringProperty(mapObject, "objName", out string objName)
+                ? objName
+                : null;
+            string authoredTag = TryReadStringProperty(mapObject, "tag", out string tag)
+                ? tag
+                : null;
+            string objectKeyName = TryResolveObjectKeyName(mapObject, out string resolvedObjectKeyName)
+                ? resolvedObjectKeyName
+                : null;
+            int? piece = TryReadIntProperty(mapObject, "piece", out int pieceValue)
+                ? pieceValue
+                : null;
+            int? x = TryReadIntProperty(mapObject, "x", out int xValue)
+                ? xValue
+                : null;
+            int? y = TryReadIntProperty(mapObject, "y", out int yValue)
+                ? yValue
+                : null;
+
+            return ResolveAuthoredDynamicObjectNameForPacketParity(
+                authoredName,
+                authoredObjName,
+                authoredTag,
+                objectKeyName,
+                piece,
+                x,
+                y,
+                layer?.Name,
+                mapObject?.Name,
+                fallbackIndex);
+        }
+
+        internal static string ResolveAuthoredDynamicObjectNameForPacketParity(
+            string name,
+            string objName,
+            string tag,
+            string objectKeyName,
+            int? piece,
+            int? x,
+            int? y,
+            string layerName,
+            string objectName,
+            int fallbackIndex)
+        {
+            if (!string.IsNullOrWhiteSpace(name))
             {
-                return name;
+                return name.Trim();
             }
 
-            if (TryResolveObjectKeyName(mapObject, out string objectKeyName))
+            if (!string.IsNullOrWhiteSpace(objName))
             {
-                int? piece = TryReadIntProperty(mapObject, "piece", out int pieceValue)
-                    ? pieceValue
-                    : null;
-                int? x = TryReadIntProperty(mapObject, "x", out int xValue)
-                    ? xValue
-                    : null;
-                int? y = TryReadIntProperty(mapObject, "y", out int yValue)
-                    ? yValue
-                    : null;
+                return objName.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(tag))
+            {
+                return tag.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(objectKeyName))
+            {
                 return BuildCanonicalObjectKeyName(objectKeyName, piece, x, y);
             }
 
-            string layerName = layer?.Name ?? "layer";
-            string objectName = mapObject?.Name ?? fallbackIndex.ToString(CultureInfo.InvariantCulture);
-            return $"dynamic-{layerName}-{objectName}";
+            string fallbackLayerName = string.IsNullOrWhiteSpace(layerName) ? "layer" : layerName.Trim();
+            string fallbackObjectName = string.IsNullOrWhiteSpace(objectName)
+                ? fallbackIndex.ToString(CultureInfo.InvariantCulture)
+                : objectName.Trim();
+            return $"dynamic-{fallbackLayerName}-{fallbackObjectName}";
         }
 
         private static string ResolvePacketOwnedSnapshotDynamicObjectName(WzImageProperty layer, WzImageProperty mapObject, string fallbackName)

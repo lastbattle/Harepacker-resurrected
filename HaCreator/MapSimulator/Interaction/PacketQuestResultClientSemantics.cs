@@ -21,6 +21,13 @@ namespace HaCreator.MapSimulator.Interaction
         UtilDialogNotice = 1
     }
 
+    internal enum PacketQuestResultAvailabilityRefreshDisposition
+    {
+        Immediate = 0,
+        AfterModalContinuation = 1,
+        Abandon = 2
+    }
+
     internal readonly record struct PacketQuestResultNoticeRouting(
         PacketQuestResultNoticeSurface Surface,
         PacketQuestResultNoticeDispatchStage Stage,
@@ -59,6 +66,24 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketQuestResultNoticeSurface.Chat,
                     PacketQuestResultNoticeDispatchStage.Immediate,
                     AutoSeparated: true)
+            };
+        }
+
+        internal static PacketQuestResultAvailabilityRefreshDisposition ResolveAvailabilityRefreshDisposition(
+            int resultType,
+            bool openedModal,
+            NpcInteractionOverlayCloseKind closeKind = NpcInteractionOverlayCloseKind.None)
+        {
+            if (resultType != 10 || !openedModal)
+            {
+                return PacketQuestResultAvailabilityRefreshDisposition.Immediate;
+            }
+
+            return closeKind switch
+            {
+                NpcInteractionOverlayCloseKind.None => PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation,
+                NpcInteractionOverlayCloseKind.Completed => PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation,
+                _ => PacketQuestResultAvailabilityRefreshDisposition.Abandon
             };
         }
 

@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int EntrustedVisitListSelectedIndex { get; set; } = -1;
         public int EntrustedBlacklistSelectedIndex { get; set; } = -1;
         public string EntrustedChildDialogStatus { get; set; }
+        public string EntrustedBlacklistLastOutboundPacketSummary { get; set; }
         public List<EntrustedShopVisitLogEntrySnapshot> EntrustedVisitLogEntries { get; set; } = new();
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog { get; set; }
         public List<string> BlockedVisitors { get; set; } = new();
@@ -93,6 +94,7 @@ namespace HaCreator.MapSimulator.Interaction
     public sealed class EntrustedShopVisitLogEntrySnapshot
     {
         public string Name { get; set; }
+        public int StayMilliseconds { get; set; }
         public int StaySeconds { get; set; }
     }
 

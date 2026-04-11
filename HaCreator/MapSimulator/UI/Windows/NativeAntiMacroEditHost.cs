@@ -635,7 +635,7 @@ namespace HaCreator.MapSimulator.UI
 
             bool controlHeld = IsControlKeyDown();
             bool shiftHeld = IsShiftKeyDown();
-            bool allowImeOwnedDownHandling = ShouldDeferDownKeyToIme(virtualKey, controlHeld, shiftHeld, HasActiveImeComposition());
+            bool allowImeOwnedDownHandling = ShouldDeferDownKeyToIme(virtualKey, controlHeld, shiftHeld, HasImeOwnedInputState());
             if (msg == WmKeyDown && !allowImeOwnedDownHandling && HandleClientOwnedKeyDown(virtualKey, controlHeld, shiftHeld, wParam, lParam))
             {
                 _clientOwnedKeyDowns.Add(virtualKey);
@@ -873,12 +873,22 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldDeferDownKeyToIme(int virtualKey, bool controlHeld, bool shiftHeld, bool imeCompositionActive)
         {
-            return virtualKey == VkDown && !controlHeld && !shiftHeld && imeCompositionActive;
+            return ShouldDeferDownKeyToIme(virtualKey, controlHeld, shiftHeld, imeCompositionActive, imeCandidateWindowActive: false);
+        }
+
+        internal static bool ShouldDeferDownKeyToIme(int virtualKey, bool controlHeld, bool shiftHeld, bool imeCompositionActive, bool imeCandidateWindowActive)
+        {
+            return virtualKey == VkDown && !controlHeld && !shiftHeld && (imeCompositionActive || imeCandidateWindowActive);
         }
 
         internal static bool ShouldDeferDownKeyToIme(bool controlHeld, bool shiftHeld, bool imeCompositionActive)
         {
             return ShouldDeferDownKeyToIme(VkDown, controlHeld, shiftHeld, imeCompositionActive);
+        }
+
+        internal static bool ShouldDeferDownKeyToIme(bool controlHeld, bool shiftHeld, bool imeCompositionActive, bool imeCandidateWindowActive)
+        {
+            return ShouldDeferDownKeyToIme(VkDown, controlHeld, shiftHeld, imeCompositionActive, imeCandidateWindowActive);
         }
 
         internal static bool ShouldCancelImeCompositionOnFocusChange(bool hasFocus)
@@ -951,7 +961,7 @@ namespace HaCreator.MapSimulator.UI
             return (GetKeyState(VkShift) & 0x8000) != 0;
         }
 
-        private bool HasActiveImeComposition()
+        private bool HasImeOwnedInputState()
         {
             if (!IsAttached || !HasFocus)
             {
@@ -971,12 +981,24 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
-                return ImmGetCompositionString(inputContext, GcsCompStr, IntPtr.Zero, 0) > 0;
+                return ImmGetCompositionString(inputContext, GcsCompStr, IntPtr.Zero, 0) > 0
+                    || HasActiveImeCandidateWindow(inputContext);
             }
             finally
             {
                 ImmReleaseContext(_editHandle, inputContext);
             }
+        }
+
+        private static bool HasActiveImeCandidateWindow(IntPtr inputContext)
+        {
+            if (inputContext == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            return ImmGetCandidateListCount(inputContext, out int candidateListCount) > 0
+                || candidateListCount > 0;
         }
 
         private void CancelImeComposition()
@@ -1415,6 +1437,9 @@ namespace HaCreator.MapSimulator.UI
 
         [DllImport("imm32.dll")]
         private static extern int ImmGetCompositionString(IntPtr hIMC, int dwIndex, IntPtr lpBuf, int dwBufLen);
+
+        [DllImport("imm32.dll", EntryPoint = "ImmGetCandidateListCountW")]
+        private static extern int ImmGetCandidateListCount(IntPtr hIMC, out int lpdwListCount);
 
         [DllImport("imm32.dll")]
         private static extern bool ImmGetOpenStatus(IntPtr hIMC);

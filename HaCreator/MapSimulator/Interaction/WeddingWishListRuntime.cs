@@ -105,6 +105,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _seeded;
 
         internal Action<string, int> SocialChatObserved { get; set; }
+        internal Func<int, IReadOnlyList<byte>, string, string> ClientPacketDispatcher { get; set; }
 
         internal void UpdateLocalContext(CharacterBuild build)
         {
@@ -1482,7 +1483,11 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _lastOutboundPacketOpcode = opcode;
             _lastOutboundPacketPayload = payload ?? Array.Empty<byte>();
-            _lastOutboundPacketSummary = summary ?? string.Empty;
+            string localSummary = summary ?? string.Empty;
+            string dispatchSummary = ClientPacketDispatcher?.Invoke(opcode, _lastOutboundPacketPayload, localSummary);
+            _lastOutboundPacketSummary = string.IsNullOrWhiteSpace(dispatchSummary)
+                ? localSummary
+                : dispatchSummary;
         }
 
         private static void WritePacketString(BinaryWriter writer, string value)

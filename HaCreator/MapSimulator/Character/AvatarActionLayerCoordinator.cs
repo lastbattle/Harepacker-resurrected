@@ -501,6 +501,22 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
+        internal static bool TryCreatePreparedFrameClock(
+            IReadOnlyList<AssembledFrame> frames,
+            out PreparedFrameClock clock)
+        {
+            clock = default;
+            if (frames == null || frames.Count == 0)
+            {
+                return false;
+            }
+
+            clock = new PreparedFrameClock(
+                0,
+                ResolvePreparedDelayAtFrameIndex(frames, 0));
+            return true;
+        }
+
         internal static bool TryAdvancePreparedFrameClock(
             CharacterAnimation animation,
             string actionName,
@@ -539,6 +555,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int elapsed = Math.Max(0, elapsedMs);
+            int zeroDelayGuard = 0;
             while (elapsed > 0)
             {
                 if (frameRemaining > elapsed)
@@ -568,6 +585,66 @@ namespace HaCreator.MapSimulator.Character
                     heldShootAction,
                     isMorphAvatar,
                     isSuperManMorph);
+                if (frameRemaining <= 0 && ++zeroDelayGuard > frameCount)
+                {
+                    break;
+                }
+            }
+
+            clock = new PreparedFrameClock(frameIndex, Math.Max(0, frameRemaining));
+            return true;
+        }
+
+        internal static bool TryAdvancePreparedFrameClock(
+            IReadOnlyList<AssembledFrame> frames,
+            ref PreparedFrameClock clock,
+            int elapsedMs,
+            bool allowLoop,
+            out bool completedAction,
+            out int remainingElapsedMs)
+        {
+            completedAction = false;
+            remainingElapsedMs = 0;
+            if (frames == null || frames.Count == 0)
+            {
+                return false;
+            }
+
+            int frameCount = frames.Count;
+            int frameIndex = Math.Clamp(clock.FrameIndex, 0, frameCount - 1);
+            int frameRemaining = clock.FrameRemainingMs;
+            if (frameRemaining <= 0)
+            {
+                frameRemaining = ResolvePreparedDelayAtFrameIndex(frames, frameIndex);
+            }
+
+            int elapsed = Math.Max(0, elapsedMs);
+            int zeroDelayGuard = 0;
+            while (elapsed > 0)
+            {
+                if (frameRemaining > elapsed)
+                {
+                    frameRemaining -= elapsed;
+                    elapsed = 0;
+                    break;
+                }
+
+                elapsed -= Math.Max(frameRemaining, 0);
+                bool reachedLastFrame = frameIndex >= frameCount - 1;
+                if (reachedLastFrame && !allowLoop)
+                {
+                    clock = new PreparedFrameClock(frameIndex, 0);
+                    completedAction = true;
+                    remainingElapsedMs = elapsed;
+                    return true;
+                }
+
+                frameIndex = reachedLastFrame ? 0 : frameIndex + 1;
+                frameRemaining = ResolvePreparedDelayAtFrameIndex(frames, frameIndex);
+                if (frameRemaining <= 0 && ++zeroDelayGuard > frameCount)
+                {
+                    break;
+                }
             }
 
             clock = new PreparedFrameClock(frameIndex, Math.Max(0, frameRemaining));
@@ -693,6 +770,19 @@ namespace HaCreator.MapSimulator.Character
                 clampedFrameIndex,
                 isMorphAvatar,
                 isSuperManMorph));
+        }
+
+        private static int ResolvePreparedDelayAtFrameIndex(
+            IReadOnlyList<AssembledFrame> frames,
+            int frameIndex)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int clampedFrameIndex = Math.Clamp(frameIndex, 0, frames.Count - 1);
+            return Math.Max(0, frames[clampedFrameIndex]?.Duration ?? 0);
         }
 
         private static Point ApplyClientFlip(Point point, bool facingRight)

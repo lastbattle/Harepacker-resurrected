@@ -9,6 +9,53 @@ namespace HaCreator.MapSimulator.Interaction
         public bool HasPendingTradingRoomAutoCrcResponse =>
             Kind == SocialRoomKind.TradingRoom && _tradeAutoCrcReplyPending;
 
+        public bool TryBuildTradingRoomTradeRequestRawPacket(out byte[] rawPacket, out string message)
+        {
+            rawPacket = Array.Empty<byte>();
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Only trading-room runtimes can build subtype-17 trade request packets.";
+                return false;
+            }
+
+            List<TradeVerificationEntry> entries = BuildTradingRoomTradeRequestVerificationEntries();
+            using MemoryStream stream = new MemoryStream();
+            using BinaryWriter writer = new BinaryWriter(stream);
+            writer.Write((ushort)144);
+            writer.Write((byte)TradingRoomTradePacketType);
+            writer.Write((byte)Math.Min(byte.MaxValue, entries.Count));
+            foreach (TradeVerificationEntry entry in entries)
+            {
+                writer.Write(entry.ItemId);
+                writer.Write(unchecked((int)entry.Checksum));
+            }
+
+            rawPacket = stream.ToArray();
+            message = $"Built trading-room subtype {TradingRoomTradePacketType} trade request with {entries.Count} checksum entr{(entries.Count == 1 ? "y" : "ies")} for outbound opcode 144, matching CTradingRoomDlg::Trade after the client locks the local trade button.";
+            return true;
+        }
+
+        public void MarkTradingRoomTradeRequestSent()
+        {
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                return;
+            }
+
+            _tradeLocalLocked = true;
+            _tradeLocalAccepted = false;
+            _tradeRemoteAccepted = false;
+            _tradeLocalVerificationEntries.Clear();
+            _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
+            _tradeLocalVerificationReady = _tradeLocalVerificationEntries.Count == 0 || _tradeLocalLocked;
+            _tradeVerificationPending = _tradeRemoteLocked && !_tradeRemoteVerificationReady;
+            RoomState = _tradeRemoteLocked ? "CRC verification" : "Locked";
+            StatusMessage = $"Trading-room subtype {TradingRoomTradePacketType} trade request was sent through opcode 144; the local side now mirrors CTradingRoomDlg::Trade's locked button state.";
+            RefreshTradeOccupantsAndRows();
+            PersistState();
+        }
+
         public bool TryBuildTradingRoomCrcResponseRawPacket(out byte[] rawPacket, out string message)
         {
             rawPacket = Array.Empty<byte>();
@@ -67,6 +114,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             RefreshTradeOccupantsAndRows();
             PersistState();
+        }
+
+        private List<TradeVerificationEntry> BuildTradingRoomTradeRequestVerificationEntries()
+        {
+            List<TradeVerificationEntry> entries = new List<TradeVerificationEntry>();
+            entries.AddRange(BuildTradeVerificationEntries(isLocalParty: false));
+            entries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
+            return entries;
         }
     }
 }

@@ -113,9 +113,10 @@ namespace HaCreator.MapSimulator.UI
         private const int JoypadClientComboCount = 11;
         private const int JoypadClientSelectableButtonCount = 12;
         private const int JoypadClientEmptyButtonNameStringPoolId = 0x1A54;
+        private const int JoypadClientButtonLabelFormatStringPoolId = 0x180D;
         private const int JoypadClientButtonItemFormatStringPoolId = 0x180E;
-        private const int JoypadClientButtonLabelFormatStringPoolId = 0x180F;
-        private const int JoypadClientDefaultButtonUolStringPoolId = 0x1810;
+        private const int JoypadClientDefaultButtonUolStringPoolId = 0x180F;
+        private const int JoypadClientDetectionFailedStringPoolId = 0x1810;
         private const int JoypadClientDuplicateButtonNoticeStringPoolId = 0x180A;
         private const int JoypadRowsTop = 136;
         private const int JoypadExtensionRowsTop = 326;
@@ -123,7 +124,6 @@ namespace HaCreator.MapSimulator.UI
         private const int JoypadFooterReserve = 52;
         private const int JoypadScrollTrackWidth = 12;
         private const int JoypadScrollTrackMargin = 8;
-        private const string JoypadDetectionFailedText = "JoyPad detection failed.";
 
         private readonly struct PageLayer
         {
@@ -1081,7 +1081,7 @@ namespace HaCreator.MapSimulator.UI
             _joypadRows.Add(new JoypadRow(
                 null,
                 "Default",
-                "Mirrors CUIJoyPad button 1009 / StringPool[0x1810]; confirm stages the recovered eleven-combo default assignment instead of applying immediately.",
+                "Mirrors CUIJoyPad button 1009 / StringPool[0x180F]; confirm stages the recovered eleven-combo default assignment instead of applying immediately.",
                 session => DescribeResetProfileState(session),
                 (session, direction) =>
                 {
@@ -1479,7 +1479,7 @@ namespace HaCreator.MapSimulator.UI
 
             string calibrationText = state.IsConnected
                 ? $"LX {state.ThumbSticks.Left.X:+0.00;-0.00;0.00}  LY {state.ThumbSticks.Left.Y:+0.00;-0.00;0.00}  LT {state.Triggers.Left:0.00}  RT {state.Triggers.Right:0.00}"
-                : $"{JoypadDetectionFailedText} Cycle the slot until a live controller is found; movement directions stay reserved while this owner is open.";
+                : $"{GetClientJoypadDetectionFailedText()} Cycle the slot until a live controller is found; movement directions stay reserved while this owner is open.";
             string thresholdText = $"DX {session.LeftStickDeadZoneX:0.00} DY {session.LeftStickDeadZoneY:0.00}  LT/RT {session.LeftTriggerThreshold:0.00}/{session.RightTriggerThreshold:0.00}  {FormatResponseCurve(session.ResponseCurve)}";
 
             DrawWindowText(sprite, connectionText, new Vector2(bounds.X + 8, bounds.Y + 3), Color.White);
@@ -2730,7 +2730,7 @@ namespace HaCreator.MapSimulator.UI
         private int GetJoypadVisibleRowCount()
         {
             int frameHeight = CurrentFrame?.Height ?? 468;
-            int availableHeight = Math.Max(JoypadRowPitch, frameHeight - JoypadRowsTop - JoypadFooterReserve);
+            int availableHeight = Math.Max(JoypadRowPitch, frameHeight - JoypadExtensionRowsTop - JoypadFooterReserve);
             return Math.Max(1, availableHeight / JoypadRowPitch);
         }
 
@@ -2763,7 +2763,7 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetMaxJoypadScrollOffset()
         {
-            return Math.Max(0, _joypadRows.Count - GetJoypadVisibleRowCount());
+            return Math.Max(0, GetJoypadExtensionRowCount() - GetJoypadVisibleRowCount());
         }
 
         private void SetJoypadScrollOffset(int offset)
@@ -2779,13 +2779,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int visibleRowCount = GetJoypadVisibleRowCount();
-            if (rowIndex < _joypadScrollOffset)
+            int extensionIndex = GetJoypadExtensionRowIndex(rowIndex);
+            if (extensionIndex < 0)
             {
-                SetJoypadScrollOffset(rowIndex);
+                return;
             }
-            else if (rowIndex >= _joypadScrollOffset + visibleRowCount)
+
+            if (extensionIndex < _joypadScrollOffset)
             {
-                SetJoypadScrollOffset(rowIndex - visibleRowCount + 1);
+                SetJoypadScrollOffset(extensionIndex);
+            }
+            else if (extensionIndex >= _joypadScrollOffset + visibleRowCount)
+            {
+                SetJoypadScrollOffset(extensionIndex - visibleRowCount + 1);
             }
         }
 
@@ -2798,7 +2804,7 @@ namespace HaCreator.MapSimulator.UI
 
             int height = GetJoypadVisibleRowCount() * JoypadRowPitch - 2;
             int x = Position.X + (CurrentFrame?.Width ?? 283) - JoypadScrollTrackWidth - JoypadScrollTrackMargin;
-            int y = Position.Y + JoypadRowsTop + 1;
+            int y = Position.Y + JoypadExtensionRowsTop + 1;
             return new Rectangle(x, y, JoypadScrollTrackWidth, height);
         }
 
@@ -2829,7 +2835,7 @@ namespace HaCreator.MapSimulator.UI
             Rectangle knobBounds = GetJoypadScrollKnobBounds(trackBounds);
             Rectangle contentBounds = new Rectangle(
                 Position.X + 12,
-                Position.Y + JoypadRowsTop,
+                Position.Y + JoypadExtensionRowsTop,
                 Math.Max(220, (CurrentFrame?.Width ?? 283) - 30),
                 GetJoypadVisibleRowCount() * JoypadRowPitch);
 
@@ -3015,10 +3021,15 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < JoypadClientCoreBindingActions.Length; i++)
             {
                 InputAction action = JoypadClientCoreBindingActions[i];
-                slots.Add($"{i + 1}:{FormatGamepadButton(GetJoypadBinding(session, action))}");
+                int itemNumber = ResolveClientJoypadComboSelectedItemNumber(session, action);
+                string comboLabel = FormatClientJoypadComboLabel(i + 1);
+                string itemLabel = itemNumber > 0
+                    ? FormatClientJoypadButtonItem(itemNumber)
+                    : MapleStoryStringPool.GetOrFallback(JoypadClientEmptyButtonNameStringPoolId, "None");
+                slots.Add($"{JoypadClientComboFirstId + i}:{comboLabel}={itemLabel}");
             }
 
-            return $"CUIJoyPad combos 1000-1010: {string.Join("  ", slots)}";
+            return $"CUIJoyPad combos: {string.Join("  ", slots)}";
         }
 
         private static string BuildJoypadExtensionSummary(JoypadSessionSnapshot session)
@@ -3029,6 +3040,78 @@ namespace HaCreator.MapSimulator.UI
         private static int GetJoypadClientCoreSlotIndex(InputAction action)
         {
             return Array.IndexOf(JoypadClientCoreBindingActions, action);
+        }
+
+        private int GetJoypadExtensionRowCount()
+        {
+            int count = 0;
+            for (int i = 0; i < _joypadRows.Count; i++)
+            {
+                JoypadRow row = _joypadRows[i];
+                if (!row.IsClientCombo && row.ClientControlId != JoypadClientDefaultButtonId)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private static int ResolveClientJoypadComboSelectedItemNumber(JoypadSessionSnapshot session, InputAction action)
+        {
+            Buttons button = GetJoypadBinding(session, action);
+            if (button == 0)
+            {
+                return 0;
+            }
+
+            IReadOnlyList<Buttons> allowedButtons = PlayerInput.GetConfigurableGamepadButtons(action);
+            int index = -1;
+            for (int i = 0; i < allowedButtons.Count; i++)
+            {
+                if (allowedButtons[i] == button)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            return index >= 0 ? index + 1 : 0;
+        }
+
+        private static string FormatClientJoypadComboLabel(int slotNumber)
+        {
+            string format = MapleStoryStringPool.GetOrFallback(
+                JoypadClientButtonLabelFormatStringPoolId,
+                "jpBtn%d");
+            return FormatClientPrintfInteger(format, slotNumber);
+        }
+
+        private static string FormatClientJoypadButtonItem(int buttonNumber)
+        {
+            string format = MapleStoryStringPool.GetOrFallback(
+                JoypadClientButtonItemFormatStringPoolId,
+                "Button %2d");
+            return FormatClientPrintfInteger(format, buttonNumber);
+        }
+
+        private static string FormatClientPrintfInteger(string format, int value)
+        {
+            if (string.IsNullOrEmpty(format))
+            {
+                return value.ToString();
+            }
+
+            string padded = value.ToString().PadLeft(2);
+            return format
+                .Replace("%2d", padded, StringComparison.Ordinal)
+                .Replace("%d", value.ToString(), StringComparison.Ordinal);
+        }
+
+        private static string GetClientJoypadDetectionFailedText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                JoypadClientDetectionFailedStringPoolId,
+                "JoyPad detection failed.");
         }
 
         private void DrawJoypadMeter(

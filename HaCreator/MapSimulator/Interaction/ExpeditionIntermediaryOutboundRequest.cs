@@ -12,7 +12,10 @@ namespace HaCreator.MapSimulator.Interaction
         Master = 5,
         Leave = 6,
         Disband = 7,
-        Remove = 8
+        Remove = 8,
+        Response = 9,
+        ChangePartyBoss = 10,
+        RelocateParty = 11
     }
 
     internal readonly record struct ExpeditionIntermediaryOutboundRequest(
@@ -22,7 +25,10 @@ namespace HaCreator.MapSimulator.Interaction
         string CharacterName,
         int PartyIndex,
         ExpeditionNoticeKind NoticeKind,
-        ExpeditionRemovalKind RemovalKind)
+        ExpeditionRemovalKind RemovalKind,
+        int PartyQuestId = 0,
+        bool ResponseAccepted = true,
+        int CharacterId = 0)
     {
         public string Describe()
         {
@@ -36,6 +42,9 @@ namespace HaCreator.MapSimulator.Interaction
                 ExpeditionIntermediaryOutboundRequestKind.Master => $"transfer expedition master to party {Math.Max(0, PartyIndex) + 1}",
                 ExpeditionIntermediaryOutboundRequestKind.Leave => "leave expedition",
                 ExpeditionIntermediaryOutboundRequestKind.Remove => $"remove {Normalize(CharacterName, "Unknown member")} from expedition",
+                ExpeditionIntermediaryOutboundRequestKind.Response => $"{(ResponseAccepted ? "accept" : "decline")} expedition invite from {Normalize(OwnerName, Normalize(CharacterName, "Expedition Leader"))}",
+                ExpeditionIntermediaryOutboundRequestKind.ChangePartyBoss => $"change expedition party boss to character {CharacterId}",
+                ExpeditionIntermediaryOutboundRequestKind.RelocateParty => $"relocate character {CharacterId} to party {Math.Max(0, PartyIndex) + 1}",
                 _ => "disband expedition"
             };
         }

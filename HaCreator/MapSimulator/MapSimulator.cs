@@ -20854,7 +20854,8 @@ namespace HaCreator.MapSimulator
                     effect.WillExperience,
                     effect.CraftExperience,
                     effect.SenseExperience,
-                    effect.CharmExperience);
+                    effect.CharmExperience,
+                    effect.EventPoint);
             }
 
 
@@ -22080,6 +22081,7 @@ namespace HaCreator.MapSimulator
             public int CraftExperience { get; init; }
             public int SenseExperience { get; init; }
             public int CharmExperience { get; init; }
+            public int EventPoint { get; init; }
             public int MoveToMapId { get; init; }
             public int Booster { get; init; }
             public int Pad { get; init; }
@@ -22146,7 +22148,8 @@ namespace HaCreator.MapSimulator
                 WillExperience > 0 ||
                 CraftExperience > 0 ||
                 SenseExperience > 0 ||
-                CharmExperience > 0;
+                CharmExperience > 0 ||
+                EventPoint > 0;
 
 
 
@@ -22431,7 +22434,8 @@ namespace HaCreator.MapSimulator
                     effect.WillExperience,
                     effect.CraftExperience,
                     effect.SenseExperience,
-                    effect.CharmExperience);
+                    effect.CharmExperience,
+                    effect.EventPoint);
             }
 
             if (hpGain > 0)
@@ -22545,7 +22549,8 @@ namespace HaCreator.MapSimulator
             int willExperience,
             int craftExperience,
             int senseExperience,
-            int charmExperience)
+            int charmExperience,
+            int eventPoint = 0)
         {
             if (build == null)
             {
@@ -22583,6 +22588,10 @@ namespace HaCreator.MapSimulator
             traitValue = build.TraitCharm;
             changed |= TryApplyTraitExperience(ref traitValue, charmExperience);
             build.TraitCharm = traitValue;
+
+            int cookieHousePoint = build.CookieHousePoint;
+            changed |= TryApplyTraitExperience(ref cookieHousePoint, eventPoint);
+            build.CookieHousePoint = cookieHousePoint;
             return changed;
         }
 
@@ -22758,6 +22767,7 @@ namespace HaCreator.MapSimulator
                 CraftExperience = Math.Max(0, GetWzIntValue(specProperty["craftEXP"])),
                 SenseExperience = Math.Max(0, GetWzIntValue(specProperty["senseEXP"])),
                 CharmExperience = Math.Max(0, GetWzIntValue(specProperty["charmEXP"])),
+                EventPoint = Math.Max(0, GetWzIntValue(specProperty["eventPoint"])),
                 MoveToMapId = Math.Max(0, GetWzIntValue(specProperty["moveTo"])),
                 Booster = ResolveConsumableIntValue(specProperty, "booster", "indieBooster"),
                 Pad = ResolveConsumableIntValue(specProperty, "pad", "indiePad"),
@@ -24688,11 +24698,11 @@ namespace HaCreator.MapSimulator
 
             foreach (RemoteUserActor actor in _remoteUserPool.Actors)
             {
-                if (actor == null
-                    || !actor.IsVisibleInWorld
-                    || string.IsNullOrWhiteSpace(actor.Name)
-                    || actor.RelationshipOverlays == null
-                    || actor.RelationshipOverlays.Count == 0)
+                if (!ShouldIncludePacketOwnedRelationshipMinimapMarker(
+                        actor?.IsVisibleInWorld == true,
+                        actor?.HiddenLikeClient == true,
+                        actor?.Name,
+                        actor?.RelationshipOverlays?.Count ?? 0))
                 {
                     continue;
                 }
@@ -24715,6 +24725,18 @@ namespace HaCreator.MapSimulator
                     state.Position = actor.Position;
                 }
             }
+        }
+
+        internal static bool ShouldIncludePacketOwnedRelationshipMinimapMarker(
+            bool isVisibleInWorld,
+            bool hiddenLikeClient,
+            string actorName,
+            int relationshipOverlayCount)
+        {
+            return isVisibleInWorld
+                && !hiddenLikeClient
+                && !string.IsNullOrWhiteSpace(actorName)
+                && relationshipOverlayCount > 0;
         }
 
 
@@ -26927,6 +26949,11 @@ namespace HaCreator.MapSimulator
                    && (targetMapId != currentMapId || IsChangeablePortalType(portalType));
         }
 
+        internal static bool ShouldPlayTransferFieldPortalSound(PortalType portalType)
+        {
+            return !IsChangeablePortalType(portalType);
+        }
+
 
         private bool TryHandlePortalInteractCore(int currentTime)
         {
@@ -27410,7 +27437,13 @@ namespace HaCreator.MapSimulator
         private bool TryHandleVerticalJumpPortal(PortalInstance portal, int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
-            if (player?.Physics == null)
+            if (player?.Physics == null
+                || !CanHandleCollisionVerticalJumpFromLiveInterface(
+                    hasLiveFieldInterface: HasPassiveTransferFieldInterface(),
+                    hasActiveVectorControl: _playerManager?.IsPlayerActive == true,
+                    hasPlayerInputControl: _gameState.IsPlayerInputEnabled,
+                    hasPendingMapChange: _gameState.PendingMapChange,
+                    hasAttachedDriver: _localFollowRuntime.HasAttachedDriver))
             {
                 return false;
             }
@@ -27427,6 +27460,20 @@ namespace HaCreator.MapSimulator
         internal const string CollisionVerticalJumpEffectUol = "Effect/BasicEff.img/VerticalJump";
         internal const int CollisionVerticalJumpMovePathAttribute = 24;
         internal const double CollisionVerticalJumpVelocityY = -2300d;
+
+        internal static bool CanHandleCollisionVerticalJumpFromLiveInterface(
+            bool hasLiveFieldInterface,
+            bool hasActiveVectorControl,
+            bool hasPlayerInputControl,
+            bool hasPendingMapChange,
+            bool hasAttachedDriver)
+        {
+            return hasLiveFieldInterface
+                   && hasActiveVectorControl
+                   && hasPlayerInputControl
+                   && !hasPendingMapChange
+                   && !hasAttachedDriver;
+        }
 
         internal static double ResolveCollisionVerticalJumpHorizontalImpact(int inputDirection, bool facingRight)
         {
@@ -27622,7 +27669,11 @@ namespace HaCreator.MapSimulator
             if (TryStartPacketOwnedPortalTeleport(portal, currentTime))
             {
                 RegisterPortalCollisionRequestSource(portalIndex);
-                PlayPortalSE();
+                if (ShouldPlayTransferFieldPortalSound(portal.pt))
+                {
+                    PlayPortalSE();
+                }
+
                 return true;
             }
 
@@ -27643,7 +27694,11 @@ namespace HaCreator.MapSimulator
             _gameState.PendingPortalNameCandidates = targetPortalNameCandidates ?? Array.Empty<string>();
             _gameState.PendingPortalIndex = targetPortalIndex;
             RegisterPortalCollisionRequestSource(portalIndex);
-            PlayPortalSE();
+            if (ShouldPlayTransferFieldPortalSound(portal.pt))
+            {
+                PlayPortalSE();
+            }
+
             return true;
         }
 
@@ -29744,6 +29799,12 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager.SkillWindow is SkillUI skillWindowClassic)
             {
                 skillWindowClassic.SetSkillManager(_playerManager.Skills);
+                skillWindowClassic.SetCharacterLevel(_playerManager.Player?.Level ?? 1);
+                skillWindowClassic.OnSkillInvoked = skillId =>
+                {
+                    _playerManager.Skills.TryCastSkill(skillId, currTickCount);
+                };
+                skillWindowClassic.OnSkillLevelUpRequested = TryHandleSkillUiLevelUp;
                 return;
             }
 

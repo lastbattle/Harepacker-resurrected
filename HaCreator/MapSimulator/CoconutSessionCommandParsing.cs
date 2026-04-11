@@ -11,7 +11,7 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryParseProxyListenPort(string value, out int listenPort)
         {
-            return int.TryParse(value, out listenPort) && listenPort >= 0;
+            return int.TryParse(value, out listenPort) && listenPort >= 0 && listenPort <= ushort.MaxValue;
         }
     }
 }

@@ -138,6 +138,15 @@ namespace HaCreator.MapSimulator.UI
         private const int TAB_2ND = 2;
         private const int TAB_3RD = 3;
         private const int TAB_4TH = 4;
+        private const int TAB_DUAL_5TH = 5;
+        private const int TAB_DUAL_6TH = 6;
+        private const int DUAL_TAB_COUNT = 7;
+        private const int MAX_TAB_INDEX = DUAL_TAB_COUNT - 1;
+        private const int CLIENT_TAB_X = 10;
+        private const int CLIENT_TAB_Y = 27;
+        private const int CLIENT_TAB_TOTAL_WIDTH = 154;
+        private const int CLIENT_TAB_HEIGHT = 20;
+        private const int CLIENT_DUAL_TAB_WIDTH = 22;
         #endregion
 
         #region Fields
@@ -150,6 +159,11 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _tab2nd;
         private UIObject _tab3rd;
         private UIObject _tab4th;
+        private readonly Texture2D[] _dualTabEnabled = new Texture2D[DUAL_TAB_COUNT];
+        private readonly Texture2D[] _dualTabDisabled = new Texture2D[DUAL_TAB_COUNT];
+        private readonly Point[] _dualTabEnabledOrigins = new Point[DUAL_TAB_COUNT];
+        private readonly Point[] _dualTabDisabledOrigins = new Point[DUAL_TAB_COUNT];
+        private bool _useDualTabStrip;
 
         // Empty skill slot texture
         private Texture2D _emptySlotTexture;
@@ -221,12 +235,10 @@ namespace HaCreator.MapSimulator.UI
             get => _currentTab;
             set
             {
-                if (value >= TAB_BEGINNER && value <= TAB_4TH)
+                int maxTab = _useDualTabStrip ? MAX_TAB_INDEX : TAB_4TH;
+                if (value >= TAB_BEGINNER && value <= maxTab)
                 {
-                    _currentTab = value;
-                    _scrollOffset = 0;
-                    _selectedSkillIndex = -1;
-                    _selectedSkill = null;
+                    ApplyCurrentTab(value);
                 }
             }
         }
@@ -304,7 +316,9 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, new List<SkillDisplayData>() },
                 { TAB_2ND, new List<SkillDisplayData>() },
                 { TAB_3RD, new List<SkillDisplayData>() },
-                { TAB_4TH, new List<SkillDisplayData>() }
+                { TAB_4TH, new List<SkillDisplayData>() },
+                { TAB_DUAL_5TH, new List<SkillDisplayData>() },
+                { TAB_DUAL_6TH, new List<SkillDisplayData>() }
             };
 
             skillPoints = new Dictionary<int, int>
@@ -313,7 +327,9 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, 0 },
                 { TAB_2ND, 0 },
                 { TAB_3RD, 0 },
-                { TAB_4TH, 0 }
+                { TAB_4TH, 0 },
+                { TAB_DUAL_5TH, 0 },
+                { TAB_DUAL_6TH, 0 }
             };
 
             // Description area at bottom of window
@@ -330,7 +346,9 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, null },
                 { TAB_2ND, null },
                 { TAB_3RD, null },
-                { TAB_4TH, null }
+                { TAB_4TH, null },
+                { TAB_DUAL_5TH, null },
+                { TAB_DUAL_6TH, null }
             };
             _jobNamesByTab = new Dictionary<int, string>
             {
@@ -338,7 +356,9 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, "1st Job" },
                 { TAB_2ND, "2nd Job" },
                 { TAB_3RD, "3rd Job" },
-                { TAB_4TH, "4th Job" }
+                { TAB_4TH, "4th Job" },
+                { TAB_DUAL_5TH, "5th Tab" },
+                { TAB_DUAL_6TH, "6th Tab" }
             };
             _displaySkillRootByTab = new Dictionary<int, int>
             {
@@ -346,7 +366,9 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, 0 },
                 { TAB_2ND, 0 },
                 { TAB_3RD, 0 },
-                { TAB_4TH, 0 }
+                { TAB_4TH, 0 },
+                { TAB_DUAL_5TH, 0 },
+                { TAB_DUAL_6TH, 0 }
             };
             _recommendedSkillsByTab = new Dictionary<int, List<SkillDataLoader.RecommendedSkillEntry>>
             {
@@ -354,7 +376,9 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_1ST, new List<SkillDataLoader.RecommendedSkillEntry>() },
                 { TAB_2ND, new List<SkillDataLoader.RecommendedSkillEntry>() },
                 { TAB_3RD, new List<SkillDataLoader.RecommendedSkillEntry>() },
-                { TAB_4TH, new List<SkillDataLoader.RecommendedSkillEntry>() }
+                { TAB_4TH, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_DUAL_5TH, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_DUAL_6TH, new List<SkillDataLoader.RecommendedSkillEntry>() }
             };
         }
 
@@ -393,6 +417,12 @@ namespace HaCreator.MapSimulator.UI
         public void SetSkillManager(Character.Skills.SkillManager skillManager)
         {
             _skillManager = skillManager;
+        }
+
+        public void SetCharacterLevel(int level)
+        {
+            _characterLevel = Math.Max(1, level);
+            RecalculateSkillPointsFromCurrentLevels();
         }
 
         public void SetTooltipTextures(Texture2D[] tooltipFrames)
@@ -436,13 +466,13 @@ namespace HaCreator.MapSimulator.UI
 
         public void SetDisplayedSkillRootId(int tab, int skillRootId)
         {
-            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
             _displaySkillRootByTab[tabIndex] = Math.Max(0, skillRootId);
         }
 
         public void SetRecommendedSkillEntries(int tab, IEnumerable<SkillDataLoader.RecommendedSkillEntry> entries)
         {
-            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
             if (!_recommendedSkillsByTab.TryGetValue(tabIndex, out List<SkillDataLoader.RecommendedSkillEntry> list))
             {
                 list = new List<SkillDataLoader.RecommendedSkillEntry>();
@@ -457,6 +487,45 @@ namespace HaCreator.MapSimulator.UI
                 .Where(entry => entry.SkillId > 0)
                 .OrderBy(entry => entry.SpentSpThreshold)
                 .ThenBy(entry => entry.SkillId));
+        }
+
+        public void SetDualTabTextures(Texture2D[] enabled, Texture2D[] disabled, Point[] enabledOrigins, Point[] disabledOrigins)
+        {
+            if (enabled != null)
+            {
+                for (int i = 0; i < Math.Min(DUAL_TAB_COUNT, enabled.Length); i++)
+                    _dualTabEnabled[i] = enabled[i];
+            }
+
+            if (disabled != null)
+            {
+                for (int i = 0; i < Math.Min(DUAL_TAB_COUNT, disabled.Length); i++)
+                    _dualTabDisabled[i] = disabled[i];
+            }
+
+            if (enabledOrigins != null)
+            {
+                for (int i = 0; i < Math.Min(DUAL_TAB_COUNT, enabledOrigins.Length); i++)
+                    _dualTabEnabledOrigins[i] = enabledOrigins[i];
+            }
+
+            if (disabledOrigins != null)
+            {
+                for (int i = 0; i < Math.Min(DUAL_TAB_COUNT, disabledOrigins.Length); i++)
+                    _dualTabDisabledOrigins[i] = disabledOrigins[i];
+            }
+        }
+
+        public void SetUseDualTabStrip(bool useDualTabStrip)
+        {
+            _useDualTabStrip = useDualTabStrip;
+            bool showStandardTabs = !useDualTabStrip;
+            _tabBeginner?.SetVisible(showStandardTabs);
+            _tab1st?.SetVisible(showStandardTabs);
+            _tab2nd?.SetVisible(showStandardTabs);
+            _tab3rd?.SetVisible(showStandardTabs);
+            _tab4th?.SetVisible(showStandardTabs);
+            CurrentTab = Math.Clamp(_currentTab, TAB_BEGINNER, useDualTabStrip ? MAX_TAB_INDEX : TAB_4TH);
         }
 
         public void SetSpUpTextures(Texture2D normal, Texture2D pressed, Texture2D disabled, Texture2D mouseOver)
@@ -533,6 +602,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateTabStates()
         {
+            if (_useDualTabStrip)
+                return;
+
             _tabBeginner?.SetButtonState(_currentTab == TAB_BEGINNER ? UIObjectState.Pressed : UIObjectState.Normal);
             _tab1st?.SetButtonState(_currentTab == TAB_1ST ? UIObjectState.Pressed : UIObjectState.Normal);
             _tab2nd?.SetButtonState(_currentTab == TAB_2ND ? UIObjectState.Pressed : UIObjectState.Normal);
@@ -559,6 +631,7 @@ namespace HaCreator.MapSimulator.UI
             int windowX = Position.X;
             int windowY = Position.Y;
 
+            DrawDualTabStrip(sprite, windowX, windowY);
             DrawJobHeader(sprite, windowX, windowY);
             int availableSp = GetCurrentSkillPoints();
             int recommendedSkillId = ResolveRecommendedSkillId(skills);
@@ -787,6 +860,66 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(windowX + SP_DISPLAY_X_BASE - width, windowY + SP_DISPLAY_Y),
                 Color.Black,
                 SP_DISPLAY_TEXT_SCALE);
+        }
+
+        private void DrawDualTabStrip(SpriteBatch sprite, int windowX, int windowY)
+        {
+            if (!_useDualTabStrip)
+                return;
+
+            for (int tab = TAB_BEGINNER; tab <= MAX_TAB_INDEX; tab++)
+            {
+                Texture2D texture = tab == _currentTab
+                    ? _dualTabEnabled[tab] ?? _dualTabDisabled[tab]
+                    : _dualTabDisabled[tab] ?? _dualTabEnabled[tab];
+                if (texture == null)
+                    continue;
+
+                Rectangle slot = GetClientTabSlotBounds(windowX, windowY, tab);
+                Point origin = tab == _currentTab ? _dualTabEnabledOrigins[tab] : _dualTabDisabledOrigins[tab];
+                Vector2 position = new(
+                    slot.X + ((slot.Width - texture.Width) / 2f) + origin.X,
+                    slot.Y + ((slot.Height - texture.Height) / 2f) + origin.Y);
+                sprite.Draw(texture, position, Color.White);
+            }
+        }
+
+        private static Rectangle GetClientTabSlotBounds(int windowX, int windowY, int tab)
+        {
+            int slotWidth = CLIENT_DUAL_TAB_WIDTH;
+            return new Rectangle(
+                windowX + CLIENT_TAB_X + (tab * slotWidth),
+                windowY + CLIENT_TAB_Y,
+                tab == MAX_TAB_INDEX
+                    ? CLIENT_TAB_TOTAL_WIDTH - (slotWidth * tab)
+                    : slotWidth,
+                CLIENT_TAB_HEIGHT);
+        }
+
+        private int GetDualTabAtPosition(int mouseX, int mouseY)
+        {
+            if (!_useDualTabStrip)
+                return -1;
+
+            for (int tab = TAB_BEGINNER; tab <= MAX_TAB_INDEX; tab++)
+            {
+                if (GetClientTabSlotBounds(Position.X, Position.Y, tab).Contains(mouseX, mouseY))
+                    return tab;
+            }
+
+            return -1;
+        }
+
+        private void ApplyCurrentTab(int tab)
+        {
+            _currentTab = tab;
+            _scrollOffset = 0;
+            _selectedSkillIndex = -1;
+            _selectedSkill = null;
+            _hoveredSkillIndex = -1;
+            _hoveredSpUpSkillIndex = -1;
+            _hoveredSkillPointDisplay = false;
+            _pressedSpUpSkillIndex = -1;
         }
 
         private Rectangle GetSkillPointBounds()
@@ -1877,7 +2010,7 @@ namespace HaCreator.MapSimulator.UI
         public void AddSkill(int jobAdvancement, int skillId, Texture2D iconTexture,
             string skillName, string description, int currentLevel = 0, int maxLevel = 10)
         {
-            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
 
             if (skillsByTab.TryGetValue(tab, out var skills))
             {
@@ -1898,7 +2031,7 @@ namespace HaCreator.MapSimulator.UI
             if (skillData == null)
                 return;
 
-            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
             if (skillsByTab.TryGetValue(tab, out var skills))
             {
                 skills.Add(skillData);
@@ -1907,7 +2040,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void SetJobInfo(int tab, Texture2D jobIcon, string jobName)
         {
-            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
             _jobIconsByTab[tabIndex] = jobIcon;
             if (!string.IsNullOrWhiteSpace(jobName))
             {
@@ -1920,7 +2053,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void SetSkillPoints(int jobAdvancement, int points)
         {
-            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
             skillPoints[tab] = Math.Max(0, points);
         }
 
@@ -1931,7 +2064,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, TAB_4TH);
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
             skillPoints.TryGetValue(tab, out int currentPoints);
             skillPoints[tab] = Math.Max(0, currentPoints + delta);
         }
@@ -2258,7 +2391,8 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TrySwitchTab(int direction)
         {
-            int nextTab = Math.Clamp(_currentTab + direction, TAB_BEGINNER, TAB_4TH);
+            int maxTab = _useDualTabStrip ? MAX_TAB_INDEX : TAB_4TH;
+            int nextTab = Math.Clamp(_currentTab + direction, TAB_BEGINNER, maxTab);
             if (nextTab == _currentTab)
                 return false;
 
@@ -2453,6 +2587,15 @@ namespace HaCreator.MapSimulator.UI
             if (mouseState.LeftButton == ButtonState.Pressed &&
                 _previousMouseState.LeftButton == ButtonState.Released)
             {
+                int clickedTab = GetDualTabAtPosition(mouseState.X, mouseState.Y);
+                if (clickedTab >= 0)
+                {
+                    CurrentTab = clickedTab;
+                    _previousMouseState = mouseState;
+                    _previousKeyboardState = Keyboard.GetState();
+                    return;
+                }
+
                 if (TryHandleScrollBarMouseDown(mouseState))
                 {
                     _hoveredSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);

@@ -162,6 +162,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind.GuildQuestQueueNotice => SetPacketSyncSummary(
                     SocialListTab.Guild,
                     BuildClientGuildQuestQueueNoticeSummary(packet)),
+                SocialListClientGuildResultKind.GuildBoardAuthKey => SetPacketGuildBoardAuthKey(packet.GuildBoardAuthKey),
                 SocialListClientGuildResultKind.SkillRecord when packet.GuildSkillRecord.HasValue =>
                     $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.SkillRecord}) decoded guild-skill record {packet.GuildSkillRecord.Value.SkillId} for guild {packet.GuildId}.",
                 SocialListClientGuildResultKind.ResultNotice => SetPacketSyncSummary(

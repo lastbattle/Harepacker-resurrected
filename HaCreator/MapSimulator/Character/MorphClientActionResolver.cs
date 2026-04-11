@@ -330,9 +330,13 @@ namespace HaCreator.MapSimulator.Character
                 ["smokeshell"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["holyshield"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["resurrection"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
-                // Beginner and thief concealment/support rows still publish raw
-                // `bamboo` and `darksight` requests on the skill side, while the
-                // checked morph templates expose no verbatim support roots for them.
+                // Beginner, event, and thief concealment/support rows still publish raw
+                // `float`, `pyramid`, `bamboo`, and `darksight` requests on the skill
+                // side, while Character/00002000.img backs the event pair with alert
+                // and swing-family frames and the checked morph templates expose no
+                // verbatim support roots for any of them.
+                ["float"] = ClientPublishedAlertMorphFallbackAliases,
+                ["pyramid"] = new[] { "alert", "swingPF", "swingOF", "swingP2", "swingTF" },
                 ["bamboo"] = ClientPublishedAlertMorphFallbackAliases,
                 ["darksight"] = ClientPublishedAlertMorphFallbackAliases,
                 // Spell support/buff/debuff rows are also present as skill-side raw
@@ -574,6 +578,23 @@ namespace HaCreator.MapSimulator.Character
                 ["swallow_loop"] = new[] { "sit" },
                 ["swallow"] = new[] { "sit" },
                 ["swallow_attack"] = new[] { "sit" },
+                // The remaining checked Mechanic and Wild Hunter skill-side rows keep
+                // these raw action names, while Character/00002000.img backs them with
+                // `sit` frames and Morph/*.img publishes no verbatim branches.
+                ["siege_pre"] = new[] { "sit" },
+                ["tank_pre"] = new[] { "sit" },
+                ["tank_laser"] = new[] { "sit" },
+                ["rbooster_pre"] = new[] { "sit" },
+                ["drillrush"] = new[] { "sit" },
+                ["mbooster"] = new[] { "sit" },
+                ["crossRoad"] = new[] { "sit" },
+                ["earthslug"] = new[] { "sit" },
+                ["msummon"] = new[] { "sit" },
+                ["msummon2"] = new[] { "sit" },
+                ["mine"] = new[] { "sit" },
+                // Skill/3212.img still publishes the raw Battle Mage root, while
+                // Character/00002000.img backs it entirely with alert frames.
+                ["nemesis"] = new[] { "alert" },
                 // Skill/3212.img publishes the prepared cyclone raw action, while
                 // Character/00002000.img starts that body sequence on alert/stab
                 // frames and Morph/*.img publishes no verbatim cyclone branch.

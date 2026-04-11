@@ -97,7 +97,8 @@ namespace HaCreator.MapSimulator.Pools
         MobAnimationSet.AttackInfoMetadata AttackInfo,
         MobAnimationSet.AttackHitEffectEntry HitEffectEntry,
         string CharDamSoundKey,
-        int HitAfterMs);
+        int HitAfterMs,
+        bool PreferTemplateCharDamSound = false);
 
     internal readonly record struct PacketOwnedHitMobCandidate(
         bool IsAlive,
@@ -1962,12 +1963,29 @@ namespace HaCreator.MapSimulator.Pools
 
                 state.Summon.LastBodyContactTime = currentTime;
                 int damage = ResolveSummonBodyContactDamage(mob);
+                ApplySummonBodyContactDirection(state.Summon, mob);
                 ApplySummonDamage(state, damage, currentTime, useHitAnimationState: true);
                 PlayPacketIncDecHpFeedback(state.Summon, damage, currentTime);
                 return true;
             }
 
             return false;
+        }
+
+        private static void ApplySummonBodyContactDirection(ActiveSummon summon, MobItem mob)
+        {
+            if (summon == null)
+            {
+                return;
+            }
+
+            int relativeMotionX = SummonDamageRuntimeRules.ResolveBodyContactRelativeMotionX(
+                mob?.MovementInfo?.X ?? 0f,
+                mob?.MovementInfo?.VelocityX ?? 0f,
+                summon.PositionX,
+                summon.PreviousPositionX);
+            summon.LastBodyContactRelativeMotionX = relativeMotionX;
+            summon.LastBodyContactHitFacingRight = SummonDamageRuntimeRules.ResolveBodyContactHitFacingRight(relativeMotionX);
         }
 
         private static int ResolveSummonBodyContactDamage(MobItem mob)
@@ -2541,7 +2559,13 @@ namespace HaCreator.MapSimulator.Pools
 
             if (hitDamage > 0 && summon.SkillData?.HitEffect != null)
             {
-                SpawnHitEffect(summon.SkillId, summon.SkillData.HitEffect, summon.PositionX, summon.PositionY - 20f, summon.FacingRight, currentTime);
+                SpawnHitEffect(
+                    summon.SkillId,
+                    summon.SkillData.HitEffect,
+                    summon.PositionX,
+                    summon.PositionY - 20f,
+                    summon.LastBodyContactHitFacingRight ?? summon.FacingRight,
+                    currentTime);
             }
         }
 
@@ -3799,7 +3823,20 @@ namespace HaCreator.MapSimulator.Pools
         {
             return mob != null
                    && mob.PoolId > 0
-                   && mob.AI?.IsDead != true;
+                   && IsMobEligibleForPacketOwnedFindHitMobInRect(
+                       mob.AI?.IsDead == true,
+                       mob.IsProtectedFromPlayerDamage,
+                       mob.AI?.IsDazzled == true);
+        }
+
+        internal static bool IsMobEligibleForPacketOwnedFindHitMobInRect(
+            bool isDead,
+            bool isProtectedFromPlayerDamage,
+            bool isDazzled)
+        {
+            return !isDead
+                   && !isProtectedFromPlayerDamage
+                   && !isDazzled;
         }
 
         private readonly record struct PacketOwnedExpiryFacingScore(
@@ -4539,7 +4576,8 @@ namespace HaCreator.MapSimulator.Pools
                 ? ResolvePacketMobAttackSoundKey(
                     mob,
                     packet.AttackIndex >= 1 ? 2 : 1,
-                    presentation.CharDamSoundKey)
+                    presentation.CharDamSoundKey,
+                    presentation.PreferTemplateCharDamSound)
                 : null;
             if (!string.IsNullOrWhiteSpace(packetHitSoundKey))
             {
@@ -4756,7 +4794,8 @@ namespace HaCreator.MapSimulator.Pools
             MobAttackData templateAttackData = ResolvePacketMobAttackData(resolvedMobTemplateId, attackAction);
             MobAnimationSet templateAnimationSet = null;
             MobAnimationSet.AttackInfoMetadata templateAttackInfo = null;
-            if (needsTemplateAttackInfo || !hasLiveHitFrames)
+            bool hasTemplateAttackInfoHitPath = !string.IsNullOrWhiteSpace(templateAttackData?.HitEffectPath);
+            if (needsTemplateAttackInfo || !hasLiveHitFrames || hasTemplateAttackInfoHitPath)
             {
                 templateAnimationSet = LifeLoader.CreateMobAttackPresentationSet(
                     texturePool,
@@ -4765,6 +4804,27 @@ namespace HaCreator.MapSimulator.Pools
                 templateAttackInfo = ApplyPacketMobAttackDataOverrides(
                     templateAnimationSet?.GetAttackInfoMetadata(attackAction),
                     templateAttackData);
+            }
+
+            MobAnimationSet.AttackHitEffectEntry templateAttackInfoHitEffectEntry = hasTemplateAttackInfoHitPath
+                ? ResolvePacketMobAttackGeneralEffectEntry(
+                    templateAttackData,
+                    resolvedMobTemplateId.ToString(),
+                    attackAction,
+                    texturePool,
+                    graphicsDevice)
+                : null;
+            if (templateAttackInfoHitEffectEntry?.Frames?.Count > 0)
+            {
+                return SelectPacketMobAttackFeedbackPresentation(
+                    liveAttackInfo,
+                    null,
+                    templateAttackInfo,
+                    templateAttackInfoHitEffectEntry,
+                    LifeLoader.ResolveMobCharDamSoundKey(
+                        soundManager,
+                        resolvedMobTemplateId.ToString(),
+                        damageSoundIndex));
             }
 
             if (hasLiveHitFrames)
@@ -4786,12 +4846,6 @@ namespace HaCreator.MapSimulator.Pools
                 templateAnimationSet,
                 attackAction,
                 currentMobAttackFrameIndex);
-            templateHitEffectEntry ??= ResolvePacketMobAttackGeneralEffectEntry(
-                templateAttackData,
-                resolvedMobTemplateId.ToString(),
-                attackAction,
-                texturePool,
-                graphicsDevice);
             string charDamSoundKey = LifeLoader.ResolveMobCharDamSoundKey(
                 soundManager,
                 resolvedMobTemplateId.ToString(),
@@ -4825,11 +4879,14 @@ namespace HaCreator.MapSimulator.Pools
                     ResolvePacketMobAttackFeedbackHitAfterMs(attackInfo));
             }
 
+            bool usesAttackInfoHitEffect = templateHitEffectEntry?.UsesAttackInfoHitEffect == true;
+            MobAnimationSet.AttackInfoMetadata selectedAttackInfo = templateAttackInfo ?? liveAttackInfo;
             return new PacketOwnedMobAttackFeedbackPresentation(
-                templateAttackInfo ?? liveAttackInfo,
+                selectedAttackInfo,
                 templateHitEffectEntry,
                 templateCharDamSoundKey,
-                ResolvePacketMobAttackFeedbackHitAfterMs(templateAttackInfo ?? liveAttackInfo));
+                usesAttackInfoHitEffect ? 0 : ResolvePacketMobAttackFeedbackHitAfterMs(selectedAttackInfo),
+                usesAttackInfoHitEffect && !string.IsNullOrWhiteSpace(templateCharDamSoundKey));
         }
 
         internal static MobAnimationSet.AttackInfoMetadata SelectPacketMobAttackInfoForLiveHitEntry(
@@ -5041,7 +5098,8 @@ namespace HaCreator.MapSimulator.Pools
         internal static string ResolvePacketMobAttackSoundKey(
             MobItem mob,
             int damageSoundIndex,
-            string templateCharDamSoundKey)
+            string templateCharDamSoundKey,
+            bool preferTemplateCharDamSound = false)
         {
             string liveCharDam1SoundKey = mob?.CharDam1SE;
             string liveCharDam2SoundKey = mob?.CharDam2SE;
@@ -5049,15 +5107,22 @@ namespace HaCreator.MapSimulator.Pools
                 liveCharDam1SoundKey,
                 liveCharDam2SoundKey,
                 damageSoundIndex,
-                templateCharDamSoundKey);
+                templateCharDamSoundKey,
+                preferTemplateCharDamSound);
         }
 
         internal static string ResolvePacketMobAttackSoundKey(
             string liveCharDam1SoundKey,
             string liveCharDam2SoundKey,
             int damageSoundIndex,
-            string templateCharDamSoundKey)
+            string templateCharDamSoundKey,
+            bool preferTemplateCharDamSound = false)
         {
+            if (preferTemplateCharDamSound && !string.IsNullOrWhiteSpace(templateCharDamSoundKey))
+            {
+                return templateCharDamSoundKey;
+            }
+
             if (damageSoundIndex >= 2)
             {
                 if (!string.IsNullOrWhiteSpace(liveCharDam2SoundKey))
@@ -5189,7 +5254,8 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     Frames = frames,
                     SourceFrameIndex = 0,
-                    IsAttackFrameOwned = false
+                    IsAttackFrameOwned = false,
+                    UsesAttackInfoHitEffect = true
                 }
                 : null;
         }

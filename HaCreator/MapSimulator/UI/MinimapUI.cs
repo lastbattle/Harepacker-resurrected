@@ -1673,8 +1673,7 @@ namespace HaCreator.MapSimulator.UI
         internal static bool IsClientMinimapTooltipPortalType(PortalType portalType)
         {
             return portalType == PortalType.Visible
-                || portalType == PortalType.Default
-                || portalType == PortalType.Script;
+                || portalType == PortalType.TownPortalPoint;
         }
 
         internal static Point ResolveTooltipAnchorPointForTesting(int mouseX, int mouseY)

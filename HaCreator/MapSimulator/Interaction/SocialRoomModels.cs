@@ -501,7 +501,8 @@ namespace HaCreator.MapSimulator.Interaction
         private string _lastPacketOwnerSummary;
         private int _personalShopTotalSoldGross;
         private int _personalShopTotalReceivedNet;
-        private DateTime? _miniRoomOmokLastTimerUtc;
+        private int _miniRoomOmokLastClientSoundStringPoolId = -1;
+        private int _miniRoomOmokLastCountdownWarningFloor = int.MaxValue;
         private Action _miniRoomToggleReadyHandler;
         private Action _miniRoomStartHandler;
         private Action _miniRoomModeHandler;
@@ -631,8 +632,14 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokDialogEffectTimeLeftMs => _miniRoomOmokDialogEffectTimeLeftMs;
         public string MiniRoomOmokDialogStatus => _miniRoomOmokDialogStatus;
         public string MiniRoomOmokPendingPromptText => _miniRoomOmokPendingPromptText;
+        public int MiniRoomOmokLastClientSoundStringPoolId => _miniRoomOmokLastClientSoundStringPoolId;
         public string MiniRoomOmokLastClientSoundPath => _miniRoomOmokLastClientSoundPath;
         public string MiniRoomOmokLastOutboundPacketSummary => _miniRoomOmokLastOutboundPacketSummary;
+        public bool CanMiniRoomOmokReady => IsMiniRoomOmokActive && !_miniRoomOmokInProgress;
+        public bool CanMiniRoomOmokStart => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _occupants.Count >= 2;
+        public bool CanMiniRoomOmokRequestTie => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokDrawRequestSent && !_miniRoomOmokTieRequested;
+        public bool CanMiniRoomOmokRequestRetreat => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokRetreatRequestSent && !_miniRoomOmokRetreatRequested && _miniRoomOmokMoveHistory.Count > 0;
+        public bool CanMiniRoomOmokGiveUp => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog => BuildEntrustedChildDialogSnapshot();
         public Func<EntrustedShopBlacklistPromptRequest, bool> EntrustedBlacklistPromptRequested { get; set; }
         public Action<EntrustedShopNoticeSnapshot> EntrustedBlacklistNoticeRequested { get; set; }
@@ -698,6 +705,10 @@ namespace HaCreator.MapSimulator.Interaction
                 MiniRoomOmokStoneAnimationTimeLeftMs = _miniRoomOmokStoneAnimationTimeLeftMs,
                 MiniRoomOmokDialogEffectTimeLeftMs = _miniRoomOmokDialogEffectTimeLeftMs,
                 MiniRoomOmokDialogStatus = _miniRoomOmokDialogStatus,
+                MiniRoomOmokPendingPromptText = _miniRoomOmokPendingPromptText,
+                MiniRoomOmokLastClientSoundStringPoolId = _miniRoomOmokLastClientSoundStringPoolId,
+                MiniRoomOmokLastClientSoundPath = _miniRoomOmokLastClientSoundPath,
+                MiniRoomOmokLastOutboundPacketSummary = _miniRoomOmokLastOutboundPacketSummary,
                 MiniRoomOmokBoard = _miniRoomOmokBoard.ToList(),
                 MiniRoomOmokMoveHistory = _miniRoomOmokMoveHistory
                     .Select(move => new SocialRoomOmokMoveSnapshot
@@ -858,6 +869,11 @@ namespace HaCreator.MapSimulator.Interaction
                 _miniRoomOmokStoneAnimationTimeLeftMs = Math.Max(0, source?.MiniRoomOmokStoneAnimationTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokStoneAnimationTimeLeftMs);
                 _miniRoomOmokDialogEffectTimeLeftMs = Math.Max(0, source?.MiniRoomOmokDialogEffectTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokDialogEffectTimeLeftMs);
                 _miniRoomOmokDialogStatus = source?.MiniRoomOmokDialogStatus ?? _defaultSnapshot.MiniRoomOmokDialogStatus ?? string.Empty;
+                _miniRoomOmokPendingPromptText = source?.MiniRoomOmokPendingPromptText ?? _defaultSnapshot.MiniRoomOmokPendingPromptText ?? string.Empty;
+                _miniRoomOmokLastClientSoundStringPoolId = source?.MiniRoomOmokLastClientSoundStringPoolId ?? _defaultSnapshot.MiniRoomOmokLastClientSoundStringPoolId;
+                _miniRoomOmokLastClientSoundPath = source?.MiniRoomOmokLastClientSoundPath ?? _defaultSnapshot.MiniRoomOmokLastClientSoundPath ?? string.Empty;
+                _miniRoomOmokLastOutboundPacketSummary = source?.MiniRoomOmokLastOutboundPacketSummary ?? _defaultSnapshot.MiniRoomOmokLastOutboundPacketSummary ?? string.Empty;
+                _miniRoomOmokLastCountdownWarningFloor = int.MaxValue;
                 _miniRoomOmokLastTimedStateUtc = null;
                 _tradeLocalOfferMeso = Math.Max(0, source?.TradeLocalOfferMeso ?? _defaultSnapshot.TradeLocalOfferMeso);
                 _tradeRemoteOfferMeso = Math.Max(0, source?.TradeRemoteOfferMeso ?? _defaultSnapshot.TradeRemoteOfferMeso);
@@ -2326,7 +2342,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string BuildTradingRoomPacketItemDetail(string ownerLabel, int slotIndex, PacketOwnedTradeItem item)
         {
-            string baseExpirationText = BuildTradeDateDetail("Expire", item.BaseExpirationTime);
+            string baseExpirationText = BuildTradeDateDetail("dateExpire", item.BaseExpirationTime);
             string cashText = item.HasCashSerialNumber && item.CashSerialNumber > 0
                 ? $" | liCashItemSN {item.CashSerialNumber}"
                 : string.Empty;
@@ -2347,9 +2363,11 @@ namespace HaCreator.MapSimulator.Interaction
                 && item.NonCashSerialNumber.Value != item.ItemSerialNumber
                 ? $" | liSN {item.NonCashSerialNumber.Value}"
                 : string.Empty;
-            string tailText = item.TailValue.HasValue && item.TailValue.Value != 0
-                ? $" | nPrevBonusExpRate {item.TailValue.Value}"
-                : string.Empty;
+            string tailText = string.IsNullOrWhiteSpace(item.MetadataSummary)
+                && item.TailValue.HasValue
+                && item.TailValue.Value != 0
+                    ? $" | nPrevBonusExpRate {item.TailValue.Value}"
+                    : string.Empty;
             string tailMetadataText = string.IsNullOrWhiteSpace(item.TailMetadataSummary)
                 ? string.Empty
                 : $" | {item.TailMetadataSummary}";
@@ -2617,25 +2635,25 @@ namespace HaCreator.MapSimulator.Interaction
                 parts.Add($"nCUC {upgradeCount}");
             }
 
-            AppendStatPart(parts, "STR", strength);
-            AppendStatPart(parts, "DEX", dexterity);
-            AppendStatPart(parts, "INT", intelligence);
-            AppendStatPart(parts, "LUK", luck);
-            AppendStatPart(parts, "HP", hp);
-            AppendStatPart(parts, "MP", mp);
-            AppendStatPart(parts, "PAD", weaponAttack);
-            AppendStatPart(parts, "MAD", magicAttack);
-            AppendStatPart(parts, "PDD", weaponDefense);
-            AppendStatPart(parts, "MDD", magicDefense);
-            AppendStatPart(parts, "ACC", accuracy);
-            AppendStatPart(parts, "EVA", avoidability);
+            AppendStatPart(parts, "niSTR", strength);
+            AppendStatPart(parts, "niDEX", dexterity);
+            AppendStatPart(parts, "niINT", intelligence);
+            AppendStatPart(parts, "niLUK", luck);
+            AppendStatPart(parts, "niMaxHP", hp);
+            AppendStatPart(parts, "niMaxMP", mp);
+            AppendStatPart(parts, "niPAD", weaponAttack);
+            AppendStatPart(parts, "niMAD", magicAttack);
+            AppendStatPart(parts, "niPDD", weaponDefense);
+            AppendStatPart(parts, "niMDD", magicDefense);
+            AppendStatPart(parts, "niACC", accuracy);
+            AppendStatPart(parts, "niEVA", avoidability);
             AppendStatPart(parts, "niCraft", hands);
             AppendStatPart(parts, "niSpeed", speed);
             AppendStatPart(parts, "niJump", jump);
 
             if (attribute != 0)
             {
-                parts.Add($"Attr 0x{(ushort)attribute:X4}");
+                parts.Add($"nAttribute 0x{(ushort)attribute:X4}");
             }
 
             if (levelUpType > 0)

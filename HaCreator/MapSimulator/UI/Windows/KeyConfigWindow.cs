@@ -124,6 +124,34 @@ namespace HaCreator.MapSimulator.UI
             public bool HasDetails => !string.IsNullOrWhiteSpace(Title) || !string.IsNullOrWhiteSpace(Detail);
         }
 
+        public readonly struct PacketSlotVisualState
+        {
+            public PacketSlotVisualState(
+                int scanCode,
+                Keys clientKey,
+                byte packetEntryType,
+                int packetEntryId,
+                int packetPaletteSlotId,
+                ShortcutVisualState shortcutVisualState)
+            {
+                ScanCode = scanCode;
+                ClientKey = clientKey;
+                PacketEntryType = packetEntryType;
+                PacketEntryId = packetEntryId;
+                PacketPaletteSlotId = packetPaletteSlotId;
+                ShortcutVisualState = shortcutVisualState;
+            }
+
+            public int ScanCode { get; }
+            public Keys ClientKey { get; }
+            public byte PacketEntryType { get; }
+            public int PacketEntryId { get; }
+            public int PacketPaletteSlotId { get; }
+            public ShortcutVisualState ShortcutVisualState { get; }
+            public bool HasVisual => PacketPaletteSlotId >= 0 || ShortcutVisualState.HasVisual;
+            public bool HasPacketEntry => PacketEntryType != 0 && PacketEntryId > 0;
+        }
+
         private readonly List<PageLayer> _mainLayers = new();
         private readonly List<PageLayer> _quickSlotLayers = new();
         private readonly List<BindingRow> _bindingRows = new();
@@ -196,6 +224,7 @@ namespace HaCreator.MapSimulator.UI
         private Action<PlayerInput> _commitHandler;
         private Func<InputAction, KeyBinding, ClientOwnerState> _clientOwnerStateProvider;
         private Func<InputAction, KeyBinding, ShortcutVisualState> _shortcutVisualStateProvider;
+        private Func<IReadOnlyList<PacketSlotVisualState>> _packetSlotVisualStateProvider;
         private IDXObject _quickSlotFrame;
         private UIObject _mainOkButton;
         private UIObject _mainCancelButton;
@@ -317,6 +346,11 @@ namespace HaCreator.MapSimulator.UI
         public void SetShortcutVisualStateProvider(Func<InputAction, KeyBinding, ShortcutVisualState> shortcutVisualStateProvider)
         {
             _shortcutVisualStateProvider = shortcutVisualStateProvider;
+        }
+
+        public void SetPacketSlotVisualStateProvider(Func<IReadOnlyList<PacketSlotVisualState>> packetSlotVisualStateProvider)
+        {
+            _packetSlotVisualStateProvider = packetSlotVisualStateProvider;
         }
 
         public void SetLaunchSource(string source)
@@ -478,6 +512,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (_page == KeyConfigPage.QuickSlot)
             {
+                DrawPacketOwnedFuncKeyMappedGrid(sprite);
                 DrawQuickSlotOwnerFooter(sprite);
             }
 
@@ -621,18 +656,54 @@ namespace HaCreator.MapSimulator.UI
             Texture2D paletteTexture = GetSelectedPaletteTexture(paletteSlotId);
             ShortcutVisualState shortcutVisualState = ResolveShortcutVisualState(row.Action);
             int labelX = bounds.X + 8;
+            bool compactRow = _page == KeyConfigPage.QuickSlot;
             bool showShortcutVisual = paletteTexture != null || shortcutVisualState.HasVisual;
             if (showShortcutVisual)
             {
-                Rectangle iconBounds = new(bounds.X + 6, bounds.Y + 3, 18, 18);
+                int iconSize = compactRow ? 11 : 18;
+                Rectangle iconBounds = new(bounds.X + 5, bounds.Y + Math.Max(1, (bounds.Height - iconSize) / 2), iconSize, iconSize);
                 sprite.Draw(_highlightTexture, iconBounds, new Color(54, 66, 88, 215));
                 DrawMainPageShortcutVisual(sprite, iconBounds, paletteTexture, shortcutVisualState);
 
                 labelX = iconBounds.Right + 6;
             }
 
+            if (compactRow)
+            {
+                sprite.DrawString(_font, row.Label, new Vector2(labelX, bounds.Y + 2), Color.White, 0f, Vector2.Zero, 0.58f, SpriteEffects.None, 0f);
+                DrawCompactBindingValue(sprite, bounds, binding);
+                return;
+            }
+
             sprite.DrawString(_font, row.Label, new Vector2(labelX, bounds.Y + 6), Color.White);
             DrawBindingValue(sprite, bounds, binding);
+        }
+
+        private void DrawCompactBindingValue(SpriteBatch sprite, Rectangle bounds, KeyBinding binding)
+        {
+            string keyText = FormatKey(binding?.PrimaryKey ?? Keys.None);
+            if (string.IsNullOrWhiteSpace(keyText))
+            {
+                keyText = FormatKey(binding?.SecondaryKey ?? Keys.None);
+            }
+
+            if (string.IsNullOrWhiteSpace(keyText))
+            {
+                return;
+            }
+
+            const float scale = 0.48f;
+            Vector2 size = _font.MeasureString(keyText) * scale;
+            sprite.DrawString(
+                _font,
+                keyText,
+                new Vector2(bounds.Right - size.X - 5, bounds.Y + 2),
+                new Color(255, 228, 151),
+                0f,
+                Vector2.Zero,
+                scale,
+                SpriteEffects.None,
+                0f);
         }
 
         private void DrawQuickSlotOwnerFooter(SpriteBatch sprite)
@@ -696,6 +767,67 @@ namespace HaCreator.MapSimulator.UI
             Rectangle bindingBounds = new(infoBounds.Right - 176, infoBounds.Bottom - 24, 118, 20);
             sprite.Draw(_highlightTexture, bindingBounds, new Color(56, 68, 92, 215));
             DrawBindingValue(sprite, bindingBounds, GetBinding(_selectedAction.Value));
+        }
+
+        private void DrawPacketOwnedFuncKeyMappedGrid(SpriteBatch sprite)
+        {
+            IReadOnlyList<PacketSlotVisualState> slotStates = _packetSlotVisualStateProvider?.Invoke() ?? Array.Empty<PacketSlotVisualState>();
+            if (slotStates.Count == 0)
+            {
+                return;
+            }
+
+            const int gridColumns = 10;
+            const int cellSize = 16;
+            const int cellGap = 1;
+            const int panelPadding = 6;
+            int panelX = Position.X + 414;
+            int panelY = Position.Y + 66;
+            int panelWidth = (gridColumns * cellSize) + ((gridColumns - 1) * cellGap) + (panelPadding * 2);
+            int panelHeight = 174;
+            Rectangle panelBounds = new(panelX, panelY, panelWidth, panelHeight);
+
+            sprite.Draw(_highlightTexture, panelBounds, new Color(20, 25, 37, 225));
+            sprite.DrawString(
+                _font,
+                "Packet FuncKeyMapped",
+                new Vector2(panelBounds.X + panelPadding, panelBounds.Y + 3),
+                new Color(220, 220, 220),
+                0f,
+                Vector2.Zero,
+                0.42f,
+                SpriteEffects.None,
+                0f);
+
+            int gridX = panelBounds.X + panelPadding;
+            int gridY = panelBounds.Y + 18;
+            int maxCells = Math.Min(slotStates.Count, 89);
+            for (int i = 0; i < maxCells; i++)
+            {
+                PacketSlotVisualState slotState = slotStates[i];
+                int column = i % gridColumns;
+                int row = i / gridColumns;
+                Rectangle cellBounds = new(
+                    gridX + (column * (cellSize + cellGap)),
+                    gridY + (row * (cellSize + cellGap)),
+                    cellSize,
+                    cellSize);
+                bool hasEntry = slotState.HasPacketEntry || slotState.PacketPaletteSlotId >= 0;
+                sprite.Draw(
+                    _highlightTexture,
+                    cellBounds,
+                    hasEntry
+                        ? new Color(46, 57, 78, 220)
+                        : new Color(24, 29, 40, 150));
+
+                if (!slotState.HasVisual)
+                {
+                    continue;
+                }
+
+                Texture2D paletteTexture = GetSelectedPaletteTexture(slotState.PacketPaletteSlotId);
+                DrawMainPageShortcutVisual(sprite, cellBounds, paletteTexture, slotState.ShortcutVisualState);
+            }
         }
 
         private void DrawBindingValue(SpriteBatch sprite, Rectangle bounds, KeyBinding binding)
@@ -1502,10 +1634,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             (InputAction action, string label)[] quickRows = BuildClientFuncKeyMappedRows();
-            const int quickColumnCount = 3;
-            const int quickRowWidth = 180;
-            const int quickRowHeight = 18;
-            const int quickRowGap = 18;
+            const int quickColumnCount = 2;
+            const int quickRowWidth = 178;
+            const int quickRowHeight = 11;
+            const int quickRowGap = 13;
             const int quickColumnGap = 20;
             int quickRowsPerColumn = (int)Math.Ceiling(quickRows.Length / (double)quickColumnCount);
             for (int i = 0; i < quickRows.Length; i++)

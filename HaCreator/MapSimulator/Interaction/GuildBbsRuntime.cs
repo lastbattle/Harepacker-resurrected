@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte ClientRegisterRequestType = 0;
         private const byte ClientDeleteRequestType = 1;
         private const byte ClientLoadListRequestType = 2;
+        private const byte ClientViewEntryRequestType = 3;
         private const byte ClientCommentRequestType = 4;
         private const byte ClientCommentDeleteRequestType = 5;
         private const int ClientRequestHistoryLimit = 16;
@@ -321,6 +322,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         public void SelectThread(int threadId)
         {
+            SelectThread(threadId, recordClientRequest: true);
+        }
+
+        private void SelectThread(int threadId, bool recordClientRequest)
+        {
             IReadOnlyList<GuildBbsThreadState> orderedThreads = GetOrderedThreads();
             if (!orderedThreads.Any(thread => thread.ThreadId == threadId))
             {
@@ -335,6 +341,13 @@ namespace HaCreator.MapSimulator.Interaction
                 .First(entry => entry.ThreadId == threadId)
                 .index;
             _threadPageIndex = threadIndex / VisibleThreadCount;
+
+            if (recordClientRequest)
+            {
+                RecordClientRequests(
+                    ("view-entry", BuildClientViewEntryRequestPayload(threadId)),
+                    ("load-list", BuildClientLoadListRequestPayload()));
+            }
         }
 
         public string BeginWrite()
@@ -513,7 +526,7 @@ namespace HaCreator.MapSimulator.Interaction
             NotifySocialChatObserved(resolvedTitle, resolvedBody);
             IsWriteMode = false;
             _compose = new GuildBbsComposeState();
-            SelectThread(_selectedThreadId);
+            SelectThread(_selectedThreadId, recordClientRequest: false);
             return "Guild BBS thread registered.";
         }
 
@@ -920,6 +933,28 @@ namespace HaCreator.MapSimulator.Interaction
             return FormatClientPacketPreview("load-list", BuildClientLoadListRequestPayload());
         }
 
+        public string BuildClientViewEntryRequestPreview()
+        {
+            GuildBbsThreadState selectedThread = GetSelectedThread();
+            if (selectedThread == null)
+            {
+                return "Select a Guild BBS thread before viewing it.";
+            }
+
+            return FormatClientPacketPreview("view-entry", BuildClientViewEntryRequestPayload(selectedThread.ThreadId));
+        }
+
+        public string BuildClientViewEntrySequencePreview()
+        {
+            string viewEntryPreview = BuildClientViewEntryRequestPreview();
+            if (!viewEntryPreview.StartsWith("CUIGuildBBS ", StringComparison.Ordinal))
+            {
+                return viewEntryPreview;
+            }
+
+            return $"{viewEntryPreview} {BuildClientLoadListRequestPreview()}";
+        }
+
         public string BuildClientDeleteRequestPreview()
         {
             GuildBbsThreadState selectedThread = GetSelectedThread();
@@ -1226,6 +1261,14 @@ namespace HaCreator.MapSimulator.Interaction
             var payload = new List<byte>();
             EncodeByte(payload, ClientLoadListRequestType);
             EncodeInt32(payload, Math.Max(0, listStart ?? ResolveClientListStart()));
+            return payload.ToArray();
+        }
+
+        private static byte[] BuildClientViewEntryRequestPayload(int threadId)
+        {
+            var payload = new List<byte>();
+            EncodeByte(payload, ClientViewEntryRequestType);
+            EncodeInt32(payload, threadId);
             return payload.ToArray();
         }
 

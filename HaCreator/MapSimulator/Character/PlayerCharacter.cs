@@ -131,6 +131,22 @@ namespace HaCreator.MapSimulator.Character
             public int TamingMobFrameRemainingMs { get; set; }
             public int LastAnimationElapsedMs { get; set; }
             public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public int ActionSpeedDegree { get; init; }
+            public int WalkSpeed { get; init; }
+            public bool HeldActionFrameDelay { get; init; }
+        }
+
+        private sealed class AvatarActionLayerState
+        {
+            public string ActionName { get; init; }
+            public int FrameIndex { get; set; } = -1;
+            public int FrameRemainingMs { get; set; }
+            public int LastAnimationElapsedMs { get; set; }
+            public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public int ActionSpeedDegree { get; init; }
+            public int WalkSpeed { get; init; }
+            public bool HeldActionFrameDelay { get; init; }
+            public bool AllowLoop { get; init; }
         }
 
         internal readonly record struct MountedActionLayerStateForTesting(
@@ -316,6 +332,7 @@ namespace HaCreator.MapSimulator.Character
             public int PreparedTransitionStartTime { get; set; } = int.MinValue;
             public int LastInsertCanvasTime { get; set; } = int.MinValue;
             public bool PreparedFacingRight { get; set; }
+            public Point PreparedTargetOffsetPx { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
             public Texture2D ComposedTexture { get; set; }
             public IReadOnlyList<AssembledPart> Parts { get; set; } = Array.Empty<AssembledPart>();
@@ -329,6 +346,7 @@ namespace HaCreator.MapSimulator.Character
                 Rectangle positionBounds,
                 Point origin,
                 bool facingRight,
+                Point targetOffset,
                 int transitionStartTime,
                 Color layerColor)
             {
@@ -337,6 +355,7 @@ namespace HaCreator.MapSimulator.Character
                 PositionBounds = positionBounds;
                 Origin = origin;
                 FacingRight = facingRight;
+                TargetOffset = targetOffset;
                 TransitionStartTime = transitionStartTime;
                 LayerColor = layerColor;
             }
@@ -346,6 +365,7 @@ namespace HaCreator.MapSimulator.Character
             public Rectangle PositionBounds { get; }
             public Point Origin { get; }
             public bool FacingRight { get; }
+            public Point TargetOffset { get; }
             public int TransitionStartTime { get; }
             public Color LayerColor { get; }
         }
@@ -556,6 +576,7 @@ namespace HaCreator.MapSimulator.Character
         private bool _clientOwnedVehicleTamingMobActive;
         private bool _suppressAutomaticTamingMobTransition;
         private MountedActionLayerState _mountedActionLayerState;
+        private AvatarActionLayerState _avatarActionLayerState;
         private readonly Dictionary<PlayerSkillBlockingStatus, PlayerSkillBlockingStatusState> _activeSkillBlockingStatuses = new();
 
         // Hit state tracking
@@ -2043,6 +2064,7 @@ namespace HaCreator.MapSimulator.Character
             }
             _isFloatAnimationMoving = isFloatMoving;
             SyncAssemblerActionLayerContext();
+            RefreshAvatarActionLayerState();
             RefreshMountedActionLayerState();
         }
 
@@ -2090,10 +2112,101 @@ namespace HaCreator.MapSimulator.Character
             return Assembler?.ResolveClientActionLayerDuration(CurrentActionName) ?? 0;
         }
 
+        private AvatarActionLayerState GetAvatarActionLayerState()
+        {
+            if (_avatarActionLayerState != null
+                && string.Equals(_avatarActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                && HasCurrentActionLayerContext(_avatarActionLayerState.ActionSpeedDegree, _avatarActionLayerState.WalkSpeed, _avatarActionLayerState.HeldActionFrameDelay)
+                && _avatarActionLayerState.AllowLoop == ShouldCurrentAvatarActionLayerLoop())
+            {
+                return _avatarActionLayerState;
+            }
+
+            RefreshAvatarActionLayerState();
+            return _avatarActionLayerState != null
+                   && string.Equals(_avatarActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                ? _avatarActionLayerState
+                : null;
+        }
+
+        private void RefreshAvatarActionLayerState()
+        {
+            if (_avatarActionLayerState != null
+                && string.Equals(_avatarActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                && HasCurrentActionLayerContext(_avatarActionLayerState.ActionSpeedDegree, _avatarActionLayerState.WalkSpeed, _avatarActionLayerState.HeldActionFrameDelay)
+                && _avatarActionLayerState.AllowLoop == ShouldCurrentAvatarActionLayerLoop())
+            {
+                return;
+            }
+
+            _avatarActionLayerState = null;
+            if (Assembler == null || string.IsNullOrWhiteSpace(CurrentActionName))
+            {
+                return;
+            }
+
+            if (!Assembler.TryCreateActionLayerFrameClock(
+                    CurrentActionName,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock clock))
+            {
+                return;
+            }
+
+            _avatarActionLayerState = new AvatarActionLayerState
+            {
+                ActionName = CurrentActionName,
+                FrameIndex = clock.FrameIndex,
+                FrameRemainingMs = clock.FrameRemainingMs,
+                LastAnimationElapsedMs = 0,
+                LastClockUpdateTimeMs = _animationStartTime,
+                ActionSpeedDegree = Assembler.PreparedActionSpeedDegree,
+                WalkSpeed = Assembler.PreparedWalkSpeed,
+                HeldActionFrameDelay = Assembler.HeldActionFrameDelay,
+                AllowLoop = ShouldCurrentAvatarActionLayerLoop()
+            };
+        }
+
+        private void UpdateAvatarActionLayerFrameClock(AvatarActionLayerState avatarActionLayerState, int currentTime)
+        {
+            if (avatarActionLayerState == null || Assembler == null)
+            {
+                return;
+            }
+
+            int animationElapsedMs = GetRenderAnimationTime(currentTime);
+            int elapsedSinceLastUpdateMs = Math.Max(0, animationElapsedMs - avatarActionLayerState.LastAnimationElapsedMs);
+            if (elapsedSinceLastUpdateMs <= 0)
+            {
+                avatarActionLayerState.LastClockUpdateTimeMs = currentTime;
+                return;
+            }
+
+            var clock = new AvatarActionLayerCoordinator.PreparedFrameClock(
+                avatarActionLayerState.FrameIndex,
+                avatarActionLayerState.FrameRemainingMs);
+            if (!Assembler.TryAdvanceActionLayerFrameClock(
+                    avatarActionLayerState.ActionName,
+                    ref clock,
+                    avatarActionLayerState.AllowLoop,
+                    elapsedSinceLastUpdateMs,
+                    out _,
+                    out _))
+            {
+                return;
+            }
+
+            avatarActionLayerState.FrameIndex = clock.FrameIndex;
+            avatarActionLayerState.FrameRemainingMs = clock.FrameRemainingMs;
+            avatarActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
+            avatarActionLayerState.LastClockUpdateTimeMs = currentTime;
+        }
+
         private MountedActionLayerState GetMountedActionLayerState()
         {
             if (_mountedActionLayerState != null
-                && string.Equals(_mountedActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase))
+                && State == PlayerState.Attacking
+                && string.Equals(_mountedActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                && HasCurrentActionLayerContext(_mountedActionLayerState.ActionSpeedDegree, _mountedActionLayerState.WalkSpeed, _mountedActionLayerState.HeldActionFrameDelay))
             {
                 return _mountedActionLayerState;
             }
@@ -2133,6 +2246,14 @@ namespace HaCreator.MapSimulator.Character
 
         private void RefreshMountedActionLayerState()
         {
+            if (_mountedActionLayerState != null
+                && State == PlayerState.Attacking
+                && string.Equals(_mountedActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                && HasCurrentActionLayerContext(_mountedActionLayerState.ActionSpeedDegree, _mountedActionLayerState.WalkSpeed, _mountedActionLayerState.HeldActionFrameDelay))
+            {
+                return;
+            }
+
             _mountedActionLayerState = null;
             if (Assembler == null
                 || State != PlayerState.Attacking
@@ -2181,8 +2302,24 @@ namespace HaCreator.MapSimulator.Character
                 TamingMobFrameIndex = tamingMobClock.FrameIndex,
                 TamingMobFrameRemainingMs = tamingMobClock.FrameRemainingMs,
                 LastAnimationElapsedMs = 0,
-                LastClockUpdateTimeMs = _animationStartTime
+                LastClockUpdateTimeMs = _animationStartTime,
+                ActionSpeedDegree = Assembler.PreparedActionSpeedDegree,
+                WalkSpeed = Assembler.PreparedWalkSpeed,
+                HeldActionFrameDelay = Assembler.HeldActionFrameDelay
             };
+        }
+
+        private bool HasCurrentActionLayerContext(int actionSpeedDegree, int walkSpeed, bool heldActionFrameDelay)
+        {
+            return Assembler != null
+                   && actionSpeedDegree == Assembler.PreparedActionSpeedDegree
+                   && walkSpeed == Assembler.PreparedWalkSpeed
+                   && heldActionFrameDelay == Assembler.HeldActionFrameDelay;
+        }
+
+        private bool ShouldCurrentAvatarActionLayerLoop()
+        {
+            return State != PlayerState.Attacking;
         }
 
         private void UpdateMountedActionLayerFrameClock(MountedActionLayerState mountedActionLayerState, int currentTime)
@@ -2339,10 +2476,7 @@ namespace HaCreator.MapSimulator.Character
             UpdateMountedActionLayerFrameClock(mountedActionLayerState, currentTime);
             string currentBodyActionName = mountedActionLayerState.CurrentBodyActionName;
             string currentTamingMobActionName = mountedActionLayerState.CurrentTamingMobActionName;
-            bool bodyActionSplit = !string.Equals(currentBodyActionName, mountedActionLayerState.ActionName, StringComparison.OrdinalIgnoreCase);
-            bool tamingMobActionSplit = !string.Equals(currentTamingMobActionName, mountedActionLayerState.ActionName, StringComparison.OrdinalIgnoreCase);
-            if ((!bodyActionSplit && !tamingMobActionSplit)
-                || string.IsNullOrWhiteSpace(currentBodyActionName)
+            if (string.IsNullOrWhiteSpace(currentBodyActionName)
                 || string.IsNullOrWhiteSpace(currentTamingMobActionName))
             {
                 return false;
@@ -2784,6 +2918,8 @@ namespace HaCreator.MapSimulator.Character
             CurrentAction = GetAttackAction();
             CurrentActionName = CharacterPart.GetActionString(CurrentAction);
             _forcedActionName = null;
+            _avatarActionLayerState = null;
+            _mountedActionLayerState = null;
             PlayEffectiveWeaponSfx();
 
             // Trigger hitbox callback on attack frame
@@ -2906,6 +3042,7 @@ namespace HaCreator.MapSimulator.Character
                 ? Environment.TickCount
                 : currentTime;
             SyncAssemblerActionLayerContext();
+            RefreshAvatarActionLayerState();
             RefreshMountedActionLayerState();
             if (playEffectiveWeaponSfx)
             {
@@ -2945,12 +3082,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             SyncAssemblerActionLayerContext();
+            RefreshAvatarActionLayerState();
             _mountedActionLayerState = null;
         }
 
         public void EndSustainedSkillAnimation()
         {
             _sustainedSkillAnimation = false;
+            _avatarActionLayerState = null;
         }
 
         public void ApplyMeleeAfterImage(int skillId, string actionName, MeleeAfterImageAction afterImageAction, int currentTime)
@@ -4852,7 +4991,10 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                Point layerOffset = ResolveMirrorImageCurrentOffset(currentTime, transitionStartTime);
+                Point layerOffset = ResolveMirrorImageLayerCurrentOffset(
+                    renderableLayer.Value.TargetOffset,
+                    currentTime,
+                    transitionStartTime);
                 int adjustedY = screenY + layerOffset.Y - _activeMirrorImage.PreparedFeetOffset;
                 int adjustedX = screenX + layerOffset.X;
                 Color tint = ResolveMirrorImageLayerTint(renderableLayer.Value.LayerColor, alpha);
@@ -4983,6 +5125,7 @@ namespace HaCreator.MapSimulator.Character
                     PreparedTransitionStartTime = int.MinValue,
                     LastInsertCanvasTime = int.MinValue,
                     PreparedFacingRight = false,
+                    PreparedTargetOffsetPx = Point.Zero,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
                     ComposedTexture = null,
                     Parts = Array.Empty<AssembledPart>()
@@ -5080,6 +5223,7 @@ namespace HaCreator.MapSimulator.Character
                         CalculateMirrorImageSourceLayerBounds(liveSourceParts)),
                     preparedLayer.Origin,
                     FacingRight,
+                    preparedLayer.PreparedTargetOffsetPx,
                     ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime),
                     preparedLayer.PreparedLayerColor);
             }
@@ -5103,6 +5247,7 @@ namespace HaCreator.MapSimulator.Character
                     ResolveMirrorImageLiveRenderBounds(frame, preparedLayer.RenderLayer)),
                 preparedLayer.Origin,
                 ResolveMirrorImagePreparedFallbackFacing(preparedLayer.PreparedFacingRight, FacingRight),
+                preparedLayer.PreparedTargetOffsetPx,
                 ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime),
                 preparedLayer.PreparedLayerColor);
         }
@@ -5193,6 +5338,10 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
                     preparedLayer.PreparedLayerObjectId,
                     preservesExistingLayerObject: true);
+                preparedLayer.PreparedTargetOffsetPx = ResolveMirrorImagePreparedLayerTargetOffset(
+                    preparedLayer.PreparedTargetOffsetPx,
+                    recreatesLayerObject: false,
+                    ResolveMirrorImageTargetOffsetForCurrentState());
                 bool hasSourceCanvas = HasMirrorImageInsertCanvasSource(
                     preparedLayer.TextureSourceBounds,
                     preparedLayer.ComposedTexture);
@@ -5249,6 +5398,10 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
                 preparedLayer.PreparedLayerObjectId,
                 preservesExistingLayerObject);
+            preparedLayer.PreparedTargetOffsetPx = ResolveMirrorImagePreparedLayerTargetOffset(
+                preparedLayer.PreparedTargetOffsetPx,
+                !preservesExistingLayerObject,
+                ResolveMirrorImageTargetOffsetForCurrentState());
             ApplyMirrorImagePreparedLayerClientProperties(preparedLayer, renderLayer);
             ApplyMirrorImageInsertCanvasMetadata(
                 preparedLayer,
@@ -5283,6 +5436,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.PreparedTransitionStartTime = int.MinValue;
             preparedLayer.LastInsertCanvasTime = int.MinValue;
             preparedLayer.PreparedFacingRight = false;
+            preparedLayer.PreparedTargetOffsetPx = Point.Zero;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = Array.Empty<AssembledPart>();
             return preparedLayer;
@@ -5445,6 +5599,16 @@ namespace HaCreator.MapSimulator.Character
             bool existingFlipMatchesUnderFace)
         {
             return !hasExistingLayer || !existingFlipMatchesUnderFace;
+        }
+
+        internal static Point ResolveMirrorImagePreparedLayerTargetOffset(
+            Point existingTargetOffset,
+            bool recreatesLayerObject,
+            Point currentTargetOffset)
+        {
+            return recreatesLayerObject
+                ? currentTargetOffset
+                : existingTargetOffset;
         }
 
         internal static bool HasMirrorImageInsertCanvasSource(Rectangle sourceBounds, Texture2D composedTexture)
@@ -7046,15 +7210,28 @@ namespace HaCreator.MapSimulator.Character
 
         private Point ResolveMirrorImageCurrentOffset(int currentTime, int transitionStartTime)
         {
+            Point targetOffset = ResolveMirrorImageTargetOffsetForCurrentState();
+            return ResolveMirrorImageLayerCurrentOffset(targetOffset, currentTime, transitionStartTime);
+        }
+
+        private Point ResolveMirrorImageTargetOffsetForCurrentState()
+        {
             int? rawActionCode = TryGetCurrentClientRawActionCode(out int resolvedRawActionCode)
                 ? resolvedRawActionCode
                 : null;
-            Point targetOffset = ResolveMirrorImageTargetOffset(
+            return ResolveMirrorImageTargetOffset(
                 FacingRight,
                 CurrentActionName,
                 State,
                 rawActionCode,
                 HasActiveMorphTransform);
+        }
+
+        internal static Point ResolveMirrorImageLayerCurrentOffset(
+            Point targetOffset,
+            int currentTime,
+            int transitionStartTime)
+        {
             int elapsedTime = Math.Max(0, currentTime - transitionStartTime);
             float progress = MathHelper.Clamp(elapsedTime / (float)MirrorImageTransitionDurationMs, 0f, 1f);
             return new Point(
@@ -8302,6 +8479,21 @@ namespace HaCreator.MapSimulator.Character
                 return mountedTransitionFrame;
             }
 
+            AvatarActionLayerState avatarActionLayerState = GetAvatarActionLayerState();
+            UpdateAvatarActionLayerFrameClock(avatarActionLayerState, currentTime);
+            if (avatarActionLayerState != null)
+            {
+                AssembledFrame indexedFrame = Assembler.GetFrameAtIndex(
+                    avatarActionLayerState.ActionName,
+                    avatarActionLayerState.FrameIndex,
+                    GetRenderAnimationTime(currentTime));
+                if (indexedFrame != null)
+                {
+                    currentFrameIndex = avatarActionLayerState.FrameIndex;
+                    return indexedFrame;
+                }
+            }
+
             int animationTime = GetRenderAnimationTime(currentTime);
             currentFrameIndex = Assembler.GetFrameIndexAtTime(CurrentActionName, animationTime);
             return Assembler.GetFrameAtTime(CurrentActionName, animationTime);
@@ -8376,6 +8568,7 @@ namespace HaCreator.MapSimulator.Character
             _sustainedSkillAnimation = false;
             _forcedActionName = null;
             _mountedActionLayerState = null;
+            _avatarActionLayerState = null;
             SetTransientTamingMobOverride(null);
         }
 
@@ -9068,7 +9261,7 @@ namespace HaCreator.MapSimulator.Character
                         exitActionName: null);
                     return true;
                 case 35121005:
-                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after", attackActionAliases: new[] { "tank_laser" });
+                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after", attackActionAliases: new[] { "tank_laser" }, activeTankActionRewrites: true);
                     return true;
                 case 35111004:
                     transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "siege_pre", "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true, attackActionAliases: new[] { "lasergun" });
@@ -9223,7 +9416,7 @@ namespace HaCreator.MapSimulator.Character
                 || string.Equals(normalizedAction, "tank_prone", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "tank_after", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after", attackActionAliases: new[] { "tank_laser" });
+                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after", attackActionAliases: new[] { "tank_laser" }, activeTankActionRewrites: true);
                 return true;
             }
 
@@ -9550,7 +9743,8 @@ namespace HaCreator.MapSimulator.Character
             string proneActionName,
             string exitActionName,
             bool locksMovement = false,
-            IReadOnlyList<string> attackActionAliases = null)
+            IReadOnlyList<string> attackActionAliases = null,
+            bool activeTankActionRewrites = false)
         {
             PreparedAvatarActionStage stage = ResolvePreparedActionStage(
                 currentActionName,
@@ -9570,7 +9764,8 @@ namespace HaCreator.MapSimulator.Character
             string resolvedAttackActionName = ResolveMechanicAttackActionName(
                 currentActionName,
                 attackActionName,
-                attackActionAliases);
+                attackActionAliases,
+                activeTankActionRewrites);
 
             return CreateMechanicTransform(
                 skillId,
@@ -9585,8 +9780,15 @@ namespace HaCreator.MapSimulator.Character
         private static string ResolveMechanicAttackActionName(
             string currentActionName,
             string defaultAttackActionName,
-            IReadOnlyList<string> attackActionAliases)
+            IReadOnlyList<string> attackActionAliases,
+            bool activeTankActionRewrites)
         {
+            if (activeTankActionRewrites
+                && TryResolveActiveTankOneTimeActionRewrite(currentActionName, out string rewrittenActionName))
+            {
+                return rewrittenActionName;
+            }
+
             if (!string.IsNullOrWhiteSpace(currentActionName) && attackActionAliases != null)
             {
                 foreach (string attackActionAlias in attackActionAliases)
@@ -9599,6 +9801,35 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return defaultAttackActionName;
+        }
+
+        private static bool TryResolveActiveTankOneTimeActionRewrite(string currentActionName, out string rewrittenActionName)
+        {
+            rewrittenActionName = null;
+            if (string.IsNullOrWhiteSpace(currentActionName))
+            {
+                return false;
+            }
+
+            if (string.Equals(currentActionName, "gatlingshot2", StringComparison.OrdinalIgnoreCase))
+            {
+                rewrittenActionName = "mine";
+                return true;
+            }
+
+            if (string.Equals(currentActionName, "flashRain", StringComparison.OrdinalIgnoreCase))
+            {
+                rewrittenActionName = "ride";
+                return true;
+            }
+
+            if (string.Equals(currentActionName, "rbooster_after", StringComparison.OrdinalIgnoreCase))
+            {
+                rewrittenActionName = "clawCut";
+                return true;
+            }
+
+            return false;
         }
 
         private static SkillAvatarTransformState CreateRocketBoosterTransform(int skillId, string actionName)

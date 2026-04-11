@@ -37,6 +37,11 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0F9E] = "The message was successfully sent.",
             [0x0F9F] = "The waiting line is longer than an hour. \r\nPlease try using it at a later time.",
             [0x0FA0] = "You've entered the wrong user name.",
+            // Recovered from MapleStory.exe v95 `CAvatarMegaphone::OnCreate`.
+            // The owner chooses id 0x0FB0 or 0x0FB1 from measured sender-name width
+            // before resolving the name-tag canvas through the resource manager.
+            [0x0FB0] = "Map/MapHelper.img/AvatarMegaphone/name/0",
+            [0x0FB1] = "Map/MapHelper.img/AvatarMegaphone/name/1",
             // Recovered from MapleStory.exe v95 `CUserLocal::OnMesoGive_Succeeded`,
             // `CUserLocal::OnMesoGive_Failed`, `CUserLocal::OnRandomMesobag_Succeeded`,
             // `CUserLocal::OnRandomMesobag_Failed`, `CUIRandomMesoBag::CUIRandomMesoBag`,
@@ -172,8 +177,28 @@ namespace HaCreator.MapSimulator.Interaction
             // changes shape again.
             [0x0EAF] = "UI/UIWindow.img/Wedding/Invitation/Vegas",
             [0x0EB0] = "UI/UIWindow.img/Wedding/Invitation/Cathedral",
+            [0x19CB] = "UI/UIWindow2.img/Wedding/Invitation/neat",
+            [0x19CC] = "UI/UIWindow2.img/Wedding/Invitation/sweet",
+            [0x19CD] = "UI/UIWindow2.img/Wedding/Invitation/premium",
             [0x19CE] = "UI/UIWindow2.img/Wedding/Invitation/BtOK",
             [0x1A25] = "Arial",
+            // Recovered from MapleStory.exe v95 `CUIInitialQuiz::CUIInitialQuiz`,
+            // `CUIInitialQuiz::OnCreate`, and `CUIInitialQuiz::Draw`. The generated
+            // table is missing these owner ids in this workspace, but the client
+            // resolves the dialog background, timer glyph UOLs, edit font, button
+            // UOL, labels, and validation notices through StringPool before drawing
+            // the context-owned initial quiz.
+            [0x0512] = "UI/UIWindow2.img/InitialQuiz/BtOK",
+            [0x0F72] = "UI/UIWindow2.img/InitialQuiz/backgrnd",
+            [0x0F73] = "UI/UIWindow2.img/InitialQuiz/num1/%d",
+            [0x0F74] = "UI/UIWindow2.img/InitialQuiz/num1/comma",
+            [0x0F75] = "Question:",
+            [0x0F76] = "Clue:",
+            [0x0F77] = "Answer:",
+            [0x0F78] = "Enter your answer.",
+            [0x0F79] = "You must enter atleast %d letters. (Korean)",
+            [0x0F7A] = "You must enter less than %d letters. (Korean)",
+            [0x0F7C] = "Time is over.",
             // Recovered from MapleStory.exe v95 `CField::OnFieldEffect` /
             // `CField::ShowScreenEffect`. Keep these packet-owned field-feedback
             // effect templates explicit so summon and screen-effect resolution

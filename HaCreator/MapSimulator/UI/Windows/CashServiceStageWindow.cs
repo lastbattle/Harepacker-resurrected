@@ -1363,28 +1363,10 @@ namespace HaCreator.MapSimulator.UI
 
             using MemoryStream stream = new(payload, writable: false);
             using BinaryReader reader = new(stream);
+            _ = reader.ReadByte();
             if (!TryReadCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
             {
-                stream.Position = 0;
-                if (stream.Length < 1 + CashItemInfoPacketByteLength)
-                {
-                    return false;
-                }
-
-                _ = reader.ReadByte();
-                if (!TryReadCashItemInfoPacketSnapshot(reader, out snapshot))
-                {
-                    return false;
-                }
-            }
-
-            if (snapshot.ItemId <= 0 && payload.Length >= 1 + CashItemInfoPacketByteLength)
-            {
-                stream.Position = 1;
-                if (!TryReadCashItemInfoPacketSnapshot(reader, out snapshot))
-                {
-                    return false;
-                }
+                return false;
             }
 
             if (snapshot.ItemId <= 0 && snapshot.CommodityId <= 0)
@@ -3290,7 +3272,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Stream stream = reader.BaseStream;
-            if (stream.Length - stream.Position < 55)
+            if (stream.Length - stream.Position < CashItemInfoPacketByteLength)
             {
                 return false;
             }
@@ -3320,7 +3302,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Stream stream = reader.BaseStream;
-            if (stream.Length - stream.Position < 98)
+            if (stream.Length - stream.Position < GiftListPacketByteLength)
             {
                 return false;
             }

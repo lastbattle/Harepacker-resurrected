@@ -768,6 +768,9 @@ namespace HaCreator.MapSimulator.Managers
 
             lock (_sync)
             {
+                string normalizedResolutionSource = string.IsNullOrWhiteSpace(resolutionSource)
+                    ? "resolved"
+                    : resolutionSource.Trim();
                 for (int i = _pendingTeslaAttackCaptures.Count - 1; i >= 0; i--)
                 {
                     Sg88ManualAttackCapture pendingCapture = _pendingTeslaAttackCaptures[i];
@@ -776,9 +779,23 @@ namespace HaCreator.MapSimulator.Managers
                         continue;
                     }
 
-                    ArchiveTeslaAttackCapture(pendingCapture, string.IsNullOrWhiteSpace(resolutionSource) ? "resolved" : resolutionSource.Trim());
+                    ArchiveTeslaAttackCapture(pendingCapture, normalizedResolutionSource);
                     _pendingTeslaAttackCaptures.RemoveAt(i);
-                    break;
+                    return;
+                }
+
+                foreach (Sg88ManualAttackCapture archivedCapture in _recentTeslaAttackCaptures.Reverse())
+                {
+                    if (archivedCapture.SummonObjectId != summonObjectId || archivedCapture.RequestedAt != requestedAt)
+                    {
+                        continue;
+                    }
+
+                    archivedCapture.ResolutionSource = PreferTeslaTemplateResolutionSource(
+                        normalizedResolutionSource,
+                        archivedCapture.ResolutionSource);
+                    UpdateLearnedTeslaAttackTemplateResolution(archivedCapture);
+                    return;
                 }
             }
         }

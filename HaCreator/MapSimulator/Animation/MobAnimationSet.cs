@@ -154,6 +154,7 @@ namespace HaCreator.MapSimulator.Animation
             public List<IDXObject> Frames { get; init; }
             public int SourceFrameIndex { get; init; }
             public bool IsAttackFrameOwned { get; init; }
+            public bool UsesAttackInfoHitEffect { get; init; }
         }
 
         public sealed class AttackEffectNode

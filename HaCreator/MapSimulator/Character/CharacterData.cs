@@ -1937,6 +1937,8 @@ namespace HaCreator.MapSimulator.Character
         public bool HasAuthoritativeProfilePocketSlot { get; set; } = true;
         public bool HasAuthoritativeProfileMedal { get; set; } = true;
         public bool HasAuthoritativeProfileCollection { get; set; } = true;
+        public bool HasAuthoritativeProfileMarriage { get; set; }
+        public bool IsProfileMarried { get; set; }
         public string GuildName { get; set; } = string.Empty;
         public int? GuildMarkBackgroundId { get; set; }
         public int? GuildMarkBackgroundColor { get; set; }
@@ -3179,6 +3181,8 @@ namespace HaCreator.MapSimulator.Character
                 HasAuthoritativeProfilePocketSlot = HasAuthoritativeProfilePocketSlot,
                 HasAuthoritativeProfileMedal = HasAuthoritativeProfileMedal,
                 HasAuthoritativeProfileCollection = HasAuthoritativeProfileCollection,
+                HasAuthoritativeProfileMarriage = HasAuthoritativeProfileMarriage,
+                IsProfileMarried = IsProfileMarried,
                 GuildName = GuildName,
                 GuildMarkBackgroundId = GuildMarkBackgroundId,
                 GuildMarkBackgroundColor = GuildMarkBackgroundColor,

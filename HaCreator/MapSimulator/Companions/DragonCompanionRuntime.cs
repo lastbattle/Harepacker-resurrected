@@ -956,7 +956,7 @@ namespace HaCreator.MapSimulator.Companions
             if (followingState < 0 && currentY == targetY)
             {
                 followingState = 0;
-                velocityY = deltaY >= 0f ? 1d : -1d;
+                velocityY = 0d;
                 return currentY;
             }
 

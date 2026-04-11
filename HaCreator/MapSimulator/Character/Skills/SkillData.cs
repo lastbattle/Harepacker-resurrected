@@ -1120,6 +1120,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation StopEffect { get; set; }       // Dedicated transient cleanup branch (e.g. stopEffect)
         public SkillAnimation StopSecondaryEffect { get; set; } // Secondary transient cleanup branch (e.g. stopEffect0)
         public SkillAnimation HitEffect { get; set; }        // Effect on target
+        public List<SkillAnimation> TargetHitEffects { get; set; } = new(); // Indexed client hit UOL branches (hit/0, hit/1, ...)
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
         public SkillAnimation AffectedSecondaryEffect { get; set; } // Secondary buff/affected branch (e.g. affected0)
         public SkillAnimation SpecialAffectedEffect { get; set; } // One-time buff/heal start branch (e.g. specialAffected)
@@ -2101,6 +2102,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Vector2 Position { get; init; }
         public Rectangle WorldBounds { get; init; }
         public Point LayerOrigin { get; init; }
+        public Point LayerLeftTop { get; init; }
+        public Point LayerRightBottom { get; init; }
         public bool ClockwiseBounds { get; init; }
         public bool Flip { get; init; }
         public int StartTime { get; init; }
@@ -2277,6 +2280,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int RequestTime { get; set; }
         public IReadOnlyList<string> BranchNames { get; set; }
         public Vector2? WorldOrigin { get; set; }
+        public Point OriginOffset { get; set; }
         public bool FollowOwnerPosition { get; set; } = true;
         public bool FollowOwnerFacing { get; set; } = true;
         public int? DelayRateOverride { get; set; }
@@ -2301,6 +2305,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public float CasterY { get; set; }
         public bool FacingRight { get; set; }
         public IReadOnlyList<string> RequestedBranchNames { get; set; }
+        public Point OriginOffset { get; set; }
         public bool FollowOwnerPosition { get; set; } = true;
         public bool FollowOwnerFacing { get; set; } = true;
         public int? DelayRateOverride { get; set; }
@@ -2406,6 +2411,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int NextBuffTime { get; set; } = int.MinValue;
         public int PendingRemovalTime { get; set; } = int.MaxValue;
         public int LastBodyContactTime { get; set; } = int.MinValue;
+        public int LastBodyContactRelativeMotionX { get; set; }
+        public bool? LastBodyContactHitFacingRight { get; set; }
         public int LastHitAnimationStartTime { get; set; } = int.MinValue;
         public int HitPeriodRemainingMs { get; set; }
         public int LastHitPeriodUpdateTime { get; set; } = int.MinValue;

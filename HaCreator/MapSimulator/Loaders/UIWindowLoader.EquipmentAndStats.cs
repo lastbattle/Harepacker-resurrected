@@ -620,6 +620,30 @@ namespace HaCreator.MapSimulator.Loaders
                     LoadCanvasStateTabButton(skillTabProperty, "4", device));
             }
 
+            WzSubProperty dualTabProperty = skillProperty["DualTab"] as WzSubProperty;
+            if (dualTabProperty != null)
+            {
+                WzSubProperty dualEnabledProperty = dualTabProperty["enabled"] as WzSubProperty;
+                WzSubProperty dualDisabledProperty = dualTabProperty["disabled"] as WzSubProperty;
+                Texture2D[] dualEnabled = new Texture2D[7];
+                Texture2D[] dualDisabled = new Texture2D[7];
+                Point[] dualEnabledOffsets = new Point[7];
+                Point[] dualDisabledOffsets = new Point[7];
+
+                for (int i = 0; i < 7; i++)
+                {
+                    string tabIndex = i.ToString();
+                    WzCanvasProperty enabledCanvas = dualEnabledProperty?[tabIndex] as WzCanvasProperty;
+                    WzCanvasProperty disabledCanvas = dualDisabledProperty?[tabIndex] as WzCanvasProperty;
+                    dualEnabled[i] = LoadCanvasTexture(dualEnabledProperty, tabIndex, device);
+                    dualDisabled[i] = LoadCanvasTexture(dualDisabledProperty, tabIndex, device);
+                    dualEnabledOffsets[i] = ResolveCanvasOffset(enabledCanvas, Point.Zero);
+                    dualDisabledOffsets[i] = ResolveCanvasOffset(disabledCanvas, Point.Zero);
+                }
+
+                skill.SetDualTabTextures(dualEnabled, dualDisabled, dualEnabledOffsets, dualDisabledOffsets);
+            }
+
             WzSubProperty vScrollProperty = basicImage?["VScr"] as WzSubProperty;
             if (vScrollProperty != null)
             {

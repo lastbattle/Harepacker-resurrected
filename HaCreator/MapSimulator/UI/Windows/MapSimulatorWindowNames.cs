@@ -125,6 +125,8 @@ namespace HaCreator.MapSimulator.UI
         public const string EntrustedShop = "EntrustedShop";
         public const string TradingRoom = "TradingRoom";
         public const string CashTradingRoom = "CashTradingRoom";
+        public const string NewYearCardSender = "NewYearCardSender";
+        public const string NewYearCardRead = "NewYearCardRead";
 
         public static string GetQuestTimerWindowName(int questId)
         {

@@ -108,6 +108,10 @@ namespace HaCreator.MapSimulator.UI
         private int _comboBoxClientY;
         private int _comboBoxClientWidth;
         private int _comboBoxClientHeight;
+        private int _inputClientX;
+        private int _inputClientY;
+        private int _inputClientWidth;
+        private int _inputClientHeight;
         private Rectangle _inputBounds;
         private Rectangle _comboBounds;
 
@@ -207,6 +211,10 @@ namespace HaCreator.MapSimulator.UI
             _inputPlaceholder = inputPlaceholder ?? string.Empty;
             _inputActive = inputActive;
             _inputMaxLength = Math.Max(0, inputMaxLength);
+            _inputClientX = inputClientX;
+            _inputClientY = inputClientY;
+            _inputClientWidth = inputClientWidth;
+            _inputClientHeight = inputClientHeight;
             _inputBounds = ResolveInputBounds(inputClientX, inputClientY, inputClientWidth, inputClientHeight);
             _selectedGiftIndex = ResolveSelectedGiftIndex(selectedGiftIndex, _giftRows.Count);
             _showGiftRows = _giftRows.Count > 0;
@@ -692,7 +700,7 @@ namespace HaCreator.MapSimulator.UI
                 _buttonBounds[i] = new Rectangle(startX + (i * (ButtonWidth + ButtonGap)), buttonY, ButtonWidth, ButtonHeight);
             }
 
-            if (_inputBounds.Width <= 0 || _inputBounds.Height <= 0)
+            if (_inputClientWidth <= 0 || _inputClientHeight <= 0)
             {
                 _inputBounds = new Rectangle(
                     Position.X + BodyOffsetX,
@@ -703,10 +711,10 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 _inputBounds = new Rectangle(
-                    Position.X + (_inputBounds.X - Position.X),
-                    Position.Y + (_inputBounds.Y - Position.Y),
-                    _inputBounds.Width,
-                    _inputBounds.Height);
+                    Position.X + _inputClientX,
+                    Position.Y + _inputClientY,
+                    _inputClientWidth,
+                    _inputClientHeight);
             }
         }
 

@@ -1176,15 +1176,45 @@ namespace HaCreator.MapSimulator.Companions
                 return pet != null && pet.TryTriggerAutoSpeechEvent(eventType, currentTime);
             }
 
-            for (int i = 0; i < _activePets.Count; i++)
+            return TryPetAutoSpeaking(eventType, currentTime);
+        }
+
+        public bool TryPetAutoSpeaking(PetAutoSpeechEvent eventType, int currentTime)
+        {
+            if (_fieldUsageBlocked)
             {
-                if (_activePets[i].TryTriggerAutoSpeechEvent(eventType, currentTime))
+                return false;
+            }
+
+            return TryDispatchPetAutoSpeakingByEvent(_activePets, eventType, currentTime) > 0;
+        }
+
+        internal static int TryDispatchPetAutoSpeakingByEvent(
+            IReadOnlyList<PetRuntime> activePets,
+            PetAutoSpeechEvent eventType,
+            int currentTime)
+        {
+            if (activePets == null)
+            {
+                return 0;
+            }
+
+            int triggeredCount = 0;
+            for (int i = 0; i < activePets.Count; i++)
+            {
+                PetRuntime pet = i < activePets.Count ? activePets[i] : null;
+                if (pet == null)
                 {
-                    return true;
+                    break;
+                }
+
+                if (pet.TryTriggerAutoSpeechEvent(eventType, currentTime))
+                {
+                    triggeredCount++;
                 }
             }
 
-            return false;
+            return triggeredCount;
         }
 
         public bool TryTriggerFoodFeedback(int slotIndex, int variant, bool success, int currentTime)

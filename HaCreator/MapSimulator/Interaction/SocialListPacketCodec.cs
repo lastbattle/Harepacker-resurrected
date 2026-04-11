@@ -82,6 +82,7 @@ namespace HaCreator.MapSimulator.Interaction
         NoticeFailureWithMessage = 17,
         ResetBlocked = 18,
         NoticeBlocked = 19,
+        NoticeRequestDenied = 22,
         NoticeCapacityExpanded = 23
     }
 
@@ -172,6 +173,7 @@ namespace HaCreator.MapSimulator.Interaction
         Mark = 69,
         PointsAndLevel = 75,
         GuildQuestQueueNotice = 79,
+        GuildBoardAuthKey = 80,
         SkillRecord = 81,
         ResultNotice = 82
     }
@@ -190,7 +192,8 @@ namespace HaCreator.MapSimulator.Interaction
         SocialListGradeChangePacket GradeChange,
         SocialListGuildSkillRecordPacket? GuildSkillRecord,
         int GuildQuestChannel = 0,
-        int GuildQuestWaitStatus = 0);
+        int GuildQuestWaitStatus = 0,
+        string GuildBoardAuthKey = null);
 
     internal readonly record struct SocialListGuildSkillRecordPacket(
         int SkillId,
@@ -534,10 +537,11 @@ namespace HaCreator.MapSimulator.Interaction
                     case SocialListClientFriendResultKind.NoticeFailure:
                     case SocialListClientFriendResultKind.NoticeBlocked:
                     case SocialListClientFriendResultKind.NoticeFailureWithMessage:
+                    case SocialListClientFriendResultKind.NoticeRequestDenied:
                     {
                         string summary = reader.ReadByte() != 0 && reader.HasRemaining
                             ? reader.ReadMapleString16().Trim()
-                            : null;
+                            : ResolveFriendResultNoticeText(0x02DF, kind);
                         packet = new SocialListClientFriendResultPacket(kind, Array.Empty<SocialListClientFriendEntry>(), null, 0, 0, 0, summary);
                         return true;
                     }
@@ -990,6 +994,25 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             channel,
                             waitStatus);
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.GuildBoardAuthKey:
+                    {
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null,
+                            GuildBoardAuthKey: reader.ReadString16().Trim());
                         return true;
                     }
 

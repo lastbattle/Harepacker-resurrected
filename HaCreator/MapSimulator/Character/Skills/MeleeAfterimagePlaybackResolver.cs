@@ -413,14 +413,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 1f;
             }
 
-            int startZoom = hasStartZoom ? frame.ZoomStart : 100;
-            int endZoom = hasEndZoom ? frame.ZoomEnd : startZoom;
+            (int startZoom, int endZoom) = ResolveClientInsertCanvasZoomEndpoints(
+                hasStartZoom ? frame.ZoomStart : null,
+                hasEndZoom ? frame.ZoomEnd : null);
 
             float progress = frame.Delay <= 0
                 ? 1f
                 : MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frame.Delay), 0f, 1f);
             float interpolatedZoom = MathHelper.Lerp(startZoom, endZoom, progress);
             return MathHelper.Clamp(interpolatedZoom / 100f, 0.01f, 10f);
+        }
+
+        internal static (int StartZoom, int EndZoom) ResolveClientInsertCanvasZoomEndpoints(int? authoredZoomStart, int? authoredZoomEnd)
+        {
+            int startZoom = authoredZoomStart.GetValueOrDefault(100);
+            int endZoom = authoredZoomEnd.GetValueOrDefault(100);
+
+            return (startZoom, endZoom);
         }
     }
 }

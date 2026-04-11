@@ -338,6 +338,7 @@ namespace HaCreator.MapSimulator.UI
 
         private sealed class WishlistSearchIndexEntry
         {
+            public int ClientListOrder { get; init; } = int.MaxValue;
             public string CombinedText { get; init; } = string.Empty;
             public string CollapsedText { get; init; } = string.Empty;
             public IReadOnlyList<string> Terms { get; init; } = Array.Empty<string>();
@@ -901,6 +902,16 @@ namespace HaCreator.MapSimulator.UI
                     ? $"CAdminShopDlg result {resultCode} requested an authoritative packet 367 refresh. {outboundSummary}"
                     : $"CAdminShopDlg result {resultCode} requested an authoritative packet 367 refresh. {noticeText} {outboundSummary}";
             }
+            else if (AdminShopDialogClientParityText.IsNoticeOnlyResult(resultCode))
+            {
+                RestorePendingRequestState(entry);
+                ResetPendingRequestState();
+                ClearPendingPacketOwnedUserSellSnapshot();
+                _packetOwnedAdminShopSession.SetLastOwnerState("Packet 366 displayed the admin-shop notice-only result without reopening or rejecting the selected row.");
+                _footerMessage = string.IsNullOrWhiteSpace(noticeText)
+                    ? $"CAdminShopDlg result {resultCode} displayed a notice and left the selected row unchanged."
+                    : noticeText;
+            }
             else
             {
                 string stateLabel = AdminShopDialogClientParityText.BuildResultStateLabel(resultCode);
@@ -1362,16 +1373,20 @@ namespace HaCreator.MapSimulator.UI
 
             AdminShopCategory requestedCategory = ResolveWishlistCategory(categoryKey);
             string requestedCategoryLabel = GetWishlistCategoryLabel(categoryKey);
-            List<(AdminShopEntry Entry, int Score)> matches = _paneStates[AdminShopPane.Npc]
+            List<(AdminShopEntry Entry, int Score, int ClientListOrder, int SourceIndex)> matches = _paneStates[AdminShopPane.Npc]
                 .SourceEntries
-                .Where(entry => entry.SupportsWishlist
-                                && MatchesWishlistCategory(entry, categoryKey)
-                                && MatchesWishlistPriceRange(entry, priceRangeIndex))
-                .Select(entry => (Entry: entry, Score: ScoreWishlistEntry(entry, clientSearchQuery)))
+                .Select((entry, sourceIndex) => (Entry: entry, SourceIndex: sourceIndex))
+                .Where(entry => entry.Entry.SupportsWishlist
+                                && MatchesWishlistCategory(entry.Entry, categoryKey)
+                                && MatchesWishlistPriceRange(entry.Entry, priceRangeIndex))
+                .Select(entry => (
+                    entry.Entry,
+                    Score: ScoreWishlistEntry(entry.Entry, clientSearchQuery),
+                    ClientListOrder: ResolveWishlistSearchClientListOrder(entry.Entry),
+                    entry.SourceIndex))
                 .Where(match => match.Score > 0)
-                .OrderByDescending(match => match.Score)
-                .ThenBy(match => match.Entry.Price)
-                .ThenBy(match => match.Entry.Title, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(match => match.ClientListOrder)
+                .ThenBy(match => match.SourceIndex)
                 .ToList();
 
             int alreadyWishlistedCount = matches.Count(match =>
@@ -1391,8 +1406,8 @@ namespace HaCreator.MapSimulator.UI
                 .ToList();
 
             message = alreadyWishlistedCount > 0
-                ? $"SearchItemName staged {results.Count} result(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}; {alreadyWishlistedCount} row(s) are already saved."
-                : $"SearchItemName staged {results.Count} result(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)}.";
+                ? $"SearchItemName staged {results.Count} result(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using the client CItemInfo scan order; {alreadyWishlistedCount} row(s) are already saved."
+                : $"SearchItemName staged {results.Count} result(s) for {GetWishlistServiceName()} in {requestedCategoryLabel} / {GetWishlistPriceRangeLabel(priceRangeIndex)} using the client CItemInfo scan order.";
             _footerMessage = message;
             UpdateActionButtonStates();
             return results;
@@ -1404,10 +1419,11 @@ namespace HaCreator.MapSimulator.UI
             string requestedCategoryLabel = GetWishlistCategoryLabel(categoryKey);
             List<WishlistSearchResult> results = _paneStates[AdminShopPane.Npc]
                 .SourceEntries
-                .Where(entry => entry.SupportsWishlist && MatchesWishlistCategory(entry, categoryKey))
-                .OrderBy(entry => entry.Price)
-                .ThenBy(entry => entry.Title, StringComparer.OrdinalIgnoreCase)
-                .Select(entry => BuildWishlistSearchResult(entry, 0))
+                .Select((entry, sourceIndex) => (Entry: entry, SourceIndex: sourceIndex))
+                .Where(entry => entry.Entry.SupportsWishlist && MatchesWishlistCategory(entry.Entry, categoryKey))
+                .OrderBy(entry => ResolveWishlistSearchClientListOrder(entry.Entry))
+                .ThenBy(entry => entry.SourceIndex)
+                .Select(entry => BuildWishlistSearchResult(entry.Entry, 0))
                 .Where(result => result != null)
                 .ToList();
 
@@ -1421,8 +1437,8 @@ namespace HaCreator.MapSimulator.UI
 
             int alreadyWishlistedCount = results.Count(result => result.AlreadyWishlisted);
             message = alreadyWishlistedCount > 0
-                ? $"CUIAdminShopWishListCategory staged {results.Count} {requestedCategoryLabel} result(s); {alreadyWishlistedCount} row(s) are already saved."
-                : $"CUIAdminShopWishListCategory staged {results.Count} {requestedCategoryLabel} result(s).";
+                ? $"CUIAdminShopWishListCategory staged {results.Count} {requestedCategoryLabel} result(s) using the client CItemInfo scan order; {alreadyWishlistedCount} row(s) are already saved."
+                : $"CUIAdminShopWishListCategory staged {results.Count} {requestedCategoryLabel} result(s) using the client CItemInfo scan order.";
             _footerMessage = message;
             UpdateActionButtonStates();
             _ = requestedCategory;
@@ -6496,6 +6512,13 @@ namespace HaCreator.MapSimulator.UI
             return GetWishlistSearchIndexByItemId().TryGetValue(entry.RewardItemId, out searchIndexEntry);
         }
 
+        private static int ResolveWishlistSearchClientListOrder(AdminShopEntry entry)
+        {
+            return TryGetWishlistSearchIndexEntry(entry, out WishlistSearchIndexEntry searchIndexEntry)
+                ? searchIndexEntry.ClientListOrder
+                : int.MaxValue;
+        }
+
         private static IReadOnlyDictionary<int, WishlistSearchIndexEntry> GetWishlistSearchIndexByItemId()
         {
             if (_wishlistSearchIndexByItemId != null)
@@ -6512,10 +6535,12 @@ namespace HaCreator.MapSimulator.UI
 
                 Dictionary<int, WishlistSearchIndexEntry> searchIndex = new();
                 WzImage searchImage = global::HaCreator.Program.FindImage("String", "CashItemSearch.img");
+                int clientListOrder = 0;
                 foreach (WzSubProperty itemSearchProperty in searchImage?.WzProperties?.OfType<WzSubProperty>() ?? Enumerable.Empty<WzSubProperty>())
                 {
                     if (!int.TryParse(itemSearchProperty.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int itemId) || itemId <= 0)
                     {
+                        clientListOrder++;
                         continue;
                     }
 
@@ -6537,6 +6562,7 @@ namespace HaCreator.MapSimulator.UI
 
                     if (normalizedTerms.Count == 0)
                     {
+                        clientListOrder++;
                         continue;
                     }
 
@@ -6546,10 +6572,12 @@ namespace HaCreator.MapSimulator.UI
                         .ToArray();
                     searchIndex[itemId] = new WishlistSearchIndexEntry
                     {
+                        ClientListOrder = clientListOrder,
                         CombinedText = string.Join(" ", orderedTerms),
                         CollapsedText = string.Concat(orderedTerms.Select(CollapseWishlistSearchText).Where(term => !string.IsNullOrWhiteSpace(term))),
                         Terms = orderedTerms
                     };
+                    clientListOrder++;
                 }
 
                 _wishlistSearchIndexByItemId = searchIndex;

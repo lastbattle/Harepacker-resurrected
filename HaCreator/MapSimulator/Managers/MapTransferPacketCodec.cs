@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Managers
 {
@@ -152,6 +153,59 @@ namespace HaCreator.MapSimulator.Managers
                 MapId = mapId,
                 SlotIndex = -1
             };
+            return true;
+        }
+
+        internal static bool TryParseRawPacketHex(string hexText, out byte[] rawPacket, out string errorMessage)
+        {
+            rawPacket = Array.Empty<byte>();
+            errorMessage = null;
+
+            if (string.IsNullOrWhiteSpace(hexText))
+            {
+                errorMessage = "A raw packet hex string is required.";
+                return false;
+            }
+
+            StringBuilder normalized = new(hexText.Length);
+            for (int i = 0; i < hexText.Length; i++)
+            {
+                char value = hexText[i];
+                if (char.IsWhiteSpace(value) || value == '-' || value == ':')
+                {
+                    continue;
+                }
+
+                if (value == '0' &&
+                    i + 1 < hexText.Length &&
+                    (hexText[i + 1] == 'x' || hexText[i + 1] == 'X'))
+                {
+                    i++;
+                    continue;
+                }
+
+                if (!Uri.IsHexDigit(value))
+                {
+                    errorMessage = $"Raw packet hex contains invalid character '{value}'.";
+                    return false;
+                }
+
+                normalized.Append(value);
+            }
+
+            if (normalized.Length == 0)
+            {
+                errorMessage = "A raw packet hex string is required.";
+                return false;
+            }
+
+            if ((normalized.Length % 2) != 0)
+            {
+                errorMessage = "Raw packet hex must contain an even number of hex digits.";
+                return false;
+            }
+
+            rawPacket = Convert.FromHexString(normalized.ToString());
             return true;
         }
     }

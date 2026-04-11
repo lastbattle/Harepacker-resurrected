@@ -2205,8 +2205,8 @@ namespace HaCreator.MapSimulator.Interaction
                 0,
                 isPm,
                 normalizedHour,
-                Math.Clamp((int)minute, 0, 59),
-                Math.Clamp((int)second, 0, 59),
+                minute,
+                second,
                 "field clock");
         }
 

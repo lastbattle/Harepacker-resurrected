@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.Core;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Loaders;
@@ -45,7 +46,8 @@ namespace HaCreator.MapSimulator.Pools
             Vector2? WorldOrigin = null,
             bool FollowOwnerPosition = true,
             bool FollowOwnerFacing = true,
-            int? DelayRateOverride = null);
+            int? DelayRateOverride = null,
+            Point OriginOffset = default);
         public readonly record struct RemoteUpgradeTombPresentation(
             int CharacterId,
             int ItemId,
@@ -246,6 +248,22 @@ namespace HaCreator.MapSimulator.Pools
         private const float RemoteDragonLadderVerticalOffset = 18f;
         private const float RemoteDragonKeyDownBarHalfWidth = 36f;
         private const float RemoteDragonKeyDownBarVerticalGap = 30f;
+        private const float RemoteDragonFollowMinSpeed = 18f;
+        private const float RemoteDragonPassiveHoldDistance = 5f;
+        private const float RemoteDragonPassiveArrivalDistance = 4f;
+        private const float RemoteDragonPassiveHorizontalResponse = 3.2f;
+        private const float RemoteDragonPassiveVerticalResponse = 3.8f;
+        private const float RemoteDragonPassiveMaxHorizontalSpeed = 92f;
+        private const float RemoteDragonPassiveMaxVerticalSpeed = 108f;
+        private const float RemoteDragonPassiveHorizontalForceScale = 0.3f;
+        private const float RemoteDragonPassiveVerticalForceScale = 0.34f;
+        private const float RemoteDragonActiveFollowDistanceX = 5f;
+        private const float RemoteDragonActiveFollowStepX = 7f;
+        private const float RemoteDragonActiveFollowVerticalCheckDistance = 30f;
+        private const float RemoteDragonActiveFollowImmediateVerticalDistance = 100f;
+        private const int RemoteDragonActiveFollowReleaseStableFrameCount = 6;
+        private const int RemoteDragonActiveFollowVerticalCheckFrames = 5;
+        private const int RemoteDragonPassiveFollowStepMilliseconds = 30;
         private const int MechanicTamingMobItemId = 1932016;
         private const int PaladinDamageReactiveSpecialSkillId = 1220006;
         private const float CarryItemEffectOrbitRadiusX = 26f;
@@ -1840,7 +1858,25 @@ namespace HaCreator.MapSimulator.Pools
             EnsureRelationshipRecordTablesInitialized();
             Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(packet.RelationshipType);
             Dictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable = GetRelationshipRecordDispatchOwnerTable(packet.RelationshipType);
-            RemoteUserRelationshipRecord normalizedRecord = NormalizeRelationshipRecordAdd(packet, recordTable, dispatchTable);
+            if (!TryNormalizeRelationshipRecordAdd(packet, recordTable, dispatchTable, out RemoteUserRelationshipRecord normalizedRecord, out string normalizeMessage))
+            {
+                message = normalizeMessage;
+                return false;
+            }
+
+            ownerCharacterId = normalizedRecord.CharacterId;
+            if (!ownerCharacterId.HasValue || ownerCharacterId.Value <= 0)
+            {
+                message = $"{packet.RelationshipType} relationship record did not resolve a valid owner character ID.";
+                return false;
+            }
+
+            if (!_actorsById.ContainsKey(ownerCharacterId.Value))
+            {
+                message = $"Rejected remote {packet.RelationshipType} relationship record for inactive resolved owner {ownerCharacterId.Value}.";
+                return false;
+            }
+
             int? pairCharacterId = packet.RelationshipType == RemoteRelationshipOverlayType.Marriage
                 ? ResolveMarriagePairCharacterId(ownerCharacterId.Value, normalizedRecord)
                 : normalizedRecord.PairCharacterId;
@@ -1859,16 +1895,19 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private static RemoteUserRelationshipRecord NormalizeRelationshipRecordAdd(
+        private static bool TryNormalizeRelationshipRecordAdd(
             RemoteUserRelationshipRecordPacket packet,
             IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable,
-            IReadOnlyDictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable)
+            IReadOnlyDictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable,
+            out RemoteUserRelationshipRecord normalizedRecord,
+            out string message)
         {
-            RemoteUserRelationshipRecord normalizedRecord = packet.RelationshipRecord;
+            normalizedRecord = packet.RelationshipRecord;
+            message = null;
             if (packet.PayloadKind != RemoteRelationshipRecordAddPayloadKind.PairLookup
                 || packet.RelationshipType is not (RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship))
             {
-                return normalizedRecord;
+                return true;
             }
 
             int ownerCharacterId = normalizedRecord.CharacterId ?? 0;
@@ -1877,38 +1916,61 @@ namespace HaCreator.MapSimulator.Pools
                 || !recordTable.TryGetValue(ownerCharacterId, out RemoteUserRelationshipRecord existingRecord)
                 || !existingRecord.IsActive)
             {
-                existingRecord = default;
+                message = $"{packet.RelationshipType} pair-item lookup add requires an active owner record with item serial state.";
+                return false;
             }
 
-            long? dispatchSerial = packet.DispatchKey.Kind == RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial
+            long? ownerItemSerial = existingRecord.ItemSerial;
+            if (!ownerItemSerial.HasValue && packet.DispatchKey.Kind == RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial)
+            {
+                ownerItemSerial = packet.DispatchKey.Serial;
+            }
+
+            long? fallbackOwnerItemSerial = packet.DispatchKey.Kind == RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial
                 ? packet.DispatchKey.Serial
                 : null;
             long? pairLookupSerial = packet.PairLookupSerial;
-            int? pairCharacterId = normalizedRecord.PairCharacterId;
-            if ((!pairCharacterId.HasValue || pairCharacterId.Value <= 0)
-                && pairLookupSerial.HasValue
-                && dispatchTable != null
-                && dispatchTable.TryGetValue(
+            if (!pairLookupSerial.HasValue
+                || dispatchTable == null
+                || !dispatchTable.TryGetValue(
                     new RemoteRelationshipRecordDispatchKey(
                         RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
                         pairLookupSerial,
                         CharacterId: null),
                     out int matchedOwnerCharacterId)
-                && matchedOwnerCharacterId > 0
-                && matchedOwnerCharacterId != ownerCharacterId)
+                || matchedOwnerCharacterId <= 0
+                || matchedOwnerCharacterId == ownerCharacterId
+                || !recordTable.TryGetValue(matchedOwnerCharacterId, out RemoteUserRelationshipRecord matchedRecord)
+                || !matchedRecord.IsActive)
             {
-                pairCharacterId = matchedOwnerCharacterId;
+                message = pairLookupSerial.HasValue
+                    ? $"{packet.RelationshipType} pair-item lookup serial {pairLookupSerial.Value} did not match an active partner record."
+                    : $"{packet.RelationshipType} pair-item lookup add requires a valid pair-item serial.";
+                return false;
             }
 
-            return normalizedRecord with
+            long? matchedItemSerial = matchedRecord.ItemSerial;
+            if (!ownerItemSerial.HasValue || !matchedItemSerial.HasValue)
+            {
+                message = $"{packet.RelationshipType} pair-item lookup add requires both matched users to have item serial state.";
+                return false;
+            }
+
+            bool ownerIsLowerCharacterId = ownerCharacterId <= matchedOwnerCharacterId;
+            int entryOwnerCharacterId = ownerIsLowerCharacterId ? ownerCharacterId : matchedOwnerCharacterId;
+            int entryPairCharacterId = ownerIsLowerCharacterId ? matchedOwnerCharacterId : ownerCharacterId;
+            long entryOwnerItemSerial = ownerIsLowerCharacterId ? ownerItemSerial.Value : matchedItemSerial.Value;
+            long entryPairItemSerial = ownerIsLowerCharacterId ? matchedItemSerial.Value : ownerItemSerial.Value;
+
+            normalizedRecord = normalizedRecord with
             {
                 ItemId = normalizedRecord.ItemId > 0 ? normalizedRecord.ItemId : existingRecord.ItemId,
-                ItemSerial = normalizedRecord.ItemSerial
-                    ?? (dispatchSerial.HasValue ? dispatchSerial : existingRecord.ItemSerial),
-                PairItemSerial = normalizedRecord.PairItemSerial
-                    ?? (pairLookupSerial.HasValue ? pairLookupSerial : existingRecord.PairItemSerial),
-                PairCharacterId = pairCharacterId ?? existingRecord.PairCharacterId
+                ItemSerial = entryOwnerItemSerial,
+                PairItemSerial = entryPairItemSerial,
+                CharacterId = entryOwnerCharacterId,
+                PairCharacterId = entryPairCharacterId
             };
+            return true;
         }
 
         public bool TryApplyRelationshipRecordRemove(
@@ -2830,9 +2892,20 @@ namespace HaCreator.MapSimulator.Pools
                         null,
                         actor.FacingRight,
                         currentTime));
+                    bool dragonFollowUpApplied = TryApplyRemoteDragonOfficialSkillUseFollowUp(
+                        actor,
+                        skillId,
+                        appointedActionName,
+                        currentTime,
+                        out string dragonActionName);
                     message = string.IsNullOrWhiteSpace(appointedActionName)
                         ? $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered skill-use presentation for skill {skillId}."
                         : $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered skill-use presentation for skill {skillId} and appointed action {appointedActionName}.";
+                    if (dragonFollowUpApplied)
+                    {
+                        message = $"{message} Dragon attack action {dragonActionName} was also registered.";
+                    }
+
                     return true;
 
                 case RemoteUserEffectSubtype.ItemMake:
@@ -3122,6 +3195,66 @@ namespace HaCreator.MapSimulator.Pools
                 ^ skillLevel.GetValueOrDefault();
             int selectedIndex = ((selectionSeed % actionNames.Count) + actionNames.Count) % actionNames.Count;
             return actionNames[selectedIndex];
+        }
+
+        private static bool TryApplyRemoteDragonOfficialSkillUseFollowUp(
+            RemoteUserActor actor,
+            int skillId,
+            string appointedActionName,
+            int currentTime,
+            out string dragonActionName)
+        {
+            dragonActionName = null;
+            if (actor?.Build == null
+                || !TryResolveRemoteDragonHudMetadata(actor.Build.Job, out RemoteDragonHudMetadata metadata)
+                || !TryResolveRemoteDragonOfficialSkillUseActionForParity(actor.Build.Job, appointedActionName, metadata, out dragonActionName))
+            {
+                return false;
+            }
+
+            actor.RemoteDragonAttackSkillId = skillId;
+            actor.RemoteDragonAttackActionName = dragonActionName;
+            actor.RemoteDragonAttackStartTime = currentTime;
+
+            if (actor.PreparedSkill != null
+                && actor.PreparedSkill.SkillId == skillId)
+            {
+                actor.PreparedSkill.DragonActionName = dragonActionName;
+                actor.PreparedSkill.DragonActionStartTime = currentTime;
+                actor.PreparedSkill.DragonOwnerActionStartTime = int.MinValue;
+            }
+
+            return true;
+        }
+
+        internal static bool TryResolveRemoteDragonOfficialSkillUseActionForParity(
+            int jobId,
+            string appointedActionName,
+            RemoteDragonHudMetadata metadata,
+            out string dragonActionName)
+        {
+            dragonActionName = null;
+            if (jobId < 2200
+                || jobId > 2218
+                || string.IsNullOrWhiteSpace(appointedActionName)
+                || metadata.ActionTimelines == null
+                || metadata.ActionTimelines.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (string candidate in EnumerateRemoteDragonActionCandidates(appointedActionName))
+            {
+                if (IsExplicitRemoteDragonAction(candidate)
+                    && !DragonActionLoader.IsClientHeldActionName(candidate)
+                    && metadata.HasAction(candidate))
+                {
+                    dragonActionName = candidate;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public bool TryApplyUpgradeTombEffect(RemoteUserUpgradeTombPacket packet, int currentTime, out string message)
@@ -3604,22 +3737,33 @@ namespace HaCreator.MapSimulator.Pools
                 ? actor.Position.Y - ownerFrame.FeetOffset
                 : actor.Position.Y;
             string ownerPacketActionName = ResolveRemoteDragonOwnerPacketActionName(actor);
+            string dragonActionName;
+            int dragonActionElapsedMs;
+            if (!TryResolveRemoteDragonPacketOwnedAttackAction(
+                    actor,
+                    prepared,
+                    metadata,
+                    currentTime,
+                    out dragonActionName,
+                    out dragonActionElapsedMs))
+            {
+                ResolveRemoteDragonActionSelection(
+                    prepared,
+                    isHolding,
+                    ownerPacketActionName,
+                    actor.BaseActionRawCode,
+                    metadata,
+                    out dragonActionName,
+                    out bool useOwnerActionTimeline);
+                dragonActionElapsedMs = ResolveRemoteDragonActionElapsedMs(
+                    prepared,
+                    currentTime,
+                    dragonActionName,
+                    isHolding,
+                    useOwnerActionTimeline,
+                    actor.BaseActionStartTime);
+            }
 
-            ResolveRemoteDragonActionSelection(
-                prepared,
-                isHolding,
-                ownerPacketActionName,
-                actor.BaseActionRawCode,
-                metadata,
-                out string dragonActionName,
-                out bool useOwnerActionTimeline);
-            int dragonActionElapsedMs = ResolveRemoteDragonActionElapsedMs(
-                prepared,
-                currentTime,
-                dragonActionName,
-                isHolding,
-                useOwnerActionTimeline,
-                actor.BaseActionStartTime);
             int dragonFrameHeight = metadata.ResolveFrameHeight(dragonActionName, dragonActionElapsedMs);
             Vector2 dragonAnchor = ResolveRemoteDragonAnchor(
                 actor,
@@ -3630,10 +3774,262 @@ namespace HaCreator.MapSimulator.Pools
                 dragonActionName,
                 dragonActionElapsedMs,
                 metadata);
+            dragonAnchor = ResolveRemoteDragonHudVisualAnchor(prepared, dragonAnchor, currentTime);
             anchor = new Vector2(
                 dragonAnchor.X - RemoteDragonKeyDownBarHalfWidth,
                 dragonAnchor.Y - dragonFrameHeight - RemoteDragonKeyDownBarVerticalGap);
             return true;
+        }
+
+        private static bool TryResolveRemoteDragonPacketOwnedAttackAction(
+            RemoteUserActor actor,
+            RemotePreparedSkillState prepared,
+            RemoteDragonHudMetadata metadata,
+            int currentTime,
+            out string actionName,
+            out int elapsedMs)
+        {
+            actionName = null;
+            elapsedMs = 0;
+            if (actor == null
+                || prepared == null
+                || actor.RemoteDragonAttackSkillId != prepared.SkillId
+                || string.IsNullOrWhiteSpace(actor.RemoteDragonAttackActionName)
+                || actor.RemoteDragonAttackStartTime == int.MinValue
+                || metadata.ActionTimelines == null
+                || !metadata.ActionTimelines.TryGetValue(actor.RemoteDragonAttackActionName, out RemoteDragonHudAnimationTimeline timeline))
+            {
+                return false;
+            }
+
+            elapsedMs = Math.Max(0, currentTime - actor.RemoteDragonAttackStartTime);
+            if (!timeline.Loop
+                && timeline.TotalDurationMs > 0
+                && elapsedMs >= timeline.TotalDurationMs)
+            {
+                actor.RemoteDragonAttackSkillId = null;
+                actor.RemoteDragonAttackActionName = null;
+                actor.RemoteDragonAttackStartTime = int.MinValue;
+                return false;
+            }
+
+            actionName = actor.RemoteDragonAttackActionName;
+            prepared.DragonActionName = actionName;
+            prepared.DragonActionStartTime = actor.RemoteDragonAttackStartTime;
+            prepared.DragonOwnerActionStartTime = int.MinValue;
+            return true;
+        }
+
+        internal static Vector2 ResolveRemoteDragonHudVisualAnchorForTesting(
+            RemotePreparedSkillState prepared,
+            Vector2 targetAnchor,
+            int currentTime)
+        {
+            return ResolveRemoteDragonHudVisualAnchor(prepared, targetAnchor, currentTime);
+        }
+
+        private static Vector2 ResolveRemoteDragonHudVisualAnchor(
+            RemotePreparedSkillState prepared,
+            Vector2 targetAnchor,
+            int currentTime)
+        {
+            if (prepared == null)
+            {
+                return targetAnchor;
+            }
+
+            if (prepared.DragonLastFollowUpdateTime == int.MinValue)
+            {
+                prepared.DragonVisualAnchor = targetAnchor;
+                prepared.DragonFollowVelocity = Vector2.Zero;
+                prepared.DragonLastFollowUpdateTime = currentTime;
+                return prepared.DragonVisualAnchor;
+            }
+
+            int elapsedMs = Math.Max(0, currentTime - prepared.DragonLastFollowUpdateTime);
+            prepared.DragonLastFollowUpdateTime = currentTime;
+            if (elapsedMs <= 0)
+            {
+                return prepared.DragonVisualAnchor;
+            }
+
+            if (DragonCompanionRuntime.ShouldSnapActiveFollowToTarget(prepared.DragonVisualAnchor, targetAnchor))
+            {
+                prepared.DragonVisualAnchor = targetAnchor;
+                prepared.DragonFollowVelocity = Vector2.Zero;
+                prepared.DragonFollowActive = false;
+                prepared.DragonActiveVerticalFollowState = 0;
+                prepared.DragonActiveVerticalCheckCount = 0;
+                prepared.DragonActiveFollowReleaseStableFrames = 0;
+                return prepared.DragonVisualAnchor;
+            }
+
+            UpdateRemoteDragonHudFollowState(prepared, targetAnchor);
+            if (prepared.DragonFollowActive)
+            {
+                double velocityX;
+                double velocityY;
+                float nextX = DragonCompanionRuntime.ResolveClientActiveFollowHorizontalStep(
+                    prepared.DragonVisualAnchor.X,
+                    targetAnchor.X,
+                    out velocityX);
+                float nextY = ResolveRemoteDragonActiveFollowVerticalStep(
+                    prepared.DragonVisualAnchor.Y,
+                    targetAnchor.Y,
+                    prepared,
+                    out velocityY);
+                prepared.DragonVisualAnchor = new Vector2(nextX, nextY);
+                prepared.DragonFollowVelocity = new Vector2((float)velocityX, (float)velocityY);
+                return prepared.DragonVisualAnchor;
+            }
+
+            float stepSeconds = RemoteDragonPassiveFollowStepMilliseconds / 1000f;
+            Vector2 visualAnchor = prepared.DragonVisualAnchor;
+            Vector2 velocity = prepared.DragonFollowVelocity;
+            visualAnchor.X = ResolveRemoteDragonPassiveFollowAxis(
+                visualAnchor.X,
+                targetAnchor.X,
+                ref velocity.X,
+                stepSeconds,
+                RemoteDragonPassiveHorizontalResponse,
+                RemoteDragonPassiveMaxHorizontalSpeed,
+                CVecCtrl.WalkAcceleration * RemoteDragonPassiveHorizontalForceScale);
+            visualAnchor.Y = ResolveRemoteDragonPassiveFollowAxis(
+                visualAnchor.Y,
+                targetAnchor.Y,
+                ref velocity.Y,
+                stepSeconds,
+                RemoteDragonPassiveVerticalResponse,
+                RemoteDragonPassiveMaxVerticalSpeed,
+                CVecCtrl.AirDragDeceleration * RemoteDragonPassiveVerticalForceScale);
+            prepared.DragonVisualAnchor = visualAnchor;
+            prepared.DragonFollowVelocity = velocity;
+            return prepared.DragonVisualAnchor;
+        }
+
+        private static void UpdateRemoteDragonHudFollowState(RemotePreparedSkillState prepared, Vector2 targetAnchor)
+        {
+            float horizontalDelta = Math.Abs(targetAnchor.X - prepared.DragonVisualAnchor.X);
+            float verticalDelta = Math.Abs(targetAnchor.Y - prepared.DragonVisualAnchor.Y);
+            bool hasMomentum = Math.Abs(prepared.DragonFollowVelocity.X) > RemoteDragonFollowMinSpeed
+                || Math.Abs(prepared.DragonFollowVelocity.Y) > RemoteDragonFollowMinSpeed;
+            bool shouldEngage = hasMomentum
+                || horizontalDelta > RemoteDragonActiveFollowDistanceX + RemoteDragonActiveFollowStepX
+                || verticalDelta > RemoteDragonActiveFollowVerticalCheckDistance;
+            bool shouldHold = hasMomentum
+                || horizontalDelta > RemoteDragonActiveFollowDistanceX
+                || verticalDelta > RemoteDragonActiveFollowVerticalCheckDistance;
+
+            if (prepared.DragonFollowActive)
+            {
+                if (shouldHold)
+                {
+                    prepared.DragonActiveFollowReleaseStableFrames = 0;
+                    return;
+                }
+
+                prepared.DragonActiveFollowReleaseStableFrames++;
+                prepared.DragonFollowActive = prepared.DragonActiveFollowReleaseStableFrames < RemoteDragonActiveFollowReleaseStableFrameCount;
+                return;
+            }
+
+            prepared.DragonActiveFollowReleaseStableFrames = 0;
+            prepared.DragonFollowActive = shouldEngage;
+        }
+
+        private static float ResolveRemoteDragonActiveFollowVerticalStep(
+            float currentY,
+            float targetY,
+            RemotePreparedSkillState prepared,
+            out double velocityY)
+        {
+            float deltaY = targetY - currentY;
+            float absoluteDeltaY = Math.Abs(deltaY);
+            if (prepared.DragonActiveVerticalFollowState == 0)
+            {
+                if (absoluteDeltaY > RemoteDragonActiveFollowVerticalCheckDistance)
+                {
+                    prepared.DragonActiveVerticalCheckCount++;
+                    if (prepared.DragonActiveVerticalCheckCount >= RemoteDragonActiveFollowVerticalCheckFrames)
+                    {
+                        prepared.DragonActiveVerticalFollowState = 1;
+                    }
+                }
+                else
+                {
+                    prepared.DragonActiveVerticalCheckCount = 0;
+                }
+            }
+            else
+            {
+                prepared.DragonActiveVerticalCheckCount = 0;
+            }
+
+            bool shouldMoveVertically = prepared.DragonActiveVerticalFollowState != 0
+                || Math.Abs(deltaY) > RemoteDragonActiveFollowImmediateVerticalDistance;
+            if (!shouldMoveVertically)
+            {
+                velocityY = 0d;
+                return currentY;
+            }
+
+            if (prepared.DragonActiveVerticalFollowState < 0 && currentY == targetY)
+            {
+                prepared.DragonActiveVerticalFollowState = 0;
+                velocityY = deltaY >= 0f ? 1d : -1d;
+                return currentY;
+            }
+
+            int verticalStep = Math.Max(1, (int)(MathF.Min(17f, absoluteDeltaY / 10f) + 1f));
+            float nextY = deltaY >= 0f
+                ? Math.Min(targetY, currentY + verticalStep)
+                : Math.Max(targetY, currentY - verticalStep);
+            prepared.DragonActiveVerticalFollowState = nextY == targetY ? -1 : 1;
+            velocityY = deltaY >= 0f ? 1d : -1d;
+            return nextY;
+        }
+
+        private static float ResolveRemoteDragonPassiveFollowAxis(
+            float current,
+            float target,
+            ref float velocity,
+            float deltaSeconds,
+            float responseScale,
+            float maxSpeed,
+            double force)
+        {
+            float delta = target - current;
+            if (Math.Abs(delta) <= RemoteDragonPassiveArrivalDistance)
+            {
+                velocity = 0f;
+                return target;
+            }
+
+            if (Math.Abs(delta) <= RemoteDragonPassiveHoldDistance)
+            {
+                double holdVelocity = velocity;
+                CVecCtrl.DecSpeed(ref holdVelocity, Math.Max(force, CVecCtrl.WalkDeceleration), PhysicsConstants.Instance.DefaultMass, 0d, deltaSeconds);
+                velocity = (float)holdVelocity;
+                return current + velocity * deltaSeconds;
+            }
+
+            double axisVelocity = velocity;
+            double directedForce = Math.Max(force * Math.Max(0.1f, responseScale), CVecCtrl.WalkAcceleration);
+            double directedMaxSpeed = Math.Max(RemoteDragonPassiveArrivalDistance, maxSpeed * Math.Max(0.1f, responseScale));
+            bool movingTowardTarget = Math.Sign(delta) == Math.Sign(axisVelocity) || Math.Abs(axisVelocity) <= RemoteDragonFollowMinSpeed;
+            if (!movingTowardTarget)
+            {
+                CVecCtrl.DecSpeed(ref axisVelocity, Math.Max(directedForce, CVecCtrl.WalkDeceleration), PhysicsConstants.Instance.DefaultMass, 0d, deltaSeconds);
+            }
+            else
+            {
+                double targetVelocity = Math.Sign(delta) * directedMaxSpeed;
+                CVecCtrl.AccSpeed(ref axisVelocity, Math.Abs(directedForce), PhysicsConstants.Instance.DefaultMass, Math.Abs(targetVelocity), deltaSeconds);
+                axisVelocity = Math.Sign(delta) * Math.Abs(axisVelocity);
+            }
+
+            velocity = (float)axisVelocity;
+            return current + velocity * deltaSeconds;
         }
 
         internal static string ResolveRemoteDragonOwnerPacketActionNameForTesting(string baseActionName, string visibleActionName)
@@ -9613,6 +10009,9 @@ namespace HaCreator.MapSimulator.Pools
         public Point? LastThrowGrenadeTarget { get; set; }
         public int LastThrowGrenadeKeyDownTime { get; set; }
         public int LastThrowGrenadePacketTime { get; set; } = int.MinValue;
+        public int? RemoteDragonAttackSkillId { get; set; }
+        public string RemoteDragonAttackActionName { get; set; }
+        public int RemoteDragonAttackStartTime { get; set; } = int.MinValue;
         public int? CarryItemEffectId { get; set; }
         public int CompletedSetItemId { get; set; }
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
@@ -9807,6 +10206,13 @@ namespace HaCreator.MapSimulator.Pools
         public string DragonActionName { get; set; }
         public int DragonActionStartTime { get; set; } = int.MinValue;
         public int DragonOwnerActionStartTime { get; set; } = int.MinValue;
+        public Vector2 DragonVisualAnchor { get; set; }
+        public Vector2 DragonFollowVelocity { get; set; }
+        public int DragonLastFollowUpdateTime { get; set; } = int.MinValue;
+        public bool DragonFollowActive { get; set; }
+        public int DragonActiveVerticalFollowState { get; set; }
+        public int DragonActiveVerticalCheckCount { get; set; }
+        public int DragonActiveFollowReleaseStableFrames { get; set; }
     }
 
     public sealed class RemoteRelationshipOverlayState

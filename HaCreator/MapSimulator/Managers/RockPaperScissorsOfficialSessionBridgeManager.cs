@@ -22,11 +22,13 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18493;
         private const string DefaultProcessName = "MapleStory";
+        private const int MaxRecentOutboundPackets = 20;
         private const int AddressFamilyInet = 2;
         private const int ErrorInsufficientBuffer = 122;
 
         private readonly ConcurrentQueue<RockPaperScissorsPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<RockPaperScissorsClientPacket> _pendingClientPackets = new();
+        private readonly List<OutboundPacketTrace> _recentOutboundPackets = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -40,6 +42,16 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
+
+        internal readonly record struct OutboundPacketTrace(
+            int Opcode,
+            RockPaperScissorsClientRequestType RequestType,
+            RockPaperScissorsChoice Choice,
+            int PayloadLength,
+            string Source,
+            string Summary,
+            string PayloadHex,
+            string RawPacketHex);
 
         private sealed class BridgePair
         {
@@ -92,7 +104,18 @@ namespace HaCreator.MapSimulator.Managers
         public bool HoldsLiveSessionOwnership => IsRunning || HasAttachedClient || HasPassiveEstablishedSocketPair;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
+        public int ForwardedOutboundCount { get; private set; }
         public int QueuedCount { get; private set; }
+        public int RecentOutboundPacketCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _recentOutboundPackets.Count;
+                }
+            }
+        }
         public int PendingPacketCount => _pendingClientPackets.Count;
         public string LastStatus { get; private set; } = "Rock-Paper-Scissors official-session bridge inactive.";
 
@@ -106,7 +129,10 @@ namespace HaCreator.MapSimulator.Managers
                 : HasPassiveEstablishedSocketPair
                     ? DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)
                 : "no active Maple session";
-            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}. {LastStatus}";
+            string outboundHistory = RecentOutboundPacketCount == 0
+                ? "no captured client opcode 160 history"
+                : $"{RecentOutboundPacketCount} captured client opcode 160 packet(s)";
+            return $"Rock-Paper-Scissors official-session bridge {lifecycle}; {session}; received={ReceivedCount}; injected={SentCount}; forwarded={ForwardedOutboundCount}; pending={PendingPacketCount}; queued={QueuedCount}; {outboundHistory}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -419,6 +445,40 @@ namespace HaCreator.MapSimulator.Managers
             return DescribeDiscoveryCandidates(candidates, remotePort, owningProcessId, owningProcessName, localPort);
         }
 
+        public string DescribeRecentOutboundPackets(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentOutboundPackets);
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    return "Rock-Paper-Scissors official-session bridge outbound history is empty.";
+                }
+
+                OutboundPacketTrace[] entries = _recentOutboundPackets
+                    .Reverse<OutboundPacketTrace>()
+                    .Take(normalizedCount)
+                    .ToArray();
+                return "Rock-Paper-Scissors official-session bridge outbound history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select(entry =>
+                            $"opcode={entry.Opcode} type={entry.RequestType} choice={entry.Choice} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+            }
+        }
+
+        public string ClearRecentOutboundPackets()
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+            }
+
+            LastStatus = "Rock-Paper-Scissors official-session bridge outbound history cleared.";
+            return LastStatus;
+        }
+
         public void Stop()
         {
             lock (_sync)
@@ -625,7 +685,14 @@ namespace HaCreator.MapSimulator.Managers
                     return;
                 }
 
-                pair.ServerSession.SendPacket(packet.ToArray());
+                byte[] raw = packet.ToArray();
+                pair.ServerSession.SendPacket(raw);
+                if (TryBuildOutboundTrace(raw, $"official-session:{pair.ClientEndpoint}", out OutboundPacketTrace trace))
+                {
+                    RecordOutboundTrace(trace);
+                    ForwardedOutboundCount++;
+                    LastStatus = $"Forwarded live Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)trace.RequestType} from {pair.ClientEndpoint}.";
+                }
             }
             catch (Exception ex)
             {
@@ -815,7 +882,79 @@ namespace HaCreator.MapSimulator.Managers
 
                 ReceivedCount = 0;
                 SentCount = 0;
+                ForwardedOutboundCount = 0;
                 QueuedCount = 0;
+                _recentOutboundPackets.Clear();
+            }
+        }
+
+        internal static bool TryBuildOutboundTrace(byte[] rawPacket, string source, out OutboundPacketTrace trace)
+        {
+            trace = default;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort) + sizeof(byte))
+            {
+                return false;
+            }
+
+            ushort opcode = BitConverter.ToUInt16(rawPacket, 0);
+            if (opcode != RockPaperScissorsField.ClientOpcode)
+            {
+                return false;
+            }
+
+            byte requestTypeValue = rawPacket[sizeof(ushort)];
+            if (!Enum.IsDefined(typeof(RockPaperScissorsClientRequestType), (int)requestTypeValue))
+            {
+                return false;
+            }
+
+            RockPaperScissorsClientRequestType requestType = (RockPaperScissorsClientRequestType)requestTypeValue;
+            int payloadOffset = sizeof(ushort) + sizeof(byte);
+            int payloadLength = rawPacket.Length - payloadOffset;
+            RockPaperScissorsChoice choice = RockPaperScissorsChoice.None;
+            if (requestType == RockPaperScissorsClientRequestType.Select)
+            {
+                if (payloadLength != sizeof(byte))
+                {
+                    return false;
+                }
+
+                choice = (RockPaperScissorsChoice)rawPacket[payloadOffset];
+                if (choice is < RockPaperScissorsChoice.Rock or > RockPaperScissorsChoice.Scissor)
+                {
+                    return false;
+                }
+            }
+            else if (payloadLength != 0)
+            {
+                return false;
+            }
+
+            byte[] payload = payloadLength == 0 ? Array.Empty<byte>() : rawPacket[payloadOffset..];
+            string summary = requestType == RockPaperScissorsClientRequestType.Select
+                ? $"opcode={RockPaperScissorsField.ClientOpcode} subtype={(int)requestType} choice={choice}"
+                : $"opcode={RockPaperScissorsField.ClientOpcode} subtype={(int)requestType}";
+            trace = new OutboundPacketTrace(
+                opcode,
+                requestType,
+                choice,
+                payloadLength,
+                string.IsNullOrWhiteSpace(source) ? "official-session:unknown-client" : source,
+                summary,
+                Convert.ToHexString(payload),
+                Convert.ToHexString(rawPacket));
+            return true;
+        }
+
+        private void RecordOutboundTrace(OutboundPacketTrace trace)
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Add(trace);
+                while (_recentOutboundPackets.Count > MaxRecentOutboundPackets)
+                {
+                    _recentOutboundPackets.RemoveAt(0);
+                }
             }
         }
 

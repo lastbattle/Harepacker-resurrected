@@ -3579,6 +3579,20 @@ namespace HaCreator.MapSimulator.Interaction
                 : definition.EndQuestRequirements;
             bool hasUnmetJobRequirement = state == QuestStateType.Not_Started &&
                 HasUnmetStartJobRequirement(definition, build);
+            int? infoNumber = state == QuestStateType.Not_Started
+                ? definition.StartInfoNumber
+                : definition.EndInfoNumber;
+            IReadOnlyList<QuestRecordTextRequirement> infoRequirements = state == QuestStateType.Not_Started
+                ? definition.StartInfoRequirements
+                : definition.EndInfoRequirements;
+            IReadOnlyList<QuestRecordValueRequirement> infoExRequirements = state == QuestStateType.Not_Started
+                ? definition.StartInfoExRequirements
+                : definition.EndInfoExRequirements;
+            bool hasUnmetQuestRecordRequirements = HasUnmetQuestRecordRequirements(
+                definition.QuestId,
+                infoNumber,
+                infoRequirements,
+                infoExRequirements);
 
             return SelectIssueConversationPagesCore(
                 state,
@@ -3588,6 +3602,7 @@ namespace HaCreator.MapSimulator.Interaction
                 HasMissingMobs(definition),
                 HasUnmetQuestRequirements(questRequirements),
                 hasUnmetJobRequirement,
+                hasUnmetQuestRecordRequirements,
                 stopPages,
                 lostPages);
         }
@@ -3600,6 +3615,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool hasMissingMobs,
             bool hasUnmetQuestRequirements,
             bool hasUnmetJobRequirement,
+            bool hasUnmetQuestRecordRequirements,
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
             IReadOnlyList<NpcInteractionPage> lostPages)
         {
@@ -3653,6 +3669,12 @@ namespace HaCreator.MapSimulator.Interaction
                 TryGetStopPages(stopPages, "job", out IReadOnlyList<NpcInteractionPage> jobPages))
             {
                 return jobPages;
+            }
+
+            if (hasUnmetQuestRecordRequirements &&
+                TryGetStopPages(stopPages, "info", out IReadOnlyList<NpcInteractionPage> blockedInfoPages))
+            {
+                return blockedInfoPages;
             }
 
             if (TryGetStopPages(stopPages, "default", out IReadOnlyList<NpcInteractionPage> defaultPages))
@@ -6890,10 +6912,10 @@ namespace HaCreator.MapSimulator.Interaction
                 EndNpcId = ParseNpcId(endCheck?["npc"]),
                 MinLevel = ParseInt(startCheck?["lvmin"]),
                 MaxLevel = ParseInt(startCheck?["lvmax"]) ?? ParseInt(endCheck?["lvmax"]),
-                StartAvailableFrom = ParseQuestDateTime(startCheck?["start"], startCheck?["start_t"]),
-                StartAvailableUntil = ParseQuestDateTime(startCheck?["end"], startCheck?["end_t"]),
-                EndAvailableFrom = ParseQuestDateTime(endCheck?["start"], endCheck?["start_t"]),
-                EndAvailableUntil = ParseQuestDateTime(endCheck?["end"], endCheck?["end_t"]),
+                StartAvailableFrom = ParseQuestDateTime(startCheck?["start_t"], startCheck?["start"]),
+                StartAvailableUntil = ParseQuestDateTime(startCheck?["end_t"], startCheck?["end"]),
+                EndAvailableFrom = ParseQuestDateTime(endCheck?["start_t"], endCheck?["start"]),
+                EndAvailableUntil = ParseQuestDateTime(endCheck?["end_t"], endCheck?["end"]),
                 StartFameRequirement = ParsePositiveInt(startCheck?["pop"]),
                 StartSubJobFlagsRequirement = ParsePositiveInt(startCheck?["subJobFlags"]).GetValueOrDefault(),
                 EndMesoRequirement = ParsePositiveInt(endCheck?["endmeso"]).GetValueOrDefault(),
@@ -7084,6 +7106,13 @@ namespace HaCreator.MapSimulator.Interaction
         private static int? ParsePositiveInt(WzImageProperty property)
         {
             int? value = ParseInt(property);
+            if (!value.HasValue &&
+                property is WzStringProperty stringProperty &&
+                int.TryParse(stringProperty.Value?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue))
+            {
+                value = parsedValue;
+            }
+
             return value.GetValueOrDefault() > 0 ? value : null;
         }
 
@@ -7741,6 +7770,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return actions;
             }
 
+            actions.ActionAvailableFrom = ParseQuestDateTime(property["start_t"], property["start"]);
+            actions.ActionAvailableUntil = ParseQuestDateTime(property["end_t"], property["end"]);
+
             for (int i = 0; i < property.WzProperties.Count; i++)
             {
                 WzImageProperty child = property.WzProperties[i];
@@ -7774,10 +7806,12 @@ namespace HaCreator.MapSimulator.Interaction
                         actions.AllowedJobs = ParseJobIds(child);
                         break;
                     case "start":
-                        actions.ActionAvailableFrom = ParseQuestDateTime(child);
+                    case "start_t":
+                        actions.ActionAvailableFrom ??= ParseQuestDateTime(child);
                         break;
                     case "end":
-                        actions.ActionAvailableUntil = ParseQuestDateTime(child);
+                    case "end_t":
+                        actions.ActionAvailableUntil ??= ParseQuestDateTime(child);
                         break;
                     case "interval":
                         actions.ActionRepeatIntervalMinutes = ParsePositiveInt(child).GetValueOrDefault();
@@ -8650,6 +8684,83 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return Array.Empty<NpcInteractionPage>();
+        }
+
+        private bool HasUnmetQuestRecordRequirements(
+            int questId,
+            int? infoNumber,
+            IReadOnlyList<QuestRecordTextRequirement> textRequirements,
+            IReadOnlyList<QuestRecordValueRequirement> valueRequirements)
+        {
+            bool hasTextRequirements = textRequirements != null && textRequirements.Count > 0;
+            bool hasValueRequirements = valueRequirements != null && valueRequirements.Count > 0;
+            if (!hasTextRequirements && !hasValueRequirements)
+            {
+                return false;
+            }
+
+            int recordQuestId = infoNumber.GetValueOrDefault() > 0
+                ? infoNumber.Value
+                : questId;
+            if (!TryGetQuestRecordValue(recordQuestId, out string recordValue))
+            {
+                return true;
+            }
+
+            string normalizedRecordValue = recordValue.Trim();
+            if (hasTextRequirements)
+            {
+                bool hasComparableRequirement = false;
+                bool hasMatchingRequirement = false;
+                for (int i = 0; i < textRequirements.Count; i++)
+                {
+                    string requiredValue = textRequirements[i]?.Value?.Trim();
+                    if (string.IsNullOrWhiteSpace(requiredValue))
+                    {
+                        continue;
+                    }
+
+                    hasComparableRequirement = true;
+                    if (string.Equals(normalizedRecordValue, requiredValue, StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasMatchingRequirement = true;
+                        break;
+                    }
+                }
+
+                if (hasComparableRequirement && !hasMatchingRequirement)
+                {
+                    return true;
+                }
+            }
+
+            if (hasValueRequirements)
+            {
+                bool hasComparableRequirement = false;
+                bool hasMatchingRequirement = false;
+                for (int i = 0; i < valueRequirements.Count; i++)
+                {
+                    string requiredValue = valueRequirements[i]?.Value?.Trim();
+                    if (string.IsNullOrWhiteSpace(requiredValue))
+                    {
+                        continue;
+                    }
+
+                    hasComparableRequirement = true;
+                    if (string.Equals(normalizedRecordValue, requiredValue, StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasMatchingRequirement = true;
+                        break;
+                    }
+                }
+
+                if (hasComparableRequirement && !hasMatchingRequirement)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void AppendConversationPage(WzImageProperty property, ICollection<NpcInteractionPage> pages)

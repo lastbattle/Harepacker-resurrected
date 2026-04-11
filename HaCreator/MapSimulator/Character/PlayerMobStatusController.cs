@@ -333,12 +333,6 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            int propPercent = levelData.Prop > 0 ? Math.Clamp(levelData.Prop, 0, 100) : 100;
-            if (propPercent <= 0 || propPercent < 100 && Random.Shared.Next(100) >= propPercent)
-            {
-                return false;
-            }
-
             IReadOnlyList<RemoteHostilePlayerAreaStatus> statuses =
                 RemoteAffectedAreaSupportResolver.ResolveHostilePlayerAreaStatuses(skill, levelData);
             if (statuses.Count == 0)
@@ -359,10 +353,7 @@ namespace HaCreator.MapSimulator.Character
             for (int i = 0; i < statuses.Count; i++)
             {
                 RemoteHostilePlayerAreaStatus status = statuses[i];
-                int statusPropPercent = status.PropPercent > 0
-                    ? Math.Clamp(status.PropPercent, 0, 100)
-                    : 100;
-                if (statusPropPercent <= 0 || statusPropPercent < 100 && Random.Shared.Next(100) >= statusPropPercent)
+                if (!ShouldApplyRemoteAffectedAreaStatus(status.PropPercent, Random.Shared.Next(100)))
                 {
                     continue;
                 }
@@ -386,6 +377,15 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return applied;
+        }
+
+        internal static bool ShouldApplyRemoteAffectedAreaStatus(int propPercent, int rollPercent)
+        {
+            int clampedPropPercent = propPercent > 0
+                ? Math.Clamp(propPercent, 0, 100)
+                : 100;
+            return clampedPropPercent > 0
+                   && (clampedPropPercent >= 100 || Math.Clamp(rollPercent, 0, 99) < clampedPropPercent);
         }
 
         internal static bool ShouldResistRemoteAffectedAreaStatus(

@@ -309,32 +309,53 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (WzImageProperty property in container.WzProperties.OfType<WzImageProperty>())
             {
-                if (!int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number)
-                    || number < 0)
+                if (TryAppendNativeStageBackImageEntry(backgroundSet, property, front, entries))
                 {
                     continue;
                 }
 
-                entries.Add(new ContextOwnedStageBackImageEntry(
-                    backgroundSet.Trim(),
-                    number.ToString(CultureInfo.InvariantCulture),
-                    BackgroundInfoType.Background,
-                    InfoTool.GetInt(property["x"]),
-                    InfoTool.GetInt(property["y"]),
-                    InfoTool.GetInt(property["absRX"], 1),
-                    InfoTool.GetInt(property["absRY"], 1),
-                    Cx: 0,
-                    Cy: 0,
-                    Alpha: 255,
-                    BackgroundType.Regular,
-                    front,
-                    Flip: false,
-                    Page: 0,
-                    ScreenMode: 0,
-                    InfoTool.GetInt(property["z"]),
-                    SpineAnimation: null,
-                    SpineRandomStart: false));
+                foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
+                {
+                    TryAppendNativeStageBackImageEntry(property.Name, child, front, entries);
+                }
             }
+        }
+
+        private static bool TryAppendNativeStageBackImageEntry(
+            string backgroundSet,
+            WzImageProperty property,
+            bool front,
+            List<ContextOwnedStageBackImageEntry> entries)
+        {
+            if (string.IsNullOrWhiteSpace(backgroundSet)
+                || property == null
+                || entries == null
+                || !int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number)
+                || number < 0)
+            {
+                return false;
+            }
+
+            entries.Add(new ContextOwnedStageBackImageEntry(
+                backgroundSet.Trim(),
+                number.ToString(CultureInfo.InvariantCulture),
+                BackgroundInfoType.Background,
+                InfoTool.GetInt(property["x"]),
+                InfoTool.GetInt(property["y"]),
+                InfoTool.GetInt(property["absRX"], 1),
+                InfoTool.GetInt(property["absRY"], 1),
+                Cx: 0,
+                Cy: 0,
+                Alpha: 255,
+                BackgroundType.Regular,
+                front,
+                Flip: false,
+                Page: 0,
+                ScreenMode: 0,
+                InfoTool.GetInt(property["z"]),
+                SpineAnimation: null,
+                SpineRandomStart: false));
+            return true;
         }
 
         private static bool TryParseStageBackImageEntry(WzImageProperty property, out ContextOwnedStageBackImageEntry entry)

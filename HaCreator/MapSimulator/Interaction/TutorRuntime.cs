@@ -386,9 +386,15 @@ namespace HaCreator.MapSimulator.Interaction
         {
             BindRuntimeCharacter(runtimeCharacterId);
             int normalizedSkillId = NormalizeTutorSkillId(requestedSkillId);
+            if (normalizedSkillId > 0)
+            {
+                ReleaseExistingTutorOwnerBeforeHire(normalizedSkillId, BoundCharacterId, currentTick);
+            }
+
             DeactivateActiveTutorVariantsForCharacterExcept(normalizedSkillId, BoundCharacterId, currentTick);
             if (normalizedSkillId > 0)
             {
+                RemoveClientTutorSkillSlotForRehire(normalizedSkillId);
                 InsertClientTutorSkillSlot(normalizedSkillId);
                 UpsertRegisteredTutorVariant(
                     normalizedSkillId,
@@ -456,6 +462,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             DeactivateActiveTutorVariantsForCharacterExcept(normalizedSkillId, normalizedCharacterId, currentTick);
+            ReleaseExistingTutorOwnerBeforeHire(normalizedSkillId, normalizedCharacterId, currentTick);
+            RemoveClientTutorSkillSlotForRehire(normalizedSkillId);
             InsertClientTutorSkillSlot(normalizedSkillId);
             UpsertRegisteredTutorVariant(
                 normalizedSkillId,
@@ -935,9 +943,60 @@ namespace HaCreator.MapSimulator.Interaction
                     SharedRegisteredTutorVariants.Add(nextSnapshot);
                 }
 
-                UpsertSharedTutorOwnerUnsafe(nextSnapshot);
+                if (isActive)
+                {
+                    UpsertSharedTutorOwnerUnsafe(nextSnapshot);
+                }
+                else
+                {
+                    RemoveSharedTutorOwnerUnsafe(nextSnapshot.SkillId, nextSnapshot.BoundCharacterId);
+                }
+
                 LastRegistryMutationTick = currentTick;
             }
+        }
+
+        private void ReleaseExistingTutorOwnerBeforeHire(int skillId, int runtimeCharacterId, int currentTick)
+        {
+            int normalizedSkillId = NormalizeTutorSkillId(skillId);
+            int normalizedCharacterId = Math.Max(0, runtimeCharacterId);
+            if (normalizedSkillId <= 0)
+            {
+                return;
+            }
+
+            bool localRuntimeOwnsSkill = IsActive
+                && ActiveSkillId == normalizedSkillId
+                && (normalizedCharacterId <= 0 || BoundCharacterId <= 0 || BoundCharacterId == normalizedCharacterId);
+            bool sharedOwnerIsActive = TryGetSharedTutorVariantForCharacter(
+                    normalizedSkillId,
+                    normalizedCharacterId,
+                    out TutorVariantSnapshot existingVariant)
+                && existingVariant.IsActive;
+            if (!localRuntimeOwnsSkill && !sharedOwnerIsActive)
+            {
+                return;
+            }
+
+            int actorHeight = sharedOwnerIsActive && existingVariant.ActorHeight > 0
+                ? existingVariant.ActorHeight
+                : ActiveActorHeight > 0
+                    ? ActiveActorHeight
+                    : ResolveFallbackActorHeight(normalizedSkillId);
+            int ownerCharacterId = normalizedCharacterId > 0
+                ? normalizedCharacterId
+                : sharedOwnerIsActive
+                    ? existingVariant.BoundCharacterId
+                    : BoundCharacterId;
+
+            UpsertRegisteredTutorVariant(
+                normalizedSkillId,
+                actorHeight,
+                ownerCharacterId,
+                currentTick,
+                isActive: false,
+                markRemoval: true);
+            RemoveSharedTutorMessageSnapshot(normalizedSkillId, ownerCharacterId);
         }
 
         private static IEnumerable<string> EnumerateRegisteredTutorVariantsInDisplayOrder(
@@ -1017,6 +1076,19 @@ namespace HaCreator.MapSimulator.Interaction
                     return;
                 }
 
+                SharedClientTutorSkillIds.Remove(skillId);
+            }
+        }
+
+        private static void RemoveClientTutorSkillSlotForRehire(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            lock (SharedTutorStateSync)
+            {
                 SharedClientTutorSkillIds.Remove(skillId);
             }
         }
@@ -1389,6 +1461,15 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.IsActive,
                 snapshot.LastRemovalTick != int.MinValue,
                 snapshot.LastMutationTick);
+        }
+
+        private static void RemoveSharedTutorOwnerUnsafe(int skillId, int boundCharacterId)
+        {
+            int index = FindSharedTutorOwnerIndexUnsafe(skillId, boundCharacterId);
+            if (index >= 0)
+            {
+                SharedTutorOwners.RemoveAt(index);
+            }
         }
 
         private static void SynchronizeSharedTutorOwnerMessagesUnsafe()

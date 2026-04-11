@@ -361,6 +361,44 @@ namespace HaCreator.MapSimulator.Character
                 : ResolveDynamicPortableChairFrame(mountedFrame, 0);
         }
 
+        internal AssembledFrame GetFrameAtIndex(string actionName, int frameIndex, int timeMs)
+        {
+            var frames = GetAnimation(actionName);
+            if (frames == null || frames.Length == 0)
+            {
+                return null;
+            }
+
+            int clampedFrameIndex = Math.Clamp(frameIndex, 0, frames.Length - 1);
+            return ResolveDynamicPortableChairFrame(frames[clampedFrameIndex], timeMs);
+        }
+
+        internal bool TryCreateActionLayerFrameClock(
+            string actionName,
+            out AvatarActionLayerCoordinator.PreparedFrameClock clock)
+        {
+            var frames = GetAnimation(actionName);
+            return AvatarActionLayerCoordinator.TryCreatePreparedFrameClock(frames, out clock);
+        }
+
+        internal bool TryAdvanceActionLayerFrameClock(
+            string actionName,
+            ref AvatarActionLayerCoordinator.PreparedFrameClock clock,
+            bool allowLoop,
+            int elapsedMs,
+            out bool completedAction,
+            out int remainingElapsedMs)
+        {
+            var frames = GetAnimation(actionName);
+            return AvatarActionLayerCoordinator.TryAdvancePreparedFrameClock(
+                frames,
+                ref clock,
+                elapsedMs,
+                allowLoop,
+                out completedAction,
+                out remainingElapsedMs);
+        }
+
         internal bool TryGetMountedActionLayerFrameTiming(
             string bodyActionName,
             int bodyTimeMs,

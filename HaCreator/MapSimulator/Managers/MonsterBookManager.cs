@@ -47,7 +47,9 @@ namespace HaCreator.MapSimulator.Managers
             public int CardItemId { get; init; }
             public string CardItemName { get; init; } = string.Empty;
             public int MobId { get; init; }
+            public bool Only { get; init; }
             public bool ConsumeOnPickup { get; init; }
+            public bool IsClientConsumedOnPickupCard => Only && ConsumeOnPickup;
             public string Name { get; init; } = string.Empty;
             public int Level { get; init; }
             public int MaxHp { get; init; }
@@ -249,11 +251,21 @@ namespace HaCreator.MapSimulator.Managers
 
         public CardPickupResult RecordCardPickupWithResult(CharacterBuild build, int itemId, int count = 1)
         {
+            return RecordCardPickupWithResult(build, build?.Id ?? 0, build?.Name, itemId, count);
+        }
+
+        public MonsterBookSnapshot RecordCardPickup(CharacterBuild build, int characterId, string characterName, int itemId, int count = 1)
+        {
+            return RecordCardPickupWithResult(build, characterId, characterName, itemId, count).Snapshot;
+        }
+
+        public CardPickupResult RecordCardPickupWithResult(CharacterBuild build, int characterId, string characterName, int itemId, int count = 1)
+        {
             if (itemId <= 0 || count <= 0)
             {
                 return new CardPickupResult(
                     CardPickupOutcome.None,
-                    GetSnapshot(build),
+                    GetSnapshot(build, characterId, characterName),
                     string.Empty,
                     0,
                     0);
@@ -263,26 +275,26 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return new CardPickupResult(
                     CardPickupOutcome.None,
-                    GetSnapshot(build),
+                    GetSnapshot(build, characterId, characterName),
                     string.Empty,
                     0,
                     0);
             }
 
-            int pickupCount = ResolveCardPickupCopyCount(count, definition.ConsumeOnPickup);
+            int pickupCount = ResolveCardPickupCopyCount(count, definition.IsClientConsumedOnPickupCard);
             if (pickupCount <= 0)
             {
                 return new CardPickupResult(
                     CardPickupOutcome.None,
-                    GetSnapshot(build),
+                    GetSnapshot(build, characterId, characterName),
                     definition.Name,
                     0,
                     0);
             }
 
-            MonsterBookRecord record = GetRecord(build, createIfMissing: true);
+            MonsterBookRecord record = GetRecord(build, characterId, characterName, createIfMissing: true);
             record.CardCountsByMob.TryGetValue(definition.MobId, out int previousCopies);
-            MonsterBookSnapshot snapshot = RecordMobKill(build, definition.MobId, pickupCount);
+            MonsterBookSnapshot snapshot = RecordMobKill(build, characterId, characterName, definition.MobId, pickupCount);
             int currentCopies = Math.Clamp(previousCopies + pickupCount, 0, 5);
             if (currentCopies == previousCopies)
             {
@@ -360,7 +372,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return EnsureCatalogByItemId().TryGetValue(itemId, out MonsterBookCardDefinition definition)
-                && definition?.ConsumeOnPickup == true;
+                && definition?.IsClientConsumedOnPickupCard == true;
         }
 
         public MonsterBookSnapshot SetRegisteredCard(CharacterBuild build, int mobId, bool registered)
@@ -496,6 +508,8 @@ namespace HaCreator.MapSimulator.Managers
 
                     WzSubProperty infoProperty = cardProperty["info"] as WzSubProperty;
                     WzSubProperty specProperty = cardProperty["spec"] as WzSubProperty;
+                    bool only = ReadInt(infoProperty?["only"]) != 0;
+                    bool consumeOnPickup = ReadInt(specProperty?["consumeOnPickup"]) != 0;
                     int mobId = ReadInt(infoProperty?["mob"]);
                     if (mobId <= 0)
                     {
@@ -520,7 +534,8 @@ namespace HaCreator.MapSimulator.Managers
                         CardItemId = cardItemId,
                         CardItemName = cardItemName,
                         MobId = mobId,
-                        ConsumeOnPickup = ReadInt(specProperty?["consumeOnPickup"]) != 0,
+                        Only = only,
+                        ConsumeOnPickup = consumeOnPickup,
                         Name = string.IsNullOrWhiteSpace(mobName) ? $"Mob #{mobId}" : mobName,
                         Level = Math.Max(0, level),
                         MaxHp = Math.Max(0, maxHp),

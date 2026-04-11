@@ -2111,9 +2111,13 @@ namespace HaCreator.MapSimulator.UI
                 _oneADayPlateButtonRuntime = state.PlateButtons
                     .Select(button => new OneADayOwnerState.PlateButtonState
                     {
+                        ButtonId = button.ButtonId,
                         SlotIndex = button.SlotIndex,
+                        CommandKey = button.CommandKey,
+                        Position = button.Position,
                         HasCanvas = button.HasCanvas,
                         IsLoaded = button.IsLoaded,
+                        IsEnabled = button.IsEnabled,
                         IsFocused = button.SlotIndex == _oneADayPlateFocusIndex,
                         Label = button.Label
                     })
@@ -2133,15 +2137,30 @@ namespace HaCreator.MapSimulator.UI
             {
                 buttons.Add(new OneADayOwnerState.PlateButtonState
                 {
+                    ButtonId = 2100 + i,
                     SlotIndex = i,
+                    CommandKey = _oneADaySelectorIndex == 1 ? "BtItemBox" : "BtBuy",
+                    Position = ResolveOneADayPlateButtonPosition(i, _oneADaySelectorIndex == 1),
                     HasCanvas = i < authoredCanvasCount,
                     IsLoaded = i < loadedCount,
+                    IsEnabled = i < loadedCount || _oneADaySelectorIndex == 0,
                     IsFocused = i == _oneADayPlateFocusIndex,
                     Label = _oneADaySelectorIndex == 1 ? $"History {i + 1}" : $"Today {i + 1}"
                 });
             }
 
             _oneADayPlateButtonRuntime = buttons;
+        }
+
+        private static Point ResolveOneADayPlateButtonPosition(int slotIndex, bool isHistoryLane)
+        {
+            int clampedSlot = Math.Max(0, slotIndex);
+            if (!isHistoryLane)
+            {
+                return new Point(316 + ((clampedSlot % 3) * 30), 260 + ((clampedSlot / 3) * 28));
+            }
+
+            return new Point(16 + ((clampedSlot % 4) * 92), 252 + ((clampedSlot / 4) * 44));
         }
 
         private void RefreshOneADayRewardSessionRuntime(OneADayOwnerState state)
@@ -2174,6 +2193,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _oneADayNumberCanvasReadyMask = BuildOneADayNumberCanvasReadyMask(state?.NumberCanvasCount ?? 0);
+        }
+
+        private void RefreshOneADayInteractiveRuntime(OneADayOwnerState state)
+        {
+            if (state == null)
+            {
+                return;
+            }
+
+            RefreshOneADaySelectorRuntime(state);
+            RefreshOneADayPlateButtonRuntime(state);
+            RefreshOneADayRewardSessionRuntime(state);
         }
 
         private string BuildOneADayRewardSessionSummary()
