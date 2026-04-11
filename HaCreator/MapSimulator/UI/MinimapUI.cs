@@ -54,6 +54,15 @@ namespace HaCreator.MapSimulator.UI
             SouthEast
         }
 
+        internal enum ClientHoverTargetKind
+        {
+            RemoteDirection = 0,
+            Npc = 1,
+            Employee = 2,
+            Portal = 3,
+            TrackedUser = 4
+        }
+
         private readonly BaseDXDrawableItem _pixelDot;
         private readonly BaseDXDrawableItem _expandedFrame;
         private readonly BaseDXDrawableItem _collapsedFrame;
@@ -159,6 +168,7 @@ namespace HaCreator.MapSimulator.UI
             public string TooltipText { get; set; }
             public NpcItem Npc { get; set; }
             public PortalItem Portal { get; set; }
+            public ClientHoverTargetKind Kind { get; set; }
         }
 
         /// <summary>
@@ -1295,7 +1305,10 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, trackedUser.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
                 if (!hoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(trackedUser.TooltipText))
                 {
-                    AddHoverTarget(trackedUser.TooltipText, hoverBounds);
+                    ClientHoverTargetKind kind = !IsWithinMinimapImage(minimapPoint) && trackedUser.ShowDirectionOverlay
+                        ? ClientHoverTargetKind.RemoteDirection
+                        : ClientHoverTargetKind.TrackedUser;
+                    AddHoverTarget(trackedUser.TooltipText, hoverBounds, kind);
                 }
             }
         }
@@ -1348,11 +1361,11 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle clientHoverBounds = GetClientMarkerHoverBounds(marker, minimapPoint);
                 if (!clientHoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(employee.TooltipText))
                 {
-                    AddHoverTarget(employee.TooltipText, clientHoverBounds);
+                    AddHoverTarget(employee.TooltipText, clientHoverBounds, ClientHoverTargetKind.Employee);
                 }
                 else if (!hoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(employee.TooltipText))
                 {
-                    AddHoverTarget(employee.TooltipText, hoverBounds);
+                    AddHoverTarget(employee.TooltipText, hoverBounds, ClientHoverTargetKind.Employee);
                 }
             }
         }
@@ -1470,6 +1483,8 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            HoverTargetEntry selectedHoverTarget = null;
+            string selectedTooltipText = null;
             for (int i = 0; i < _hoverTargetCount; i++)
             {
                 HoverTargetEntry hoverTarget = _hoverTargets[i];
@@ -1484,7 +1499,17 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                SetHoveredTooltip(tooltipText, ResolveTooltipAnchorPointForTesting(mouseState.X, mouseState.Y));
+                if (selectedHoverTarget == null
+                    || IsClientHoverTargetKindPreferredForTesting(hoverTarget.Kind, selectedHoverTarget.Kind))
+                {
+                    selectedHoverTarget = hoverTarget;
+                    selectedTooltipText = tooltipText;
+                }
+            }
+
+            if (selectedHoverTarget != null)
+            {
+                SetHoveredTooltip(selectedTooltipText, ResolveTooltipAnchorPointForTesting(mouseState.X, mouseState.Y));
                 return true;
             }
 
@@ -1537,7 +1562,7 @@ namespace HaCreator.MapSimulator.UI
             _hoverTargetCount = 0;
         }
 
-        private void AddHoverTarget(string tooltipText, Rectangle bounds)
+        private void AddHoverTarget(string tooltipText, Rectangle bounds, ClientHoverTargetKind kind)
         {
             if (string.IsNullOrWhiteSpace(tooltipText) || bounds.IsEmpty)
             {
@@ -1549,6 +1574,7 @@ namespace HaCreator.MapSimulator.UI
             hoverTarget.TooltipText = tooltipText;
             hoverTarget.Npc = null;
             hoverTarget.Portal = null;
+            hoverTarget.Kind = kind;
         }
 
         private void AddHoverTarget(NpcItem npc, Rectangle bounds)
@@ -1563,6 +1589,7 @@ namespace HaCreator.MapSimulator.UI
             hoverTarget.TooltipText = null;
             hoverTarget.Npc = npc;
             hoverTarget.Portal = null;
+            hoverTarget.Kind = ClientHoverTargetKind.Npc;
         }
 
         private void AddHoverTarget(PortalItem portal, Rectangle bounds)
@@ -1577,6 +1604,7 @@ namespace HaCreator.MapSimulator.UI
             hoverTarget.TooltipText = null;
             hoverTarget.Npc = null;
             hoverTarget.Portal = portal;
+            hoverTarget.Kind = ClientHoverTargetKind.Portal;
         }
 
         private HoverTargetEntry GetOrCreateHoverTarget(int index)
@@ -1647,6 +1675,13 @@ namespace HaCreator.MapSimulator.UI
             return new Point(
                 mouseX + ClientTooltipMouseOffset,
                 mouseY + ClientTooltipMouseOffset);
+        }
+
+        internal static bool IsClientHoverTargetKindPreferredForTesting(
+            ClientHoverTargetKind candidate,
+            ClientHoverTargetKind current)
+        {
+            return (int)candidate < (int)current;
         }
 
         private void SetHoveredTooltip(string tooltipText, Point anchorPoint)

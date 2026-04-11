@@ -1940,6 +1940,7 @@ namespace HaCreator.MapSimulator.Interaction
             _packetQuestResultModalHost.Begin(
                 questId,
                 speakerNpcId,
+                _currentPage,
                 GetCurrentPages().Count);
         }
 

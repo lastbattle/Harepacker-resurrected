@@ -127,6 +127,7 @@ namespace HaCreator.MapSimulator.Companions
         private DragonAnimationSet _currentSet;
         private string _currentActionName;
         private int _currentActionStartTime;
+        private int _currentActionSpeed = 6;
         private string _observedOwnerActionName;
         private bool _facingRight = true;
         private Vector2 _worldAnchor;
@@ -261,6 +262,7 @@ namespace HaCreator.MapSimulator.Companions
 
             _currentSet = animationSet;
             _facingRight = owner.FacingRight;
+            _currentActionSpeed = owner.Build.GetEffectiveWeaponAttackSpeed();
             _worldAnchor = ResolveAnchor(owner, animationSet, currentTime);
             bool suppressedForMap = ShouldSuppressForCurrentMap();
             bool suppressedForMount = ShouldSuppressForCurrentMount(owner);
@@ -299,7 +301,7 @@ namespace HaCreator.MapSimulator.Companions
                 && string.Equals(explicitActionName, _currentActionName, StringComparison.OrdinalIgnoreCase))
             {
                 int elapsed = Math.Max(0, currentTime - _currentActionStartTime);
-                if (currentAnimation.IsComplete(elapsed))
+                if (IsClientActionComplete(currentAnimation, _currentActionName, elapsed, _currentActionSpeed))
                 {
                     _currentActionStartTime = currentTime;
                 }
@@ -316,7 +318,7 @@ namespace HaCreator.MapSimulator.Companions
                 || !IsExplicitDragonAction(_currentActionName)
                 || (shouldLoopExplicitAction
                     && string.Equals(explicitActionName, _currentActionName, StringComparison.OrdinalIgnoreCase))
-                || (activeAnimation.IsComplete(Math.Max(0, currentTime - _currentActionStartTime))
+                || (IsClientActionComplete(activeAnimation, _currentActionName, Math.Max(0, currentTime - _currentActionStartTime), _currentActionSpeed)
                     && !string.Equals(ownerActionName, _currentActionName, StringComparison.OrdinalIgnoreCase))))
             {
                 SetCurrentAction(baseActionName, currentTime, preserveStartTimeWhenUnchanged: true);
@@ -411,6 +413,7 @@ namespace HaCreator.MapSimulator.Companions
             _currentSet = null;
             _currentActionName = null;
             _currentActionStartTime = 0;
+            _currentActionSpeed = 6;
             _observedOwnerActionName = null;
             _worldAnchor = Vector2.Zero;
             _visualAnchor = Vector2.Zero;
@@ -681,7 +684,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             int elapsed = Math.Max(0, currentTime - _currentActionStartTime);
-            return !animation.IsComplete(elapsed);
+            return !IsClientActionComplete(animation, _currentActionName, elapsed, _currentActionSpeed);
         }
 
         private bool ShouldSuppressForCurrentMap()
@@ -1139,17 +1142,29 @@ namespace HaCreator.MapSimulator.Companions
                 || string.IsNullOrWhiteSpace(_currentActionName)
                 || _alpha <= 0.01f
                 || !_currentSet.TryGetAnimation(_currentActionName, out SkillAnimation animation)
-                || !animation.TryGetFrameAtTime(Math.Max(0, currentTime - _currentActionStartTime), out frame, out int frameElapsedMs)
+                || !TryGetClientActionFrameAtTime(
+                    animation,
+                    _currentActionName,
+                    Math.Max(0, currentTime - _currentActionStartTime),
+                    _currentActionSpeed,
+                    out frame,
+                    out int frameElapsedMs,
+                    out int frameDelayMs)
                 || frame == null)
             {
                 return false;
             }
 
-            frameAlpha = ResolveFrameAlpha(frame, frameElapsedMs);
+            frameAlpha = ResolveFrameAlpha(frame, frameElapsedMs, frameDelayMs);
             return frameAlpha > 0.01f;
         }
 
         private static float ResolveFrameAlpha(SkillFrame frame, int frameElapsedMs)
+        {
+            return ResolveFrameAlpha(frame, frameElapsedMs, frame?.Delay ?? 0);
+        }
+
+        private static float ResolveFrameAlpha(SkillFrame frame, int frameElapsedMs, int frameDelayMs)
         {
             if (frame == null)
             {
@@ -1158,8 +1173,100 @@ namespace HaCreator.MapSimulator.Companions
 
             int startAlpha = Math.Clamp(frame.AlphaStart, 0, 255);
             int endAlpha = Math.Clamp(frame.AlphaEnd, 0, 255);
-            float progress = MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frame.Delay), 0f, 1f);
+            float progress = MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frameDelayMs), 0f, 1f);
             return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
+        }
+
+        internal static int ResolveClientDragonActionFrameDelay(string actionName, int authoredDelay, int actionSpeed)
+        {
+            int delay = Math.Max(1, authoredDelay);
+            if (!IsExplicitDragonAction(actionName))
+            {
+                return delay;
+            }
+
+            int clampedActionSpeed = Math.Clamp(actionSpeed, 2, 10);
+            return Math.Max(1, delay * (clampedActionSpeed + 10) / 16);
+        }
+
+        internal static int ResolveClientDragonActionDuration(SkillAnimation animation, string actionName, int actionSpeed)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int duration = 0;
+            foreach (SkillFrame frame in animation.Frames)
+            {
+                duration += ResolveClientDragonActionFrameDelay(actionName, frame?.Delay ?? 0, actionSpeed);
+            }
+
+            return duration;
+        }
+
+        private static bool IsClientActionComplete(SkillAnimation animation, string actionName, int elapsedMs, int actionSpeed)
+        {
+            if (animation == null || animation.Loop)
+            {
+                return false;
+            }
+
+            return elapsedMs >= ResolveClientDragonActionDuration(animation, actionName, actionSpeed);
+        }
+
+        private static bool TryGetClientActionFrameAtTime(
+            SkillAnimation animation,
+            string actionName,
+            int timeMs,
+            int actionSpeed,
+            out SkillFrame frame,
+            out int frameElapsedMs,
+            out int frameDelayMs)
+        {
+            frame = null;
+            frameElapsedMs = 0;
+            frameDelayMs = 0;
+
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            if (animation.Loop || !IsExplicitDragonAction(actionName))
+            {
+                bool resolved = animation.TryGetFrameAtTime(timeMs, out frame, out frameElapsedMs);
+                frameDelayMs = Math.Max(1, frame?.Delay ?? 0);
+                return resolved;
+            }
+
+            int totalDuration = ResolveClientDragonActionDuration(animation, actionName, actionSpeed);
+            if (totalDuration <= 0)
+            {
+                frame = animation.Frames[0];
+                frameDelayMs = Math.Max(1, frame.Delay);
+                return true;
+            }
+
+            int clampedTime = Math.Min(Math.Max(0, timeMs), totalDuration - 1);
+            int elapsed = 0;
+            foreach (SkillFrame currentFrame in animation.Frames)
+            {
+                int currentDelay = ResolveClientDragonActionFrameDelay(actionName, currentFrame?.Delay ?? 0, actionSpeed);
+                elapsed += currentDelay;
+                if (clampedTime < elapsed)
+                {
+                    frame = currentFrame;
+                    frameElapsedMs = clampedTime - (elapsed - currentDelay);
+                    frameDelayMs = currentDelay;
+                    return true;
+                }
+            }
+
+            frame = animation.Frames[^1];
+            frameDelayMs = ResolveClientDragonActionFrameDelay(actionName, frame?.Delay ?? 0, actionSpeed);
+            frameElapsedMs = Math.Max(0, Math.Min(clampedTime, totalDuration - 1));
+            return true;
         }
 
         internal static float ResolveClientLayerAlpha(bool shouldShow)

@@ -199,8 +199,7 @@ namespace HaCreator.MapSimulator.Managers
                         return false;
                     }
 
-                    string compactHex = RemoveWhitespace(string.Join(string.Empty, parts.Skip(1)));
-                    if (!TryParseHexPayload(compactHex, out payload))
+                    if (!TryParseHexPayload(string.Join(string.Empty, parts.Skip(1)), out payload))
                     {
                         error = "Transport packet payload must be valid hex.";
                         return false;
@@ -245,8 +244,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            string compactHex = RemoveWhitespace(string.Join(string.Empty, parts.Skip(1)));
-            if (!TryParseHexPayload(compactHex, out byte[] rawPacket))
+            if (!TryParseHexPayload(string.Join(string.Empty, parts.Skip(1)), out byte[] rawPacket))
             {
                 error = "Transport raw packet payload must be valid hex.";
                 return false;
@@ -378,7 +376,7 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            string normalized = text.Trim();
+            string normalized = NormalizeHexPayload(text);
             if (normalized.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {
                 normalized = normalized[2..];
@@ -400,14 +398,14 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static string RemoveWhitespace(string value)
+        private static string NormalizeHexPayload(string value)
         {
             if (string.IsNullOrEmpty(value))
             {
                 return string.Empty;
             }
 
-            return string.Concat(value.Where(ch => !char.IsWhiteSpace(ch)));
+            return string.Concat(value.Where(ch => ch != '-' && !char.IsWhiteSpace(ch)));
         }
 
         private void StopInternal(bool clearPending)

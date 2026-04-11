@@ -83,6 +83,11 @@ namespace HaCreator.MapSimulator.Interaction
                 appendFallbackSuffix);
         }
 
+        internal static string NormalizePacketEscapedText(string text)
+        {
+            return NormalizeQuestAlarmText(text);
+        }
+
         internal static bool IsPlausibleTitleFormat(string text)
         {
             return IsPlausibleQuestAlarmText(text)

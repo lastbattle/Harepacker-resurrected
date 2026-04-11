@@ -682,9 +682,28 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            CharacterFrame bodyFrame = bodyAnimation.GetFrameAtTime(Math.Max(0, bodyTimeMs), out int bodyFrameIndex);
-            CharacterFrame tamingMobFrame = tamingMobAnimation.GetFrameAtTime(Math.Max(0, tamingMobTimeMs), out _);
-            if (bodyFrame == null || tamingMobFrame == null)
+            if (!AvatarActionLayerCoordinator.TryGetPreparedFrameAtTime(
+                    bodyAnimation,
+                    resolvedActionName,
+                    bodyTimeMs,
+                    PreparedActionSpeedDegree,
+                    PreparedWalkSpeed,
+                    HeldActionFrameDelay,
+                    isMorphAvatar: false,
+                    isSuperManMorph: false,
+                    out CharacterFrame bodyFrame,
+                    out int bodyFrameIndex)
+                || !AvatarActionLayerCoordinator.TryGetPreparedFrameAtTime(
+                    tamingMobAnimation,
+                    preparedTamingMobActionName,
+                    tamingMobTimeMs,
+                    PreparedActionSpeedDegree,
+                    PreparedWalkSpeed,
+                    HeldActionFrameDelay,
+                    isMorphAvatar: false,
+                    isSuperManMorph: false,
+                    out CharacterFrame tamingMobFrame,
+                    out _))
             {
                 return null;
             }

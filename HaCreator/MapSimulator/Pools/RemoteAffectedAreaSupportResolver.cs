@@ -751,6 +751,7 @@ namespace HaCreator.MapSimulator.Pools
             int durationMs = ResolveHostilePlayerAreaStatusDurationMs(levelData);
             int dotDurationMs = ResolveHostilePlayerAreaStatusDurationMs(levelData, preferDotDuration: true);
             int dotTickIntervalMs = ResolveHostilePlayerAreaDotTickIntervalMs(levelData);
+            int primaryStatusPropPercent = ResolveHostilePlayerAreaPrimaryStatusPropPercent(levelData);
             int secondaryStatusPropPercent = ResolveHostilePlayerAreaSecondaryStatusPropPercent(skill, levelData);
 
             if (HasHostilePlayerDotStatus(skill, levelData, hostileSearchText))
@@ -763,7 +764,8 @@ namespace HaCreator.MapSimulator.Pools
                     ResolveHostilePlayerAreaDotEffect(skill, hostileSearchText),
                     dotDurationMs,
                     dotValue,
-                    dotTickIntervalMs));
+                    dotTickIntervalMs,
+                    PropPercent: primaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "freeze", "ice", "blizzard", "frost") || skill.Element == SkillElement.Ice)
@@ -772,7 +774,7 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.Freeze,
                     durationMs,
                     1,
-                    PropPercent: secondaryStatusPropPercent));
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
             if (ContainsToken(hostileSearchText, "stun", "paraly", "shock"))
@@ -781,7 +783,7 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.Stun,
                     durationMs,
                     1,
-                    PropPercent: secondaryStatusPropPercent));
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
             if (ContainsToken(hostileSearchText, "seal"))
@@ -790,7 +792,7 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.Seal,
                     durationMs,
                     1,
-                    PropPercent: secondaryStatusPropPercent));
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
             if (ContainsToken(hostileSearchText, "blind", "dark", "darkness"))
@@ -799,7 +801,7 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.Darkness,
                     durationMs,
                     ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20),
-                    PropPercent: secondaryStatusPropPercent));
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
             if (ContainsToken(hostileSearchText, "slow", "web") || levelData.Speed < 0)
@@ -808,7 +810,7 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.Slow,
                     durationMs,
                     ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20, preferSpeed: true),
-                    PropPercent: secondaryStatusPropPercent));
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
             if (ContainsToken(hostileSearchText, "weak") || levelData.Jump < 0)
@@ -817,7 +819,7 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.Weakness,
                     durationMs,
                     1,
-                    PropPercent: secondaryStatusPropPercent));
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
             if (ContainsToken(hostileSearchText, "curse"))
@@ -826,7 +828,7 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.Curse,
                     durationMs,
                     ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 50),
-                    PropPercent: secondaryStatusPropPercent));
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
             if (ContainsToken(hostileSearchText, "reverse"))
@@ -835,7 +837,7 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.ReverseInput,
                     durationMs,
                     1,
-                    PropPercent: secondaryStatusPropPercent));
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
             if (ContainsToken(hostileSearchText, "undead"))
@@ -844,7 +846,7 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.Undead,
                     durationMs,
                     ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 100),
-                    PropPercent: secondaryStatusPropPercent));
+                    PropPercent: ResolveHostilePlayerAreaStatusPropPercent(skill, levelData, secondaryStatusPropPercent)));
             }
 
             if (ContainsToken(hostileSearchText, "amplifyDamage"))
@@ -853,10 +855,18 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.PainMark,
                     durationMs,
                     ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 10),
-                    TickIntervalMs: 1000));
+                    TickIntervalMs: 1000,
+                    PropPercent: primaryStatusPropPercent));
             }
 
             return statuses;
+        }
+
+        private static int ResolveHostilePlayerAreaPrimaryStatusPropPercent(SkillLevelData levelData)
+        {
+            return levelData?.Prop > 0
+                ? Math.Clamp(levelData.Prop, 0, 100)
+                : 100;
         }
 
         private static int ResolveHostilePlayerAreaSecondaryStatusPropPercent(
@@ -871,6 +881,16 @@ namespace HaCreator.MapSimulator.Pools
             return ContainsToken(skill?.AffectedSkillEffect, "bodyAttack")
                 ? Math.Clamp(levelData.SubProp, 0, 100)
                 : 100;
+        }
+
+        private static int ResolveHostilePlayerAreaStatusPropPercent(
+            SkillData skill,
+            SkillLevelData levelData,
+            int secondaryStatusPropPercent)
+        {
+            return ContainsToken(skill?.AffectedSkillEffect, "bodyAttack")
+                ? secondaryStatusPropPercent
+                : ResolveHostilePlayerAreaPrimaryStatusPropPercent(levelData);
         }
 
         private static bool HasHostileMobGameplayCore(SkillData skill, SkillLevelData levelData)
@@ -957,8 +977,27 @@ namespace HaCreator.MapSimulator.Pools
             return levelData?.DotDamage > 0
                    || levelData?.DotTime > 0
                    || skill?.Element == SkillElement.Poison
-                   || UsesHostileDotOrBodyAttackMetadata(skill)
+                   || UsesHostileDotMetadata(skill)
                    || ContainsToken(hostileSearchText, "poison", "venom", "burn", "flame");
+        }
+
+        private static bool UsesHostileDotMetadata(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            bool usesAffectedAreaDot =
+                string.Equals(skill.AffectedSkillEffect, "dot", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(skill.DotType);
+            if (usesAffectedAreaDot)
+            {
+                return true;
+            }
+
+            return string.Equals(skill.MinionAttack, "dot", StringComparison.OrdinalIgnoreCase)
+                   && !string.IsNullOrWhiteSpace(skill.DotType);
         }
 
         private static PlayerMobStatusEffect ResolveHostilePlayerAreaDotEffect(SkillData skill, string hostileSearchText)

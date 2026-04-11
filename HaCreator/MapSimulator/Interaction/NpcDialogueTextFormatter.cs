@@ -34,6 +34,8 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex CurrentQuestReferenceNameRegex = new(@"#y#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestStateRegex = new(@"#u(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CurrentQuestStateRegex = new(@"#u#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestTimerRecordRegex = new(@"#Q(?<token>[A-Za-z0-9_]+)#", RegexOptions.Compiled);
+        private static readonly Regex DailyTimerRecordRegex = new(@"#D(?<token>[A-Za-z0-9_]+)#", RegexOptions.Compiled);
         private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CurrentMapNameRegex = new(@"#m#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -87,6 +89,8 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = CurrentQuestReferenceNameRegex.Replace(formatted, match => ResolveActiveQuestNameText(context));
             formatted = QuestStateRegex.Replace(formatted, match => ResolveQuestStateText(match.Groups[1].Value, context));
             formatted = CurrentQuestStateRegex.Replace(formatted, match => ResolveActiveQuestStateText(context));
+            formatted = QuestTimerRecordRegex.Replace(formatted, match => ResolveQuestDetailRecordText(match.Groups["token"].Value, context));
+            formatted = DailyTimerRecordRegex.Replace(formatted, match => ResolveQuestDetailRecordText(match.Groups["token"].Value, context));
             formatted = SkillNameRegex.Replace(formatted, static match => ResolveSkillName(match.Groups[1].Value));
             formatted = MapNameRegex.Replace(formatted, static match => ResolveMapName(match.Groups[1].Value));
             formatted = CurrentMapNameRegex.Replace(formatted, match => ResolveCurrentMapNameText(context));
@@ -745,6 +749,9 @@ namespace HaCreator.MapSimulator.Interaction
                 "sec" => "0",
                 "date" => "-",
                 "rank" => "-",
+                _ when normalizedToken.EndsWith("limit", StringComparison.OrdinalIgnoreCase) => "0",
+                _ when normalizedToken.StartsWith("gauge", StringComparison.OrdinalIgnoreCase) => "0",
+                _ when normalizedToken.StartsWith("per", StringComparison.OrdinalIgnoreCase) => "0",
                 _ when normalizedToken.StartsWith("have", StringComparison.OrdinalIgnoreCase) => "0",
                 _ => string.Empty
             };

@@ -332,6 +332,15 @@ namespace HaCreator.MapSimulator.Pools
                    ?? skill?.Projectile?.AnimationPath;
         }
 
+        internal static string ResolvePacketOwnedSummonProjectileAnimationPath(
+            ActiveSummon summon,
+            int variantIndex = 0)
+        {
+            return summon?.SkillData?.ResolveSummonProjectileAnimationPath(
+                summon.CurrentAnimationBranchName,
+                variantIndex);
+        }
+
         internal static Vector2 ResolvePacketOwnedMobAttackHitAnchor(
             Rectangle hitbox,
             Vector2 summonPosition,

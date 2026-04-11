@@ -417,7 +417,11 @@ namespace HaCreator.MapSimulator
                     CharacterEquipmentAuthorityPayloadMode.AuthorityResult,
                     payload.RequestId,
                     payload.RequestedAtTick,
-                    ResultKind: CharacterEquipmentAuthorityResultKind.LocalRequestAccept),
+                    OwnerKind: request.OwnerKind,
+                    OwnerSessionId: request.OwnerSessionId,
+                    ExpectedCharacterId: request.ExpectedCharacterId,
+                    ResultKind: CharacterEquipmentAuthorityResultKind.LocalRequestAccept,
+                    HasOwnerSessionContext: true),
                 out message);
         }
 
@@ -455,6 +459,14 @@ namespace HaCreator.MapSimulator
             if (request.RequestedAtTick != payload.RequestedAtTick)
             {
                 message = $"Character equipment authority result for request {payload.RequestId} did not match the pending request timestamp.";
+                return false;
+            }
+
+            if (!TryValidateCharacterEquipmentAuthorityResultOwnerSession(
+                    request,
+                    payload,
+                    out message))
+            {
                 return false;
             }
 
@@ -828,6 +840,14 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!TryValidateCharacterEquipmentAuthorityResultOwnerSession(
+                    completedEnvelope.Request,
+                    payload,
+                    out message))
+            {
+                return false;
+            }
+
             if (!ShouldRetainCompletedCharacterPacketRequest(
                     currTickCount,
                     completedEnvelope.CompletedAtTick,
@@ -963,6 +983,44 @@ namespace HaCreator.MapSimulator
 
             rejectReason = $"Character equipment authority payload arrived on unsupported packet owner {payload.AuthorityPacketType}.";
             return false;
+        }
+
+        internal static bool TryValidateCharacterEquipmentAuthorityResultOwnerSession(
+            EquipmentChangeRequest request,
+            CharacterEquipmentAuthorityPayload payload,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null)
+            {
+                rejectReason = "Character equipment request is missing.";
+                return false;
+            }
+
+            if (!payload.HasOwnerSessionContext)
+            {
+                return true;
+            }
+
+            if (request.OwnerKind != payload.OwnerKind)
+            {
+                rejectReason = $"Character equipment authority result for request {payload.RequestId} did not match the equipment window owner.";
+                return false;
+            }
+
+            if (request.OwnerSessionId != payload.OwnerSessionId)
+            {
+                rejectReason = $"Character equipment authority result for request {payload.RequestId} did not match the equipment window session.";
+                return false;
+            }
+
+            if (request.ExpectedCharacterId != payload.ExpectedCharacterId)
+            {
+                rejectReason = $"Character equipment authority result for request {payload.RequestId} did not match the active character.";
+                return false;
+            }
+
+            return true;
         }
 
         internal static bool TryValidatePacketOwnedCharacterAuthorityScope(

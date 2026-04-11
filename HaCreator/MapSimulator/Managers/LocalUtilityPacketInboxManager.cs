@@ -127,6 +127,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestRewardRaisePutItemConfirmResultPacketType = 1039;
         public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1040;
         public const int QuestRewardRaiseQuestRecordMessagePacketType = 1041;
+        public const int RandomMorphRequestAckPacketType = 1042;
+        public const int QuestAlarmTitleTooltipPacketType = 1043;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
@@ -415,6 +417,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("cuiranking", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = RankingPagePacketType;
+                return true;
+            }
+
+            if (token.Equals("questalarmtooltip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("questalarmtitletooltip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("questhelpertooltip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuiquestalarmtooltip", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestAlarmTitleTooltipPacketType;
                 return true;
             }
 
@@ -1016,6 +1027,15 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("randommorphack", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("randommorphresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("randommorphrequestack", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuirandommorphresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RandomMorphRequestAckPacketType;
+                return true;
+            }
+
             if (token.Equals("funckeymap", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("keymap", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("funckeyinit", StringComparison.OrdinalIgnoreCase))
@@ -1140,7 +1160,9 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == QuestRewardRaisePutItemReleaseResultPacketType
                 || packetType == QuestRewardRaisePutItemConfirmResultPacketType
                 || packetType == QuestRewardRaiseOwnerDestroyResultPacketType
-                || packetType == QuestRewardRaiseQuestRecordMessagePacketType;
+                || packetType == QuestRewardRaiseQuestRecordMessagePacketType
+                || packetType == RandomMorphRequestAckPacketType
+                || packetType == QuestAlarmTitleTooltipPacketType;
         }
 
         public static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
@@ -1344,6 +1366,8 @@ namespace HaCreator.MapSimulator.Managers
                 QuestRewardRaisePutItemConfirmResultPacketType => "RaisePutItemConfirmResult(1039)",
                 QuestRewardRaiseOwnerDestroyResultPacketType => "RaiseOwnerDestroyResult(1040)",
                 QuestRewardRaiseQuestRecordMessagePacketType => "RaiseQuestRecordMessage(1041)",
+                RandomMorphRequestAckPacketType => "RandomMorphRequestAck(1042)",
+                QuestAlarmTitleTooltipPacketType => "QuestAlarmTitleTooltip(1043)",
                 _ => $"packet {packetType}"
             };
         }

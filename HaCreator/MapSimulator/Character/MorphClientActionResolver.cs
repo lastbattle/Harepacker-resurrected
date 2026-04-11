@@ -268,6 +268,12 @@ namespace HaCreator.MapSimulator.Character
                 ["dualVulcanPrep"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
                 ["dualVulcanLoop"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
                 ["dualVulcanEnd"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
+                // Client-table and skill-side dual-shot requests still reach the morph
+                // owner as raw names, while Character/00002000.img backs them with
+                // ordinary shoot frames plus late swing backstops and Morph/*.img only
+                // publishes generic shoot roots for the same surface.
+                ["speedDualShot"] = new[] { "shoot1", "shoot2", "shootF", "windshot", "swingT1", "swingT3" },
+                ["shootDb1"] = new[] { "shoot1", "shoot2", "shootF", "windshot", "swingT1", "swingT3" },
                 // Mercedes `strikeDual` skill rows still request the raw action name,
                 // while Character/00002000.img backs it with shoot-family frames before
                 // mixed swing/stab backstops and Morph/*.img publishes only generic
@@ -405,10 +411,16 @@ namespace HaCreator.MapSimulator.Character
                 ["darkImpale"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab", "alert" },
                 ["glacialChain"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["windEffect"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["jShot"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["multiSniping"] = new[] { "swingT1", "swingT3", "shoot1", "shoot2", "shootF", "windshot", "stabO1", "stabO2", "proneStab" },
                 ["maxForce0"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["maxForce1"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["maxForce2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["maxForce3"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                // `shotC1` is present on the recovered client raw-action surface and
+                // Character/00002000.img backs it with alert first, then stab frames.
+                // Current Morph/*.img publishes no verbatim cannon-shot branch.
+                ["shotC1"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7", "stabO1", "stabO2", "proneStab" },
                 // These dual-blade and resistance raw skill-side requests are absent
                 // from Morph/*.img, while Character/00002000.img resolves them onto
                 // ordinary swing/stab body surfaces.
@@ -449,7 +461,10 @@ namespace HaCreator.MapSimulator.Character
                 ["cannonJump"] = new[] { "jump" },
                 // The client morph action table also carries `spiritJump`; current
                 // Morph/*.img surfaces publish generic jump instead of that raw root.
-                ["spiritJump"] = new[] { "jump" }
+                ["spiritJump"] = new[] { "jump" },
+                // `slayerDoubleJump` is a client raw-action-table entry and body-side
+                // branch, but checked Morph/*.img publishes no verbatim slayer branch.
+                ["slayerDoubleJump"] = new[] { "jump" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedMovementMorphFallbackAliases =

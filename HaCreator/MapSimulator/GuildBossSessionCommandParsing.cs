@@ -15,5 +15,15 @@ namespace HaCreator.MapSimulator
         {
             return int.TryParse(value, out listenPort) && listenPort >= 0 && listenPort <= ushort.MaxValue;
         }
+
+        internal static bool TryParseRemotePort(string value, out int remotePort)
+        {
+            return int.TryParse(value, out remotePort) && remotePort > 0 && remotePort <= ushort.MaxValue;
+        }
+
+        internal static bool TryParseLocalPortFilter(string value, out int localPort)
+        {
+            return int.TryParse(value, out localPort) && localPort > 0 && localPort <= ushort.MaxValue;
+        }
     }
 }

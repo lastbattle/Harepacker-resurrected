@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.UI
             string chatMessage = "",
             string secondaryScreenMessage = "",
             Color? secondaryScreenColor = null,
+            int chatLogType = -1,
             int itemId = 0,
             int quantity = 1,
             int mesoAmount = 0)
@@ -20,6 +21,7 @@ namespace HaCreator.MapSimulator.UI
             ChatMessage = chatMessage ?? string.Empty;
             SecondaryScreenMessage = secondaryScreenMessage ?? string.Empty;
             SecondaryScreenColor = secondaryScreenColor ?? Color.White;
+            ChatLogType = chatLogType;
             ItemId = itemId;
             Quantity = Math.Max(1, quantity);
             MesoAmount = Math.Max(0, mesoAmount);
@@ -30,6 +32,7 @@ namespace HaCreator.MapSimulator.UI
         public string ChatMessage { get; }
         public string SecondaryScreenMessage { get; }
         public Color SecondaryScreenColor { get; }
+        public int ChatLogType { get; }
         public int ItemId { get; }
         public int Quantity { get; }
         public int MesoAmount { get; }
@@ -105,6 +108,7 @@ namespace HaCreator.MapSimulator.UI
                 messages.ChatMessage,
                 messages.SecondaryScreenMessage,
                 messages.SecondaryScreenColor,
+                messages.ChatLogType,
                 quantity: mesoAmount,
                 mesoAmount: mesoAmount);
             message = "Applied packet-owned drop-pickup meso message.";
@@ -225,7 +229,8 @@ namespace HaCreator.MapSimulator.UI
             packetMessage = new PickupNoticePacketMessage(
                 messages.ScreenMessage,
                 screenMessageType,
-                messages.ChatMessage);
+                messages.ChatMessage,
+                chatLogType: messages.ChatLogType);
             message = failureKind switch
             {
                 DropPickupFailureKind.InventoryFull => "Applied packet-owned drop-pickup inventory-full message.",

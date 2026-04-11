@@ -701,7 +701,7 @@ namespace HaCreator.MapSimulator.UI
             int remainingQuantity = Math.Max(1, slotData.Quantity);
             int maxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(type, slotData.MaxStackSize);
 
-            if (IsStackable(type, maxStackSize))
+            if (IsStackable(type, maxStackSize) && !IsSlotLocked(slotData))
             {
                 remainingQuantity = FillExistingStacks(type, slotData, remainingQuantity, maxStackSize);
             }
@@ -731,7 +731,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < slots.Count; i++)
             {
                 InventorySlotData existing = slots[i];
-                if (existing.ItemId != incoming.ItemId || existing.IsDisabled)
+                if (existing.ItemId != incoming.ItemId || IsSlotLocked(existing))
                 {
                     continue;
                 }
@@ -777,13 +777,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            List<InventorySlotData> snapshot = slots
-                .Where(slot => slot != null)
+            List<InventorySlotData> movableSlots = slots
+                .Where(slot => slot != null && !IsSlotLocked(slot))
                 .Select(slot => slot.Clone())
                 .ToList();
+            List<KeyValuePair<int, InventorySlotData>> lockedSlots = CaptureLockedSlots(slots);
 
             slots.Clear();
-            foreach (InventorySlotData slot in snapshot)
+            RestoreLockedSlots(slots, lockedSlots, GetSlotLimit(inventoryType));
+            foreach (InventorySlotData slot in movableSlots)
             {
                 AddItem(inventoryType, slot);
             }
@@ -798,16 +800,28 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<InventorySlotData> ordered = slots
-                .Where(slot => slot != null)
+                .Where(slot => slot != null && !IsSlotLocked(slot))
                 .Select(slot => slot.Clone())
                 .OrderBy(slot => slot.IsDisabled)
                 .ThenBy(slot => slot.ItemId)
                 .ThenBy(slot => slot.ItemName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
                 .ThenByDescending(slot => slot.Quantity)
                 .ToList();
+            List<KeyValuePair<int, InventorySlotData>> lockedSlots = CaptureLockedSlots(slots);
 
             slots.Clear();
-            slots.AddRange(ordered);
+            RestoreLockedSlots(slots, lockedSlots, GetSlotLimit(inventoryType));
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                if (!TryFindNextAvailableSlotIndex(slots, GetSlotLimit(inventoryType), out int targetIndex))
+                {
+                    break;
+                }
+
+                SetSlotAt(slots, targetIndex, ordered[i], GetSlotLimit(inventoryType));
+            }
+
+            TrimTrailingEmptySlots(slots);
         }
 
         public void ClearInventory()
@@ -1382,6 +1396,11 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (IsSlotLocked(targetSlot))
+            {
+                return false;
+            }
+
             int maxStackSize = InventoryItemMetadataResolver.ResolveMaxStack(sourceType, sourceSlot.MaxStackSize ?? targetSlot.MaxStackSize);
             if (IsStackable(sourceType, maxStackSize)
                 && !targetSlot.IsDisabled
@@ -1398,7 +1417,8 @@ namespace HaCreator.MapSimulator.UI
 
                     if (sourceQuantity <= 0)
                     {
-                        slots.RemoveAt(sourceIndex);
+                        slots[sourceIndex] = null;
+                        TrimTrailingEmptySlots(slots);
                     }
                     else
                     {
@@ -1729,6 +1749,48 @@ namespace HaCreator.MapSimulator.UI
         private static bool IsStackable(InventoryType type, int maxStackSize)
         {
             return type != InventoryType.EQUIP && maxStackSize > 1;
+        }
+
+        private static bool IsSlotLocked(InventorySlotData slot)
+        {
+            return slot != null && (slot.IsDisabled || slot.PendingRequestId > 0);
+        }
+
+        private static List<KeyValuePair<int, InventorySlotData>> CaptureLockedSlots(List<InventorySlotData> slots)
+        {
+            List<KeyValuePair<int, InventorySlotData>> lockedSlots = new();
+            if (slots == null)
+            {
+                return lockedSlots;
+            }
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                InventorySlotData slot = slots[i];
+                if (IsSlotLocked(slot))
+                {
+                    lockedSlots.Add(new KeyValuePair<int, InventorySlotData>(i, slot.Clone()));
+                }
+            }
+
+            return lockedSlots;
+        }
+
+        private static void RestoreLockedSlots(
+            List<InventorySlotData> slots,
+            IReadOnlyList<KeyValuePair<int, InventorySlotData>> lockedSlots,
+            int slotLimit)
+        {
+            if (slots == null || lockedSlots == null || lockedSlots.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < lockedSlots.Count; i++)
+            {
+                KeyValuePair<int, InventorySlotData> lockedSlot = lockedSlots[i];
+                SetSlotAt(slots, lockedSlot.Key, lockedSlot.Value.Clone(), slotLimit);
+            }
         }
 
         private static int NormalizeSlotExpansionAmount(int amount)

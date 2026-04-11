@@ -10555,7 +10555,26 @@ namespace HaCreator.MapSimulator.Interaction
                 ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
                 : summaryText;
 
-            return categoryNoticeText;
+            List<string> supplementalLines = BuildVisibleQuestActionLines(
+                actions,
+                build,
+                questId,
+                includeSelectionTag: false,
+                includeRewardItems: false,
+                suppressNegativeMesoLine: actions.MesoReward < 0);
+
+            if (string.IsNullOrWhiteSpace(categoryNoticeText))
+            {
+                return string.Join("\n", supplementalLines);
+            }
+
+            if (supplementalLines.Count == 0)
+            {
+                return categoryNoticeText;
+            }
+
+            supplementalLines.Insert(0, categoryNoticeText);
+            return string.Join("\n", supplementalLines);
         }
 
         private static string ResolvePacketQuestResultPrimaryText(

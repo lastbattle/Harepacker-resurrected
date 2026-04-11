@@ -891,8 +891,10 @@ namespace HaCreator.MapSimulator.Entities
             int index = 0;
             foreach (int eventType in eventTypes)
             {
-                int? priority = ResolveClientHitTypePriority(hitOption, eventType)
-                    ?? TryResolveClientHitEventPriority(eventType, reactorType);
+                int? priority = hitOption >= 0
+                    ? ResolveClientHitTypePriority(hitOption, eventType)
+                    : null;
+                priority ??= TryResolveClientHitEventPriority(eventType, reactorType);
                 if (priority.HasValue && priority.Value >= 0 && priority.Value < bestPriority)
                 {
                     bestPriority = priority.Value;
@@ -1290,6 +1292,7 @@ namespace HaCreator.MapSimulator.Entities
                 .ThenBy(transition => GetHitPriorityLookaheadPriority(transition, request))
                 .ThenBy(transition => GetSameTypeDescendantLookaheadPriority(transition, request))
                 .ThenBy(transition => GetAuthoredGraphContinuationLookaheadPriority(transition, request))
+                .ThenBy(transition => GetAuthoredGraphContinuationWeightLookaheadPriority(transition, request))
                 .ThenBy(transition => transition.Order)
                 .ToArray();
 
@@ -1599,6 +1602,56 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return bestDepth;
+        }
+
+        private int GetAuthoredGraphContinuationWeightLookaheadPriority(AuthoredStateTransition transition, ReactorTransitionRequest request)
+        {
+            if (request.ActivationType == ReactorActivationType.None
+                || request.ActivationType == ReactorActivationType.Quest)
+            {
+                return 0;
+            }
+
+            int resolvedTargetState = ResolveState(transition.TargetState);
+            int continuationWeight = ResolveAuthoredGraphContinuationWeight(
+                resolvedTargetState,
+                new HashSet<int> { resolvedTargetState });
+            return continuationWeight > 0
+                ? -Math.Min(continuationWeight, 128)
+                : 0;
+        }
+
+        private int ResolveAuthoredGraphContinuationWeight(int state, HashSet<int> visitedStates)
+        {
+            int resolvedState = ResolveState(state);
+            if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                return 0;
+            }
+
+            int weight = 0;
+            foreach (AuthoredStateTransition transition in transitions)
+            {
+                if (transition.SelectorValues.Length != 0
+                    || transition.TargetState == resolvedState
+                    || !HasRenderableState(transition.TargetState))
+                {
+                    continue;
+                }
+
+                weight++;
+                int nextState = ResolveState(transition.TargetState);
+                if (!visitedStates.Add(nextState))
+                {
+                    continue;
+                }
+
+                weight += ResolveAuthoredGraphContinuationWeight(nextState, visitedStates);
+                visitedStates.Remove(nextState);
+            }
+
+            return weight;
         }
 
         internal static bool ShouldRejectSelectorDrivenTransitionWithoutSelector(ReactorActivationType activationType)

@@ -42,6 +42,16 @@ namespace HaCreator.MapSimulator.Interaction
         public string RadioCreateLayerLastMutationSource { get; private set; } = "fallback";
         private readonly List<string> _recentRadioCreateLayerMutations = new();
         private const int MaxRecentRadioCreateLayerMutations = 8;
+        public bool HasRadioScheduleContextValue { get; private set; }
+        public string RadioScheduleTrackDescriptor { get; private set; } = string.Empty;
+        public int RadioScheduleTimeValue { get; private set; }
+        public int RadioScheduleBoundCharacterId { get; private set; }
+        public int RadioScheduleLastObservedRuntimeCharacterId { get; private set; }
+        public int RadioScheduleMutationSequence { get; private set; }
+        public int RadioScheduleLastMutationTick { get; private set; } = int.MinValue;
+        public string RadioScheduleLastMutationSource { get; private set; } = "fallback";
+        private readonly List<string> _recentRadioScheduleMutations = new();
+        private const int MaxRecentRadioScheduleMutations = 8;
         public bool HasPersistedApspState =>
             BoundCharacterId > 0
             || ApspReceiveContextToken > 0
@@ -117,6 +127,7 @@ namespace HaCreator.MapSimulator.Interaction
             ApspReceiveContextToken = resolvedCharacterId;
             ApspSendContextToken = resolvedCharacterId;
             ResetRadioCreateLayerState(resolvedCharacterId);
+            ResetRadioScheduleState(resolvedCharacterId);
             ClearChairContext();
         }
 
@@ -336,6 +347,95 @@ namespace HaCreator.MapSimulator.Interaction
                 .ToArray();
         }
 
+        public void ObserveRadioScheduleRuntimeCharacterId(int runtimeCharacterId)
+        {
+            RadioScheduleLastObservedRuntimeCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+        }
+
+        public void EnsureRadioScheduleInitializedFromRuntime(int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            ObserveRadioScheduleRuntimeCharacterId(resolvedCharacterId);
+            if (resolvedCharacterId > 0 && RadioScheduleBoundCharacterId <= 0)
+            {
+                RadioScheduleBoundCharacterId = resolvedCharacterId;
+            }
+        }
+
+        public bool RequiresRadioScheduleCharacterReset(int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            return resolvedCharacterId > 0
+                && RadioScheduleBoundCharacterId > 0
+                && RadioScheduleBoundCharacterId != resolvedCharacterId;
+        }
+
+        public void ResetRadioScheduleForCharacter(int runtimeCharacterId)
+        {
+            int resolvedCharacterId = NormalizeRuntimeCharacterId(runtimeCharacterId);
+            ObserveRadioScheduleRuntimeCharacterId(resolvedCharacterId);
+            ResetRadioScheduleState(resolvedCharacterId);
+            RecordRadioScheduleMutation("runtime-character-reset", int.MinValue);
+        }
+
+        public void SetRadioScheduleContextValue(
+            string trackDescriptor,
+            int timeValue,
+            string source,
+            int currentTick,
+            int runtimeCharacterId)
+        {
+            EnsureRadioScheduleInitializedFromRuntime(runtimeCharacterId);
+            HasRadioScheduleContextValue = true;
+            RadioScheduleTrackDescriptor = string.IsNullOrWhiteSpace(trackDescriptor)
+                ? string.Empty
+                : trackDescriptor.Trim();
+            RadioScheduleTimeValue = Math.Max(0, timeValue);
+            RecordRadioScheduleMutation(source, currentTick);
+        }
+
+        public void ClearRadioScheduleContextValue(string source, int currentTick, int runtimeCharacterId)
+        {
+            EnsureRadioScheduleInitializedFromRuntime(runtimeCharacterId);
+            HasRadioScheduleContextValue = false;
+            RadioScheduleTrackDescriptor = string.Empty;
+            RadioScheduleTimeValue = 0;
+            RecordRadioScheduleMutation(source, currentTick);
+        }
+
+        public string DescribeRadioScheduleContext()
+        {
+            string value = HasRadioScheduleContextValue
+                ? $"{RadioScheduleTrackDescriptor}@{RadioScheduleTimeValue}s"
+                : "unset";
+            string boundCharacter = RadioScheduleBoundCharacterId > 0
+                ? RadioScheduleBoundCharacterId.ToString()
+                : "unset";
+            string runtimeCharacter = RadioScheduleLastObservedRuntimeCharacterId > 0
+                ? RadioScheduleLastObservedRuntimeCharacterId.ToString()
+                : "unset";
+            string mutationTick = RadioScheduleLastMutationTick == int.MinValue
+                ? "idle"
+                : RadioScheduleLastMutationTick.ToString();
+            return
+                $"Packet-owned radio schedule slot: {value}, boundCharacter={boundCharacter}, " +
+                $"runtimeCharacter={runtimeCharacter}, mutationSeq={RadioScheduleMutationSequence}, " +
+                $"lastMutation={RadioScheduleLastMutationSource}@{mutationTick}.";
+        }
+
+        public IReadOnlyList<string> GetRecentRadioScheduleMutations(int maxCount = 3)
+        {
+            if (maxCount <= 0 || _recentRadioScheduleMutations.Count == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            int takeCount = Math.Min(maxCount, _recentRadioScheduleMutations.Count);
+            return _recentRadioScheduleMutations
+                .Skip(Math.Max(0, _recentRadioScheduleMutations.Count - takeCount))
+                .ToArray();
+        }
+
         public void ObserveChairSitResult(int currentTick)
         {
             ChairExclusiveRequestSent = false;
@@ -545,6 +645,18 @@ namespace HaCreator.MapSimulator.Interaction
             _recentRadioCreateLayerMutations.Clear();
         }
 
+        private void ResetRadioScheduleState(int boundCharacterId)
+        {
+            RadioScheduleBoundCharacterId = boundCharacterId;
+            HasRadioScheduleContextValue = false;
+            RadioScheduleTrackDescriptor = string.Empty;
+            RadioScheduleTimeValue = 0;
+            RadioScheduleMutationSequence = 0;
+            RadioScheduleLastMutationTick = int.MinValue;
+            RadioScheduleLastMutationSource = "fallback";
+            _recentRadioScheduleMutations.Clear();
+        }
+
         private void RecordRadioCreateLayerMutation(string source, int currentTick)
         {
             RadioCreateLayerMutationSequence++;
@@ -569,6 +681,33 @@ namespace HaCreator.MapSimulator.Interaction
             if (_recentRadioCreateLayerMutations.Count > MaxRecentRadioCreateLayerMutations)
             {
                 _recentRadioCreateLayerMutations.RemoveAt(0);
+            }
+        }
+
+        private void RecordRadioScheduleMutation(string source, int currentTick)
+        {
+            RadioScheduleMutationSequence++;
+            RadioScheduleLastMutationSource = string.IsNullOrWhiteSpace(source)
+                ? "unknown"
+                : source.Trim();
+            RadioScheduleLastMutationTick = currentTick;
+            string value = HasRadioScheduleContextValue
+                ? $"{RadioScheduleTrackDescriptor}@{RadioScheduleTimeValue}s"
+                : "unset";
+            string tick = currentTick == int.MinValue
+                ? "idle"
+                : currentTick.ToString();
+            string boundCharacter = RadioScheduleBoundCharacterId > 0
+                ? RadioScheduleBoundCharacterId.ToString()
+                : "unset";
+            string runtimeCharacter = RadioScheduleLastObservedRuntimeCharacterId > 0
+                ? RadioScheduleLastObservedRuntimeCharacterId.ToString()
+                : "unset";
+            _recentRadioScheduleMutations.Add(
+                $"seq={RadioScheduleMutationSequence} value={value} source={RadioScheduleLastMutationSource} tick={tick} boundCharacter={boundCharacter} runtimeCharacter={runtimeCharacter}");
+            if (_recentRadioScheduleMutations.Count > MaxRecentRadioScheduleMutations)
+            {
+                _recentRadioScheduleMutations.RemoveAt(0);
             }
         }
 

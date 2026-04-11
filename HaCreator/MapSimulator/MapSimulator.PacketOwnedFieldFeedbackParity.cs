@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.UI;
+using HaCreator.MapEditor.Instance.Misc;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using HaSharedLibrary.Wz;
@@ -35,6 +36,9 @@ namespace HaCreator.MapSimulator
         private Texture2D _packetFieldBossTimerSeparatorTexture;
         private Texture2D _packetFieldClockAmTexture;
         private Texture2D _packetFieldClockPmTexture;
+        private readonly Texture2D[] _remoteEvolRingFloatNoticeFrameTextures = new Texture2D[3];
+        private bool _remoteEvolRingFloatNoticeFrameLoaded;
+        private int _remoteEvolRingFloatNoticeExpireTime = int.MinValue;
         private bool _packetFieldBossTimerAssetsLoaded;
         private const int PacketOwnedSummonEffectStringPoolId = 0x663;
         private const int PacketOwnedScreenEffectStringPoolId = 0x9ED;
@@ -72,9 +76,19 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedFieldClockCakePieLargeOffsetY = 25;
         private const int PacketOwnedFieldClockCakePieLargeWidth = 391;
         private const int PacketOwnedFieldClockCakePieLargeHeight = 83;
+        private const int RemoteEvolRingFloatNoticeDurationMs = 10000;
+        private const int RemoteEvolRingFloatNoticeReferenceWidth = 570;
+        private const int RemoteEvolRingFloatNoticeReferenceHeight = 152;
+        private const int RemoteEvolRingFloatNoticeOffsetX = -285;
+        private const int RemoteEvolRingFloatNoticeOffsetY = 160;
+        private const int RemoteEvolRingFloatNoticeTextOffsetX = 125;
+        private const int RemoteEvolRingFloatNoticeTextOffsetY = 60;
+        private const string RemoteEvolRingFloatNoticePropertyPath = "FloatNotice/10";
+        private const string RemoteEvolRingFloatNoticeText = "Congrats! You have grown your Evolution Ring.";
         private static readonly Color PacketOwnedFieldClockEventBackColor = new(unchecked((uint)-16777152));
         private static readonly Color PacketOwnedFieldClockEventTextColor = new(unchecked((uint)-224));
         private static readonly Color PacketOwnedFieldClockDefaultTextColor = Color.White;
+        private static readonly Color RemoteEvolRingFloatNoticeTextColor = new(68, 34, 0);
         private static readonly int[] PacketOwnedRewardRouletteLayerStringPoolIds =
         {
             0x11E0,
@@ -148,6 +162,7 @@ namespace HaCreator.MapSimulator
             DrawPacketOwnedBossTimerClock(currentTickCount);
             DrawPacketOwnedFieldClock(currentTickCount);
             DrawPacketOwnedFieldFeedbackUiAnimations(currentTickCount);
+            DrawRemoteEvolRingFloatNotice(currentTickCount);
         }
 
         private bool TryApplyPacketOwnedFieldFeedbackPacket(PacketFieldFeedbackPacketKind kind, byte[] payload, out string message)
@@ -274,7 +289,17 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (string.Equals(presentation.EffectName, "Eff_EvolRing", StringComparison.Ordinal))
+            {
+                ShowRemoteEvolRingFloatNotice(presentation.CurrentTime);
+            }
+
             ShowUtilityFeedbackMessage($"Remote user {presentation.CharacterId} triggered status-bar {presentation.EffectName}.");
+        }
+
+        private void ShowRemoteEvolRingFloatNotice(int currentTime)
+        {
+            _remoteEvolRingFloatNoticeExpireTime = currentTime + RemoteEvolRingFloatNoticeDurationMs;
         }
 
         private bool TryPlayPacketOwnedSummonEffectSound(byte effectId)
@@ -464,6 +489,30 @@ namespace HaCreator.MapSimulator
         private void ClearPacketOwnedFieldClock()
         {
             _packetFieldClockState = null;
+        }
+
+        private void RestorePacketOwnedFieldPropertyClockFromMap()
+        {
+            Clock clock = _mapBoard?.BoardItems?.MiscItems?.OfType<Clock>().FirstOrDefault();
+            if (clock == null)
+            {
+                _packetFieldClockState = null;
+                _packetFieldFeedbackRuntime.ClearFieldClockForMapLoad(BuildPacketFieldFeedbackCallbacks());
+                return;
+            }
+
+            DateTime now = DateTime.Now;
+            _packetFieldFeedbackRuntime.RestoreFieldPropertyClock(
+                clock.X,
+                clock.Y,
+                clock.Width,
+                clock.Height,
+                (byte)now.Hour,
+                (byte)now.Minute,
+                (byte)now.Second,
+                currTickCount,
+                BuildPacketFieldFeedbackCallbacks(),
+                out _);
         }
 
         private void UpdatePacketOwnedBossTimerClockState(int currentTickCount)
@@ -668,7 +717,7 @@ namespace HaCreator.MapSimulator
             EnsurePacketOwnedBossTimerAssetsLoaded();
             Texture2D background = _packetFieldBossTimerHourBackgroundTexture ?? _packetFieldBossTimerBackgroundTexture;
             PacketOwnedFieldClockLayout layout = ResolvePacketOwnedFieldClockLayout(
-                _packetFieldClockState.Variant,
+                _packetFieldClockState,
                 _renderParams.RenderWidth,
                 Height);
             if (background == null && !layout.DrawSolidWindow)
@@ -868,6 +917,88 @@ namespace HaCreator.MapSimulator
 
                 Vector2 position = animation.ResolveDrawPosition(frame, _renderParams.RenderWidth, Height);
                 _spriteBatch.Draw(frame.Texture, position, animation.ResolveTint(frameState.FrameAlpha));
+            }
+        }
+
+        private void DrawRemoteEvolRingFloatNotice(int currentTickCount)
+        {
+            if (_spriteBatch == null
+                || _fontChat == null
+                || currentTickCount >= _remoteEvolRingFloatNoticeExpireTime)
+            {
+                return;
+            }
+
+            EnsureRemoteEvolRingFloatNoticeAssetsLoaded();
+
+            Rectangle bounds = ResolveRemoteEvolRingFloatNoticeBounds(
+                _renderParams.RenderWidth,
+                Height);
+            Texture2D left = _remoteEvolRingFloatNoticeFrameTextures[0];
+            Texture2D center = _remoteEvolRingFloatNoticeFrameTextures[1];
+            Texture2D right = _remoteEvolRingFloatNoticeFrameTextures[2];
+
+            if (left != null && center != null && right != null)
+            {
+                int frameHeight = Math.Max(left.Height, Math.Max(center.Height, right.Height));
+                int y = bounds.Y + Math.Max(0, (bounds.Height - frameHeight) / 2);
+                _spriteBatch.Draw(left, new Vector2(bounds.X, y), Color.White);
+                _spriteBatch.Draw(
+                    center,
+                    new Rectangle(
+                        bounds.X + left.Width,
+                        y,
+                        Math.Max(1, bounds.Width - left.Width - right.Width),
+                        center.Height),
+                    Color.White);
+                _spriteBatch.Draw(right, new Vector2(bounds.Right - right.Width, y), Color.White);
+            }
+            else
+            {
+                _packetFieldClockWindowPixelTexture ??= new Texture2D(GraphicsDevice, 1, 1);
+                _packetFieldClockWindowPixelTexture.SetData(new[] { Color.White });
+                _spriteBatch.Draw(_packetFieldClockWindowPixelTexture, bounds, new Color(245, 232, 190, 224));
+            }
+
+            Vector2 textPosition = new(
+                bounds.X + ScalePacketOwnedUiOffset(RemoteEvolRingFloatNoticeTextOffsetX, bounds.Width, RemoteEvolRingFloatNoticeReferenceWidth),
+                bounds.Y + ScalePacketOwnedUiOffset(RemoteEvolRingFloatNoticeTextOffsetY, bounds.Height, RemoteEvolRingFloatNoticeReferenceHeight));
+            _spriteBatch.DrawString(_fontChat, RemoteEvolRingFloatNoticeText, textPosition + new Vector2(1f, 1f), Color.White * 0.8f, 0f, Vector2.Zero, 0.85f, SpriteEffects.None, 0f);
+            _spriteBatch.DrawString(_fontChat, RemoteEvolRingFloatNoticeText, textPosition, RemoteEvolRingFloatNoticeTextColor, 0f, Vector2.Zero, 0.85f, SpriteEffects.None, 0f);
+        }
+
+        private void EnsureRemoteEvolRingFloatNoticeAssetsLoaded()
+        {
+            if (_remoteEvolRingFloatNoticeFrameLoaded || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            _remoteEvolRingFloatNoticeFrameLoaded = true;
+            WzImage uiWindowImage = Program.FindImage("UI", "UIWindow2.img")
+                ?? Program.FindImage("UI", "UIWindow.img");
+            uiWindowImage?.ParseImage();
+            WzImageProperty frameRoot = ResolvePacketOwnedPropertyPath(
+                uiWindowImage,
+                RemoteEvolRingFloatNoticePropertyPath);
+            if (frameRoot == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _remoteEvolRingFloatNoticeFrameTextures.Length; i++)
+            {
+                WzCanvasProperty canvas = frameRoot[i.ToString(CultureInfo.InvariantCulture)] as WzCanvasProperty;
+                System.Drawing.Bitmap bitmap = canvas?.GetLinkedWzCanvasBitmap();
+                if (bitmap == null)
+                {
+                    continue;
+                }
+
+                using (bitmap)
+                {
+                    _remoteEvolRingFloatNoticeFrameTextures[i] = bitmap.ToTexture2D(GraphicsDevice);
+                }
             }
         }
 
@@ -1858,10 +1989,26 @@ namespace HaCreator.MapSimulator
         }
 
         private static PacketOwnedFieldClockLayout ResolvePacketOwnedFieldClockLayout(
-            PacketFieldClockVisualVariant variant,
+            PacketFieldClockVisualState state,
             int renderWidth,
             int renderHeight)
         {
+            if (state?.Variant == PacketFieldClockVisualVariant.FieldProperty
+                && state.Bounds != null)
+            {
+                return new PacketOwnedFieldClockLayout(
+                    PacketOwnedUiAnchorMode.WindowTopLeft,
+                    state.Bounds.X,
+                    state.Bounds.Y,
+                    state.Bounds.Width,
+                    state.Bounds.Height,
+                    DrawSolidWindow: false,
+                    Color.Transparent,
+                    PacketOwnedFieldClockDefaultTextColor,
+                    PreserveRawOffset: true);
+            }
+
+            PacketFieldClockVisualVariant variant = state?.Variant ?? PacketFieldClockVisualVariant.Default;
             return variant switch
             {
                 PacketFieldClockVisualVariant.Event => new PacketOwnedFieldClockLayout(
@@ -1912,12 +2059,16 @@ namespace HaCreator.MapSimulator
         {
             int width = Math.Max(1, layout.Width > 0 ? layout.Width : backgroundWidth);
             int height = Math.Max(1, layout.Height > 0 ? layout.Height : backgroundHeight);
-            int x = layout.AnchorMode switch
+            int x = layout.PreserveRawOffset
+                ? layout.OffsetX
+                : layout.AnchorMode switch
             {
                 PacketOwnedUiAnchorMode.WindowCenter => Math.Max(0, ((renderWidth - width) / 2) + layout.OffsetX),
                 _ => Math.Max(0, layout.OffsetX)
             };
-            int y = layout.AnchorMode switch
+            int y = layout.PreserveRawOffset
+                ? layout.OffsetY
+                : layout.AnchorMode switch
             {
                 PacketOwnedUiAnchorMode.WindowCenter => Math.Max(0, layout.OffsetY),
                 _ => Math.Max(0, layout.OffsetY)
@@ -1942,7 +2093,52 @@ namespace HaCreator.MapSimulator
             int renderWidth,
             int renderHeight)
         {
-            PacketOwnedFieldClockLayout layout = ResolvePacketOwnedFieldClockLayout(variant, renderWidth, renderHeight);
+            PacketOwnedFieldClockLayout layout = ResolvePacketOwnedFieldClockLayout(
+                new PacketFieldClockVisualState(
+                    PacketFieldClockVisualKind.Countdown,
+                    variant,
+                    0,
+                    0,
+                    false,
+                    0,
+                    0,
+                    0,
+                    "test"),
+                renderWidth,
+                renderHeight);
+            return (
+                layout.AnchorMode,
+                layout.OffsetX,
+                layout.OffsetY,
+                layout.Width,
+                layout.Height,
+                layout.BackColor.PackedValue,
+                layout.FallbackTextColor.PackedValue,
+                layout.DrawSolidWindow);
+        }
+
+        internal static (PacketOwnedUiAnchorMode AnchorMode, int OffsetX, int OffsetY, int Width, int Height, uint BackColorArgb, uint TextColorArgb, bool DrawSolidWindow) GetPacketOwnedFieldPropertyClockLayoutForTest(
+            int x,
+            int y,
+            int width,
+            int height,
+            int renderWidth,
+            int renderHeight)
+        {
+            PacketOwnedFieldClockLayout layout = ResolvePacketOwnedFieldClockLayout(
+                new PacketFieldClockVisualState(
+                    PacketFieldClockVisualKind.Realtime,
+                    PacketFieldClockVisualVariant.FieldProperty,
+                    0,
+                    0,
+                    false,
+                    0,
+                    0,
+                    0,
+                    "test",
+                    new PacketFieldClockVisualBounds(x, y, width, height)),
+                renderWidth,
+                renderHeight);
             return (
                 layout.AnchorMode,
                 layout.OffsetX,
@@ -2023,6 +2219,45 @@ namespace HaCreator.MapSimulator
                 "reward-roulette",
                 layerRole);
             return (registration.AnchorMode, registration.OffsetX, registration.OffsetY, registration.DrawOrder, registration.Alpha);
+        }
+
+        internal static (int X, int Y, int Width, int Height, int DurationMs, string PropertyPath) GetRemoteEvolRingFloatNoticeLayoutForTest(
+            int renderWidth,
+            int renderHeight)
+        {
+            Rectangle bounds = ResolveRemoteEvolRingFloatNoticeBounds(renderWidth, renderHeight);
+            return (
+                bounds.X,
+                bounds.Y,
+                bounds.Width,
+                bounds.Height,
+                RemoteEvolRingFloatNoticeDurationMs,
+                RemoteEvolRingFloatNoticePropertyPath);
+        }
+
+        private static Rectangle ResolveRemoteEvolRingFloatNoticeBounds(int renderWidth, int renderHeight)
+        {
+            int width = ScalePacketOwnedUiOffset(
+                RemoteEvolRingFloatNoticeReferenceWidth,
+                renderWidth,
+                PacketOwnedUiReferenceWidth);
+            int height = ScalePacketOwnedUiOffset(
+                RemoteEvolRingFloatNoticeReferenceHeight,
+                renderHeight,
+                PacketOwnedUiReferenceHeight);
+            int x = Math.Max(
+                0,
+                (renderWidth / 2) + ScalePacketOwnedUiOffset(
+                    RemoteEvolRingFloatNoticeOffsetX,
+                    renderWidth,
+                    PacketOwnedUiReferenceWidth));
+            int y = Math.Max(
+                0,
+                ScalePacketOwnedUiOffset(
+                    RemoteEvolRingFloatNoticeOffsetY,
+                    renderHeight,
+                    PacketOwnedUiReferenceHeight));
+            return new Rectangle(x, y, Math.Max(1, width), Math.Max(1, height));
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackCommand(string[] args)
@@ -2287,7 +2522,8 @@ namespace HaCreator.MapSimulator
             int Height,
             bool DrawSolidWindow,
             Color BackColor,
-            Color FallbackTextColor);
+            Color FallbackTextColor,
+            bool PreserveRawOffset = false);
 
         private readonly record struct PacketOwnedUiAlphaRange(
             byte StartAlpha,

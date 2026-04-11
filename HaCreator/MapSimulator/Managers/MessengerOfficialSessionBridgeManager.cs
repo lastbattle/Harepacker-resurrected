@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18504;
         public const ushort DefaultInboundResultOpcode = 372;
+        private const int MaxRecentOutboundPackets = 32;
         private const string DefaultProcessName = "MapleStory";
 
         private readonly string _ownerName;
@@ -42,6 +43,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<MessengerOfficialSessionBridgeMessage> _pendingMessages = new();
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
+        private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -49,6 +51,15 @@ namespace HaCreator.MapSimulator.Managers
         private BridgePair _activePair;
 
         private readonly record struct PendingOutboundPacket(int Opcode, byte[] RawPacket);
+
+        public readonly record struct OutboundPacketTrace(
+            int Opcode,
+            byte RequestType,
+            int PayloadLength,
+            string PayloadHex,
+            string RawPacketHex,
+            string Source,
+            string Summary);
 
         private sealed class BridgePair
         {
@@ -144,6 +155,83 @@ namespace HaCreator.MapSimulator.Managers
                 : string.Empty;
             string inboundText = DescribeInboundOpcodeSet();
             return $"{_ownerName} official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingOutboundPacketCount}; queued={QueuedCount}; inbound opcode {inboundText}{outboundText}.{lastOutbound}{lastQueued} {LastStatus}";
+        }
+
+        public string DescribeRecentOutboundPackets(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentOutboundPackets);
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    return $"{_ownerName} official-session bridge outbound history is empty.";
+                }
+
+                OutboundPacketTrace[] entries = _recentOutboundPackets
+                    .Reverse()
+                    .Take(normalizedCount)
+                    .ToArray();
+                return $"{_ownerName} official-session bridge outbound history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select(entry =>
+                            $"opcode={entry.Opcode} type={entry.RequestType} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+            }
+        }
+
+        public string ClearRecentOutboundPackets()
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+            }
+
+            LastStatus = $"{_ownerName} official-session bridge outbound history cleared.";
+            return LastStatus;
+        }
+
+        public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
+        {
+            if (historyIndexFromNewest <= 0)
+            {
+                status = $"{_ownerName} replay index must be 1 or greater.";
+                LastStatus = status;
+                return false;
+            }
+
+            OutboundPacketTrace[] entries;
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    status = $"No captured {_ownerName} outbound packets are available to replay.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (historyIndexFromNewest > _recentOutboundPackets.Count)
+                {
+                    status = $"{_ownerName} replay index {historyIndexFromNewest} exceeds the {_recentOutboundPackets.Count} captured outbound packet(s).";
+                    LastStatus = status;
+                    return false;
+                }
+
+                entries = _recentOutboundPackets.ToArray();
+            }
+
+            OutboundPacketTrace trace = entries[^historyIndexFromNewest];
+            try
+            {
+                byte[] rawPacket = Convert.FromHexString(trace.RawPacketHex);
+                return TrySendOutboundRawPacket(rawPacket, out status);
+            }
+            catch (FormatException ex)
+            {
+                status = $"Captured {_ownerName} outbound packet {historyIndexFromNewest} could not be replayed: {ex.Message}";
+                LastStatus = status;
+                return false;
+            }
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort, ushort messengerOpcode)
@@ -276,6 +364,7 @@ namespace HaCreator.MapSimulator.Managers
                 SentCount++;
                 LastSentOpcode = opcode;
                 LastSentRawPacket = rawPacket;
+                RecordObservedOutboundPacket(rawPacket, "simulator-send");
                 status = $"Injected {_ownerName} outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
                 LastStatus = status;
                 return true;
@@ -300,9 +389,52 @@ namespace HaCreator.MapSimulator.Managers
             QueuedCount++;
             LastQueuedOpcode = opcode;
             LastQueuedRawPacket = rawPacket;
+            RecordObservedOutboundPacket(rawPacket, "simulator-queue");
             status = $"Queued {_ownerName} outbound opcode {opcode} for deferred live-session injection.";
             LastStatus = status;
             return true;
+        }
+
+        public bool TrySendOutboundRawPacket(byte[] rawPacket, out string status)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] _))
+            {
+                status = $"{_ownerName} outbound raw packet must include a 2-byte opcode.";
+                LastStatus = status;
+                return false;
+            }
+
+            BridgePair pair;
+            lock (_sync)
+            {
+                pair = _activePair;
+            }
+
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = $"{_ownerName} official-session bridge has no connected Maple session for outbound injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] clonedRawPacket = (byte[])rawPacket.Clone();
+            try
+            {
+                pair.ServerSession.SendPacket(clonedRawPacket);
+                SentCount++;
+                LastSentOpcode = opcode;
+                LastSentRawPacket = clonedRawPacket;
+                RecordObservedOutboundPacket(clonedRawPacket, "simulator-replay");
+                status = $"Injected {_ownerName} outbound opcode {opcode} raw packet into live session {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ClearActivePair(pair, $"{_ownerName} official-session outbound injection failed: {ex.Message}");
+                status = LastStatus;
+                return false;
+            }
         }
 
         public void RecordDispatchResult(string source, bool success, string detail)
@@ -439,6 +571,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 pair.ServerSession.SendPacket(packet.ToArray());
+                RecordObservedOutboundPacket(packet.ToArray(), $"official-session-client:{pair.ClientEndpoint}");
             }
             catch (Exception ex)
             {
@@ -481,6 +614,55 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             pair?.Close();
+        }
+
+        private void RecordObservedOutboundPacket(byte[] rawPacket, string source)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload)
+                || _defaultOutboundOpcode > 0 && opcode != _defaultOutboundOpcode
+                || payload.Length == 0)
+            {
+                return;
+            }
+
+            string summary = MessengerPacketCodec.TryDescribeClientRequest(opcode, payload, out string described)
+                ? described
+                : $"{_ownerName} request opcode={opcode} type={payload[0]}";
+
+            lock (_sync)
+            {
+                while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
+                {
+                    _recentOutboundPackets.Dequeue();
+                }
+
+                _recentOutboundPackets.Enqueue(new OutboundPacketTrace(
+                    opcode,
+                    payload[0],
+                    payload.Length,
+                    Convert.ToHexString(payload),
+                    Convert.ToHexString(rawPacket),
+                    source,
+                    summary));
+            }
+
+            LastStatus = $"Forwarded live {_ownerName} outbound opcode {opcode} type {payload[0]} from {source}.";
+        }
+
+        private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
+        {
+            opcode = 0;
+            payload = Array.Empty<byte>();
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            opcode = BitConverter.ToUInt16(rawPacket, 0);
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
+            return true;
         }
 
         private void StopInternal(bool clearPending)

@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeResult = 174;
         private const string DiscoverCommandUsage = "/massacre session discover <remotePort> [processName|pid] [localPort]";
         private const string AttachCommandUsage = "/massacre session attach <remotePort> [processName|pid] [localPort]";
+        private const string AttachProxyCommandUsage = "/massacre session attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]";
         private const string StartAutoCommandUsage = "/massacre session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]";
 
         private readonly ConcurrentQueue<MassacrePacketInboxMessage> _pendingMessages = new();
@@ -980,7 +981,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 string matches = string.Join(", ", filteredCandidates.Select(candidate =>
                     $"{candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} via {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}"));
-                status = $"Massacre official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Use {DiscoverCommandUsage} to inspect them, then narrow with a localPort filter before using {AttachCommandUsage} for passive observation or {StartAutoCommandUsage} for reconnect proxy ownership.";
+                status = $"Massacre official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Use {DiscoverCommandUsage} to inspect them, then narrow with a localPort filter before using {AttachCommandUsage} for passive observation, {AttachProxyCommandUsage} to arm a reconnect proxy for an already-established socket pair, or {StartAutoCommandUsage} for reconnect proxy ownership.";
                 candidate = default;
                 return false;
             }
@@ -1011,6 +1012,7 @@ namespace HaCreator.MapSimulator.Managers
                     .Concat(new[]
                     {
                         $"Use {AttachCommandUsage} for passive observation of an already-established Maple socket pair.",
+                        $"Use {AttachProxyCommandUsage} to arm a reconnect proxy for an already-established Maple socket pair.",
                         $"Use {StartAutoCommandUsage} when you need a reconnect through the localhost proxy for decryptable traffic and outbound injection."
                     }));
         }

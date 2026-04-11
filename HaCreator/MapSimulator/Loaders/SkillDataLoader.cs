@@ -1307,6 +1307,48 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Attack Speed";
             }
+            else if (normalizedClause.Contains("mp consumed", StringComparison.Ordinal)
+                     || normalizedClause.Contains("mp consumption", StringComparison.Ordinal))
+            {
+                label = "MP Consumed";
+            }
+            else if (normalizedClause.Contains("energy per attack", StringComparison.Ordinal))
+            {
+                label = "Energy per Attack";
+            }
+            else if (normalizedClause.Contains("puppet hp", StringComparison.Ordinal))
+            {
+                label = "Puppet HP";
+            }
+            else if (normalizedClause.Contains("throwing stars", StringComparison.Ordinal))
+            {
+                label = "Throwing Stars";
+            }
+            else if (normalizedClause.Contains("damage displaced", StringComparison.Ordinal))
+            {
+                label = "Damage Displaced";
+            }
+            else if (normalizedClause.Contains("recovery rate", StringComparison.Ordinal))
+            {
+                label = "Recovery Rate";
+            }
+            else if (normalizedClause.Contains("damage to hp", StringComparison.Ordinal)
+                     || normalizedClause.Contains("damage as hp", StringComparison.Ordinal))
+            {
+                label = "Damage Converted to HP";
+            }
+            else if (normalizedClause.Contains("max hp and max mp", StringComparison.Ordinal)
+                     || normalizedClause.Contains("max hp and mp", StringComparison.Ordinal))
+            {
+                label = "Max HP / Max MP";
+            }
+            else if ((normalizedClause.Contains("weapon defense", StringComparison.Ordinal)
+                      || normalizedClause.Contains("weapon def", StringComparison.Ordinal))
+                     && (normalizedClause.Contains("magic defense", StringComparison.Ordinal)
+                         || normalizedClause.Contains("magic def", StringComparison.Ordinal)))
+            {
+                label = "Weapon DEF / Magic DEF";
+            }
             else if (normalizedClause.Contains("weapon att", StringComparison.Ordinal)
                      || normalizedClause.Contains("weapon attack", StringComparison.Ordinal))
             {
@@ -1344,6 +1386,11 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Enemy Attack / DEF";
             }
+            else if (normalizedClause.Contains("enemy att", StringComparison.Ordinal)
+                     || normalizedClause.Contains("enemy attack", StringComparison.Ordinal))
+            {
+                label = "Enemy ATT";
+            }
             else if (normalizedClause.Contains("enemy attack avoidance rate", StringComparison.Ordinal)
                      || normalizedClause.Contains("dodge chance", StringComparison.Ordinal)
                      || normalizedClause.Contains("evading enemy attack", StringComparison.Ordinal)
@@ -1373,6 +1420,10 @@ namespace HaCreator.MapSimulator.Loaders
             else if (normalizedClause.Contains("elemental resistance", StringComparison.Ordinal))
             {
                 label = "Elemental Resistance";
+            }
+            else if (normalizedClause.Contains("elemental attributes", StringComparison.Ordinal))
+            {
+                label = "Elemental Attributes";
             }
             else if (normalizedClause.Contains("accuracy", StringComparison.Ordinal))
             {
@@ -1610,6 +1661,11 @@ namespace HaCreator.MapSimulator.Loaders
                 return FormatNegativePercentValue;
             }
 
+            if (clause.IndexOf($"-{placeholderToken}", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return FormatNegativeValue;
+            }
+
             if (clause.IndexOf($"{placeholderToken}%", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return static value => $"{value.ToString(CultureInfo.InvariantCulture)}%";
@@ -1622,12 +1678,14 @@ namespace HaCreator.MapSimulator.Loaders
                 "Weapon DEF" => FormatSignedValue,
                 "Magic DEF" => FormatSignedValue,
                 "Enemy Movement Speed" => FormatSignedValue,
+                "Enemy ATT" => FormatSignedValue,
                 "Accuracy" => FormatSignedValue,
                 "Avoidability" => FormatSignedValue,
                 "Movement Speed" => FormatSignedValue,
                 "Dash Speed" => FormatSignedValue,
                 "Speed" => FormatSignedValue,
                 "Jump" => FormatSignedValue,
+                "Throwing Stars" => FormatSignedValue,
                 "Max HP" => FormatSignedValue,
                 "Max MP" => FormatSignedValue,
                 "All Skill Levels" => FormatSignedValue,
@@ -2012,6 +2070,11 @@ namespace HaCreator.MapSimulator.Loaders
         private static string FormatNegativePercentValue(int value)
         {
             return $"-{Math.Abs(value).ToString(CultureInfo.InvariantCulture)}%";
+        }
+
+        private static string FormatNegativeValue(int value)
+        {
+            return $"-{Math.Abs(value).ToString(CultureInfo.InvariantCulture)}";
         }
 
         private static string FormatActionSpeedValue(int value)

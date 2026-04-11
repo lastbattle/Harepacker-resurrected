@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.Loaders
     {
         private static void RegisterReviveConfirmationWindow(
             UIWindowManager manager,
+            WzImage uiWindowImage,
             WzImage uiWindow2Image,
             WzImage basicImage,
             WzImage soundUIImage,
@@ -22,7 +23,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
-            UIWindowBase window = CreateReviveConfirmationWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
+            UIWindowBase window = CreateReviveConfirmationWindow(uiWindowImage, uiWindow2Image, basicImage, soundUIImage, device, position);
             if (window != null)
             {
                 manager.RegisterCustomWindow(window);
@@ -30,6 +31,7 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         private static UIWindowBase CreateReviveConfirmationWindow(
+            WzImage uiWindowImage,
             WzImage uiWindow2Image,
             WzImage basicImage,
             WzImage soundUIImage,
@@ -37,7 +39,8 @@ namespace HaCreator.MapSimulator.Loaders
             Point position)
         {
             Texture2D frameTexture = CreateFilledTexture(device, 332, 176, Color.Transparent, Color.Transparent);
-            WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty;
+            WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty
+                ?? uiWindowImage?["UtilDlgEx"] as WzSubProperty;
             Texture2D shellTopTexture = LoadCanvasTexture(utilDialogProperty, "t", device);
             Texture2D shellCenterTexture = LoadCanvasTexture(utilDialogProperty, "c", device);
             Texture2D shellBottomTexture = LoadCanvasTexture(utilDialogProperty, "s", device);

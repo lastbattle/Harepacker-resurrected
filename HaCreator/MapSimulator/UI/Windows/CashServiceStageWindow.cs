@@ -1356,7 +1356,7 @@ namespace HaCreator.MapSimulator.UI
         private bool TryApplyCashBuyDone(byte[] payload, out string message)
         {
             message = null;
-            if (payload.Length < 1 + 55)
+            if (payload.Length < 1 + CashItemInfoPacketByteLength)
             {
                 return false;
             }
@@ -1366,7 +1366,7 @@ namespace HaCreator.MapSimulator.UI
             if (!TryReadCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
             {
                 stream.Position = 0;
-                if (stream.Length < 1 + 55)
+                if (stream.Length < 1 + CashItemInfoPacketByteLength)
                 {
                     return false;
                 }
@@ -1378,7 +1378,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            if (snapshot.ItemId <= 0 && payload.Length >= 1 + 55)
+            if (snapshot.ItemId <= 0 && payload.Length >= 1 + CashItemInfoPacketByteLength)
             {
                 stream.Position = 1;
                 if (!TryReadCashItemInfoPacketSnapshot(reader, out snapshot))
@@ -2433,6 +2433,77 @@ namespace HaCreator.MapSimulator.UI
                 serialNumber,
                 revealResult,
                 failureNotice: string.Empty);
+            return true;
+        }
+
+        internal static bool TryDecodeCashItemInfoPacketBodyForTests(
+            byte[] payload,
+            bool hasSubtypeByte,
+            out string fieldSummary,
+            out string detail)
+        {
+            fieldSummary = string.Empty;
+            detail = string.Empty;
+            if (payload == null)
+            {
+                return false;
+            }
+
+            int offset = hasSubtypeByte ? 1 : 0;
+            if (payload.Length < offset + CashItemInfoPacketByteLength)
+            {
+                return false;
+            }
+
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            stream.Position = offset;
+            if (!TryReadCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
+            {
+                return false;
+            }
+
+            fieldSummary = BuildCashItemInfoFieldSummary(snapshot);
+            detail = DescribeCashItemInfoPacketSnapshot(snapshot, includeSerialNumber: true);
+            return true;
+        }
+
+        internal static bool TryDecodeGiftListPacketBodyForTests(
+            byte[] payload,
+            out string[] fieldSummaries,
+            out string[] details)
+        {
+            fieldSummaries = Array.Empty<string>();
+            details = Array.Empty<string>();
+            if (payload == null || payload.Length < sizeof(short))
+            {
+                return false;
+            }
+
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            short giftCount = reader.ReadInt16();
+            if (giftCount < 0 || stream.Length - stream.Position < giftCount * (long)GiftListPacketByteLength)
+            {
+                return false;
+            }
+
+            List<string> summaries = new(Math.Max(0, (int)giftCount));
+            List<string> decodedDetails = new(Math.Max(0, (int)giftCount));
+            for (int i = 0; i < giftCount; i++)
+            {
+                if (!TryReadGiftListPacketSnapshot(reader, i + 1, out GiftListPacketSnapshot snapshot))
+                {
+                    return false;
+                }
+
+                PacketCatalogEntry entry = BuildGiftListPacketEntry(snapshot);
+                summaries.Add(entry.PacketFieldSummary);
+                decodedDetails.Add(entry.Detail);
+            }
+
+            fieldSummaries = summaries.ToArray();
+            details = decodedDetails.ToArray();
             return true;
         }
 
@@ -3559,7 +3630,7 @@ namespace HaCreator.MapSimulator.UI
         private static bool TryReadCashItemInfoPacketSnapshotFromPayload(byte[] payload, out CashItemInfoPacketSnapshot snapshot)
         {
             snapshot = null;
-            if (payload == null || payload.Length < 1 + 55)
+            if (payload == null || payload.Length < 1 + CashItemInfoPacketByteLength)
             {
                 return false;
             }

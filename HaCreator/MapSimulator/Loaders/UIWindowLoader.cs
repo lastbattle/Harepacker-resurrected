@@ -2638,7 +2638,7 @@ namespace HaCreator.MapSimulator.Loaders
                 new Point(x + (cascade * 6), y + (cascade * 3)));
             RegisterQuestRewardRaiseWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 3)));
-            RegisterReviveConfirmationWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+            RegisterReviveConfirmationWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 7), y + (cascade * 3)));
             RegisterRepairDurabilityWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
 
@@ -2680,7 +2680,7 @@ namespace HaCreator.MapSimulator.Loaders
                 MapSimulatorWindowNames.MagicWheel,
                 "Magic Wheel",
                 "Packet-owned magic-wheel key owner routed from the raw KeyConfig palette id 32.",
-                sourcePropertyName: null,
+                sourcePropertyName: "RollingGachaphone",
                 new Point(x + (cascade * 8), y + (cascade * 4)));
             RegisterRadioWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 4)));
@@ -4520,6 +4520,14 @@ namespace HaCreator.MapSimulator.Loaders
                 device,
                 parentWidth: 262,
                 parentHeight: 247);
+            WzImage uiWindowImage = global::HaCreator.Program.FindImage("ui", "UIWindow.img");
+            WzSubProperty utilDlgExProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty
+                ?? uiWindowImage?["UtilDlgEx"] as WzSubProperty;
+            window.RegisterEntrustedBlacklistModalAssets(
+                CreateUtilDlgNoticeFrameTexture(utilDlgExProperty, uiWindowImage, uiWindow2Image, device),
+                LoadButton(utilDlgExProperty, "BtOK", clickSound, overSound, device),
+                LoadButton(utilDlgExProperty, "BtClose", clickSound, overSound, device),
+                LoadButton(utilDlgExProperty, "BtOK", clickSound, overSound, device));
             return window;
         }
 
@@ -8395,6 +8403,7 @@ namespace HaCreator.MapSimulator.Loaders
             Dictionary<int, Texture2D> mainKeyTextures = LoadIndexedCanvasTextures(sourceProperty["key"] as WzSubProperty, device);
             Dictionary<int, Texture2D> paletteTextures = LoadIndexedCanvasTextures(sourceProperty["icon"] as WzSubProperty, device);
             Texture2D[] noticeTextures = LoadIndexedCanvasArray(sourceProperty["notice"] as WzSubProperty, 3, device);
+            Texture2D[] itemNumberTextures = LoadIndexedCanvasArray(basicImage?["ItemNo"] as WzSubProperty, 10, device);
             KeyConfigWindow window = new KeyConfigWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.KeyConfig,
@@ -8402,7 +8411,8 @@ namespace HaCreator.MapSimulator.Loaders
                 mainKeyTextures,
                 mainKeyTextures,
                 noticeTextures,
-                paletteTextures)
+                paletteTextures,
+                itemNumberTextures)
             {
                 Position = position
             };
@@ -8433,7 +8443,8 @@ namespace HaCreator.MapSimulator.Loaders
                         mainKeyTextures,
                         quickSlotKeyTextures,
                         noticeTextures,
-                        paletteTextures)
+                        paletteTextures,
+                        itemNumberTextures)
                     {
                         Position = position
                     };
@@ -9071,7 +9082,8 @@ namespace HaCreator.MapSimulator.Loaders
             string body,
             Point position)
         {
-            Texture2D frameTexture = LoadCanvasTexture(sourceProperty, "backgrnd", device);
+            Texture2D frameTexture = LoadCanvasTexture(sourceProperty, "backgrnd", device)
+                ?? LoadCanvasTexture(sourceProperty, "back", device);
             if (frameTexture == null)
             {
                 return CreatePlaceholderUtilityWindow(basicImage, soundUIImage, device, windowName, title, body, position);

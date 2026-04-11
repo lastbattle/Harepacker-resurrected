@@ -61,10 +61,22 @@ namespace HaCreator.MapSimulator
             "Gulim",
             "Tahoma",
         };
+        private static readonly Keys[] InitialQuizOwnerEditKeyPriority =
+        {
+            Keys.Back,
+            Keys.Delete,
+            Keys.Left,
+            Keys.Right,
+            Keys.Home,
+            Keys.End,
+        };
 
         private readonly StringBuilder _initialQuizOwnerInput = new(InitialQuizOwnerInputMaxLength);
         private int _initialQuizOwnerCursorIndex;
         private int _initialQuizOwnerCursorBlinkStartedAt;
+        private Keys _initialQuizOwnerHeldEditKey = Keys.None;
+        private int _initialQuizOwnerKeyHoldStartedAt;
+        private int _initialQuizOwnerLastKeyRepeatAt;
         private bool _initialQuizOwnerHoveringOkButton;
         private bool _initialQuizOwnerPressedOkButton;
         private bool _initialQuizOwnerResultSent;
@@ -140,6 +152,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerResultSent = false;
             _initialQuizOwnerTimeoutCloseArmed = false;
             _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+            ResetInitialQuizOwnerHeldEditKey();
         }
 
         private void ClearInitialQuizOwnerInputState()
@@ -151,6 +164,7 @@ namespace HaCreator.MapSimulator
             _initialQuizOwnerResultSent = false;
             _initialQuizOwnerTimeoutCloseArmed = false;
             _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+            ResetInitialQuizOwnerHeldEditKey();
         }
 
         private void UpdateInitialQuizOwner(int currentTickCount)
@@ -283,93 +297,130 @@ namespace HaCreator.MapSimulator
 
             if (!inputFocused)
             {
+                ResetInitialQuizOwnerHeldEditKey();
                 return buttonFocused;
             }
 
-            if (newKeyboardState.IsKeyDown(Keys.Back) && oldKeyboardState.IsKeyUp(Keys.Back))
-            {
-                if (_initialQuizOwnerCursorIndex > 0)
-                {
-                    _initialQuizOwnerInput.Remove(_initialQuizOwnerCursorIndex - 1, 1);
-                    _initialQuizOwnerCursorIndex--;
-                    _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
-                }
-
-                return true;
-            }
-
-            if (newKeyboardState.IsKeyDown(Keys.Delete) && oldKeyboardState.IsKeyUp(Keys.Delete))
-            {
-                if (_initialQuizOwnerCursorIndex < _initialQuizOwnerInput.Length)
-                {
-                    _initialQuizOwnerInput.Remove(_initialQuizOwnerCursorIndex, 1);
-                    _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
-                }
-
-                return true;
-            }
-
-            if (newKeyboardState.IsKeyDown(Keys.Left) && oldKeyboardState.IsKeyUp(Keys.Left))
-            {
-                if (_initialQuizOwnerCursorIndex > 0)
-                {
-                    _initialQuizOwnerCursorIndex--;
-                    _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
-                }
-
-                return true;
-            }
-
-            if (newKeyboardState.IsKeyDown(Keys.Right) && oldKeyboardState.IsKeyUp(Keys.Right))
-            {
-                if (_initialQuizOwnerCursorIndex < _initialQuizOwnerInput.Length)
-                {
-                    _initialQuizOwnerCursorIndex++;
-                    _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
-                }
-
-                return true;
-            }
-
-            if (newKeyboardState.IsKeyDown(Keys.Home) && oldKeyboardState.IsKeyUp(Keys.Home))
-            {
-                _initialQuizOwnerCursorIndex = 0;
-                _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
-                return true;
-            }
-
-            if (newKeyboardState.IsKeyDown(Keys.End) && oldKeyboardState.IsKeyUp(Keys.End))
-            {
-                _initialQuizOwnerCursorIndex = _initialQuizOwnerInput.Length;
-                _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
-                return true;
-            }
-
             bool shiftPressed = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
-            foreach (Keys key in newKeyboardState.GetPressedKeys())
+            if (TryResolveInitialQuizOwnerNewEditKey(newKeyboardState, oldKeyboardState, out Keys newEditKey))
             {
-                if (oldKeyboardState.IsKeyDown(key))
+                TrackInitialQuizOwnerHeldEditKey(newEditKey, currentTickCount);
+                ApplyInitialQuizOwnerEditKey(newEditKey, shiftPressed, currentTickCount);
+                return true;
+            }
+
+            if (_initialQuizOwnerHeldEditKey != Keys.None && newKeyboardState.IsKeyDown(_initialQuizOwnerHeldEditKey))
+            {
+                if (KeyboardTextInputHelper.ShouldRepeatKeyUsingFixedCadence(
+                    _initialQuizOwnerHeldEditKey,
+                    newKeyboardState,
+                    _initialQuizOwnerKeyHoldStartedAt,
+                    _initialQuizOwnerLastKeyRepeatAt,
+                    currentTickCount))
                 {
-                    continue;
+                    _initialQuizOwnerLastKeyRepeatAt = currentTickCount;
+                    ApplyInitialQuizOwnerEditKey(_initialQuizOwnerHeldEditKey, shiftPressed, currentTickCount);
                 }
 
-                char? typed = TryMapInitialQuizOwnerChar(key, shiftPressed);
-                if (!typed.HasValue)
-                {
-                    continue;
-                }
+                return true;
+            }
 
-                if (_initialQuizOwnerInput.Length >= InitialQuizOwnerInputMaxLength)
-                {
-                    break;
-                }
-
-                _initialQuizOwnerInput.Insert(_initialQuizOwnerCursorIndex, typed.Value);
-                _initialQuizOwnerCursorIndex++;
-                _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+            if (_initialQuizOwnerHeldEditKey != Keys.None)
+            {
+                ResetInitialQuizOwnerHeldEditKey();
             }
 
             return true;
+        }
+
+        private static bool TryResolveInitialQuizOwnerNewEditKey(KeyboardState newKeyboardState, KeyboardState oldKeyboardState, out Keys editKey)
+        {
+            Keys[] pressedKeys = newKeyboardState.GetPressedKeys();
+            foreach (Keys candidate in InitialQuizOwnerEditKeyPriority)
+            {
+                if (newKeyboardState.IsKeyDown(candidate) && oldKeyboardState.IsKeyUp(candidate))
+                {
+                    editKey = candidate;
+                    return true;
+                }
+            }
+
+            bool shiftPressed = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
+            foreach (Keys candidate in pressedKeys)
+            {
+                if (oldKeyboardState.IsKeyDown(candidate) || !TryMapInitialQuizOwnerChar(candidate, shiftPressed).HasValue)
+                {
+                    continue;
+                }
+
+                editKey = candidate;
+                return true;
+            }
+
+            editKey = Keys.None;
+            return false;
+        }
+
+        private void TrackInitialQuizOwnerHeldEditKey(Keys editKey, int currentTickCount)
+        {
+            _initialQuizOwnerHeldEditKey = editKey;
+            _initialQuizOwnerKeyHoldStartedAt = currentTickCount;
+            _initialQuizOwnerLastKeyRepeatAt = currentTickCount;
+        }
+
+        private void ResetInitialQuizOwnerHeldEditKey()
+        {
+            _initialQuizOwnerHeldEditKey = Keys.None;
+            _initialQuizOwnerKeyHoldStartedAt = 0;
+            _initialQuizOwnerLastKeyRepeatAt = 0;
+        }
+
+        private void ApplyInitialQuizOwnerEditKey(Keys editKey, bool shiftPressed, int currentTickCount)
+        {
+            switch (editKey)
+            {
+                case Keys.Back:
+                    if (_initialQuizOwnerCursorIndex > 0)
+                    {
+                        _initialQuizOwnerInput.Remove(_initialQuizOwnerCursorIndex - 1, 1);
+                        _initialQuizOwnerCursorIndex--;
+                    }
+                    break;
+                case Keys.Delete:
+                    if (_initialQuizOwnerCursorIndex < _initialQuizOwnerInput.Length)
+                    {
+                        _initialQuizOwnerInput.Remove(_initialQuizOwnerCursorIndex, 1);
+                    }
+                    break;
+                case Keys.Left:
+                    if (_initialQuizOwnerCursorIndex > 0)
+                    {
+                        _initialQuizOwnerCursorIndex--;
+                    }
+                    break;
+                case Keys.Right:
+                    if (_initialQuizOwnerCursorIndex < _initialQuizOwnerInput.Length)
+                    {
+                        _initialQuizOwnerCursorIndex++;
+                    }
+                    break;
+                case Keys.Home:
+                    _initialQuizOwnerCursorIndex = 0;
+                    break;
+                case Keys.End:
+                    _initialQuizOwnerCursorIndex = _initialQuizOwnerInput.Length;
+                    break;
+                default:
+                    char? typed = TryMapInitialQuizOwnerChar(editKey, shiftPressed);
+                    if (typed.HasValue && _initialQuizOwnerInput.Length < InitialQuizOwnerInputMaxLength)
+                    {
+                        _initialQuizOwnerInput.Insert(_initialQuizOwnerCursorIndex, typed.Value);
+                        _initialQuizOwnerCursorIndex++;
+                    }
+                    break;
+            }
+
+            _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
         }
 
         private void SubmitInitialQuizOwnerResult(string answerText, int currentTickCount, bool showFeedback, bool validateAnswer = true)

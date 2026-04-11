@@ -133,6 +133,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D> _mainKeyTextures;
         private readonly Dictionary<int, Texture2D> _quickSlotKeyTextures;
         private readonly Texture2D[] _noticeTextures;
+        private readonly Texture2D[] _itemNumberTextures;
         private readonly string _windowName;
         private readonly IDXObject _mainFrame;
         private readonly Dictionary<InputAction, KeyBinding> _stagedBindings = new();
@@ -218,7 +219,8 @@ namespace HaCreator.MapSimulator.UI
             Dictionary<int, Texture2D> mainKeyTextures,
             Dictionary<int, Texture2D> quickSlotKeyTextures,
             Texture2D[] noticeTextures,
-            IReadOnlyDictionary<int, Texture2D> paletteTexturesBySlot = null)
+            IReadOnlyDictionary<int, Texture2D> paletteTexturesBySlot = null,
+            Texture2D[] itemNumberTextures = null)
             : base(frame)
         {
             _mainFrame = frame;
@@ -227,6 +229,7 @@ namespace HaCreator.MapSimulator.UI
             _mainKeyTextures = mainKeyTextures ?? new Dictionary<int, Texture2D>();
             _quickSlotKeyTextures = quickSlotKeyTextures ?? _mainKeyTextures;
             _noticeTextures = noticeTextures ?? Array.Empty<Texture2D>();
+            _itemNumberTextures = itemNumberTextures ?? Array.Empty<Texture2D>();
             if (paletteTexturesBySlot != null)
             {
                 foreach (KeyValuePair<int, Texture2D> entry in paletteTexturesBySlot)
@@ -1155,6 +1158,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (shortcutVisualState.DrawLayer == ShortcutVisualState.ClientDrawLayer.ItemStack
+                && TryDrawClientFuncKeyMappedItemNumber(sprite, cellBounds, shortcutVisualState.QuantityText, compact))
+            {
+                return;
+            }
+
             float scale = compact ? 0.28f : 0.36f;
             Vector2 quantitySize = _font.MeasureString(shortcutVisualState.QuantityText) * scale;
             Vector2 quantityPosition = ResolveClientFuncKeyMappedQuantityPosition(
@@ -1171,6 +1180,73 @@ namespace HaCreator.MapSimulator.UI
                 scale,
                 SpriteEffects.None,
                 0f);
+        }
+
+        private bool TryDrawClientFuncKeyMappedItemNumber(SpriteBatch sprite, Rectangle cellBounds, string quantityText, bool compact)
+        {
+            if (_itemNumberTextures.Length < 10
+                || string.IsNullOrWhiteSpace(quantityText))
+            {
+                return false;
+            }
+
+            float scale = ResolveClientFuncKeyMappedItemNumberScale(cellBounds, compact);
+            Vector2 position = ResolveClientFuncKeyMappedItemNumberPosition(cellBounds, _itemNumberTextures, quantityText, scale);
+            for (int i = 0; i < quantityText.Length; i++)
+            {
+                int digit = quantityText[i] - '0';
+                if (digit < 0 || digit >= 10)
+                {
+                    continue;
+                }
+
+                Texture2D digitTexture = _itemNumberTextures[digit];
+                if (digitTexture == null || digitTexture.IsDisposed)
+                {
+                    return false;
+                }
+
+                sprite.Draw(digitTexture, position, null, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                position.X += digitTexture.Width * scale;
+            }
+
+            return true;
+        }
+
+        internal static float ResolveClientFuncKeyMappedItemNumberScale(Rectangle cellBounds, bool compact)
+        {
+            if (!compact)
+            {
+                return 1f;
+            }
+
+            return Math.Max(0.25f, Math.Min(1f, cellBounds.Height / (float)ClientFuncKeyMappedCellSize));
+        }
+
+        internal static Vector2 ResolveClientFuncKeyMappedItemNumberPosition(
+            Rectangle cellBounds,
+            IReadOnlyList<Texture2D> itemNumberTextures,
+            string quantityText,
+            float scale)
+        {
+            float drawWidth = 0f;
+            if (itemNumberTextures != null && !string.IsNullOrEmpty(quantityText))
+            {
+                for (int i = 0; i < quantityText.Length; i++)
+                {
+                    int digit = quantityText[i] - '0';
+                    if (digit >= 0 && digit < itemNumberTextures.Count)
+                    {
+                        drawWidth += (itemNumberTextures[digit]?.Width ?? 0) * scale;
+                    }
+                }
+            }
+
+            float x = Math.Min(cellBounds.X, cellBounds.Right - drawWidth);
+            float y = Math.Min(
+                cellBounds.Bottom - 1f,
+                cellBounds.Y + ((ClientFuncKeyMappedItemCountTop / (float)ClientFuncKeyMappedCellSize) * cellBounds.Height));
+            return new Vector2(x, y);
         }
 
         internal static Vector2 ResolveClientFuncKeyMappedQuantityPosition(

@@ -1328,6 +1328,31 @@ namespace HaCreator.MapSimulator.Animation
         CanvasLayerRecoveredInsertCommand[] InsertCommands,
         bool RegistersOneTimeAnimation);
 
+    internal enum CanvasLayerRecoveredNativeOperationKind
+    {
+        CreateLayer,
+        SetLayerOption,
+        SetLayerPriority,
+        InsertCanvas,
+        SetLayerPosition,
+        RegisterOneTimeAnimation
+    }
+
+    /// <summary>
+    /// Managed replay of the native Gr2D calls recovered from CAnimationDisplayer::Effect_HP.
+    /// This keeps the live one-time layer tied to the client call sequence even though the
+    /// simulator renders through XNA textures instead of IWzGr2DLayer COM objects.
+    /// </summary>
+    internal readonly record struct CanvasLayerRecoveredNativeOperation(
+        CanvasLayerRecoveredNativeOperationKind Kind,
+        AnimationCanvasLayerContent? Content,
+        Point Offset,
+        int StartDelayMs,
+        CanvasLayerRecoveredInsertCanvasSettings InsertCanvasSettings,
+        CanvasLayerRecoveredMoveSettings MoveSettings,
+        CanvasLayerRecoveredPositionSettings Position,
+        int Value);
+
     /// <summary>
     /// Owner-prepared source trace that stays attached to managed one-time canvas layers.
     /// </summary>
@@ -1381,6 +1406,8 @@ namespace HaCreator.MapSimulator.Animation
         internal CanvasLayerRecoveredLayerSettings RecoveredLayerSettings { get; private set; }
         internal CanvasLayerRecoveredRegistrationTrace RecoveredRegistrationTrace { get; private set; }
         internal CanvasLayerRecoveredOwnerTrace? RecoveredOwnerTrace { get; private set; }
+        internal IReadOnlyList<CanvasLayerRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
+            = Array.Empty<CanvasLayerRecoveredNativeOperation>();
 
         internal static CanvasLayerInsertDescriptor[] BuildInsertDescriptors(
             int holdDurationMs,
@@ -1499,6 +1526,9 @@ namespace HaCreator.MapSimulator.Animation
                 recoveredLayerSettings,
                 registersOneTimeAnimation: true);
             RecoveredOwnerTrace = recoveredOwnerTrace;
+            RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(
+                RecoveredRegistrationTrace,
+                recoveredOwnerTrace);
         }
 
         public bool Update(int currentTimeMs)
@@ -1550,6 +1580,113 @@ namespace HaCreator.MapSimulator.Animation
             RecoveredLayerSettings = default;
             RecoveredRegistrationTrace = default;
             RecoveredOwnerTrace = null;
+            RecoveredNativeExecutionTrace = Array.Empty<CanvasLayerRecoveredNativeOperation>();
+        }
+
+        internal static CanvasLayerRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
+            CanvasLayerRecoveredRegistrationTrace registrationTrace,
+            CanvasLayerRecoveredOwnerTrace? ownerTrace)
+        {
+            CanvasLayerRecoveredInsertCommand[] insertCommands =
+                registrationTrace.InsertCommands ?? Array.Empty<CanvasLayerRecoveredInsertCommand>();
+            bool hasOverlayPositionWrite = ownerTrace?.KeepsOverlayOnSeparateLayer == true;
+            int capacity = 3 + insertCommands.Length + 1 + (hasOverlayPositionWrite ? 1 : 0)
+                + (registrationTrace.RegistersOneTimeAnimation ? 1 : 0);
+            var operations = new List<CanvasLayerRecoveredNativeOperation>(capacity)
+            {
+                new(
+                    CanvasLayerRecoveredNativeOperationKind.CreateLayer,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    registrationTrace.LayerSettings.CreateLayerCanvasValue),
+                new(
+                    CanvasLayerRecoveredNativeOperationKind.SetLayerOption,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    registrationTrace.LayerSettings.InitialLayerOptionValue),
+                new(
+                    CanvasLayerRecoveredNativeOperationKind.SetLayerPriority,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    registrationTrace.LayerSettings.LayerPriorityValue)
+            };
+
+            for (int i = 0; i < insertCommands.Length; i++)
+            {
+                CanvasLayerRecoveredInsertCommand command = insertCommands[i];
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.InsertCanvas,
+                    command.Content,
+                    command.Offset,
+                    command.StartDelayMs,
+                    command.InsertCanvasSettings,
+                    command.MoveSettings,
+                    default,
+                    0));
+            }
+
+            operations.Add(new CanvasLayerRecoveredNativeOperation(
+                CanvasLayerRecoveredNativeOperationKind.SetLayerPosition,
+                AnimationCanvasLayerContent.PrimaryCanvas,
+                Point.Zero,
+                0,
+                default,
+                default,
+                registrationTrace.Position,
+                0));
+
+            if (hasOverlayPositionWrite)
+            {
+                Point overlayOffset = ownerTrace.GetValueOrDefault().OverlayOffset;
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.SetLayerPosition,
+                    AnimationCanvasLayerContent.OverlayCanvas,
+                    overlayOffset,
+                    0,
+                    default,
+                    default,
+                    new CanvasLayerRecoveredPositionSettings(
+                        registrationTrace.Position.Left,
+                        registrationTrace.Position.Top + overlayOffset.Y),
+                    0));
+            }
+
+            operations.Add(new CanvasLayerRecoveredNativeOperation(
+                CanvasLayerRecoveredNativeOperationKind.SetLayerOption,
+                null,
+                Point.Zero,
+                0,
+                default,
+                default,
+                default,
+                registrationTrace.LayerSettings.FinalizeLayerOptionValue));
+
+            if (registrationTrace.RegistersOneTimeAnimation)
+            {
+                operations.Add(new CanvasLayerRecoveredNativeOperation(
+                    CanvasLayerRecoveredNativeOperationKind.RegisterOneTimeAnimation,
+                    null,
+                    Point.Zero,
+                    0,
+                    default,
+                    default,
+                    default,
+                    0));
+            }
+
+            return operations.ToArray();
         }
 
         internal static CanvasLayerRecoveredRegistrationTrace BuildRecoveredRegistrationTrace(

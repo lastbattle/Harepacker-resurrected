@@ -1059,6 +1059,22 @@ namespace HaCreator.MapSimulator.Character
             return !string.IsNullOrWhiteSpace(actionName);
         }
 
+        public static IEnumerable<string> EnumerateClientRawActionStrings(int maxActionCodeExclusive = int.MaxValue)
+        {
+            foreach (KeyValuePair<int, string> entry in ClientRawActionCodeMap.OrderBy(static pair => pair.Key))
+            {
+                if (entry.Key >= maxActionCodeExclusive)
+                {
+                    yield break;
+                }
+
+                if (!string.IsNullOrWhiteSpace(entry.Value))
+                {
+                    yield return entry.Value;
+                }
+            }
+        }
+
         public static bool TryGetClientRawActionCode(string actionName, out int actionCode)
         {
             if (ClientActionStringCodeMap.TryGetValue(actionName ?? string.Empty, out actionCode))

@@ -3527,7 +3527,8 @@ namespace HaCreator.MapSimulator.Pools
                     if (preferredTargetMobId <= 0
                         || orderedTargetIds.Count >= maxTargets
                         || orderedTargetIds.Contains(preferredTargetMobId)
-                        || !candidatesById.ContainsKey(preferredTargetMobId))
+                        || !candidatesById.TryGetValue(preferredTargetMobId, out PacketOwnedExpiryTargetCandidate preferredCandidate)
+                        || !IsCandidateInEitherPacketOwnedSummonAttackRange(summon, preferredCandidate))
                     {
                         continue;
                     }
@@ -3582,6 +3583,24 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return orderedTargetIds.ToArray();
+        }
+
+        private static bool IsCandidateInEitherPacketOwnedSummonAttackRange(
+            ActiveSummon summon,
+            PacketOwnedExpiryTargetCandidate candidate)
+        {
+            return candidate.MobObjectId > 0
+                   && !candidate.Hitbox.IsEmpty
+                   && (IsMobHitboxInPacketOwnedSummonAttackRange(
+                           summon,
+                           GetPacketOwnedSummonAttackBounds(summon, facingRightOverride: true),
+                           candidate.Hitbox,
+                           facingRightOverride: true)
+                       || IsMobHitboxInPacketOwnedSummonAttackRange(
+                           summon,
+                           GetPacketOwnedSummonAttackBounds(summon, facingRightOverride: false),
+                           candidate.Hitbox,
+                           facingRightOverride: false));
         }
 
         internal static bool ResolvePacketOwnedExpiryFallbackFacingRight(
@@ -4628,7 +4647,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             bool hasLiveHitFrames = liveHitEffectEntry?.Frames?.Count > 0;
-            bool needsTemplateAttackInfo = hasLiveHitFrames && liveAttackInfo == null;
+            bool needsTemplateAttackInfo = ShouldBorrowTemplateAttackInfoForLiveHitEntry(liveAttackInfo, liveHitEffectEntry);
             bool needsTemplateSoundKey = !HasRequestedLivePacketMobAttackSound(mob, damageSoundIndex);
             MobAnimationSet templateAnimationSet = null;
             MobAnimationSet.AttackInfoMetadata templateAttackInfo = null;
@@ -4681,11 +4700,17 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (liveHitEffectEntry?.Frames?.Count > 0)
             {
+                MobAnimationSet.AttackInfoMetadata attackInfo = ShouldBorrowTemplateAttackInfoForLiveHitEntry(
+                        liveAttackInfo,
+                        liveHitEffectEntry)
+                    ? templateAttackInfo ?? liveAttackInfo
+                    : liveAttackInfo ?? templateAttackInfo;
+
                 return new PacketOwnedMobAttackFeedbackPresentation(
-                    templateAttackInfo ?? liveAttackInfo,
+                    attackInfo,
                     liveHitEffectEntry,
                     templateCharDamSoundKey,
-                    ResolvePacketMobAttackFeedbackHitAfterMs(templateAttackInfo ?? liveAttackInfo));
+                    ResolvePacketMobAttackFeedbackHitAfterMs(attackInfo));
             }
 
             return new PacketOwnedMobAttackFeedbackPresentation(
@@ -4693,6 +4718,30 @@ namespace HaCreator.MapSimulator.Pools
                 templateHitEffectEntry,
                 templateCharDamSoundKey,
                 ResolvePacketMobAttackFeedbackHitAfterMs(templateAttackInfo ?? liveAttackInfo));
+        }
+
+        internal static bool ShouldBorrowTemplateAttackInfoForLiveHitEntry(
+            MobAnimationSet.AttackInfoMetadata liveAttackInfo,
+            MobAnimationSet.AttackHitEffectEntry liveHitEffectEntry)
+        {
+            if (liveHitEffectEntry?.Frames?.Count <= 0)
+            {
+                return false;
+            }
+
+            if (liveAttackInfo == null)
+            {
+                return true;
+            }
+
+            if (!liveHitEffectEntry.IsAttackFrameOwned)
+            {
+                return false;
+            }
+
+            int frameIndex = liveHitEffectEntry.SourceFrameIndex;
+            return !liveAttackInfo.HasExplicitHitAttachMetadata(frameIndex)
+                   && !liveAttackInfo.HasExplicitFacingAttachMetadata(frameIndex);
         }
 
         internal static int ResolvePacketMobAttackFeedbackHitAfterMs(PacketOwnedMobAttackFeedbackPresentation presentation)

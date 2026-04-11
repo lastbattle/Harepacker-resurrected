@@ -41,6 +41,12 @@ namespace HaCreator.MapSimulator.UI
         public string LastOutboundSummary { get; private set; } = string.Empty;
         public string LastOwnerState { get; private set; } = string.Empty;
         public bool AskItemWishlist { get; private set; }
+        public int PendingWishlistRegisterItemId { get; private set; }
+        public string PendingWishlistRegisterTitle { get; private set; } = string.Empty;
+        public string PendingWishlistRegisterCategoryLabel { get; private set; } = string.Empty;
+        public bool HasPendingWishlistRegister => PendingWishlistRegisterItemId > 0
+            || !string.IsNullOrWhiteSpace(PendingWishlistRegisterTitle)
+            || !string.IsNullOrWhiteSpace(PendingWishlistRegisterCategoryLabel);
         public AdminShopPacketOwnedOwnerVisibilityState OwnerVisibilityState { get; private set; }
             = AdminShopPacketOwnedOwnerVisibilityState.Hidden;
 
@@ -68,6 +74,7 @@ namespace HaCreator.MapSimulator.UI
             LastNotice = string.Empty;
             LastOutboundSummary = string.Empty;
             LastOwnerState = ownerState ?? string.Empty;
+            ClearPendingWishlistRegister();
         }
 
         public void RejectOpen(
@@ -88,6 +95,7 @@ namespace HaCreator.MapSimulator.UI
             LastSubtype = -1;
             LastResultCode = -1;
             LastNotice = noticeText ?? string.Empty;
+            ClearPendingWishlistRegister();
             if (!string.IsNullOrWhiteSpace(outboundSummary))
             {
                 LastOutboundSummary = outboundSummary;
@@ -117,6 +125,7 @@ namespace HaCreator.MapSimulator.UI
             LastOwnerState = string.IsNullOrWhiteSpace(blockingOwner)
                 ? "Packet 367 was blocked by another unique-modeless owner."
                 : $"Packet 367 was blocked by the visible {blockingOwner} unique-modeless owner.";
+            ClearPendingWishlistRegister();
             BlockedByOwnerCount++;
         }
 
@@ -139,6 +148,7 @@ namespace HaCreator.MapSimulator.UI
             WouldDisconnect = false;
             OwnerVisibilityState = AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden;
             LastOwnerState = ownerState ?? string.Empty;
+            ClearPendingWishlistRegister();
         }
 
         public void SetWaitingForResult(bool waitingForResult)
@@ -171,6 +181,20 @@ namespace HaCreator.MapSimulator.UI
             LastOutboundOpcode = opcode;
             LastOutboundPayload = payload?.ToArray() ?? Array.Empty<byte>();
             LastOutboundSummary = outboundSummary ?? string.Empty;
+        }
+
+        public void RecordPendingWishlistRegister(int itemId, string title, string categoryLabel)
+        {
+            PendingWishlistRegisterItemId = Math.Max(0, itemId);
+            PendingWishlistRegisterTitle = title ?? string.Empty;
+            PendingWishlistRegisterCategoryLabel = categoryLabel ?? string.Empty;
+        }
+
+        public void ClearPendingWishlistRegister()
+        {
+            PendingWishlistRegisterItemId = 0;
+            PendingWishlistRegisterTitle = string.Empty;
+            PendingWishlistRegisterCategoryLabel = string.Empty;
         }
 
         public void SetLastOutboundSummary(string outboundSummary)
@@ -235,6 +259,9 @@ namespace HaCreator.MapSimulator.UI
                 AskItemWishlist ? "1" : "0",
                 LastSubtype,
                 LastResultCode,
+                PendingWishlistRegisterItemId,
+                PendingWishlistRegisterTitle ?? string.Empty,
+                PendingWishlistRegisterCategoryLabel ?? string.Empty,
                 ((int)OwnerVisibilityState).ToString(),
                 LastNotice ?? string.Empty,
                 LastOutboundSummary ?? string.Empty,
@@ -267,7 +294,10 @@ namespace HaCreator.MapSimulator.UI
             string resultStateText = LastSubtype >= 0
                 ? $"last {DescribeLastResultState()}"
                 : "no result packet";
-            return $"{packetText}, {resultText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}";
+            string pendingText = HasPendingWishlistRegister
+                ? $", pending {DescribePendingWishlistRegister()}"
+                : string.Empty;
+            return $"{packetText}, {resultText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}";
         }
 
         public IReadOnlyList<string> BuildWishlistSearchStateDetailLines()
@@ -310,6 +340,11 @@ namespace HaCreator.MapSimulator.UI
                 lines.Add(BuildTransportSummary());
             }
 
+            if (HasPendingWishlistRegister && lines.Count < 3)
+            {
+                lines.Add($"pending {DescribePendingWishlistRegister()}");
+            }
+
             return lines;
         }
 
@@ -335,6 +370,9 @@ namespace HaCreator.MapSimulator.UI
             string waitText = IsWaitingForResult
                 ? ", waiting for packet 366"
                 : string.Empty;
+            string pendingWishlistText = HasPendingWishlistRegister
+                ? $", pending {DescribePendingWishlistRegister()}"
+                : string.Empty;
             string visibilityText = DescribeOwnerVisibility();
             string ownerText = string.IsNullOrWhiteSpace(LastOwnerState)
                 ? "owner state unresolved"
@@ -343,7 +381,7 @@ namespace HaCreator.MapSimulator.UI
                 ? $", blocked opens {BlockedByOwnerCount}"
                 : string.Empty;
 
-            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}), packets open={OpenCount}/result={ResultCount}, {resultText}, {transportText}, {disconnectText}{waitText}, {visibilityText}, {ownerText}{blockedText}";
+            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}), packets open={OpenCount}/result={ResultCount}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}, {visibilityText}, {ownerText}{blockedText}";
         }
 
         private string DescribeLastResultState()
@@ -384,7 +422,9 @@ namespace HaCreator.MapSimulator.UI
         {
             if (IsWaitingForResult)
             {
-                return "awaiting packet 366 subtype 4";
+                return HasPendingWishlistRegister
+                    ? $"awaiting packet 366 subtype 4 for {DescribePendingWishlistRegister()}"
+                    : "awaiting packet 366 subtype 4";
             }
 
             if (LastOutboundOpcode == 74 && LastOutboundPayload.Length > 0)
@@ -402,6 +442,20 @@ namespace HaCreator.MapSimulator.UI
             return IsActive
                 ? "service idle"
                 : "service closed";
+        }
+
+        private string DescribePendingWishlistRegister()
+        {
+            string itemText = PendingWishlistRegisterItemId > 0
+                ? $"item {PendingWishlistRegisterItemId}"
+                : "item unresolved";
+            string titleText = string.IsNullOrWhiteSpace(PendingWishlistRegisterTitle)
+                ? string.Empty
+                : $" ({PendingWishlistRegisterTitle})";
+            string categoryText = string.IsNullOrWhiteSpace(PendingWishlistRegisterCategoryLabel)
+                ? string.Empty
+                : $" in {PendingWishlistRegisterCategoryLabel}";
+            return $"wishlist register {itemText}{titleText}{categoryText}";
         }
     }
 }

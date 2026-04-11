@@ -1305,16 +1305,6 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static int GetParcelTax(int meso)
         {
-            if (meso >= 100_000_000)
-            {
-                return (int)(meso * 0.06d);
-            }
-
-            if (meso >= 25_000_000)
-            {
-                return (int)(meso * 0.05d);
-            }
-
             if (meso >= 10_000_000)
             {
                 return (int)(meso * 0.04d);
@@ -1327,12 +1317,17 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (meso >= 1_000_000)
             {
-                return (int)(meso * 0.018d);
+                return (int)(meso * 0.02d);
             }
 
             if (meso >= 100_000)
             {
-                return (int)(meso * 0.008d);
+                return (int)(meso * 0.01d);
+            }
+
+            if (meso >= 50_000)
+            {
+                return (int)(meso * 0.005d);
             }
 
             return 0;

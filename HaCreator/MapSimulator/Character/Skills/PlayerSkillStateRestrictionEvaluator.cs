@@ -27,7 +27,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int FlameLauncherSkillId = 35001001;
         private const int EnhancedFlameLauncherSkillId = 35101009;
         private const int ClericExplosionSkillId = 2111002;
-        private const int MysticDoorSkillId = 2301002;
+        private const int MysticDoorSkillId = 2311002;
         private const int EvanIceBreathSkillId = 22121000;
         private const int EvanFireBreathSkillId = 22151001;
         private const int NightWalkerPoisonBombSkillId = 14111006;

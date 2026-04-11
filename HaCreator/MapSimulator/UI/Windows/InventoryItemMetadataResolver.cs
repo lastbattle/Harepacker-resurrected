@@ -760,7 +760,7 @@ namespace HaCreator.MapSimulator.UI
                 IsQuestItem = isQuestItem,
                 IsTradeBlocked = isTradeBlocked,
                 IsOneOfAKind = isOneOfAKind,
-                RequiredLevel = TryGetPositiveInt(infoProperty?["lv"]),
+                RequiredLevel = ResolveRequiredLevel(infoProperty),
                 Price = TryGetPositiveInt(infoProperty?["price"]),
                 UnitPrice = TryGetPositiveDouble(infoProperty?["unitPrice"]),
                 ExpirationDateUtc = expirationDateUtc,
@@ -1300,7 +1300,7 @@ namespace HaCreator.MapSimulator.UI
         {
             List<string> metadataLines = new();
 
-            int? requiredLevel = TryGetPositiveInt(infoProperty?["lv"]);
+            int? requiredLevel = ResolveRequiredLevel(infoProperty);
             if (requiredLevel.HasValue)
             {
                 metadataLines.Add($"Required Level: {requiredLevel.Value}");
@@ -1896,6 +1896,7 @@ namespace HaCreator.MapSimulator.UI
             AppendTargetMobMetadataLines(metadataLines, infoProperty, specProperty);
             AppendStateChangeItemMetadataLines(metadataLines, infoProperty);
             AppendItemPeriodMetadataLines(metadataLines, infoProperty);
+            AppendCashItemExtensionMetadataLines(metadataLines, infoProperty);
             AppendCreateMetadataLines(metadataLines, infoProperty);
             AppendReplaceMetadataLines(metadataLines, infoProperty);
             AppendRecoveryRateMetadataLines(metadataLines, infoProperty);
@@ -2054,6 +2055,38 @@ namespace HaCreator.MapSimulator.UI
             if (itemPeriodHours > 0)
             {
                 metadataLines.Add($"Item expires after {FormatHourDuration(itemPeriodHours)}");
+            }
+        }
+
+        private static void AppendCashItemExtensionMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int addTimeSeconds = GetIntOrStringValue(infoProperty["addTime"]);
+            if (addTimeSeconds > 0)
+            {
+                metadataLines.Add($"Adds Duration: {FormatSecondDuration(addTimeSeconds)}");
+            }
+
+            int maxDays = GetIntOrStringValue(infoProperty["maxDays"]);
+            if (maxDays > 0)
+            {
+                metadataLines.Add($"Maximum Duration: {FormatDayCount(maxDays)}");
+            }
+
+            int minusLevel = GetIntOrStringValue(infoProperty["minusLevel"]);
+            if (minusLevel > 0)
+            {
+                metadataLines.Add($"Required Level Reduction: {minusLevel.ToString(CultureInfo.InvariantCulture)} level{(minusLevel == 1 ? string.Empty : "s")}");
+            }
+
+            IReadOnlyList<int> selectedSlots = GetNumericNamedIntRows(infoProperty["selectedSlot"] as WzSubProperty);
+            if (selectedSlots.Count > 0)
+            {
+                metadataLines.Add($"Eligible Equip Slots: {string.Join(", ", selectedSlots)}");
             }
         }
 
@@ -2819,6 +2852,43 @@ namespace HaCreator.MapSimulator.UI
 
             rows.Sort((left, right) => left.Index.CompareTo(right.Index));
             return rows;
+        }
+
+        private static IReadOnlyList<int> GetNumericNamedIntRows(WzSubProperty property)
+        {
+            List<(int Index, int Value)> rows = new();
+            if (property?.WzProperties == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                int value = GetIntOrStringValue(child);
+                if (value > 0)
+                {
+                    rows.Add((index, value));
+                }
+            }
+
+            if (rows.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            rows.Sort((left, right) => left.Index.CompareTo(right.Index));
+            List<int> values = new(rows.Count);
+            for (int i = 0; i < rows.Count; i++)
+            {
+                values.Add(rows[i].Value);
+            }
+
+            return values;
         }
 
         private static void AppendAdditionalInfoFlagsMetadataLines(
@@ -3772,6 +3842,12 @@ namespace HaCreator.MapSimulator.UI
             return value >= 0
                 ? $"+{value.ToString(CultureInfo.InvariantCulture)}"
                 : value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static int? ResolveRequiredLevel(WzSubProperty infoProperty)
+        {
+            return TryGetPositiveInt(infoProperty?["lv"])
+                   ?? TryGetPositiveInt(infoProperty?["reqLevel"]);
         }
 
         private static int? TryGetPositiveInt(WzImageProperty property)

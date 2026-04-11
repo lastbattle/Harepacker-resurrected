@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.UI
     public static class CharacterEquipmentPacketParity
     {
         private const int MaxAuthoritySlotStateCount = 64;
+        private const byte AuthorityResultOwnerSessionContextMarker = 0xEC;
 
         public static byte[] EncodeAuthorityRequestPayload(EquipmentChangeRequest request)
         {
@@ -67,6 +68,14 @@ namespace HaCreator.MapSimulator.UI
                     if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.Reject)
                     {
                         writer.Write(payload.RejectReason ?? string.Empty);
+                    }
+
+                    if (payload.HasOwnerSessionContext)
+                    {
+                        writer.Write(AuthorityResultOwnerSessionContextMarker);
+                        writer.Write((byte)payload.OwnerKind);
+                        writer.Write(payload.OwnerSessionId);
+                        writer.Write(payload.ExpectedCharacterId);
                     }
 
                     break;
@@ -219,6 +228,39 @@ namespace HaCreator.MapSimulator.UI
                 rejectReason = reader.ReadString();
             }
 
+            bool hasOwnerSessionContext = false;
+            EquipmentChangeOwnerKind ownerKind = default;
+            int ownerSessionId = 0;
+            int expectedCharacterId = 0;
+            if (stream.Position != stream.Length)
+            {
+                const long ownerSessionContextLength = sizeof(byte) * 2 + sizeof(int) * 2;
+                if (stream.Length - stream.Position != ownerSessionContextLength)
+                {
+                    errorMessage = "Character equipment authority-result payload contained an invalid owner-session context trailer.";
+                    return false;
+                }
+
+                byte marker = reader.ReadByte();
+                if (marker != AuthorityResultOwnerSessionContextMarker)
+                {
+                    errorMessage = "Character equipment authority-result payload contained an unsupported owner-session context marker.";
+                    return false;
+                }
+
+                byte ownerKindValue = reader.ReadByte();
+                if (!Enum.IsDefined(typeof(EquipmentChangeOwnerKind), (int)ownerKindValue))
+                {
+                    errorMessage = "Character equipment authority-result owner kind is invalid.";
+                    return false;
+                }
+
+                ownerKind = (EquipmentChangeOwnerKind)ownerKindValue;
+                ownerSessionId = reader.ReadInt32();
+                expectedCharacterId = reader.ReadInt32();
+                hasOwnerSessionContext = true;
+            }
+
             if (stream.Position != stream.Length)
             {
                 errorMessage = "Character equipment authority-result payload should not contain extra bytes.";
@@ -232,7 +274,11 @@ namespace HaCreator.MapSimulator.UI
                 ResultKind: resultKind,
                 ResolvedBuildStateToken: resolvedBuildStateToken,
                 AuthoritySlotStates: authoritySlotStates,
-                RejectReason: rejectReason);
+                RejectReason: rejectReason,
+                OwnerKind: ownerKind,
+                OwnerSessionId: ownerSessionId,
+                ExpectedCharacterId: expectedCharacterId,
+                HasOwnerSessionContext: hasOwnerSessionContext);
             return true;
         }
 

@@ -642,6 +642,7 @@ namespace HaCreator.MapSimulator
         private const int SAME_MAP_PORTAL_DEFAULT_DELAY_MS = 1000;
         private const int SAME_MAP_TELEPORT_Y_OFFSET = 10;
         private const int PACKET_OWNED_TELEPORT_REGISTRATION_COOLDOWN_MS = 120;
+        private const int TRANSFER_FIELD_REQUEST_EXCLUSIVE_COOLDOWN_MS = 500;
         private const int DIRECTION_MODE_RELEASE_DELAY_MS = 300;
         private const int FIELD_RULE_DAMAGE_MIST_DURATION_MS = 650;
         private const int FIELD_RULE_MESSAGE_COOLDOWN_MS = 1200;
@@ -687,6 +688,8 @@ namespace HaCreator.MapSimulator
         private int _collisionScriptExclusiveRequestSentTick = int.MinValue;
         private int _collisionScriptExclusiveRequestPortalIndex = -1;
         private int _collisionScriptExclusiveRequestDelayMs = 0;
+        private bool _transferFieldExclusiveRequestSent = false;
+        private int _transferFieldExclusiveRequestSentTick = int.MinValue;
         private int _lastCollisionScriptOutboundOpcode = -1;
         private byte[] _lastCollisionScriptOutboundPayload = Array.Empty<byte>();
         private string _lastCollisionScriptOutboundSummary;
@@ -766,6 +769,7 @@ namespace HaCreator.MapSimulator
         private readonly QuestAlarmStore _questAlarmStore;
         private readonly ItemMakerProgressionStore _itemMakerProgressionStore;
         private PacketOwnedItemMakerSessionState _packetOwnedItemMakerSessionState = new();
+        private PacketOwnedItemMakerPendingRequest _pendingPacketOwnedItemMakerRequest;
         private readonly MonsterBookManager _monsterBookManager;
         private readonly LoginCharacterAccountStore _loginCharacterAccountStore;
         private readonly SocialRoomPersistenceStore _socialRoomPersistenceStore;
@@ -13824,7 +13828,8 @@ namespace HaCreator.MapSimulator
             LoginUtilityDialogFrameVariant frameVariant = LoginUtilityDialogFrameVariant.Default,
             Rectangle? inputBoundsOverride = null,
             string returnWindowName = null,
-            bool trackDirectionModeOwner = false)
+            bool trackDirectionModeOwner = false,
+            bool hasExplicitTrackDirectionModeOwner = false)
         {
             if (!string.IsNullOrWhiteSpace(returnWindowName))
             {
@@ -13857,11 +13862,27 @@ namespace HaCreator.MapSimulator
                 noticeTextIndex,
                 inputLabel,
                 visualStyle);
-            _loginUtilityDialogTracksDirectionModeOwner = trackDirectionModeOwner;
+            _loginUtilityDialogTracksDirectionModeOwner = ResolveSharedHostDirectionModeOwnerTracking(
+                trackDirectionModeOwner,
+                hasExplicitTrackDirectionModeOwner,
+                ShouldTrackInheritedDirectionModeOwner());
             _loginUtilityDialogInputBoundsOverride = inputBoundsOverride;
             _loginUtilityDialogAllowedOutsideLogin = IsLoginUtilityDialogActionAllowedOutsideLogin(action);
             ClearActiveConnectionNotice();
             SyncLoginEntryDialogs();
+        }
+
+        private static bool ResolveSharedHostDirectionModeOwnerTracking(
+            bool trackDirectionModeOwner,
+            bool hasExplicitTrackDirectionModeOwner,
+            bool inheritedDirectionModeOwner)
+        {
+            if (hasExplicitTrackDirectionModeOwner)
+            {
+                return trackDirectionModeOwner;
+            }
+
+            return trackDirectionModeOwner || inheritedDirectionModeOwner;
         }
 
         private string ShowFamilyPreceptInputDialog()
@@ -14121,7 +14142,10 @@ namespace HaCreator.MapSimulator
             _activeConnectionNoticeShowProgress = _activeConnectionNoticeVariant is ConnectionNoticeWindowVariant.Loading or ConnectionNoticeWindowVariant.LoadingSingleGauge;
             _activeConnectionNoticeProgress = _activeConnectionNoticeShowProgress ? 1f : 0f;
             _activeConnectionNoticeExpiresAt = currTickCount + Math.Max(0, prompt.DurationMs);
-            _activeConnectionNoticeTracksDirectionModeOwner = prompt.TrackDirectionModeOwner;
+            _activeConnectionNoticeTracksDirectionModeOwner = ResolveSharedHostDirectionModeOwnerTracking(
+                prompt.TrackDirectionModeOwner,
+                prompt.HasExplicitTrackDirectionModeOwner,
+                ShouldTrackInheritedDirectionModeOwner());
             SyncLoginEntryDialogs();
         }
 
@@ -15261,7 +15285,11 @@ namespace HaCreator.MapSimulator
                 visualStyle: prompt.VisualStyle,
                 frameVariant: prompt.FrameVariant,
                 inputBoundsOverride: prompt.InputBoundsOverride,
-                trackDirectionModeOwner: prompt.TrackDirectionModeOwner);
+                trackDirectionModeOwner: ResolveSharedHostDirectionModeOwnerTracking(
+                    prompt.TrackDirectionModeOwner,
+                    prompt.HasExplicitTrackDirectionModeOwner,
+                    ShouldTrackInheritedDirectionModeOwner()),
+                hasExplicitTrackDirectionModeOwner: prompt.HasExplicitTrackDirectionModeOwner);
         }
 
 
@@ -26659,7 +26687,7 @@ namespace HaCreator.MapSimulator
             }
 
             PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision queuedRetryDecision =
-                EvaluatePassiveTransferFieldQueuedRetryDecision();
+                EvaluatePassiveTransferFieldQueuedRetryDecision(currentTime);
 
             if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.ReplayHandleUpKeyDown)
             {
@@ -26764,7 +26792,7 @@ namespace HaCreator.MapSimulator
                 input.IsPressed(InputAction.MoveRight));
         }
 
-        private PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision EvaluatePassiveTransferFieldQueuedRetryDecision()
+        private PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision EvaluatePassiveTransferFieldQueuedRetryDecision(int currentTime)
         {
             PlayerCharacter player = _playerManager?.Player;
             bool hasLiveFieldInterface = HasPassiveTransferFieldInterface();
@@ -26773,14 +26801,14 @@ namespace HaCreator.MapSimulator
                     HasPendingRequest: _passiveTransferRequestPending,
                     HasOneTimeActionCompleted: player?.IsPlayingClientOwnedOneTimeAction != true,
                     HasReadyFieldInterface: player?.IsPlayingClientOwnedOneTimeAction != true
-                                            && ResolvePassiveTransferFieldReadyState(),
+                                            && ResolvePassiveTransferFieldReadyState(currentTime),
                     HasLiveFieldInterface: hasLiveFieldInterface,
                     HasPendingMapChange: _gameState.PendingMapChange,
                     HasBoundPlayer: player != null,
                     IsPlayerActive: _playerManager?.IsPlayerActive == true));
         }
 
-        private bool ResolvePassiveTransferFieldReadyState()
+        private bool ResolvePassiveTransferFieldReadyState(int currentTime)
         {
             return PassiveTransferFieldReadinessEvaluator.CanRetryFromLiveFieldInterface(
                 new PassiveTransferFieldInterfaceState(
@@ -26792,10 +26820,20 @@ namespace HaCreator.MapSimulator
                     AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
                     HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
                     HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership(),
-                    HasPendingExclusiveTransferRequest: _collisionScriptExclusiveRequestSent,
+                    HasPendingExclusiveTransferRequest: HasPendingExclusiveTransferRequest(currentTime),
                     HasAttachedPacketOwnedDriver: _localFollowRuntime.HasAttachedDriver,
                     HasPendingSameMapTransfer: _sameMapTeleportPending,
                     HasBlockingScriptedSequence: _specialFieldRuntime.HasBlockingScriptedSequence));
+        }
+
+        private bool HasPendingExclusiveTransferRequest(int currentTime)
+        {
+            return _collisionScriptExclusiveRequestSent
+                   || PassiveTransferFieldReadinessEvaluator.IsExclusiveTransferRequestInFlight(
+                       _transferFieldExclusiveRequestSent,
+                       _transferFieldExclusiveRequestSentTick,
+                       currentTime,
+                       TRANSFER_FIELD_REQUEST_EXCLUSIVE_COOLDOWN_MS);
         }
 
         private bool HasPassiveTransferFieldInterface()
@@ -27537,6 +27575,11 @@ namespace HaCreator.MapSimulator
 
             if (ShouldSendTransferFieldRequestForPortal(portal.tm, _mapBoard?.MapInfo?.id ?? -1, portal.pt))
             {
+                if (!CanSendTransferFieldRequest(currentTime))
+                {
+                    return true;
+                }
+
                 string transferRestrictionMessage =
                     FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(fieldLimit);
                 if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
@@ -27549,6 +27592,8 @@ namespace HaCreator.MapSimulator
                 {
                     return true;
                 }
+
+                SetTransferFieldExclusiveRequestSent(currentTime);
             }
 
             _playerManager?.ForceStand();
@@ -27581,6 +27626,21 @@ namespace HaCreator.MapSimulator
             RegisterPortalCollisionRequestSource(portalIndex);
             PlayPortalSE();
             return true;
+        }
+
+        private bool CanSendTransferFieldRequest(int currentTime)
+        {
+            return !PassiveTransferFieldReadinessEvaluator.IsExclusiveTransferRequestInFlight(
+                _transferFieldExclusiveRequestSent,
+                _transferFieldExclusiveRequestSentTick,
+                currentTime,
+                TRANSFER_FIELD_REQUEST_EXCLUSIVE_COOLDOWN_MS);
+        }
+
+        private void SetTransferFieldExclusiveRequestSent(int currentTime)
+        {
+            _transferFieldExclusiveRequestSent = true;
+            _transferFieldExclusiveRequestSentTick = currentTime;
         }
 
         private void RegisterPortalCollisionRequestSource(int portalIndex)
@@ -28468,7 +28528,7 @@ namespace HaCreator.MapSimulator
         {
             foreach (string scriptName in EnumerateEntryOwnedFieldScripts(includeFirstUserEnterScript))
             {
-                PublishDynamicObjectTagStatesForScriptName(scriptName, currentTickCount);
+                PublishOrScheduleDynamicObjectTagStateForScriptName(scriptName, currentTickCount, delayMs: 0);
             }
         }
 
@@ -28649,6 +28709,13 @@ namespace HaCreator.MapSimulator
             }
 
             int normalizedDelayMs = Math.Max(0, delayMs);
+            if (FieldObjectScriptTagAliasResolver.TryResolveTimerCallbackDelayMs(scriptName, out int callbackDelayMs))
+            {
+                normalizedDelayMs = normalizedDelayMs >= int.MaxValue - callbackDelayMs
+                    ? int.MaxValue
+                    : normalizedDelayMs + callbackDelayMs;
+            }
+
             if (normalizedDelayMs <= 0)
             {
                 return PublishDynamicObjectTagStatesForScriptName(scriptName, currentTickCount);
@@ -28761,13 +28828,13 @@ namespace HaCreator.MapSimulator
                 IReadOnlyList<string> parsedScriptNames = QuestRuntimeManager.ParseScriptNames(rawScriptName);
                 if (parsedScriptNames.Count == 0)
                 {
-                    publishedAny |= PublishDynamicObjectTagStatesForScriptName(rawScriptName, currentTickCount);
+                    publishedAny |= PublishOrScheduleDynamicObjectTagStateForScriptName(rawScriptName, currentTickCount, delayMs: 0);
                     continue;
                 }
 
                 for (int i = 0; i < parsedScriptNames.Count; i++)
                 {
-                    publishedAny |= PublishDynamicObjectTagStatesForScriptName(parsedScriptNames[i], currentTickCount);
+                    publishedAny |= PublishOrScheduleDynamicObjectTagStateForScriptName(parsedScriptNames[i], currentTickCount, delayMs: 0);
                 }
             }
 

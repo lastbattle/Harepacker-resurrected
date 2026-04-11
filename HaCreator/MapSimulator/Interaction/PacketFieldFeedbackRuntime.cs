@@ -85,10 +85,17 @@ namespace HaCreator.MapSimulator.Interaction
     internal enum PacketFieldClockVisualVariant
     {
         Default,
+        FieldProperty,
         Event,
         CakePieSmall,
         CakePieLarge
     }
+
+    internal sealed record PacketFieldClockVisualBounds(
+        int X,
+        int Y,
+        int Width,
+        int Height);
 
     internal sealed record PacketFieldClockVisualState(
         PacketFieldClockVisualKind Kind,
@@ -99,7 +106,8 @@ namespace HaCreator.MapSimulator.Interaction
         int Hour,
         int Minute,
         int Second,
-        string Label);
+        string Label,
+        PacketFieldClockVisualBounds Bounds = null);
 
     internal sealed class PacketFieldFeedbackRuntime
     {
@@ -261,6 +269,56 @@ namespace HaCreator.MapSimulator.Interaction
                 clockStatus,
                 obstacleStatus,
                 bossHpStatus);
+        }
+
+        internal bool RestoreFieldPropertyClock(
+            int x,
+            int y,
+            int width,
+            int height,
+            byte hour,
+            byte minute,
+            byte second,
+            int currentTick,
+            PacketFieldFeedbackCallbacks callbacks,
+            out string message)
+        {
+            if (x == 0 || y == 0 || width == 0 || height == 0)
+            {
+                message = "Map-authored clock property is missing one of x, y, width, or height.";
+                return false;
+            }
+
+            PacketFieldClockVisualState baseState = CreateRealtimeClockVisualState(hour, minute, second, currentTick);
+            PacketFieldClockVisualState state = baseState with
+            {
+                Variant = PacketFieldClockVisualVariant.FieldProperty,
+                Label = "field-property clock",
+                Bounds = new PacketFieldClockVisualBounds(x, y, width, height)
+            };
+            _clockVisualState = state;
+            _fieldClockEventFlag = false;
+            _lastFieldClockSummary = string.Format(
+                CultureInfo.InvariantCulture,
+                "field-property clock ({0},{1},{2},{3}) {4} {5:00}:{6:00}:{7:00}",
+                x,
+                y,
+                width,
+                height,
+                state.IsPm ? "PM" : "AM",
+                state.Hour,
+                state.Minute,
+                state.Second);
+            callbacks?.ShowFieldClock?.Invoke(state);
+            _statusMessage = "Restored packet-owned field-property clock.";
+            message = _statusMessage;
+            return true;
+        }
+
+        internal void ClearFieldClockForMapLoad(PacketFieldFeedbackCallbacks callbacks)
+        {
+            ClearFieldClock(callbacks);
+            _statusMessage = "Cleared packet-owned field clock for map load.";
         }
 
         internal void Draw(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)

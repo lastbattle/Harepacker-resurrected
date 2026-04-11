@@ -684,7 +684,11 @@ namespace HaCreator.MapSimulator.UI
                     bool ctrl = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
                     bool shift = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
                     bool imeCandidateListActive = _candidateListState.HasCandidates;
-                    if (ctrl && WasPressed(keyboard, Keys.A))
+                    if (imeCandidateListActive && TryHandleImeCandidateKeyboardSelection(keyboard))
+                    {
+                        _caretBlinkTick = Environment.TickCount;
+                    }
+                    else if (ctrl && WasPressed(keyboard, Keys.A))
                     {
                         SelectAllSearchText();
                     }
@@ -1543,8 +1547,14 @@ namespace HaCreator.MapSimulator.UI
                     if (record.UsesResolvedAnalyzerOffset)
                     {
                         // CBookDlg::SetPage stores the analyzer-resolved x offset in CT_INFO;
-                        // CBookDlg::Draw then passes that x directly to DrawTextA.
-                        alignment = HorizontalAlignment.Left;
+                        // CBookDlg::Draw then passes that x directly to DrawTextA without a
+                        // second layout or clipping pass.
+                        DrawAnalyzedTextLine(
+                            sprite,
+                            record.Text,
+                            ResolveCollectionRecordTextAnchor(pageOrigin, record),
+                            GetBookStyle(record.StyleIndex));
+                        break;
                     }
 
                     DrawTextLine(
@@ -1717,6 +1727,21 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawRenderedString(sprite, trimmed, position, style.Color, style);
+        }
+
+        private void DrawAnalyzedTextLine(SpriteBatch sprite, string text, Vector2 position, BookTextStyle style)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            if (style.Shadow)
+            {
+                DrawRenderedString(sprite, text, position + Vector2.One, style.ShadowColor, style);
+            }
+
+            DrawRenderedString(sprite, text, position, style.Color, style);
         }
 
         private CollectionBookClientTextStyleSnapshot ResolveCollectionTextStyle(int index)
@@ -3081,6 +3106,64 @@ namespace HaCreator.MapSimulator.UI
             return localIndex >= 0
                 ? start + localIndex
                 : -1;
+        }
+
+        private bool TryHandleImeCandidateKeyboardSelection(KeyboardState keyboard)
+        {
+            int candidateIndex = ResolveVisibleImeCandidateIndexFromKeyboard(_candidateListState, keyboard, WasPressed);
+            if (candidateIndex < 0)
+            {
+                return false;
+            }
+
+            return OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex) == true;
+        }
+
+        internal static int ResolveVisibleImeCandidateIndexFromKeyboard(
+            ImeCandidateListState state,
+            KeyboardState keyboard,
+            Func<KeyboardState, Keys, bool> wasPressed)
+        {
+            if (state == null || !state.HasCandidates || wasPressed == null)
+            {
+                return -1;
+            }
+
+            int visibleNumber = ResolvePressedCandidateNumber(keyboard, wasPressed);
+            if (visibleNumber <= 0)
+            {
+                return -1;
+            }
+
+            int pageStart = Math.Clamp(state.PageStart, 0, state.Candidates.Count);
+            int pageSize = state.PageSize > 0 ? state.PageSize : state.Candidates.Count;
+            int visibleCount = Math.Max(0, Math.Min(pageSize, state.Candidates.Count - pageStart));
+            if (visibleNumber > visibleCount)
+            {
+                return -1;
+            }
+
+            return pageStart + visibleNumber - 1;
+        }
+
+        private static int ResolvePressedCandidateNumber(
+            KeyboardState keyboard,
+            Func<KeyboardState, Keys, bool> wasPressed)
+        {
+            for (int i = 0; i < 9; i++)
+            {
+                if (wasPressed(keyboard, Keys.D1 + i) || wasPressed(keyboard, Keys.NumPad1 + i))
+                {
+                    return i + 1;
+                }
+            }
+
+            if (wasPressed(keyboard, Keys.D0) || wasPressed(keyboard, Keys.NumPad0))
+            {
+                return 10;
+            }
+
+            return -1;
         }
 
         private Viewport GetCandidateViewport()

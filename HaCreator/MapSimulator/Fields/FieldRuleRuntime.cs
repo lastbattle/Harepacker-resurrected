@@ -438,10 +438,10 @@ namespace HaCreator.MapSimulator.Fields
             var scripts = new List<string>();
             var seenScripts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            AddScriptIfPresent(scripts, seenScripts, "onUserEnter", mapInfo?.onUserEnter);
+            AddParsedScriptsIfPresent(scripts, seenScripts, "onUserEnter", mapInfo?.onUserEnter);
             if (includeFirstUserEnterScript)
             {
-                AddScriptIfPresent(scripts, seenScripts, "onFirstUserEnter", mapInfo?.onFirstUserEnter);
+                AddParsedScriptsIfPresent(scripts, seenScripts, "onFirstUserEnter", mapInfo?.onFirstUserEnter);
             }
 
             foreach (string fieldScript in QuestRuntimeManager.ParseScriptNames(mapInfo?.Image?["info"]?["fieldScript"]))
@@ -450,6 +450,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return scripts;
+        }
+
+        private static void AddParsedScriptsIfPresent(
+            ICollection<string> scripts,
+            ISet<string> seenScripts,
+            string sourceName,
+            string scriptNames)
+        {
+            IReadOnlyList<string> parsedScriptNames = QuestRuntimeManager.ParseScriptNames(scriptNames);
+            for (int i = 0; i < parsedScriptNames.Count; i++)
+            {
+                AddScriptIfPresent(scripts, seenScripts, sourceName, parsedScriptNames[i]);
+            }
         }
 
         private static void AddScriptIfPresent(

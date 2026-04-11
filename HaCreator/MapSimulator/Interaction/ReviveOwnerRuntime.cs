@@ -208,6 +208,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return buttonId switch
             {
+                // CUIRevive::OnButtonClicked calls Revive(1) for id 6 even when the
+                // single-button default shell resolved to the ordinary respawn branch.
                 ClientYesButtonId => Resolve(
                     premium: HasPremiumChoice,
                     clientPremiumFlag: true),

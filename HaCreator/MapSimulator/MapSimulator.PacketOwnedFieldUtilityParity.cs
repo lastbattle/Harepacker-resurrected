@@ -545,11 +545,44 @@ namespace HaCreator.MapSimulator
         {
             IReadOnlyList<PacketFieldUtilityFootholdEntry> snapshot = BuildPacketOwnedFootholdSnapshot();
             byte[] officialResponsePayload = PacketFieldUtilityRuntime.BuildOfficialSessionFootHoldInfoResponsePayload(snapshot);
+            string snapshotSummary = DescribePacketOwnedFootholdSnapshotEntries(snapshot);
             _packetFieldUtilityFootholdRequestSummary = snapshot.Count == 0
                 ? "Received packet-owned foothold-info request; no dynamic foothold entries were available to snapshot."
-                : $"Received packet-owned foothold-info request; prepared {snapshot.Count} dynamic foothold snapshot entr{(snapshot.Count == 1 ? "y" : "ies")} for the current runtime.";
+                : $"Received packet-owned foothold-info request; prepared {snapshot.Count} dynamic foothold snapshot entr{(snapshot.Count == 1 ? "y" : "ies")} for the current runtime: {snapshotSummary}";
             _packetFieldUtilityFootholdOfficialResponseSummary = DescribePacketOwnedFootholdOfficialResponse(officialResponsePayload, snapshot.Count);
             return _packetFieldUtilityFootholdRequestSummary;
+        }
+
+        internal static string DescribePacketOwnedFootholdSnapshotEntries(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return "snapshot=empty";
+            }
+
+            List<string> parts = new(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                PacketFieldUtilityFootholdEntry entry = entries[i];
+                if (entry == null)
+                {
+                    parts.Add($"#{i}:<null>");
+                    continue;
+                }
+
+                PacketFieldUtilityMovingFootholdState movingState = entry.MovingState;
+                int currentX = movingState?.CurrentX ?? 0;
+                int currentY = movingState?.CurrentY ?? 0;
+                bool reverseVertical = movingState?.ReverseVertical == true;
+                bool reverseHorizontal = movingState?.ReverseHorizontal == true;
+                string name = string.IsNullOrWhiteSpace(entry.Name)
+                    ? $"platform-{i}"
+                    : entry.Name.Trim();
+                parts.Add(
+                    $"#{i}:{name}:state={entry.State}@{currentX},{currentY}:revV={(reverseVertical ? 1 : 0)}:revH={(reverseHorizontal ? 1 : 0)}");
+            }
+
+            return string.Join("; ", parts);
         }
 
         private string DescribePacketOwnedFootholdOfficialResponse(byte[] officialResponsePayload, int snapshotCount)

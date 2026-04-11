@@ -74,6 +74,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             5721001,
             SG88SkillId
         };
+        private static readonly HashSet<int> ClientMaxGaugeTimeSkillIds = new()
+        {
+            2121001,
+            2221001,
+            2321001,
+            3121004,
+            3221001,
+            4341002,
+            4341003,
+            PirateScrewPunchSkillId,
+            PoisonBombSkillId,
+            ThunderBreakerSharkWaveSkillId,
+            5221004,
+            GrenadeSkillId,
+            13111002,
+            22121000,
+            22151001,
+            WildHunterSwallowSkillId,
+            33121009,
+            35001001,
+            35101009
+        };
         private static readonly HashSet<int> ReleaseArmedTextSkillIds = new()
         {
             2121001,
@@ -212,12 +234,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static int ResolveGaugeDuration(int skillId, int authoredDurationMs = 0)
         {
+            PreparedSkillHudProfile profile = ResolveProfile(skillId);
+            if (ShouldPreferClientGaugeProfile(skillId, profile))
+            {
+                return profile.GaugeDurationMs;
+            }
+
             if (authoredDurationMs > 0)
             {
                 return authoredDurationMs;
             }
 
-            PreparedSkillHudProfile profile = ResolveProfile(skillId);
             if (profile.GaugeDurationMs > 0)
             {
                 return profile.GaugeDurationMs;
@@ -230,20 +257,25 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static int ResolvePreparedGaugeDuration(int skillId, int explicitGaugeDurationMs = 0, int preparedDurationMs = 0)
         {
+            PreparedSkillHudProfile profile = ResolveProfile(skillId);
+            if (ShouldPreferClientGaugeProfile(skillId, profile))
+            {
+                return profile.GaugeDurationMs;
+            }
+
             if (explicitGaugeDurationMs > 0)
             {
                 return explicitGaugeDurationMs;
             }
 
-            PreparedSkillHudProfile profile = ResolveProfile(skillId);
-            if (profile.GaugeDurationMs > 0)
-            {
-                return profile.GaugeDurationMs;
-            }
-
             if (skillId == MonkeyWaveSkillId)
             {
                 return ResolveMonkeyWaveGaugeDuration();
+            }
+
+            if (profile.GaugeDurationMs > 0)
+            {
+                return profile.GaugeDurationMs;
             }
 
             if (UsesReleaseTriggeredKeydownExecution(skillId) && preparedDurationMs > 0)
@@ -252,6 +284,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return ResolveGaugeDuration(skillId);
+        }
+
+        private static bool ShouldPreferClientGaugeProfile(int skillId, PreparedSkillHudProfile profile)
+        {
+            return profile.GaugeDurationMs > 0
+                && (ClientMaxGaugeTimeSkillIds.Contains(skillId) || skillId == SG88SkillId);
         }
 
         public static int ResolveReleaseChargeElapsedMs(int skillId, int elapsedMs, int gaugeDurationMs = 0)

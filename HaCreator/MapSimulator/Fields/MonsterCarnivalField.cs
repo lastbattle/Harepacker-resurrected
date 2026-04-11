@@ -1795,6 +1795,12 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            if (_definition?.IsReviveMode == true)
+            {
+                DrawReviveWrapperPanel(spriteBatch, pixelTexture, font);
+                return;
+            }
+
             Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
             MonsterCarnivalHudMetrics metrics = ResolveHudMetrics();
             Rectangle headerBounds = ResolveHeaderBounds(viewport.Width, metrics);
@@ -2043,9 +2049,10 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryValidateClientOwnedPacket(MonsterCarnivalPacketType packetType, out string errorMessage)
         {
             if (_definition?.IsReviveMode == true
-                && !IsRecoveredClientOwnedPacket(packetType))
+                && packetType != MonsterCarnivalPacketType.Enter
+                && packetType != MonsterCarnivalPacketType.GameResult)
             {
-                errorMessage = $"{_definition.ClientOwnerLabel} only owns the recovered 346-353 family in the client. This wrapper only exposes enter, cp, request result/failure, death, and result; packet {(int)packetType} stays on the broader Carnival seam.";
+                errorMessage = $"{_definition.ClientOwnerLabel}::OnPacket only directly owns raw packet types 346 and 353 in the client; packet {(int)packetType} is forwarded to CField::OnPacket.";
                 return false;
             }
 
@@ -2117,7 +2124,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "CField_MonsterCarnivalWaitingRoom::Init calls CField::Init, reads monsterCarnival/mapType, and stays on a wrapper-only lobby seam while shared Carnival result packets still delegate through CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12, item=-1).",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "CField_MonsterCarnivalS2_Game::Init calls CField_MonsterCarnival::Init, reads monsterCarnival/mapType, and now switches the simulator to the distinct UIWindow2-backed Monster Carnival surface while result packets still delegate through CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12, item=-1).",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive owns OnShowGameResult codes 8-11 and routes them through the recovered 0x1020-0x1023 StringPool seam into CUIStatusBar::ChatLogAdd(type=12, item=-1).",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive::OnPacket only owns raw packets 346 and 353; OnEnter decodes one team byte and redraws the local name tag without creating CUIMonsterCarnival, while OnShowGameResult routes codes 8-11 through 0x1020-0x1023 into CUIStatusBar::ChatLogAdd(type=12, item=-1).",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE => "Legacy Carnival wrapper stays on the shared Monster Carnival packet family in this simulator seam.",
                 _ => "CField_MonsterCarnival owns the shared packet family while the simulator keeps map-backed summon, CP, and request seams live."
             };
@@ -2135,7 +2142,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | waiting-room wrapper panel only | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | Init base={_definition.InitBaseOwnerLabel} | reads monsterCarnival/mapType={_definition.MapType} | UI/UIWindow2.img/MonsterCarnival/main+summonList+sub | delegated result ids 0x1020-0x1023 -> CField_MonsterCarnival::OnShowGameResult -> CUIStatusBar::ChatLogAdd(type=12,item=-1)",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | revive owner packets 346-353 | failure ids 0x101B-0x101F | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | UI 0x102B-0x1033",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | phase={DescribeVariantSessionPhase()} | revive owner packets raw 346/353 only | OnEnter team byte -> CUserLocal team slot + RedrawGuildNameTag | result ids 0x1020-0x1023 -> CUIStatusBar::ChatLogAdd(type=12,item=-1) | no CUIMonsterCarnival surface",
                 _ => $"{mapLabel} | shared Carnival packet family 346-353 | UI 0x102B-0x1033"
             };
         }
@@ -2329,6 +2336,44 @@ namespace HaCreator.MapSimulator.Fields
                 TrimForDisplay(DescribeVariantSessionPhase(), 76),
                 new Vector2(panelBounds.X + 10, panelBounds.Y + 54),
                 Color.LightSteelBlue,
+                0.8f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                TrimForDisplay(BuildClientOwnerHeaderSummary(), 78),
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 74),
+                Color.LightGoldenrodYellow,
+                0.75f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                TrimForDisplay(_uiWindowState.DescribeStatus(), 78),
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 94),
+                Color.Silver,
+                0.75f);
+        }
+
+        private void DrawReviveWrapperPanel(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        {
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            Rectangle panelBounds = new Rectangle(viewport.Width - 404, 18, 386, 132);
+            spriteBatch.Draw(pixelTexture, panelBounds, new Color(35, 26, 31, 225));
+            spriteBatch.Draw(pixelTexture, new Rectangle(panelBounds.X, panelBounds.Y, panelBounds.Width, 28), new Color(104, 66, 78, 255));
+
+            DrawShadowedText(spriteBatch, font, "Monster Carnival Revive", new Vector2(panelBounds.X + 10, panelBounds.Y + 6), Color.White);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                $"map={FormatMapIdentity(_definition)} | owner={_definition?.ClientOwnerLabel ?? "unknown"} | packets=346/353",
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 36),
+                Color.Gainsboro,
+                0.82f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                TrimForDisplay(DescribeVariantSessionPhase(), 76),
+                new Vector2(panelBounds.X + 10, panelBounds.Y + 54),
+                Color.LightPink,
                 0.8f);
             DrawShadowedText(
                 spriteBatch,

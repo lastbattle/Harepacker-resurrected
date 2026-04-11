@@ -273,9 +273,12 @@ namespace HaCreator.MapSimulator.UI
                 safeRowHeight,
                 safeVisibleRowCount,
                 candidateCount);
+            int listY = candidateCount > 0 && candidateCount <= safeVisibleRowCount
+                ? comboBounds.Y - listHeight
+                : comboBounds.Y - visibleRowsHeight - 1;
             return new Rectangle(
                 comboBounds.X,
-                comboBounds.Y - visibleRowsHeight - 1,
+                listY,
                 resolvedWidth,
                 listHeight);
         }
@@ -290,7 +293,7 @@ namespace HaCreator.MapSimulator.UI
             int listHeight = safeRowHeight * safeVisibleRowCount;
             int safeCandidateCount = Math.Max(0, candidateCount);
             return safeCandidateCount <= safeVisibleRowCount
-                ? listHeight + 1
+                ? (safeRowHeight * safeCandidateCount) + 1
                 : listHeight;
         }
 

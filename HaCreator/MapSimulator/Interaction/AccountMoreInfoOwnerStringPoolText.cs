@@ -3,6 +3,19 @@ using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal readonly struct AccountMoreInfoBackgroundResourceCandidate
+    {
+        internal AccountMoreInfoBackgroundResourceCandidate(string path, bool mirrorsClientSetBackgrnd)
+        {
+            Path = path ?? string.Empty;
+            MirrorsClientSetBackgrnd = mirrorsClientSetBackgrnd;
+        }
+
+        internal string Path { get; }
+
+        internal bool MirrorsClientSetBackgrnd { get; }
+    }
+
     internal static class AccountMoreInfoOwnerStringPoolText
     {
         internal const int OkButtonUolStringPoolId = 0x512;
@@ -74,18 +87,33 @@ namespace HaCreator.MapSimulator.Interaction
         internal static IReadOnlyList<string> EnumerateBackgroundResourcePaths()
         {
             List<string> candidates = new();
+            foreach (AccountMoreInfoBackgroundResourceCandidate candidate in EnumerateBackgroundResourceCandidates())
+            {
+                AddDistinctCandidate(candidates, candidate.Path);
+            }
+
+            return candidates;
+        }
+
+        internal static IReadOnlyList<AccountMoreInfoBackgroundResourceCandidate> EnumerateBackgroundResourceCandidates()
+        {
+            List<string> candidates = new();
+            List<AccountMoreInfoBackgroundResourceCandidate> typedCandidates = new();
 
             // The generated table in this workspace currently resolves 0x16AE to
             // a FriendRecommendations path that is absent from the active mounted
             // UI set. Probe the mounted `UserInfo` shells first, then keep the
             // exact client string-pool path as the final non-fabricated fallback.
+            // `CUIAccountMoreInfo::OnCreate` passes zero offset, no multi-part
+            // mode, and zero expansion to CWnd::SetBackgrnd for 0x16AE, so only
+            // the exact string-pool path can use raw SetBackgrnd canvas sizing.
             foreach (string candidate in MountedBackgroundRecoveryCandidates)
             {
-                AddDistinctCandidate(candidates, candidate);
+                AddDistinctCandidate(typedCandidates, candidates, candidate, mirrorsClientSetBackgrnd: false);
             }
 
-            AddDistinctCandidate(candidates, ResolveExactBackgroundResourcePath());
-            return candidates;
+            AddDistinctCandidate(typedCandidates, candidates, ResolveExactBackgroundResourcePath(), mirrorsClientSetBackgrnd: true);
+            return typedCandidates;
         }
 
         private static void AddDistinctCandidate(ICollection<string> candidates, string candidate)
@@ -104,6 +132,29 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             candidates.Add(candidate);
+        }
+
+        private static void AddDistinctCandidate(
+            ICollection<AccountMoreInfoBackgroundResourceCandidate> typedCandidates,
+            ICollection<string> pathCandidates,
+            string candidate,
+            bool mirrorsClientSetBackgrnd)
+        {
+            if (typedCandidates == null || pathCandidates == null || string.IsNullOrWhiteSpace(candidate))
+            {
+                return;
+            }
+
+            foreach (string existing in pathCandidates)
+            {
+                if (string.Equals(existing, candidate, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            pathCandidates.Add(candidate);
+            typedCandidates.Add(new AccountMoreInfoBackgroundResourceCandidate(candidate, mirrorsClientSetBackgrnd));
         }
 
         internal static string ResolveExitWithoutInfoNotice()

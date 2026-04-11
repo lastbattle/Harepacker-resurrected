@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool HasRegisteredTutorVariants => SharedRegisteredTutorVariantCount > 0;
         internal bool HasDisplayTutorVariants => HasClientTutorSkillSlots || HasRegisteredTutorVariants;
         internal int RegisteredTutorVariantCount => SharedRegisteredTutorVariantCount;
+        internal IReadOnlyList<TutorOwnerSnapshot> ClientTutorOwners => SnapshotSharedTutorOwners();
 
         private static readonly object SharedTutorStateSync = new();
         private static readonly List<int> SharedClientTutorSkillIds = new();
@@ -197,6 +198,17 @@ namespace HaCreator.MapSimulator.Interaction
                 lock (SharedTutorStateSync)
                 {
                     return SharedRegisteredTutorVariants.Count;
+                }
+            }
+        }
+
+        internal static int SharedTutorOwnerCount
+        {
+            get
+            {
+                lock (SharedTutorStateSync)
+                {
+                    return SharedTutorOwners.Count;
                 }
             }
         }
@@ -542,6 +554,11 @@ namespace HaCreator.MapSimulator.Interaction
             return SnapshotSharedClientTutorSkillSlots();
         }
 
+        internal IReadOnlyList<TutorOwnerSnapshot> SnapshotClientTutorOwners()
+        {
+            return SnapshotSharedTutorOwners();
+        }
+
         internal void ApplyIndexedMessage(int index, int durationMs, int currentTick)
         {
             LastIndexedMessage = Math.Max(0, index);
@@ -657,7 +674,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal IReadOnlyList<TutorVariantSnapshot> SnapshotDisplayTutorVariants()
         {
-            IReadOnlyList<TutorVariantSnapshot> registeredVariants = SnapshotSharedRegisteredTutorVariants();
+            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwners();
+            IReadOnlyList<TutorVariantSnapshot> registeredVariants = ownerSnapshots.Count > 0
+                ? ExtractTutorVariants(ownerSnapshots)
+                : SnapshotSharedRegisteredTutorVariants();
             List<TutorVariantSnapshot> variants = new();
             HashSet<long> emittedVariantKeys = new();
             IReadOnlyList<int> clientTutorSkillIds = SnapshotSharedClientTutorSkillSlots();
@@ -710,6 +730,32 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwners();
+            if (ownerSnapshots.Count > 0)
+            {
+                for (int i = 0; i < ownerSnapshots.Count; i++)
+                {
+                    TutorVariantSnapshot variant = ownerSnapshots[i].Variant;
+                    if (!variant.IsActive || variant.SkillId <= 0)
+                    {
+                        continue;
+                    }
+
+                    TutorVariantSnapshot normalizedVariant = variant with
+                    {
+                        SummonObjectId = variant.SummonObjectId > 0
+                            ? variant.SummonObjectId
+                            : ResolveSummonObjectId(variant.SkillId, variant.BoundCharacterId)
+                    };
+                    if (emittedVariantKeys.Add(BuildTutorVariantKey(normalizedVariant)))
+                    {
+                        variants.Add(normalizedVariant);
+                    }
+                }
+
+                return variants;
+            }
+
             IReadOnlyList<TutorVariantSnapshot> registeredVariants = SnapshotSharedRegisteredTutorVariants();
             for (int i = 0; i < registeredVariants.Count; i++)
             {
@@ -757,7 +803,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryGetSharedActiveVariantForCharacter(int runtimeCharacterId, out TutorVariantSnapshot variant)
         {
-            IReadOnlyList<TutorVariantSnapshot> variants = SnapshotSharedRegisteredTutorVariants();
+            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwners();
+            IReadOnlyList<TutorVariantSnapshot> variants = ownerSnapshots.Count > 0
+                ? ExtractTutorVariants(ownerSnapshots)
+                : SnapshotSharedRegisteredTutorVariants();
             int selectedIndex = -1;
             for (int i = 0; i < variants.Count; i++)
             {
@@ -791,7 +840,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryGetSharedTutorVariantForCharacter(int skillId, int runtimeCharacterId, out TutorVariantSnapshot variant)
         {
-            IReadOnlyList<TutorVariantSnapshot> variants = SnapshotSharedRegisteredTutorVariants();
+            IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots = SnapshotSharedTutorOwners();
+            IReadOnlyList<TutorVariantSnapshot> variants = ownerSnapshots.Count > 0
+                ? ExtractTutorVariants(ownerSnapshots)
+                : SnapshotSharedRegisteredTutorVariants();
             int index = FindRegisteredTutorVariantIndex(variants, NormalizeTutorSkillId(skillId), Math.Max(0, runtimeCharacterId));
             if (index >= 0)
             {
@@ -883,6 +935,7 @@ namespace HaCreator.MapSimulator.Interaction
                     SharedRegisteredTutorVariants.Add(nextSnapshot);
                 }
 
+                UpsertSharedTutorOwnerUnsafe(nextSnapshot);
                 LastRegistryMutationTick = currentTick;
             }
         }
@@ -1029,6 +1082,7 @@ namespace HaCreator.MapSimulator.Interaction
             lock (SharedTutorStateSync)
             {
                 SharedRegisteredTutorVariants.Clear();
+                SharedTutorOwners.Clear();
             }
         }
 
@@ -1037,6 +1091,26 @@ namespace HaCreator.MapSimulator.Interaction
             lock (SharedTutorStateSync)
             {
                 SharedTutorMessages.Clear();
+                for (int i = 0; i < SharedTutorOwners.Count; i++)
+                {
+                    SharedTutorOwners[i].ClearMessage();
+                }
+            }
+        }
+
+        internal static IReadOnlyList<TutorOwnerSnapshot> SnapshotSharedTutorOwners()
+        {
+            lock (SharedTutorStateSync)
+            {
+                PruneExpiredSharedTutorMessagesUnsafe(Environment.TickCount);
+                SynchronizeSharedTutorOwnerMessagesUnsafe();
+                TutorOwnerSnapshot[] snapshots = new TutorOwnerSnapshot[SharedTutorOwners.Count];
+                for (int i = 0; i < SharedTutorOwners.Count; i++)
+                {
+                    snapshots[i] = SharedTutorOwners[i].ToOwnerSnapshot();
+                }
+
+                return snapshots;
             }
         }
 
@@ -1090,6 +1164,15 @@ namespace HaCreator.MapSimulator.Interaction
             lock (SharedTutorStateSync)
             {
                 PruneExpiredSharedTutorMessagesUnsafe(currentTick);
+                int ownerIndex = FindSharedTutorOwnerIndexUnsafe(displayVariant.SkillId, displayVariant.BoundCharacterId);
+                if (ownerIndex >= 0
+                    && SharedTutorOwners[ownerIndex].HasMessage
+                    && IsSharedTutorMessageVisibleForDisplayVariant(SharedTutorOwners[ownerIndex].Message, displayVariant))
+                {
+                    snapshot = SharedTutorOwners[ownerIndex].Message;
+                    return true;
+                }
+
                 int snapshotIndex = FindSharedTutorMessageIndexUnsafe(displayVariant.SkillId, displayVariant.BoundCharacterId);
                 if (snapshotIndex < 0)
                 {
@@ -1172,6 +1255,12 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     SharedTutorMessages.RemoveAt(index);
                 }
+
+                int ownerIndex = FindSharedTutorOwnerIndexUnsafe(skillId, boundCharacterId);
+                if (ownerIndex >= 0)
+                {
+                    SharedTutorOwners[ownerIndex].ClearMessage();
+                }
             }
         }
 
@@ -1223,6 +1312,12 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     SharedTutorMessages.Add(snapshot);
                 }
+
+                int ownerIndex = FindSharedTutorOwnerIndexUnsafe(snapshot.SkillId, snapshot.BoundCharacterId);
+                if (ownerIndex >= 0)
+                {
+                    SharedTutorOwners[ownerIndex].ApplyMessage(snapshot);
+                }
             }
         }
 
@@ -1254,6 +1349,102 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return fallbackIndex;
+        }
+
+        private static IReadOnlyList<TutorVariantSnapshot> ExtractTutorVariants(IReadOnlyList<TutorOwnerSnapshot> ownerSnapshots)
+        {
+            if (ownerSnapshots == null || ownerSnapshots.Count == 0)
+            {
+                return Array.Empty<TutorVariantSnapshot>();
+            }
+
+            TutorVariantSnapshot[] variants = new TutorVariantSnapshot[ownerSnapshots.Count];
+            for (int i = 0; i < ownerSnapshots.Count; i++)
+            {
+                variants[i] = ownerSnapshots[i].Variant;
+            }
+
+            return variants;
+        }
+
+        private static void UpsertSharedTutorOwnerUnsafe(TutorVariantSnapshot snapshot)
+        {
+            if (snapshot.SkillId <= 0)
+            {
+                return;
+            }
+
+            int index = FindSharedTutorOwnerIndexUnsafe(snapshot.SkillId, snapshot.BoundCharacterId);
+            if (index < 0)
+            {
+                SharedTutorOwners.Add(new ClientTutorOwnerState(snapshot.SkillId, snapshot.BoundCharacterId));
+                index = SharedTutorOwners.Count - 1;
+            }
+
+            SharedTutorOwners[index].ApplyVariant(
+                snapshot.SkillId,
+                snapshot.SummonObjectId,
+                snapshot.ActorHeight,
+                snapshot.BoundCharacterId,
+                snapshot.IsActive,
+                snapshot.LastRemovalTick != int.MinValue,
+                snapshot.LastMutationTick);
+        }
+
+        private static void SynchronizeSharedTutorOwnerMessagesUnsafe()
+        {
+            for (int i = 0; i < SharedTutorOwners.Count; i++)
+            {
+                ClientTutorOwnerState owner = SharedTutorOwners[i];
+                int messageIndex = FindSharedTutorMessageIndexUnsafe(owner.SkillId, owner.BoundCharacterId);
+                if (messageIndex >= 0 && IsSharedTutorMessageVisibleForDisplayVariant(SharedTutorMessages[messageIndex], owner.ToVariantSnapshot()))
+                {
+                    owner.ApplyMessage(SharedTutorMessages[messageIndex]);
+                }
+                else
+                {
+                    owner.ClearMessage();
+                }
+            }
+        }
+
+        private static int FindSharedTutorOwnerIndexUnsafe(int skillId, int boundCharacterId)
+        {
+            if (skillId <= 0)
+            {
+                return -1;
+            }
+
+            int fallbackIndex = -1;
+            for (int i = 0; i < SharedTutorOwners.Count; i++)
+            {
+                ClientTutorOwnerState candidate = SharedTutorOwners[i];
+                if (candidate.SkillId != skillId)
+                {
+                    continue;
+                }
+
+                if (boundCharacterId > 0 && candidate.BoundCharacterId == boundCharacterId)
+                {
+                    return i;
+                }
+
+                if (boundCharacterId <= 0 && fallbackIndex < 0)
+                {
+                    fallbackIndex = i;
+                }
+            }
+
+            return fallbackIndex;
+        }
+
+        private static bool IsSharedTutorMessageVisibleForDisplayVariant(TutorMessageSnapshot snapshot, TutorVariantSnapshot displayVariant)
+        {
+            return snapshot.MessageKind != TutorMessageKind.None
+                && snapshot.SkillId == displayVariant.SkillId
+                && (displayVariant.BoundCharacterId <= 0
+                    || snapshot.BoundCharacterId <= 0
+                    || snapshot.BoundCharacterId == displayVariant.BoundCharacterId);
         }
 
         private static void PruneExpiredSharedTutorMessagesUnsafe(int currentTick)

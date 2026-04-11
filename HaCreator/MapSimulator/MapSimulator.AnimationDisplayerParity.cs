@@ -5,6 +5,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
@@ -92,6 +93,7 @@ namespace HaCreator.MapSimulator
         {
             public int ItemId { get; init; }
             public string EffectUol { get; init; }
+            public IReadOnlyList<List<IDXObject>> EffectFrameVariants { get; init; }
             public IReadOnlyList<Vector2> GenerationPoints { get; init; }
             public Rectangle EmissionArea { get; init; }
             public int UpdateIntervalMs { get; init; }
@@ -545,12 +547,16 @@ namespace HaCreator.MapSimulator
 
             AnimationDisplayerFollowEquipmentDefinition followDefinition = ResolveAnimationDisplayerFollowEquipmentDefinition(ownerCharacterId);
             List<IDXObject> frames = null;
+            IReadOnlyList<List<IDXObject>> followFrameVariants = followDefinition?.EffectFrameVariants;
             if (!string.IsNullOrWhiteSpace(followDefinition?.EffectUol))
             {
-                TryGetAnimationDisplayerFrames(
-                    $"follow:equipment:{followDefinition.ItemId}",
-                    followDefinition.EffectUol,
-                    out frames);
+                if (!Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
+                {
+                    TryGetAnimationDisplayerFrames(
+                        $"follow:equipment:{followDefinition.ItemId}",
+                        followDefinition.EffectUol,
+                        out frames);
+                }
             }
 
             if (!Animation.AnimationEffects.HasFrames(frames))
@@ -558,7 +564,11 @@ namespace HaCreator.MapSimulator
                 TryGetAnimationDisplayerFrames("follow:generic", AnimationDisplayerGenericUserStateEffectUol, out frames);
             }
 
-            IReadOnlyList<List<IDXObject>> followFrameVariants = LoadAnimationDisplayerFollowFrameVariants();
+            if (!Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
+            {
+                followFrameVariants = LoadAnimationDisplayerFollowFrameVariants();
+            }
+
             if (!Animation.AnimationEffects.HasFrames(frames)
                 && !Animation.AnimationEffects.HasFrameVariants(followFrameVariants))
             {
@@ -2496,8 +2506,9 @@ namespace HaCreator.MapSimulator
 
             string effectPath = NormalizeAnimationDisplayerPath(effectProperty["path"]?.GetString());
             string effectUol = BuildAnimationDisplayerFollowEquipmentEffectUol(effectPath);
-            List<IDXObject> effectFrames = LoadAnimationDisplayerFrames(effectUol);
-            if (!Animation.AnimationEffects.HasFrames(effectFrames))
+            IReadOnlyList<List<IDXObject>> effectFrameVariants = LoadAnimationDisplayerFollowEquipmentFrameVariants(effectPath);
+            if (!Animation.AnimationEffects.HasFrameVariants(effectFrameVariants)
+                && !Animation.AnimationEffects.HasFrames(LoadAnimationDisplayerFrames(effectUol)))
             {
                 return null;
             }
@@ -2517,6 +2528,7 @@ namespace HaCreator.MapSimulator
             {
                 ItemId = itemId,
                 EffectUol = effectUol,
+                EffectFrameVariants = effectFrameVariants,
                 GenerationPoints = generationPoints,
                 EmissionArea = emissionArea,
                 UpdateIntervalMs = updateIntervalMs,
@@ -2612,6 +2624,57 @@ namespace HaCreator.MapSimulator
             }
 
             return effectPath;
+        }
+
+        private IReadOnlyList<List<IDXObject>> LoadAnimationDisplayerFollowEquipmentFrameVariants(string effectPath)
+        {
+            string[] variantUols = EnumerateAnimationDisplayerFollowEquipmentEffectVariantUols(
+                effectPath,
+                ResolveAnimationDisplayerPropertyStatic(effectPath));
+            if (variantUols.Length == 0)
+            {
+                return null;
+            }
+
+            var variants = new List<List<IDXObject>>(variantUols.Length);
+            for (int i = 0; i < variantUols.Length; i++)
+            {
+                List<IDXObject> frames = LoadAnimationDisplayerFrames(variantUols[i]);
+                if (Animation.AnimationEffects.HasFrames(frames))
+                {
+                    variants.Add(frames);
+                }
+            }
+
+            return variants.Count > 0 ? variants : null;
+        }
+
+        internal static string[] EnumerateAnimationDisplayerFollowEquipmentEffectVariantUols(
+            string effectPath,
+            WzImageProperty effectRootProperty)
+        {
+            string normalizedEffectPath = NormalizeAnimationDisplayerPath(effectPath);
+            WzImageProperty resolvedRoot = WzInfoTools.GetRealProperty(effectRootProperty);
+            if (string.IsNullOrWhiteSpace(normalizedEffectPath) || resolvedRoot is not WzSubProperty rootSubProperty)
+            {
+                return Array.Empty<string>();
+            }
+
+            var variantUols = new List<string>();
+            int childCount = rootSubProperty.WzProperties?.Count ?? 0;
+            for (int index = 0; index < childCount; index++)
+            {
+                string childName = index.ToString(CultureInfo.InvariantCulture);
+                WzImageProperty variantProperty = WzInfoTools.GetRealProperty(rootSubProperty[childName]);
+                if (variantProperty == null)
+                {
+                    break;
+                }
+
+                variantUols.Add($"{normalizedEffectPath}/{childName}");
+            }
+
+            return variantUols.ToArray();
         }
 
         internal static int? GetAnimationDisplayerNumericValue(WzImageProperty parentProperty, string propertyName)

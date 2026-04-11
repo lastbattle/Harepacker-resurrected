@@ -1620,6 +1620,21 @@ namespace HaCreator.MapSimulator.Interaction
             return ResolveUiCenterRepeatCount(uiProperty);
         }
 
+        internal static (string LeaveState, int? RemovedCanvasIndex, int? InsertCanvasDuration, int? InsertCanvasStartAlphaValue, int? InsertCanvasEndAlphaValue, int AnimationMode, bool RegisteredOneTimeAnimation, bool ShouldRemoveAtFadeEnd) SimulateClientLeaveLayerForTest(int currentTick)
+        {
+            ManagedMessageBoxLayer layer = ManagedMessageBoxLayer.CreateLoaded(Point.Zero, currentTick);
+            layer.BeginLeave(Point.Zero, currentTick);
+            return (
+                layer.LeaveState.ToString(),
+                layer.RemovedCanvasIndex,
+                layer.InsertCanvasDuration,
+                layer.InsertCanvasStartAlphaValue,
+                layer.InsertCanvasEndAlphaValue,
+                layer.AnimationMode,
+                layer.RegisteredOneTimeAnimation,
+                layer.ShouldRemoveAfterLeave(currentTick + ClientLeaveCanvasFadeDurationMs));
+        }
+
         private FrozenMessageBoxRenderState CaptureLeaveRenderState(FieldMessageBoxEntry entry)
         {
             Texture2D displayTexture = entry.GetDisplayTexture();
@@ -2099,7 +2114,6 @@ namespace HaCreator.MapSimulator.Interaction
                     currentTick + ClientLeaveCanvasReinsertDelayMs);
                 Animate(ClientLayerStopAnimation);
                 RegisteredOneTimeAnimation = true;
-                LeaveState = LeaveCanvasState.RegisteredOneTimeAnimation;
             }
 
             public void RemoveFromPool(bool immediate)

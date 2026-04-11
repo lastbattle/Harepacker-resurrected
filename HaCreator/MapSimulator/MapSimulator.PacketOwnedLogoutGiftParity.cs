@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework.Graphics;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -175,7 +176,7 @@ namespace HaCreator.MapSimulator
             string followUpMessage = ShowPacketOwnedLogoutGiftCompletionDialog();
             int buttonId = LogoutGiftWindow.GetClientSelectButtonId(index);
             _lastPacketOwnedLogoutGiftSummary =
-                $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {buttonId.ToString(CultureInfo.InvariantCulture)}).{commoditySuffix} {DispatchPacketOwnedLogoutGiftSelectionRequest(index)} {followUpMessage}";
+                $"Simulated CUILogoutGift::OnButtonClicked outpacket {PacketOwnedLogoutGiftSelectionOpcode} with slot index {index.ToString(CultureInfo.InvariantCulture)} (button {buttonId.ToString(CultureInfo.InvariantCulture)}).{commoditySuffix} {DispatchPacketOwnedLogoutGiftSelectionRequest(buttonId)} {followUpMessage}";
             NotifyEventAlarmOwnerActivity("packet-owned logout gift");
             return _lastPacketOwnedLogoutGiftSummary;
         }
@@ -868,9 +869,13 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private string DispatchPacketOwnedLogoutGiftSelectionRequest(int index)
+        private string DispatchPacketOwnedLogoutGiftSelectionRequest(int buttonId)
         {
-            byte[] payload = BuildPacketOwnedLogoutGiftSelectionPayload(index);
+            if (!TryBuildPacketOwnedLogoutGiftSelectionPayload(buttonId, out byte[] payload, out int slotIndex))
+            {
+                return $"Skipped opcode {PacketOwnedLogoutGiftSelectionOpcode} because button {buttonId.ToString(CultureInfo.InvariantCulture)} is outside the client CUILogoutGift::OnButtonClicked select range 1000..1002.";
+            }
+
             string payloadHex = Convert.ToHexString(payload);
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(PacketOwnedLogoutGiftSelectionOpcode, payload, out string dispatchStatus))
             {
@@ -899,7 +904,21 @@ namespace HaCreator.MapSimulator
 
         internal static byte[] BuildPacketOwnedLogoutGiftSelectionPayload(int index)
         {
-            return BitConverter.GetBytes(index);
+            byte[] payload = new byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(payload, index);
+            return payload;
+        }
+
+        internal static bool TryBuildPacketOwnedLogoutGiftSelectionPayload(int buttonId, out byte[] payload, out int slotIndex)
+        {
+            payload = Array.Empty<byte>();
+            if (!LogoutGiftWindow.TryResolveClientSelectButtonIndex(buttonId, out slotIndex))
+            {
+                return false;
+            }
+
+            payload = BuildPacketOwnedLogoutGiftSelectionPayload(slotIndex);
+            return true;
         }
 
         internal static bool IsPacketOwnedLogoutGiftOwnerSingletonPresent(bool ownerInstantiated, bool ownerVisible)

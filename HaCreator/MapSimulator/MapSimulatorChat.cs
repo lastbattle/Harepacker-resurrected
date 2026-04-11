@@ -1299,10 +1299,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            _whisperTargetPickerSelectionIndex = Math.Clamp(
-                removedIndex,
-                0,
-                _whisperCandidates.Count - 1);
+            _whisperTargetPickerSelectionIndex = 0;
             return true;
         }
 

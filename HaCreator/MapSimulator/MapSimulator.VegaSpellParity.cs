@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator
         private const byte VegaPacketOwnedSuccessTerminalCode = 69;
         private const byte VegaPacketOwnedFailPreludeCode = 73;
         private const byte VegaPacketOwnedFailTerminalCode = 71;
+        private const int VegaOwnerRequestPayloadLength = (sizeof(int) * 8) + sizeof(short);
         private const int VegaConsumeCashLaunchPayloadPrefixLength = sizeof(int) + sizeof(short) + sizeof(int);
         private const int VegaConsumeCashLaunchPayloadLength = VegaConsumeCashLaunchPayloadPrefixLength + (sizeof(int) * 3);
         private const int VegaSyntheticEquipItemTokenMask = unchecked((int)0x40000000);
@@ -546,7 +547,7 @@ namespace HaCreator.MapSimulator
             bool useWhiteScroll,
             int updateTick)
         {
-            byte[] payload = new byte[(sizeof(int) * 7) + sizeof(short)];
+            byte[] payload = new byte[VegaOwnerRequestPayloadLength];
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(0, sizeof(int)), updateTick);
             BinaryPrimitives.WriteInt16LittleEndian(payload.AsSpan(sizeof(int), sizeof(short)), (short)Math.Max(0, modifierSlotPosition));
             BinaryPrimitives.WriteInt32LittleEndian(payload.AsSpan(sizeof(int) + sizeof(short), sizeof(int)), modifierItemId);

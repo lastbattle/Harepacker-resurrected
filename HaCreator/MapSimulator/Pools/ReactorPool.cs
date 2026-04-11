@@ -1600,7 +1600,13 @@ namespace HaCreator.MapSimulator.Pools
 
             if (TryGetReactorIndexByPacketObjectId(packetObjectId, out int existingIndex))
             {
-                ApplyPacketOwnershipToReactor(existingIndex, packetObjectId, canRespawn: false);
+                bool promoteExistingTouch = IsImmediateLocalUserTouchCandidate(
+                    GetReactor(existingIndex),
+                    GetReactorData(existingIndex),
+                    currentTick,
+                    localPlayerX,
+                    localPlayerY);
+                ApplyPacketOwnershipToReactor(existingIndex, packetObjectId, canRespawn: false, promoteLocalUserTouch: promoteExistingTouch);
                 ApplyPacketReactorState(existingIndex, initialState, x, y, flip, currentTick);
                 ReactorRuntimeData existingData = GetReactorData(existingIndex);
                 if (existingData != null)
@@ -1628,7 +1634,13 @@ namespace HaCreator.MapSimulator.Pools
                 out PacketEnterAuthoredReactorSelectionReason selectionReason,
                 out int authoredIndex))
             {
-                ApplyPacketOwnershipToReactor(authoredIndex, packetObjectId, canRespawn: false);
+                bool promoteAuthoredTouch = IsImmediateLocalUserTouchCandidate(
+                    GetReactor(authoredIndex),
+                    GetReactorData(authoredIndex),
+                    currentTick,
+                    localPlayerX,
+                    localPlayerY);
+                ApplyPacketOwnershipToReactor(authoredIndex, packetObjectId, canRespawn: false, promoteLocalUserTouch: promoteAuthoredTouch);
                 ApplyPacketReactorState(authoredIndex, initialState, x, y, flip, currentTick);
                 ReactorRuntimeData authoredData = GetReactorData(authoredIndex);
                 if (authoredData != null)
@@ -1998,6 +2010,10 @@ namespace HaCreator.MapSimulator.Pools
                         {
                             data.PacketAnimationPhase = ResolvePacketAnimationPhaseAfterLoad(data.PacketProperEventIndex, loadedHitLayer: true);
                             data.PacketAnimationEndTime = ResolvePacketAnimationEndTime(currentTick, hitAnimationDuration);
+                        }
+                        else if (ShouldRefuseUnmatchedPacketAutoHitLayer(data, hitAnimationDuration))
+                        {
+                            RefuseUnmatchedPacketAutoHitLayer(reactor, data, currentTick);
                         }
                         else
                         {
@@ -2911,7 +2927,7 @@ namespace HaCreator.MapSimulator.Pools
             return index >= 0;
         }
 
-        private void ApplyPacketOwnershipToReactor(int index, int packetObjectId, bool canRespawn)
+        private void ApplyPacketOwnershipToReactor(int index, int packetObjectId, bool canRespawn, bool promoteLocalUserTouch = false)
         {
             if (packetObjectId <= 0)
             {
@@ -2929,6 +2945,8 @@ namespace HaCreator.MapSimulator.Pools
             bool wasLocallyTouched = previousTouchObjectId != 0
                 && _reactorsOnLocalUser.TryGetValue(previousTouchObjectId, out int touchedIndex)
                 && touchedIndex == index;
+            bool wasPacketTouched = _reactorsOnLocalUser.TryGetValue(packetObjectId, out int packetTouchedIndex)
+                && packetTouchedIndex == index;
             UntrackPacketObjectId(data.PacketObjectId);
             data.PacketObjectId = packetObjectId;
             data.IsPacketOwned = true;
@@ -2950,9 +2968,15 @@ namespace HaCreator.MapSimulator.Pools
                 _pendingPacketTouchRequestRemovalObjectIds.Enqueue(previousPacketObjectId.Value);
             }
 
-            if (previousTouchObjectId != packetObjectId && wasLocallyTouched)
+            if ((previousTouchObjectId != packetObjectId || promoteLocalUserTouch)
+                && (wasLocallyTouched || promoteLocalUserTouch)
+                && !wasPacketTouched)
             {
-                _reactorsOnLocalUser.Remove(previousTouchObjectId);
+                if (wasLocallyTouched)
+                {
+                    _reactorsOnLocalUser.Remove(previousTouchObjectId);
+                }
+
                 _reactorsOnLocalUser[packetObjectId] = index;
                 ReactorItem reactor = GetReactor(index);
                 if (reactor != null)
@@ -3634,7 +3658,8 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return data.PacketPendingVisualState >= 0
-                || ShouldPreservePacketSourceUntilStateEnd(data);
+                || ShouldPreservePacketSourceUntilStateEnd(data)
+                || ShouldPreservePacketSourceAfterAutoHitLayerRefusal(data);
         }
 
         internal static bool ShouldApplyPendingPacketVisualStateOnStateEnd(ReactorRuntimeData data, int currentTick)
@@ -3659,7 +3684,8 @@ namespace HaCreator.MapSimulator.Pools
                 && currentTick >= data.PacketStateEndTime
                 && data.PacketHitStartTime <= 0
                 && data.PacketAnimationEndTime <= 0
-                && !data.PacketLeavePending;
+                && !data.PacketLeavePending
+                && !ShouldPreservePacketSourceAfterAutoHitLayerRefusal(data);
         }
 
         internal static bool ShouldDelayActivatedPacketHandoffUntilStateEnd(ReactorRuntimeData data, int currentTick)
@@ -3678,6 +3704,42 @@ namespace HaCreator.MapSimulator.Pools
                 && data.PacketHitStartTime <= 0
                 && data.PacketAnimationEndTime <= 0
                 && !data.PacketLeavePending;
+        }
+
+        internal static bool ShouldRefuseUnmatchedPacketAutoHitLayer(ReactorRuntimeData data, int hitAnimationDuration)
+        {
+            return data != null
+                && data.PacketProperEventIndex == -2
+                && hitAnimationDuration <= 0;
+        }
+
+        internal static bool ShouldPreservePacketSourceAfterAutoHitLayerRefusal(ReactorRuntimeData data)
+        {
+            return data != null
+                && data.IsPacketOwned
+                && data.PacketProperEventIndex == -2
+                && data.PacketPendingVisualState < 0
+                && data.PacketAnimationSourceState >= 0
+                && data.PacketHitStartTime <= 0
+                && data.PacketAnimationEndTime <= 0
+                && !data.PacketLeavePending;
+        }
+
+        private static void RefuseUnmatchedPacketAutoHitLayer(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            reactor?.ClearTransientAnimation();
+            data.PacketPendingVisualState = -1;
+            data.PacketStateEndTime = 0;
+            data.PacketAnimationEndTime = 0;
+            data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
+            data.State = ReactorState.Active;
+            data.StateStartTime = currentTick;
+            ClearPacketStateMovement(reactor, data, snapToTarget: false);
         }
 
         private static void CommitPacketVisualOwnership(ReactorItem reactor, ReactorRuntimeData data, int currentTick)

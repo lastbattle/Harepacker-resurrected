@@ -132,6 +132,78 @@ namespace HaCreator.MapSimulator.Character
             return (int)duration;
         }
 
+        internal static bool TryGetPreparedFrameAtTime(
+            CharacterAnimation animation,
+            string actionName,
+            int timeMs,
+            int actionSpeed,
+            int walkSpeed,
+            bool heldShootAction,
+            bool isMorphAvatar,
+            bool isSuperManMorph,
+            out CharacterFrame frame,
+            out int frameIndex)
+        {
+            frame = null;
+            frameIndex = -1;
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            if (animation.Frames.Count == 1)
+            {
+                frame = animation.Frames[0];
+                frameIndex = 0;
+                return true;
+            }
+
+            int[] preparedDelays = new int[animation.Frames.Count];
+            long totalDuration = 0;
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                int preparedDelay = ResolvePreparedFrameDelay(
+                    actionName,
+                    animation.Frames[i]?.Delay ?? 0,
+                    actionSpeed,
+                    walkSpeed,
+                    heldShootAction,
+                    i,
+                    isMorphAvatar,
+                    isSuperManMorph);
+                preparedDelays[i] = Math.Max(0, preparedDelay);
+                totalDuration += preparedDelays[i];
+            }
+
+            if (totalDuration <= 0)
+            {
+                frame = animation.Frames[0];
+                frameIndex = 0;
+                return true;
+            }
+
+            long time = animation.Loop
+                ? Math.Max(0, timeMs) % totalDuration
+                : Math.Min(Math.Max(0, timeMs), totalDuration);
+            long elapsed = 0;
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                int frameDelay = preparedDelays[i];
+                if (time < elapsed + frameDelay || i == animation.Frames.Count - 1)
+                {
+                    frame = animation.Frames[i];
+                    frameIndex = i;
+                    return frame != null;
+                }
+
+                elapsed += frameDelay;
+            }
+
+            frameIndex = animation.Frames.Count - 1;
+            frame = animation.Frames[frameIndex];
+            return frame != null;
+        }
+
         internal static bool TryResolveMountedTransitionBodyAnimationTime(
             string actionName,
             int elapsedTimeMs,

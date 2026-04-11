@@ -49,7 +49,7 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal static void ApplyAuthoritativeCashSerialMetadata(
-            IList<InventorySlotData> liveCashSlots,
+            IReadOnlyList<InventorySlotData> liveCashSlots,
             IReadOnlyList<PacketCharacterDataItemSlot> authoritativeCashItems)
         {
             if (liveCashSlots == null)
@@ -66,7 +66,7 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < liveCashSlots.Count; i++)
             {
                 InventorySlotData slot = liveCashSlots[i];
-                if (slot == null)
+                if (slot == null || !IsPetCashItem(slot.ItemId))
                 {
                     continue;
                 }

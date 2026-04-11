@@ -7,6 +7,8 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class ContextOwnedStagePeriodRuntime
     {
+        private const ushort StageChangePacketType = 135;
+
         private int _boundMapId = int.MinValue;
         private string _currentStagePeriod = string.Empty;
         private byte _currentMode;
@@ -93,6 +95,34 @@ namespace HaCreator.MapSimulator.Interaction
             packet = default;
             error = null;
             payload ??= Array.Empty<byte>();
+
+            if (TryDecodePayloadBody(payload, out packet, out error))
+            {
+                return true;
+            }
+
+            string framedError = null;
+            if (payload.Length >= sizeof(ushort)
+                && BitConverter.ToUInt16(payload, 0) == StageChangePacketType
+                && TryDecodePayloadBody(payload.AsSpan(sizeof(ushort)).ToArray(), out packet, out framedError))
+            {
+                error = null;
+                return true;
+            }
+
+            if (payload.Length >= sizeof(ushort)
+                && BitConverter.ToUInt16(payload, 0) == StageChangePacketType)
+            {
+                error = $"Stage-period opcode {StageChangePacketType.ToString(CultureInfo.InvariantCulture)} body could not be decoded: {framedError}";
+            }
+
+            return false;
+        }
+
+        private static bool TryDecodePayloadBody(byte[] payload, out PacketStagePeriodChangePacket packet, out string error)
+        {
+            packet = default;
+            error = null;
 
             try
             {

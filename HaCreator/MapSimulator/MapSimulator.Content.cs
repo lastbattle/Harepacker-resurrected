@@ -656,6 +656,7 @@ namespace HaCreator.MapSimulator
             _specialFieldRuntime.BindMap(_mapBoard);
             ApplyClientOwnedFieldWrappers();
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
+            RestorePacketOwnedFieldPropertyClockFromMap();
             BindPacketOwnedStageTransitionMapState();
             BindPacketOwnedReactorPoolMapState();
             SyncWeddingPacketInboxState();

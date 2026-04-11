@@ -138,6 +138,16 @@ namespace HaCreator.MapSimulator
         private void SyncPacketOwnedScriptSelectablePetsFromCharacterData(PacketCharacterDataSnapshot snapshot)
         {
             _packetScriptSelectablePetsBySerial = PacketScriptPetSelectionSnapshotResolver.BuildCandidates(snapshot);
+            if (uiWindowManager?.InventoryWindow is IInventoryRuntime inventoryRuntime
+                && snapshot?.InventoryItemsByType != null
+                && snapshot.InventoryItemsByType.TryGetValue(
+                    MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.CASH,
+                    out IReadOnlyList<PacketCharacterDataItemSlot> authoritativeCashItems))
+            {
+                PacketScriptPetSelectionSnapshotResolver.ApplyAuthoritativeCashSerialMetadata(
+                    inventoryRuntime.GetSlots(MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.CASH),
+                    authoritativeCashItems);
+            }
         }
 
         private void ClearPacketOwnedScriptSelectablePets()

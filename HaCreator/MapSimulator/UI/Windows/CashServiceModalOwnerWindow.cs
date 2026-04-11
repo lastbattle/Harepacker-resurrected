@@ -27,6 +27,10 @@ namespace HaCreator.MapSimulator.UI
             public string Detail { get; init; } = string.Empty;
             public bool IsChecked { get; init; }
             public bool IsEnabled { get; init; } = true;
+            public int ClientX { get; init; }
+            public int ClientYFromBottom { get; init; }
+            public int ClientWidth { get; init; }
+            public int ClientHeight { get; init; }
         }
 
         internal sealed class ComboBoxState
@@ -35,6 +39,10 @@ namespace HaCreator.MapSimulator.UI
             public string Label { get; init; } = string.Empty;
             public IReadOnlyList<ComboBoxItemState> Items { get; init; } = Array.Empty<ComboBoxItemState>();
             public int SelectedIndex { get; init; }
+            public int ClientX { get; init; }
+            public int ClientY { get; init; }
+            public int ClientWidth { get; init; }
+            public int ClientHeight { get; init; }
         }
 
         internal sealed class ComboBoxItemState
@@ -96,6 +104,10 @@ namespace HaCreator.MapSimulator.UI
         private string _comboBoxLabel = string.Empty;
         private int _selectedComboIndex;
         private bool _comboExpanded;
+        private int _comboBoxClientX;
+        private int _comboBoxClientY;
+        private int _comboBoxClientWidth;
+        private int _comboBoxClientHeight;
         private Rectangle _inputBounds;
         private Rectangle _comboBounds;
 
@@ -201,6 +213,10 @@ namespace HaCreator.MapSimulator.UI
             _comboBoxLabel = comboBox?.Label ?? string.Empty;
             _selectedComboIndex = ResolveSelectedComboIndex(comboBox?.SelectedIndex ?? 0, _comboItems.Count);
             _showComboBox = _comboItems.Count > 0;
+            _comboBoxClientX = comboBox?.ClientX ?? 0;
+            _comboBoxClientY = comboBox?.ClientY ?? 0;
+            _comboBoxClientWidth = comboBox?.ClientWidth ?? 0;
+            _comboBoxClientHeight = comboBox?.ClientHeight ?? 0;
             _comboExpanded = false;
             UpdateLayout();
         }
@@ -256,7 +272,15 @@ namespace HaCreator.MapSimulator.UI
             {
                 MoveSelectedCheckBox(-1);
             }
+            else if (_showCheckBoxes && Pressed(keyboardState, Keys.Up))
+            {
+                MoveSelectedCheckBox(-1);
+            }
             else if (_showCheckBoxes && Pressed(keyboardState, Keys.Right))
+            {
+                MoveSelectedCheckBox(1);
+            }
+            else if (_showCheckBoxes && Pressed(keyboardState, Keys.Down))
             {
                 MoveSelectedCheckBox(1);
             }
@@ -541,8 +565,8 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < _checkBoxes.Count; i++)
             {
                 CheckBoxState checkBox = _checkBoxes[i];
-                Rectangle bounds = new(Position.X + BodyOffsetX, (int)cursor.Y + 2, CheckBoxSize, CheckBoxSize);
-                Rectangle hitBounds = new(Position.X + BodyOffsetX, (int)cursor.Y, ResolveContentWidth(), CheckBoxRowHeight);
+                Rectangle hitBounds = ResolveCheckBoxHitBounds(checkBox, cursor);
+                Rectangle bounds = new(hitBounds.X, hitBounds.Y + Math.Max(0, (hitBounds.Height - CheckBoxSize) / 2), CheckBoxSize, CheckBoxSize);
                 _checkBoxBounds[checkBox.ControlId] = hitBounds;
 
                 Color border = checkBox.IsEnabled ? new Color(196, 196, 196) : new Color(96, 96, 96);
@@ -564,7 +588,7 @@ namespace HaCreator.MapSimulator.UI
                     label,
                     new Vector2(bounds.Right + 6, cursor.Y),
                     text);
-                cursor.Y += CheckBoxRowHeight;
+                cursor.Y += Math.Max(CheckBoxRowHeight, hitBounds.Height);
             }
         }
 
@@ -576,7 +600,7 @@ namespace HaCreator.MapSimulator.UI
                 cursor.Y += _font.LineSpacing;
             }
 
-            _comboBounds = new Rectangle(Position.X + BodyOffsetX, (int)cursor.Y, Math.Min(150, ResolveContentWidth()), ComboBoxHeight);
+            _comboBounds = ResolveComboBoxBounds(cursor);
             sprite.Draw(_pixelTexture, _comboBounds, new Color(238, 238, 238, 232));
             DrawBorder(sprite, _comboBounds, new Color(153, 153, 153));
             SelectorWindowDrawing.DrawShadowedText(
@@ -590,7 +614,7 @@ namespace HaCreator.MapSimulator.UI
             DrawBorder(sprite, arrowBounds, new Color(153, 153, 153));
             SelectorWindowDrawing.DrawShadowedText(sprite, _font, "v", new Vector2(arrowBounds.X + 5, arrowBounds.Y + 1), Color.Black);
 
-            cursor.Y += ComboBoxHeight;
+            cursor.Y += Math.Max(ComboBoxHeight, _comboBounds.Height);
             _comboOptionBounds.Clear();
             if (!_comboExpanded)
             {
@@ -610,6 +634,34 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(optionBounds.X + 4, optionBounds.Y + 1),
                     Color.Black);
             }
+        }
+
+        private Rectangle ResolveCheckBoxHitBounds(CheckBoxState checkBox, Vector2 cursor)
+        {
+            if (checkBox.ClientWidth > 0 && checkBox.ClientHeight > 0 && checkBox.ClientYFromBottom > 0)
+            {
+                return new Rectangle(
+                    Position.X + checkBox.ClientX,
+                    Position.Y + ResolveFrameHeight() - checkBox.ClientYFromBottom,
+                    checkBox.ClientWidth,
+                    checkBox.ClientHeight);
+            }
+
+            return new Rectangle(Position.X + BodyOffsetX, (int)cursor.Y, ResolveContentWidth(), CheckBoxRowHeight);
+        }
+
+        private Rectangle ResolveComboBoxBounds(Vector2 cursor)
+        {
+            if (_comboBoxClientWidth > 0 && _comboBoxClientHeight > 0)
+            {
+                return new Rectangle(
+                    Position.X + _comboBoxClientX,
+                    Position.Y + _comboBoxClientY,
+                    _comboBoxClientWidth,
+                    _comboBoxClientHeight);
+            }
+
+            return new Rectangle(Position.X + BodyOffsetX, (int)cursor.Y, Math.Min(150, ResolveContentWidth()), ComboBoxHeight);
         }
 
         private Rectangle GetGiftRowBounds(int index)

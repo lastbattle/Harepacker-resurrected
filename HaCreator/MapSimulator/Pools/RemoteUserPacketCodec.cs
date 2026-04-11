@@ -931,14 +931,16 @@ namespace HaCreator.MapSimulator.Pools
             {
                 var reader = new PacketReader(payload);
                 int characterId = reader.ReadInt32();
-                if (!TryDecodeMoveSnapshot(
-                        ref reader,
+                if (!TryDecodeMoveSnapshotPayload(
+                        payload.Slice(reader.Offset),
                         currentTime,
                         decodePassiveTail: false,
+                        requireExactLength: true,
                         out PlayerMovementSyncSnapshot snapshot,
-                        out byte moveAction))
+                        out byte moveAction,
+                        out error))
                 {
-                    error = $"Remote user move packet for {characterId} could not be decoded.";
+                    error = $"Remote user move packet for {characterId} could not be decoded. {error}";
                     return false;
                 }
 
@@ -1012,23 +1014,16 @@ namespace HaCreator.MapSimulator.Pools
 
             try
             {
-                var reader = new PacketReader(payload);
-                if (!TryDecodeMoveSnapshot(
-                        ref reader,
+                if (!TryDecodeMoveSnapshotPayload(
+                        payload,
                         currentTime,
                         decodePassiveTail: true,
+                        requireExactLength: true,
                         out snapshot,
-                        out moveAction))
+                        out moveAction,
+                        out error))
                 {
-                    error = "Passive-move packet could not be decoded.";
-                    return false;
-                }
-
-                if (reader.RemainingLength != 0)
-                {
-                    snapshot = null;
-                    moveAction = 0;
-                    error = $"Passive-move packet has {reader.RemainingLength} unread bytes remaining.";
+                    error = $"Passive-move packet could not be decoded. {error}";
                     return false;
                 }
 
@@ -3521,6 +3516,7 @@ namespace HaCreator.MapSimulator.Pools
             ref PacketReader reader,
             int currentTime,
             bool decodePassiveTail,
+            bool decodeClientOptRandomCounts,
             out PlayerMovementSyncSnapshot snapshot,
             out byte moveAction)
         {
@@ -3652,6 +3648,11 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     moveAction = reader.ReadByte();
                     elapsed = reader.ReadInt16();
+                    if (decodeClientOptRandomCounts)
+                    {
+                        reader.ReadInt16();
+                        reader.ReadInt16();
+                    }
                 }
                 else
                 {
@@ -3715,6 +3716,61 @@ namespace HaCreator.MapSimulator.Pools
                 passiveKeyPadStates,
                 passiveMoveBounds);
             return true;
+        }
+
+        private static bool TryDecodeMoveSnapshotPayload(
+            ReadOnlySpan<byte> payload,
+            int currentTime,
+            bool decodePassiveTail,
+            bool requireExactLength,
+            out PlayerMovementSyncSnapshot snapshot,
+            out byte moveAction,
+            out string error)
+        {
+            string lastError = null;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                bool decodeClientOptRandomCounts = pass == 1;
+                var reader = new PacketReader(payload);
+                try
+                {
+                    if (!TryDecodeMoveSnapshot(
+                            ref reader,
+                            currentTime,
+                            decodePassiveTail,
+                            decodeClientOptRandomCounts,
+                            out snapshot,
+                            out moveAction))
+                    {
+                        lastError = decodeClientOptRandomCounts
+                            ? "Decode with client random counters returned no snapshot."
+                            : "Decode without client random counters returned no snapshot.";
+                        continue;
+                    }
+
+                    if (requireExactLength && reader.RemainingLength != 0)
+                    {
+                        lastError = decodeClientOptRandomCounts
+                            ? $"Decode with client random counters left {reader.RemainingLength} unread bytes."
+                            : $"Decode without client random counters left {reader.RemainingLength} unread bytes.";
+                        continue;
+                    }
+
+                    error = null;
+                    return true;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    lastError = decodeClientOptRandomCounts
+                        ? $"Decode with client random counters failed: {ex.Message}"
+                        : $"Decode without client random counters failed: {ex.Message}";
+                }
+            }
+
+            snapshot = null;
+            moveAction = 0;
+            error = lastError ?? "Move-path packet could not be decoded.";
+            return false;
         }
 
         private static IReadOnlyList<byte> DecodePassiveMoveKeyPadStates(ref PacketReader reader)

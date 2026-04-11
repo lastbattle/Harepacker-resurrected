@@ -68,7 +68,8 @@ namespace HaCreator.MapSimulator.UI
         IReadOnlyList<CharacterEquipmentAuthoritySlotState> AuthoritySlotStates = null,
         string RejectReason = null,
         int AuthorityPacketType = 0,
-        bool HasResultRequestContext = false);
+        bool HasResultRequestContext = false,
+        bool HasOwnerSessionContext = false);
 
     public sealed class EquipmentChangeRequest
     {

@@ -2087,6 +2087,29 @@ namespace HaCreator.MapSimulator
         /// <summary>
         /// Registers all chat commands
         /// </summary>
+        private string DispatchMapleTvConsumeCashItemUseRequest(int inventoryPosition, int itemId)
+        {
+            if (inventoryPosition <= 0)
+            {
+                return "MapleTV consume-cash item request requires a positive inventory position.";
+            }
+
+            using MemoryStream stream = new();
+            using (BinaryWriter writer = new(stream, Encoding.UTF8, leaveOpen: true))
+            {
+                writer.Write(currTickCount);
+                writer.Write((short)inventoryPosition);
+                writer.Write(itemId);
+            }
+
+            _localUtilityPacketInbox.EnqueueLocal(
+                LocalUtilityPacketInboxManager.ConsumeCashItemUseRequestPacketType,
+                stream.ToArray(),
+                "CUserLocal::ConsumeCashItem MapleTV send request");
+            StampPacketOwnedUtilityRequestState();
+            return $"CUserLocal::ConsumeCashItem MapleTV SendConsumeCashItemUseRequest mirrored at inventory position {inventoryPosition}.";
+        }
+
         private void RegisterChatCommands()
         {
             _chat.CommandHandler.RegisterCommand(
@@ -2923,7 +2946,9 @@ namespace HaCreator.MapSimulator
                                 outgoingPartnerName,
                                 TryParseOptionalPositiveInt(args, ringItemArgumentIndex, out int openRingItemId) ? openRingItemId : EngagementProposalRuntime.DefaultRingItemId,
                                 args.Length > messageArgumentIndex ? string.Join(" ", args, messageArgumentIndex, args.Length - messageArgumentIndex) : null,
-                                !string.Equals(outgoingProposerName, localProposalOwner, StringComparison.OrdinalIgnoreCase),
+                                EngagementProposalRuntime.ShouldEnforceLocalRequesterChecks(
+                                    outgoingProposerName,
+                                    localProposalOwner),
                                 uiWindowManager?.InventoryWindow as IInventoryRuntime,
                                 uiWindowManager,
                                 _playerManager?.Player?.Build,
@@ -6800,7 +6825,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Massacre timerboard and gauge flow",
 
-                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]]",
+                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     MassacreField massacre = _specialFieldRuntime.SpecialEffects.Massacre;
@@ -6868,7 +6893,7 @@ namespace HaCreator.MapSimulator
                                 || !int.TryParse(args[2], out int discoverRemotePort)
                                 || discoverRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session discover <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.DiscoverUsage);
                             }
 
                             string processSelector = args.Length >= 4 ? args[3] : null;
@@ -6877,7 +6902,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre session discover <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.DiscoverUsage);
                                 }
 
                                 localPortFilter = parsedLocalPort;
@@ -6890,12 +6915,11 @@ namespace HaCreator.MapSimulator
                         if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 5
-                                || !int.TryParse(args[2], out int listenPort)
-                                || listenPort < 0
+                                || !MassacreSessionCommandParsing.TryParseProxyListenPort(args[2], out int listenPort)
                                 || !int.TryParse(args[4], out int remotePort)
                                 || remotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session start <listenPort|0> <serverHost> <serverPort>");
+                                return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.StartUsage);
                             }
 
                             return _massacreOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startMessage)
@@ -6909,7 +6933,7 @@ namespace HaCreator.MapSimulator
                                 || !int.TryParse(args[2], out int attachRemotePort)
                                 || attachRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session attach <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.AttachUsage);
                             }
 
                             string attachProcessSelector = args.Length >= 4 ? args[3] : null;
@@ -6918,7 +6942,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[4], out int parsedAttachLocalPort) || parsedAttachLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre session attach <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.AttachUsage);
                                 }
 
                                 attachLocalPortFilter = parsedAttachLocalPort;
@@ -6929,15 +6953,46 @@ namespace HaCreator.MapSimulator
                                 : ChatCommandHandler.CommandResult.Error(attachStatus);
                         }
 
+                        if (string.Equals(args[1], "attachproxy", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4
+                                || !MassacreSessionCommandParsing.TryParseProxyListenPort(args[2], out int attachProxyListenPort)
+                                || !int.TryParse(args[3], out int attachProxyRemotePort)
+                                || attachProxyRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.AttachProxyUsage);
+                            }
+
+                            string attachProxyProcessSelector = args.Length >= 5 ? args[4] : null;
+                            int? attachProxyLocalPortFilter = null;
+                            if (args.Length >= 6)
+                            {
+                                if (!int.TryParse(args[5], out int parsedAttachProxyLocalPort) || parsedAttachProxyLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.AttachProxyUsage);
+                                }
+
+                                attachProxyLocalPortFilter = parsedAttachProxyLocalPort;
+                            }
+
+                            return _massacreOfficialSessionBridge.TryAttachEstablishedSessionAndStartProxy(
+                                    attachProxyListenPort,
+                                    attachProxyRemotePort,
+                                    attachProxyProcessSelector,
+                                    attachProxyLocalPortFilter,
+                                    out string attachProxyStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(attachProxyStatus)
+                                : ChatCommandHandler.CommandResult.Error(attachProxyStatus);
+                        }
+
                         if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 4
-                                || !int.TryParse(args[2], out int autoListenPort)
-                                || autoListenPort < 0
+                                || !MassacreSessionCommandParsing.TryParseProxyListenPort(args[2], out int autoListenPort)
                                 || !int.TryParse(args[3], out int autoRemotePort)
                                 || autoRemotePort <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                                return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.StartAutoUsage);
                             }
 
                             string processSelector = args.Length >= 5 ? args[4] : null;
@@ -6946,7 +7001,7 @@ namespace HaCreator.MapSimulator
                             {
                                 if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre session startauto <listenPort|0> <remotePort> [processName|pid] [localPort]");
+                                    return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.StartAutoUsage);
                                 }
 
                                 localPortFilter = parsedLocalPort;
@@ -6963,7 +7018,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_massacreOfficialSessionBridge.LastStatus);
                         }
 
-                        return ChatCommandHandler.CommandResult.Error("Usage: /massacre session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]");
+                        return ChatCommandHandler.CommandResult.Error(MassacreSessionCommandParsing.SessionUsage);
                     }
 
 
@@ -7157,7 +7212,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]]");
                 });
 
 
@@ -9071,7 +9126,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "family",
                 "Drive the family chart UI and packet-shaped family roster synchronization",
-                "/family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]",
+                "/family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -9108,7 +9163,7 @@ namespace HaCreator.MapSimulator
                         case "packet":
                             if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
                             }
 
 
@@ -9138,6 +9193,18 @@ namespace HaCreator.MapSimulator
 
                                     return ChatCommandHandler.CommandResult.Ok(
                                         _familyChartRuntime.SetAuthorityProfileFromPacket(args[2]));
+                                case "localchart":
+                                    if (args.Length < 3)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /family packet localchart <payloadhex=..|payloadb64=..>");
+                                    }
+
+                                    if (!FamilyPacketCodec.TryParsePayloadToken(args[2], out byte[] familyLocalChartPayload, out string familyLocalChartError))
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error(familyLocalChartError);
+                                    }
+
+                                    return ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyLocalChartPacketPayload(familyLocalChartPayload));
                                 case "info":
                                     if (args.Length < 3)
                                     {
@@ -9273,12 +9340,12 @@ namespace HaCreator.MapSimulator
                                             currentReputation,
                                             todayReputation));
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /family packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>");
                             }
                         case "packetraw":
                             if (args.Length < 3)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /family packetraw <info|result|privilegelist|setprivilege> <hex>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /family packetraw <localchart|info|result|privilegelist|setprivilege> <hex>");
                             }
 
                             if (!FamilyPacketCodec.TryParseHexBytes(string.Join(string.Empty, args.Skip(2)), out byte[] familyRawPayload, out string familyRawError))
@@ -9288,13 +9355,14 @@ namespace HaCreator.MapSimulator
 
                             return args[1].ToLowerInvariant() switch
                             {
+                                "localchart" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyLocalChartPacketPayload(familyRawPayload)),
                                 "info" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyInfoPacketPayload(familyRawPayload)),
                                 "result" => _familyChartRuntime.TryApplyResultPacketPayload(familyRawPayload, out string familyRawResultMessage)
                                     ? ChatCommandHandler.CommandResult.Ok(familyRawResultMessage)
                                     : ChatCommandHandler.CommandResult.Error(familyRawResultMessage),
                                 "privilegelist" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplyPrivilegeListPacketPayload(familyRawPayload)),
                                 "setprivilege" => ChatCommandHandler.CommandResult.Ok(_familyChartRuntime.ApplySetPrivilegePacketPayload(familyRawPayload)),
-                                _ => ChatCommandHandler.CommandResult.Error("Usage: /family packetraw <info|result|privilegelist|setprivilege> <hex>")
+                                _ => ChatCommandHandler.CommandResult.Error("Usage: /family packetraw <localchart|info|result|privilegelist|setprivilege> <hex>")
                             };
                         case "packetrecv":
                             if (args.Length < 3 || !int.TryParse(args[1], out int familyRecvOpcode))
@@ -9330,7 +9398,7 @@ namespace HaCreator.MapSimulator
                                 ? ChatCommandHandler.CommandResult.Ok(familyClientMessage)
                                 : ChatCommandHandler.CommandResult.Error(familyClientMessage);
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /family [open|tree|status|reset|select <memberId>|precept <text>|packet <clear|seed|name <familyName>|precept <text>|authority <local|session|readonly|privilegeonly|manageonly>|localchart|info|result|privilegelist|setprivilege <payloadhex=..|payloadb64=..>|remove <memberId>|upsert <memberId> <parentId|root> <level> <online|offline> <currentRep> <todayRep> <name>|<job>|<location>>|packetraw <localchart|info|result|privilegelist|setprivilege> <hex>|packetrecv <opcode> <hex>|packetclientraw <opcode-framed-hex>]");
                     }
                 });
 
@@ -9844,7 +9912,7 @@ namespace HaCreator.MapSimulator
 
                 "mapletv",
                 "Inspect or drive the MapleTV send board and broadcast lifecycle",
-                "/mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|result|packet|packetraw] [...]",
+                "/mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|sendrequest|result|packet|packetraw] [...]",
                 args =>
                 {
                     _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -9958,6 +10026,28 @@ namespace HaCreator.MapSimulator
                             return durationMs >= 1000 && durationMs <= 60000
                                 ? ChatCommandHandler.CommandResult.Ok(durationMessage)
                                 : ChatCommandHandler.CommandResult.Error(durationMessage);
+
+
+                        case "sendrequest":
+                        case "send":
+                            if (args.Length < 2 || !int.TryParse(args[1], out int inventoryPosition))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv sendrequest <inventoryPosition> [itemId]");
+                            }
+
+
+                            int overrideMapleTvItemId = 0;
+                            if (args.Length > 2
+                                && (!int.TryParse(args[2], out overrideMapleTvItemId) || overrideMapleTvItemId < 0))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv sendrequest <inventoryPosition> [itemId]");
+                            }
+
+
+                            string sendRequestMessage = DispatchMapleTvConsumeCashItemUseRequest(inventoryPosition, overrideMapleTvItemId);
+                            return sendRequestMessage.StartsWith("CUserLocal::ConsumeCashItem", StringComparison.Ordinal)
+                                ? ChatCommandHandler.CommandResult.Ok(sendRequestMessage)
+                                : ChatCommandHandler.CommandResult.Error(sendRequestMessage);
 
 
                         case "result":
@@ -10113,7 +10203,7 @@ namespace HaCreator.MapSimulator
 
                         default:
                             return ChatCommandHandler.CommandResult.Error(
-                                "Usage: /mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|result|packet|packetraw] [...]");
+                                "Usage: /mapletv [open|status|sample|set|clear|toggleto|sender|receiver|item|line|wait|sendrequest|result|packet|packetraw] [...]");
                     }
                 });
 

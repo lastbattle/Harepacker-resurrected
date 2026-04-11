@@ -1866,7 +1866,7 @@ namespace HaCreator.MapSimulator.Managers
                         candidate.PrimaryTargetMobId,
                         candidate.TargetMobIds);
                     if (learnedTemplate != null
-                        && !ShouldPreferTeslaLearnedTemplateCandidate(
+                        && !ShouldPreferSg88LearnedTemplateCandidate(
                             candidatePreference,
                             candidate.ResolutionSource,
                             candidate.ObservedAt,
@@ -2004,7 +2004,7 @@ namespace HaCreator.MapSimulator.Managers
                         candidate.PrimaryTargetMobId,
                         candidate.TargetMobIds);
                     if (learnedTemplate != null
-                        && !ShouldPreferSg88LearnedTemplateCandidate(
+                        && !ShouldPreferTeslaLearnedTemplateCandidate(
                             candidatePreference,
                             candidate.ResolutionSource,
                             candidate.ObservedAt,
@@ -2194,11 +2194,16 @@ namespace HaCreator.MapSimulator.Managers
                 preferredResolutionSource = PreferSg88TemplateResolutionSource(
                     capture.ResolutionSource,
                     existingTemplate.ResolutionSource);
-                existingTemplate.ResolutionSource = preferredResolutionSource;
-                if (existingTemplate.ObservedAt > trace.ObservedAt
-                    || (existingTemplate.ObservedAt == trace.ObservedAt
-                        && string.CompareOrdinal(existingTemplate.Evidence, binding.Evidence) >= 0))
+                int existingRetentionCompare = CompareSg88LearnedTemplateRetentionOrder(
+                    existingTemplate.ResolutionSource,
+                    existingTemplate.ObservedAt,
+                    existingTemplate.Evidence,
+                    preferredResolutionSource,
+                    trace.ObservedAt,
+                    binding.Evidence);
+                if (existingRetentionCompare <= 0)
                 {
+                    existingTemplate.ResolutionSource = preferredResolutionSource;
                     return;
                 }
 

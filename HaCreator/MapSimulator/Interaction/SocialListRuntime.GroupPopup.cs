@@ -216,6 +216,31 @@ namespace HaCreator.MapSimulator.Interaction
                 Math.Max(0, entries.Count - FriendGroupPopupPageSize));
         }
 
+        internal void SetFriendGroupPopupScrollPosition(float ratio)
+        {
+            List<SocialEntryState> entries = GetFriendGroupPopupEntries();
+            int maxFirstVisibleIndex = Math.Max(0, entries.Count - FriendGroupPopupPageSize);
+            _friendGroupPopupFirstVisibleIndex = maxFirstVisibleIndex <= 0
+                ? 0
+                : (int)Math.Round(Math.Clamp(ratio, 0f, 1f) * maxFirstVisibleIndex);
+        }
+
+        internal string SetFriendGroupPopupInput(string text)
+        {
+            if (_friendGroupPopupMode is not FriendGroupPopupMode.AddFriend and not FriendGroupPopupMode.GroupWhisper)
+            {
+                return "The dedicated friend-group popup edit field is not active.";
+            }
+
+            string normalizedText = string.IsNullOrEmpty(text)
+                ? string.Empty
+                : new string(text.Where(character => !char.IsControl(character)).ToArray());
+            _friendGroupPopupInputText = normalizedText.Length <= 16
+                ? normalizedText
+                : normalizedText[..16];
+            return $"Friend-group popup edit text is now \"{_friendGroupPopupInputText}\".";
+        }
+
         internal void AppendFriendGroupPopupInput(char character)
         {
             if (_friendGroupPopupMode is not FriendGroupPopupMode.AddFriend and not FriendGroupPopupMode.GroupWhisper

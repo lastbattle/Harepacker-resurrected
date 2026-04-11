@@ -263,6 +263,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild skill management requires Jr. Master or Master authority.";
             }
 
+            if (_pendingRequest != null)
+            {
+                return BuildPendingApprovalMessage();
+            }
+
             SkillDisplayData selectedSkill = GetSelectedSkill();
             if (selectedSkill == null)
             {
@@ -477,6 +482,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild skill management requires Jr. Master or Master authority.";
             }
 
+            if (_pendingRequest != null)
+            {
+                return BuildPendingApprovalMessage();
+            }
+
             SkillDisplayData selectedSkill = GetSelectedSkill();
             if (selectedSkill == null)
             {
@@ -541,6 +551,13 @@ namespace HaCreator.MapSimulator.Interaction
                 targetLevel);
 
             return $"{_pendingRequest.ActionLabel} for {selectedSkill.SkillName} is now pending packet-owned guild approval.";
+        }
+
+        private string BuildPendingApprovalMessage()
+        {
+            return _pendingRequest == null
+                ? string.Empty
+                : $"{_pendingRequest.ActionLabel} for {_pendingRequest.SkillName} is already awaiting packet-owned guild approval.";
         }
 
         private string ApplyRenewSelectedSkill(SkillDisplayData selectedSkill, int renewalCost, int durationMinutes)

@@ -7,10 +7,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int InvalidNameNoticeStringPoolId = 743;
         internal const int DuplicateNoticeStringPoolId = 744;
 
-        private const string AddPromptFallback = "Enter the character name to add to the blacklist.";
-        private const string OwnerNoticeFallback = "You may not add your own name to the blacklist.";
-        private const string InvalidNameNoticeFallback = "Please enter a valid character name.";
-        private const string DuplicateNoticeFallback = "That character is already in the blacklist.";
+        private const string AddPromptFallback = "Enter the name of the character you'd like to add to your blacklist.";
+        private const string OwnerNoticeFallback = "You may not enter yourself in the Blacklist";
+        private const string InvalidNameNoticeFallback = "That character cannot be added.";
+        private const string DuplicateNoticeFallback = "This name has already been registered\r\nPlease check again";
 
         internal static string GetAddPromptText(bool appendFallbackSuffix = true)
         {

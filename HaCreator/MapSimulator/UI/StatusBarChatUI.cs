@@ -348,8 +348,7 @@ namespace HaCreator.MapSimulator.UI
             bool pressedWhisperPickerCandidate,
             string hoveredWhisperTarget)
         {
-            return pressedWhisperPickerCandidate
-                && !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
+            return !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
         }
 
         internal static bool ShouldConsumeWhisperPickerPointerCapture(

@@ -368,6 +368,8 @@ namespace HaCreator.MapSimulator.Character
             "fly2Skill"
         };
 
+        private const int ClientInitializedShadowPartnerActionCodeLimitExclusive = 0x111;
+
         private static readonly IReadOnlyDictionary<string, string> SupportedRawActionCanonicalNames =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -802,6 +804,11 @@ namespace HaCreator.MapSimulator.Character
                     yield return actionName;
                 }
             }
+        }
+
+        internal static IEnumerable<string> EnumerateClientInitializedShadowPartnerRawActionNames()
+        {
+            return CharacterPart.EnumerateClientRawActionStrings(ClientInitializedShadowPartnerActionCodeLimitExclusive);
         }
 
         internal static SkillAnimation TryBuildPiecedShadowPartnerActionAnimation(

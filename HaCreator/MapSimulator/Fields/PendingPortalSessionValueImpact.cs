@@ -86,14 +86,30 @@ namespace HaCreator.MapSimulator
             return ownerKind switch
             {
                 PortalSessionValueImpactOwnerKind.PartyRaid => ingress.PacketType == Fields.PartyRaidField.ClientSessionValuePacketType
-                    || ingress.PacketType == 149,
+                    || IsPacket149SessionFamilyIngress(ingress),
                 PortalSessionValueImpactOwnerKind.HuntingAdBalloon => ingress.PacketType == Fields.PartyRaidField.ClientFieldSetVariablePacketType
-                    || ingress.PacketType == 149,
+                    || IsPacket149FieldFamilyIngress(ingress),
                 PortalSessionValueImpactOwnerKind.ChaosZakum => ingress.PacketType == Fields.PartyRaidField.ClientSessionValuePacketType
                     || ingress.PacketType == Fields.PartyRaidField.ClientFieldSetVariablePacketType
-                    || ingress.PacketType == 149,
+                    || IsPacket149SessionFamilyIngress(ingress)
+                    || IsPacket149FieldFamilyIngress(ingress),
                 _ => false
             };
+        }
+
+        private static bool IsPacket149SessionFamilyIngress(PortalSessionValueImpactIngress ingress)
+        {
+            return ingress.PacketType == 149
+                && ingress.OwnerHint is PacketFieldSpecificDataOwnerHint.None
+                    or PacketFieldSpecificDataOwnerHint.Session
+                    or PacketFieldSpecificDataOwnerHint.Party;
+        }
+
+        private static bool IsPacket149FieldFamilyIngress(PortalSessionValueImpactIngress ingress)
+        {
+            return ingress.PacketType == 149
+                && ingress.OwnerHint is PacketFieldSpecificDataOwnerHint.None
+                    or PacketFieldSpecificDataOwnerHint.Field;
         }
     }
 }

@@ -254,7 +254,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_rockPaperScissorsOfficialSessionBridgeConfiguredListenPort <= 0 ||
+            if (_rockPaperScissorsOfficialSessionBridgeConfiguredListenPort < 0 ||
                 _rockPaperScissorsOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
             {
                 _rockPaperScissorsOfficialSessionBridge.Stop();
@@ -472,6 +472,42 @@ namespace HaCreator.MapSimulator
                 _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort = remotePort;
 
                 return _rockPaperScissorsOfficialSessionBridge.TryAttachEstablishedSession(remotePort, processSelector, localPort, out string status)
+                    ? ChatCommandHandler.CommandResult.Ok($"{status} {DescribeRockPaperScissorsOfficialSessionBridgeStatus()}")
+                    : ChatCommandHandler.CommandResult.Error(status);
+            }
+
+            if (string.Equals(args[0], "attachproxy", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 3 ||
+                    !RockPaperScissorsSessionCommandParsing.TryParseProxyListenPort(args[1], out int listenPort) ||
+                    !int.TryParse(args[2], out int remotePort) ||
+                    remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.AttachProxyUsage);
+                }
+
+                string processSelector = args.Length >= 4 ? args[3] : null;
+                int? localPort = null;
+                if (args.Length >= 5)
+                {
+                    if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(RockPaperScissorsSessionCommandParsing.AttachProxyUsage);
+                    }
+
+                    localPort = parsedLocalPort;
+                }
+
+                _rockPaperScissorsOfficialSessionBridgeEnabled = true;
+                _rockPaperScissorsOfficialSessionBridgeUseDiscovery = true;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredListenPort = listenPort;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+                _rockPaperScissorsOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                _rockPaperScissorsOfficialSessionBridgeConfiguredLocalPort = localPort;
+                _nextRockPaperScissorsOfficialSessionBridgeDiscoveryRefreshAt = 0;
+
+                return _rockPaperScissorsOfficialSessionBridge.TryAttachEstablishedSessionAndStartProxy(listenPort, remotePort, processSelector, localPort, out string status)
                     ? ChatCommandHandler.CommandResult.Ok($"{status} {DescribeRockPaperScissorsOfficialSessionBridgeStatus()}")
                     : ChatCommandHandler.CommandResult.Error(status);
             }

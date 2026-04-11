@@ -696,13 +696,22 @@ namespace HaCreator.MapSimulator.UI
 
             if (msg == WmSetFocus)
             {
+                if (ShouldCancelImeCompositionOnFocusChange(hasFocus: true))
+                {
+                    CancelImeComposition();
+                }
+
                 UpdateImePlacement();
                 FocusChanged?.Invoke(true);
             }
             else if (msg == WmKillFocus)
             {
                 _clientOwnedKeyDowns.Clear();
-                CancelImeComposition();
+                if (ShouldCancelImeCompositionOnFocusChange(hasFocus: false))
+                {
+                    CancelImeComposition();
+                }
+
                 FocusChanged?.Invoke(false);
             }
 
@@ -838,6 +847,34 @@ namespace HaCreator.MapSimulator.UI
         internal static bool ShouldDeferDownKeyToIme(int virtualKey, bool controlHeld, bool shiftHeld, bool imeCompositionActive)
         {
             return virtualKey == VkDown && imeCompositionActive;
+        }
+
+        internal static bool ShouldDeferDownKeyToIme(bool controlHeld, bool shiftHeld, bool imeCompositionActive)
+        {
+            return ShouldDeferDownKeyToIme(VkDown, controlHeld, shiftHeld, imeCompositionActive);
+        }
+
+        internal static bool ShouldCancelImeCompositionOnFocusChange(bool hasFocus)
+        {
+            // `CCtrlEdit::OnSetFocus(true)` calls `CWndMan::ClearComposition`.
+            // The hosted seam already mirrors the blur-side cleanup by cancelling
+            // outstanding IME composition when focus leaves the edit.
+            return true;
+        }
+
+        internal static bool IsClientEncodedKeyUp(int clientLParam)
+        {
+            return clientLParam < 0;
+        }
+
+        internal static bool IsClientEncodedControlHeld(int clientLParam)
+        {
+            return (((uint)clientLParam >> 4) & 1U) != 0;
+        }
+
+        internal static bool IsClientEncodedShiftHeld(int clientLParam)
+        {
+            return (clientLParam & 1) != 0;
         }
 
         internal static bool ShouldSuppressClientUnsupportedEditKey(uint msg, int virtualKey, bool controlHeld, bool shiftHeld)

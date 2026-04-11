@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18490;
         private const string DefaultProcessName = "MapleStory";
+        private const int CurrentWrapperRelayOpcode = 163;
         private const int AddressFamilyInet = 2;
         private const int ErrorInsufficientBuffer = 122;
         private const int RecentPacketCapacity = 8;
@@ -900,11 +901,17 @@ namespace HaCreator.MapSimulator.Managers
 
             if (inferredFromPayload && isStableInference)
             {
-                _opcodeMappings[opcode] = inferredPacketType;
+                if (ShouldPersistInferredOpcodeMapping(opcode))
+                {
+                    _opcodeMappings[opcode] = inferredPacketType;
+                }
+
                 RememberLearnedOpcode(opcode, inferredPacketType, $"auto:{inferredReason}");
                 packetType = inferredPacketType;
                 mappingReason = $"auto:{inferredReason}";
-                LastStatus = $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from payload inference ({inferredReason}).";
+                LastStatus = ShouldPersistInferredOpcodeMapping(opcode)
+                    ? $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from payload inference ({inferredReason})."
+                    : $"Identified shared current-wrapper opcode {opcode} as {DescribePacketType(packetType)} from payload inference ({inferredReason}); keeping inference payload-scoped because CField::OnPacket opcode 163 is not a Dojo-only packet table entry.";
                 return true;
             }
 
@@ -923,10 +930,16 @@ namespace HaCreator.MapSimulator.Managers
                     out packetType,
                     out string stateReason))
             {
-                _opcodeMappings[opcode] = packetType;
+                if (ShouldPersistInferredOpcodeMapping(opcode))
+                {
+                    _opcodeMappings[opcode] = packetType;
+                }
+
                 RememberLearnedOpcode(opcode, packetType, $"state:{stateReason}");
                 mappingReason = $"state:{stateReason}";
-                LastStatus = $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from field-state inference ({stateReason}).";
+                LastStatus = ShouldPersistInferredOpcodeMapping(opcode)
+                    ? $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from field-state inference ({stateReason})."
+                    : $"Identified shared current-wrapper opcode {opcode} as {DescribePacketType(packetType)} from field-state inference ({stateReason}); keeping inference payload-scoped because CField::OnPacket opcode 163 is not a Dojo-only packet table entry.";
                 return true;
             }
 
@@ -971,14 +984,25 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
-                _opcodeMappings[packet.Opcode] = packetType;
+                if (ShouldPersistInferredOpcodeMapping(packet.Opcode))
+                {
+                    _opcodeMappings[packet.Opcode] = packetType;
+                }
+
                 RememberLearnedOpcode(packet.Opcode, packetType, $"deferred:{evidence}");
                 _pendingMessages.Enqueue(CreateRawPacketMessage(packet.RawPacket, packet.Source, packetType, packet.Payload));
                 RecordRecentPacket(packet.Opcode, packet.RawPacket, packetType, $"deferred:{evidence}");
                 ReceivedCount++;
-                LastStatus = $"Promoted deferred Dojo opcode {packet.Opcode} to {DescribePacketType(packetType)} after field-state evidence ({evidence}).";
+                LastStatus = ShouldPersistInferredOpcodeMapping(packet.Opcode)
+                    ? $"Promoted deferred Dojo opcode {packet.Opcode} to {DescribePacketType(packetType)} after field-state evidence ({evidence})."
+                    : $"Promoted deferred shared current-wrapper opcode {packet.Opcode} to {DescribePacketType(packetType)} after field-state evidence ({evidence}); keeping inference payload-scoped because CField::OnPacket opcode 163 is not a Dojo-only packet table entry.";
                 _deferredPackets.RemoveAt(i);
             }
+        }
+
+        private static bool ShouldPersistInferredOpcodeMapping(int opcode)
+        {
+            return opcode != CurrentWrapperRelayOpcode;
         }
 
         private bool TryResolveDeferredPacketNoLock(DeferredInboundPacket packet, out int packetType, out string evidence)

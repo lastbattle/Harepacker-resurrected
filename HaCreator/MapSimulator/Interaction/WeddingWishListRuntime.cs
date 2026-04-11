@@ -629,6 +629,27 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
+        internal string CompletePendingTransferRequest()
+        {
+            if (!_isOpen)
+            {
+                return "Wedding wish-list dialog is not open.";
+            }
+
+            if (!_hasPendingTransferRequest)
+            {
+                return "Wedding wish-list dialog has no pending transfer request.";
+            }
+
+            _hasPendingTransferRequest = false;
+            ClearTransientActionState();
+            RefreshCandidateEntries();
+            ClampSelections();
+            NormalizeViewportState();
+            _statusMessage = "Applied wedding wish-list transfer completion and reopened Get/Put request actions.";
+            return _statusMessage;
+        }
+
         internal string Clear()
         {
             _giftListByTab.Clear();
@@ -1416,7 +1437,7 @@ namespace HaCreator.MapSimulator.Interaction
                 WritePacketString(writer, ResolveItemLabel(entry));
             }
 
-            StageOutboundPacket(EngagementPacketOpcode, stream.ToArray(), $"SendWishListInput staged {_wishListEntries.Count} item(s).");
+            StageOutboundPacket(WishListTransferPacketOpcode, stream.ToArray(), $"SendWishListInput staged {_wishListEntries.Count} item(s).");
         }
 
         private void StageGetItemRequestPacket(InventorySlotData item, InventoryType type, int sourceSlotIndex)

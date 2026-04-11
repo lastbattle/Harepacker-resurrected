@@ -499,20 +499,26 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool TryApplyEnterField(byte[] packetBytes, out string message)
         {
             message = null;
+            if (!SocialRoomEmployeePoolCodec.TryDecodeEmployerId(packetBytes, out int employerId, out string employerError))
+            {
+                message = employerError;
+                return false;
+            }
+
+            if (_entries.TryGetValue(employerId, out SocialRoomEmployeePoolEntryState existing))
+            {
+                existing.Flags |= SocialRoomEmployeePoolFlags.EnteredField;
+                _lastTouchedEmployerId = existing.EmployerId;
+                string displayName = string.IsNullOrWhiteSpace(existing.NameTag) ? "Owner" : existing.NameTag;
+                message =
+                    $"Restored pooled employee enter-field flag: employer={existing.EmployerId}, owner={displayName}, template={(existing.TemplateId > 0 ? existing.TemplateId.ToString() : "legacy")}, world=({existing.WorldX}, {existing.WorldY}).";
+                return true;
+            }
+
             if (!SocialRoomEmployeePoolCodec.TryDecodeEnterField(packetBytes, out SocialRoomEmployeePoolCodec.EnterFieldPacket packet, out string error))
             {
                 message = error;
                 return false;
-            }
-
-            if (_entries.TryGetValue(packet.EmployerId, out SocialRoomEmployeePoolEntryState existing))
-            {
-                ApplyEnterField(existing, packet);
-                _lastTouchedEmployerId = existing.EmployerId;
-                string displayName = string.IsNullOrWhiteSpace(existing.NameTag) ? "Owner" : existing.NameTag;
-                message =
-                    $"Refreshed pooled employee enter-field packet: employer={existing.EmployerId}, owner={displayName}, template={(existing.TemplateId > 0 ? existing.TemplateId.ToString() : "legacy")}, world=({existing.WorldX}, {existing.WorldY}).";
-                return true;
             }
 
             SocialRoomEmployeePoolEntryState state = new(packet.EmployerId);

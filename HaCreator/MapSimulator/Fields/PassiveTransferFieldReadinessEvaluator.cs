@@ -1,3 +1,5 @@
+using System;
+
 namespace HaCreator.MapSimulator.Fields
 {
     public readonly record struct PassiveTransferFieldInterfaceState(
@@ -96,6 +98,25 @@ namespace HaCreator.MapSimulator.Fields
             bool rightKeyPressed)
         {
             return hasPendingRequest && (leftKeyPressed || rightKeyPressed);
+        }
+
+        public static bool IsExclusiveTransferRequestInFlight(
+            bool requestSent,
+            int requestSentTick,
+            int currentTick,
+            int cooldownMs)
+        {
+            if (!requestSent)
+            {
+                return false;
+            }
+
+            if (requestSentTick == int.MinValue)
+            {
+                return true;
+            }
+
+            return unchecked(currentTick - requestSentTick) < Math.Max(0, cooldownMs);
         }
 
         public static bool CanHandleFreshUpKeyDown(bool hasAttachedPacketOwnedDriver)

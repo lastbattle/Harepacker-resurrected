@@ -766,6 +766,10 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopSession.RecordOwnerSurfaceHidden(ownerState, visibilityState);
         }
 
+        internal bool ShouldRecordPacketOwnedAdminShopFamilyHide =>
+            _packetOwnedAdminShopSession.HasObservableState
+            && _packetOwnedAdminShopSession.OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible;
+
         internal string ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(string blockingOwner, AdminShopPacketOwnedOpenPayloadSnapshot snapshot)
         {
             _packetOwnedAdminShopSession.RecordBlockedByOwner(snapshot, blockingOwner);
@@ -4411,13 +4415,10 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
-                    foreach (AdminShopEntry catalogEntry in catalogEntries)
+                    // CAdminShopDlg::SetUserItems scans m_aNPCSellItem and stops at the first matching item id.
+                    AdminShopEntry catalogEntry = AdminShopPacketOwnedSellTemplateParity.SelectFirstMatchingTemplate(catalogEntries);
+                    if (catalogEntry != null)
                     {
-                        if (catalogEntry == null)
-                        {
-                            continue;
-                        }
-
                         yield return CreateInventoryBackedUserEntry(catalogEntry, slot, slotIndex);
                     }
                 }

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Buffers.Binary;
 using System.Text;
+using System.Text.Json;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Loaders;
@@ -294,6 +295,16 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (TryDecodeJsonResultPayload(payload, out result, out error))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
             int offset = 0;
             short? operationCode = null;
             if (payload.Length >= sizeof(int) + 1)
@@ -361,6 +372,148 @@ namespace HaCreator.MapSimulator
 
             result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText);
             return true;
+        }
+
+        private static bool TryDecodeJsonResultPayload(byte[] payload, out ResultPayload result, out string error)
+        {
+            result = new ResultPayload(success: true, reasonCode: null, operationCode: null, encodedSlotPosition: null, statusText: string.Empty);
+            error = null;
+
+            ReadOnlySpan<byte> trimmedPayload = TrimJsonPayload(payload);
+            if (trimmedPayload.Length <= 0 || trimmedPayload[0] != (byte)'{')
+            {
+                return false;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(trimmedPayload.ToArray());
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                {
+                    error = "Repair-result JSON payload must be an object.";
+                    return false;
+                }
+
+                bool success = ReadBoolean(root, true, "success", "succeeded", "ok", "accepted")
+                    && !ReadBoolean(root, false, "failure", "failed", "rejected", "error");
+                short? operationCode = ReadInt(root, "operationCode", "opcode", "op", "repairOpcode") is int op
+                    && (op == 130 || op == 131)
+                        ? (short)op
+                        : null;
+                int? encodedSlotPosition = ReadInt(root, "encodedSlotPosition", "encodedPosition", "nPOS", "slotPosition", "position");
+                if (encodedSlotPosition.HasValue && !LooksLikeEncodedSlotPosition(encodedSlotPosition.Value))
+                {
+                    error = $"Repair-result JSON encoded slot position {encodedSlotPosition.Value} is outside the client slot range.";
+                    return false;
+                }
+
+                int? reasonCode = ReadInt(root, "reasonCode", "reason", "errorCode", "rejectReason");
+                string statusText = ReadString(root, "statusText", "message", "text", "localizedText", "notice");
+                result = new ResultPayload(success, reasonCode, operationCode, encodedSlotPosition, statusText);
+                return true;
+            }
+            catch (JsonException ex)
+            {
+                error = $"Repair-result JSON payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static ReadOnlySpan<byte> TrimJsonPayload(byte[] payload)
+        {
+            ReadOnlySpan<byte> span = payload ?? Array.Empty<byte>();
+            while (span.Length > 0 && char.IsWhiteSpace((char)span[0]))
+            {
+                span = span[1..];
+            }
+
+            while (span.Length > 0 && (span[^1] == 0 || char.IsWhiteSpace((char)span[^1])))
+            {
+                span = span[..^1];
+            }
+
+            return span;
+        }
+
+        private static int? ReadInt(JsonElement root, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (!root.TryGetProperty(name, out JsonElement value))
+                {
+                    continue;
+                }
+
+                if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number))
+                {
+                    return number;
+                }
+
+                if (value.ValueKind == JsonValueKind.String
+                    && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out number))
+                {
+                    return number;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool ReadBoolean(JsonElement root, bool defaultValue, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (!root.TryGetProperty(name, out JsonElement value))
+                {
+                    continue;
+                }
+
+                if (value.ValueKind == JsonValueKind.True)
+                {
+                    return true;
+                }
+
+                if (value.ValueKind == JsonValueKind.False)
+                {
+                    return false;
+                }
+
+                if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number))
+                {
+                    return number != 0;
+                }
+
+                if (value.ValueKind == JsonValueKind.String)
+                {
+                    string text = value.GetString();
+                    if (bool.TryParse(text, out bool parsed))
+                    {
+                        return parsed;
+                    }
+
+                    if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out number))
+                    {
+                        return number != 0;
+                    }
+                }
+            }
+
+            return defaultValue;
+        }
+
+        private static string ReadString(JsonElement root, params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (root.TryGetProperty(name, out JsonElement value)
+                    && value.ValueKind == JsonValueKind.String)
+                {
+                    return value.GetString() ?? string.Empty;
+                }
+            }
+
+            return string.Empty;
         }
 
         private static bool LooksLikeEncodedSlotPosition(int encodedSlotPosition)

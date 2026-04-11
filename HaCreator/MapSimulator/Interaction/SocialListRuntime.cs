@@ -1101,7 +1101,7 @@ namespace HaCreator.MapSimulator.Interaction
             SelectTab(SocialListTab.Friend);
             _selectedIndexByTab[SocialListTab.Friend] = GetFilteredEntries(SocialListTab.Friend).Count - 1;
             EnsureSelectionVisible(SocialListTab.Friend, GetFilteredEntries(SocialListTab.Friend).Count);
-            return $"{nextFriend.Name} was added to the friend roster.";
+            return NotifySocialListTextObserved($"{nextFriend.Name} was added to the friend roster.");
         }
 
         private string SendFriendChat()
@@ -1162,7 +1162,7 @@ namespace HaCreator.MapSimulator.Interaction
             string groupName = $"FriendGroup {_nextFriendGroupNumber++}";
             _friendGroups.Add(groupName);
             _friendGroupByName[selectedFriend.Name] = groupName;
-            return $"{selectedFriend.Name} now belongs to the local friend group \"{groupName}\".";
+            return NotifySocialListTextObserved($"{selectedFriend.Name} now belongs to the local friend group \"{groupName}\".");
         }
 
         private string InviteFriendToParty()
@@ -1192,7 +1192,7 @@ namespace HaCreator.MapSimulator.Interaction
                 selectedFriend.IsOnline,
                 false,
                 false));
-            return $"{selectedFriend.Name} was invited from the friend tab into the party roster.";
+            return NotifySocialListTextObserved($"{selectedFriend.Name} was invited from the friend tab into the party roster.");
         }
 
         private string InviteSelectedEntryToPartyFromTab(SocialListTab sourceTab, string owner)
@@ -1235,7 +1235,7 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedIndexByTab[SocialListTab.Party] = _entriesByTab[SocialListTab.Party].Count - 1;
             EnsureSelectionVisible(SocialListTab.Party, _entriesByTab[SocialListTab.Party].Count);
 
-            return $"{selectedEntry.Name} was invited from the {owner} tab into the party roster.";
+            return NotifySocialListTextObserved($"{selectedEntry.Name} was invited from the {owner} tab into the party roster.");
         }
 
         private string WhisperSelected(string owner)
@@ -1277,7 +1277,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _entriesByTab[SocialListTab.Friend].RemoveAll(entry => string.Equals(entry.Name, selectedFriend.Name, StringComparison.OrdinalIgnoreCase));
             ResetSelectionAfterMutation(SocialListTab.Friend);
-            return $"{selectedFriend.Name} was removed from the friend roster.";
+            return NotifySocialListTextObserved($"{selectedFriend.Name} was removed from the friend roster.");
         }
 
         private string BlockFriend()
@@ -1307,7 +1307,7 @@ namespace HaCreator.MapSimulator.Interaction
                 selectedFriend.IsOnline,
                 false,
                 true));
-            return $"{selectedFriend.Name} was copied into the blacklist.";
+            return NotifySocialListTextObserved($"{selectedFriend.Name} was copied into the blacklist.");
         }
 
         private string UnblockFriend()
@@ -1324,7 +1324,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _entriesByTab[SocialListTab.Blacklist].RemoveAll(entry => string.Equals(entry.Name, selectedFriend.Name, StringComparison.OrdinalIgnoreCase));
-            return $"{selectedFriend.Name} was removed from the blacklist.";
+            return NotifySocialListTextObserved($"{selectedFriend.Name} was removed from the blacklist.");
         }
 
         private string CreateParty()
@@ -1352,7 +1352,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IsLocalPlayer = true
             });
             ResetSelectionAfterMutation(SocialListTab.Party);
-            return "Party roster seeded with the local player as leader.";
+            return NotifySocialListTextObserved("Party roster seeded with the local player as leader.");
         }
 
         private string AddPartyMember()
@@ -1379,7 +1379,7 @@ namespace HaCreator.MapSimulator.Interaction
                 friendCandidate.IsOnline,
                 false,
                 false));
-            return $"{friendCandidate.Name} joined the party roster.";
+            return NotifySocialListTextObserved($"{friendCandidate.Name} joined the party roster.");
         }
 
         private string RemovePartyMember(bool localWithdraw)
@@ -1407,9 +1407,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             _entriesByTab[SocialListTab.Party].RemoveAll(entry => string.Equals(entry.Name, selectedEntry.Name, StringComparison.OrdinalIgnoreCase));
             ResetSelectionAfterMutation(SocialListTab.Party);
-            return localWithdraw
+            return NotifySocialListTextObserved(localWithdraw
                 ? "Local player withdrew from the party roster."
-                : $"{selectedEntry.Name} was removed from the party roster.";
+                : $"{selectedEntry.Name} was removed from the party roster.");
         }
 
         private string SendPartyChat()
@@ -1451,7 +1451,7 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
 
-            return $"{selectedEntry.Name} now owns the simulated party leader marker.";
+            return NotifySocialListTextObserved($"{selectedEntry.Name} now owns the simulated party leader marker.");
         }
 
         private string AddGuildMember()
@@ -1473,7 +1473,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _entriesByTab[SocialListTab.Guild].Add(recruit);
-            return $"{recruit.Name} joined guild {_guildName}.";
+            return NotifySocialListTextObserved($"{recruit.Name} joined guild {_guildName}.");
         }
 
         private string RemoveGuildMember(string owner)
@@ -1513,7 +1513,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _entriesByTab[tab].RemoveAll(entry => string.Equals(entry.Name, selectedEntry.Name, StringComparison.OrdinalIgnoreCase));
             ResetSelectionAfterMutation(tab);
-            return $"{selectedEntry.Name} was removed from the {owner} roster.";
+            return NotifySocialListTextObserved($"{selectedEntry.Name} was removed from the {owner} roster.");
         }
 
         private string LeaveLocalGuild()
@@ -1527,7 +1527,7 @@ namespace HaCreator.MapSimulator.Interaction
             _entriesByTab[SocialListTab.Alliance].Clear();
             ResetSelectionAfterMutation(SocialListTab.Guild);
             ResetSelectionAfterMutation(SocialListTab.Alliance);
-            return "Local guild membership was cleared, and the alliance roster was closed with it.";
+            return NotifySocialListTextObserved("Local guild membership was cleared, and the alliance roster was closed with it.");
         }
 
         private string LeaveLocalAlliance()
@@ -1536,7 +1536,7 @@ namespace HaCreator.MapSimulator.Interaction
             _allianceName = "No Alliance";
             _entriesByTab[SocialListTab.Alliance].Clear();
             ResetSelectionAfterMutation(SocialListTab.Alliance);
-            return "Local alliance membership was cleared from the union roster.";
+            return NotifySocialListTextObserved("Local alliance membership was cleared from the union roster.");
         }
 
         private string LocateSelected(string owner)
@@ -1695,6 +1695,12 @@ namespace HaCreator.MapSimulator.Interaction
             SocialChatObserved?.Invoke(message, Environment.TickCount);
         }
 
+        private string NotifySocialListTextObserved(string message)
+        {
+            NotifySocialChatObserved(message);
+            return message;
+        }
+
         private string AddBlacklistEntry()
         {
             if (TryStagePacketOwnedRequest(SocialListTab.Blacklist, "Blacklist add", out string requestMessage))
@@ -1719,7 +1725,7 @@ namespace HaCreator.MapSimulator.Interaction
                     selectedFriend.IsOnline,
                     false,
                     true));
-                return $"{selectedFriend.Name} was added to the blacklist.";
+                return NotifySocialListTextObserved($"{selectedFriend.Name} was added to the blacklist.");
             }
 
             SocialEntryState seed = DequeueNextUnique(_blacklistSeeds, SocialListTab.Blacklist);
@@ -1729,7 +1735,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _entriesByTab[SocialListTab.Blacklist].Add(seed);
-            return $"{seed.Name} was added to the blacklist.";
+            return NotifySocialListTextObserved($"{seed.Name} was added to the blacklist.");
         }
 
         private string DeleteBlacklistEntry()
@@ -1747,7 +1753,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _entriesByTab[SocialListTab.Blacklist].RemoveAll(entry => string.Equals(entry.Name, selectedEntry.Name, StringComparison.OrdinalIgnoreCase));
             ResetSelectionAfterMutation(SocialListTab.Blacklist);
-            return $"{selectedEntry.Name} was removed from the blacklist.";
+            return NotifySocialListTextObserved($"{selectedEntry.Name} was removed from the blacklist.");
         }
 
         private SocialEntryState GetSelectedEntry(SocialListTab tab)

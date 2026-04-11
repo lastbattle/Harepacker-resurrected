@@ -2401,9 +2401,15 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            string itemId = packet.IsMoney ? null : packet.Info.ToString("D8");
             DropItem drop = GetOrCreateDrop();
-            InitializeDrop(drop, packet.IsMoney ? DropType.Meso : DropType.Item, itemId, packet.TargetX, packet.TargetY, currentTime, packet.OwnerId);
+            InitializeDrop(
+                drop,
+                packet.IsMoney ? DropType.Meso : DropType.Item,
+                packet.IsMoney ? null : packet.Info.ToString("D8"),
+                packet.TargetX,
+                packet.TargetY,
+                currentTime,
+                packet.OwnerId);
 
             drop.PoolId = packet.DropId;
             _nextDropId = Math.Max(_nextDropId, packet.DropId + 1);
@@ -2442,17 +2448,7 @@ namespace HaCreator.MapSimulator.Pools
                 drop.OwnershipType == DropOwnershipType.Explosive,
                 packet.EnterType == 4);
 
-            if (packet.IsMoney)
-            {
-                drop.MesoAmount = Math.Max(0, packet.Info);
-                drop.Icon = _mesoIcon;
-                ApplyMesoVisuals(drop, packetControlled: true);
-            }
-            else if (!TryApplyPacketItemVisuals(drop, itemId)
-                     && _itemIcons.TryGetValue(itemId, out IDXObject icon))
-            {
-                drop.Icon = icon;
-            }
+            ApplyPacketDropPresentation(drop, packet);
 
             drop.DrawOnElevatedLayer = packet.ElevateLayer;
             drop.PacketEnterAlphaRampDurationMs = packet.EnterType == 3
@@ -2471,6 +2467,12 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     drop.Alpha = 0f;
                 }
+            }
+
+            if (ShouldRetireExpiredPacketEnter(drop, packet, currentTime))
+            {
+                drop.SnapToTargetPosition();
+                drop.StartRemoveFade(currentTime, DropItem.EXPIRE_FADE_DURATION);
             }
 
             _activeDrops.Add(drop);
@@ -2506,25 +2508,61 @@ namespace HaCreator.MapSimulator.Pools
                 : 0;
             drop.PacketEnterAlphaRampStartTime = currentTime;
 
-            if (packet.IsMoney)
-            {
-                drop.MesoAmount = Math.Max(0, packet.Info);
-                drop.Icon = _mesoIcon;
-                ApplyMesoVisuals(drop, packetControlled: true);
-            }
-            else if (string.Equals(drop.ItemId, packet.Info.ToString("D8"), StringComparison.Ordinal))
-            {
-                if (!TryApplyPacketItemVisuals(drop, drop.ItemId)
-                    && _itemIcons.TryGetValue(drop.ItemId, out IDXObject icon))
-                {
-                    drop.Icon = icon;
-                }
-            }
+            ApplyPacketDropPresentation(drop, packet);
 
             if (packet.EnterType == 2)
             {
                 SnapDropToPacketIdle(drop, currentTime);
             }
+
+            if (ShouldRetireExpiredPacketEnter(drop, packet, currentTime))
+            {
+                drop.SnapToTargetPosition();
+                drop.StartRemoveFade(currentTime, DropItem.EXPIRE_FADE_DURATION);
+            }
+        }
+
+        private void ApplyPacketDropPresentation(DropItem drop, RemoteDropEnterPacket packet)
+        {
+            if (drop == null)
+            {
+                return;
+            }
+
+            drop.AnimFrames = null;
+            drop.Icon = null;
+            drop.UseLayeredMesoAnimation = false;
+            drop.MesoAnimationLayerCount = 0;
+            drop.MesoAnimationIconType = 0;
+            drop.Quantity = 1;
+
+            if (packet.IsMoney)
+            {
+                drop.Type = DropType.Meso;
+                drop.ItemId = null;
+                drop.MesoAmount = Math.Max(0, packet.Info);
+                drop.Icon = _mesoIcon;
+                ApplyMesoVisuals(drop, packetControlled: true);
+                return;
+            }
+
+            string itemId = packet.Info.ToString("D8");
+            drop.Type = DropType.Item;
+            drop.ItemId = itemId;
+            drop.MesoAmount = 0;
+            if (!TryApplyPacketItemVisuals(drop, itemId)
+                && _itemIcons.TryGetValue(itemId, out IDXObject icon))
+            {
+                drop.Icon = icon;
+            }
+        }
+
+        private static bool ShouldRetireExpiredPacketEnter(DropItem drop, RemoteDropEnterPacket packet, int currentTime)
+        {
+            return drop?.IsPacketControlled == true
+                && !packet.IsMoney
+                && drop.ExpireTime > 0
+                && drop.ExpireTime <= currentTime;
         }
 
         public bool ApplyPacketLeave(

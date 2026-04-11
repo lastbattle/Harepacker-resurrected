@@ -204,6 +204,7 @@ namespace HaCreator.MapSimulator.UI
         public event Action<ItemMakerCraftResult> CraftCompleted;
         public event Action<IReadOnlyCollection<ItemMakerRecipeProgressionEntry>> RecipesDiscovered;
         public event Action<IReadOnlyCollection<ItemMakerRecipeProgressionEntry>> HiddenRecipesUnlocked;
+        internal event Action<PacketOwnedItemMakerPendingRequest> PacketOwnedRequestStaged;
         internal PacketOwnedItemMakerSessionState PacketOwnedSessionState => _packetOwnedSessionState;
 
         internal void SetProductionEnhancementAnimationDisplayer(ProductionEnhancementAnimationDisplayer animationDisplayer)
@@ -312,6 +313,26 @@ namespace HaCreator.MapSimulator.UI
         {
             PacketOwnedItemMakerSessionState appliedState = PacketOwnedItemMakerSessionStateRuntime.Apply(_packetOwnedSessionState, packetSession);
             return TryApplyPacketOwnedSessionState(appliedState, out message);
+        }
+
+        internal void RestorePendingPacketOwnedRequest(PacketOwnedItemMakerPendingRequest pendingRequest)
+        {
+            ClearPendingPacketOwnedRequest();
+            if (pendingRequest == null)
+            {
+                return;
+            }
+
+            _pendingPacketOwnedRequest = pendingRequest;
+            if (pendingRequest.IsDisassembly)
+            {
+                _pendingPacketOwnedDisassemblySlotIndex = pendingRequest.SourceSlotIndex;
+                _pendingPacketOwnedDisassemblyItemId = pendingRequest.SourceItemId;
+                return;
+            }
+
+            _pendingPacketOwnedRecipeKey = pendingRequest.RecipeKey ?? string.Empty;
+            _pendingPacketOwnedRecipeOutputItemId = pendingRequest.ExpectedRewardItemId;
         }
 
         internal bool TryApplyPacketOwnedSessionState(PacketOwnedItemMakerSessionState sessionState, out string message)
@@ -1855,12 +1876,14 @@ namespace HaCreator.MapSimulator.UI
                 };
                 _pendingPacketOwnedDisassemblySlotIndex = recipe.SourceSlotIndex;
                 _pendingPacketOwnedDisassemblyItemId = recipe.OutputItemId;
+                PacketOwnedRequestStaged?.Invoke(_pendingPacketOwnedRequest);
                 return;
             }
 
             _pendingPacketOwnedRequest = new PacketOwnedItemMakerPendingRequest
             {
                 IsDisassembly = false,
+                RecipeKey = recipe.RecipeKey ?? string.Empty,
                 ExpectedRewardItemId = recipe.UsesRandomReward ? 0 : recipe.OutputItemId,
                 ExpectedRewardQuantity = recipe.UsesRandomReward ? 0 : Math.Max(1, recipe.OutputQuantity),
                 MesoCost = recipe.MesoCost,
@@ -1871,6 +1894,7 @@ namespace HaCreator.MapSimulator.UI
             };
             _pendingPacketOwnedRecipeKey = recipe.RecipeKey ?? string.Empty;
             _pendingPacketOwnedRecipeOutputItemId = recipe.OutputItemId;
+            PacketOwnedRequestStaged?.Invoke(_pendingPacketOwnedRequest);
         }
 
         private void ClearPendingPacketOwnedRequest()

@@ -4,6 +4,7 @@ using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Spine;
 using System;
@@ -106,6 +107,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
         private Texture2D _pixel;
         private HoveredQuestItemInfo _hoveredQuestItem;
+        private QuestDetailInlineReference? _hoveredInlineReference;
+        private MouseState _previousInlineReferenceMouseState;
         private Point _lastMousePosition;
         private NoticeSurface[] _noticeSurfaces = Array.Empty<NoticeSurface>();
         private NoticeAnimationFrame[] _noticeAnimationFrames = Array.Empty<NoticeAnimationFrame>();
@@ -135,6 +138,7 @@ namespace HaCreator.MapSimulator.UI
         internal event Action PreviousRequested;
         internal event Action NextRequested;
         internal event Action<QuestWindowActionKind> ActionRequested;
+        internal event Action<QuestDetailInlineReference> InlineReferenceRequested;
 
         public void SetForeground(IDXObject foreground, Point offset)
         {
@@ -463,7 +467,9 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || _state == null || !IsVisible)
             {
                 _hoveredQuestItem = null;
+                _hoveredInlineReference = null;
                 _previousScrollWheelValue = mouseState.ScrollWheelValue;
+                _previousInlineReferenceMouseState = mouseState;
                 return;
             }
 
@@ -475,6 +481,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _hoveredQuestItem = ResolveHoveredQuestItem(mouseState.X, mouseState.Y);
+            _hoveredInlineReference = ResolveHoveredInlineReference(mouseState.X, mouseState.Y);
+            if (_hoveredInlineReference.HasValue &&
+                _previousInlineReferenceMouseState.LeftButton == ButtonState.Pressed &&
+                mouseState.LeftButton == ButtonState.Released)
+            {
+                InlineReferenceRequested?.Invoke(_hoveredInlineReference.Value);
+            }
+
+            _previousInlineReferenceMouseState = mouseState;
         }
 
         protected override void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -911,7 +926,15 @@ namespace HaCreator.MapSimulator.UI
                     DrawTextureClipped(sprite, layout.IconTexture, layout.IconBounds, clipRect, Color.White);
                 }
 
-                y = DrawWrappedTextClipped(sprite, line.Text, layout.BodyPosition, layout.BodyMaxWidth, textColor, clipRect, ClientDetailScale, QuestDetailTextLane.Detail);
+                y = DrawRichTextClipped(
+                    sprite,
+                    line.Text,
+                    layout.BodyPosition,
+                    layout.BodyMaxWidth,
+                    textColor,
+                    clipRect,
+                    ClientDetailScale,
+                    QuestDetailTextLane.Detail);
                 if (!string.IsNullOrWhiteSpace(line.ValueText))
                 {
                     DrawTextLineClipped(sprite, line.ValueText, layout.ValuePosition, textColor, clipRect, ClientDetailScale, lane: QuestDetailTextLane.DetailStrong);
@@ -976,7 +999,10 @@ namespace HaCreator.MapSimulator.UI
                     }
                     else if (!string.IsNullOrEmpty(token.Text))
                     {
-                        DrawTextLineClipped(sprite, token.Text, drawPosition, drawStyle.Color, clipRect, scale, drawStyle.Emphasized, lane);
+                        Color tokenColor = token.Kind == RichTextTokenKind.Reference
+                            ? new Color(164, 238, 255)
+                            : drawStyle.Color;
+                        DrawTextLineClipped(sprite, token.Text, drawPosition, tokenColor, clipRect, scale, drawStyle.Emphasized, lane);
                     }
                 },
                 color);
@@ -1445,6 +1471,119 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
+        private QuestDetailInlineReference? ResolveHoveredInlineReference(int mouseX, int mouseY)
+        {
+            if (_state == null || !ContainsPoint(mouseX, mouseY))
+            {
+                return null;
+            }
+
+            Rectangle logClipRect = GetLogClipRectangle();
+            float y = Position.Y + GetLogTextArrayBaseY() - _logScrollOffset;
+            if (HasRequirementContent())
+            {
+                y = AdvanceSectionHeader(_requirementHeaderTexture, y);
+                if (!string.IsNullOrWhiteSpace(_state.RequirementText))
+                {
+                    QuestDetailInlineReference? reference = TryResolveHoveredRichTextReference(
+                        mouseX,
+                        mouseY,
+                        logClipRect,
+                        _state.RequirementText,
+                        new Vector2(Position.X + ClientTextArrayX, y),
+                        ClientContentWidth,
+                        ClientDetailScale,
+                        QuestDetailTextLane.Detail);
+                    if (reference.HasValue)
+                    {
+                        return reference;
+                    }
+
+                    y += AdvanceRichText(_state.RequirementText, ClientContentWidth, ClientDetailScale, QuestDetailTextLane.Detail);
+                    if (_state.RequirementLines != null && _state.RequirementLines.Count > 0)
+                    {
+                        y += ConditionSectionBodyGap;
+                    }
+                }
+
+                if (_state.RequirementLines != null && _state.RequirementLines.Count > 0)
+                {
+                    y = AdvanceConditionLines(_state.RequirementLines, Position.X + ClientTextArrayX, y, ClientContentWidth, false);
+                }
+
+                y += 8f;
+            }
+
+            if (HasRewardContent())
+            {
+                y = AdvanceSectionHeader(_rewardHeaderTexture, y);
+                if (!string.IsNullOrWhiteSpace(_state.RewardText))
+                {
+                    QuestDetailInlineReference? reference = TryResolveHoveredRichTextReference(
+                        mouseX,
+                        mouseY,
+                        logClipRect,
+                        _state.RewardText,
+                        new Vector2(Position.X + ClientTextArrayX, y),
+                        ClientContentWidth,
+                        ClientDetailScale,
+                        QuestDetailTextLane.Detail);
+                    if (reference.HasValue)
+                    {
+                        return reference;
+                    }
+
+                    y += AdvanceRichText(_state.RewardText, ClientContentWidth, ClientDetailScale, QuestDetailTextLane.Detail);
+                    if (_state.RewardLines != null && _state.RewardLines.Count > 0)
+                    {
+                        y += ConditionSectionBodyGap;
+                    }
+                }
+
+                if (_state.RewardLines != null && _state.RewardLines.Count > 0)
+                {
+                    y = AdvanceConditionLines(_state.RewardLines, Position.X + ClientTextArrayX, y, ClientContentWidth, true);
+                }
+
+                y += 8f;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_state.HintText))
+            {
+                QuestDetailInlineReference? reference = TryResolveHoveredRichTextReference(
+                    mouseX,
+                    mouseY,
+                    logClipRect,
+                    _state.HintText,
+                    new Vector2(Position.X + ClientTextArrayX, y),
+                    ClientContentWidth,
+                    ClientDetailScale,
+                    QuestDetailTextLane.Detail);
+                if (reference.HasValue)
+                {
+                    return reference;
+                }
+            }
+
+            Rectangle summaryClipRect = GetSummaryClipRectangle();
+            if (summaryClipRect.Contains(mouseX, mouseY) && HasSummaryPaneContent())
+            {
+                float summaryY = Position.Y + ClientSummaryY - _summaryScrollOffset;
+                summaryY = AdvanceSectionHeader(_summaryHeaderTexture, summaryY);
+                return TryResolveHoveredRichTextReference(
+                    mouseX,
+                    mouseY,
+                    summaryClipRect,
+                    _state.SummaryText,
+                    new Vector2(Position.X + ClientTextArrayX, summaryY),
+                    ClientContentWidth,
+                    ClientDetailScale,
+                    QuestDetailTextLane.Detail);
+            }
+
+            return null;
+        }
+
         private HoveredQuestItemInfo TryResolveHoveredRichTextItem(
             int mouseX,
             int mouseY,
@@ -1489,6 +1628,52 @@ namespace HaCreator.MapSimulator.UI
             return hoveredItem;
         }
 
+        private QuestDetailInlineReference? TryResolveHoveredRichTextReference(
+            int mouseX,
+            int mouseY,
+            Rectangle clipRect,
+            string text,
+            Vector2 position,
+            float maxWidth,
+            float scale,
+            QuestDetailTextLane lane)
+        {
+            if (string.IsNullOrWhiteSpace(text) || !clipRect.Contains(mouseX, mouseY))
+            {
+                return null;
+            }
+
+            QuestDetailInlineReference? hoveredReference = null;
+            LayoutRichText(
+                text,
+                position,
+                maxWidth,
+                scale,
+                lane,
+                (token, drawPosition, _) =>
+                {
+                    if (hoveredReference.HasValue ||
+                        token.Kind != RichTextTokenKind.Reference ||
+                        !token.InlineReference.HasValue)
+                    {
+                        return;
+                    }
+
+                    Rectangle bounds = new(
+                        (int)Math.Round(drawPosition.X),
+                        (int)Math.Round(drawPosition.Y),
+                        Math.Max(1, token.Width),
+                        Math.Max(1, token.Height));
+                    if (bounds.Contains(mouseX, mouseY) && bounds.Intersects(clipRect))
+                    {
+                        hoveredReference = token.InlineReference.Value;
+                    }
+                },
+                Color.White);
+
+            return hoveredReference;
+        }
+
         private void DrawNoticeSurface(SpriteBatch sprite, int tickCount)
         {
             NoticeSurface? surface = GetActiveNoticeSurface();
@@ -1525,6 +1710,20 @@ namespace HaCreator.MapSimulator.UI
                     return CreateHoveredQuestItem(line.ItemId.Value, line.Text, line.ItemQuantity);
                 }
 
+                HoveredQuestItemInfo inlineItem = TryResolveHoveredRichTextItem(
+                    mouseX,
+                    mouseY,
+                    clipRect,
+                    line.Text,
+                    layout.BodyPosition,
+                    layout.BodyMaxWidth,
+                    ClientDetailScale,
+                    QuestDetailTextLane.Detail);
+                if (inlineItem != null)
+                {
+                    return inlineItem;
+                }
+
                 y = layout.NextY;
             }
 
@@ -1558,8 +1757,9 @@ namespace HaCreator.MapSimulator.UI
                 : MeasureText(line.ValueText, ClientDetailScale, true, QuestDetailTextLane.DetailStrong).X;
             float textRight = detailX + stripWidth - (rowTexture != null ? ConditionTextInset : 0f);
             float bodyMaxWidth = Math.Max(36f, textRight - textLeft - (valueWidth > 0f ? valueWidth + ConditionValueGap : 0f));
-            int lineCount = Math.Max(1, WrapText(line.Text, bodyMaxWidth, ClientDetailScale, QuestDetailTextLane.Detail).Count());
-            float bodyHeight = lineCount * GetLineHeight(ClientDetailScale);
+            float bodyHeight = Math.Max(
+                GetLineHeight(ClientDetailScale),
+                AdvanceRichText(line.Text, bodyMaxWidth, ClientDetailScale, QuestDetailTextLane.Detail));
             float rowHeight = Math.Max(Math.Max(bodyHeight, stripHeight), iconWidth);
             float textureY = y;
             float labelY = y + 1f;

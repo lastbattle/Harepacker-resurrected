@@ -1302,9 +1302,12 @@ namespace HaCreator.MapSimulator
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
             {
-                cashShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
-                    "CAdminShopDlg owner surface is hidden because the Cash Shop owner family is not visible.",
-                    AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily);
+                if (cashShopWindow.ShouldRecordPacketOwnedAdminShopFamilyHide)
+                {
+                    cashShopWindow.RecordPacketOwnedAdminShopOwnerSurfaceHidden(
+                        "CAdminShopDlg owner surface is hidden because the Cash Shop owner family is not visible.",
+                        AdminShopPacketOwnedOwnerVisibilityState.HiddenByCashShopFamily);
+                }
             }
 
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShop);

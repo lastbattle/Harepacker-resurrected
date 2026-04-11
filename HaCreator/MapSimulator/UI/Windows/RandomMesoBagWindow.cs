@@ -17,6 +17,8 @@ namespace HaCreator.MapSimulator.UI
         private const int AmountTextBoxRightEdgeX = 200;
         private const int AmountTextRightPadding = 5;
         private const int AmountOffsetY = 34;
+        private static readonly Color ClientDescriptionTextColor = Color.White;
+        private static readonly Color ClientAmountTextColor = Color.Black;
         private const int OkButtonOffsetX = 204;
         private const int OkButtonOffsetY = 77;
         private const int FallbackMessageY = 34;
@@ -119,11 +121,11 @@ namespace HaCreator.MapSimulator.UI
                 sprite,
                 _descriptionText,
                 ResolveMessagePosition(_descriptionText),
-                Color.White);
+                ClientDescriptionTextColor);
             DrawAmountText(
                 sprite,
                 _amountText,
-                new Color(255, 236, 140));
+                ClientAmountTextColor);
         }
 
         private void DrawText(SpriteBatch sprite, string text, Vector2 position, Color color)
@@ -228,14 +230,18 @@ namespace HaCreator.MapSimulator.UI
         {
             if (useAuthoredLayout)
             {
-                int amountX = Math.Max(
-                    0,
-                    (int)MathF.Round(AmountTextBoxRightEdgeX - measuredWidth - AmountTextRightPadding));
-                return new Point(amountX, AmountOffsetY);
+                return new Point(ResolveClientAmountTextX(measuredWidth), AmountOffsetY);
             }
 
             int centeredX = Math.Max(0, (int)MathF.Round((frameWidth - measuredWidth) / 2f));
             return new Point(centeredX, FallbackAmountY);
+        }
+
+        internal static int ResolveClientAmountTextX(float measuredWidth)
+        {
+            // CUIRandomMesoBag::Draw uses IWzFont::CalcTextWidth as an integer and draws at 200 - width - 5.
+            int clientTextWidth = Math.Max(0, (int)measuredWidth);
+            return Math.Max(0, AmountTextBoxRightEdgeX - clientTextWidth - AmountTextRightPadding);
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

@@ -675,6 +675,11 @@ namespace HaCreator.MapSimulator.Character
             return ResolveFrameInt(actionNode, canvas: null, replayTailFlagName, 0) != 0;
         }
 
+        internal static void AppendMorphReplayTailForTesting(CharacterAnimation animation)
+        {
+            AppendMorphReplayTail(animation);
+        }
+
         private static void AppendMorphReplayTail(CharacterAnimation animation)
         {
             if (animation?.Frames == null || animation.Frames.Count < 3)
@@ -682,7 +687,8 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            for (int i = animation.Frames.Count - 1; i >= 1; i--)
+            int lastInteriorFrameIndex = animation.Frames.Count - 2;
+            for (int i = lastInteriorFrameIndex; i >= 1; i--)
             {
                 animation.Frames.Add(animation.Frames[i].Clone());
             }

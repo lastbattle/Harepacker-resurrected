@@ -66,6 +66,39 @@ namespace HaCreator.MapSimulator.Fields
             return mutation.TagsToEnable.Count > 0 || mutation.TagsToDisable.Count > 0;
         }
 
+        internal static bool TryResolveTimerCallbackDelayMs(string scriptName, out int delayMs)
+        {
+            delayMs = 0;
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                return false;
+            }
+
+            bool foundDelay = false;
+            foreach ((string FunctionName, IReadOnlyList<string> Arguments) call in EnumerateFunctionCalls(scriptName))
+            {
+                if (!IsTimerCallbackFunctionName(call.FunctionName))
+                {
+                    continue;
+                }
+
+                int firstDelayCandidateIndex = call.Arguments.Count > 1 ? 1 : 0;
+                for (int i = firstDelayCandidateIndex; i < call.Arguments.Count; i++)
+                {
+                    string argument = NormalizeFunctionAliasArgument(call.Arguments[i]);
+                    if (!int.TryParse(argument, out int parsedDelayMs) || parsedDelayMs <= 0)
+                    {
+                        continue;
+                    }
+
+                    delayMs = Math.Max(delayMs, parsedDelayMs);
+                    foundDelay = true;
+                }
+            }
+
+            return foundDelay;
+        }
+
         private static void AddIfAvailable(string candidateTag, ISet<string> availableTags, ISet<string> resolvedTags)
         {
             if (!string.IsNullOrWhiteSpace(candidateTag) && availableTags.Contains(candidateTag))
@@ -347,6 +380,95 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             yield return value[tokenStart..];
+        }
+
+        private static IEnumerable<(string FunctionName, IReadOnlyList<string> Arguments)> EnumerateFunctionCalls(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            int openIndex = value.IndexOf('(');
+            while (openIndex >= 0)
+            {
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex + 1)
+                {
+                    openIndex = value.IndexOf('(', openIndex + 1);
+                    continue;
+                }
+
+                string functionName = ReadFunctionName(value, openIndex);
+                string argumentText = value[(openIndex + 1)..closeIndex];
+                var arguments = new List<string>(SplitFunctionArguments(argumentText));
+                if (!string.IsNullOrWhiteSpace(functionName) && arguments.Count > 0)
+                {
+                    yield return (functionName, arguments);
+                }
+
+                foreach ((string FunctionName, IReadOnlyList<string> Arguments) nestedCall in EnumerateFunctionCalls(argumentText))
+                {
+                    yield return nestedCall;
+                }
+
+                openIndex = value.IndexOf('(', openIndex + 1);
+            }
+        }
+
+        private static string ReadFunctionName(string value, int openIndex)
+        {
+            if (string.IsNullOrWhiteSpace(value) || openIndex <= 0)
+            {
+                return string.Empty;
+            }
+
+            int endIndex = openIndex - 1;
+            while (endIndex >= 0 && char.IsWhiteSpace(value[endIndex]))
+            {
+                endIndex--;
+            }
+
+            int startIndex = endIndex;
+            while (startIndex >= 0)
+            {
+                char current = value[startIndex];
+                if (!char.IsLetterOrDigit(current) && current is not ('_' or '.'))
+                {
+                    break;
+                }
+
+                startIndex--;
+            }
+
+            return startIndex < endIndex
+                ? value[(startIndex + 1)..(endIndex + 1)].Trim()
+                : string.Empty;
+        }
+
+        private static bool IsTimerCallbackFunctionName(string functionName)
+        {
+            if (string.IsNullOrWhiteSpace(functionName))
+            {
+                return false;
+            }
+
+            string leafName = functionName.Trim();
+            int memberSeparatorIndex = leafName.LastIndexOf('.');
+            if (memberSeparatorIndex >= 0 && memberSeparatorIndex < leafName.Length - 1)
+            {
+                leafName = leafName[(memberSeparatorIndex + 1)..];
+            }
+
+            return leafName.Equals("setTimeout", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("setTimer", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("setDelay", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("schedule", StringComparison.OrdinalIgnoreCase)
+                || leafName.StartsWith("schedule", StringComparison.OrdinalIgnoreCase)
+                || (leafName.StartsWith("set", StringComparison.OrdinalIgnoreCase)
+                    && (leafName.EndsWith("Timer", StringComparison.OrdinalIgnoreCase)
+                        || leafName.EndsWith("Timeout", StringComparison.OrdinalIgnoreCase)
+                        || leafName.EndsWith("Delay", StringComparison.OrdinalIgnoreCase)));
         }
 
         private static string NormalizeFunctionAliasArgument(string value)

@@ -15,6 +15,15 @@ namespace HaCreator.MapSimulator.Fields
     {
         private const int RocketBoosterSkillId = 35101004;
         private const int WildHunterSwallowAbsorbSkillId = 33101005;
+        private static readonly HashSet<int> MysticDoorSkillIds = new HashSet<int>
+        {
+            2311002,
+            8001,
+            10008001,
+            20008001,
+            20018001,
+            30008001
+        };
 
         public sealed class RuntimeState
         {
@@ -687,8 +696,10 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool IsMysticDoorSkill(SkillData skill)
         {
-            return skill?.SkillId == 2311002
-                   || string.Equals(skill?.Name, "Mystic Door", System.StringComparison.OrdinalIgnoreCase);
+            return skill != null
+                   && (MysticDoorSkillIds.Contains(skill.SkillId)
+                       || string.Equals(skill.Name, "Mystic Door", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(skill.Name, "Decent Mystic Door", StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool IsRocketBoosterSkill(SkillData skill)

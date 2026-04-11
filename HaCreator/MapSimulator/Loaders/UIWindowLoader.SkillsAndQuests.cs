@@ -3022,6 +3022,7 @@ namespace HaCreator.MapSimulator.Loaders
                     LoadButton(userInfoProperty, "BtMeso", clickSound, overSound, device));
             }
 
+            RegisterLegacyUserInfoMarriedIcon(window, userInfoProperty, device);
             return window;
         }
 
@@ -3168,6 +3169,21 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             window.RegisterLegacyFrame(panelName, new DXObject(0, 0, frameTexture, 0));
+        }
+
+        private static void RegisterLegacyUserInfoMarriedIcon(UserInfoUI window, WzSubProperty userInfoProperty, GraphicsDevice device)
+        {
+            if (window == null || userInfoProperty == null)
+            {
+                return;
+            }
+
+            WzCanvasProperty marriedCanvas = userInfoProperty["Marry"]?["married"]?["0"] as WzCanvasProperty;
+            Texture2D marriedIconTexture = LoadCanvasTexture(marriedCanvas, device);
+            if (marriedIconTexture != null)
+            {
+                window.SetMarriedIcon(new DXObject(0, 0, marriedIconTexture, 0));
+            }
         }
 
 

@@ -61,6 +61,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte ClientLoadListRequestType = 2;
         private const byte ClientCommentRequestType = 4;
         private const byte ClientCommentDeleteRequestType = 5;
+        private const int ClientRequestHistoryLimit = 16;
 
         private sealed class GuildBbsCommentState
         {
@@ -107,6 +108,7 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private readonly List<GuildBbsThreadState> _threads = new();
+        private readonly List<GuildBbsClientRequestSnapshot> _clientRequestHistory = new();
         private readonly HashSet<int> _inventoryOwnedCashEmoticonIds = new();
         private readonly HashSet<int> _packetOwnedCashEmoticonIds = new();
         private GuildBbsComposeState _compose = new();
@@ -127,6 +129,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _draftCounter = 1;
         private int _basicEmoticonCount = DefaultBasicEmoticonCount;
         private int _cashEmoticonCount = DefaultCashEmoticonCount;
+        private int _nextClientRequestSequence = 1;
 
         public GuildBbsRuntime()
         {
@@ -831,7 +834,31 @@ namespace HaCreator.MapSimulator.Interaction
             string threadSummary = selectedThread == null
                 ? "none"
                 : $"#{selectedThread.ThreadId} \"{selectedThread.Title}\" ({selectedThread.Comments.Count} comment(s))";
-            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, listStart={ResolveClientListStart()}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, authority={AuthoritySourceLabel} [{DescribePermissionMask(EffectivePermissionMask)}], cashEmoticons={OwnedCashEmoticonCount}/{_cashEmoticonCount} ({CashOwnershipSourceLabel})";
+            string lastRequest = _clientRequestHistory.Count == 0
+                ? "none"
+                : $"#{_clientRequestHistory[^1].Sequence} {_clientRequestHistory[^1].Kind}";
+            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, listStart={ResolveClientListStart()}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, authority={AuthoritySourceLabel} [{DescribePermissionMask(EffectivePermissionMask)}], cashEmoticons={OwnedCashEmoticonCount}/{_cashEmoticonCount} ({CashOwnershipSourceLabel}), lastClientRequest={lastRequest}";
+        }
+
+        internal IReadOnlyList<GuildBbsClientRequestSnapshot> GetRecentClientRequestHistory()
+        {
+            return _clientRequestHistory.ToArray();
+        }
+
+        public string DescribeRecentClientRequests(int count = 5)
+        {
+            if (_clientRequestHistory.Count == 0)
+            {
+                return "No Guild BBS client-shaped requests have been recorded.";
+            }
+
+            int resolvedCount = Math.Clamp(count, 1, ClientRequestHistoryLimit);
+            IEnumerable<GuildBbsClientRequestSnapshot> requests = _clientRequestHistory
+                .Skip(Math.Max(0, _clientRequestHistory.Count - resolvedCount));
+            return string.Join(
+                Environment.NewLine,
+                requests.Select(request =>
+                    $"#{request.Sequence} {request.Kind}: opcode={request.Opcode}, payloadhex={request.PayloadHex}, at={request.CreatedAt.ToLocalTime():HH:mm:ss}"));
         }
 
         public string BuildClientRegisterRequestPreview()
@@ -863,19 +890,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return bodyNotice;
             }
 
-            var payload = new List<byte>();
-            EncodeByte(payload, ClientRegisterRequestType);
-            EncodeByte(payload, _compose.EditThreadId > 0 ? 1 : 0);
-            if (_compose.EditThreadId > 0)
-            {
-                EncodeInt32(payload, _compose.EditThreadId);
-            }
-
-            EncodeByte(payload, _compose.IsNotice ? 1 : 0);
-            EncodeString(payload, resolvedTitle);
-            EncodeString(payload, resolvedBody);
-            EncodeInt32(payload, ResolveClientEmoticonId(_compose.EmoticonKind, _compose.EmoticonSlot));
-            return FormatClientPacketPreview("register", payload);
+            return FormatClientPacketPreview("register", BuildClientRegisterRequestPayload(resolvedTitle, resolvedBody));
         }
 
         public string BuildClientCommentRequestPreview()
@@ -897,19 +912,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return notice;
             }
 
-            var payload = new List<byte>();
-            EncodeByte(payload, ClientCommentRequestType);
-            EncodeInt32(payload, selectedThread.ThreadId);
-            EncodeString(payload, replyBody);
-            return FormatClientPacketPreview("comment", payload);
+            return FormatClientPacketPreview("comment", BuildClientCommentRequestPayload(selectedThread.ThreadId, replyBody));
         }
 
         public string BuildClientLoadListRequestPreview()
         {
-            var payload = new List<byte>();
-            EncodeByte(payload, ClientLoadListRequestType);
-            EncodeInt32(payload, ResolveClientListStart());
-            return FormatClientPacketPreview("load-list", payload);
+            return FormatClientPacketPreview("load-list", BuildClientLoadListRequestPayload());
         }
 
         public string BuildClientDeleteRequestPreview()
@@ -925,10 +933,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Only your own Guild BBS thread or an officer-moderated thread can be deleted here.";
             }
 
-            var payload = new List<byte>();
-            EncodeByte(payload, ClientDeleteRequestType);
-            EncodeInt32(payload, selectedThread.ThreadId);
-            return FormatClientPacketPreview("delete", payload);
+            return FormatClientPacketPreview("delete", BuildClientDeleteRequestPayload(selectedThread.ThreadId));
         }
 
         public string BuildClientDeleteSequencePreview()
@@ -964,11 +969,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "That Guild BBS reply cannot be deleted by the current simulator authority.";
             }
 
-            var payload = new List<byte>();
-            EncodeByte(payload, ClientCommentDeleteRequestType);
-            EncodeInt32(payload, selectedThread.ThreadId);
-            EncodeInt32(payload, comment.CommentId);
-            return FormatClientPacketPreview("comment-delete", payload);
+            return FormatClientPacketPreview("comment-delete", BuildClientCommentDeleteRequestPayload(selectedThread.ThreadId, comment.CommentId));
         }
 
         public string BuildClientCommentDeleteRequestPreview()
@@ -1007,7 +1008,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string BuildClientSubmitSequencePreview()
         {
-            return $"{BuildClientRegisterRequestPreview()} {BuildClientLoadListRequestPreview()}";
+            string registerPreview = BuildClientRegisterRequestPreview();
+            if (!registerPreview.StartsWith("CUIGuildBBS ", StringComparison.Ordinal))
+            {
+                return registerPreview;
+            }
+
+            return $"{registerPreview} {FormatClientPacketPreview("load-list", BuildClientLoadListRequestPayload(0))}";
         }
 
         public string BuildClientReplySequencePreview()
@@ -1195,6 +1202,87 @@ namespace HaCreator.MapSimulator.Interaction
         private int ResolveClientListStart()
         {
             return Math.Max(0, _threadPageIndex * VisibleThreadCount);
+        }
+
+        private byte[] BuildClientRegisterRequestPayload(string resolvedTitle, string resolvedBody)
+        {
+            var payload = new List<byte>();
+            EncodeByte(payload, ClientRegisterRequestType);
+            EncodeByte(payload, _compose.EditThreadId > 0 ? 1 : 0);
+            if (_compose.EditThreadId > 0)
+            {
+                EncodeInt32(payload, _compose.EditThreadId);
+            }
+
+            EncodeByte(payload, _compose.IsNotice ? 1 : 0);
+            EncodeString(payload, resolvedTitle);
+            EncodeString(payload, resolvedBody);
+            EncodeInt32(payload, ResolveClientEmoticonId(_compose.EmoticonKind, _compose.EmoticonSlot));
+            return payload.ToArray();
+        }
+
+        private byte[] BuildClientLoadListRequestPayload(int? listStart = null)
+        {
+            var payload = new List<byte>();
+            EncodeByte(payload, ClientLoadListRequestType);
+            EncodeInt32(payload, Math.Max(0, listStart ?? ResolveClientListStart()));
+            return payload.ToArray();
+        }
+
+        private static byte[] BuildClientCommentRequestPayload(int threadId, string replyBody)
+        {
+            var payload = new List<byte>();
+            EncodeByte(payload, ClientCommentRequestType);
+            EncodeInt32(payload, threadId);
+            EncodeString(payload, replyBody);
+            return payload.ToArray();
+        }
+
+        private static byte[] BuildClientDeleteRequestPayload(int threadId)
+        {
+            var payload = new List<byte>();
+            EncodeByte(payload, ClientDeleteRequestType);
+            EncodeInt32(payload, threadId);
+            return payload.ToArray();
+        }
+
+        private static byte[] BuildClientCommentDeleteRequestPayload(int threadId, int commentId)
+        {
+            var payload = new List<byte>();
+            EncodeByte(payload, ClientCommentDeleteRequestType);
+            EncodeInt32(payload, threadId);
+            EncodeInt32(payload, commentId);
+            return payload.ToArray();
+        }
+
+        private void RecordClientRequest(string kind, byte[] payload)
+        {
+            _clientRequestHistory.Add(new GuildBbsClientRequestSnapshot
+            {
+                Sequence = _nextClientRequestSequence++,
+                Kind = kind ?? string.Empty,
+                Opcode = ClientGuildBbsRequestOpcode,
+                PayloadHex = Convert.ToHexString(payload ?? Array.Empty<byte>()),
+                CreatedAt = DateTimeOffset.Now
+            });
+
+            if (_clientRequestHistory.Count > ClientRequestHistoryLimit)
+            {
+                _clientRequestHistory.RemoveRange(0, _clientRequestHistory.Count - ClientRequestHistoryLimit);
+            }
+        }
+
+        private void RecordClientRequests(params (string Kind, byte[] Payload)[] requests)
+        {
+            if (requests == null)
+            {
+                return;
+            }
+
+            foreach ((string kind, byte[] payload) in requests)
+            {
+                RecordClientRequest(kind, payload);
+            }
         }
 
         private static int ResolveClientEmoticonId(GuildBbsEmoticonKind kind, int slotIndex)
@@ -2038,5 +2126,14 @@ namespace HaCreator.MapSimulator.Interaction
         public int SlotIndex { get; init; }
         public int CashPageIndex { get; init; }
         public string DisplayText { get; init; } = string.Empty;
+    }
+
+    internal sealed class GuildBbsClientRequestSnapshot
+    {
+        public int Sequence { get; init; }
+        public string Kind { get; init; } = string.Empty;
+        public int Opcode { get; init; }
+        public string PayloadHex { get; init; } = string.Empty;
+        public DateTimeOffset CreatedAt { get; init; }
     }
 }

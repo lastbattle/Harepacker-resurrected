@@ -836,7 +836,7 @@ namespace HaCreator.MapSimulator
                 ? $"Lv{skillLevel}"
                 : "SKILL";
             return new KeyConfigWindow.ShortcutVisualState(
-                skill?.IconTexture,
+                skill?.IconDisabledTexture ?? skill?.IconTexture,
                 title,
                 detail,
                 badgeText: badgeText,

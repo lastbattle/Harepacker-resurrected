@@ -1140,6 +1140,11 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
+        private bool TryApplyPacketOwnedAntiMacroPayload(byte[] payload, out string message, string source)
+        {
+            return TryApplyPacketOwnedAntiMacroPayload(payload, out message);
+        }
+
         private void HandlePacketOwnedAntiMacroNoticeClosed(int responseCode)
         {
             _lastPacketOwnedAntiMacroSummary = responseCode == 2

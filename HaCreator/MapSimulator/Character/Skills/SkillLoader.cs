@@ -2281,12 +2281,37 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             skill.ShadowPartnerSupportedRawActionNames.Clear();
-            foreach (WzImageProperty sourceSkillNode in EnumerateShadowPartnerRawActionSourceSkillNodes(skill, skillNode))
+            foreach (string rawActionName in EnumerateShadowPartnerRawActionNamesFromSourceSkillNodes(
+                         EnumerateShadowPartnerRawActionSourceSkillNodes(skill, skillNode)))
             {
-                string rawActionName = sourceSkillNode?["action"]?["0"]?.GetString();
-                if (!string.IsNullOrWhiteSpace(rawActionName))
+                skill.ShadowPartnerSupportedRawActionNames.Add(rawActionName);
+            }
+        }
+
+        internal static IEnumerable<string> EnumerateShadowPartnerRawActionNamesFromSourceSkillNodes(
+            IEnumerable<WzImageProperty> sourceSkillNodes)
+        {
+            if (sourceSkillNodes == null)
+            {
+                yield break;
+            }
+
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (WzImageProperty sourceSkillNode in sourceSkillNodes)
+            {
+                WzImageProperty actionNode = sourceSkillNode?["action"];
+                if (actionNode?.WzProperties == null || actionNode.WzProperties.Count == 0)
                 {
-                    skill.ShadowPartnerSupportedRawActionNames.Add(rawActionName);
+                    continue;
+                }
+
+                foreach (WzImageProperty actionChild in EnumerateShadowPartnerClientActionPieceNodesInClientOrder(actionNode))
+                {
+                    string rawActionName = actionChild?.GetString();
+                    if (!string.IsNullOrWhiteSpace(rawActionName) && yielded.Add(rawActionName))
+                    {
+                        yield return rawActionName;
+                    }
                 }
             }
         }
@@ -2443,6 +2468,31 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
 
             foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateCharacterOwnedMountedActionCandidateNames(supportedRawActionNames))
+            {
+                if (string.IsNullOrWhiteSpace(actionName)
+                    || actionAnimations.ContainsKey(actionName)
+                    || !TryGetShadowPartnerClientActionPieces(actionName, out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
+                {
+                    continue;
+                }
+
+                SkillAnimation piecedAnimation = ShadowPartnerClientActionResolver.TryBuildPiecedShadowPartnerActionAnimation(
+                    readOnlyActionAnimations,
+                    actionName,
+                    supportedRawActionNames,
+                    piecePlanOverride: piecePlan,
+                    requireSupportedRawActionName: false);
+                if (piecedAnimation?.Frames.Count > 0)
+                {
+                    actionAnimations[actionName] = piecedAnimation;
+                }
+            }
+
+            readOnlyActionAnimations =
+                actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+
+            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateClientInitializedShadowPartnerRawActionNames())
             {
                 if (string.IsNullOrWhiteSpace(actionName)
                     || actionAnimations.ContainsKey(actionName)
@@ -3078,6 +3128,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             skill.SummonProjectileAnimations = LoadSummonIndexedAnimations(summonNode["ball"], "ball");
+            skill.SummonProjectileAnimationPaths = LoadSummonIndexedAnimationPaths(summonNode["ball"]);
             skill.SummonTargetHitPresentations = LoadSummonImpactPresentations(summonNode["mob"], "mob");
 
             if (attackBranch != null)
@@ -3085,15 +3136,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 List<SkillAnimation> attackBranchProjectileAnimations = BuildSummonBranchProjectileAnimations(
                     skill.SummonProjectileAnimations,
                     LoadSummonIndexedAnimations(attackBranch["info"]?["ball"], $"{attackBranchName}/info/ball"));
+                List<string> attackBranchProjectileAnimationPaths = BuildSummonBranchProjectileAnimationPaths(
+                    skill.SummonProjectileAnimationPaths,
+                    LoadSummonIndexedAnimationPaths(attackBranch["info"]?["ball"]));
                 List<SummonImpactPresentation> attackBranchImpactPresentations = BuildSummonBranchImpactPresentations(
                     skill.SummonTargetHitPresentations,
                     LoadSummonImpactPresentations(attackBranch["info"]?["mob"], $"{attackBranchName}/info/mob"));
                 skill.SummonProjectileAnimations = attackBranchProjectileAnimations;
+                skill.SummonProjectileAnimationPaths = attackBranchProjectileAnimationPaths;
                 skill.SummonTargetHitPresentations = attackBranchImpactPresentations;
                 RegisterSummonBranchImpactMetadata(
                     skill,
                     attackBranchName,
                     attackBranchProjectileAnimations,
+                    attackBranchProjectileAnimationPaths,
                     attackBranchImpactPresentations);
             }
 
@@ -3102,6 +3158,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 AppendSummonIndexedAnimations(
                     skill.SummonProjectileAnimations,
                     LoadSummonIndexedAnimations(removalBranch["info"]?["ball"], $"{removalBranchName}/info/ball"));
+                AppendSummonIndexedAnimationPaths(
+                    skill.SummonProjectileAnimationPaths,
+                    LoadSummonIndexedAnimationPaths(removalBranch["info"]?["ball"]));
                 AppendSummonImpactPresentations(
                     skill.SummonTargetHitPresentations,
                     LoadSummonImpactPresentations(removalBranch["info"]?["mob"], $"{removalBranchName}/info/mob"));
@@ -4068,6 +4127,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 BuildSummonBranchProjectileAnimations(
                     skill.SummonProjectileAnimations,
                     LoadSummonIndexedAnimations(attackBranch["info"]?["ball"], $"{branchName}/info/ball")),
+                BuildSummonBranchProjectileAnimationPaths(
+                    skill.SummonProjectileAnimationPaths,
+                    LoadSummonIndexedAnimationPaths(attackBranch["info"]?["ball"])),
                 BuildSummonBranchImpactPresentations(
                     skill.SummonTargetHitPresentations,
                     LoadSummonImpactPresentations(attackBranch["info"]?["mob"], $"{branchName}/info/mob")));
@@ -4401,6 +4463,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             return resolved;
         }
 
+        private static List<string> BuildSummonBranchProjectileAnimationPaths(
+            IEnumerable<string> basePaths,
+            IEnumerable<string> overridePaths)
+        {
+            var resolved = new List<string>();
+            AppendSummonIndexedAnimationPaths(resolved, basePaths);
+            AppendSummonIndexedAnimationPaths(resolved, overridePaths);
+            return resolved;
+        }
+
         private static List<SummonImpactPresentation> BuildSummonBranchImpactPresentations(
             IEnumerable<SummonImpactPresentation> basePresentations,
             IEnumerable<SummonImpactPresentation> overridePresentations)
@@ -4415,6 +4487,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             SkillData skill,
             string branchName,
             List<SkillAnimation> projectileAnimations,
+            List<string> projectileAnimationPaths,
             List<SummonImpactPresentation> impactPresentations)
         {
             if (skill == null || string.IsNullOrWhiteSpace(branchName))
@@ -4425,6 +4498,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (projectileAnimations?.Count > 0)
             {
                 skill.SummonProjectileAnimationsByBranch[branchName] = projectileAnimations;
+            }
+
+            if (projectileAnimationPaths?.Count > 0)
+            {
+                skill.SummonProjectileAnimationPathsByBranch[branchName] = projectileAnimationPaths;
             }
 
             if (impactPresentations?.Count > 0)
@@ -4494,6 +4572,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                     rb?.X ?? 0,
                     lt?.Y ?? 0,
                     rb?.Y ?? 0);
+            }
+        }
+
+        private static void AppendSummonIndexedAnimationPaths(List<string> destination, IEnumerable<string> source)
+        {
+            if (destination == null || source == null)
+            {
+                return;
+            }
+
+            foreach (string path in source)
+            {
+                if (string.IsNullOrWhiteSpace(path)
+                    || destination.Any(existing => string.Equals(existing, path, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                destination.Add(path);
             }
         }
 
@@ -4784,20 +4881,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (!TryResolveSkillPropertyPath(normalizedPath, out WzImageProperty candidateNode))
+            if (TryResolveSkillPropertyPath(normalizedPath, out WzImageProperty candidateNode))
             {
-                return false;
-            }
+                if (LooksLikeSummonSourceProperty(candidateNode))
+                {
+                    summonNode = candidateNode;
+                    return true;
+                }
 
-            if (LooksLikeSummonSourceProperty(candidateNode))
-            {
-                summonNode = candidateNode;
-                return true;
-            }
-
-            if (TryResolveSummonSourcePropertyFromSkillNode(candidateNode, out summonNode))
-            {
-                return true;
+                if (TryResolveSummonSourcePropertyFromSkillNode(candidateNode, out summonNode))
+                {
+                    return true;
+                }
             }
 
             return TryResolveVisibleSummonSourcePropertyFromClientSummonedUolPath(normalizedPath, out summonNode);
@@ -5399,8 +5494,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? resolvedAlphaEnd
                 : null;
             (frame.AlphaStart, frame.AlphaEnd) = ResolveClientInsertCanvasAlphaEndpoints(authoredAlphaStart, authoredAlphaEnd);
-            frame.ZoomStart = ResolveFrameInt(metadataNode, canvas, "z0");
-            frame.ZoomEnd = ResolveFrameInt(metadataNode, canvas, "z1");
+            frame.HasZoomStart = TryResolveFrameInt(metadataNode, canvas, "z0", out int resolvedZoomStart);
+            frame.HasZoomEnd = TryResolveFrameInt(metadataNode, canvas, "z1", out int resolvedZoomEnd);
+            frame.ZoomStart = frame.HasZoomStart ? resolvedZoomStart : 0;
+            frame.ZoomEnd = frame.HasZoomEnd ? resolvedZoomEnd : 0;
 
             return frame;
         }
@@ -5774,6 +5871,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     var texture = bitmap.ToTexture2DAndDispose(_device);
                     skill.IconDisabled = new DXObject(0, 0, texture);
+                    skill.IconDisabledTexture = texture;
                 }
             }
 
@@ -6701,6 +6799,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 requirePercentSuffix: true,
                 placeholders,
                 "max mp");
+            levelData.DefensePercent = ApplyDescriptionBackedLabelAliases(
+                levelData.DefensePercent,
+                normalizedSurface,
+                requirePercentSuffix: true,
+                placeholders,
+                "weapon def",
+                "weapon defense",
+                "physical def",
+                "physical defense");
+            levelData.MagicDefensePercent = ApplyDescriptionBackedLabelAliases(
+                levelData.MagicDefensePercent,
+                normalizedSurface,
+                requirePercentSuffix: true,
+                placeholders,
+                "magic def",
+                "magic defense");
         }
 
         private static int ApplyDescriptionBackedAliasValue(int target, int aliasValue, bool shouldApply)

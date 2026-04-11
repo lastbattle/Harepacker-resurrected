@@ -585,7 +585,7 @@ namespace HaCreator.MapSimulator
                     decodedPayload.QuestId,
                     decodedPayload.OwnerItemId,
                     decodedPayload.QrData,
-                    Math.Max(1, Math.Max(activeRaise?.MaxDropCount ?? 1, decodedPayload.PlacedPieceCount)),
+                    ResolveQuestRewardRaiseInboundMaxDropCount(activeRaise, decodedPayload),
                     decodedPayload.WindowMode,
                     decodedPayload.DisplayMode);
             }
@@ -863,9 +863,21 @@ namespace HaCreator.MapSimulator
             activeRaise.RequestId = Math.Max(0, decodedPayload.OwnerRequestId);
             activeRaise.OwnerItemId = Math.Max(0, decodedPayload.OwnerItemId);
             activeRaise.QrData = decodedPayload.QrData;
-            activeRaise.MaxDropCount = Math.Max(1, Math.Max(activeRaise.MaxDropCount, decodedPayload.PlacedPieceCount));
+            activeRaise.MaxDropCount = ResolveQuestRewardRaiseInboundMaxDropCount(activeRaise, decodedPayload);
             activeRaise.WindowMode = decodedPayload.WindowMode;
             activeRaise.DisplayMode = decodedPayload.DisplayMode;
+            activeRaise.SyncSelectionProgressFromPayload(decodedPayload);
+        }
+
+        private static int ResolveQuestRewardRaiseInboundMaxDropCount(
+            QuestRewardRaiseState activeRaise,
+            QuestRewardRaisePacketPayload decodedPayload)
+        {
+            return Math.Max(
+                1,
+                Math.Max(
+                    Math.Max(activeRaise?.MaxDropCount ?? 1, decodedPayload?.PlacedPieceCount ?? 0),
+                    decodedPayload?.MaxDropCount ?? 0));
         }
 
         private void RetainQuestRewardRaiseObservedLifecycle(QuestRewardRaiseState activeRaise)

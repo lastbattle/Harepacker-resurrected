@@ -897,9 +897,9 @@ namespace HaCreator.MapSimulator
             {
                 0 or 1 => baseColor,
                 2 or 3 => PacketOwnedBalloonMarkupRed,
-                4 or 5 => PacketOwnedBalloonMarkupPurple,
+                4 or 5 => PacketOwnedBalloonMarkupGreen,
                 6 or 7 => PacketOwnedBalloonMarkupBlue,
-                8 or 9 => PacketOwnedBalloonMarkupGreen,
+                8 or 9 => PacketOwnedBalloonMarkupPurple,
                 10 or 11 => baseColor,
                 _ => baseColor
             };
@@ -4427,9 +4427,12 @@ namespace HaCreator.MapSimulator
             int expectedRequestIndex,
             FieldHazardPetConsumeInboundResult result)
         {
-            return (result.Slot <= 0 || result.Slot == expectedSlot)
-                && (result.ItemId <= 0 || result.ItemId == expectedItemId)
-                && (result.RequestIndex < 0 || result.RequestIndex == expectedRequestIndex);
+            return expectedSlot > 0
+                && expectedItemId > 0
+                && expectedRequestIndex >= 0
+                && result.Slot == expectedSlot
+                && result.ItemId == expectedItemId
+                && result.RequestIndex == expectedRequestIndex;
         }
 
         internal static bool ShouldHandlePacketOwned1026AsPetConsumeResult(bool hasPendingFieldHazardRequest, byte[] payload)

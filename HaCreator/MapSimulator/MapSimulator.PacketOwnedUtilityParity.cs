@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLegacyVengeanceSkillId = 3120010;
         private const int PacketOwnedCurrentVengeanceSkillId = 31101003;
         private const string PacketOwnedVengeanceSkillName = "Vengeance";
+        private const int PacketOwnedTimeBombAttackPacketType = 268;
         private const int PacketOwnedCurrentTimeBombSkillId = 4341003;
         private const string PacketOwnedTimeBombSkillName = "Monster Bomb";
         private const string PacketOwnedTimeBombSkillDescriptionMarker = "explosion occurs 3 seconds after the charm is activated";
@@ -218,6 +219,9 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedMateNameQuestId;
         private string _lastPacketOwnedMateName = string.Empty;
         private int _lastPacketOwnedMateNameTick = int.MinValue;
+        private int _lastPacketOwnedQuestAlarmTooltipQuestId;
+        private string _lastPacketOwnedQuestAlarmTooltipText = string.Empty;
+        private int _lastPacketOwnedQuestAlarmTooltipTick = int.MinValue;
         private int _lastClassCompetitionOpenTick = int.MinValue;
         private int _lastClassCompetitionAuthRequestTick = int.MinValue;
         private int _lastClassCompetitionAuthIssuedTick = int.MinValue;
@@ -230,6 +234,11 @@ namespace HaCreator.MapSimulator
         private string _lastClassCompetitionAuthSource = "none";
         private string _lastClassCompetitionAuthDispatchStatus = "No class-competition auth request has been emitted yet.";
         private int _lastClassCompetitionAuthResponseTick = int.MinValue;
+        private readonly List<string> _lastClassCompetitionRemotePageLines = new();
+        private readonly List<string> _lastClassCompetitionRemoteLadderLines = new();
+        private string _lastClassCompetitionRemoteNavigateUrl = string.Empty;
+        private string _lastClassCompetitionRemotePageSource = string.Empty;
+        private int _lastClassCompetitionRemotePageTick = int.MinValue;
         private int _lastPacketOwnedOpenUiType = -1;
         private int _lastPacketOwnedOpenUiOption = -1;
         private int _lastPacketOwnedCommoditySerialNumber;
@@ -2318,7 +2327,7 @@ namespace HaCreator.MapSimulator
                       return TryApplyPacketOwnedMiniMapOnOffPayload(payload, out message);
 
                 case PacketOwnedAntiMacroPacketType:
-                    return TryApplyPacketOwnedAntiMacroPayload(payload, out message);
+                    return TryApplyPacketOwnedAntiMacroPayload(payload, out message, source);
 
                 case InitialQuizTimerRuntime.PacketType:
                     return TryApplyPacketOwnedInitialQuizPayload(payload, out message);
@@ -2381,6 +2390,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.PassMateNameClientPacketType:
                     return TryApplyPacketOwnedPassMateNamePayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.QuestAlarmTitleTooltipPacketType:
+                    return TryApplyPacketOwnedQuestAlarmTitleTooltipPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.SetDirectionModePacketType:
                     return TryApplyPacketOwnedDirectionModePayload(payload, out message);
@@ -2998,6 +3010,47 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyPacketOwnedQuestAlarmTitleTooltipPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < sizeof(ushort) + sizeof(short))
+            {
+                message = "Quest-alarm title-tooltip payload must contain a quest id and Maple ASCII string.";
+                return false;
+            }
+
+            using var stream = new MemoryStream(payload, writable: false);
+            using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
+
+            int questId = reader.ReadUInt16();
+            if (!TryReadPacketOwnedAsciiString(reader, out string tooltipText))
+            {
+                message = "Quest-alarm title-tooltip payload is missing the title-tooltip string.";
+                return false;
+            }
+
+            if (stream.Position != stream.Length)
+            {
+                message = $"Quest-alarm title-tooltip payload has {stream.Length - stream.Position} trailing byte(s).";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            _questRuntime.SetPacketOwnedQuestAlarmTitleTooltip(questId, tooltipText);
+            _lastPacketOwnedQuestAlarmTooltipQuestId = questId;
+            _lastPacketOwnedQuestAlarmTooltipText = QuestAlarmOwnerStringPoolText.NormalizePacketEscapedText(tooltipText);
+            _lastPacketOwnedQuestAlarmTooltipTick = Environment.TickCount;
+            RefreshQuestUiState();
+
+            string questName = _questRuntime.TryGetQuestName(questId, out string resolvedQuestName)
+                ? resolvedQuestName
+                : $"Quest #{questId}";
+            message = string.IsNullOrWhiteSpace(_lastPacketOwnedQuestAlarmTooltipText)
+                ? $"Cleared the packet-authored Quest Alarm title tooltip for {questName}."
+                : $"Stored packet-authored Quest Alarm title tooltip for {questName}: '{TruncatePacketOwnedUtilityText(_lastPacketOwnedQuestAlarmTooltipText, 60)}'.";
+            return true;
+        }
+
         private bool TryApplyPacketOwnedMakerResultPayload(byte[] payload, out string message)
         {
             message = null;
@@ -3017,7 +3070,13 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            return itemMakerWindow.TryApplyPacketOwnedResult(packetResult, out message);
+            bool applied = itemMakerWindow.TryApplyPacketOwnedResult(packetResult, out message);
+            if (applied)
+            {
+                _pendingPacketOwnedItemMakerRequest = null;
+            }
+
+            return applied;
         }
 
         private void EmitPacketOwnedMakerResultFeedback(PacketOwnedItemMakerResult packetResult)
@@ -3188,6 +3247,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            itemMakerWindow.PacketOwnedRequestStaged -= CapturePendingPacketOwnedItemMakerRequest;
+            itemMakerWindow.PacketOwnedRequestStaged += CapturePendingPacketOwnedItemMakerRequest;
+
             itemMakerWindow.SetCraftingState(
                 _playerManager?.Player?.Level ?? 1,
                 _playerManager?.Player?.Build?.TraitCraft ?? 0,
@@ -3200,8 +3262,14 @@ namespace HaCreator.MapSimulator
             // window was hidden can still wipe stale authoritative owner state on the next launch.
             itemMakerWindow.TryApplyPacketOwnedSessionState(_packetOwnedItemMakerSessionState, out _);
 
+            itemMakerWindow.RestorePendingPacketOwnedRequest(_pendingPacketOwnedItemMakerRequest);
             TryApplyStoredPacketOwnedItemMakerResults(itemMakerWindow, out _);
             TryApplyStoredPacketOwnedItemMakerHiddenUnlocks(itemMakerWindow, out _);
+        }
+
+        private void CapturePendingPacketOwnedItemMakerRequest(PacketOwnedItemMakerPendingRequest pendingRequest)
+        {
+            _pendingPacketOwnedItemMakerRequest = pendingRequest;
         }
 
         private static bool HasStoredItemMakerSessionState(PacketOwnedItemMakerSessionState sessionState)
@@ -3267,6 +3335,7 @@ namespace HaCreator.MapSimulator
             }
 
             _pendingPacketOwnedItemMakerResults.Clear();
+            _pendingPacketOwnedItemMakerRequest = null;
             return true;
         }
 
@@ -4195,7 +4264,16 @@ namespace HaCreator.MapSimulator
                     : string.IsNullOrWhiteSpace(_lastPacketOwnedMateName)
                         ? $"Pass mate-name: cleared for quest #{_lastPacketOwnedMateNameQuestId}, age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedMateNameTick))} ms."
                         : $"Pass mate-name: '{TruncatePacketOwnedUtilityText(_lastPacketOwnedMateName, 40)}' for quest #{_lastPacketOwnedMateNameQuestId}, age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedMateNameTick))} ms.";
-            return $"{resignStatus} {mateStatus}";
+            string tooltipStatus = _lastPacketOwnedQuestAlarmTooltipTick == int.MinValue
+                ? "Quest Alarm title tooltip: none."
+                : _questRuntime.TryGetQuestName(_lastPacketOwnedQuestAlarmTooltipQuestId, out string tooltipQuestName)
+                    ? string.IsNullOrWhiteSpace(_lastPacketOwnedQuestAlarmTooltipText)
+                        ? $"Quest Alarm title tooltip: cleared for {tooltipQuestName} (#{_lastPacketOwnedQuestAlarmTooltipQuestId}), age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedQuestAlarmTooltipTick))} ms."
+                        : $"Quest Alarm title tooltip: '{TruncatePacketOwnedUtilityText(_lastPacketOwnedQuestAlarmTooltipText, 40)}' for {tooltipQuestName} (#{_lastPacketOwnedQuestAlarmTooltipQuestId}), age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedQuestAlarmTooltipTick))} ms."
+                    : string.IsNullOrWhiteSpace(_lastPacketOwnedQuestAlarmTooltipText)
+                        ? $"Quest Alarm title tooltip: cleared for quest #{_lastPacketOwnedQuestAlarmTooltipQuestId}, age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedQuestAlarmTooltipTick))} ms."
+                        : $"Quest Alarm title tooltip: '{TruncatePacketOwnedUtilityText(_lastPacketOwnedQuestAlarmTooltipText, 40)}' for quest #{_lastPacketOwnedQuestAlarmTooltipQuestId}, age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedQuestAlarmTooltipTick))} ms.";
+            return $"{resignStatus} {mateStatus} {tooltipStatus}";
         }
 
         private string DescribePacketOwnedLocalControlStatus(int currentTickCount)
@@ -5898,8 +5976,13 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            bool hasPassiveTemporaryStatOwner =
+                _playerManager.Skills.HasActiveClientOwnedVehicleTemporaryStatOwnerForParity(PacketOwnedBattleshipSkillId);
+            bool isVehiclePresentationActive = IsPacketOwnedBattleshipVehiclePresentationActive();
             if (!TryResolvePacketOwnedBattleshipDurabilityPresentationState(out int currentValue, out int maxValue)
-                || !IsPacketOwnedBattleshipVehiclePresentationActive())
+                || !ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
+                    hasPassiveTemporaryStatOwner,
+                    isVehiclePresentationActive))
             {
                 _playerManager.Skills.ClearAuthoritativeCooldownPresentation(PacketOwnedBattleshipSkillId);
                 if (_packetOwnedBattleshipDurabilityOverride?.MountPart != null)
@@ -6005,6 +6088,17 @@ namespace HaCreator.MapSimulator
                 currentActionName,
                 mechanicMode: null,
                 activeMountedRenderOwner: activeMountedRenderOwner);
+        }
+
+        internal static bool ShouldUpdatePacketOwnedBattleshipPassiveTemporaryStat(
+            bool hasPassiveTemporaryStatOwner,
+            bool isVehiclePresentationActive)
+        {
+            // Client evidence: CWvsContext::SetSkillCooltimeOver only calls
+            // CTemporaryStatView::UpdatePassively for the Battleship sentinel
+            // when SecondaryStat::IsRidingSkillVehicle is true, and that
+            // routine only mutates an existing TEMPORARY_STAT node.
+            return hasPassiveTemporaryStatOwner && isVehiclePresentationActive;
         }
 
         internal static bool TryResolvePacketOwnedBattleshipDurabilityPresentation(
@@ -9448,7 +9542,7 @@ namespace HaCreator.MapSimulator
                 return normalizedSkillId;
             }
 
-            if (packetSkillId > 0
+            if (packetSkillId == PacketOwnedTimeBombAttackPacketType
                 && authoredFallbackSkillIds?.Count == 1
                 && authoredFallbackSkillIds[0] > 0)
             {
@@ -11786,9 +11880,23 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodePacketOwnedEventCalendarBinaryPayload(
+                    payload,
+                    out clearRequested,
+                    out replaceExistingEntries,
+                    out entries,
+                    out hasAlarmLines,
+                    out replaceAlarmLines,
+                    out alarmLines,
+                    out summary,
+                    out message))
+            {
+                return clearRequested || entries.Length > 0 || (hasAlarmLines && alarmLines.Length > 0);
+            }
+
             if (!TryDecodePacketOwnedStringPayload(payload, out string decodedText))
             {
-                message = "Event-calendar payload must decode to MapleString, UTF-8 text, or a JSON text body.";
+                message = "Event-calendar payload must decode to a binary owner-row envelope, MapleString, UTF-8 text, or a JSON text body.";
                 return false;
             }
 
@@ -11835,6 +11943,8 @@ namespace HaCreator.MapSimulator
             }
 
             entries = parsedEntries.ToArray();
+            alarmLines = BuildFallbackPacketOwnedEventCalendarAlarmLines(entries);
+            hasAlarmLines = alarmLines.Length > 0;
             summary = $"Applied packet-authored event-calendar payload with {entries.Length.ToString(CultureInfo.InvariantCulture)} owner row(s).";
             message = summary;
             return true;
@@ -11883,9 +11993,21 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryDecodePacketOwnedRankingPageBinaryPayload(
+                    payload,
+                    out clearRequested,
+                    out entries,
+                    out hasOwnerState,
+                    out ownerState,
+                    out summary,
+                    out message))
+            {
+                return clearRequested || entries.Length > 0 || hasOwnerState;
+            }
+
             if (!TryDecodePacketOwnedStringPayload(payload, out string decodedText))
             {
-                message = "Ranking-page payload must decode to MapleString, UTF-8 text, or a JSON text body.";
+                message = "Ranking-page payload must decode to a binary owner-row envelope, MapleString, UTF-8 text, or a JSON text body.";
                 return false;
             }
 
@@ -11945,6 +12067,127 @@ namespace HaCreator.MapSimulator
                 out ownerState,
                 out summary,
                 out message);
+        }
+
+        private static bool TryDecodePacketOwnedRankingPageBinaryPayload(
+            byte[] payload,
+            out bool clearRequested,
+            out RankingEntrySnapshot[] entries,
+            out bool hasOwnerState,
+            out PacketOwnedRankingOwnerStateSnapshot ownerState,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            entries = Array.Empty<RankingEntrySnapshot>();
+            hasOwnerState = false;
+            ownerState = new PacketOwnedRankingOwnerStateSnapshot();
+            summary = string.Empty;
+            message = "Ranking-page binary payload did not match the owner-row envelope.";
+            if (payload == null || payload.Length < 8)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                if (reader.ReadByte() != (byte)'R'
+                    || reader.ReadByte() != (byte)'N'
+                    || reader.ReadByte() != (byte)'K'
+                    || reader.ReadByte() != 1)
+                {
+                    return false;
+                }
+
+                byte flags = reader.ReadByte();
+                clearRequested = (flags & 0x1) != 0;
+                bool includesOwnerState = (flags & 0x2) != 0;
+                int rowCount = reader.ReadUInt16();
+                if (rowCount < 0 || rowCount > 100)
+                {
+                    return false;
+                }
+
+                List<RankingEntrySnapshot> parsedEntries = new(rowCount);
+                for (int i = 0; i < rowCount; i++)
+                {
+                    string label = ReadPacketOwnedMapleString(reader)?.Trim();
+                    string value = ReadPacketOwnedMapleString(reader)?.Trim();
+                    string detail = ReadPacketOwnedMapleString(reader)?.Trim();
+                    if (!string.IsNullOrWhiteSpace(label))
+                    {
+                        parsedEntries.Add(CreatePacketOwnedRankingEntry(label, value, detail));
+                    }
+                }
+
+                if (includesOwnerState)
+                {
+                    string serverHost = ReadPacketOwnedMapleString(reader)?.Trim();
+                    int templateId = reader.ReadInt32();
+                    int worldId = reader.ReadInt32();
+                    int characterId = reader.ReadInt32();
+                    bool isLoading = reader.ReadByte() != 0;
+                    string navigateUrl = string.Empty;
+                    string navigationCaption = string.Empty;
+                    string navigationHostText = string.Empty;
+                    string navigationRequestText = string.Empty;
+                    if (!string.IsNullOrWhiteSpace(serverHost))
+                    {
+                        navigateUrl = ProgressionUtilityParityRules.ResolveRankingLandingUrl(
+                            serverHost,
+                            templateId,
+                            worldId,
+                            characterId,
+                            out _);
+                        navigationCaption = ProgressionUtilityParityRules.FormatRankingLandingTemplateSeed(templateId, out _);
+                        navigationHostText = $"get_server_string_0 => {serverHost}";
+                        navigationRequestText = ProgressionUtilityParityRules.FormatRankingRequestParameters(worldId, characterId);
+                    }
+
+                    ownerState = new PacketOwnedRankingOwnerStateSnapshot
+                    {
+                        NavigationCaption = navigationCaption,
+                        NavigationSeedText = string.IsNullOrWhiteSpace(navigateUrl) ? string.Empty : $"NavigateUrl => {navigateUrl}",
+                        NavigateUrl = navigateUrl,
+                        NavigationHostText = navigationHostText,
+                        NavigationRequestText = navigationRequestText,
+                        NavigationStateText = isLoading
+                            ? "Packet-authored binary CWebWnd loading state remains active before NavigateUrl completes."
+                            : string.IsNullOrWhiteSpace(navigateUrl)
+                                ? string.Empty
+                                : "Packet-authored binary CWebWnd owner resolved the ranking landing request.",
+                        ServerHost = serverHost,
+                        TemplateId = templateId,
+                        WorldId = worldId,
+                        CharacterId = characterId,
+                        IsLoading = isLoading
+                    };
+                    hasOwnerState = ownerState.HasAnyState;
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                entries = parsedEntries.ToArray();
+                summary = clearRequested
+                    ? "Cleared packet-authored binary CUIRanking page rows."
+                    : $"Applied packet-authored binary CUIRanking page with {entries.Length.ToString(CultureInfo.InvariantCulture)} row(s).";
+                message = summary;
+                return clearRequested || entries.Length > 0 || hasOwnerState;
+            }
+            catch
+            {
+                entries = Array.Empty<RankingEntrySnapshot>();
+                hasOwnerState = false;
+                ownerState = new PacketOwnedRankingOwnerStateSnapshot();
+                summary = string.Empty;
+                message = "Ranking-page binary payload did not match the owner-row envelope.";
+                return false;
+            }
         }
 
         private static bool TryDecodePacketOwnedRankingPageJsonPayload(
@@ -12166,6 +12409,169 @@ namespace HaCreator.MapSimulator
                 Label = label?.Trim() ?? string.Empty,
                 Value = value?.Trim() ?? string.Empty,
                 Detail = detail?.Trim() ?? string.Empty
+            };
+        }
+
+        private static bool TryDecodePacketOwnedEventCalendarBinaryPayload(
+            byte[] payload,
+            out bool clearRequested,
+            out bool replaceExistingEntries,
+            out EventEntrySnapshot[] entries,
+            out bool hasAlarmLines,
+            out bool replaceAlarmLines,
+            out EventAlarmLineSnapshot[] alarmLines,
+            out string summary,
+            out string message)
+        {
+            clearRequested = false;
+            replaceExistingEntries = true;
+            entries = Array.Empty<EventEntrySnapshot>();
+            hasAlarmLines = false;
+            replaceAlarmLines = true;
+            alarmLines = Array.Empty<EventAlarmLineSnapshot>();
+            summary = string.Empty;
+            message = "Event-calendar binary payload did not match the owner-row envelope.";
+            if (payload == null || payload.Length < 8)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                if (reader.ReadByte() != (byte)'E'
+                    || reader.ReadByte() != (byte)'V'
+                    || reader.ReadByte() != (byte)'C'
+                    || reader.ReadByte() != 1)
+                {
+                    return false;
+                }
+
+                byte flags = reader.ReadByte();
+                clearRequested = (flags & 0x1) != 0;
+                replaceExistingEntries = (flags & 0x2) != 0;
+                bool includesAlarmLines = (flags & 0x4) != 0;
+                replaceAlarmLines = (flags & 0x8) != 0;
+                int rowCount = reader.ReadUInt16();
+                if (rowCount < 0 || rowCount > 100)
+                {
+                    return false;
+                }
+
+                List<EventEntrySnapshot> parsedEntries = new(rowCount);
+                for (int i = 0; i < rowCount; i++)
+                {
+                    int year = reader.ReadUInt16();
+                    int month = reader.ReadByte();
+                    int day = reader.ReadByte();
+                    EventEntryStatus status = DecodePacketOwnedEventCalendarBinaryStatus(reader.ReadByte());
+                    string title = ReadPacketOwnedMapleString(reader)?.Trim();
+                    string detail = ReadPacketOwnedMapleString(reader)?.Trim();
+                    string statusText = ReadPacketOwnedMapleString(reader)?.Trim();
+                    if (!TryCreatePacketOwnedEventCalendarBinaryDate(year, month, day, out DateTime scheduledAt)
+                        || string.IsNullOrWhiteSpace(title))
+                    {
+                        continue;
+                    }
+
+                    parsedEntries.Add(CreatePacketOwnedEventCalendarEntry(
+                        scheduledAt,
+                        title,
+                        detail,
+                        status,
+                        string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText,
+                        int.MinValue,
+                        ResolvePacketOwnedEventEntrySortPriority(status),
+                        parsedEntries.Count));
+                }
+
+                if (includesAlarmLines)
+                {
+                    int lineCount = reader.ReadUInt16();
+                    if (lineCount < 0 || lineCount > EventAlarmOwnerMaxVisibleLines)
+                    {
+                        return false;
+                    }
+
+                    List<EventAlarmLineSnapshot> parsedLines = new(lineCount);
+                    for (int i = 0; i < lineCount; i++)
+                    {
+                        string text = ReadPacketOwnedMapleString(reader)?.Trim();
+                        int left = reader.ReadInt16();
+                        int top = reader.ReadInt16();
+                        byte lineFlags = reader.ReadByte();
+                        int colorArgb = reader.ReadInt32();
+                        if (string.IsNullOrWhiteSpace(text))
+                        {
+                            continue;
+                        }
+
+                        parsedLines.Add(new EventAlarmLineSnapshot
+                        {
+                            Text = text,
+                            Left = left,
+                            Top = top,
+                            IsHighlighted = (lineFlags & 0x1) != 0,
+                            TextColorArgb = colorArgb == 0 ? null : colorArgb
+                        });
+                    }
+
+                    alarmLines = parsedLines.ToArray();
+                    hasAlarmLines = alarmLines.Length > 0;
+                }
+
+                if (reader.BaseStream.Position != reader.BaseStream.Length)
+                {
+                    return false;
+                }
+
+                entries = parsedEntries.ToArray();
+                if (!clearRequested && !hasAlarmLines && entries.Length > 0)
+                {
+                    alarmLines = BuildFallbackPacketOwnedEventCalendarAlarmLines(entries);
+                    hasAlarmLines = alarmLines.Length > 0;
+                }
+
+                summary = clearRequested
+                    ? "Cleared packet-authored binary event-calendar entries."
+                    : $"Applied packet-authored binary event-calendar payload with {entries.Length.ToString(CultureInfo.InvariantCulture)} owner row(s).";
+                message = summary;
+                return clearRequested || entries.Length > 0 || (hasAlarmLines && alarmLines.Length > 0);
+            }
+            catch
+            {
+                entries = Array.Empty<EventEntrySnapshot>();
+                alarmLines = Array.Empty<EventAlarmLineSnapshot>();
+                hasAlarmLines = false;
+                summary = string.Empty;
+                message = "Event-calendar binary payload did not match the owner-row envelope.";
+                return false;
+            }
+        }
+
+        private static bool TryCreatePacketOwnedEventCalendarBinaryDate(int year, int month, int day, out DateTime date)
+        {
+            try
+            {
+                date = new DateTime(year, month, day);
+                return true;
+            }
+            catch
+            {
+                date = default;
+                return false;
+            }
+        }
+
+        private static EventEntryStatus DecodePacketOwnedEventCalendarBinaryStatus(byte status)
+        {
+            return status switch
+            {
+                1 => EventEntryStatus.Start,
+                2 => EventEntryStatus.InProgress,
+                3 => EventEntryStatus.Clear,
+                _ => EventEntryStatus.Upcoming
             };
         }
 
@@ -12768,6 +13174,21 @@ namespace HaCreator.MapSimulator
                 "characterId",
                 "characterid");
 
+            if (TryResolvePacketOwnedRankingNavigateUrlParts(
+                    navigateUrl,
+                    out string navigateHostSeed,
+                    out int? navigateWorldId,
+                    out int? navigateCharacterId))
+            {
+                if (string.IsNullOrWhiteSpace(serverHost))
+                {
+                    serverHost = navigateHostSeed;
+                }
+
+                requestWorldId ??= navigateWorldId;
+                requestCharacterId ??= navigateCharacterId;
+            }
+
             if (string.IsNullOrWhiteSpace(navigateUrl)
                 && !string.IsNullOrWhiteSpace(serverHost)
                 && requestWorldId.HasValue
@@ -12832,6 +13253,75 @@ namespace HaCreator.MapSimulator
                 LoadingStartTick = loadingStartTick
             };
             return ownerState.HasAnyState;
+        }
+
+        private static bool TryResolvePacketOwnedRankingNavigateUrlParts(
+            string navigateUrl,
+            out string serverHost,
+            out int? worldId,
+            out int? characterId)
+        {
+            serverHost = string.Empty;
+            worldId = null;
+            characterId = null;
+            if (string.IsNullOrWhiteSpace(navigateUrl)
+                || !Uri.TryCreate(navigateUrl.Trim(), UriKind.Absolute, out Uri uri))
+            {
+                return false;
+            }
+
+            serverHost = ResolvePacketOwnedRankingHostSeed(uri.Host);
+            string query = uri.Query;
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                if (query.StartsWith("?", StringComparison.Ordinal))
+                {
+                    query = query[1..];
+                }
+
+                string[] parameters = query.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    string[] pair = parameters[i].Split('=', 2);
+                    if (pair.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    string name = WebUtility.UrlDecode(pair[0]) ?? string.Empty;
+                    string value = pair.Length > 1 ? WebUtility.UrlDecode(pair[1]) ?? string.Empty : string.Empty;
+                    if (string.Equals(name, "worldid", StringComparison.OrdinalIgnoreCase)
+                        && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedWorldId))
+                    {
+                        worldId = parsedWorldId;
+                    }
+                    else if (string.Equals(name, "characterid", StringComparison.OrdinalIgnoreCase)
+                             && int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedCharacterId))
+                    {
+                        characterId = parsedCharacterId;
+                    }
+                }
+            }
+
+            return !string.IsNullOrWhiteSpace(serverHost) || worldId.HasValue || characterId.HasValue;
+        }
+
+        private static string ResolvePacketOwnedRankingHostSeed(string host)
+        {
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                return string.Empty;
+            }
+
+            string normalizedHost = host.Trim();
+            const string nexonSuffix = ".nexon.com";
+            if (normalizedHost.EndsWith(nexonSuffix, StringComparison.OrdinalIgnoreCase)
+                && normalizedHost.Length > nexonSuffix.Length)
+            {
+                return normalizedHost[..^nexonSuffix.Length];
+            }
+
+            return normalizedHost;
         }
 
         private static string ResolvePacketOwnedRankingOwnerString(

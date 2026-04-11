@@ -115,6 +115,15 @@ namespace HaCreator.MapSimulator.Character
             public bool LocksMovement { get; init; }
         }
 
+        private sealed class MountedActionLayerState
+        {
+            public string ActionName { get; init; }
+            public string PersistentBodyActionName { get; init; }
+            public int BodyPreparedDurationMs { get; init; }
+            public int TamingMobPreparedDurationMs { get; init; }
+            public int TotalPreparedDurationMs { get; init; }
+        }
+
         internal readonly record struct SkillAvatarTransformResolutionForTesting(
             IReadOnlyList<string> StandActionNames,
             IReadOnlyList<string> WalkActionNames,
@@ -511,6 +520,7 @@ namespace HaCreator.MapSimulator.Character
         private CharacterPart _clientOwnedVehicleTamingMobPart;
         private bool _clientOwnedVehicleTamingMobActive;
         private bool _suppressAutomaticTamingMobTransition;
+        private MountedActionLayerState _mountedActionLayerState;
         private readonly Dictionary<PlayerSkillBlockingStatus, PlayerSkillBlockingStatusState> _activeSkillBlockingStatuses = new();
 
         // Hit state tracking
@@ -1886,7 +1896,7 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 // Check if attack animation is complete
-                int attackDuration = Assembler?.ResolveClientActionLayerDuration(CurrentActionName) ?? 0;
+                int attackDuration = ResolveCurrentClientActionLayerDuration();
                 if (attackDuration > 0)
                 {
                     if (currentTime - _animationStartTime >= attackDuration)
@@ -1997,6 +2007,7 @@ namespace HaCreator.MapSimulator.Character
             }
             _isFloatAnimationMoving = isFloatMoving;
             SyncAssemblerActionLayerContext();
+            RefreshMountedActionLayerState();
         }
 
         private bool IsFloatAnimationAction(CharacterAction action)
@@ -2032,6 +2043,67 @@ namespace HaCreator.MapSimulator.Character
             return currentTime - _animationStartTime;
         }
 
+        private int ResolveCurrentClientActionLayerDuration()
+        {
+            MountedActionLayerState mountedActionLayerState = GetMountedActionLayerState();
+            if (mountedActionLayerState != null)
+            {
+                return mountedActionLayerState.TotalPreparedDurationMs;
+            }
+
+            return Assembler?.ResolveClientActionLayerDuration(CurrentActionName) ?? 0;
+        }
+
+        private MountedActionLayerState GetMountedActionLayerState()
+        {
+            if (_mountedActionLayerState != null
+                && string.Equals(_mountedActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return _mountedActionLayerState;
+            }
+
+            RefreshMountedActionLayerState();
+            return _mountedActionLayerState != null
+                   && string.Equals(_mountedActionLayerState.ActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase)
+                ? _mountedActionLayerState
+                : null;
+        }
+
+        private void RefreshMountedActionLayerState()
+        {
+            _mountedActionLayerState = null;
+            if (Assembler == null
+                || State != PlayerState.Attacking
+                || _sustainedSkillAnimation
+                || string.IsNullOrWhiteSpace(CurrentActionName))
+            {
+                return;
+            }
+
+            CharacterPart mountedPart = ResolveMountedStateTamingMobPart();
+            if (!CharacterAssembler.IsTamingMobRenderOwnershipAction(mountedPart, CurrentActionName))
+            {
+                return;
+            }
+
+            int bodyDuration = Assembler.ResolveClientCharacterActionLayerDuration(CurrentActionName);
+            if (bodyDuration <= 0
+                || !Assembler.TryResolveClientTamingMobActionLayerDuration(CurrentActionName, out int tamingMobDuration)
+                || tamingMobDuration <= 0)
+            {
+                return;
+            }
+
+            _mountedActionLayerState = new MountedActionLayerState
+            {
+                ActionName = CurrentActionName,
+                PersistentBodyActionName = ResolveMountedTransitionPersistentBodyActionName(),
+                BodyPreparedDurationMs = bodyDuration,
+                TamingMobPreparedDurationMs = tamingMobDuration,
+                TotalPreparedDurationMs = Math.Max(bodyDuration, tamingMobDuration)
+            };
+        }
+
         private bool TryResolveMountedTransitionCurrentFrame(int currentTime, out AssembledFrame frame)
         {
             return TryResolveMountedTransitionCurrentFrame(currentTime, out frame, out _);
@@ -2048,28 +2120,26 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            CharacterPart mountedPart = ResolveMountedStateTamingMobPart();
-            if (!CharacterAssembler.IsTamingMobRenderOwnershipAction(mountedPart, CurrentActionName))
+            MountedActionLayerState mountedActionLayerState = GetMountedActionLayerState();
+            if (mountedActionLayerState == null)
             {
                 return false;
             }
 
             int animationTime = GetRenderAnimationTime(currentTime);
-            int bodyDuration = Assembler.ResolveClientCharacterActionLayerDuration(CurrentActionName);
-            if (!Assembler.TryResolveClientTamingMobActionLayerDuration(CurrentActionName, out int tamingMobDuration)
-                || !AvatarActionLayerCoordinator.TryResolveMountedOneTimeBodyAnimationTime(
-                    CurrentActionName,
+            if (!AvatarActionLayerCoordinator.TryResolveMountedOneTimeBodyAnimationTime(
+                    mountedActionLayerState.ActionName,
                     animationTime,
-                    bodyDuration,
-                    tamingMobDuration,
+                    mountedActionLayerState.BodyPreparedDurationMs,
+                    mountedActionLayerState.TamingMobPreparedDurationMs,
                     out int bodyAnimationTime))
             {
                 return false;
             }
 
-            string persistentBodyActionName = ResolveMountedTransitionPersistentBodyActionName();
+            string persistentBodyActionName = mountedActionLayerState.PersistentBodyActionName;
             if (string.IsNullOrWhiteSpace(persistentBodyActionName)
-                || string.Equals(persistentBodyActionName, CurrentActionName, StringComparison.OrdinalIgnoreCase))
+                || string.Equals(persistentBodyActionName, mountedActionLayerState.ActionName, StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
@@ -2077,7 +2147,7 @@ namespace HaCreator.MapSimulator.Character
             frame = Assembler.GetMountedFrameAtTime(
                 persistentBodyActionName,
                 bodyAnimationTime,
-                CurrentActionName,
+                mountedActionLayerState.ActionName,
                 animationTime);
             if (frame == null)
             {
@@ -2591,6 +2661,7 @@ namespace HaCreator.MapSimulator.Character
             _attackFrame = 0;
             _animationStartTime = Environment.TickCount; // Set animation start time for completion check
             SyncAssemblerActionLayerContext();
+            RefreshMountedActionLayerState();
             if (playEffectiveWeaponSfx)
             {
                 PlayEffectiveWeaponSfx();
@@ -2627,6 +2698,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             SyncAssemblerActionLayerContext();
+            _mountedActionLayerState = null;
         }
 
         public void EndSustainedSkillAnimation()
@@ -4846,8 +4918,14 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
                     preparedLayer.PreparedLayerObjectId,
                     preservesExistingLayerObject: true);
-                preparedLayer.LastInsertedSourceSignature = sourceSignature;
-                preparedLayer.LastInsertCanvasTime = currentTime;
+                bool hasSourceCanvas = HasMirrorImageInsertCanvasSource(
+                    preparedLayer.TextureSourceBounds,
+                    preparedLayer.ComposedTexture);
+                ApplyMirrorImageInsertCanvasMetadata(
+                    preparedLayer,
+                    sourceSignature,
+                    currentTime,
+                    hasSourceCanvas);
                 preparedLayer.PreparedFacingRight = facingRight;
                 preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
                 return preparedLayer;
@@ -4896,8 +4974,11 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
                 preparedLayer.PreparedLayerObjectId,
                 preservesExistingLayerObject);
-            preparedLayer.LastInsertedSourceSignature = sourceSignature;
-            preparedLayer.LastInsertCanvasTime = currentTime;
+            ApplyMirrorImageInsertCanvasMetadata(
+                preparedLayer,
+                sourceSignature,
+                currentTime,
+                HasMirrorImageInsertCanvasSource(preparedLayer.TextureSourceBounds, composedTexture));
             preparedLayer.PreparedFacingRight = facingRight;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = clonedParts;
@@ -4926,6 +5007,27 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = Array.Empty<AssembledPart>();
             return preparedLayer;
+        }
+
+        private static void ApplyMirrorImageInsertCanvasMetadata(
+            MirrorImagePreparedSourceLayer preparedLayer,
+            int sourceSignature,
+            int currentTime,
+            bool hasSourceCanvas)
+        {
+            if (preparedLayer == null)
+            {
+                return;
+            }
+
+            preparedLayer.LastInsertedSourceSignature = ResolveMirrorImageLastInsertedSourceSignature(
+                preparedLayer.LastInsertedSourceSignature,
+                sourceSignature,
+                hasSourceCanvas);
+            preparedLayer.LastInsertCanvasTime = ResolveMirrorImageLastInsertCanvasTime(
+                preparedLayer.LastInsertCanvasTime,
+                currentTime,
+                hasSourceCanvas);
         }
 
         internal static AvatarRenderLayer ResolveMirrorImageOverlayTargetLayer(AvatarRenderLayer renderLayer)
@@ -5027,6 +5129,33 @@ namespace HaCreator.MapSimulator.Character
             bool existingFlipMatchesUnderFace)
         {
             return !hasExistingLayer || !existingFlipMatchesUnderFace;
+        }
+
+        internal static bool HasMirrorImageInsertCanvasSource(Rectangle sourceBounds, Texture2D composedTexture)
+        {
+            return composedTexture != null
+                   && sourceBounds.Width > 0
+                   && sourceBounds.Height > 0;
+        }
+
+        internal static int ResolveMirrorImageLastInsertedSourceSignature(
+            int existingLastInsertedSourceSignature,
+            int sourceSignature,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas
+                ? sourceSignature
+                : existingLastInsertedSourceSignature;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasTime(
+            int existingLastInsertCanvasTime,
+            int currentTime,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas
+                ? currentTime
+                : existingLastInsertCanvasTime;
         }
 
         internal static bool CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
@@ -7929,6 +8058,7 @@ namespace HaCreator.MapSimulator.Character
         {
             _sustainedSkillAnimation = false;
             _forcedActionName = null;
+            _mountedActionLayerState = null;
             SetTransientTamingMobOverride(null);
         }
 

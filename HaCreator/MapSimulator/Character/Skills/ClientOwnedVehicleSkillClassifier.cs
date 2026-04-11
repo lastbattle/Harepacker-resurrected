@@ -96,6 +96,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static readonly string[] ExplicitMechanicVehiclePresentationActionNames =
         {
+            "swingT1",
+            "swingT2",
             "alert2",
             "shot",
             "ride2",

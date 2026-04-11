@@ -10,6 +10,7 @@ namespace HaCreator.MapSimulator.Managers
     internal sealed class PacketOwnedItemMakerPendingRequest
     {
         public bool IsDisassembly { get; init; }
+        public string RecipeKey { get; init; } = string.Empty;
         public int SourceSlotIndex { get; init; } = -1;
         public int SourceItemId { get; init; }
         public int ExpectedRewardItemId { get; init; }

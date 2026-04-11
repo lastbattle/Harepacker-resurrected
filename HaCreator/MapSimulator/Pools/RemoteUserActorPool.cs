@@ -7,6 +7,7 @@ using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Physics;
 using HaCreator.MapSimulator.UI;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
@@ -71,7 +72,8 @@ namespace HaCreator.MapSimulator.Pools
             string EffectPath,
             Vector2 Position,
             bool FacingRight,
-            int CurrentTime);
+            int CurrentTime,
+            bool UsesAuthoredWzHitNode = false);
         public readonly record struct RemoteFieldSoundPresentation(
             int CharacterId,
             string SoundPath,
@@ -352,6 +354,13 @@ namespace HaCreator.MapSimulator.Pools
         private readonly List<RemoteUserActor> _visibleWorldActorsBuffer = new();
         private readonly List<StatusBarPreparedSkillRenderData> _preparedSkillWorldOverlayBuffer = new();
         private readonly List<MinimapUI.TrackedUserMarker> _helperMarkerBuffer = new();
+        private static readonly RemoteRelationshipOverlayType[] RelationshipRecordOverlayTypes =
+        {
+            RemoteRelationshipOverlayType.Couple,
+            RemoteRelationshipOverlayType.Friendship,
+            RemoteRelationshipOverlayType.NewYearCard,
+            RemoteRelationshipOverlayType.Marriage
+        };
         private readonly HashSet<(int LeftId, int RightId)> _renderedCouplePairsBuffer = new();
         private readonly HashSet<(RemoteRelationshipOverlayType Type, int ItemId, int LeftId, int RightId)> _renderedItemEffectPairsBuffer = new();
         private readonly Dictionary<int, List<PendingRemoteTransientSkillUseAvatarEffectState>> _pendingTransientSkillUseAvatarEffectsByCharacterId = new();
@@ -1522,7 +1531,8 @@ namespace HaCreator.MapSimulator.Pools
         public bool TryApplyAvatarModified(
             RemoteUserAvatarModifiedPacket packet,
             int currentTime,
-            out string message)
+            out string message,
+            bool applyRelationshipRecords = true)
         {
             message = null;
             if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
@@ -1585,6 +1595,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             actor.CompletedSetItemId = packet.CompletedSetItemId;
+
+            if (!applyRelationshipRecords)
+            {
+                message = $"Remote user {packet.CharacterId} avatar-modified state applied.";
+                return true;
+            }
 
             if (!TryApplyAvatarModifiedRelationshipRecord(
                     actor,
@@ -1652,6 +1668,12 @@ namespace HaCreator.MapSimulator.Pools
             if (!ownerCharacterId.HasValue || ownerCharacterId.Value <= 0)
             {
                 message = $"{packet.RelationshipType} relationship record did not specify a valid owner character ID.";
+                return false;
+            }
+
+            if (!_actorsById.ContainsKey(ownerCharacterId.Value))
+            {
+                message = $"Rejected remote {packet.RelationshipType} relationship record for inactive owner {ownerCharacterId.Value}.";
                 return false;
             }
 
@@ -1789,6 +1811,33 @@ namespace HaCreator.MapSimulator.Pools
                 : $"Removed {removedCount} {packet.RelationshipType} relationship overlays.";
 
             RefreshRelationshipOverlays(packet.RelationshipType, Environment.TickCount);
+            return true;
+        }
+
+        public bool TryClearRelationshipRecordOwner(
+            RemoteRelationshipOverlayType relationshipType,
+            int ownerCharacterId,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (ownerCharacterId <= 0)
+            {
+                message = $"{relationshipType} relationship record clear requires a valid owner character ID.";
+                return false;
+            }
+
+            EnsureRelationshipRecordTablesInitialized();
+            Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(relationshipType);
+            if (!recordTable.ContainsKey(ownerCharacterId))
+            {
+                message = $"No remote {relationshipType} relationship record is stored for owner {ownerCharacterId}.";
+                return true;
+            }
+
+            RemoveRelationshipRecordOwner(relationshipType, ownerCharacterId, recordTable);
+            RefreshRelationshipOverlays(relationshipType, currentTime);
+            message = $"Cleared remote {relationshipType} relationship record for owner {ownerCharacterId}.";
             return true;
         }
 
@@ -2039,8 +2088,29 @@ namespace HaCreator.MapSimulator.Pools
                 RegisterRemoteHitSpecialSkillUseEffect(actor, stanceSkillId, currentTime);
             }
 
+            int damageReactiveSkillId = 0;
+            bool registeredDamageReactiveSkillEffect = false;
+            bool registeredPacketSkillEffect = false;
+            if (packet.SkillId is > 0)
+            {
+                registeredPacketSkillEffect = true;
+                RegisterRemoteHitSpecialSkillUseEffect(actor, packet.SkillId.Value, currentTime);
+            }
+            else
+            {
+                registeredDamageReactiveSkillEffect = TryRegisterRemoteHitDamageReactiveSpecialEffect(
+                    actor?.Build?.Job ?? 0,
+                    actor?.TemporaryStats.KnownState ?? default,
+                    skillId => _skillLoader?.LoadSkill(skillId),
+                    HasRemoteAnimationDisplayerSpecialBranch,
+                    skillId => RegisterRemoteHitSpecialSkillUseEffect(actor, skillId, currentTime),
+                    randomRollPercent: null,
+                    out damageReactiveSkillId);
+            }
+
             if (TryResolveRemoteHitMobAttackEffectPath(packet, out string mobAttackEffectPath))
             {
+                bool usesAuthoredHitNode = TryResolveAuthoredMobAttackHitEffectPath(packet, out _);
                 MobAttackHitEffectRegistered?.Invoke(new RemoteMobAttackHitPresentation(
                     packet.CharacterId,
                     packet.MobTemplateId.Value,
@@ -2048,7 +2118,8 @@ namespace HaCreator.MapSimulator.Pools
                     mobAttackEffectPath,
                     ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f),
                     !packet.MobHitFacingLeft,
-                    currentTime));
+                    currentTime,
+                    usesAuthoredHitNode));
             }
 
             if (packet.HpDelta > 0)
@@ -2072,7 +2143,11 @@ namespace HaCreator.MapSimulator.Pools
                     ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f),
                     -packet.HpDelta,
                     currentTime));
-                message = $"Remote user {packet.CharacterId} hit packet applied for {packet.HpDelta} damage.";
+                message = registeredPacketSkillEffect
+                    ? $"Remote user {packet.CharacterId} hit packet applied for {packet.HpDelta} damage and registered special skill effect {packet.SkillId.Value}."
+                    : registeredDamageReactiveSkillEffect
+                        ? $"Remote user {packet.CharacterId} hit packet applied for {packet.HpDelta} damage and registered damage-reactive special skill effect {damageReactiveSkillId}."
+                        : $"Remote user {packet.CharacterId} hit packet applied for {packet.HpDelta} damage.";
                 return true;
             }
 
@@ -2086,25 +2161,7 @@ namespace HaCreator.MapSimulator.Pools
                     packet.IncDecType));
             }
 
-            int damageReactiveSkillId = 0;
-            bool registeredDamageReactiveSkillEffect = false;
-            if (packet.SkillId is > 0)
-            {
-                RegisterRemoteHitSpecialSkillUseEffect(actor, packet.SkillId.Value, currentTime);
-            }
-            else if (TryResolveRemoteHitDamageReactiveSpecialEffectSkillId(
-                         actor?.Build?.Job ?? 0,
-                         actor?.TemporaryStats.KnownState ?? default,
-                         skillId => _skillLoader?.LoadSkill(skillId),
-                         HasRemoteAnimationDisplayerSpecialBranch,
-                         randomRollPercent: null,
-                         out damageReactiveSkillId))
-            {
-                registeredDamageReactiveSkillEffect = true;
-                RegisterRemoteHitSpecialSkillUseEffect(actor, damageReactiveSkillId, currentTime);
-            }
-
-            if (packet.SkillId is > 0)
+            if (registeredPacketSkillEffect)
             {
                 message = $"Remote user {packet.CharacterId} hit packet stored and registered special skill effect {packet.SkillId.Value}.";
             }
@@ -2133,12 +2190,100 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            if (TryResolveAuthoredMobAttackHitEffectPath(packet, out effectPath))
+            {
+                return true;
+            }
+
             effectPath = string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "Mob/{0:D7}.img/attack{1}/info/hit",
                 packet.MobTemplateId.Value,
                 attackNumber);
             return true;
+        }
+
+        private static bool TryResolveAuthoredMobAttackHitEffectPath(RemoteUserHitPacket packet, out string effectPath)
+        {
+            effectPath = null;
+            int mobTemplateId = packet.MobTemplateId.GetValueOrDefault();
+            int attackNumber = packet.AttackIndex + 1;
+            if (mobTemplateId <= 0 || attackNumber <= 0)
+            {
+                return false;
+            }
+
+            if (TryResolveMobAttackHitEffectPath(mobTemplateId, attackNumber, out effectPath))
+            {
+                return true;
+            }
+
+            if (!TryResolveLinkedMobTemplateId(mobTemplateId, out int linkedMobTemplateId)
+                || linkedMobTemplateId == mobTemplateId)
+            {
+                return false;
+            }
+
+            return TryResolveMobAttackHitEffectPath(linkedMobTemplateId, attackNumber, out effectPath);
+        }
+
+        private static bool TryResolveMobAttackHitEffectPath(int mobTemplateId, int attackNumber, out string effectPath)
+        {
+            effectPath = null;
+            WzImage mobImage = TryFindMobImage(mobTemplateId);
+            if (mobImage == null)
+            {
+                return false;
+            }
+
+            WzImageProperty hitNode = WzInfoTools.GetRealProperty(mobImage[$"attack{attackNumber}"]?["info"]?["hit"]);
+            if (hitNode == null)
+            {
+                return false;
+            }
+
+            effectPath = string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "Mob/{0:D7}.img/attack{1}/info/hit",
+                mobTemplateId,
+                attackNumber);
+            return true;
+        }
+
+        private static bool TryResolveLinkedMobTemplateId(int mobTemplateId, out int linkedMobTemplateId)
+        {
+            linkedMobTemplateId = 0;
+            WzImage mobImage = TryFindMobImage(mobTemplateId);
+            if (mobImage?["info"]?["link"] is not WzStringProperty linkProperty
+                || string.IsNullOrWhiteSpace(linkProperty.Value))
+            {
+                return false;
+            }
+
+            return int.TryParse(
+                linkProperty.Value,
+                System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out linkedMobTemplateId)
+                && linkedMobTemplateId > 0;
+        }
+
+        private static WzImage TryFindMobImage(int mobTemplateId)
+        {
+            if (mobTemplateId <= 0)
+            {
+                return null;
+            }
+
+            WzImage mobImage = global::HaCreator.Program.FindImage(
+                "Mob",
+                mobTemplateId.ToString("D7", System.Globalization.CultureInfo.InvariantCulture) + ".img");
+            if (mobImage != null && !mobImage.Parsed)
+            {
+                mobImage.ParseImage();
+            }
+
+            return mobImage;
         }
 
         internal static bool TryResolveRemoteHitStanceSpecialEffectSkillId(int jobId, byte hitFlags, out int skillId)
@@ -2221,6 +2366,32 @@ namespace HaCreator.MapSimulator.Pools
                 hasSpecialBranch: null,
                 randomRollPercent,
                 out skillId);
+        }
+
+        internal static bool TryRegisterRemoteHitDamageReactiveSpecialEffect(
+            int jobId,
+            RemoteUserTemporaryStatKnownState knownState,
+            Func<int, SkillData> loadSkill,
+            Func<int, bool> hasSpecialBranch,
+            Action<int> registerSkillUseEffect,
+            int? randomRollPercent,
+            out int skillId)
+        {
+            skillId = 0;
+            if (registerSkillUseEffect == null
+                || !TryResolveRemoteHitDamageReactiveSpecialEffectSkillId(
+                    jobId,
+                    knownState,
+                    loadSkill,
+                    hasSpecialBranch,
+                    randomRollPercent,
+                    out skillId))
+            {
+                return false;
+            }
+
+            registerSkillUseEffect(skillId);
+            return true;
         }
 
         internal static IReadOnlyList<int> EnumerateRemoteHitDamageReactiveSkillCandidateIds(
@@ -2662,6 +2833,7 @@ namespace HaCreator.MapSimulator.Pools
 
             ClearActorFollowLinks(actor);
             ClearPortableChairPairRecord(characterId);
+            PurgeRelationshipRecordsForActor(characterId);
             NotifyActorRemoved(actor.CharacterId, actor.Name);
             _actorsById.Remove(characterId);
             _actorIdsByName.Remove(actor.Name);
@@ -5223,6 +5395,37 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private void PurgeRelationshipRecordsForActor(int characterId)
+        {
+            if (characterId <= 0)
+            {
+                return;
+            }
+
+            EnsureRelationshipRecordTablesInitialized();
+            foreach (RemoteRelationshipOverlayType relationshipType in RelationshipRecordOverlayTypes)
+            {
+                Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(relationshipType);
+                foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable.ToArray())
+                {
+                    int ownerCharacterId = entry.Key;
+                    RemoteUserRelationshipRecord record = entry.Value;
+                    int? pairCharacterId = relationshipType == RemoteRelationshipOverlayType.Marriage
+                        ? ResolveMarriagePairCharacterId(ownerCharacterId, record)
+                        : record.PairCharacterId;
+                    if (ownerCharacterId != characterId
+                        && (!pairCharacterId.HasValue || pairCharacterId.Value != characterId))
+                    {
+                        continue;
+                    }
+
+                    RemoveRelationshipRecordOwner(relationshipType, ownerCharacterId, recordTable);
+                }
+
+                RefreshRelationshipOverlays(relationshipType, Environment.TickCount);
+            }
+        }
+
         private string DescribeRelationshipRecordTableStatus()
         {
             EnsureRelationshipRecordTablesInitialized();
@@ -5625,7 +5828,7 @@ namespace HaCreator.MapSimulator.Pools
                     actor.FacingRight,
                     actor.PreferredPortableChairPairCharacterId,
                     null,
-                    IsPortableChairPairSessionActive(actor.Build?.ActivePortableChair, actor.BaseActionName),
+                    IsPortableChairPairSessionActive(actor.Build?.ActivePortableChair),
                     actor.IsVisibleInWorld,
                     IsRelationshipOverlaySuppressed(actor)));
             }
@@ -5643,7 +5846,7 @@ namespace HaCreator.MapSimulator.Pools
                     localPlayer.FacingRight,
                     null,
                     null,
-                    IsPortableChairPairSessionActive(localChair, localPlayer.CurrentActionName),
+                    IsPortableChairPairSessionActive(localChair),
                     true,
                     IsRelationshipOverlaySuppressed(localPlayer, localCharacterId, ownerCharacterId: 0)));
             }
@@ -5875,11 +6078,9 @@ namespace HaCreator.MapSimulator.Pools
                 + Vector2.DistanceSquared(expectedLeftPosition, left.Position);
         }
 
-        private static bool IsPortableChairPairSessionActive(PortableChair chair, string actionName)
+        internal static bool IsPortableChairPairSessionActive(PortableChair chair)
         {
-            return chair?.IsCoupleChair == true
-                   && !string.IsNullOrWhiteSpace(actionName)
-                   && actionName.StartsWith("sit", StringComparison.OrdinalIgnoreCase);
+            return chair?.IsCoupleChair == true;
         }
 
         private bool TryResolvePortableChairPairWithLocalPlayer(

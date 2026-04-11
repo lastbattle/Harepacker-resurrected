@@ -397,22 +397,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 1f;
             }
 
-            int startZoom = frame.ZoomStart;
-            int endZoom = frame.ZoomEnd;
-            if (startZoom == 0 && endZoom == 0)
+            bool hasStartZoom = frame.HasZoomStart || frame.ZoomStart != 0;
+            bool hasEndZoom = frame.HasZoomEnd || frame.ZoomEnd != 0;
+            if (!hasStartZoom && !hasEndZoom)
             {
                 return 1f;
             }
 
-            if (endZoom == 0)
-            {
-                endZoom = startZoom;
-            }
-
-            if (startZoom == 0)
-            {
-                startZoom = 100;
-            }
+            int startZoom = hasStartZoom ? frame.ZoomStart : 100;
+            int endZoom = hasEndZoom ? frame.ZoomEnd : startZoom;
 
             float progress = frame.Delay <= 0
                 ? 1f

@@ -534,11 +534,6 @@ namespace HaCreator.MapSimulator.Loaders
             foreach (WzSubProperty conditionProperty in GetConditionContainers(source.WzProperties))
             {
                 List<WzImageProperty> actions = GetActionProperties(conditionProperty.WzProperties, includeConditionContainers: true);
-                if (actions.Count == 0)
-                {
-                    continue;
-                }
-
                 IReadOnlyList<NpcQuestConditionDefinition> questConditions = GetQuestConditions(conditionProperty.WzProperties);
                 actionSets.Add(new NpcClientActionSetDefinition(
                     nextIndex++,

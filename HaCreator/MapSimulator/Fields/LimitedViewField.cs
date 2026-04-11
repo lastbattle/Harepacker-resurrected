@@ -451,21 +451,10 @@ namespace HaCreator.MapSimulator.Fields
                     if (_clientOwnedUpdateParityMode && _clientOwnedViewrangeTexture != null)
                     {
                         IReadOnlyList<Vector2> maskTopLefts = GetClientOwnedUpdateParityMaskTopLefts(mapShiftX, mapShiftY, centerX, centerY);
-                        RestorePreviousClientOwnedViewrangePatches(spriteBatch, fogColorWithAlpha);
-                        ResetClientOwnedPreviousMaskTopLeftsForCurrentFrame();
-                        for (int i = 0; i < maskTopLefts.Count; i++)
-                        {
-                            Vector2 topLeft = maskTopLefts[i];
-                            DrawClientOwnedViewrangeFogAtTopLeft(
-                                spriteBatch,
-                                (int)MathF.Round(topLeft.X),
-                                (int)MathF.Round(topLeft.Y),
-                                fogColorWithAlpha,
-                                drawClientOwnedDarkLayer: i == 0,
-                                restorePreviousClientOwnedViewranges: false,
-                                resetPreviousClientOwnedViewrangesForCurrentFrame: false);
-                            TrackClientOwnedCurrentMaskTopLeft(topLeft);
-                        }
+                        ExecuteClientOwnedDrawViewrangeOperationPlan(
+                            spriteBatch,
+                            fogColorWithAlpha,
+                            BuildClientOwnedDrawViewrangeOperationPlan(_clientOwnedPreviousMaskTopLefts.ToArray(), maskTopLefts));
                         break;
                     }
 
@@ -945,6 +934,73 @@ namespace HaCreator.MapSimulator.Fields
         internal void TrackClientOwnedCurrentMaskTopLeft(Vector2 topLeft)
         {
             _clientOwnedPreviousMaskTopLefts.Add(topLeft);
+        }
+
+        private void ExecuteClientOwnedDrawViewrangeOperationPlan(
+            SpriteBatch spriteBatch,
+            Color fogColor,
+            IReadOnlyList<ClientOwnedDrawViewrangeOperation> operations)
+        {
+            if (operations == null)
+            {
+                return;
+            }
+
+            foreach (ClientOwnedDrawViewrangeOperation operation in operations)
+            {
+                switch (operation.Kind)
+                {
+                    case ClientOwnedDrawViewrangeOperationKind.RestorePreviousSmallDarkPatch:
+                        DrawClientOwnedSmallDarkPatch(spriteBatch, operation.TopLeft, fogColor);
+                        break;
+                    case ClientOwnedDrawViewrangeOperationKind.ClearPreviousMaskHistory:
+                        ResetClientOwnedPreviousMaskTopLeftsForCurrentFrame();
+                        break;
+                    case ClientOwnedDrawViewrangeOperationKind.CopyLocalViewrange:
+                    case ClientOwnedDrawViewrangeOperationKind.CopyRemoteViewrange:
+                        DrawClientOwnedViewrangeFogAtTopLeft(
+                            spriteBatch,
+                            (int)MathF.Round(operation.TopLeft.X),
+                            (int)MathF.Round(operation.TopLeft.Y),
+                            fogColor,
+                            drawClientOwnedDarkLayer: operation.Kind == ClientOwnedDrawViewrangeOperationKind.CopyLocalViewrange,
+                            restorePreviousClientOwnedViewranges: false,
+                            resetPreviousClientOwnedViewrangesForCurrentFrame: false);
+                        break;
+                    case ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory:
+                        TrackClientOwnedCurrentMaskTopLeft(operation.TopLeft);
+                        break;
+                }
+            }
+        }
+
+        private void DrawClientOwnedSmallDarkPatch(SpriteBatch spriteBatch, Vector2 topLeft, Color fogColor)
+        {
+            if (_pixelTexture == null)
+            {
+                return;
+            }
+
+            int width = _clientOwnedSmallDarkPatchWidth > 0
+                ? _clientOwnedSmallDarkPatchWidth
+                : _clientOwnedViewrangeTexture?.Width ?? 0;
+            int height = _clientOwnedSmallDarkPatchHeight > 0
+                ? _clientOwnedSmallDarkPatchHeight
+                : _clientOwnedViewrangeTexture?.Height ?? 0;
+            if (width <= 0 || height <= 0)
+            {
+                return;
+            }
+
+            Color smallDarkColor = new((byte)0, (byte)0, (byte)0, fogColor.A);
+            spriteBatch.Draw(
+                _pixelTexture,
+                new Rectangle(
+                    (int)MathF.Round(topLeft.X),
+                    (int)MathF.Round(topLeft.Y),
+                    width,
+                    height),
+                smallDarkColor);
         }
 
         internal IReadOnlyList<Vector2> ClientOwnedPreviousMaskTopLefts => _clientOwnedPreviousMaskTopLefts;

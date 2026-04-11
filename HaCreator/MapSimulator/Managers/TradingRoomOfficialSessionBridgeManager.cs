@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.Managers
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public ushort InboundTradingRoomOpcode { get; private set; }
+        public ushort AutoDetectedInboundTradingRoomOpcode { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
@@ -103,6 +104,8 @@ namespace HaCreator.MapSimulator.Managers
                 : "no active Maple session";
             string inboundOpcode = InboundTradingRoomOpcode > 0
                 ? $"inbound opcode={InboundTradingRoomOpcode}"
+                : AutoDetectedInboundTradingRoomOpcode > 0
+                    ? $"auto-detected inbound opcode={AutoDetectedInboundTradingRoomOpcode}"
                 : "inbound opcode unset";
             return $"Trading-room official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundCrc={ForwardedOutboundCrcCount}; injected={SentCount}; {inboundOpcode}. {LastStatus}";
         }
@@ -210,7 +213,7 @@ namespace HaCreator.MapSimulator.Managers
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = InboundTradingRoomOpcode > 0
                         ? $"Trading-room official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering inbound opcode {InboundTradingRoomOpcode}."
-                        : $"Trading-room official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}; inbound opcode is unset so server payload capture is idle until configured.";
+                        : $"Trading-room official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}; inbound opcode is unset so server packets are shape-checked for CTradingRoomDlg::OnPacket subtypes 15, 16, 17, 20, and 21.";
                 }
                 catch (Exception ex)
                 {
@@ -425,10 +428,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
                 if (!TryDecodeOpcode(raw, out int opcode, out byte[] payload)
-                    || InboundTradingRoomOpcode <= 0
-                    || opcode != InboundTradingRoomOpcode
-                    || payload.Length == 0
-                    || !IsTradingRoomInboundSubtype(payload[0]))
+                    || !ShouldQueueInboundTradingRoomPacket(opcode, payload, out string autoMapDetail))
                 {
                     return;
                 }
@@ -438,7 +438,7 @@ namespace HaCreator.MapSimulator.Managers
                     $"official-session:{pair.RemoteEndpoint}",
                     $"packetrecv {opcode} {Convert.ToHexString(payload)}"));
                 ReceivedCount++;
-                LastStatus = $"Queued trading-room opcode {opcode} subtype {payload[0]} from live session {pair.RemoteEndpoint}.";
+                LastStatus = $"Queued trading-room opcode {opcode} subtype {payload[0]} from live session {pair.RemoteEndpoint}. {autoMapDetail}";
             }
             catch (Exception ex)
             {
@@ -560,6 +560,7 @@ namespace HaCreator.MapSimulator.Managers
             ForwardedOutboundCrcCount = 0;
             SentCount = 0;
             LastSentOpcode = -1;
+            AutoDetectedInboundTradingRoomOpcode = 0;
             lock (_sync)
             {
                 _recentOutboundPackets.Clear();
@@ -650,6 +651,96 @@ namespace HaCreator.MapSimulator.Managers
         private static bool IsTradingRoomInboundSubtype(byte packetType)
         {
             return packetType is 15 or 16 or 17 or 20 or 21;
+        }
+
+        private bool ShouldQueueInboundTradingRoomPacket(int opcode, byte[] payload, out string detail)
+        {
+            detail = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (InboundTradingRoomOpcode > 0)
+            {
+                if (opcode != InboundTradingRoomOpcode || !IsTradingRoomInboundSubtype(payload[0]))
+                {
+                    return false;
+                }
+
+                detail = $"Configured inbound opcode {InboundTradingRoomOpcode} matched the CTradingRoomDlg::OnPacket subtype table.";
+                return true;
+            }
+
+            if (!TryIdentifyTradingRoomInboundPayloadForAutoMapping(payload, out detail))
+            {
+                return false;
+            }
+
+            if (AutoDetectedInboundTradingRoomOpcode == 0)
+            {
+                AutoDetectedInboundTradingRoomOpcode = (ushort)Math.Clamp(opcode, ushort.MinValue, ushort.MaxValue);
+                detail = $"Auto-detected inbound opcode {AutoDetectedInboundTradingRoomOpcode} because {detail}";
+                return true;
+            }
+
+            if (opcode != AutoDetectedInboundTradingRoomOpcode)
+            {
+                return false;
+            }
+
+            detail = $"Auto-detected inbound opcode {AutoDetectedInboundTradingRoomOpcode} matched again because {detail}";
+            return true;
+        }
+
+        public static bool TryIdentifyTradingRoomInboundPayloadForAutoMapping(byte[] payload, out string detail)
+        {
+            detail = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                detail = "the payload is empty";
+                return false;
+            }
+
+            byte packetType = payload[0];
+            switch (packetType)
+            {
+                case 15:
+                    if (payload.Length >= 5)
+                    {
+                        detail = "subtype 15 has trader, slot, and GW_ItemSlotBase body bytes for CTradingRoomDlg::OnPutItem.";
+                        return true;
+                    }
+
+                    break;
+                case 16:
+                    if (payload.Length == 6)
+                    {
+                        detail = "subtype 16 has the exact trader plus 32-bit meso offer shape for CTradingRoomDlg::OnPutMoney.";
+                        return true;
+                    }
+
+                    break;
+                case 17:
+                    detail = "subtype 17 is the CTradingRoomDlg::OnTrade CRC handoff.";
+                    return true;
+                case 20:
+                    if (payload.Length >= 2
+                        && ((payload.Length - 2) % 8) == 0
+                        && payload[1] == (payload.Length - 2) / 8)
+                    {
+                        detail = "subtype 20 has the OnTrade checksum follow-up row-count shape.";
+                        return true;
+                    }
+
+                    break;
+                case 21:
+                    detail = "subtype 21 is the CTradingRoomDlg::OnExceedLimit failure branch.";
+                    return true;
+            }
+
+            detail = $"subtype {packetType} does not match a modeled CTradingRoomDlg::OnPacket payload shape.";
+            return false;
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

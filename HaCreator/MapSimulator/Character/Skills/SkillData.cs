@@ -279,6 +279,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int AlphaEnd { get; set; } = 255;
         public int ZoomStart { get; set; }
         public int ZoomEnd { get; set; }
+        public bool HasZoomStart { get; set; }
+        public bool HasZoomEnd { get; set; }
         public int RotationDegrees { get; set; }
     }
 
@@ -1103,6 +1105,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public IDXObject Icon { get; set; }
         public Texture2D IconTexture { get; set; }
         public IDXObject IconDisabled { get; set; }
+        public Texture2D IconDisabledTexture { get; set; }
         public IDXObject IconMouseOver { get; set; }
         public SkillAnimation Effect { get; set; }           // Effect on caster
         public SkillAnimation EffectSecondary { get; set; }  // Secondary caster effect branch (e.g. effect0)
@@ -1129,6 +1132,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public string ClientSummonedUolPath { get; set; }
         public string ResolvedSummonAssetPath { get; set; }
         public List<SkillAnimation> SummonProjectileAnimations { get; set; } = new();
+        public List<string> SummonProjectileAnimationPaths { get; set; } = new();
         public List<SkillAnimation> SummonTargetHitAnimations { get; set; } = new();
         public List<SummonImpactPresentation> SummonTargetHitPresentations { get; set; } = new();
         public Dictionary<string, SummonRangeMetadata> SummonNamedRangeMetadata { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -1137,6 +1141,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Dictionary<string, SkillAnimation> SummonNamedAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, SkillAnimation> SummonActionAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, List<SkillAnimation>> SummonProjectileAnimationsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, List<string>> SummonProjectileAnimationPathsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, List<SummonImpactPresentation>> SummonTargetHitPresentationsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> SummonAttackAfterMsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> SummonMobCountOverridesByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -1602,6 +1607,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return SummonProjectileAnimations;
+        }
+
+        public IReadOnlyList<string> GetSummonProjectileAnimationPaths(string branchName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonProjectileAnimationPathsByBranch != null
+                && SummonProjectileAnimationPathsByBranch.TryGetValue(branchName, out List<string> branchPaths)
+                && branchPaths?.Count > 0)
+            {
+                return branchPaths;
+            }
+
+            return SummonProjectileAnimationPaths;
+        }
+
+        public string ResolveSummonProjectileAnimationPath(string branchName = null, int variantIndex = 0)
+        {
+            IReadOnlyList<string> paths = GetSummonProjectileAnimationPaths(branchName);
+            if (paths == null || paths.Count == 0)
+            {
+                return null;
+            }
+
+            return paths[Math.Abs(variantIndex) % paths.Count];
         }
 
         public int? ResolveSummonProjectilePositionCode(string branchName = null, int variantIndex = 0)

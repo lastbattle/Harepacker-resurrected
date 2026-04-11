@@ -4157,12 +4157,14 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.EyeAccessory);
             }
 
-            if (normalized.IndexOf("earring", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (normalized.IndexOf("earring", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("ear ornament", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Earrings);
             }
 
-            if (normalized.IndexOf("glove", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (normalized.IndexOf("glove", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("maple gage", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Glove);
             }
@@ -4270,8 +4272,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (normalized.IndexOf("helmet", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 normalized.IndexOf("headwear", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                normalized.IndexOf("cap", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                normalized.IndexOf("hat", StringComparison.OrdinalIgnoreCase) >= 0)
+                ContainsWholeWord(normalized, "cap") ||
+                ContainsWholeWord(normalized, "caps") ||
+                normalized.IndexOf("hat", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("rudolph's horn", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("rudolph’s horn", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Cap);
             }
@@ -4340,7 +4345,7 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (ContainsAny(normalized, "earrings", "earring"))
+            if (ContainsAny(normalized, "earrings", "earring", "ear ornament"))
             {
                 label = "earrings";
                 return true;
@@ -4412,9 +4417,35 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (ContainsAny(normalized, "helmets", "helmet", "headwear", "caps", "cap", "hats", "hat", "circlet"))
+            if (ContainsAny(normalized, "helmets", "helmet", "headwear", "hats", "hat", "circlet", "rudolph's horn", "rudolph’s horn") ||
+                ContainsWholeWord(normalized, "cap") ||
+                ContainsWholeWord(normalized, "caps"))
             {
                 label = "hats";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "gloves", "glove", "maple gage"))
+            {
+                label = "gloves";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "shoes", "shoe"))
+            {
+                label = "shoes";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "capes", "cape", "mantles", "mantle"))
+            {
+                label = "capes";
+                return true;
+            }
+
+            if (ContainsAny(normalized, "shields", "shield"))
+            {
+                label = "shields";
                 return true;
             }
 
@@ -4493,6 +4524,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private static bool ContainsWholeWord(string text, string word)
+        {
+            return !string.IsNullOrWhiteSpace(text) &&
+                   !string.IsNullOrWhiteSpace(word) &&
+                   Regex.IsMatch(text, $@"\b{Regex.Escape(word)}\b", RegexOptions.IgnoreCase);
         }
 
         private static bool AreRatesEquivalent(float left, float right)

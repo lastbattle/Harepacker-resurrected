@@ -1102,9 +1102,9 @@ namespace HaCreator.MapSimulator.Interaction
             HasPendingGetAllRequest = false;
             GetAllRequestWasAccepted = true;
             _hasAcceptedGetAllRequestInFlight = true;
-            StatusMessage = _pendingGetAllFee > 0
-                ? $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()}; BtGet stays request-owned until the next store-bank packet."
-                : $"Accepted packet-authored store-bank get-all request for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with the zero-fee StringPool 0xDC5 branch{BuildPendingGetAllSelectionSuffix()}; BtGet stays request-owned until the next store-bank packet.";
+                    StatusMessage = _pendingGetAllFee > 0
+                ? $"Accepted packet-authored store-bank {BuildPendingRetrievalRequestLabel()} for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()}; BtGet stays request-owned until the next store-bank packet."
+                : $"Accepted packet-authored store-bank {BuildPendingRetrievalRequestLabel()} for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with the zero-fee StringPool 0xDC5 branch{BuildPendingGetAllSelectionSuffix()}; BtGet stays request-owned until the next store-bank packet.";
             AppendNote(StatusMessage);
             return StatusMessage;
         }
@@ -1122,7 +1122,7 @@ namespace HaCreator.MapSimulator.Interaction
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 69,
                 new byte[] { 27 },
-                $"Mirrored CStoreBankDlg::SendGetAllRequest for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) and fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()} (opcode 69, mode 27; IDA 0x7449f0 confirms no selected-row body bytes are encoded after the mode byte).");
+                $"Mirrored CStoreBankDlg::SendGetAllRequest for {BuildPendingRetrievalRequestLabel()} after {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) and fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()} (opcode 69, mode 27; IDA 0x7449f0 confirms no selected-row body bytes are encoded after the mode byte).");
             return true;
         }
 
@@ -1244,8 +1244,8 @@ namespace HaCreator.MapSimulator.Interaction
                     : "No accepted get-all request is currently in flight.",
                 HasPendingGetAllRequest
                     ? (_pendingGetAllFee > 0
-                        ? $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()} (StringPool 0xDC4)."
-                        : $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), no fee{BuildPendingGetAllSelectionSuffix()} (StringPool 0xDC5).")
+                        ? $"Pending {BuildPendingRetrievalRequestLabel()} modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()} (StringPool 0xDC4)."
+                        : $"Pending {BuildPendingRetrievalRequestLabel()} modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), no fee{BuildPendingGetAllSelectionSuffix()} (StringPool 0xDC5).")
                     : "No get-all confirmation modal is currently staged.",
                 HasShipmentPrompt
                     ? BuildShipmentPromptSummary()
@@ -1617,9 +1617,9 @@ namespace HaCreator.MapSimulator.Interaction
                     HasPendingGetAllRequest = true;
                     GetAllRequestWasAccepted = false;
                     IsOpen = true;
-                    StatusMessage = _pendingGetAllFee > 0
-                        ? $"CStoreBankDlg staged the SendGetAllRequest modal for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()}."
-                        : $"CStoreBankDlg staged the zero-fee SendGetAllRequest modal for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s){BuildPendingGetAllSelectionSuffix()}.";
+            StatusMessage = _pendingGetAllFee > 0
+                        ? $"CStoreBankDlg staged the SendGetAllRequest modal for {BuildPendingRetrievalRequestLabel()} after {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) with fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()}."
+                        : $"CStoreBankDlg staged the zero-fee SendGetAllRequest modal for {BuildPendingRetrievalRequestLabel()} after {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s){BuildPendingGetAllSelectionSuffix()}.";
                     break;
 
                 case 37:
@@ -1959,6 +1959,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return $" for selected {string.Join(" / ", parts)}";
+        }
+
+        private string BuildPendingRetrievalRequestLabel()
+        {
+            return _pendingGetAllPacketRowIndex > 0 || _pendingGetAllItemId > 0
+                ? "selected retrieval acceptance"
+                : "get-all request";
         }
 
         private bool HasShipmentPrompt =>
@@ -3071,8 +3078,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal int CurrentPageIndex => _pageIndex;
         internal bool OnCalc { get; private set; }
         internal bool ServerOnCalc { get; private set; }
-        internal bool DotTrackingEnabled { get; private set; }
-        internal bool SummonTrackingEnabled { get; private set; }
+        internal bool DotTrackingEnabled { get; private set; } = true;
+        internal bool SummonTrackingEnabled { get; private set; } = true;
         internal int TotalDamage { get; private set; }
         internal int TotalHits { get; private set; }
         internal int MaxDamage { get; private set; }
@@ -3131,15 +3138,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             IsOpen = enabled || IsOpen;
             OnCalc = enabled;
-            if (!enabled)
-            {
-                DotTrackingEnabled = false;
-                SummonTrackingEnabled = false;
-            }
 
             StatusMessage = enabled
                 ? "CUIBattleRecord armed CBattleRecordMan::RequestOnCalc(1); packet 421 still waits for the server-on-calc ack and DOT include flag before mutating damage."
-                : "CUIBattleRecord disarmed CBattleRecordMan::RequestOnCalc(0) through the owner on/off or destroy path.";
+                : "CUIBattleRecord disarmed CBattleRecordMan::RequestOnCalc(0); IDA shows this path only flips m_bOnCalc and sends opcode 299, leaving the DOT and summon include flags untouched.";
             AppendNote(StatusMessage);
             message = StatusMessage;
             return true;
@@ -3353,8 +3355,6 @@ namespace HaCreator.MapSimulator.Interaction
             IsOpen = false;
             OnCalc = false;
             ServerOnCalc = false;
-            DotTrackingEnabled = false;
-            SummonTrackingEnabled = false;
             TotalDamage = 0;
             TotalHits = 0;
             MaxDamage = 0;

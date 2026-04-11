@@ -1533,6 +1533,11 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 PacketReader reader = new(payload);
                 byte packetType = reader.ReadByte();
+                if (IsMiniRoomBasePacketSubType(packetType))
+                {
+                    return TryDispatchMiniRoomBaseOwnedPacket(reader, packetType, tickCount, out message);
+                }
+
                 return Kind switch
                 {
                     SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(reader, packetType, tickCount, out message),
@@ -1564,6 +1569,32 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return TryDispatchPacketBytes(packetBytes, tickCount, out message);
+        }
+
+        private bool TryDispatchMiniRoomBaseOwnedPacket(PacketReader reader, byte packetType, int tickCount, out string message)
+        {
+            byte[] basePayload = new byte[1 + Math.Max(0, reader?.Remaining ?? 0)];
+            basePayload[0] = packetType;
+            if (reader != null && reader.Remaining > 0)
+            {
+                byte[] remaining = reader.ReadBytes(reader.Remaining);
+                Buffer.BlockCopy(remaining, 0, basePayload, 1, remaining.Length);
+            }
+
+            PacketReader baseReader = new(basePayload);
+            bool handled = TryDispatchMiniRoomBasePacket(baseReader, tickCount, out message);
+            string instanceShape = packetType is MiniRoomBaseInvitePacketSubType
+                or MiniRoomBaseInviteResultPacketSubType
+                or MiniRoomBaseEnterResultPacketSubType
+                or MiniRoomBaseCheckSsnPacketSubType
+                ? "static/no-instance branch"
+                : "live-instance branch";
+            string detail = handled
+                ? $"CMiniRoomBaseDlg::OnPacketBase handled direct subtype {packetType} on the {instanceShape}. {message}"
+                : $"CMiniRoomBaseDlg::OnPacketBase rejected direct subtype {packetType} on the {instanceShape}. {message}";
+            TrackPacketOwnerSummary("CMiniRoomBaseDlg::OnPacketBase", packetType, tickCount, handled, detail);
+            message = detail;
+            return handled;
         }
 
         public bool TryDispatchTradingRoomPacketOwnedMeso(int traderIndex, int offeredMeso, int tickCount, out string message)
@@ -7703,6 +7734,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (packetBytes.Length > sizeof(ushort) && IsKnownPacketType(packetBytes[sizeof(ushort)]))
+            {
+                byte[] trimmed = new byte[packetBytes.Length - sizeof(ushort)];
+                Buffer.BlockCopy(packetBytes, sizeof(ushort), trimmed, 0, trimmed.Length);
+                return trimmed;
+            }
+
+            if (packetBytes.Length > sizeof(ushort) && IsMiniRoomBasePacketSubType(packetBytes[sizeof(ushort)]))
             {
                 byte[] trimmed = new byte[packetBytes.Length - sizeof(ushort)];
                 Buffer.BlockCopy(packetBytes, sizeof(ushort), trimmed, 0, trimmed.Length);

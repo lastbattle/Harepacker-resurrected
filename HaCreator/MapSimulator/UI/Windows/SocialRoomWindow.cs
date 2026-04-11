@@ -77,6 +77,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _miniRoomOmokLastBlackStoneTexture;
         private Texture2D _miniRoomOmokLastWhiteStoneTexture;
         private EntrustedShopBlacklistPromptRequest _activeEntrustedBlacklistPrompt;
+        private EntrustedShopNoticeSnapshot _activeEntrustedBlacklistNotice;
         private string _entrustedBlacklistPromptText = string.Empty;
         private string _entrustedBlacklistCompositionText = string.Empty;
         private KeyboardState _previousKeyboardState;
@@ -99,6 +100,7 @@ namespace HaCreator.MapSimulator.UI
             _panelTexture = panelTexture;
             _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             _runtime.EntrustedBlacklistPromptRequested = ShowEntrustedBlacklistPrompt;
+            _runtime.EntrustedBlacklistNoticeRequested = ShowEntrustedBlacklistNotice;
         }
 
         public override string WindowName => _windowName;
@@ -655,6 +657,7 @@ namespace HaCreator.MapSimulator.UI
                 0.55f);
 
             DrawEntrustedChildDialog(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, _runtime.GetEntrustedChildDialogSnapshot());
+            DrawEntrustedBlacklistModal(sprite);
         }
 
         private void DrawTradingRoomContents(SpriteBatch sprite)
@@ -878,12 +881,13 @@ namespace HaCreator.MapSimulator.UI
                 ? request.DefaultText ?? string.Empty
                 : request.CurrentText;
             _entrustedBlacklistCompositionText = string.Empty;
+            _activeEntrustedBlacklistNotice = null;
             return true;
         }
 
         private bool HasActiveEntrustedBlacklistModal()
         {
-            return _activeEntrustedBlacklistPrompt != null;
+            return _activeEntrustedBlacklistPrompt != null || _activeEntrustedBlacklistNotice != null;
         }
 
         private void AppendEntrustedBlacklistPromptText(string text)
@@ -936,6 +940,24 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void ShowEntrustedBlacklistNotice(EntrustedShopNoticeSnapshot notice)
+        {
+            if (notice == null)
+            {
+                return;
+            }
+
+            _activeEntrustedBlacklistPrompt = null;
+            _entrustedBlacklistCompositionText = string.Empty;
+            _activeEntrustedBlacklistNotice = new EntrustedShopNoticeSnapshot
+            {
+                OwnerName = notice.OwnerName,
+                Title = notice.Title,
+                Text = notice.Text,
+                StringPoolId = notice.StringPoolId
+            };
+        }
+
         private void SubmitEntrustedBlacklistPrompt()
         {
             if (_activeEntrustedBlacklistPrompt == null)
@@ -957,8 +979,134 @@ namespace HaCreator.MapSimulator.UI
 
         private void DismissEntrustedBlacklistNotice()
         {
+            _runtime.DismissEntrustedBlacklistNotice();
             _activeEntrustedBlacklistPrompt = null;
+            _activeEntrustedBlacklistNotice = null;
             _entrustedBlacklistCompositionText = string.Empty;
+        }
+
+        private void DrawEntrustedBlacklistModal(SpriteBatch sprite)
+        {
+            if (_font == null || !HasActiveEntrustedBlacklistModal())
+            {
+                SetEntrustedBlacklistModalButtonsVisible(false);
+                return;
+            }
+
+            Texture2D frame = _entrustedBlacklistUtilDlgExFrame;
+            int frameWidth = frame?.Width ?? 312;
+            int frameHeight = frame?.Height ?? 132;
+            int windowWidth = CurrentFrame?.Width ?? 320;
+            int windowHeight = CurrentFrame?.Height ?? 240;
+            int modalX = Position.X + Math.Max(0, (windowWidth - frameWidth) / 2);
+            int modalY = Position.Y + Math.Max(0, (windowHeight - frameHeight) / 2);
+
+            if (_panelTexture != null)
+            {
+                sprite.Draw(_panelTexture, new Rectangle(Position.X, Position.Y, windowWidth, windowHeight), new Color(0, 0, 0, 92));
+            }
+
+            if (frame != null)
+            {
+                sprite.Draw(frame, new Rectangle(modalX, modalY, frameWidth, frameHeight), Color.White);
+            }
+            else
+            {
+                Rectangle fallback = new Rectangle(modalX, modalY, frameWidth, frameHeight);
+                DrawPanel(sprite, fallback);
+                DrawRectangleBorder(sprite, fallback, TradeSlotBorderColor);
+            }
+
+            if (_activeEntrustedBlacklistNotice != null)
+            {
+                DrawEntrustedBlacklistNoticeModal(sprite, modalX, modalY, frameWidth, frameHeight);
+                return;
+            }
+
+            DrawEntrustedBlacklistPromptModal(sprite, modalX, modalY, frameWidth, frameHeight);
+        }
+
+        private void DrawEntrustedBlacklistPromptModal(SpriteBatch sprite, int modalX, int modalY, int frameWidth, int frameHeight)
+        {
+            SetEntrustedBlacklistModalButtonsVisible(promptVisible: true, noticeVisible: false);
+            PositionEntrustedBlacklistModalButton(_entrustedBlacklistPromptOkButton, modalX, modalY, frameWidth - 92, frameHeight - 28);
+            PositionEntrustedBlacklistModalButton(_entrustedBlacklistPromptCloseButton, modalX, modalY, frameWidth - 26, 7);
+
+            DrawText(sprite, _activeEntrustedBlacklistPrompt?.Title ?? "Blacklist", new Vector2(modalX + 16, modalY + 12), HeaderColor, 0.62f);
+            float bodyY = modalY + 36;
+            DrawWrapped(
+                sprite,
+                _activeEntrustedBlacklistPrompt?.PromptText ?? string.Empty,
+                modalX + 18,
+                ref bodyY,
+                frameWidth - 36,
+                ValueColor,
+                0.52f);
+
+            Rectangle inputRect = new Rectangle(modalX + 18, modalY + 78, frameWidth - 36, 19);
+            if (_panelTexture != null)
+            {
+                sprite.Draw(_panelTexture, inputRect, new Color(255, 255, 255, 220));
+                DrawRectangleBorder(sprite, inputRect, TradeSlotBorderColor);
+            }
+
+            string composition = string.IsNullOrEmpty(_entrustedBlacklistCompositionText)
+                ? string.Empty
+                : _entrustedBlacklistCompositionText;
+            string inputText = (_entrustedBlacklistPromptText ?? string.Empty) + composition;
+            DrawText(sprite, inputText, new Vector2(inputRect.X + 5, inputRect.Y + 3), ValueColor, 0.5f);
+            DrawText(
+                sprite,
+                $"StringPool 0x{(_activeEntrustedBlacklistPrompt?.StringPoolId ?? -1):X}; {_activeEntrustedBlacklistPrompt?.MinimumLength ?? 4}-{_activeEntrustedBlacklistPrompt?.MaximumLength ?? 12} chars",
+                new Vector2(modalX + 18, modalY + frameHeight - 30),
+                MutedColor,
+                0.42f);
+        }
+
+        private void DrawEntrustedBlacklistNoticeModal(SpriteBatch sprite, int modalX, int modalY, int frameWidth, int frameHeight)
+        {
+            SetEntrustedBlacklistModalButtonsVisible(promptVisible: false, noticeVisible: true);
+            PositionEntrustedBlacklistModalButton(_entrustedBlacklistNoticeOkButton, modalX, modalY, frameWidth - 92, frameHeight - 28);
+
+            DrawText(sprite, _activeEntrustedBlacklistNotice?.Title ?? "Blacklist", new Vector2(modalX + 16, modalY + 12), HeaderColor, 0.62f);
+            float bodyY = modalY + 42;
+            DrawWrapped(
+                sprite,
+                _activeEntrustedBlacklistNotice?.Text ?? string.Empty,
+                modalX + 22,
+                ref bodyY,
+                frameWidth - 44,
+                ValueColor,
+                0.54f);
+            DrawText(
+                sprite,
+                $"StringPool 0x{(_activeEntrustedBlacklistNotice?.StringPoolId ?? -1):X}",
+                new Vector2(modalX + 18, modalY + frameHeight - 30),
+                MutedColor,
+                0.42f);
+        }
+
+        private void SetEntrustedBlacklistModalButtonsVisible(bool visible)
+        {
+            SetEntrustedBlacklistModalButtonsVisible(visible, visible);
+        }
+
+        private void SetEntrustedBlacklistModalButtonsVisible(bool promptVisible, bool noticeVisible)
+        {
+            _entrustedBlacklistPromptOkButton?.SetVisible(promptVisible);
+            _entrustedBlacklistPromptCloseButton?.SetVisible(promptVisible);
+            _entrustedBlacklistNoticeOkButton?.SetVisible(noticeVisible);
+        }
+
+        private void PositionEntrustedBlacklistModalButton(UIObject button, int modalX, int modalY, int relativeX, int relativeY)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.X = modalX - Position.X + relativeX;
+            button.Y = modalY - Position.Y + relativeY;
         }
 
         private void DrawTradeStatePanel(SpriteBatch sprite, Rectangle panel)

@@ -98,9 +98,13 @@ namespace HaCreator.MapSimulator.UI
 
             public sealed class PlateButtonState
             {
+                public int ButtonId { get; init; }
                 public int SlotIndex { get; init; }
+                public string CommandKey { get; init; } = string.Empty;
+                public Point Position { get; init; }
                 public bool HasCanvas { get; init; }
                 public bool IsLoaded { get; init; }
+                public bool IsEnabled { get; init; } = true;
                 public bool IsFocused { get; init; }
                 public string Label { get; init; } = string.Empty;
             }
@@ -131,6 +135,7 @@ namespace HaCreator.MapSimulator.UI
             public int ExpectedNumberCanvasCount { get; init; } = 10;
             public int PlateCount { get; init; } = 3;
             public int PlateButtonCount { get; init; } = 12;
+            public int ActivePlateButtonCount { get; init; }
             public int PreviousOfferCount { get; init; } = 12;
             public string PlateCanvasBaseName { get; init; } = "NoItem";
             public string ShortcutHelpCanvasName { get; init; } = "ShortcutHelp";

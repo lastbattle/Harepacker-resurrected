@@ -175,29 +175,64 @@ namespace HaCreator.MapSimulator.Managers
                 .ToArray();
         }
 
-        public void Start(int listenPort, string remoteHost, int remotePort)
+        public bool TryStart(int listenPort, string remoteHost, int remotePort, out string status)
         {
             lock (_sync)
             {
+                bool autoSelectListenPort = listenPort <= 0;
+                int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+                string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
+                if (HasConnectedSession)
+                {
+                    if (MatchesRequestedTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, remotePort, autoSelectListenPort))
+                    {
+                        status = $"Memory Game official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                        LastStatus = status;
+                        return true;
+                    }
+
+                    status = $"Memory Game official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before starting a different proxy target.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (IsRunning
+                    && MatchesRequestedTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, resolvedRemoteHost, remotePort, autoSelectListenPort))
+                {
+                    status = $"Memory Game official-session bridge already listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    LastStatus = status;
+                    return true;
+                }
+
                 StopInternal(clearPending: true);
 
                 try
                 {
-                    ListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
-                    RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
+                    RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
                     _listenerCancellation = new CancellationTokenSource();
-                    _listener = new TcpListener(IPAddress.Loopback, ListenPort);
+                    _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
                     _listener.Start();
+                    ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
+                    _passiveEstablishedSession = null;
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
                     LastStatus = $"Memory Game official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    status = LastStatus;
+                    return true;
                 }
                 catch (Exception ex)
                 {
                     StopInternal(clearPending: true);
                     LastStatus = $"Memory Game official-session bridge failed to start: {ex.Message}";
+                    status = LastStatus;
+                    return false;
                 }
             }
+        }
+
+        public void Start(int listenPort, string remoteHost, int remotePort)
+        {
+            TryStart(listenPort, remoteHost, remotePort, out _);
         }
 
         public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
@@ -218,8 +253,38 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port);
-            status = $"Memory Game official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+            if (HasConnectedSession)
+            {
+                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, candidate.RemoteEndpoint, autoSelectListenPort))
+                {
+                    status = $"Memory Game official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                status = $"Memory Game official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before starting a different proxy target.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (IsRunning
+                && MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, requestedListenPort, candidate.RemoteEndpoint, autoSelectListenPort))
+            {
+                status = $"Memory Game official-session bridge already listens on 127.0.0.1:{ListenPort} and remains armed for discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}.";
+                LastStatus = status;
+                return true;
+            }
+
+            if (!TryStart(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
+            {
+                status = $"Memory Game official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}, but startup failed. {startStatus}";
+                LastStatus = status;
+                return false;
+            }
+
+            status = $"Memory Game official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus}";
             LastStatus = status;
             return true;
         }
@@ -795,6 +860,53 @@ namespace HaCreator.MapSimulator.Managers
             return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
                 ? trimmed[..^4]
                 : trimmed;
+        }
+
+        private static string NormalizeRemoteHost(string remoteHost)
+        {
+            return string.IsNullOrWhiteSpace(remoteHost)
+                ? IPAddress.Loopback.ToString()
+                : remoteHost.Trim();
+        }
+
+        private static bool MatchesRequestedTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int requestedListenPort,
+            string requestedRemoteHost,
+            int requestedRemotePort,
+            bool ignoreListenPort)
+        {
+            return (ignoreListenPort || currentListenPort == requestedListenPort)
+                && currentRemotePort == requestedRemotePort
+                && string.Equals(
+                    NormalizeRemoteHost(currentRemoteHost),
+                    NormalizeRemoteHost(requestedRemoteHost),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool MatchesDiscoveredTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int requestedListenPort,
+            IPEndPoint discoveredRemoteEndpoint,
+            bool ignoreListenPort = false)
+        {
+            if (discoveredRemoteEndpoint == null)
+            {
+                return false;
+            }
+
+            return MatchesRequestedTargetConfiguration(
+                currentListenPort,
+                currentRemoteHost,
+                currentRemotePort,
+                requestedListenPort,
+                discoveredRemoteEndpoint.Address.ToString(),
+                discoveredRemoteEndpoint.Port,
+                ignoreListenPort);
         }
 
         private static string DescribeSelector(int? owningProcessId, string owningProcessName)

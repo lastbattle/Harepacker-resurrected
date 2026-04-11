@@ -50,6 +50,62 @@ namespace HaCreator.MapSimulator.Companions
 
     internal static class MechanicEquipmentPacketParity
     {
+        internal const int ClientChangeSlotPositionRequestOpcode = 77;
+        internal const byte ClientEquipInventoryType = 1;
+        internal const ushort ClientChangeSlotPositionCountAll = 0xFFFF;
+
+        internal static bool TryEncodeClientChangeSlotPositionRequest(
+            EquipmentChangeRequest request,
+            out byte[] payload,
+            out string rejectReason)
+        {
+            payload = Array.Empty<byte>();
+            rejectReason = null;
+            if (request == null)
+            {
+                rejectReason = "Mechanic equipment request is missing.";
+                return false;
+            }
+
+            if (request.Kind != EquipmentChangeRequestKind.InventoryToCompanion
+                || request.TargetCompanionKind != EquipmentChangeCompanionKind.Mechanic
+                || !request.TargetMechanicSlot.HasValue)
+            {
+                rejectReason = "Only mechanic equip-in requests have a recovered retail ChangeSlotPosition body.";
+                return false;
+            }
+
+            if (request.SourceInventoryIndex < 0)
+            {
+                rejectReason = "Mechanic retail ChangeSlotPosition request is missing a source inventory slot.";
+                return false;
+            }
+
+            int sourceSlotPosition = request.SourceInventoryIndex + 1;
+            if (sourceSlotPosition > ushort.MaxValue)
+            {
+                rejectReason = "Mechanic retail ChangeSlotPosition source slot is outside the client packet range.";
+                return false;
+            }
+
+            int bodyPart = MechanicEquipmentSlotMap.GetBodyPart(request.TargetMechanicSlot.Value);
+            if (bodyPart < 1100 || bodyPart > 1104)
+            {
+                rejectReason = "Mechanic retail ChangeSlotPosition target body part is invalid.";
+                return false;
+            }
+
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream);
+            writer.Write(request.RequestedAtTick);
+            writer.Write(ClientEquipInventoryType);
+            writer.Write((ushort)sourceSlotPosition);
+            writer.Write((ushort)bodyPart);
+            writer.Write(ClientChangeSlotPositionCountAll);
+            payload = stream.ToArray();
+            return true;
+        }
+
         internal static byte[] EncodeAuthorityRequestPayload(EquipmentChangeRequest request)
         {
             if (request == null)
