@@ -592,6 +592,59 @@ namespace HaCreator.MapSimulator.UI
             return removedTrackedQuest;
         }
 
+        internal int ApplyPacketRegistrationSync(
+            IReadOnlyList<int> registeredQuestIds,
+            bool autoRegisterEnabled,
+            bool opened,
+            bool minimized,
+            bool clearHiddenAutoTombstones)
+        {
+            EnsurePersistedStateLoaded();
+
+            _trackedQuestIds.Clear();
+            if (clearHiddenAutoTombstones)
+            {
+                _hiddenAutoQuestIds.Clear();
+            }
+
+            if (registeredQuestIds != null)
+            {
+                for (int i = 0; i < registeredQuestIds.Count && _trackedQuestIds.Count < MaxVisibleEntries; i++)
+                {
+                    int questId = registeredQuestIds[i];
+                    if (questId > 0 && !_trackedQuestIds.Contains(questId))
+                    {
+                        _trackedQuestIds.Add(questId);
+                    }
+                }
+            }
+
+            _autoTrackEnabled = autoRegisterEnabled;
+            _isMinimized = minimized || _trackedQuestIds.Count == 0;
+
+            ResetSelectionAfterMutation();
+            QuestAlarmSnapshot refreshedSnapshot = RefreshFilteredSnapshot();
+            HandleEmptySnapshotVisibility(refreshedSnapshot);
+            EnsureSelection(refreshedSnapshot);
+            EnsureSelectionVisible(refreshedSnapshot);
+            ClampScrollOffset(refreshedSnapshot);
+            RefreshFrame(refreshedSnapshot);
+            UpdateButtonStates();
+
+            if (opened && refreshedSnapshot.Entries.Count > 0)
+            {
+                Show();
+            }
+            else
+            {
+                Hide();
+            }
+
+            SavePersistedState();
+            QuestDeleted?.Invoke();
+            return _trackedQuestIds.Count;
+        }
+
         private void HandleRowSelection(int mouseX, int mouseY)
         {
             QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();

@@ -292,6 +292,18 @@ namespace HaCreator.MapSimulator.UI
                 itemProperty?["specEx"] as WzSubProperty);
         }
 
+        public static bool IsPickupBlocked(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
+            return GetIntValue(infoProperty?["pickUpBlock"]) == 1;
+        }
+
         internal static bool HasPetPickupRestriction(WzSubProperty specProperty, WzSubProperty specExProperty)
         {
             return GetIntValue(specProperty?["notPickupByPet"]) == 1
@@ -2860,6 +2872,18 @@ namespace HaCreator.MapSimulator.UI
             {
                 metadataLines.Add($"Time limit: {FormatMinuteDuration(limitMinutes)}");
             }
+
+            int limitSeconds = GetIntOrStringValue(infoProperty["limitSec"]);
+            if (limitSeconds > 0)
+            {
+                metadataLines.Add($"Time limit: {FormatSecondDuration(limitSeconds)}");
+            }
+
+            int limitCount = GetIntOrStringValue(infoProperty["limitCount"]);
+            if (limitCount > 0)
+            {
+                metadataLines.Add($"Use limit: {limitCount.ToString(CultureInfo.InvariantCulture)} time{(limitCount == 1 ? string.Empty : "s")}");
+            }
         }
 
         private static void AppendCashRateScheduleMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
@@ -3124,6 +3148,12 @@ namespace HaCreator.MapSimulator.UI
             if (petLifeDays > 0)
             {
                 metadataLines.Add($"Pet Lifespan: {FormatDayCount(petLifeDays)}");
+            }
+
+            int limitedPetLifeSeconds = GetIntOrStringValue(infoProperty["limitedLife"]);
+            if (limitedPetLifeSeconds > 0)
+            {
+                metadataLines.Add($"Pet Limited Lifespan: {FormatSecondDuration(limitedPetLifeSeconds)}");
             }
 
             int hunger = GetIntOrStringValue(infoProperty["hungry"]);

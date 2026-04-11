@@ -368,6 +368,14 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            bool clearedPendingRequest = PacketOwnedItemMakerSessionStateRuntime.ShouldClearPendingRequest(
+                _packetOwnedSessionState,
+                _pendingPacketOwnedRequest);
+            if (clearedPendingRequest)
+            {
+                ClearPendingPacketOwnedRequest();
+            }
+
             RebuildVisiblePages();
 
             List<string> parts = new();
@@ -388,6 +396,11 @@ namespace HaCreator.MapSimulator.UI
                 parts.Add(ignoredHiddenEntries > 0
                     ? $"authoritative hidden list {resolvedHiddenEntries} row(s), {ignoredHiddenEntries} unmatched"
                     : $"authoritative hidden list {resolvedHiddenEntries} row(s)");
+            }
+
+            if (clearedPendingRequest)
+            {
+                parts.Add("stale pending request cleared");
             }
 
             message = $"Applied maker session: {string.Join("; ", parts)}.";

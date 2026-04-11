@@ -384,7 +384,9 @@ namespace HaCreator.MapSimulator.UI
             int buyRowCount = rows.Count(row => row != null && row.Price > 0);
             int sellRowCount = rows.Count(row => row != null && row.Price <= 0);
             string resultText = LastSubtype >= 0
-                ? $"last result subtype {LastSubtype}, code {LastResultCode}"
+                ? LastResultHadResultCode
+                    ? $"last result subtype {LastSubtype}, code {LastResultCode}"
+                    : $"last result subtype {LastSubtype}, no result code"
                 : "no result packet yet";
             string transportText = BuildTransportSummary();
             string disconnectText = WouldDisconnect

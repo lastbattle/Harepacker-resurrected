@@ -334,13 +334,33 @@ namespace HaCreator.MapSimulator.UI
             int rowHeight,
             int visibleRowIndex)
         {
+            return ResolveWhisperPickerModalVisibleRowBounds(
+                listBounds,
+                rowHeight,
+                visibleRowIndex,
+                visibleRowCount: 0);
+        }
+
+        public static Rectangle ResolveWhisperPickerModalVisibleRowBounds(
+            Rectangle listBounds,
+            int rowHeight,
+            int visibleRowIndex,
+            int visibleRowCount)
+        {
             int safeRowHeight = Math.Max(1, rowHeight);
             int safeRowIndex = Math.Max(0, visibleRowIndex);
+            int rowY = listBounds.Y + (safeRowIndex * safeRowHeight);
+            int rowHeightWithBottomEdge = safeRowHeight;
+            if (visibleRowCount > 0 && safeRowIndex == Math.Max(0, visibleRowCount - 1))
+            {
+                rowHeightWithBottomEdge = Math.Max(safeRowHeight, listBounds.Bottom - rowY);
+            }
+
             return new Rectangle(
                 listBounds.X,
-                listBounds.Y + (safeRowIndex * safeRowHeight),
+                rowY,
                 listBounds.Width,
-                safeRowHeight);
+                rowHeightWithBottomEdge);
         }
 
         public static bool CanPageWhisperPickerBackward(int firstVisibleIndex)

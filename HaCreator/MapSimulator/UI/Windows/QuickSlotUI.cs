@@ -754,8 +754,17 @@ namespace HaCreator.MapSimulator.UI
         {
             frameIndex = 0;
             remainingText = string.Empty;
-            return _skillManager != null
-                && _skillManager.TryGetCooldownMaskVisualState(skillId, currentTime, out frameIndex, out remainingText);
+            if (_skillManager == null ||
+                !_skillManager.TryGetCooldownUiState(skillId, currentTime, out SkillManager.CooldownUiState cooldownState))
+            {
+                return false;
+            }
+
+            return SkillManager.TryResolveCooldownMaskVisualState(
+                cooldownState,
+                out frameIndex,
+                out remainingText,
+                includeCounterText: false);
         }
 
         private void DrawHoveredItemTooltip(SpriteBatch sprite, int renderWidth, int renderHeight, int absoluteSlotIndex)

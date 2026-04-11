@@ -861,6 +861,24 @@ namespace HaCreator.MapSimulator.UI
                     }
                     break;
 
+                case EquipmentChangeRequestKind.CharacterToCharacter:
+                    if (inventoryWindow != null)
+                    {
+                        IReadOnlyList<InventorySlotData> packetDisplacedSlots = CreateInventorySlots(result.DisplacedParts);
+                        if (packetDisplacedSlots != null)
+                        {
+                            for (int i = 0; i < packetDisplacedSlots.Count; i++)
+                            {
+                                InventorySlotData displacedSlot = packetDisplacedSlots[i];
+                                if (displacedSlot != null)
+                                {
+                                    inventoryWindow.AddItem(ResolveInventoryTypeForSlot(displacedSlot), displacedSlot);
+                                }
+                            }
+                        }
+                    }
+                    break;
+
                 case EquipmentChangeRequestKind.CharacterToInventory:
                     if (inventoryWindow != null)
                     {

@@ -1286,7 +1286,8 @@ namespace HaCreator.MapSimulator.UI
                     Rectangle rowBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalVisibleRowBounds(
                         listBounds,
                         rowHeight,
-                        i);
+                        i,
+                        visibleCount);
                     DrawWhisperPickerModalComboDropdownRow(
                         sprite,
                         rowBounds,

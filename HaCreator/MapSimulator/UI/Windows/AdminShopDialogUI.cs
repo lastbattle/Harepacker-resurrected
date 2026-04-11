@@ -784,12 +784,17 @@ namespace HaCreator.MapSimulator.UI
             return _footerMessage;
         }
 
-        internal string ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(byte subtype, byte resultCode, string blockingOwner)
+        internal string ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(
+            byte subtype,
+            byte resultCode,
+            int trailingByteCount,
+            bool hasResultCode,
+            string blockingOwner)
         {
             string ownerState = string.IsNullOrWhiteSpace(blockingOwner)
                 ? "Packet 366 was ignored because no live CAdminShopDlg unique-modeless owner was present."
                 : $"Packet 366 was ignored because {blockingOwner} owned the unique-modeless slot instead of CAdminShopDlg.";
-            _packetOwnedAdminShopSession.RecordResultIgnoredByOwner(subtype, resultCode, ownerState);
+            _packetOwnedAdminShopSession.RecordResultIgnoredByOwner(subtype, resultCode, ownerState, trailingByteCount, hasResultCode);
             _pendingPacketOwnedAdminShopResult = false;
             ClearPendingPacketOwnedUserSellSnapshot();
             ClearPendingPacketOwnedWishlistRegister();
@@ -820,12 +825,19 @@ namespace HaCreator.MapSimulator.UI
             return _footerMessage;
         }
 
-        public bool TryApplyPacketOwnedAdminShopResult(byte subtype, byte resultCode, out string message, out string noticeText, out bool reopenRequested)
+        public bool TryApplyPacketOwnedAdminShopResult(
+            byte subtype,
+            byte resultCode,
+            int trailingByteCount,
+            bool hasResultCode,
+            out string message,
+            out string noticeText,
+            out bool reopenRequested)
         {
             message = "Packet-owned admin-shop result could not be applied.";
             noticeText = string.Empty;
             reopenRequested = false;
-            _packetOwnedAdminShopSession.RecordResultPacket(subtype, resultCode);
+            _packetOwnedAdminShopSession.RecordResultPacket(subtype, resultCode, trailingByteCount, hasResultCode);
             _packetOwnedAdminShopSession.ClearWaitingForResult();
 
             if (!_packetOwnedAdminShopSession.IsActive)
@@ -4396,8 +4408,16 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
-                    if (InventoryItemMetadataResolver.TryResolveTradeRestrictionFlags(slot.ItemId, out bool isCashItem, out bool isNotForSale, out bool isQuestItem)
-                        && (isCashItem || isNotForSale || isQuestItem))
+                    InventoryItemMetadataResolver.TryResolveTradeRestrictionFlags(
+                        slot.ItemId,
+                        out bool isCashItem,
+                        out bool isNotForSale,
+                        out bool isQuestItem);
+                    if (!AdminShopPacketOwnedSellTemplateParity.IsClientSetUserItemsSlotEligible(
+                            isCashItem,
+                            isNotForSale,
+                            isQuestItem,
+                            slot.CashItemSerialNumber))
                     {
                         continue;
                     }
@@ -4428,8 +4448,16 @@ namespace HaCreator.MapSimulator.UI
                         continue;
                     }
 
-                    if (InventoryItemMetadataResolver.TryResolveTradeRestrictionFlags(slot.ItemId, out bool isCashItem, out bool isNotForSale, out bool isQuestItem)
-                        && (isCashItem || isNotForSale || isQuestItem))
+                    InventoryItemMetadataResolver.TryResolveTradeRestrictionFlags(
+                        slot.ItemId,
+                        out bool isCashItem,
+                        out bool isNotForSale,
+                        out bool isQuestItem);
+                    if (!AdminShopPacketOwnedSellTemplateParity.IsClientSetUserItemsSlotEligible(
+                            isCashItem,
+                            isNotForSale,
+                            isQuestItem,
+                            slot.CashItemSerialNumber))
                     {
                         continue;
                     }
@@ -4754,6 +4782,11 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (!HasEnoughMesoForRequest(entry, 1))
+            {
+                return false;
+            }
+
             return !RequiresInventorySource(entry)
                    || TryValidateInventorySourceRequest(entry, 1, out _);
         }
@@ -4773,6 +4806,11 @@ namespace HaCreator.MapSimulator.UI
             if (entry?.InventoryExpansionType != InventoryType.NONE)
             {
                 return BuildInventoryExpansionBlockedMessage(entry);
+            }
+
+            if (!HasEnoughMesoForRequest(entry, 1))
+            {
+                return $"Need {FormatPriceLabel(ComputeRequestPrice(entry, 1))} before this request can be sent.";
             }
 
             if (RequiresInventorySource(entry) && !TryValidateInventorySourceRequest(entry, 1, out string sourceMessage))
@@ -6884,6 +6922,14 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (entry.InventorySlotIndex >= 0
+                && TryResolveInventorySlot(entry.SourceInventoryType, entry.InventorySlotIndex, out InventorySlotData selectedSlot)
+                && selectedSlot?.CashItemSerialNumber.GetValueOrDefault() > 0L)
+            {
+                message = $"{ResolveSourceItemLabel(entry)} carries a cash-item serial number and cannot satisfy this zero-price trade request.";
+                return false;
+            }
+
             if (!TryResolveSourceInventoryStack(entry, out SourceInventoryStackResolution sourceResolution)
                 || sourceResolution.StackQuantity < ComputeRequiredSourceQuantity(entry, requestQuantity))
             {
@@ -7031,6 +7077,22 @@ namespace HaCreator.MapSimulator.UI
                    && ResolveRewardMaxStack(entry) <= 1;
         }
 
+        private bool HasEnoughMesoForRequest(AdminShopEntry entry, int requestQuantity)
+        {
+            if (entry == null || !entry.ConsumeOnSuccess)
+            {
+                return true;
+            }
+
+            long totalPrice = ComputeRequestPrice(entry, requestQuantity);
+            return totalPrice <= 0
+                || _inventory == null
+                || AdminShopPacketOwnedSellTemplateParity.HasEnoughMesoForSendTradeRequest(
+                    _inventory.GetMesoCount(),
+                    entry.Price,
+                    requestQuantity);
+        }
+
         private int ResolveOwnedSourceRequestCount(AdminShopEntry entry, int ownedQuantity)
         {
             if (!RequiresInventorySource(entry))
@@ -7071,6 +7133,20 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
+                InventoryItemMetadataResolver.TryResolveTradeRestrictionFlags(
+                    slot.ItemId,
+                    out bool isCashItem,
+                    out bool isNotForSale,
+                    out bool isQuestItem);
+                if (!AdminShopPacketOwnedSellTemplateParity.IsClientSetUserItemsSlotEligible(
+                        isCashItem,
+                        isNotForSale,
+                        isQuestItem,
+                        slot.CashItemSerialNumber))
+                {
+                    continue;
+                }
+
                 int stackQuantity = Math.Max(1, slot.Quantity);
                 totalOwnedQuantity += stackQuantity;
                 if (requiresSelectedSlot && i != entry.InventorySlotIndex)
@@ -7089,6 +7165,24 @@ namespace HaCreator.MapSimulator.UI
 
             resolution = new SourceInventoryStackResolution(resolvedSlotIndex, resolvedStackQuantity, totalOwnedQuantity);
             return resolvedSlotIndex >= 0;
+        }
+
+        private bool TryResolveInventorySlot(InventoryType inventoryType, int slotIndex, out InventorySlotData slot)
+        {
+            slot = null;
+            if (_inventory == null || inventoryType == InventoryType.NONE || slotIndex < 0)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = _inventory.GetSlots(inventoryType);
+            if (slots == null || slotIndex >= slots.Count)
+            {
+                return false;
+            }
+
+            slot = slots[slotIndex];
+            return slot != null;
         }
 
         private string BuildRequestQuantitySummary(AdminShopEntry entry, int requestQuantity)

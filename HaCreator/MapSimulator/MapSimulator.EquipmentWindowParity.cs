@@ -46,7 +46,7 @@ namespace HaCreator.MapSimulator
             CharacterEquipmentAuthorityResultKind ResultKind,
             CompletedCharacterEquipmentAuthorityEnvelope CompletedLocalAcceptEnvelope);
 
-        private readonly record struct CharacterAuthoritySlotParts(
+        internal readonly record struct CharacterAuthoritySlotParts(
             CharacterPart VisiblePart,
             CharacterPart HiddenPart);
 
@@ -698,6 +698,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                rejectReason = "Inventory runtime is unavailable.";
+                return false;
+            }
+
             CharacterPart liveSourcePart = EquipSlotStateResolver.ResolveDisplayedPart(build, request.SourceEquipSlot.Value);
             if (liveSourcePart == null || liveSourcePart.ItemId != request.ItemId)
             {
@@ -706,8 +712,15 @@ namespace HaCreator.MapSimulator
             }
 
             HashSet<EquipSlot> affectedSlots = new() { request.SourceEquipSlot.Value, request.TargetEquipSlot.Value };
+            Dictionary<EquipSlot, CharacterAuthoritySlotParts> beforeParts = CaptureCharacterAuthoritySlotParts(build, affectedSlots);
             Dictionary<EquipSlot, CharacterEquipmentAuthoritySlotState> beforeState = CaptureCharacterAuthoritySlotStateSnapshot(build);
             if (!TryValidatePacketOwnedCharacterAuthorityScope(request, beforeState, payload, out rejectReason))
+            {
+                return false;
+            }
+
+            IReadOnlyList<CharacterPart> displacedParts = ResolvePacketOwnedAuthorityDisplacedParts(beforeParts, payload, affectedSlots);
+            if (!CanAcceptResolvedInventoryParts(displacedParts, inventoryWindow, out rejectReason))
             {
                 return false;
             }
@@ -717,7 +730,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            result = EquipmentChangeResult.Accept()
+            result = EquipmentChangeResult.Accept(displacedParts: displacedParts)
                 .WithCompletionMetadata(
                     payload.RequestId,
                     payload.RequestedAtTick,
@@ -1235,42 +1248,70 @@ namespace HaCreator.MapSimulator
             CharacterEquipmentAuthorityPayload payload,
             EquipSlot slot)
         {
+            return ResolvePacketOwnedAuthorityDisplacedParts(
+                beforeParts,
+                payload,
+                new[] { slot });
+        }
+
+        internal static IReadOnlyList<CharacterPart> ResolvePacketOwnedAuthorityDisplacedParts(
+            IReadOnlyDictionary<EquipSlot, CharacterAuthoritySlotParts> beforeParts,
+            CharacterEquipmentAuthorityPayload payload,
+            IEnumerable<EquipSlot> slots)
+        {
             if (beforeParts == null
                 || payload.AuthoritySlotStates == null
-                || !beforeParts.TryGetValue(slot, out CharacterAuthoritySlotParts parts))
+                || slots == null)
             {
                 return Array.Empty<CharacterPart>();
             }
 
-            CharacterEquipmentAuthoritySlotState? finalState = null;
-            for (int i = 0; i < payload.AuthoritySlotStates.Count; i++)
+            HashSet<EquipSlot> requestedSlots = new();
+            foreach (EquipSlot slot in slots)
             {
-                if (payload.AuthoritySlotStates[i].Slot == slot)
+                if (slot != EquipSlot.None)
                 {
-                    finalState = payload.AuthoritySlotStates[i];
-                    break;
+                    requestedSlots.Add(slot);
                 }
             }
 
-            if (!finalState.HasValue)
+            if (requestedSlots.Count == 0)
             {
                 return Array.Empty<CharacterPart>();
             }
 
             List<int> retainedItemIds = new();
-            if (finalState.Value.VisibleItemId > 0)
+            for (int i = 0; i < payload.AuthoritySlotStates.Count; i++)
             {
-                retainedItemIds.Add(finalState.Value.VisibleItemId);
-            }
+                CharacterEquipmentAuthoritySlotState state = payload.AuthoritySlotStates[i];
+                if (!requestedSlots.Contains(state.Slot))
+                {
+                    continue;
+                }
 
-            if (finalState.Value.HiddenItemId > 0)
-            {
-                retainedItemIds.Add(finalState.Value.HiddenItemId);
+                if (state.VisibleItemId > 0)
+                {
+                    retainedItemIds.Add(state.VisibleItemId);
+                }
+
+                if (state.HiddenItemId > 0)
+                {
+                    retainedItemIds.Add(state.HiddenItemId);
+                }
             }
 
             List<CharacterPart> displacedParts = new();
-            AddDisplacedPart(parts.VisiblePart, retainedItemIds, displacedParts);
-            AddDisplacedPart(parts.HiddenPart, retainedItemIds, displacedParts);
+            foreach (EquipSlot slot in requestedSlots)
+            {
+                if (!beforeParts.TryGetValue(slot, out CharacterAuthoritySlotParts parts))
+                {
+                    continue;
+                }
+
+                AddDisplacedPart(parts.VisiblePart, retainedItemIds, displacedParts);
+                AddDisplacedPart(parts.HiddenPart, retainedItemIds, displacedParts);
+            }
+
             return displacedParts.Count == 0
                 ? Array.Empty<CharacterPart>()
                 : displacedParts.AsReadOnly();
@@ -1425,6 +1466,7 @@ namespace HaCreator.MapSimulator
                     return true;
 
                 case EquipmentChangeRequestKind.CharacterToCharacter:
+                    AddResolvedInventorySlots(result.DisplacedParts, inventoryWindow);
                     return true;
 
                 case EquipmentChangeRequestKind.CharacterToInventory:
@@ -1457,6 +1499,78 @@ namespace HaCreator.MapSimulator
                     inventoryWindow.AddItem(ResolveInventoryTypeForSlot(slot), slot);
                 }
             }
+        }
+
+        private bool CanAcceptResolvedInventoryParts(
+            IReadOnlyList<CharacterPart> parts,
+            InventoryUI inventoryWindow,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (parts == null || parts.Count == 0)
+            {
+                return true;
+            }
+
+            if (inventoryWindow == null)
+            {
+                rejectReason = "Inventory runtime is unavailable.";
+                return false;
+            }
+
+            Dictionary<InventoryType, int> requiredSlotsByType = new();
+            for (int i = 0; i < parts.Count; i++)
+            {
+                CharacterPart part = parts[i];
+                if (part == null)
+                {
+                    continue;
+                }
+
+                InventoryType inventoryType = part.IsCash ? InventoryType.CASH : InventoryType.EQUIP;
+                if (!inventoryWindow.CanAcceptItem(inventoryType, part.ItemId, 1, maxStackSize: 1))
+                {
+                    string inventoryLabel = inventoryType == InventoryType.CASH ? "cash" : "equipment";
+                    rejectReason = $"There is no free {inventoryLabel} inventory slot for the packet-displaced equipment.";
+                    return false;
+                }
+
+                requiredSlotsByType.TryGetValue(inventoryType, out int requiredSlots);
+                requiredSlotsByType[inventoryType] = requiredSlots + 1;
+            }
+
+            foreach (KeyValuePair<InventoryType, int> entry in requiredSlotsByType)
+            {
+                int freeSlotCount = CountAvailableInventorySlots(inventoryWindow, entry.Key);
+                if (freeSlotCount < entry.Value)
+                {
+                    string inventoryLabel = entry.Key == InventoryType.CASH ? "cash" : "equipment";
+                    rejectReason = $"There is no free {inventoryLabel} inventory slot for the packet-displaced equipment.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static int CountAvailableInventorySlots(InventoryUI inventoryWindow, InventoryType inventoryType)
+        {
+            if (inventoryWindow == null || inventoryType == InventoryType.NONE)
+            {
+                return 0;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = inventoryWindow.GetSlots(inventoryType);
+            int occupiedCount = 0;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                if (slots[i] != null)
+                {
+                    occupiedCount++;
+                }
+            }
+
+            return Math.Max(0, inventoryWindow.GetSlotLimit(inventoryType) - occupiedCount);
         }
 
         private static InventoryType ResolveInventoryTypeForSlot(InventorySlotData slot)

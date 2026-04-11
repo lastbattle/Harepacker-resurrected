@@ -2638,6 +2638,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.QuestAlarmTitleTooltipPacketType:
                     return TryApplyPacketOwnedQuestAlarmTitleTooltipPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.QuestAlarmRegistrationSyncPacketType:
+                    return TryApplyPacketOwnedQuestAlarmRegistrationSyncPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.SetDirectionModePacketType:
                     return TryApplyPacketOwnedDirectionModePayload(payload, out message);
 
@@ -3295,6 +3298,119 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyPacketOwnedQuestAlarmRegistrationSyncPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (!TryDecodeQuestAlarmRegistrationSyncPayload(
+                    payload,
+                    out bool opened,
+                    out bool minimized,
+                    out bool autoRegisterEnabled,
+                    out bool clearHiddenAutoTombstones,
+                    out int[] questIds,
+                    out string decodeError))
+            {
+                message = decodeError ?? "Quest-alarm registration-sync payload could not be decoded.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestAlarm) is not QuestAlarmWindow questAlarmWindow)
+            {
+                message = "Quest alarm window is not available in this UI build.";
+                return false;
+            }
+
+            int appliedCount = questAlarmWindow.ApplyPacketRegistrationSync(
+                questIds,
+                autoRegisterEnabled,
+                opened,
+                minimized,
+                clearHiddenAutoTombstones);
+            RefreshQuestUiState();
+            message = appliedCount == 0
+                ? "Applied packet-owned Quest Alarm registration sync and cleared the local tracker."
+                : $"Applied packet-owned Quest Alarm registration sync with {appliedCount} visible quest(s).";
+            return true;
+        }
+
+        internal static bool TryDecodeQuestAlarmRegistrationSyncPayloadForTests(
+            byte[] payload,
+            out bool opened,
+            out bool minimized,
+            out bool autoRegisterEnabled,
+            out bool clearHiddenAutoTombstones,
+            out int[] questIds,
+            out string error)
+        {
+            return TryDecodeQuestAlarmRegistrationSyncPayload(
+                payload,
+                out opened,
+                out minimized,
+                out autoRegisterEnabled,
+                out clearHiddenAutoTombstones,
+                out questIds,
+                out error);
+        }
+
+        private static bool TryDecodeQuestAlarmRegistrationSyncPayload(
+            byte[] payload,
+            out bool opened,
+            out bool minimized,
+            out bool autoRegisterEnabled,
+            out bool clearHiddenAutoTombstones,
+            out int[] questIds,
+            out string error)
+        {
+            opened = false;
+            minimized = true;
+            autoRegisterEnabled = false;
+            clearHiddenAutoTombstones = false;
+            questIds = Array.Empty<int>();
+            error = null;
+
+            if (payload == null || payload.Length < 2)
+            {
+                error = "Quest-alarm registration-sync payload must contain flags and a quest count.";
+                return false;
+            }
+
+            using var stream = new MemoryStream(payload, writable: false);
+            using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
+
+            byte flags = reader.ReadByte();
+            int count = reader.ReadByte();
+            if (count > 5)
+            {
+                error = "Quest-alarm registration-sync payload cannot register more than five quests.";
+                return false;
+            }
+
+            if (stream.Length - stream.Position != count * sizeof(ushort))
+            {
+                error = "Quest-alarm registration-sync payload quest-id list length does not match its count.";
+                return false;
+            }
+
+            opened = (flags & 0x01) != 0;
+            minimized = (flags & 0x02) != 0;
+            autoRegisterEnabled = (flags & 0x04) != 0;
+            clearHiddenAutoTombstones = (flags & 0x08) != 0;
+
+            List<int> decodedQuestIds = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                int questId = reader.ReadUInt16();
+                if (questId > 0 && !decodedQuestIds.Contains(questId))
+                {
+                    decodedQuestIds.Add(questId);
+                }
+            }
+
+            questIds = decodedQuestIds.ToArray();
+            return true;
+        }
+
         private bool TryApplyPacketOwnedMakerResultPayload(byte[] payload, out string message)
         {
             message = null;
@@ -3467,6 +3583,12 @@ namespace HaCreator.MapSimulator
             _packetOwnedItemMakerSessionState = PacketOwnedItemMakerSessionStateRuntime.Apply(
                 _packetOwnedItemMakerSessionState,
                 packetSession);
+            if (PacketOwnedItemMakerSessionStateRuntime.ShouldClearPendingRequest(
+                    _packetOwnedItemMakerSessionState,
+                    _pendingPacketOwnedItemMakerRequest))
+            {
+                _pendingPacketOwnedItemMakerRequest = null;
+            }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is not ItemMakerUI itemMakerWindow)
             {
@@ -6071,17 +6193,6 @@ namespace HaCreator.MapSimulator
                 out SkillData skill,
                 out int level,
                 out string errorMessage);
-            bool appliedSpecialEffect = TryRegisterAnimationDisplayerLocalSkillUseRequest(new SkillUseEffectRequest
-            {
-                EffectSkillId = normalizedSkillId,
-                SourceSkillId = normalizedSkillId,
-                RequestTime = currTickCount,
-                BranchNames = new[] { "special" },
-                WorldOrigin = timeBombPosition,
-                FollowOwnerPosition = false,
-                FollowOwnerFacing = false,
-                DelayRateOverride = 1000
-            });
 
             int appliedHitPeriodMs = 0;
             int appliedDamage = damage;
@@ -6110,8 +6221,8 @@ namespace HaCreator.MapSimulator
                 ? $" (resolved from packet skill {skillId})"
                 : string.Empty;
             string message = appliedPacketOwnedAttack
-                ? $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level}{packetSkillResolution} (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}, special effect {(appliedSpecialEffect ? "registered" : "unavailable")})."
-                : $"Applied packet-owned Time Bomb reaction for {skillName}{packetSkillResolution} without a resolved melee-attack branch ({errorMessage}) (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}, special effect {(appliedSpecialEffect ? "registered" : "unavailable")}).";
+                ? $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level}{packetSkillResolution} (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}, special effect routed through the melee attack seam)."
+                : $"Applied packet-owned Time Bomb reaction for {skillName}{packetSkillResolution} without a resolved melee-attack branch ({errorMessage}) (target {timeBombX}, {timeBombY}, hit {appliedHitPeriodMs} ms, impact {impactPercent}%, damage {appliedDamage}, special effect unavailable).";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -8965,6 +9076,11 @@ namespace HaCreator.MapSimulator
 
         private bool TryPlayPacketOwnedWzSound(string descriptor, string defaultImageName, out string resolvedDescriptor, out string error)
         {
+            return TryPlayPacketOwnedWzSound(descriptor, defaultImageName, 1f, out resolvedDescriptor, out error);
+        }
+
+        private bool TryPlayPacketOwnedWzSound(string descriptor, string defaultImageName, float volumeScale, out string resolvedDescriptor, out string error)
+        {
             resolvedDescriptor = null;
             error = null;
 
@@ -8982,7 +9098,7 @@ namespace HaCreator.MapSimulator
 
             string soundKey = $"PacketOwnedSound:{resolvedDescriptor}";
             _soundManager.RegisterSound(soundKey, soundProperty);
-            _soundManager.PlaySound(soundKey);
+            _soundManager.PlaySound(soundKey, Math.Clamp(volumeScale, 0f, 1f));
             return true;
         }
 
