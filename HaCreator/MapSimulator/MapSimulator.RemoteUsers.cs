@@ -540,6 +540,7 @@ namespace HaCreator.MapSimulator
                 skillId,
                 hasGaugeOverride ? Math.Max(0, gaugeDurationMs) : 0,
                 durationMs);
+            bool resolvedIsKeydownSkill = PreparedSkillHudRules.ResolveKeyDownSkillState(skillId, isKeydownSkill: true);
             string skillName = skillNameParts != null && skillNameParts.Count > 0
                 ? string.Join(" ", skillNameParts)
                 : null;
@@ -557,7 +558,7 @@ namespace HaCreator.MapSimulator
                 skillName,
                 activeDurationMs,
                 skinKey,
-                isKeydownSkill: true,
+                resolvedIsKeydownSkill,
                 isHolding: startHolding,
                 gaugeDurationMs: resolvedGaugeDurationMs,
                 maxHoldDurationMs: maxHoldDurationMs,

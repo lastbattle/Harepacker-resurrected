@@ -79,6 +79,15 @@ namespace HaCreator.MapSimulator
                 && string.Equals(expectedValue ?? string.Empty, actualValue ?? string.Empty, StringComparison.Ordinal);
         }
 
+        internal static bool ShouldReplaceQueuedImpact(
+            PendingPortalSessionValueImpact existing,
+            PendingPortalSessionValueImpact incoming)
+        {
+            return existing?.IsValid != true
+                || (incoming?.IsValid == true
+                    && existing.MapId == incoming.MapId);
+        }
+
         internal static bool IsCompatibleIngress(
             PortalSessionValueImpactOwnerKind ownerKind,
             PortalSessionValueImpactIngress ingress)

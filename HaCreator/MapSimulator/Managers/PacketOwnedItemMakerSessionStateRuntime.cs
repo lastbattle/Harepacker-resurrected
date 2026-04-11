@@ -127,6 +127,41 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        public static bool ShouldClearPendingRequest(
+            PacketOwnedItemMakerSessionState sessionState,
+            PacketOwnedItemMakerPendingRequest pendingRequest)
+        {
+            if (pendingRequest == null)
+            {
+                return false;
+            }
+
+            sessionState ??= new PacketOwnedItemMakerSessionState();
+            if (!pendingRequest.IsDisassembly)
+            {
+                return !sessionState.ServerOwnsCraftExecution;
+            }
+
+            if (!sessionState.HasAuthoritativeDisassemblyTargets)
+            {
+                return false;
+            }
+
+            IReadOnlyList<PacketOwnedItemMakerDisassemblyTargetEntry> targets =
+                sessionState.DisassemblyTargets ?? Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>();
+            for (int i = 0; i < targets.Count; i++)
+            {
+                PacketOwnedItemMakerDisassemblyTargetEntry target = targets[i];
+                if (target.SlotIndex == pendingRequest.SourceSlotIndex
+                    && target.ItemId == pendingRequest.SourceItemId)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private static bool HasEntries<T>(IReadOnlyList<T> entries)
         {
             return entries != null && entries.Count > 0;

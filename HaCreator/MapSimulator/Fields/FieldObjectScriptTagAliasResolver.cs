@@ -242,50 +242,23 @@ namespace HaCreator.MapSimulator.Fields
                 yield break;
             }
 
-            int argumentIndex = 0;
-            foreach (string argument in EnumerateFunctionArguments(scriptName))
+            foreach (var (_, arguments) in EnumerateFunctionCalls(scriptName))
             {
-                string normalizedArgument = NormalizeFunctionAliasArgument(argument);
-                if (!IsPotentialAliasArgument(normalizedArgument, argumentIndex))
+                for (int argumentIndex = 0; argumentIndex < arguments.Count; argumentIndex++)
                 {
-                    argumentIndex++;
-                    continue;
+                    string normalizedArgument = NormalizeFunctionAliasArgument(arguments[argumentIndex]);
+                    if (!IsPotentialAliasArgument(normalizedArgument, argumentIndex))
+                    {
+                        continue;
+                    }
+
+                    yield return normalizedArgument;
+
+                    foreach (string nestedArgument in EnumerateFunctionAliasArguments(normalizedArgument))
+                    {
+                        yield return nestedArgument;
+                    }
                 }
-
-                yield return normalizedArgument;
-
-                foreach (string nestedArgument in EnumerateFunctionAliasArguments(normalizedArgument))
-                {
-                    yield return nestedArgument;
-                }
-
-                argumentIndex++;
-            }
-        }
-
-        private static IEnumerable<string> EnumerateFunctionArguments(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                yield break;
-            }
-
-            int openIndex = value.IndexOf('(');
-            while (openIndex >= 0)
-            {
-                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
-                if (closeIndex <= openIndex + 1)
-                {
-                    openIndex = value.IndexOf('(', openIndex + 1);
-                    continue;
-                }
-
-                foreach (string argument in SplitFunctionArguments(value[(openIndex + 1)..closeIndex]))
-                {
-                    yield return argument;
-                }
-
-                openIndex = value.IndexOf('(', openIndex + 1);
             }
         }
 

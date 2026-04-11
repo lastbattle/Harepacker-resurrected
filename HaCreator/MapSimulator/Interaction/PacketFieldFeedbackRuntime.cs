@@ -44,12 +44,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal Action ClearFieldFade { get; init; }
         internal Action<string> RequestBgm { get; init; }
         internal Func<string, bool> PlayFieldSound { get; init; }
-        internal Func<byte, bool> PlaySummonEffectSound { get; init; }
+        internal Func<byte, int, int, bool> PlaySummonEffectSound { get; init; }
         internal Func<string, bool?, int, int?, bool> SetObjectTagState { get; init; }
         internal Func<byte, int, int, bool> ShowSummonEffectVisual { get; init; }
         internal Func<string, bool> ShowScreenEffectVisual { get; init; }
         internal Func<int, int, int, bool> ShowRewardRouletteVisual { get; init; }
         internal Func<int, string> ResolveMobName { get; init; }
+        internal Func<int, int?> ResolveMobMaxHp { get; init; }
         internal Func<int, string> ResolveMapName { get; init; }
         internal Func<int, bool> HasMapTransferTarget { get; init; }
         internal Func<int, string> ResolveItemName { get; init; }
@@ -144,6 +145,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const string WhisperNotFoundFallback = "{0} could not be found.";
         private const string WhisperLocationFallback = "{0} is in {1}.";
         private const string WhisperHiddenFieldFallback = "{0} is in a hidden field.";
+        private const int HorntailBossHpFirstBodyMobId = 8810118;
+        private const int HorntailBossHpLastBodyMobId = 8810122;
         private static readonly Encoding SwindleEncoding = Encoding.Default;
         // Recovered from CCurseProcess::s_FilterChars in the v95 client.
         private static readonly byte[] SwindleFilteredCharacters =
@@ -902,7 +905,7 @@ namespace HaCreator.MapSimulator.Interaction
                         int x = reader.ReadInt32();
                         int y = reader.ReadInt32();
                         bool shown = callbacks?.ShowSummonEffectVisual?.Invoke(effectId, x, y) == true;
-                        callbacks?.PlaySummonEffectSound?.Invoke(effectId);
+                        callbacks?.PlaySummonEffectSound?.Invoke(effectId, x, y);
                         _lastFieldEffectSummary = $"summon effect #{effectId} at ({x}, {y})";
                         _statusMessage = shown
                             ? $"Applied packet-owned summon effect #{effectId}."
@@ -964,6 +967,7 @@ namespace HaCreator.MapSimulator.Interaction
                         int maxHp = reader.ReadInt32();
                         byte colorCode = reader.ReadByte();
                         byte phase = reader.ReadByte();
+                        (currentHp, maxHp) = ResolveBossHpTagValues(mobId, currentHp, maxHp, callbacks);
                         _bossHpState = new BossHpState(
                             mobId,
                             callbacks?.ResolveMobName?.Invoke(mobId) ?? $"Mob {mobId}",
@@ -2268,6 +2272,50 @@ namespace HaCreator.MapSimulator.Interaction
         internal static (bool IsPm, int Hour, int Minute, int Second) ResolveFieldClockDisplayTimeForTest(PacketFieldClockVisualState state, int currentTick)
         {
             return ResolveFieldClockDisplayTime(state, currentTick);
+        }
+
+        internal static (int CurrentHp, int MaxHp) ResolveBossHpTagValuesForTest(
+            int mobId,
+            int currentHp,
+            int maxHp,
+            PacketFieldFeedbackCallbacks callbacks = null)
+        {
+            return ResolveBossHpTagValues(mobId, currentHp, maxHp, callbacks);
+        }
+
+        private static (int CurrentHp, int MaxHp) ResolveBossHpTagValues(
+            int mobId,
+            int currentHp,
+            int maxHp,
+            PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (mobId < HorntailBossHpFirstBodyMobId || mobId > HorntailBossHpLastBodyMobId)
+            {
+                return (currentHp, maxHp);
+            }
+
+            long totalMaxHp = 0;
+            long completedPartHp = 0;
+            for (int partMobId = HorntailBossHpFirstBodyMobId; partMobId <= HorntailBossHpLastBodyMobId; partMobId++)
+            {
+                int? partMaxHp = callbacks?.ResolveMobMaxHp?.Invoke(partMobId);
+                if (partMaxHp.GetValueOrDefault() <= 0)
+                {
+                    return (currentHp, maxHp);
+                }
+
+                int scaledPartMaxHp = partMaxHp.Value / 1000;
+                totalMaxHp += scaledPartMaxHp;
+                if (partMobId > mobId)
+                {
+                    completedPartHp += scaledPartMaxHp;
+                }
+            }
+
+            long scaledCurrentHp = (currentHp / 1000L) + completedPartHp;
+            return (
+                (int)Math.Clamp(scaledCurrentHp, int.MinValue, int.MaxValue),
+                (int)Math.Clamp(totalMaxHp, 1L, int.MaxValue));
         }
 
         private void DrawBossHp(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)

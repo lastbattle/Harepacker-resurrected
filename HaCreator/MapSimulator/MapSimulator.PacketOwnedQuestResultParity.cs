@@ -316,10 +316,10 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            PacketQuestResultNoticeRouting noticeRouting = default;
             if (!string.IsNullOrWhiteSpace(noticeText))
             {
-                PacketQuestResultNoticeRouting noticeRouting =
-                    PacketQuestResultClientSemantics.ResolveNoticeRouting(resultType: 12, openedModal: false);
+                noticeRouting = PacketQuestResultClientSemantics.ResolveNoticeRouting(resultType: 12, openedModal: false);
                 DispatchPacketOwnedQuestResultNotice(
                     noticeText,
                     noticeRouting.Surface,
@@ -328,7 +328,7 @@ namespace HaCreator.MapSimulator
 
             message = string.IsNullOrWhiteSpace(noticeText)
                 ? $"Quest-result action summary for {questName} did not resolve any visible notice text."
-                : $"Displayed the packet-owned quest action summary for {questName} through the client-shaped UtilDlgEx notice surface (bAutoSeparated = 0).";
+                : $"Displayed the packet-owned quest action summary for {questName} through the client-shaped UtilDlgEx notice surface (bAutoSeparated = {(noticeRouting.AutoSeparated ? 1 : 0)}).";
             if (TryResolvePendingQuestDeliveryQuestResult(questId, out string deliveryOutcome))
             {
                 message = $"{message} {deliveryOutcome}";

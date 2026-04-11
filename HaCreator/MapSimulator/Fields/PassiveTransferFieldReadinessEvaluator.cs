@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator.Fields
         bool HasPendingRequest,
         bool HasOneTimeActionCompleted,
         bool HasReadyFieldInterface,
+        bool HasCollidingTransferPortal,
         bool HasLiveFieldInterface,
         bool HasPendingMapChange,
         bool HasBoundPlayer,
@@ -81,7 +82,9 @@ namespace HaCreator.MapSimulator.Fields
 
             if (state.HasOneTimeActionCompleted && state.HasReadyFieldInterface)
             {
-                return QueuedRetryDecision.ReplayHandleUpKeyDown;
+                return state.HasCollidingTransferPortal
+                    ? QueuedRetryDecision.ReplayHandleUpKeyDown
+                    : QueuedRetryDecision.Clear;
             }
 
             return ShouldKeepQueuedRetryPending(

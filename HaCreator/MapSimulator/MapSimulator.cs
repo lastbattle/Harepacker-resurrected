@@ -20942,9 +20942,33 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPickedUpConsumableRuntime(int itemId)
         {
-            return itemId > 0
-                   && InventoryItemMetadataResolver.IsConsumedOnPickup(itemId)
-                   && TryApplyQuestBuffItemReward(itemId);
+            if (itemId <= 0 || !InventoryItemMetadataResolver.IsConsumedOnPickup(itemId))
+            {
+                return false;
+            }
+
+            if (TryApplyQuestBuffItemReward(itemId))
+            {
+                return true;
+            }
+
+            ConsumableItemEffect effect = ResolveConsumableItemEffect(itemId);
+            if (!ShouldBurnConsumedOnPickupDeathMarkFallback(
+                    consumedOnPickup: true,
+                    curesDeathMark: effect.CuresDeathMark))
+            {
+                return false;
+            }
+
+            // WZ carries deathmark-only consumeOnPickup rows such as 2002058.
+            // Those drops are authored to disappear on pickup instead of becoming bag items.
+            ClearCurablePlayerMobStatuses(effect);
+            return true;
+        }
+
+        internal static bool ShouldBurnConsumedOnPickupDeathMarkFallback(bool consumedOnPickup, bool curesDeathMark)
+        {
+            return consumedOnPickup && curesDeathMark;
         }
 
         internal static int ResolvePickupRunOnPickupInventoryRemainder(
@@ -22284,6 +22308,19 @@ namespace HaCreator.MapSimulator
 
 
             return InventoryItemMetadataResolver.IsPetPickupBlocked(itemId);
+        }
+
+        private static bool IsClientPickupBlocked(DropItem drop)
+        {
+            if (drop == null
+                || drop.Type == Pools.DropType.Meso
+                || string.IsNullOrWhiteSpace(drop.ItemId)
+                || !int.TryParse(drop.ItemId, out int itemId))
+            {
+                return false;
+            }
+
+            return InventoryItemMetadataResolver.IsPickupBlocked(itemId);
         }
 
 
@@ -24879,7 +24916,7 @@ namespace HaCreator.MapSimulator
             }
 
             SocialRoomFieldActorSnapshot fieldActorSnapshot = runtime?.GetFieldActorSnapshot(DateTime.UtcNow);
-            if (runtime == null || fieldActorSnapshot == null)
+            if (runtime == null)
             {
                 return;
             }
@@ -26820,24 +26857,26 @@ namespace HaCreator.MapSimulator
         {
             PlayerCharacter player = _playerManager?.Player;
             bool hasLiveFieldInterface = HasPassiveTransferFieldInterface();
+            bool hasCollidingTransferPortal = HasPassiveTransferFieldPortalCollision();
             return PassiveTransferFieldReadinessEvaluator.EvaluateQueuedRetryDecision(
                 new PassiveTransferFieldQueuedRetryDecisionState(
                     HasPendingRequest: _passiveTransferRequestPending,
                     HasOneTimeActionCompleted: player?.IsPlayingClientOwnedOneTimeAction != true,
                     HasReadyFieldInterface: player?.IsPlayingClientOwnedOneTimeAction != true
-                                            && ResolvePassiveTransferFieldReadyState(currentTime),
+                                            && ResolvePassiveTransferFieldReadyState(currentTime, requirePortalCollision: false),
+                    HasCollidingTransferPortal: hasCollidingTransferPortal,
                     HasLiveFieldInterface: hasLiveFieldInterface,
                     HasPendingMapChange: _gameState.PendingMapChange,
                     HasBoundPlayer: player != null,
                     IsPlayerActive: _playerManager?.IsPlayerActive == true));
         }
 
-        private bool ResolvePassiveTransferFieldReadyState(int currentTime)
+        private bool ResolvePassiveTransferFieldReadyState(int currentTime, bool requirePortalCollision = true)
         {
             return PassiveTransferFieldReadinessEvaluator.CanRetryFromLiveFieldInterface(
                 new PassiveTransferFieldInterfaceState(
                     HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
-                    HasCollidingTransferPortal: HasPassiveTransferFieldPortalCollision(),
+                    HasCollidingTransferPortal: !requirePortalCollision || HasPassiveTransferFieldPortalCollision(),
                     HasActiveVectorControl: _playerManager?.IsPlayerActive == true,
                     HasPendingMapChange: _gameState.PendingMapChange,
                     HasPlayerInputControl: _gameState.IsPlayerInputEnabled,
@@ -28122,6 +28161,7 @@ namespace HaCreator.MapSimulator
             ApplyMesoAnimationsToDropPool();
             _dropPool.SetPickupAvailabilityEvaluator(EvaluatePickupAvailability);
             _dropPool.SetPetPickupAvailabilityEvaluator(EvaluatePetPickupAvailability);
+            _dropPool.SetClientPickupBlockEvaluator(IsClientPickupBlocked);
             _dropPool.SetPickupActorNameResolver(ResolvePickupActorNameForHistory);
             _dropPool.SetGroundLevelLookup((x, y) =>
             {

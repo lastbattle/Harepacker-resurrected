@@ -1509,8 +1509,10 @@ namespace HaCreator.MapSimulator.Interaction
                     OpaquePreMapTransferSectionBytes = opaquePreMapTransferBytes ?? Array.Empty<byte>(),
                     OpaqueInt16ValueRecordByteCount = 0,
                     OpaqueInt16ValueRecordCount = 0,
+                    OpaqueInt16ValueRecordEntries = null,
                     OpaqueInt16ValueRecords = null,
                     Int16ValueRecordCount = 0,
+                    Int16ValueRecordEntries = null,
                     Int16ValueRecords = null
                 };
 
@@ -1518,22 +1520,26 @@ namespace HaCreator.MapSimulator.Interaction
                     TryReadOpaqueCharacterDataInt16ValueRecords(
                         opaquePreMapTransferBytes,
                         out int opaqueInt16ValueRecordByteCount,
+                        out IReadOnlyList<PacketCharacterDataInt16ValueRecord> opaqueInt16ValueRecordEntries,
                         out IReadOnlyDictionary<int, int> opaqueInt16ValueRecords))
                 {
                     decoratedSnapshot = decoratedSnapshot with
                     {
                         OpaqueInt16ValueRecordByteCount = opaqueInt16ValueRecordByteCount,
-                        OpaqueInt16ValueRecordCount = opaqueInt16ValueRecords.Count,
+                        OpaqueInt16ValueRecordCount = opaqueInt16ValueRecordEntries.Count,
+                        OpaqueInt16ValueRecordEntries = opaqueInt16ValueRecordEntries,
                         OpaqueInt16ValueRecords = opaqueInt16ValueRecords
                     };
                 }
 
                 if (decodeInt16ValueRecords)
                 {
-                    IReadOnlyDictionary<int, int> int16ValueRecords = ReadCharacterDataInt16ValueRecords(reader);
+                    IReadOnlyList<PacketCharacterDataInt16ValueRecord> int16ValueRecordEntries =
+                        ReadCharacterDataInt16ValueRecords(reader, out IReadOnlyDictionary<int, int> int16ValueRecords);
                     decoratedSnapshot = decoratedSnapshot with
                     {
-                        Int16ValueRecordCount = int16ValueRecords.Count,
+                        Int16ValueRecordCount = int16ValueRecordEntries.Count,
+                        Int16ValueRecordEntries = int16ValueRecordEntries,
                         Int16ValueRecords = int16ValueRecords
                     };
                 }
@@ -1636,9 +1642,11 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool TryReadOpaqueCharacterDataInt16ValueRecords(
             byte[] opaqueBytes,
             out int consumedByteCount,
+            out IReadOnlyList<PacketCharacterDataInt16ValueRecord> recordEntries,
             out IReadOnlyDictionary<int, int> records)
         {
             consumedByteCount = 0;
+            recordEntries = null;
             records = null;
             if (opaqueBytes == null || opaqueBytes.Length < sizeof(ushort))
             {
@@ -1649,13 +1657,14 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 using MemoryStream stream = new(opaqueBytes, writable: false);
                 using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
-                records = ReadCharacterDataInt16ValueRecords(reader);
+                recordEntries = ReadCharacterDataInt16ValueRecords(reader, out records);
                 consumedByteCount = checked((int)stream.Position);
                 return consumedByteCount >= sizeof(ushort);
             }
             catch (Exception) when (opaqueBytes.Length > 0)
             {
                 consumedByteCount = 0;
+                recordEntries = null;
                 records = null;
                 return false;
             }
@@ -1702,7 +1711,9 @@ namespace HaCreator.MapSimulator.Interaction
                 IReadOnlyDictionary<int, int> skillRecords = null;
                 IReadOnlyDictionary<int, int> skillMasterLevels = null;
                 IReadOnlyDictionary<int, int> rawSkillMasterLevels = null;
+                IReadOnlyList<PacketCharacterDataSkillExpirationRecord> skillExpirationRecordEntries = null;
                 IReadOnlyDictionary<int, long> skillExpirations = null;
+                IReadOnlyList<PacketCharacterDataInt16ValueRecord> skillCooldownRecordEntries = null;
                 IReadOnlyDictionary<int, int> skillCooldowns = null;
                 int skillRecordCount = 0;
                 int skillExpirationRecordCount = 0;
@@ -1723,15 +1734,16 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if ((characterDataFlags & CharacterDataSkillExpirationFlag) != 0)
                 {
-                    skillExpirations = ReadCharacterDataSkillExpirationRecords(reader);
-                    skillExpirationRecordCount = skillExpirations.Count;
+                    skillExpirationRecordEntries = ReadCharacterDataSkillExpirationRecords(reader, out skillExpirations);
+                    skillExpirationRecordCount = skillExpirationRecordEntries.Count;
                     skillRecordEntries = MergeSkillRecordExpirations(skillRecordEntries, skillExpirations);
                 }
 
                 if ((characterDataFlags & CharacterDataSkillCooldownFlag) != 0)
                 {
-                    skillCooldowns = ReadCharacterDataInt16ValueRecords(reader);
-                    skillCooldownRecordCount = skillCooldowns.Count;
+                    skillCooldownRecordEntries = ReadCharacterDataInt16ValueRecords(reader, out skillCooldowns);
+                    skillCooldownRecordCount = skillCooldownRecordEntries.Count;
+                    skillRecordEntries = MergeSkillRecordCooldowns(skillRecordEntries, skillCooldowns);
                 }
 
                 decoratedSnapshot = snapshot with
@@ -1741,12 +1753,15 @@ namespace HaCreator.MapSimulator.Interaction
                     SkillCooldownRecordCount = skillCooldownRecordCount,
                     SkillRecords = skillRecords,
                     SkillExpirationFileTimes = skillExpirations,
+                    SkillExpirationRecordEntries = skillExpirationRecordEntries,
                     SkillCooldownRemainingSecondsBySkillId = skillCooldowns,
+                    SkillCooldownRecordEntries = skillCooldownRecordEntries,
                     SkillRecordEntries = skillRecordEntries,
                     SkillMasterLevelRecordCount = skillMasterLevelRecordCount,
                     SkillMasterLevels = skillMasterLevels,
                     RawSkillMasterLevels = rawSkillMasterLevels,
                     Int16ValueRecordCount = 0,
+                    Int16ValueRecordEntries = null,
                     Int16ValueRecords = null,
                     QuestRecordCount = 0,
                     QuestRecordValues = null,
@@ -1814,21 +1829,26 @@ namespace HaCreator.MapSimulator.Interaction
             rawSkillMasterLevels = rawMasterLevelsBySkillId;
         }
 
-        private static IReadOnlyDictionary<int, long> ReadCharacterDataSkillExpirationRecords(BinaryReader reader)
+        private static IReadOnlyList<PacketCharacterDataSkillExpirationRecord> ReadCharacterDataSkillExpirationRecords(
+            BinaryReader reader,
+            out IReadOnlyDictionary<int, long> records)
         {
             ushort count = reader.ReadUInt16();
-            Dictionary<int, long> records = new(count);
+            List<PacketCharacterDataSkillExpirationRecord> entries = new(count);
+            Dictionary<int, long> recordsBySkillId = new(count);
             for (int i = 0; i < count; i++)
             {
                 int key = reader.ReadInt32();
                 long value = reader.ReadInt64();
                 if (key > 0)
                 {
-                    records[key] = value;
+                    entries.Add(new PacketCharacterDataSkillExpirationRecord(key, value));
+                    recordsBySkillId[key] = value;
                 }
             }
 
-            return records;
+            records = recordsBySkillId;
+            return entries;
         }
 
         private static IReadOnlyList<long> ReadCharacterDataInt64Array(BinaryReader reader, int count)
@@ -1847,21 +1867,27 @@ namespace HaCreator.MapSimulator.Interaction
             return values;
         }
 
-        private static IReadOnlyDictionary<int, int> ReadCharacterDataInt16ValueRecords(BinaryReader reader)
+        private static IReadOnlyList<PacketCharacterDataInt16ValueRecord> ReadCharacterDataInt16ValueRecords(
+            BinaryReader reader,
+            out IReadOnlyDictionary<int, int> records)
         {
             ushort count = reader.ReadUInt16();
-            Dictionary<int, int> records = new(count);
+            List<PacketCharacterDataInt16ValueRecord> entries = new(count);
+            Dictionary<int, int> recordsByKey = new(count);
             for (int i = 0; i < count; i++)
             {
                 int key = reader.ReadInt32();
                 int value = reader.ReadUInt16();
                 if (key > 0)
                 {
-                    records[key] = Math.Max(0, value);
+                    int normalizedValue = Math.Max(0, value);
+                    entries.Add(new PacketCharacterDataInt16ValueRecord(key, normalizedValue));
+                    recordsByKey[key] = normalizedValue;
                 }
             }
 
-            return records;
+            records = recordsByKey;
+            return entries;
         }
 
         private static IReadOnlyDictionary<int, string> ReadCharacterDataQuestStringRecords(BinaryReader reader)
@@ -1966,6 +1992,30 @@ namespace HaCreator.MapSimulator.Interaction
                 merged.Add(entry with
                 {
                     ExpirationFileTime = expirationFileTime
+                });
+            }
+
+            return merged;
+        }
+
+        private static IReadOnlyList<PacketCharacterDataSkillRecord> MergeSkillRecordCooldowns(
+            IReadOnlyList<PacketCharacterDataSkillRecord> skillRecordEntries,
+            IReadOnlyDictionary<int, int> skillCooldowns)
+        {
+            if (skillRecordEntries == null || skillRecordEntries.Count == 0 || skillCooldowns == null || skillCooldowns.Count == 0)
+            {
+                return skillRecordEntries;
+            }
+
+            List<PacketCharacterDataSkillRecord> merged = new(skillRecordEntries.Count);
+            foreach (PacketCharacterDataSkillRecord entry in skillRecordEntries)
+            {
+                int remainingSeconds = skillCooldowns.TryGetValue(entry.SkillId, out int resolvedSeconds)
+                    ? resolvedSeconds
+                    : entry.RemainingCooldownSeconds;
+                merged.Add(entry with
+                {
+                    RemainingCooldownSeconds = remainingSeconds
                 });
             }
 
@@ -2429,7 +2479,16 @@ namespace HaCreator.MapSimulator.Interaction
         int MasterLevel = 0,
         int RawSkillLevel = 0,
         int RawMasterLevel = 0,
-        bool HasMasterLevelData = false);
+        bool HasMasterLevelData = false,
+        int RemainingCooldownSeconds = 0);
+
+    internal readonly record struct PacketCharacterDataSkillExpirationRecord(
+        int SkillId,
+        long ExpirationFileTime);
+
+    internal readonly record struct PacketCharacterDataInt16ValueRecord(
+        int Key,
+        int Value);
 
     internal readonly record struct PacketCharacterDataNewYearCardRecord(
         int SerialNumber,
@@ -2536,10 +2595,13 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyDictionary<int, long> SkillExpirationFileTimes = null,
         IReadOnlyDictionary<int, int> SkillCooldownRemainingSecondsBySkillId = null,
         IReadOnlyList<PacketCharacterDataSkillRecord> SkillRecordEntries = null,
+        IReadOnlyList<PacketCharacterDataSkillExpirationRecord> SkillExpirationRecordEntries = null,
+        IReadOnlyList<PacketCharacterDataInt16ValueRecord> SkillCooldownRecordEntries = null,
         int SkillMasterLevelRecordCount = 0,
         IReadOnlyDictionary<int, int> SkillMasterLevels = null,
         IReadOnlyDictionary<int, int> RawSkillMasterLevels = null,
         int Int16ValueRecordCount = 0,
+        IReadOnlyList<PacketCharacterDataInt16ValueRecord> Int16ValueRecordEntries = null,
         IReadOnlyDictionary<int, int> Int16ValueRecords = null,
         int QuestRecordCount = 0,
         IReadOnlyDictionary<int, string> QuestRecordValues = null,
@@ -2550,6 +2612,7 @@ namespace HaCreator.MapSimulator.Interaction
         byte[] OpaquePreMapTransferSectionBytes = null,
         int OpaqueInt16ValueRecordByteCount = 0,
         int OpaqueInt16ValueRecordCount = 0,
+        IReadOnlyList<PacketCharacterDataInt16ValueRecord> OpaqueInt16ValueRecordEntries = null,
         IReadOnlyDictionary<int, int> OpaqueInt16ValueRecords = null,
         IReadOnlyList<int> RegularMapTransferFields = null,
         IReadOnlyList<int> ContinentMapTransferFields = null,

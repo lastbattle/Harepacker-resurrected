@@ -747,7 +747,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return string.IsNullOrWhiteSpace(tooltipText)
                 ? string.Empty
-                : tooltipText.Trim();
+                : QuestAlarmOwnerStringPoolText.NormalizePacketEscapedText(tooltipText);
         }
 
         public void ClearPacketOwnedQuestAlarmTitleTooltip(int questId)
@@ -8721,7 +8721,10 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     hasComparableRequirement = true;
-                    if (string.Equals(normalizedRecordValue, requiredValue, StringComparison.OrdinalIgnoreCase))
+                    if (IsQuestRecordValueRequirementMet(
+                        normalizedRecordValue,
+                        requiredValue,
+                        valueRequirements[i].Condition))
                     {
                         hasMatchingRequirement = true;
                         break;
@@ -8761,6 +8764,30 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return false;
+        }
+
+        internal static bool IsQuestRecordValueRequirementMet(
+            string recordValue,
+            string requiredValue,
+            int condition)
+        {
+            string normalizedRecordValue = recordValue?.Trim() ?? string.Empty;
+            string normalizedRequiredValue = requiredValue?.Trim() ?? string.Empty;
+            if (condition == 1 &&
+                int.TryParse(normalizedRecordValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int currentMinimumValue) &&
+                int.TryParse(normalizedRequiredValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int requiredMinimumValue))
+            {
+                return currentMinimumValue >= requiredMinimumValue;
+            }
+
+            if (condition == 2 &&
+                int.TryParse(normalizedRecordValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int currentMaximumValue) &&
+                int.TryParse(normalizedRequiredValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int requiredMaximumValue))
+            {
+                return currentMaximumValue <= requiredMaximumValue;
+            }
+
+            return string.Equals(normalizedRecordValue, normalizedRequiredValue, StringComparison.OrdinalIgnoreCase);
         }
 
         private static void AppendConversationPage(WzImageProperty property, ICollection<NpcInteractionPage> pages)

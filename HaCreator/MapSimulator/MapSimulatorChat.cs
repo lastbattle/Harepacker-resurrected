@@ -664,9 +664,7 @@ namespace HaCreator.MapSimulator
                     }
                     else if (IsWhisperTargetPickerModalDropdownNavigating())
                     {
-                        MoveWhisperTargetPickerSelectionToBoundary(
-                            moveToLast: false,
-                            updateInputText: false);
+                        _cursorPosition = 0;
                     }
                     else
                     {
@@ -699,9 +697,7 @@ namespace HaCreator.MapSimulator
                     }
                     else if (IsWhisperTargetPickerModalDropdownNavigating())
                     {
-                        MoveWhisperTargetPickerSelectionToBoundary(
-                            moveToLast: true,
-                            updateInputText: false);
+                        _cursorPosition = _inputText.Length;
                     }
                     else
                     {
@@ -733,9 +729,7 @@ namespace HaCreator.MapSimulator
                     }
                     else if (IsWhisperTargetPickerModalDropdownNavigating())
                     {
-                        PageWhisperTargetPickerSelection(
-                            -1,
-                            updateInputText: false);
+                        return true;
                     }
 
                     return true;
@@ -760,9 +754,7 @@ namespace HaCreator.MapSimulator
                     }
                     else if (IsWhisperTargetPickerModalDropdownNavigating())
                     {
-                        PageWhisperTargetPickerSelection(
-                            1,
-                            updateInputText: false);
+                        return true;
                     }
 
                     return true;

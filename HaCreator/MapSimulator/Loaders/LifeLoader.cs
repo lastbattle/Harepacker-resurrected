@@ -693,7 +693,8 @@ namespace HaCreator.MapSimulator.Loaders
                         entry.Key,
                         hitEffectEntry.Frames,
                         hitEffectEntry.SourceFrameIndex,
-                        hitEffectEntry.IsAttackFrameOwned);
+                        hitEffectEntry.IsAttackFrameOwned,
+                        hitEffectEntry.UsesAttackInfoHitEffect);
                 }
             }
 
@@ -745,7 +746,8 @@ namespace HaCreator.MapSimulator.Loaders
             string actionName,
             List<IDXObject> hitFrames,
             int sourceFrameIndex,
-            bool isAttackFrameOwned)
+            bool isAttackFrameOwned,
+            bool usesAttackInfoHitEffect = false)
         {
             if (cachedAssets == null || string.IsNullOrEmpty(actionName) || hitFrames == null || hitFrames.Count == 0)
             {
@@ -762,7 +764,8 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 Frames = hitFrames,
                 SourceFrameIndex = sourceFrameIndex,
-                IsAttackFrameOwned = isAttackFrameOwned
+                IsAttackFrameOwned = isAttackFrameOwned,
+                UsesAttackInfoHitEffect = usesAttackInfoHitEffect
             });
         }
 

@@ -291,9 +291,58 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            if (TryGetNativeStageBackSide(stageBackImageGroup.Name, out bool front))
+            {
+                AppendNativeStageBackSideContainerEntries(stageBackImageGroup, front, entries);
+                return;
+            }
+
             string backgroundSet = stageBackImageGroup.Name;
+            int entryCountBeforeWrapperParse = entries.Count;
             AppendNativeStageBackImageEntries(backgroundSet, stageBackImageGroup["back"], front: false, entries);
             AppendNativeStageBackImageEntries(backgroundSet, stageBackImageGroup["front"], front: true, entries);
+            if (entries.Count != entryCountBeforeWrapperParse)
+            {
+                return;
+            }
+
+            // `LoadStageBackImgInfo` enumerates each background set under
+            // `aStageBackImg` and then its numeric object children directly.
+            AppendNativeStageBackImageEntries(backgroundSet, stageBackImageGroup, front: false, entries);
+        }
+
+        private static void AppendNativeStageBackSideContainerEntries(
+            WzImageProperty sideContainer,
+            bool front,
+            List<ContextOwnedStageBackImageEntry> entries)
+        {
+            if (sideContainer == null || entries == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty backgroundSetProperty in sideContainer.WzProperties.OfType<WzImageProperty>())
+            {
+                AppendNativeStageBackImageEntries(backgroundSetProperty.Name, backgroundSetProperty, front, entries);
+            }
+        }
+
+        private static bool TryGetNativeStageBackSide(string name, out bool front)
+        {
+            if (string.Equals(name, "back", StringComparison.Ordinal))
+            {
+                front = false;
+                return true;
+            }
+
+            if (string.Equals(name, "front", StringComparison.Ordinal))
+            {
+                front = true;
+                return true;
+            }
+
+            front = false;
+            return false;
         }
 
         private static void AppendNativeStageBackImageEntries(

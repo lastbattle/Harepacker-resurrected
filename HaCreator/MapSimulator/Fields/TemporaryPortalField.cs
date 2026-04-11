@@ -28,7 +28,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int CrossMapPortalTeleportDelayMs = 0;
         private const int DefaultOpenGateOpeningDurationMs = 1960;
         private const int DefaultOpenGateRemovalDurationMs = 1800;
-        private const int DefaultTownPortalOpeningDurationMs = 1700;
+        private const int DefaultTownPortalOpeningDurationMs = 1800;
         private const int TownPortalRemovalFadeDurationMs = 1000;
         private const float PortalInteractRangeX = 40f;
         private const float PortalInteractRangeY = 60f;

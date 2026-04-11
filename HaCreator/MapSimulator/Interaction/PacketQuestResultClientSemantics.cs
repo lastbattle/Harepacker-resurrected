@@ -61,7 +61,7 @@ namespace HaCreator.MapSimulator.Interaction
                 12 => new PacketQuestResultNoticeRouting(
                     PacketQuestResultNoticeSurface.UtilDialogNotice,
                     PacketQuestResultNoticeDispatchStage.Immediate,
-                    AutoSeparated: false),
+                    AutoSeparated: true),
                 _ => new PacketQuestResultNoticeRouting(
                     PacketQuestResultNoticeSurface.Chat,
                     PacketQuestResultNoticeDispatchStage.Immediate,

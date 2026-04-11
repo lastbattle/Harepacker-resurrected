@@ -131,6 +131,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int RandomMorphRequestAckPacketType = 1042;
         public const int QuestAlarmTitleTooltipPacketType = 1043;
         public const int ClassCompetitionRemotePagePacketType = 1044;
+        public const int QuestAlarmRegistrationSyncPacketType = 1045;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
@@ -428,6 +429,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("cuiquestalarmtooltip", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = QuestAlarmTitleTooltipPacketType;
+                return true;
+            }
+
+            if (token.Equals("questalarmsync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("questalarmregistrationsync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("questhelperregistrationsync", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cuiquestalarmsync", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = QuestAlarmRegistrationSyncPacketType;
                 return true;
             }
 
@@ -1184,6 +1194,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == QuestRewardRaiseQuestRecordMessagePacketType
                 || packetType == RandomMorphRequestAckPacketType
                 || packetType == QuestAlarmTitleTooltipPacketType
+                || packetType == QuestAlarmRegistrationSyncPacketType
                 || packetType == ClassCompetitionRemotePagePacketType;
         }
 
@@ -1391,6 +1402,7 @@ namespace HaCreator.MapSimulator.Managers
                 QuestRewardRaiseQuestRecordMessagePacketType => "RaiseQuestRecordMessage(1041)",
                 RandomMorphRequestAckPacketType => "RandomMorphRequestAck(1042)",
                 QuestAlarmTitleTooltipPacketType => "QuestAlarmTitleTooltip(1043)",
+                QuestAlarmRegistrationSyncPacketType => "QuestAlarmRegistrationSync(1045)",
                 ClassCompetitionRemotePagePacketType => "ClassCompetitionRemotePage(1044)",
                 _ => $"packet {packetType}"
             };

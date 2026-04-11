@@ -319,9 +319,7 @@ namespace HaCreator.MapSimulator
             int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
             PrunePendingPortalSessionValueImpacts(currentMapId);
             _pendingPortalSessionValueImpacts.RemoveAll(entry =>
-                entry.MapId == pendingImpact.MapId
-                && entry.OwnerKind == pendingImpact.OwnerKind
-                && PendingPortalSessionValueImpact.IsMatch(entry.Key, entry.Value, pendingImpact.Key, pendingImpact.Value));
+                PendingPortalSessionValueImpact.ShouldReplaceQueuedImpact(entry, pendingImpact));
             _pendingPortalSessionValueImpacts.Add(pendingImpact);
         }
 

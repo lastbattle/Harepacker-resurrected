@@ -456,31 +456,13 @@ namespace HaCreator.MapSimulator
             }
 
             _initialQuizOwnerResultSent = true;
-            NpcInteractionInputSubmission submission = new()
+            PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket =
+                _packetScriptMessageRuntime.BuildInitialQuizOwnerResponsePacket(submittedValue);
+            bool dispatched = TryDispatchPacketScriptResponse(responsePacket, out string dispatchStatus);
+            _packetScriptMessageRuntime.RecordResponseDispatch(responsePacket, dispatched, dispatchStatus);
+            if (showFeedback)
             {
-                EntryId = 1,
-                EntryTitle = "Initial Quiz",
-                NpcName = "Initial Quiz",
-                PresentationStyle = NpcInteractionPresentationStyle.PacketScriptUtilDialog,
-                Kind = NpcInteractionInputKind.Text,
-                Value = submittedValue
-            };
-
-            if (_packetScriptMessageRuntime.TryBuildResponsePacket(
-                submission,
-                out PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket,
-                out string message))
-            {
-                bool dispatched = TryDispatchPacketScriptResponse(responsePacket, out string dispatchStatus);
-                _packetScriptMessageRuntime.RecordResponseDispatch(responsePacket, dispatched, dispatchStatus);
-                if (showFeedback)
-                {
-                    ShowUtilityFeedbackMessage($"{message} {dispatchStatus}".Trim());
-                }
-            }
-            else if (showFeedback && !string.IsNullOrWhiteSpace(message))
-            {
-                ShowUtilityFeedbackMessage(message);
+                ShowUtilityFeedbackMessage($"{responsePacket.Summary} {dispatchStatus}".Trim());
             }
 
             _initialQuizTimerRuntime.Clear();

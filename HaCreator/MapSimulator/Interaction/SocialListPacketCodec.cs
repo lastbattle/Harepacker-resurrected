@@ -1038,7 +1038,7 @@ namespace HaCreator.MapSimulator.Interaction
                     case SocialListClientGuildResultKind.ResultNotice:
                     {
                         bool hasExplicitNotice = reader.ReadBoolean();
-                        string resultNotice = hasExplicitNotice && reader.HasRemaining
+                        string resultNotice = hasExplicitNotice
                             ? reader.ReadString16().Trim()
                             : null;
                         packet = new SocialListClientGuildResultPacket(

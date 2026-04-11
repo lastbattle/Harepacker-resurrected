@@ -421,6 +421,8 @@ namespace HaCreator.MapSimulator
                 message = adminShopWindow.ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(
                     resultSnapshot.Subtype,
                     resultSnapshot.ResultCode,
+                    resultSnapshot.TrailingByteCount,
+                    resultSnapshot.HasResultCode,
                     resultBlockingOwner);
                 return true;
             }
@@ -430,6 +432,8 @@ namespace HaCreator.MapSimulator
                 message = adminShopWindow.ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(
                     resultSnapshot.Subtype,
                     resultSnapshot.ResultCode,
+                    resultSnapshot.TrailingByteCount,
+                    resultSnapshot.HasResultCode,
                     blockingOwner: null);
                 return true;
             }
@@ -437,6 +441,8 @@ namespace HaCreator.MapSimulator
             bool applied = adminShopWindow.TryApplyPacketOwnedAdminShopResult(
                 resultSnapshot.Subtype,
                 resultSnapshot.ResultCode,
+                resultSnapshot.TrailingByteCount,
+                resultSnapshot.HasResultCode,
                 out message,
                 out string notice,
                 out bool reopenRequested);

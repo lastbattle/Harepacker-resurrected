@@ -198,6 +198,7 @@ namespace HaCreator.MapSimulator
                 ShowScreenEffectVisual = TryShowPacketOwnedScreenEffect,
                 ShowRewardRouletteVisual = TryShowPacketOwnedRewardRouletteEffect,
                 ResolveMobName = ResolvePacketFieldFeedbackMobName,
+                ResolveMobMaxHp = ResolvePacketFieldFeedbackMobMaxHp,
                 ResolveMapName = mapId => ResolveMapTransferDisplayName(mapId, null),
                 HasMapTransferTarget = HasPacketOwnedWhisperTransferTarget,
                 ResolveItemName = ResolvePacketFieldFeedbackItemName,
@@ -320,15 +321,51 @@ namespace HaCreator.MapSimulator
             _remoteEvolRingFloatNoticeExpireTime = currentTime + RemoteEvolRingFloatNoticeDurationMs;
         }
 
-        private bool TryPlayPacketOwnedSummonEffectSound(byte effectId)
+        private bool TryPlayPacketOwnedSummonEffectSound(byte effectId, int x, int y)
         {
             string descriptor = ResolvePacketOwnedSummonSoundDescriptor(effectId);
+            float volumeScale = ResolvePacketOwnedSummonSoundVolumeScale(x, y);
             bool played = TryPlayPacketOwnedWzSound(
                 descriptor,
                 "Summon.img",
+                volumeScale,
                 out _,
                 out _);
             return played || ShouldBypassPacketOwnedSummonSoundResourceProbe(effectId);
+        }
+
+        private float ResolvePacketOwnedSummonSoundVolumeScale(int x, int y)
+        {
+            Vector2? playerPosition = _playerManager?.Player?.Position;
+            if (!playerPosition.HasValue)
+            {
+                return ResolvePacketOwnedSummonSoundVolumeScale(null, x, y);
+            }
+
+            return ResolvePacketOwnedSummonSoundVolumeScale(playerPosition.Value, x, y);
+        }
+
+        private static float ResolvePacketOwnedSummonSoundVolumeScale(Vector2? playerPosition, int x, int y)
+        {
+            if (!playerPosition.HasValue)
+            {
+                return 0.4f;
+            }
+
+            double dx = playerPosition.Value.X - x;
+            double dy = playerPosition.Value.Y - y;
+            double distance = Math.Sqrt((dx * dx) + (dy * dy) + 0.001d);
+            if (distance < 250d)
+            {
+                return 1f;
+            }
+
+            if (distance <= 1000d)
+            {
+                return (float)Math.Clamp(1.2d - (distance * 0.0008d), 0.4d, 1d);
+            }
+
+            return 0.4f;
         }
 
         private static string ResolvePacketOwnedFieldBgmOverrideName(string descriptor)
@@ -376,6 +413,37 @@ namespace HaCreator.MapSimulator
         private static string ResolvePacketFieldFeedbackMobName(int mobId)
         {
             return ResolvePacketGuideMobName(mobId);
+        }
+
+        private static int? ResolvePacketFieldFeedbackMobMaxHp(int mobId)
+        {
+            if (mobId <= 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                WzImage mobImage = Program.FindImage("Mob", $"{mobId.ToString(CultureInfo.InvariantCulture)}.img");
+                if (mobImage == null)
+                {
+                    return null;
+                }
+
+                if (!mobImage.Parsed)
+                {
+                    mobImage.ParseImage();
+                }
+
+                int? maxHp = mobImage["info"]?["maxHP"]?.GetInt();
+                return maxHp.GetValueOrDefault() > 0
+                    ? maxHp
+                    : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static string ResolvePacketFieldFeedbackItemName(int itemId)
@@ -1684,6 +1752,14 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldBypassPacketOwnedSummonSoundResourceProbeForTest(byte effectId)
         {
             return ShouldBypassPacketOwnedSummonSoundResourceProbe(effectId);
+        }
+
+        internal static float ResolvePacketOwnedSummonSoundVolumeScaleForTest(float? playerX, float? playerY, int x, int y)
+        {
+            Vector2? playerPosition = playerX.HasValue && playerY.HasValue
+                ? new Vector2(playerX.Value, playerY.Value)
+                : null;
+            return ResolvePacketOwnedSummonSoundVolumeScale(playerPosition, x, y);
         }
 
         internal static string ResolvePacketOwnedFieldBgmOverrideNameForTest(string descriptor)

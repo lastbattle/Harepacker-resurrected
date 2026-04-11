@@ -131,27 +131,36 @@ namespace HaCreator.MapSimulator
         {
             RestorePacketOwnedBackEffect();
             backgrounds_back.Clear();
+            backgrounds_front.Clear();
 
             if (TryReloadContextOwnedStagePeriodStageBackLayers())
             {
                 _backgroundsBackArray = backgrounds_back.ToArray();
+                _backgroundsFrontArray = backgrounds_front.ToArray();
                 RefreshMobRenderArray();
                 return;
             }
 
-            if (_mapBoard?.BoardItems?.BackBackgrounds == null)
+            if (_mapBoard?.BoardItems == null)
             {
                 _backgroundsBackArray = Array.Empty<BackgroundItem>();
+                _backgroundsFrontArray = Array.Empty<BackgroundItem>();
                 RefreshMobRenderArray();
                 return;
             }
 
-            foreach (BackgroundInstance background in _mapBoard.BoardItems.BackBackgrounds)
+            foreach (BackgroundInstance background in _mapBoard.BoardItems.BackBackgrounds ?? Enumerable.Empty<BackgroundInstance>())
+            {
+                TryAppendContextOwnedStageBackground(background, background?.BaseInfo?.ParentObject as WzImageProperty);
+            }
+
+            foreach (BackgroundInstance background in _mapBoard.BoardItems.FrontBackgrounds ?? Enumerable.Empty<BackgroundInstance>())
             {
                 TryAppendContextOwnedStageBackground(background, background?.BaseInfo?.ParentObject as WzImageProperty);
             }
 
             _backgroundsBackArray = backgrounds_back.ToArray();
+            _backgroundsFrontArray = backgrounds_front.ToArray();
             RefreshMobRenderArray();
         }
 
@@ -192,7 +201,7 @@ namespace HaCreator.MapSimulator
                 TryAppendContextOwnedStageBackground(backgroundInstance, sourceProperty);
             }
 
-            return backgrounds_back.Count > 0;
+            return backgrounds_back.Count > 0 || backgrounds_front.Count > 0;
         }
 
         private void TryAppendContextOwnedStageBackground(BackgroundInstance background, WzImageProperty sourceProperty)
@@ -212,7 +221,14 @@ namespace HaCreator.MapSimulator
                 background.Flip);
             if (bgItem != null)
             {
-                backgrounds_back.Add(bgItem);
+                if (background.front)
+                {
+                    backgrounds_front.Add(bgItem);
+                }
+                else
+                {
+                    backgrounds_back.Add(bgItem);
+                }
             }
         }
 
