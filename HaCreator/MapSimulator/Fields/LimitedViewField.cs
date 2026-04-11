@@ -17,6 +17,32 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public class LimitedViewField
     {
+        internal enum ClientOwnedDrawViewrangeOperationKind
+        {
+            RestorePreviousSmallDarkPatch,
+            ClearPreviousMaskHistory,
+            CopyLocalViewrange,
+            CopyRemoteViewrange,
+            AppendPreviousMaskHistory
+        }
+
+        internal readonly struct ClientOwnedDrawViewrangeOperation
+        {
+            public ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind kind,
+                Vector2 topLeft,
+                int maskIndex)
+            {
+                Kind = kind;
+                TopLeft = topLeft;
+                MaskIndex = maskIndex;
+            }
+
+            public ClientOwnedDrawViewrangeOperationKind Kind { get; }
+            public Vector2 TopLeft { get; }
+            public int MaskIndex { get; }
+        }
+
         #region View Mode
         public enum ViewMode
         {
@@ -425,7 +451,8 @@ namespace HaCreator.MapSimulator.Fields
                     if (_clientOwnedUpdateParityMode && _clientOwnedViewrangeTexture != null)
                     {
                         IReadOnlyList<Vector2> maskTopLefts = GetClientOwnedUpdateParityMaskTopLefts(mapShiftX, mapShiftY, centerX, centerY);
-                        bool resetPreviousMaskHistoryForCurrentFrame = true;
+                        RestorePreviousClientOwnedViewrangePatches(spriteBatch, fogColorWithAlpha);
+                        ResetClientOwnedPreviousMaskTopLeftsForCurrentFrame();
                         for (int i = 0; i < maskTopLefts.Count; i++)
                         {
                             Vector2 topLeft = maskTopLefts[i];
@@ -435,10 +462,9 @@ namespace HaCreator.MapSimulator.Fields
                                 (int)MathF.Round(topLeft.Y),
                                 fogColorWithAlpha,
                                 drawClientOwnedDarkLayer: i == 0,
-                                restorePreviousClientOwnedViewranges: i == 0,
-                                resetPreviousClientOwnedViewrangesForCurrentFrame: resetPreviousMaskHistoryForCurrentFrame);
+                                restorePreviousClientOwnedViewranges: false,
+                                resetPreviousClientOwnedViewrangesForCurrentFrame: false);
                             TrackClientOwnedCurrentMaskTopLeft(topLeft);
-                            resetPreviousMaskHistoryForCurrentFrame = false;
                         }
                         break;
                     }
@@ -850,6 +876,51 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return _clientOwnedMaskTopLeftsBuffer;
+        }
+
+        internal static IReadOnlyList<ClientOwnedDrawViewrangeOperation> BuildClientOwnedDrawViewrangeOperationPlan(
+            IReadOnlyList<Vector2> previousMaskTopLefts,
+            IReadOnlyList<Vector2> currentMaskTopLefts)
+        {
+            List<ClientOwnedDrawViewrangeOperation> operations = new();
+
+            if (previousMaskTopLefts != null)
+            {
+                for (int i = 0; i < previousMaskTopLefts.Count; i++)
+                {
+                    operations.Add(new ClientOwnedDrawViewrangeOperation(
+                        ClientOwnedDrawViewrangeOperationKind.RestorePreviousSmallDarkPatch,
+                        previousMaskTopLefts[i],
+                        i));
+                }
+            }
+
+            operations.Add(new ClientOwnedDrawViewrangeOperation(
+                ClientOwnedDrawViewrangeOperationKind.ClearPreviousMaskHistory,
+                Vector2.Zero,
+                -1));
+
+            if (currentMaskTopLefts == null)
+            {
+                return operations;
+            }
+
+            for (int i = 0; i < currentMaskTopLefts.Count; i++)
+            {
+                ClientOwnedDrawViewrangeOperationKind copyKind = i == 0
+                    ? ClientOwnedDrawViewrangeOperationKind.CopyLocalViewrange
+                    : ClientOwnedDrawViewrangeOperationKind.CopyRemoteViewrange;
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    copyKind,
+                    currentMaskTopLefts[i],
+                    i));
+                operations.Add(new ClientOwnedDrawViewrangeOperation(
+                    ClientOwnedDrawViewrangeOperationKind.AppendPreviousMaskHistory,
+                    currentMaskTopLefts[i],
+                    i));
+            }
+
+            return operations;
         }
 
         internal void CommitClientOwnedUpdateParityMaskTopLefts(IReadOnlyList<Vector2> maskTopLefts)

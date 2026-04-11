@@ -7,6 +7,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Pools
 {
@@ -930,7 +931,12 @@ namespace HaCreator.MapSimulator.Pools
             {
                 var reader = new PacketReader(payload);
                 int characterId = reader.ReadInt32();
-                if (!TryDecodeMoveSnapshot(ref reader, currentTime, out PlayerMovementSyncSnapshot snapshot, out byte moveAction))
+                if (!TryDecodeMoveSnapshot(
+                        ref reader,
+                        currentTime,
+                        decodePassiveTail: false,
+                        out PlayerMovementSyncSnapshot snapshot,
+                        out byte moveAction))
                 {
                     error = $"Remote user move packet for {characterId} could not be decoded.";
                     return false;
@@ -1007,7 +1013,12 @@ namespace HaCreator.MapSimulator.Pools
             try
             {
                 var reader = new PacketReader(payload);
-                if (!TryDecodeMoveSnapshot(ref reader, currentTime, out snapshot, out moveAction))
+                if (!TryDecodeMoveSnapshot(
+                        ref reader,
+                        currentTime,
+                        decodePassiveTail: true,
+                        out snapshot,
+                        out moveAction))
                 {
                     error = "Passive-move packet could not be decoded.";
                     return false;
@@ -2594,7 +2605,8 @@ namespace HaCreator.MapSimulator.Pools
 
         internal static bool TryResolveHelperMarkerName(string markerName, out MinimapUI.HelperMarkerType? markerType)
         {
-            markerType = markerName?.Trim().ToLowerInvariant() switch
+            string normalizedMarkerName = NormalizeHelperMarkerName(markerName);
+            markerType = normalizedMarkerName switch
             {
                 "another" => MinimapUI.HelperMarkerType.Another,
                 "user" => MinimapUI.HelperMarkerType.User,
@@ -2610,10 +2622,27 @@ namespace HaCreator.MapSimulator.Pools
                 _ => null
             };
 
-            return markerName != null
+            return normalizedMarkerName != null
                 && (markerType.HasValue
-                    || string.Equals(markerName.Trim(), "clear", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(markerName.Trim(), "none", StringComparison.OrdinalIgnoreCase));
+                    || string.Equals(normalizedMarkerName, "clear", StringComparison.Ordinal)
+                    || string.Equals(normalizedMarkerName, "none", StringComparison.Ordinal));
+        }
+
+        private static string NormalizeHelperMarkerName(string markerName)
+        {
+            if (markerName == null)
+            {
+                return null;
+            }
+
+            string normalized = markerName.Trim().Replace('\\', '/');
+            int separatorIndex = normalized.LastIndexOf('/');
+            if (separatorIndex >= 0)
+            {
+                normalized = normalized[(separatorIndex + 1)..];
+            }
+
+            return normalized.Trim().ToLowerInvariant();
         }
 
         private static bool TryParseNamedHelper(ReadOnlySpan<byte> payload, out RemoteUserHelperPacket packet, out string error)
@@ -3488,7 +3517,12 @@ namespace HaCreator.MapSimulator.Pools
             return null;
         }
 
-        private static bool TryDecodeMoveSnapshot(ref PacketReader reader, int currentTime, out PlayerMovementSyncSnapshot snapshot, out byte moveAction)
+        private static bool TryDecodeMoveSnapshot(
+            ref PacketReader reader,
+            int currentTime,
+            bool decodePassiveTail,
+            out PlayerMovementSyncSnapshot snapshot,
+            out byte moveAction)
         {
             snapshot = null;
             moveAction = 0;
@@ -3525,6 +3559,7 @@ namespace HaCreator.MapSimulator.Pools
                 short elementVelocityX = currentVelocityX;
                 short elementVelocityY = currentVelocityY;
                 short elementFoothold = currentFoothold;
+                bool readsCommonMoveSuffix = true;
 
                 switch (attr)
                 {
@@ -3577,6 +3612,7 @@ namespace HaCreator.MapSimulator.Pools
                         elementVelocityX = 0;
                         elementVelocityY = 0;
                         elementFoothold = 0;
+                        readsCommonMoveSuffix = false;
                         break;
                     case 11:
                         elementVelocityX = reader.ReadInt16();
@@ -3603,11 +3639,25 @@ namespace HaCreator.MapSimulator.Pools
                     case 30:
                         break;
                     default:
-                        return false;
+                        elementX = 0;
+                        elementY = 0;
+                        elementVelocityX = 0;
+                        elementVelocityY = 0;
+                        elementFoothold = 0;
+                        break;
                 }
 
-                moveAction = reader.ReadByte();
-                short elapsed = reader.ReadInt16();
+                short elapsed = 0;
+                if (readsCommonMoveSuffix)
+                {
+                    moveAction = reader.ReadByte();
+                    elapsed = reader.ReadInt16();
+                }
+                else
+                {
+                    moveAction = 0;
+                }
+
                 MoveAction decodedAction = DecodeMoveAction(moveAction);
                 bool facingRight = (moveAction & 1) == 0;
 
@@ -3634,6 +3684,18 @@ namespace HaCreator.MapSimulator.Pools
                 cursorTime += Math.Max(1, (int)elapsed);
             }
 
+            IReadOnlyList<byte> passiveKeyPadStates = Array.Empty<byte>();
+            Rectangle passiveMoveBounds = Rectangle.Empty;
+            if (decodePassiveTail)
+            {
+                passiveKeyPadStates = DecodePassiveMoveKeyPadStates(ref reader);
+                short left = reader.ReadInt16();
+                short top = reader.ReadInt16();
+                short right = reader.ReadInt16();
+                short bottom = reader.ReadInt16();
+                passiveMoveBounds = new Rectangle(left, top, right - left, bottom - top);
+            }
+
             snapshot = new PlayerMovementSyncSnapshot(
                 new PassivePositionSnapshot
                 {
@@ -3649,8 +3711,36 @@ namespace HaCreator.MapSimulator.Pools
                         ? elements[^1].MovePathAttribute
                         : 0
                 },
-                elements);
+                elements,
+                passiveKeyPadStates,
+                passiveMoveBounds);
             return true;
+        }
+
+        private static IReadOnlyList<byte> DecodePassiveMoveKeyPadStates(ref PacketReader reader)
+        {
+            byte stateCount = reader.ReadByte();
+            if (stateCount == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            byte[] states = new byte[stateCount];
+            byte packedStates = 0;
+            for (int i = 0; i < states.Length; i++)
+            {
+                if ((i & 1) == 0)
+                {
+                    packedStates = reader.ReadByte();
+                    states[i] = (byte)(packedStates & 0x0F);
+                }
+                else
+                {
+                    states[i] = (byte)((packedStates >> 4) & 0x0F);
+                }
+            }
+
+            return states;
         }
 
         private static MoveAction DecodeMoveAction(byte moveAction)

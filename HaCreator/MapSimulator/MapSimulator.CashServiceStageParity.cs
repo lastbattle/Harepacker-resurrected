@@ -9,7 +9,9 @@ using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Text;
 using CashServiceOwnerStageKind = HaCreator.MapSimulator.UI.CashServiceStageKind;
 
 namespace HaCreator.MapSimulator
@@ -1695,16 +1697,22 @@ namespace HaCreator.MapSimulator
             }
 
             CashServiceStageWindow stageWindow = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) as CashServiceStageWindow;
+            IReadOnlyList<AdminShopDialogUI.CommodityPurchaseVariantSnapshot> purchaseVariants =
+                selectedEntry.CommoditySerialNumber > 0
+                    ? AdminShopDialogUI.GetCommodityPurchaseVariants(selectedEntry.CommoditySerialNumber)
+                    : Array.Empty<AdminShopDialogUI.CommodityPurchaseVariantSnapshot>();
             modalWindow.Configure(
                 "CConfirmPurchaseDlg",
                 $"Confirm purchase for {selectedEntry.Title}.",
-                BuildCashPurchaseConfirmDialogLines(listSnapshot, selectedEntry, stageWindow),
+                BuildCashPurchaseConfirmDialogLines(listSnapshot, selectedEntry, stageWindow, purchaseVariants),
                 new[]
                 {
                     new CashServiceModalOwnerWindow.ActionButtonState { Label = "OK", IsPrimary = true },
                     new CashServiceModalOwnerWindow.ActionButtonState { Label = "Cancel" }
                 },
-                footer: "Client evidence: CConfirmPurchaseDlg::OnCreate creates Maple Point (1000), Prepaid Cash (1001), and Nexon Cash (1002) selectors plus a package/period combo box when the selected commodity exposes multiple packed entries.");
+                footer: "Client evidence: CConfirmPurchaseDlg::OnCreate creates Maple Point (1000) at height-95, Prepaid Cash (1001) at height-80, Nexon Cash (1002) at height-65, and combo 1003 at (62,42,150,18) when the selected commodity exposes multiple packed entries.",
+                checkBoxes: BuildCashPurchasePaymentSelectorStates(stageWindow),
+                comboBox: BuildCashPurchaseVariantComboBoxState(selectedEntry, purchaseVariants));
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog);
             return $"CConfirmPurchaseDlg opened for {selectedEntry.Title}.";
         }
@@ -1803,7 +1811,8 @@ namespace HaCreator.MapSimulator
         private static IReadOnlyList<string> BuildCashPurchaseConfirmDialogLines(
             AdminShopDialogUI.ListOwnerSnapshot listSnapshot,
             AdminShopDialogUI.OwnerEntrySnapshot selectedEntry,
-            CashServiceStageWindow stageWindow)
+            CashServiceStageWindow stageWindow,
+            IReadOnlyList<AdminShopDialogUI.CommodityPurchaseVariantSnapshot> purchaseVariants)
         {
             List<string> lines = new()
             {
@@ -1812,6 +1821,11 @@ namespace HaCreator.MapSimulator
                 selectedEntry.Detail,
                 selectedEntry.StateLabel
             };
+
+            if (purchaseVariants?.Count > 1)
+            {
+                lines.Add($"Combo 1003 owns {purchaseVariants.Count.ToString(CultureInfo.InvariantCulture)} package/period option(s) for this item.");
+            }
 
             if (selectedEntry.CommoditySerialNumber > 0
                 && AdminShopDialogUI.TryResolveCommodityBySerialNumber(
@@ -1834,14 +1848,74 @@ namespace HaCreator.MapSimulator
                 lines.Add($"{itemLabel} x{Math.Max(1, selectedEntry.RewardQuantity).ToString(CultureInfo.InvariantCulture)} is staged in the selected purchase row.");
             }
 
-            if (stageWindow != null)
+            return lines.Where(line => !string.IsNullOrWhiteSpace(line)).ToArray();
+        }
+
+        private static IReadOnlyList<CashServiceModalOwnerWindow.CheckBoxState> BuildCashPurchasePaymentSelectorStates(
+            CashServiceStageWindow stageWindow)
+        {
+            if (stageWindow == null)
             {
-                lines.Add($"[ ] Maple Point: {stageWindow.MaplePointBalance.ToString("N0", CultureInfo.InvariantCulture)}");
-                lines.Add($"[ ] Prepaid Cash: {stageWindow.PrepaidCashBalance.ToString("N0", CultureInfo.InvariantCulture)}");
-                lines.Add($"[ ] Nexon Cash: {stageWindow.NexonCashBalance.ToString("N0", CultureInfo.InvariantCulture)}");
+                return Array.Empty<CashServiceModalOwnerWindow.CheckBoxState>();
             }
 
-            return lines.Where(line => !string.IsNullOrWhiteSpace(line)).ToArray();
+            return new[]
+            {
+                new CashServiceModalOwnerWindow.CheckBoxState
+                {
+                    ControlId = 1000,
+                    Label = "Maple Point",
+                    Detail = stageWindow.MaplePointBalance.ToString("N0", CultureInfo.InvariantCulture),
+                    IsChecked = stageWindow.MaplePointBalance > 0,
+                    IsEnabled = stageWindow.MaplePointBalance > 0
+                },
+                new CashServiceModalOwnerWindow.CheckBoxState
+                {
+                    ControlId = 1001,
+                    Label = "Prepaid Cash",
+                    Detail = stageWindow.PrepaidCashBalance.ToString("N0", CultureInfo.InvariantCulture),
+                    IsChecked = stageWindow.MaplePointBalance <= 0 && stageWindow.PrepaidCashBalance > 0,
+                    IsEnabled = stageWindow.PrepaidCashBalance > 0
+                },
+                new CashServiceModalOwnerWindow.CheckBoxState
+                {
+                    ControlId = 1002,
+                    Label = "Nexon Cash",
+                    Detail = stageWindow.NexonCashBalance.ToString("N0", CultureInfo.InvariantCulture),
+                    IsChecked = stageWindow.MaplePointBalance <= 0 && stageWindow.PrepaidCashBalance <= 0 && stageWindow.NexonCashBalance > 0,
+                    IsEnabled = stageWindow.NexonCashBalance > 0
+                }
+            };
+        }
+
+        private static CashServiceModalOwnerWindow.ComboBoxState BuildCashPurchaseVariantComboBoxState(
+            AdminShopDialogUI.OwnerEntrySnapshot selectedEntry,
+            IReadOnlyList<AdminShopDialogUI.CommodityPurchaseVariantSnapshot> purchaseVariants)
+        {
+            if (selectedEntry == null || purchaseVariants == null || purchaseVariants.Count <= 1)
+            {
+                return null;
+            }
+
+            IReadOnlyList<CashServiceModalOwnerWindow.ComboBoxItemState> items = purchaseVariants
+                .Select(variant => new CashServiceModalOwnerWindow.ComboBoxItemState
+                {
+                    Value = variant.SerialNumber,
+                    Label = string.IsNullOrWhiteSpace(variant.Label)
+                        ? $"SN {variant.SerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                        : $"SN {variant.SerialNumber.ToString(CultureInfo.InvariantCulture)} | {variant.Label}"
+                })
+                .ToArray();
+            int selectedIndex = Math.Max(
+                0,
+                purchaseVariants.ToList().FindIndex(variant => variant.SerialNumber == selectedEntry.CommoditySerialNumber));
+            return new CashServiceModalOwnerWindow.ComboBoxState
+            {
+                ControlId = 1003,
+                Label = "Package / period",
+                Items = items,
+                SelectedIndex = selectedIndex
+            };
         }
 
         private static IReadOnlyList<string> BuildCashReceiveGiftQueueLabels(IReadOnlyList<CashServiceStageWindow.PacketCatalogEntry> entries)
@@ -1900,9 +1974,15 @@ namespace HaCreator.MapSimulator
         private void HandleCashPurchaseConfirmDialogButton(int buttonIndex)
         {
             string message;
-            if (buttonIndex == 0 && uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
+            if (buttonIndex == 0
+                && TryGetCashServiceModalOwnerWindow(MapSimulatorWindowNames.CashPurchaseConfirmDialog, out CashServiceModalOwnerWindow modalWindow)
+                && uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
             {
-                message = cashShopWindow.ExecuteCashStageListAction("BtBuy");
+                string selectorSummary = BuildCashPurchaseConfirmSelectionSummary(modalWindow);
+                string purchaseMessage = cashShopWindow.ExecuteCashStageListAction("BtBuy");
+                message = string.IsNullOrWhiteSpace(selectorSummary)
+                    ? purchaseMessage
+                    : $"{selectorSummary} {purchaseMessage}";
             }
             else
             {
@@ -1926,8 +2006,11 @@ namespace HaCreator.MapSimulator
             CashServiceStageWindow.PacketCatalogEntry selectedGift = stageWindow.CashGiftPacketEntries.Count > 0
                 ? stageWindow.CashGiftPacketEntries[selectedGiftIndex]
                 : null;
+            string dispatchSummary = buttonIndex == 0
+                ? DispatchCashReceiveGiftAcceptRequest(selectedGift, selectedGiftIndex, modalWindow.InputValue)
+                : string.Empty;
             string message = buttonIndex == 0
-                ? stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, modalWindow.InputValue)
+                ? stageWindow.CompleteReceiveGiftDialog(selectedGiftIndex, modalWindow.InputValue, dispatchSummary)
                 : "CUIReceiveGift skipped the current decoded gift row and advanced to the next modal-owner pass without sending the accept packet.";
             uiWindowManager.HideWindow(MapSimulatorWindowNames.CashReceiveGiftDialog);
             _chat?.AddSystemMessage(message, currTickCount);
@@ -1956,6 +2039,107 @@ namespace HaCreator.MapSimulator
             }
 
             yield return replyText;
+        }
+
+        private static string BuildCashPurchaseConfirmSelectionSummary(CashServiceModalOwnerWindow modalWindow)
+        {
+            if (modalWindow == null)
+            {
+                return string.Empty;
+            }
+
+            string payment = modalWindow.SelectedCheckBoxControlId switch
+            {
+                1000 => "Maple Point",
+                1001 => "Prepaid Cash",
+                1002 => "Nexon Cash",
+                _ => string.Empty
+            };
+            string combo = modalWindow.SelectedComboValue > 0
+                ? $"combo 1003 selected {modalWindow.SelectedComboLabel}"
+                : string.Empty;
+            List<string> parts = new();
+            if (!string.IsNullOrWhiteSpace(payment))
+            {
+                parts.Add($"payment selector {modalWindow.SelectedCheckBoxControlId.ToString(CultureInfo.InvariantCulture)} ({payment})");
+            }
+
+            if (!string.IsNullOrWhiteSpace(combo))
+            {
+                parts.Add(combo);
+            }
+
+            return parts.Count == 0
+                ? string.Empty
+                : $"CConfirmPurchaseDlg confirmed with {string.Join(" and ", parts)}.";
+        }
+
+        private string DispatchCashReceiveGiftAcceptRequest(
+            CashServiceStageWindow.PacketCatalogEntry selectedGift,
+            int selectedGiftIndex,
+            string replyText)
+        {
+            if (selectedGift == null)
+            {
+                return "CUIReceiveGift did not dispatch an accept packet because the selected GW_GiftList row was unavailable.";
+            }
+
+            int opcode = selectedGift.RequestOpcode > 0 ? selectedGift.RequestOpcode : 154;
+            byte[] payload = BuildCashReceiveGiftAcceptRequestPayload(selectedGift, selectedGiftIndex, replyText);
+            string payloadHex = payload.Length > 0 ? Convert.ToHexString(payload) : "<empty>";
+            string source = "CUIReceiveGift::OnCashItemResLoadGiftDone accept branch";
+            string bridgeStatus = "official-session bridge unavailable";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(opcode, payload, out bridgeStatus))
+            {
+                return $"{source} emitted opcode {opcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] through the live local-utility bridge. {bridgeStatus}";
+            }
+
+            string outboxStatus = "packet outbox unavailable";
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(opcode, payload, out outboxStatus))
+            {
+                return $"{source} emitted opcode {opcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            string bridgeDeferredStatus = "Official-session bridge deferred delivery is disabled.";
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(opcode, payload, out bridgeDeferredStatus))
+            {
+                return $"{source} queued opcode {opcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] for deferred official-session injection after immediate delivery was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {bridgeDeferredStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(opcode, payload, out string queuedOutboxStatus))
+            {
+                return $"{source} queued opcode {opcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate delivery was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {bridgeDeferredStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{source} kept opcode {opcode.ToString(CultureInfo.InvariantCulture)} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {bridgeDeferredStatus} Deferred outbox: {queuedOutboxStatus}";
+        }
+
+        private static byte[] BuildCashReceiveGiftAcceptRequestPayload(
+            CashServiceStageWindow.PacketCatalogEntry selectedGift,
+            int selectedGiftIndex,
+            string replyText)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)0);
+            WriteCashReceiveGiftMapleString(writer, selectedGift?.Seller ?? string.Empty);
+            WriteCashReceiveGiftMapleString(writer, replyText ?? string.Empty);
+            writer.Write((byte)1);
+            int zeroBasedGiftIndex = selectedGift?.PacketRowIndex > 0
+                ? selectedGift.PacketRowIndex - 1
+                : Math.Max(0, selectedGiftIndex);
+            writer.Write(Math.Max(0, zeroBasedGiftIndex));
+            writer.Write(selectedGift?.SerialNumber ?? 0L);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        private static void WriteCashReceiveGiftMapleString(BinaryWriter writer, string text)
+        {
+            byte[] bytes = Encoding.Default.GetBytes(text ?? string.Empty);
+            writer.Write((ushort)Math.Min(ushort.MaxValue, bytes.Length));
+            writer.Write(bytes, 0, Math.Min(ushort.MaxValue, bytes.Length));
         }
 
         private void HandleCashNameChangeLicenseDialogButton(int buttonIndex)

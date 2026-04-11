@@ -40,7 +40,17 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            foreach (KeyValuePair<int, int> selectedItem in payload.SelectedItemsByGroup)
+            SyncSelectionProgress(payload.SelectedItemsByGroup);
+        }
+
+        internal void SyncSelectionProgress(IReadOnlyDictionary<int, int> selectedItemsByGroup)
+        {
+            if (selectedItemsByGroup == null || selectedItemsByGroup.Count == 0)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<int, int> selectedItem in selectedItemsByGroup)
             {
                 if (selectedItem.Key <= 0 || selectedItem.Value <= 0)
                 {

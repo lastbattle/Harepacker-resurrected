@@ -738,10 +738,12 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            for (int i = 0; i < orderedEntries.Count; i++)
+            foreach (QuestAlarmEntrySnapshot entry in orderedEntries
+                .Where(entry => entry?.IsAutoRegisterCandidate == true)
+                .OrderByDescending(entry => entry.AutoRegisterActivitySequence)
+                .ThenBy(entry => entry.QuestId))
             {
-                QuestAlarmEntrySnapshot entry = orderedEntries[i];
-                if (entry != null && entry.IsAutoRegisterCandidate && yieldedQuestIds.Add(entry.QuestId))
+                if (entry != null && yieldedQuestIds.Add(entry.QuestId))
                 {
                     yield return entry;
                 }

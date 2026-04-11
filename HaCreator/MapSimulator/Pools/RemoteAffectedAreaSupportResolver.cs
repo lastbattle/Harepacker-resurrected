@@ -17,7 +17,8 @@ namespace HaCreator.MapSimulator.Pools
         int DurationMs,
         int Value,
         int TickIntervalMs = 0,
-        int RemainingCount = 0);
+        int RemainingCount = 0,
+        int PropPercent = 100);
 
     public static class RemoteAffectedAreaSupportResolver
     {
@@ -750,6 +751,7 @@ namespace HaCreator.MapSimulator.Pools
             int durationMs = ResolveHostilePlayerAreaStatusDurationMs(levelData);
             int dotDurationMs = ResolveHostilePlayerAreaStatusDurationMs(levelData, preferDotDuration: true);
             int dotTickIntervalMs = ResolveHostilePlayerAreaDotTickIntervalMs(levelData);
+            int secondaryStatusPropPercent = ResolveHostilePlayerAreaSecondaryStatusPropPercent(skill, levelData);
 
             if (HasHostilePlayerDotStatus(skill, levelData, hostileSearchText))
             {
@@ -766,17 +768,29 @@ namespace HaCreator.MapSimulator.Pools
 
             if (ContainsToken(hostileSearchText, "freeze", "ice", "blizzard", "frost") || skill.Element == SkillElement.Ice)
             {
-                statuses.Add(new RemoteHostilePlayerAreaStatus(PlayerMobStatusEffect.Freeze, durationMs, 1));
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Freeze,
+                    durationMs,
+                    1,
+                    PropPercent: secondaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "stun", "paraly", "shock"))
             {
-                statuses.Add(new RemoteHostilePlayerAreaStatus(PlayerMobStatusEffect.Stun, durationMs, 1));
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Stun,
+                    durationMs,
+                    1,
+                    PropPercent: secondaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "seal"))
             {
-                statuses.Add(new RemoteHostilePlayerAreaStatus(PlayerMobStatusEffect.Seal, durationMs, 1));
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Seal,
+                    durationMs,
+                    1,
+                    PropPercent: secondaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "blind", "dark", "darkness"))
@@ -784,7 +798,8 @@ namespace HaCreator.MapSimulator.Pools
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
                     PlayerMobStatusEffect.Darkness,
                     durationMs,
-                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20)));
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20),
+                    PropPercent: secondaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "slow", "web") || levelData.Speed < 0)
@@ -792,12 +807,17 @@ namespace HaCreator.MapSimulator.Pools
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
                     PlayerMobStatusEffect.Slow,
                     durationMs,
-                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20, preferSpeed: true)));
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 20, preferSpeed: true),
+                    PropPercent: secondaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "weak") || levelData.Jump < 0)
             {
-                statuses.Add(new RemoteHostilePlayerAreaStatus(PlayerMobStatusEffect.Weakness, durationMs, 1));
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.Weakness,
+                    durationMs,
+                    1,
+                    PropPercent: secondaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "curse"))
@@ -805,12 +825,17 @@ namespace HaCreator.MapSimulator.Pools
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
                     PlayerMobStatusEffect.Curse,
                     durationMs,
-                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 50)));
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 50),
+                    PropPercent: secondaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "reverse"))
             {
-                statuses.Add(new RemoteHostilePlayerAreaStatus(PlayerMobStatusEffect.ReverseInput, durationMs, 1));
+                statuses.Add(new RemoteHostilePlayerAreaStatus(
+                    PlayerMobStatusEffect.ReverseInput,
+                    durationMs,
+                    1,
+                    PropPercent: secondaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "undead"))
@@ -818,7 +843,8 @@ namespace HaCreator.MapSimulator.Pools
                 statuses.Add(new RemoteHostilePlayerAreaStatus(
                     PlayerMobStatusEffect.Undead,
                     durationMs,
-                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 100)));
+                    ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 100),
+                    PropPercent: secondaryStatusPropPercent));
             }
 
             if (ContainsToken(hostileSearchText, "amplifyDamage"))
@@ -831,6 +857,20 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return statuses;
+        }
+
+        private static int ResolveHostilePlayerAreaSecondaryStatusPropPercent(
+            SkillData skill,
+            SkillLevelData levelData)
+        {
+            if (levelData?.SubProp <= 0)
+            {
+                return 100;
+            }
+
+            return ContainsToken(skill?.AffectedSkillEffect, "bodyAttack")
+                ? Math.Clamp(levelData.SubProp, 0, 100)
+                : 100;
         }
 
         private static bool HasHostileMobGameplayCore(SkillData skill, SkillLevelData levelData)

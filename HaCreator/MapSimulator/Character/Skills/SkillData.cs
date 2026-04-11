@@ -200,6 +200,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Special
         public int Prop { get; set; }                // Probability % for effect
+        public int SubProp { get; set; }             // Secondary probability % for affectedSkillEffect branches
         public int X { get; set; }                   // Generic value X
         public int Y { get; set; }                   // Generic value Y
         public int Z { get; set; }                   // Generic value Z
@@ -400,6 +401,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public int SkillId { get; set; }
         public SkillAnimation Animation { get; set; }
+        public SkillAnimation FlipAnimation { get; set; }
         public string AnimationPath { get; set; }
         public string BallUolPath { get; set; }
         public string FlipBallUolPath { get; set; }
@@ -433,6 +435,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         public SkillAnimation ResolveGetBallLikeAnimation(int skillLevel, int characterLevel, int maxLevel = 0)
+        {
+            return ResolveGetBallLikeAnimation(skillLevel, characterLevel, flip: false, maxLevel: maxLevel);
+        }
+
+        public SkillAnimation ResolveGetBallLikeAnimation(int skillLevel, int characterLevel, bool flip, int maxLevel = 0)
         {
             if (CharacterLevelVariantAnimations != null && CharacterLevelVariantAnimations.Count > 0)
             {
@@ -469,6 +476,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     return levelAnimation;
                 }
+            }
+
+            if (flip && FlipAnimation?.Frames.Count > 0)
+            {
+                return FlipAnimation;
             }
 
             return ResolveAnimationVariant(skillLevel, maxLevel);

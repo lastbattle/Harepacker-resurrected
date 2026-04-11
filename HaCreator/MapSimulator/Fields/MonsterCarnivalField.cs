@@ -307,7 +307,7 @@ namespace HaCreator.MapSimulator.Fields
                 PrimaryAssetRoot = "UI/UIWindow2.img/MonsterCarnival/main";
                 SecondaryAssetRoot = "UI/UIWindow2.img/MonsterCarnival/summonList";
                 TertiaryAssetRoot = "UI/UIWindow2.img/MonsterCarnival/sub";
-                SurfaceSummary = "Season 2 keeps a distinct UIWindow2-backed Carnival surface (main, summonList, sub) instead of the shared UIWindow.img HUD.";
+                SurfaceSummary = "Season 2 keeps a distinct UIWindow2-backed Carnival surface (main backgrnd 148x100/backgrnd2 136x76/backgrnd3 120x47, summonList 118x100/106x76/88x70, sub top/center/bottom + BtOK + 16x16 locks) instead of the shared UIWindow.img HUD.";
             }
             else
             {
@@ -1612,6 +1612,10 @@ namespace HaCreator.MapSimulator.Fields
                             ReconcileSummonedMobStates(entry, count);
                         }
 
+                        RefreshClientOwnedUiWindowSpellState();
+                        RecordRecoveredClientOwnerAction(
+                            $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter -> CUIMonsterCarnival::InsertSpelledData(activeRows={_uiWindowState.ActiveSpelledMobRows}, activeMobs={_uiWindowState.ActiveSpelledMobCount}, preview={_uiWindowState.ActiveSpelledMobPreview}).",
+                            Array.Empty<int>());
                         RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         EnsurePacketConsumed(stream, "enter");
                         return true;

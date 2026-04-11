@@ -299,6 +299,8 @@ namespace HaCreator.MapSimulator.Interaction
             public IReadOnlyList<QuestStateRequirement> StartQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestTraitRequirement> StartTraitRequirements { get; init; } = Array.Empty<QuestTraitRequirement>();
             public IReadOnlyList<QuestItemRequirement> StartItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
+            public IReadOnlyList<int> StartEquipAllNeedItemIds { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<int> StartEquipSelectNeedItemIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<QuestPetRequirement> StartPetRequirements { get; init; } = Array.Empty<QuestPetRequirement>();
             public int? StartPetRecallLimit { get; init; }
             public int? StartPetTamenessMinimum { get; init; }
@@ -2103,6 +2105,7 @@ namespace HaCreator.MapSimulator.Interaction
                         TooltipText = ResolvePacketOwnedQuestAlarmTitleTooltip(item.Definition.QuestId),
                         StatusText = issues.Count == 0 ? "Ready" : "In progress",
                         UpdateSequence = GetQuestAlarmUpdateSequence(item.Definition.QuestId),
+                        AutoRegisterActivitySequence = GetQuestAlarmAutoRegisterActivitySequence(item.Definition.QuestId),
                         CurrentProgress = currentProgress,
                         TotalProgress = totalProgress,
                         ProgressRatio = totalProgress > 0
@@ -2132,6 +2135,13 @@ namespace HaCreator.MapSimulator.Interaction
         private long GetQuestAlarmUpdateSequence(int questId)
         {
             return questId > 0 && _questAlarmUpdateTicks.TryGetValue(questId, out long tick)
+                ? tick
+                : long.MinValue;
+        }
+
+        private long GetQuestAlarmAutoRegisterActivitySequence(int questId)
+        {
+            return questId > 0 && _questAlarmAutoRegisterTicks.TryGetValue(questId, out long tick)
                 ? tick
                 : long.MinValue;
         }
@@ -3673,6 +3683,7 @@ namespace HaCreator.MapSimulator.Interaction
             AppendAvailabilitySummary(definition.StartAvailableFrom, definition.StartAvailableUntil, definition.StartAllowedDays, details);
             AppendTraitRequirements(definition.StartTraitRequirements, details, build);
             AppendItemRequirements(definition.StartItemRequirements, details);
+            AppendEquipNeedRequirements(definition.StartEquipAllNeedItemIds, definition.StartEquipSelectNeedItemIds, details, build);
             AppendActionConsumeItemRequirements(definition.StartActions.RewardItems, details);
             AppendSkillRequirements(definition.StartSkillRequirements, details);
             AppendMesoRequirement(definition.StartActions.MesoReward, details);
@@ -3715,6 +3726,28 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestItemRequirement requirement = requirements[i];
                 int currentCount = GetResolvedItemCount(requirement.ItemId);
                 details.Add(BuildItemRequirementProgressText(requirement, currentCount));
+            }
+        }
+
+        private void AppendEquipNeedRequirements(
+            IReadOnlyList<int> equipAllNeedItemIds,
+            IReadOnlyList<int> equipSelectNeedItemIds,
+            ICollection<string> details,
+            CharacterBuild build)
+        {
+            if (details == null)
+            {
+                return;
+            }
+
+            if (equipAllNeedItemIds != null && equipAllNeedItemIds.Count > 0)
+            {
+                details.Add($"Equip all: {FormatEquipNeedItemList(equipAllNeedItemIds, build)}");
+            }
+
+            if (equipSelectNeedItemIds != null && equipSelectNeedItemIds.Count > 0)
+            {
+                details.Add($"Equip one: {FormatEquipNeedItemList(equipSelectNeedItemIds, build)}");
             }
         }
 
@@ -3837,6 +3870,11 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            AppendEquipNeedRequirementLines(
+                definition.StartEquipAllNeedItemIds,
+                definition.StartEquipSelectNeedItemIds,
+                build,
+                lines);
             AppendPetRequirementLines(
                 CreatePetRequirementContext(
                     definition.StartPetRequirements,
@@ -4081,6 +4119,38 @@ namespace HaCreator.MapSimulator.Interaction
                     ValueText = $"{currentCount}/{requiredCount}",
                     IsComplete = currentCount >= requiredCount,
                     ItemId = reward.ItemId
+                });
+            }
+        }
+
+        private void AppendEquipNeedRequirementLines(
+            IReadOnlyList<int> equipAllNeedItemIds,
+            IReadOnlyList<int> equipSelectNeedItemIds,
+            CharacterBuild build,
+            ICollection<QuestLogLineSnapshot> lines)
+        {
+            if (lines == null)
+            {
+                return;
+            }
+
+            if (equipAllNeedItemIds != null && equipAllNeedItemIds.Count > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Equip",
+                    Text = $"All: {FormatEquipNeedItemList(equipAllNeedItemIds, build)}",
+                    IsComplete = MatchesEquipAllNeed(build, equipAllNeedItemIds)
+                });
+            }
+
+            if (equipSelectNeedItemIds != null && equipSelectNeedItemIds.Count > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Equip",
+                    Text = $"One: {FormatEquipNeedItemList(equipSelectNeedItemIds, build)}",
+                    IsComplete = MatchesEquipSelectNeed(build, equipSelectNeedItemIds)
                 });
             }
         }
@@ -4417,6 +4487,11 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.StartPetRecallLimit,
                     definition.StartPetTamenessMinimum,
                     definition.StartPetTamenessMaximum),
+                issues);
+            AppendEquipNeedIssues(
+                definition.StartEquipAllNeedItemIds,
+                definition.StartEquipSelectNeedItemIds,
+                build,
                 issues);
             AppendSkillIssues(definition.StartSkillRequirements, issues);
             AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
@@ -4855,6 +4930,32 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 issues.Add(BuildItemRequirementIssueText(requirement, requirement.RequiredCount - currentCount));
+            }
+        }
+
+        private void AppendEquipNeedIssues(
+            IReadOnlyList<int> equipAllNeedItemIds,
+            IReadOnlyList<int> equipSelectNeedItemIds,
+            CharacterBuild build,
+            ICollection<string> issues)
+        {
+            if (issues == null)
+            {
+                return;
+            }
+
+            if (equipAllNeedItemIds != null &&
+                equipAllNeedItemIds.Count > 0 &&
+                !MatchesEquipAllNeed(build, equipAllNeedItemIds))
+            {
+                issues.Add($"Equip all required items: {FormatEquipNeedItemList(equipAllNeedItemIds, build)}.");
+            }
+
+            if (equipSelectNeedItemIds != null &&
+                equipSelectNeedItemIds.Count > 0 &&
+                !MatchesEquipSelectNeed(build, equipSelectNeedItemIds))
+            {
+                issues.Add($"Equip one required item: {FormatEquipNeedItemList(equipSelectNeedItemIds, build)}.");
             }
         }
 
@@ -6112,6 +6213,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             AppendQuestDetailTraitEligibilitySegments(definition.StartTraitRequirements, segments);
             AppendQuestDetailItemEligibilitySegments(definition.StartItemRequirements, segments);
+            AppendQuestDetailEquipNeedEligibilitySegments(
+                definition.StartEquipAllNeedItemIds,
+                definition.StartEquipSelectNeedItemIds,
+                segments);
 
             string petRequirementText = BuildPetRequirementText(CreatePetRequirementContext(
                 definition.StartPetRequirements,
@@ -6192,6 +6297,27 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     segments.Add(segment);
                 }
+            }
+        }
+
+        private static void AppendQuestDetailEquipNeedEligibilitySegments(
+            IReadOnlyList<int> equipAllNeedItemIds,
+            IReadOnlyList<int> equipSelectNeedItemIds,
+            ICollection<string> segments)
+        {
+            if (segments == null)
+            {
+                return;
+            }
+
+            if (equipAllNeedItemIds != null && equipAllNeedItemIds.Count > 0)
+            {
+                segments.Add($"Equip all: {FormatEquipNeedItemList(equipAllNeedItemIds, build: null)}");
+            }
+
+            if (equipSelectNeedItemIds != null && equipSelectNeedItemIds.Count > 0)
+            {
+                segments.Add($"Equip one: {FormatEquipNeedItemList(equipSelectNeedItemIds, build: null)}");
             }
         }
 
@@ -6747,6 +6873,8 @@ namespace HaCreator.MapSimulator.Interaction
                 StartQuestRequirements = ParseQuestRequirements(startCheck?["quest"]),
                 StartTraitRequirements = ParseTraitRequirements(startCheck),
                 StartItemRequirements = ParseItemRequirements(startCheck?["item"]),
+                StartEquipAllNeedItemIds = ParseQuestMapIdList(startCheck?["equipAllNeed"]),
+                StartEquipSelectNeedItemIds = ParseQuestMapIdList(startCheck?["equipSelectNeed"]),
                 StartPetRequirements = ParsePetRequirements(startCheck?["pet"]),
                 StartPetRecallLimit = ParsePetActiveLimit(startCheck),
                 StartPetTamenessMinimum = ParsePositiveInt(startCheck?["pettamenessmin"]),
@@ -8205,6 +8333,111 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool MatchesActionJobFilter(QuestActionBundle actions, CharacterBuild build)
         {
             return actions == null || build == null || MatchesAllowedJobs(build.Job, actions.AllowedJobs);
+        }
+
+        internal static bool MatchesEquipAllNeed(CharacterBuild build, IReadOnlyList<int> itemIds)
+        {
+            if (itemIds == null || itemIds.Count == 0)
+            {
+                return true;
+            }
+
+            if (build == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < itemIds.Count; i++)
+            {
+                int itemId = itemIds[i];
+                if (itemId > 0 && !HasEquippedItem(build, itemId))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        internal static bool MatchesEquipSelectNeed(CharacterBuild build, IReadOnlyList<int> itemIds)
+        {
+            if (itemIds == null || itemIds.Count == 0)
+            {
+                return true;
+            }
+
+            if (build == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < itemIds.Count; i++)
+            {
+                int itemId = itemIds[i];
+                if (itemId > 0 && HasEquippedItem(build, itemId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasEquippedItem(CharacterBuild build, int itemId)
+        {
+            if (build == null || itemId <= 0)
+            {
+                return false;
+            }
+
+            return HasEquippedItem(build.Equipment, itemId) ||
+                   HasEquippedItem(build.HiddenEquipment, itemId);
+        }
+
+        private static bool HasEquippedItem(IReadOnlyDictionary<EquipSlot, CharacterPart> equipment, int itemId)
+        {
+            if (equipment == null || equipment.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (CharacterPart part in equipment.Values)
+            {
+                if (part?.ItemId == itemId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static string FormatEquipNeedItemList(IReadOnlyList<int> itemIds, CharacterBuild build)
+        {
+            if (itemIds == null || itemIds.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var labels = new List<string>(itemIds.Count);
+            for (int i = 0; i < itemIds.Count; i++)
+            {
+                int itemId = itemIds[i];
+                if (itemId <= 0)
+                {
+                    continue;
+                }
+
+                string label = GetItemName(itemId);
+                if (build != null && HasEquippedItem(build, itemId))
+                {
+                    label += " (equipped)";
+                }
+
+                labels.Add(label);
+            }
+
+            return string.Join(", ", labels);
         }
 
         internal static IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> ParseConversationStopPages(WzImageProperty property)
@@ -10322,27 +10555,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
                 : summaryText;
 
-            List<string> supplementalLines = BuildVisibleQuestActionLines(
-                    actions,
-                    build,
-                    questId,
-                    includeSelectionTag: false,
-                    includeRewardItems: false,
-                    suppressNegativeMesoLine: hasSummaryText && actions.MesoReward < 0)
-                .Where(line => !string.IsNullOrWhiteSpace(line))
-                .ToList();
-
-            if (!hasSummaryText)
-            {
-                return string.Join("\n", supplementalLines);
-            }
-
-            if (supplementalLines.Count == 0)
-            {
-                return categoryNoticeText;
-            }
-
-            return $"{categoryNoticeText}\n{string.Join("\n", supplementalLines)}";
+            return categoryNoticeText;
         }
 
         private static string ResolvePacketQuestResultPrimaryText(

@@ -854,7 +854,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (!FallbackSkillStatDefinitions.TryGetValue(statKey, out FallbackSkillStatDefinition definition))
                 return allowGenericFallback &&
-                       TryAppendGenericFallbackStat(builder, skillEntry, levelNode, commonNode, infoNode, level, statKey);
+                       TryAppendGenericFallbackStat(builder, skillEntry, stringEntry, levelNode, commonNode, infoNode, level, statKey);
 
             string resolvedLabel = definition.Label;
             Func<int, string> resolvedFormatter = definition.Formatter;
@@ -1042,6 +1042,51 @@ namespace HaCreator.MapSimulator.Loaders
             return !string.IsNullOrWhiteSpace(label);
         }
 
+        private static bool TryResolveDescriptionBackedGenericFallbackPresentation(
+            WzSubProperty stringEntry,
+            string statKey,
+            string defaultLabel,
+            out string label,
+            out Func<int, string> formatter)
+        {
+            label = defaultLabel;
+            formatter = null;
+            if (stringEntry == null || string.IsNullOrWhiteSpace(statKey))
+            {
+                return false;
+            }
+
+            string placeholderToken = $"#{statKey.Trim()}";
+            foreach (string clause in EnumeratePlaceholderContextClauses(stringEntry, placeholderToken))
+            {
+                if (TryResolveDescriptionBackedFallbackPresentation(
+                        clause,
+                        placeholderToken,
+                        defaultLabel,
+                        out string resolvedLabel,
+                        out Func<int, string> resolvedFormatter))
+                {
+                    label = resolvedLabel;
+                    formatter = resolvedFormatter;
+                }
+
+                if (TryExtractAuthoredPlaceholderLabel(clause, placeholderToken, out string authoredLabel) &&
+                    !string.Equals(authoredLabel, defaultLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    label = authoredLabel;
+                    formatter = ResolveDescriptionBackedContextFormatter(
+                        label,
+                        label,
+                        clause,
+                        placeholderToken);
+                }
+
+                return !string.IsNullOrWhiteSpace(label);
+            }
+
+            return false;
+        }
+
         internal static bool TryResolveSingleLetterContextPresentation(
             string clause,
             string placeholderToken,
@@ -1214,6 +1259,7 @@ namespace HaCreator.MapSimulator.Loaders
                 "MP Cost" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "HP Cost" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Speed" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Elemental Resistance" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 _ => false
             };
         }
@@ -1319,6 +1365,15 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Enemy DEF";
             }
+            else if (normalizedClause.Contains("abnormal status resistance", StringComparison.Ordinal)
+                     && normalizedClause.Contains("elemental resistance", StringComparison.Ordinal))
+            {
+                label = "Abnormal Status Resistance / Elemental Resistance";
+            }
+            else if (normalizedClause.Contains("elemental resistance", StringComparison.Ordinal))
+            {
+                label = "Elemental Resistance";
+            }
             else if (normalizedClause.Contains("accuracy", StringComparison.Ordinal))
             {
                 label = "Accuracy";
@@ -1414,6 +1469,11 @@ namespace HaCreator.MapSimulator.Loaders
             else if (normalizedClause.Contains("amount absorbed", StringComparison.Ordinal))
             {
                 label = "Amount Absorbed";
+            }
+            else if (normalizedClause.Contains("damage absorbed", StringComparison.Ordinal)
+                     && normalizedClause.Contains("hp", StringComparison.Ordinal))
+            {
+                label = "Damage Absorbed as HP";
             }
             else if (normalizedClause.Contains("damage", StringComparison.Ordinal))
             {
@@ -1634,6 +1694,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static bool TryAppendGenericFallbackStat(
             StringBuilder builder,
             WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
             WzImageProperty levelNode,
             WzImageProperty commonNode,
             WzImageProperty infoNode,
@@ -1646,7 +1707,22 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
-            AppendStatLine(builder, FormatGenericFallbackStatLabel(propertyName), value);
+            string resolvedLabel = FormatGenericFallbackStatLabel(propertyName);
+            Func<int, string> resolvedFormatter = null;
+            TryResolveDescriptionBackedGenericFallbackPresentation(
+                stringEntry,
+                propertyName,
+                resolvedLabel,
+                out resolvedLabel,
+                out resolvedFormatter);
+
+            if (resolvedFormatter != null &&
+                int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int numericValue))
+            {
+                value = resolvedFormatter(numericValue);
+            }
+
+            AppendStatLine(builder, resolvedLabel, value);
             return true;
         }
 

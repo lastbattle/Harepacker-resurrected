@@ -40,6 +40,39 @@ namespace HaCreator.MapSimulator.Companions
         Leg
     }
 
+    public static class MechanicEquipmentSlotMap
+    {
+        public const int BodyPartBase = 1100;
+
+        public static int GetBodyPart(MechanicEquipSlot slot)
+        {
+            return slot switch
+            {
+                MechanicEquipSlot.Transistor => 1100,
+                MechanicEquipSlot.Engine => 1101,
+                MechanicEquipSlot.Frame => 1102,
+                MechanicEquipSlot.Arm => 1103,
+                MechanicEquipSlot.Leg => 1104,
+                _ => 0
+            };
+        }
+
+        public static bool TryResolveBodyPart(int bodyPart, out MechanicEquipSlot slot)
+        {
+            slot = bodyPart switch
+            {
+                1100 => MechanicEquipSlot.Transistor,
+                1101 => MechanicEquipSlot.Engine,
+                1102 => MechanicEquipSlot.Frame,
+                1103 => MechanicEquipSlot.Arm,
+                1104 => MechanicEquipSlot.Leg,
+                _ => default
+            };
+
+            return bodyPart is >= 1100 and <= 1104;
+        }
+    }
+
     public sealed class CompanionEquipItem
     {
         public int ItemId { get; init; }

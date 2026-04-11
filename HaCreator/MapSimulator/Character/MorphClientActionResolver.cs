@@ -289,7 +289,12 @@ namespace HaCreator.MapSimulator.Character
                 // alert family, while Morph/*.img still publishes no verbatim roots.
                 ["mistEruption"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["demolitionElf"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
-                ["powerEndure"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" }
+                ["powerEndure"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                // Resistance revive/buff skill rows keep requesting raw roots, while
+                // Character/00002000.img backs both surfaces entirely with alert frames
+                // and Morph/*.img publishes no verbatim `revive` / `superBody` branches.
+                ["revive"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["superBody"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedGenericMorphFallbackAliases =
@@ -404,6 +409,13 @@ namespace HaCreator.MapSimulator.Character
                 ["maxForce1"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["maxForce2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["maxForce3"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                // These dual-blade and resistance raw skill-side requests are absent
+                // from Morph/*.img, while Character/00002000.img resolves them onto
+                // ordinary swing/stab body surfaces.
+                ["flashBang"] = new[] { "swingO3", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["monsterBombPrepare"] = new[] { "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["monsterBombThrow"] = new[] { "swingOF", "swingO1", "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab", "alert" },
+                ["darkChain"] = new[] { "swingO3", "swingO2", "stabO1", "swingT1", "swingT3", "stabO2", "proneStab" },
                 // The client raw table still exposes dual-blade swing-family names while
                 // archer morphs such as 1003/1103 only publish generic swingT branches.
                 ["swingC1"] = new[] { "swingT1", "swingT3" },
@@ -457,6 +469,34 @@ namespace HaCreator.MapSimulator.Character
                 ["tornadoDashStop"] = new[] { "fly", "jump", "stand" }
             };
 
+        private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedPostureMorphFallbackAliases =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                // These client raw action names are published by WZ skill rows and
+                // Character/00002000.img backs them with `sit` body frames, while
+                // Morph/*.img publishes no verbatim branches for the same surface.
+                ["gatlingshot"] = new[] { "sit", "stand" },
+                ["gatlingshot2"] = new[] { "sit", "stand" },
+                ["flamethrower"] = new[] { "sit", "stand" },
+                ["flamethrower_pre"] = new[] { "sit", "stand" },
+                ["flamethrower_after"] = new[] { "sit", "stand" },
+                ["flamethrower2"] = new[] { "sit", "stand" },
+                ["flamethrower_pre2"] = new[] { "sit", "stand" },
+                ["flamethrower_after2"] = new[] { "sit", "stand" },
+                ["clawCut"] = new[] { "sit", "stand" },
+                ["sonicBoom"] = new[] { "sit", "stand" },
+                ["wildbeast"] = new[] { "sit", "stand" },
+                ["rpunch"] = new[] { "sit", "stand" },
+                ["mRush"] = new[] { "sit", "stand" },
+                ["swallow_pre"] = new[] { "sit", "stand" },
+                ["swallow_loop"] = new[] { "sit", "stand" },
+                ["swallow"] = new[] { "sit", "stand" },
+                ["swallow_attack"] = new[] { "sit", "stand" },
+                // Character/00002000.img backs the checked full-screen jaguar rain
+                // branch with `alert` rather than a morph-owned `*Rain` attack root.
+                ["flashRain"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7", "stand" }
+            };
+
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
@@ -498,6 +538,14 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
+            foreach (string postureAlias in EnumerateClientPublishedPostureAliases(morphPart, actionName))
+            {
+                if (yielded.Add(postureAlias))
+                {
+                    yield return postureAlias;
+                }
+            }
+
             if (ShouldEnumerateDoubleJumpAliases(actionName))
             {
                 foreach (string doubleJumpAlias in EnumerateDoubleJumpAliases(morphPart))
@@ -525,6 +573,28 @@ namespace HaCreator.MapSimulator.Character
                 if (yielded.Add(candidate))
                 {
                     yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientPublishedPostureAliases(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            if (!ClientPublishedPostureMorphFallbackAliases.TryGetValue(actionName, out string[] aliases)
+                || aliases == null)
+            {
+                yield break;
+            }
+
+            foreach (string alias in aliases)
+            {
+                if (!string.IsNullOrWhiteSpace(alias) && HasPublishedAction(morphPart, alias))
+                {
+                    yield return alias;
                 }
             }
         }

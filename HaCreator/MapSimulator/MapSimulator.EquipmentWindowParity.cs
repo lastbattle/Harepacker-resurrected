@@ -327,8 +327,28 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedCharacterEquipPayload(byte[] payload, out string message)
         {
+            return TryApplyPacketOwnedCharacterEquipPayload(
+                LocalUtilityPacketInboxManager.CharacterEquipStatePacketType,
+                payload,
+                out message);
+        }
+
+        private bool TryApplyPacketOwnedCharacterEquipPayload(int packetType, byte[] payload, out string message)
+        {
             if (!CharacterEquipmentPacketParity.TryDecodePayload(payload, out CharacterEquipmentAuthorityPayload decodedPayload, out message))
             {
+                return false;
+            }
+
+            decodedPayload = decodedPayload with
+            {
+                AuthorityPacketType = packetType,
+                HasResultRequestContext = true
+            };
+
+            if (!IsCharacterEquipmentAuthorityPacketType(packetType))
+            {
+                message = $"Character equipment authority payload arrived on unsupported packet owner {packetType}.";
                 return false;
             }
 
@@ -348,6 +368,11 @@ namespace HaCreator.MapSimulator
             if (payload.Mode != CharacterEquipmentAuthorityPayloadMode.AuthorityRequest)
             {
                 message = "Character equipment authority payload is not a request.";
+                return false;
+            }
+
+            if (!TryValidateCharacterEquipmentAuthorityPacketContext(payload, out message))
+            {
                 return false;
             }
 
@@ -405,6 +430,11 @@ namespace HaCreator.MapSimulator
             if (payload.Mode != CharacterEquipmentAuthorityPayloadMode.AuthorityResult)
             {
                 message = "Character equipment authority payload is not a result.";
+                return false;
+            }
+
+            if (!TryValidateCharacterEquipmentAuthorityPacketContext(payload, out message))
+            {
                 return false;
             }
 
@@ -908,6 +938,31 @@ namespace HaCreator.MapSimulator
         {
             return existingKind == CharacterEquipmentAuthorityResultKind.LocalRequestAccept
                    || incomingKind != CharacterEquipmentAuthorityResultKind.LocalRequestAccept;
+        }
+
+        internal static bool IsCharacterEquipmentAuthorityPacketType(int packetType)
+        {
+            return packetType == LocalUtilityPacketInboxManager.CharacterEquipStatePacketType;
+        }
+
+        internal static bool TryValidateCharacterEquipmentAuthorityPacketContext(
+            CharacterEquipmentAuthorityPayload payload,
+            out string rejectReason)
+        {
+            if (!payload.HasResultRequestContext)
+            {
+                rejectReason = null;
+                return true;
+            }
+
+            if (IsCharacterEquipmentAuthorityPacketType(payload.AuthorityPacketType))
+            {
+                rejectReason = null;
+                return true;
+            }
+
+            rejectReason = $"Character equipment authority payload arrived on unsupported packet owner {payload.AuthorityPacketType}.";
+            return false;
         }
 
         internal static bool TryValidatePacketOwnedCharacterAuthorityScope(

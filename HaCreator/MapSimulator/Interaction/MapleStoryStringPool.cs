@@ -189,6 +189,13 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0D16] = "Pattern",
             [0x0D17] = "Letter",
             [0x0D18] = "Etc",
+            // Recovered from MapleStory.exe v95 `CWvsContext::OnGuildResult(79)`.
+            // The generated table stores URL-escaped punctuation in this block, but the client
+            // emits these strings directly through StringPool before formatting guild-quest
+            // queue notices into the status-bar chat log.
+            [0x0DFF] = "Please go see the Guild Quest NPC at Channel %s immediately to enter.",
+            [0x0E00] = "Your guild is up next. Please head to the Guild Quest map at Channel %s and wait.",
+            [0x0E01] = "There's currently 1 guild participating in the Guild Quest, and your guild is number %d on the waitlist.",
             // Recovered from MapleStory.exe v95 `CUIFamily::Draw` and
             // `CUIFamilyChart::Draw` / `_DrawChartItem`. Keep these family ids
             // explicit here so the simulator follows the client wording even if

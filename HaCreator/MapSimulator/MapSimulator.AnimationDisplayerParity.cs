@@ -104,6 +104,7 @@ namespace HaCreator.MapSimulator
             public bool SuppressOwnerFlip { get; init; }
             public int ThetaDegrees { get; init; }
             public float Radius { get; init; }
+            public int ZOrder { get; init; }
         }
 
         private readonly record struct AnimationDisplayerSkillUseBranchRequest(
@@ -608,7 +609,8 @@ namespace HaCreator.MapSimulator
                     SpawnVerticalEmissionBias = AnimationDisplayerFollowEmissionVerticalBias,
                     SpawnDurationMs = followDefinition?.SpawnDurationMs ?? 0,
                     SpawnOffsetMin = spawnOffsetMin,
-                    SpawnOffsetMax = spawnOffsetMax
+                    SpawnOffsetMax = spawnOffsetMax,
+                    SpawnZOrder = followDefinition?.ZOrder ?? 0
                 });
             if (followId < 0)
             {
@@ -940,6 +942,23 @@ namespace HaCreator.MapSimulator
                 fallbackPosition.Y,
                 fallbackFacingRight,
                 presentation.CurrentTime);
+        }
+
+        private void HandleRemoteMobAttackHitEffect(RemoteUserActorPool.RemoteMobAttackHitPresentation presentation)
+        {
+            if (_animationEffects == null
+                || string.IsNullOrWhiteSpace(presentation.EffectPath)
+                || !TryLoadRemotePacketOwnedStringEffectFrames(presentation.EffectPath, out List<IDXObject> frames))
+            {
+                return;
+            }
+
+            _animationEffects.AddOneTime(
+                frames,
+                presentation.Position.X,
+                presentation.Position.Y,
+                flip: !presentation.FacingRight,
+                currentTimeMs: presentation.CurrentTime);
         }
 
         private void SyncAnimationDisplayerRemoteUserState(int characterId)
@@ -2516,7 +2535,9 @@ namespace HaCreator.MapSimulator
                 ThetaDegrees = ResolveAnimationDisplayerFollowEquipmentThetaDegrees(
                     GetAnimationDisplayerNumericValue(effectProperty, "nTheta"),
                     GetAnimationDisplayerNumericValue(effectProperty, "theta")),
-                Radius = radius
+                Radius = radius,
+                ZOrder = ResolveAnimationDisplayerFollowEquipmentZOrder(
+                    GetAnimationDisplayerNumericValue(effectProperty, "z"))
             };
         }
 
@@ -2649,6 +2670,11 @@ namespace HaCreator.MapSimulator
         internal static int ResolveAnimationDisplayerFollowEquipmentThetaDegrees(int? authoredNTheta, int? authoredTheta)
         {
             return authoredNTheta ?? authoredTheta ?? 0;
+        }
+
+        internal static int ResolveAnimationDisplayerFollowEquipmentZOrder(int? authoredZ)
+        {
+            return authoredZ ?? 0;
         }
 
         private static Rectangle BuildAnimationDisplayerFollowEquipmentEmissionArea(WzImageProperty effectProperty)

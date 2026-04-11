@@ -2914,9 +2914,7 @@ namespace HaCreator.MapSimulator.UI
                 return Position;
             }
 
-            int x = Position.X + Math.Max(8, CurrentFrame.Width - visual.Frame.Width - 8);
-            int y = Position.Y + 30;
-            return new Point(x, y);
+            return ResolveClientSidecarPopupPosition(Position, CurrentFrame?.Width ?? 271);
         }
 
         private Rectangle GetItemPopupRowBounds(int index)
@@ -2969,9 +2967,24 @@ namespace HaCreator.MapSimulator.UI
                 return Position;
             }
 
-            int x = Position.X + Math.Max(8, CurrentFrame.Width - _exceptionPopupVisual.Frame.Width - 8);
-            int y = Position.Y + 30;
-            return new Point(x, y);
+            return ResolveClientExceptionPopupPosition(
+                Position,
+                CurrentFrame?.Width ?? 271,
+                !_isBigBang && _legacyExpandedPanel != LegacyExpandedPanel.None);
+        }
+
+        internal static Point ResolveClientSidecarPopupPosition(Point ownerPosition, int ownerWidth)
+        {
+            // CUIUserInfo::ToggleAddOn creates detail/wish-list child owners at GetAbsLeft() + 271.
+            return new Point(ownerPosition.X + Math.Max(0, ownerWidth), ownerPosition.Y);
+        }
+
+        internal static Point ResolveClientExceptionPopupPosition(Point ownerPosition, int ownerWidth, bool legacyAddOnStateOpen)
+        {
+            // CUIUserInfo::ToggleExceptionList uses GetAbsLeft() + 270 and top + 196 while a legacy state is open.
+            return new Point(
+                ownerPosition.X + Math.Max(0, ownerWidth - 1),
+                ownerPosition.Y + (legacyAddOnStateOpen ? 196 : 34));
         }
 
         private string FormatRank(int rank, int? previousRank)

@@ -503,7 +503,7 @@ namespace HaCreator.MapSimulator.UI
 
         protected void DrawDropQuantityPrompt(SpriteBatch sprite, int windowX, int windowY)
         {
-            if (!_dropQuantityPromptVisible || _debugTooltipTexture == null || _font == null)
+            if ((!_dropQuantityPromptVisible && !_mesoDropPromptVisible) || _debugTooltipTexture == null || _font == null)
             {
                 return;
             }
@@ -513,9 +513,13 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(255, 222, 156, 220));
             sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(123, 96, 36, 220));
 
-            string title = "Discard Count";
-            string quantityText = $"Qty: {_dropQuantityPromptValue} / {_dropQuantityPromptMaximum}";
-            string detailText = "Enter/Space confirm  Esc cancel";
+            string title = _mesoDropPromptVisible ? "Drop Mesos" : "Discard Count";
+            string quantityText = _mesoDropPromptVisible
+                ? $"Amount: {FormatMesoDropPromptAmount()} / {_mesoDropPromptMaximum.ToString("N0", CultureInfo.InvariantCulture)}"
+                : $"Qty: {_dropQuantityPromptValue} / {_dropQuantityPromptMaximum}";
+            string detailText = _mesoDropPromptVisible
+                ? "Type amount  Enter confirm"
+                : "Enter/Space confirm  Esc cancel";
 
             InventoryRenderUtil.DrawOutlinedText(
                 sprite,
@@ -1234,8 +1238,9 @@ namespace HaCreator.MapSimulator.UI
 
         public bool HandlesInventoryInteractionPoint(int mouseX, int mouseY)
         {
-            return TryGetSlotAtPosition(mouseX, mouseY, out _, out int slotIndex)
-                && slotIndex >= 0;
+            return (TryGetSlotAtPosition(mouseX, mouseY, out _, out int slotIndex)
+                && slotIndex >= 0)
+                || IsMesoTextInteractionPoint(mouseX, mouseY);
         }
 
         public bool TryGetSlotAtPoint(int mouseX, int mouseY, out InventoryType inventoryType, out int slotIndex, out InventorySlotData slotData)
@@ -1259,6 +1264,11 @@ namespace HaCreator.MapSimulator.UI
         public void OnInventoryMouseDown(int mouseX, int mouseY)
         {
             _lastMousePosition = new Point(mouseX, mouseY);
+            if (TryOpenMesoDropPrompt(mouseX, mouseY))
+            {
+                return;
+            }
+
             if (EquipmentDragStartBlocked?.Invoke() == true)
             {
                 return;
@@ -1442,7 +1452,7 @@ namespace HaCreator.MapSimulator.UI
             KeyboardState keyboardState = Keyboard.GetState();
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
 
-            if (_dropQuantityPromptVisible)
+            if (_dropQuantityPromptVisible || _mesoDropPromptVisible)
             {
                 HandleDropQuantityPromptInput(mouseState, keyboardState);
                 _previousKeyboardState = keyboardState;
@@ -1465,6 +1475,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleDropQuantityPromptInput(MouseState mouseState, KeyboardState keyboardState)
         {
+            if (_mesoDropPromptVisible)
+            {
+                HandleMesoDropPromptInput(keyboardState);
+                _previousInteractionMouseState = mouseState;
+                return;
+            }
+
             if (!_dropQuantityPromptVisible)
             {
                 return;
@@ -1511,6 +1528,73 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _previousInteractionMouseState = mouseState;
+        }
+
+        private void HandleMesoDropPromptInput(KeyboardState keyboardState)
+        {
+            for (Keys key = Keys.D0; key <= Keys.D9; key++)
+            {
+                if (WasPressed(keyboardState, key))
+                {
+                    AppendMesoDropPromptDigit((char)('0' + ((int)key - (int)Keys.D0)));
+                    return;
+                }
+            }
+
+            for (Keys key = Keys.NumPad0; key <= Keys.NumPad9; key++)
+            {
+                if (WasPressed(keyboardState, key))
+                {
+                    AppendMesoDropPromptDigit((char)('0' + ((int)key - (int)Keys.NumPad0)));
+                    return;
+                }
+            }
+
+            if (WasPressed(keyboardState, Keys.Back))
+            {
+                if (_mesoDropPromptText.Length > 0)
+                {
+                    _mesoDropPromptText = _mesoDropPromptText[..^1];
+                }
+            }
+            else if (WasPressed(keyboardState, Keys.Delete))
+            {
+                _mesoDropPromptText = string.Empty;
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                _mesoDropPromptText = "1";
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                _mesoDropPromptText = _mesoDropPromptMaximum.ToString(CultureInfo.InvariantCulture);
+            }
+            else if (WasPressed(keyboardState, Keys.Enter) || WasPressed(keyboardState, Keys.Space))
+            {
+                ConfirmMesoDropPrompt();
+            }
+            else if (WasPressed(keyboardState, Keys.Escape))
+            {
+                CloseMesoDropPrompt();
+            }
+        }
+
+        private void AppendMesoDropPromptDigit(char digit)
+        {
+            string candidate = _mesoDropPromptText + digit;
+            if (!long.TryParse(candidate, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsedAmount))
+            {
+                return;
+            }
+
+            if (parsedAmount <= 0)
+            {
+                _mesoDropPromptText = string.Empty;
+                return;
+            }
+
+            long normalizedAmount = Math.Min(parsedAmount, _mesoDropPromptMaximum);
+            _mesoDropPromptText = normalizedAmount.ToString(CultureInfo.InvariantCulture);
         }
 
         private void OpenDropQuantityPrompt(InventoryType inventoryType, int slotIndex, InventorySlotData slotData)
@@ -1577,6 +1661,64 @@ namespace HaCreator.MapSimulator.UI
                 _dropQuantityPromptValue + delta,
                 1,
                 Math.Max(1, _dropQuantityPromptMaximum));
+        }
+
+        private bool TryOpenMesoDropPrompt(int mouseX, int mouseY)
+        {
+            if (MesoDropRequested == null || !IsMesoTextInteractionPoint(mouseX, mouseY) || _mesoCount <= 0)
+            {
+                return false;
+            }
+
+            _mesoDropPromptMaximum = Math.Max(1L, _mesoCount);
+            _mesoDropPromptText = string.Empty;
+            _mesoDropPromptVisible = true;
+            CloseDropQuantityPrompt();
+            _previousInteractionMouseState = Mouse.GetState();
+            return true;
+        }
+
+        private bool IsMesoTextInteractionPoint(int mouseX, int mouseY)
+        {
+            int localX = mouseX - Position.X;
+            int localY = mouseY - Position.Y;
+            return localX >= MESO_TEXT_HIT_X
+                && localX < MESO_TEXT_HIT_X + MESO_TEXT_HIT_WIDTH
+                && localY >= MESO_TEXT_HIT_Y
+                && localY < MESO_TEXT_HIT_Y + MESO_TEXT_HIT_HEIGHT;
+        }
+
+        private void ConfirmMesoDropPrompt()
+        {
+            if (!_mesoDropPromptVisible)
+            {
+                return;
+            }
+
+            if (long.TryParse(_mesoDropPromptText, NumberStyles.Integer, CultureInfo.InvariantCulture, out long requestedAmount)
+                && requestedAmount > 0
+                && MesoDropRequested?.Invoke(requestedAmount) == true)
+            {
+                CloseMesoDropPrompt();
+                return;
+            }
+
+            _mesoDropPromptText = string.Empty;
+        }
+
+        private void CloseMesoDropPrompt()
+        {
+            _mesoDropPromptVisible = false;
+            _mesoDropPromptText = string.Empty;
+            _mesoDropPromptMaximum = 1L;
+        }
+
+        private string FormatMesoDropPromptAmount()
+        {
+            return long.TryParse(_mesoDropPromptText, NumberStyles.Integer, CultureInfo.InvariantCulture, out long amount)
+                && amount > 0
+                    ? amount.ToString("N0", CultureInfo.InvariantCulture)
+                    : "0";
         }
 
         private bool WasPressed(KeyboardState keyboardState, Keys key)

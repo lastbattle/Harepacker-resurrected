@@ -23,6 +23,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ClientLeaveRemoveCanvasIndex = -2;
         private const int ClientLeaveInsertCanvasStartAlphaValue = -1;
         private const int ClientLeaveInsertCanvasEndAlphaValue = 0;
+        private const int ClientLayerRepeatAnimation = 1;
+        private const int ClientLayerStopAnimation = 0;
         private const int DefaultBoxOffsetX = -3;
         private const int DefaultBoxOffsetY = -100;
         private const float DefaultBobAmplitude = 3f;
@@ -160,6 +162,7 @@ namespace HaCreator.MapSimulator.Interaction
             _entries.Remove(messageBoxId);
             if (immediate)
             {
+                entry.ClientLayer.RemoveFromPool(immediate: true);
                 _statusMessage = $"Removed field message-box {messageBoxId} immediately.";
                 return _statusMessage;
             }
@@ -2055,11 +2058,20 @@ namespace HaCreator.MapSimulator.Interaction
             private ManagedMessageBoxLayer(Point currentPosition)
             {
                 CurrentPosition = currentPosition;
-                LeaveState = LeaveCanvasState.ReinsertedFade;
+                LeaveState = LeaveCanvasState.NotLeaving;
+                AnimationMode = ClientLayerRepeatAnimation;
             }
 
             public Point CurrentPosition { get; private set; }
             public LeaveCanvasState LeaveState { get; private set; }
+            public int AnimationMode { get; private set; }
+            public int? RemovedCanvasIndex { get; private set; }
+            public int? InsertCanvasDuration { get; private set; }
+            public int? InsertCanvasStartAlphaValue { get; private set; }
+            public int? InsertCanvasEndAlphaValue { get; private set; }
+            public bool VectorResetForLeave { get; private set; }
+            public bool RegisteredOneTimeAnimation { get; private set; }
+            public bool RemovedFromPool { get; private set; }
 
             public static ManagedMessageBoxLayer CreateLoaded(Point position, int currentTick)
             {
@@ -2076,9 +2088,48 @@ namespace HaCreator.MapSimulator.Interaction
 
             public void BeginLeave(Point layerPosition, int currentTick)
             {
+                RemoveFromPool(immediate: false);
                 CurrentPosition = layerPosition;
+                VectorResetForLeave = true;
+                RemoveCanvas(ClientLeaveRemoveCanvasIndex);
+                InsertCanvas(
+                    ClientLeaveCanvasFadeDurationMs,
+                    ClientLeaveInsertCanvasStartAlphaValue,
+                    ClientLeaveInsertCanvasEndAlphaValue,
+                    currentTick + ClientLeaveCanvasReinsertDelayMs);
+                Animate(ClientLayerStopAnimation);
+                RegisteredOneTimeAnimation = true;
+                LeaveState = LeaveCanvasState.RegisteredOneTimeAnimation;
+            }
+
+            public void RemoveFromPool(bool immediate)
+            {
+                RemovedFromPool = true;
+                if (immediate)
+                {
+                    LeaveState = LeaveCanvasState.Removed;
+                    Animate(ClientLayerStopAnimation);
+                }
+            }
+
+            private void RemoveCanvas(int index)
+            {
+                RemovedCanvasIndex = index;
+                LeaveState = LeaveCanvasState.CanvasRemoved;
+            }
+
+            private void InsertCanvas(int duration, int startAlphaValue, int endAlphaValue, int fadeStartedAt)
+            {
+                InsertCanvasDuration = duration;
+                InsertCanvasStartAlphaValue = startAlphaValue;
+                InsertCanvasEndAlphaValue = endAlphaValue;
+                _leaveStartedAt = fadeStartedAt;
                 LeaveState = LeaveCanvasState.ReinsertedFade;
-                _leaveStartedAt = currentTick + ClientLeaveCanvasReinsertDelayMs;
+            }
+
+            private void Animate(int mode)
+            {
+                AnimationMode = mode;
             }
 
             public void UpdateLeave(int currentTick)
@@ -2206,6 +2257,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private enum LeaveCanvasState
         {
+            NotLeaving,
+            RegisteredOneTimeAnimation,
+            CanvasRemoved,
             Removed,
             ReinsertedFade
         }

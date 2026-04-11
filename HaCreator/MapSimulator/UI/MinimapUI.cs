@@ -1,6 +1,8 @@
 using HaCreator.MapSimulator.Entities;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -1165,13 +1167,17 @@ namespace HaCreator.MapSimulator.UI
             if (_bIsCollapsedState || _portalMarker == null || _portalMarkers.Count == 0)
                 return;
 
-            foreach (PortalItem portal in _portalMarkers)
+            for (int i = _portalMarkers.Count - 1; i >= 0; i--)
             {
+                PortalItem portal = _portalMarkers[i];
                 if (portal?.PortalInstance == null || !portal.IsVisible)
                     continue;
 
                 Point minimapPoint = WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y);
                 Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(_portalMarker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                if (!IsClientPortalHoverCandidate(portal))
+                    continue;
+
                 Rectangle clientHoverBounds = GetClientMarkerHoverBounds(_portalMarker, minimapPoint);
                 if (!clientHoverBounds.IsEmpty)
                 {
@@ -1610,6 +1616,30 @@ namespace HaCreator.MapSimulator.UI
                 markerScreenY + ClientMarkerHoverBoundsYOffset,
                 ClientMarkerHoverBoundsWidth,
                 ClientMarkerHoverBoundsHeight);
+        }
+
+        private static bool IsClientPortalHoverCandidate(PortalItem portal)
+        {
+            if (portal?.PortalInstance == null)
+            {
+                return false;
+            }
+
+            return IsClientPortalHoverCandidateForTesting(
+                portal.PortalInstance.pt,
+                portal.PortalInstance.hideTooltip,
+                portal.PortalInstance.tm);
+        }
+
+        internal static bool IsClientPortalHoverCandidateForTesting(
+            PortalType portalType,
+            MapleBool hideTooltip,
+            int targetMapId)
+        {
+            return (portalType == PortalType.Visible || portalType == PortalType.TownPortalPoint)
+                && hideTooltip != MapleBool.True
+                && targetMapId > 0
+                && targetMapId != MapConstants.MaxMap;
         }
 
         internal static Point ResolveTooltipAnchorPointForTesting(int mouseX, int mouseY)

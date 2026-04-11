@@ -502,33 +502,73 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            List<string> availableActions = new();
-            for (int i = 0; i < candidates.Count; i++)
-            {
-                string action = candidates[i];
-                if (!string.IsNullOrWhiteSpace(action) && actor.HasAction(action))
-                {
-                    availableActions.Add(action);
-                }
-            }
-
-            if (availableActions.Count == 0)
-            {
-                return actor.HasAction(AnimationKeys.Stand) ? AnimationKeys.Stand : null;
-            }
-
-            int actionIndex = ResolveClientEmployeeActionIndex(availableActions.Count, _random.Next(ClientEmployeeActionRandomModulo));
-            return availableActions[actionIndex];
+            return SelectClientIndexedEmployeeAction(
+                candidates,
+                _random.Next(ClientEmployeeActionRandomModulo),
+                actor.HasAction);
         }
 
         internal static string SelectClientIndexedEmployeeActionForTesting(IReadOnlyList<string> actions, int randomModuloValue)
+        {
+            return SelectClientIndexedEmployeeAction(actions, randomModuloValue, action => true);
+        }
+
+        internal static string SelectClientIndexedEmployeeActionForTesting(
+            IReadOnlyList<string> actions,
+            IReadOnlySet<string> availableActions,
+            int randomModuloValue)
+        {
+            return SelectClientIndexedEmployeeAction(
+                actions,
+                randomModuloValue,
+                action => availableActions?.Contains(action) == true);
+        }
+
+        private static string SelectClientIndexedEmployeeAction(
+            IReadOnlyList<string> actions,
+            int randomModuloValue,
+            Func<string, bool> isActionAvailable)
         {
             if (actions == null || actions.Count == 0)
             {
                 return null;
             }
 
-            return actions[ResolveClientEmployeeActionIndex(actions.Count, randomModuloValue)];
+            int actionIndex = ResolveClientEmployeeActionIndex(actions.Count, randomModuloValue);
+            string selectedAction = NormalizeActionName(actions[actionIndex]);
+            if (IsSelectableAction(selectedAction, isActionAvailable))
+            {
+                return selectedAction;
+            }
+
+            string standAction = NormalizeActionName(AnimationKeys.Stand);
+            if (IsSelectableAction(standAction, isActionAvailable))
+            {
+                return standAction;
+            }
+
+            for (int offset = 1; offset < actions.Count; offset++)
+            {
+                int candidateIndex = (actionIndex + offset) % actions.Count;
+                string candidate = NormalizeActionName(actions[candidateIndex]);
+                if (IsSelectableAction(candidate, isActionAvailable))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsSelectableAction(string action, Func<string, bool> isActionAvailable)
+        {
+            return !string.IsNullOrWhiteSpace(action)
+                && (isActionAvailable?.Invoke(action) ?? true);
+        }
+
+        private static string NormalizeActionName(string action)
+        {
+            return string.IsNullOrWhiteSpace(action) ? string.Empty : action.Trim().ToLowerInvariant();
         }
 
         private static int ResolveClientEmployeeActionIndex(int actionCount, int randomModuloValue)

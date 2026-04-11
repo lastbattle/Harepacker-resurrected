@@ -402,9 +402,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            anchor = new Vector2(
-                _visualAnchor.X - DragonKeyDownBarHalfWidth,
-                _visualAnchor.Y - frame.Bounds.Height - DragonKeyDownBarVerticalGap);
+            anchor = ResolveClientDragonKeyDownBarAnchor(_visualAnchor, frame);
             return true;
         }
 
@@ -1121,6 +1119,15 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return new Rectangle(-frame.Origin.X, -frame.Origin.Y, 0, 0);
+        }
+
+        internal static Vector2 ResolveClientDragonKeyDownBarAnchor(Vector2 visualAnchor, SkillFrame frame)
+        {
+            Rectangle bounds = GetRelativeBounds(frame);
+            float dragonHeight = bounds.Height > 0 ? bounds.Height : frame?.Texture?.Height ?? 0;
+            return new Vector2(
+                visualAnchor.X - DragonKeyDownBarHalfWidth,
+                visualAnchor.Y - dragonHeight - DragonKeyDownBarVerticalGap);
         }
 
         private bool TryResolveCurrentFrame(int currentTime, out SkillFrame frame, out float frameAlpha)

@@ -171,7 +171,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public static PacketOwnedRandomMesoBagPresentation CreateRandomMesoBagPresentation(byte rank, int mesoAmount)
         {
-            int normalizedRank = Math.Clamp(rank <= 0 ? 1 : rank, 1, 4);
+            int normalizedRank = NormalizeRandomMesoBagClientRank(rank);
             string dialogResourcePath = ResolveRandomMesoBagDialogResourcePath(normalizedRank);
             return new PacketOwnedRandomMesoBagPresentation
             {
@@ -193,7 +193,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public static string GetRandomMesoBagDialogResourcePath(int rank)
         {
-            return ResolveRandomMesoBagDialogResourcePath(Math.Clamp(rank, 1, 4));
+            return ResolveRandomMesoBagDialogResourcePath(NormalizeRandomMesoBagClientRank(rank));
         }
 
         public static string GetRandomMesoBagOkButtonResourcePath()
@@ -201,6 +201,17 @@ namespace HaCreator.MapSimulator.Managers
             return ResolveAssetPath(
                 RandomMesoBagOkButtonStringPoolId,
                 "UI/UIWindow.img/RandomMesoBag/BtOk");
+        }
+
+        internal static int NormalizeRandomMesoBagClientRank(int rank)
+        {
+            return rank switch
+            {
+                2 => 2,
+                3 => 3,
+                4 => 4,
+                _ => 1
+            };
         }
 
         private static string ResolveRandomMesoBagDialogResourcePath(int rank)
@@ -215,7 +226,7 @@ namespace HaCreator.MapSimulator.Managers
 
             return ResolveAssetPath(
                 stringPoolId,
-                $"UI/UIWindow.img/RandomMesoBag/Back{Math.Clamp(rank, 1, 4)}");
+                $"UI/UIWindow.img/RandomMesoBag/Back{NormalizeRandomMesoBagClientRank(rank)}");
         }
 
         private static string ResolveRandomMesoBagBackgroundKey(int rank, string dialogResourcePath)

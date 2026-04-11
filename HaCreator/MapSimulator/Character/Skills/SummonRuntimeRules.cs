@@ -940,6 +940,30 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && summon.TeslaCoilState == 1;
         }
 
+        internal static bool CanInitiateTeslaCoilAttackGroup(
+            IEnumerable<ActiveSummon> summons,
+            int teslaCoilSkillId,
+            int requiredCount)
+        {
+            if (summons == null || requiredCount <= 0)
+            {
+                return false;
+            }
+
+            int armedCount = 0;
+            foreach (ActiveSummon summon in summons)
+            {
+                if (!CanInitiateTeslaCoilAttack(summon, teslaCoilSkillId))
+                {
+                    return false;
+                }
+
+                armedCount++;
+            }
+
+            return armedCount >= requiredCount;
+        }
+
         internal static byte ResolveTeslaCoilIdleRuntimeState(byte currentState, bool hasActiveOneTimeActionPlayback)
         {
             return currentState == 2 && !hasActiveOneTimeActionPlayback

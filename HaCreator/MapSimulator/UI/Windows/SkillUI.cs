@@ -76,15 +76,15 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_ANCHOR_GAP = 8;
         private const int HOVER_TOOLTIP_CURSOR_GAP = 20;
         private const float COOLDOWN_TEXT_SCALE = 0.55f;
-        private const int CLIENT_TOOLTIP_WIDTH = 320;
-        private const int CLIENT_TOOLTIP_BASE_HEIGHT = 114;
-        private const int CLIENT_TOOLTIP_TITLE_X = 10;
-        private const int CLIENT_TOOLTIP_TITLE_Y = 10;
-        private const int CLIENT_TOOLTIP_ICON_X = 10;
-        private const int CLIENT_TOOLTIP_ICON_Y = 32;
-        private const int CLIENT_TOOLTIP_TEXT_X = 87;
-        private const int CLIENT_TOOLTIP_TEXT_Y = 32;
-        private const int CLIENT_TOOLTIP_RIGHT_PADDING = 20;
+        private const int CLIENT_TOOLTIP_WIDTH = SkillTooltipFrameLayout.ClientTooltipWidth;
+        private const int CLIENT_TOOLTIP_BASE_HEIGHT = SkillTooltipFrameLayout.ClientTooltipBaseHeight;
+        private const int CLIENT_TOOLTIP_TITLE_X = SkillTooltipFrameLayout.ClientTooltipTitleX;
+        private const int CLIENT_TOOLTIP_TITLE_Y = SkillTooltipFrameLayout.ClientTooltipTitleY;
+        private const int CLIENT_TOOLTIP_ICON_X = SkillTooltipFrameLayout.ClientTooltipIconX;
+        private const int CLIENT_TOOLTIP_ICON_Y = SkillTooltipFrameLayout.ClientTooltipIconY;
+        private const int CLIENT_TOOLTIP_TEXT_X = SkillTooltipFrameLayout.ClientTooltipTextX;
+        private const int CLIENT_TOOLTIP_TEXT_Y = SkillTooltipFrameLayout.ClientTooltipTextY;
+        private const int CLIENT_TOOLTIP_RIGHT_PADDING = SkillTooltipFrameLayout.ClientTooltipRightPadding;
         private const int CLIENT_TOOLTIP_REQUIREMENT_HEADER_X = 16;
         private const int CLIENT_TOOLTIP_REQUIREMENT_HEADER_Y_OFFSET = -3;
         private const int CLIENT_TOOLTIP_REQUIREMENT_ICON_X = 10;
@@ -1047,16 +1047,8 @@ namespace HaCreator.MapSimulator.UI
             ReadOnlySpan<int> framePreference,
             out int tooltipFrameIndex)
         {
-            SkillTooltipFrameLayout.FrameGeometry[] frameGeometries = new SkillTooltipFrameLayout.FrameGeometry[_tooltipFrames.Length];
-            for (int i = 0; i < _tooltipFrames.Length; i++)
-            {
-                Texture2D frame = _tooltipFrames[i];
-                frameGeometries[i] = new SkillTooltipFrameLayout.FrameGeometry(
-                    frame?.Width ?? 0,
-                    frame?.Height ?? 0,
-                    i < _tooltipFrameOrigins.Length ? _tooltipFrameOrigins[i] : Point.Zero);
-            }
-
+            SkillTooltipFrameLayout.FrameGeometry[] frameGeometries =
+                SkillTooltipFrameLayout.BuildFrameGeometries(_tooltipFrames, _tooltipFrameOrigins);
             return SkillTooltipFrameLayout.ResolveTooltipRect(
                 anchorPoint,
                 tooltipWidth,

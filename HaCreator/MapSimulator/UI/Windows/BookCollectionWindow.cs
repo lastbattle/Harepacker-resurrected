@@ -714,7 +714,12 @@ namespace HaCreator.MapSimulator.UI
 
                     if (WasPressedOrRepeated(keyboard, Keys.Back, tickCount))
                     {
-                        if (HasSearchSelection)
+                        if (_compositionText.Length > 0)
+                        {
+                            ClearCompositionText();
+                            _caretBlinkTick = Environment.TickCount;
+                        }
+                        else if (HasSearchSelection)
                         {
                             DeleteSearchSelectionIfAny();
                             OnSearchQueryChanged();
@@ -732,7 +737,12 @@ namespace HaCreator.MapSimulator.UI
                     }
                     if (WasPressedOrRepeated(keyboard, Keys.Delete, tickCount))
                     {
-                        if (shift)
+                        if (_compositionText.Length > 0)
+                        {
+                            ClearCompositionText();
+                            _caretBlinkTick = Environment.TickCount;
+                        }
+                        else if (shift)
                         {
                             if (HasSearchSelection)
                             {
@@ -757,27 +767,49 @@ namespace HaCreator.MapSimulator.UI
                     }
                     if (WasPressedOrRepeated(keyboard, Keys.Left, tickCount))
                     {
-                        int nextCursorPosition = ctrl
-                            ? FindPreviousSearchWordBoundary()
-                            : SkillMacroNameRules.GetPreviousCaretStop(_searchQuery, _searchCursorPosition);
+                        ClearCompositionText();
+                        int baseCaret = shift
+                            ? Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length)
+                            : ClientEditSelectionHelper.ResolveNavigationCaret(
+                                _searchQuery.Length,
+                                _searchSelectionAnchor,
+                                _searchCursorPosition,
+                                moveRight: false);
+                        int nextCursorPosition = !shift && HasSearchSelection
+                            ? baseCaret
+                            : ctrl
+                                ? FindPreviousSearchWordBoundary(baseCaret)
+                                : SkillMacroNameRules.GetPreviousCaretStop(_searchQuery, baseCaret);
                         MoveSearchCaret(nextCursorPosition, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
                     if (WasPressedOrRepeated(keyboard, Keys.Right, tickCount))
                     {
-                        int nextCursorPosition = ctrl
-                            ? FindNextSearchWordBoundary()
-                            : SkillMacroNameRules.GetNextCaretStop(_searchQuery, _searchCursorPosition);
+                        ClearCompositionText();
+                        int baseCaret = shift
+                            ? Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length)
+                            : ClientEditSelectionHelper.ResolveNavigationCaret(
+                                _searchQuery.Length,
+                                _searchSelectionAnchor,
+                                _searchCursorPosition,
+                                moveRight: true);
+                        int nextCursorPosition = !shift && HasSearchSelection
+                            ? baseCaret
+                            : ctrl
+                                ? FindNextSearchWordBoundary(baseCaret)
+                                : SkillMacroNameRules.GetNextCaretStop(_searchQuery, baseCaret);
                         MoveSearchCaret(nextCursorPosition, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
                     if (WasPressed(keyboard, Keys.Home))
                     {
+                        ClearCompositionText();
                         MoveSearchCaret(0, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
                     if (WasPressed(keyboard, Keys.End))
                     {
+                        ClearCompositionText();
                         MoveSearchCaret(_searchQuery.Length, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
@@ -1508,6 +1540,13 @@ namespace HaCreator.MapSimulator.UI
                         CollectionBookTextAlignment.Right => HorizontalAlignment.Right,
                         _ => HorizontalAlignment.Left
                     };
+                    if (record.UsesResolvedAnalyzerOffset)
+                    {
+                        // CBookDlg::SetPage stores the analyzer-resolved x offset in CT_INFO;
+                        // CBookDlg::Draw then passes that x directly to DrawTextA.
+                        alignment = HorizontalAlignment.Left;
+                    }
+
                     DrawTextLine(
                         sprite,
                         record.Text,
@@ -1536,6 +1575,11 @@ namespace HaCreator.MapSimulator.UI
 
         internal static Vector2 ResolveCollectionRecordTextAnchor(Point pageOrigin, CollectionBookRecordSnapshot record)
         {
+            if (record?.UsesResolvedAnalyzerOffset == true)
+            {
+                return new Vector2(pageOrigin.X + record.Left + 35, pageOrigin.Y + record.Top + 30);
+            }
+
             HorizontalAlignment alignment = record?.Alignment switch
             {
                 CollectionBookTextAlignment.Center => HorizontalAlignment.Center,
@@ -2353,24 +2397,26 @@ namespace HaCreator.MapSimulator.UI
             OnSearchQueryChanged();
         }
 
-        private int FindPreviousSearchWordBoundary()
+        private int FindPreviousSearchWordBoundary(int cursorPosition)
         {
-            if (_searchCursorPosition <= 0 || string.IsNullOrEmpty(_searchQuery))
+            int safeCursorPosition = Math.Clamp(cursorPosition, 0, _searchQuery?.Length ?? 0);
+            if (safeCursorPosition <= 0 || string.IsNullOrEmpty(_searchQuery))
             {
                 return 0;
             }
 
-            return ClientEditWordNavigator.FindPreviousWordBoundary(_searchQuery, _searchCursorPosition);
+            return ClientEditWordNavigator.FindPreviousWordBoundary(_searchQuery, safeCursorPosition);
         }
 
-        private int FindNextSearchWordBoundary()
+        private int FindNextSearchWordBoundary(int cursorPosition)
         {
-            if (_searchCursorPosition >= _searchQuery.Length || string.IsNullOrEmpty(_searchQuery))
+            int safeCursorPosition = Math.Clamp(cursorPosition, 0, _searchQuery?.Length ?? 0);
+            if (string.IsNullOrEmpty(_searchQuery) || safeCursorPosition >= _searchQuery.Length)
             {
-                return _searchQuery.Length;
+                return _searchQuery?.Length ?? 0;
             }
 
-            return ClientEditWordNavigator.FindNextWordBoundary(_searchQuery, _searchCursorPosition);
+            return ClientEditWordNavigator.FindNextWordBoundary(_searchQuery, safeCursorPosition);
         }
 
         private void SelectSearchWordAt(int mouseX)

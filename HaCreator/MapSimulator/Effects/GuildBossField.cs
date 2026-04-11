@@ -391,8 +391,20 @@ namespace HaCreator.MapSimulator.Effects
 
         public bool TryHandleLocalPulleyAttack(Rectangle attackBounds, int currentTimeMs, bool allowLocalPreview, out string message)
         {
+            return TryHandleLocalPulleyAttack(attackBounds, currentTimeMs, allowLocalPreview, hasHitReactor: false, out message);
+        }
+
+
+        public bool TryHandleLocalPulleyAttack(Rectangle attackBounds, int currentTimeMs, bool allowLocalPreview, bool hasHitReactor, out string message)
+        {
             message = null;
             if (!_isActive || !_pulleyEnabled || attackBounds.IsEmpty || !_pulleyArea.Intersects(attackBounds))
+            {
+                return false;
+            }
+
+
+            if (hasHitReactor)
             {
                 return false;
             }

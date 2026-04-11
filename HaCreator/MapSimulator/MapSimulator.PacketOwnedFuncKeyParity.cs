@@ -877,7 +877,7 @@ namespace HaCreator.MapSimulator
             string badgeText = isCashItemEntry || inventoryType == InventoryType.CASH
                 ? "CASH"
                 : "ITEM";
-            string quantityText = drawsStackNumber && itemCount > 1
+            string quantityText = drawsStackNumber && itemCount > 0
                 ? itemCount.ToString(CultureInfo.InvariantCulture)
                 : string.Empty;
             KeyConfigWindow.ShortcutVisualState.ClientDrawLayer drawLayer = packetEntryType switch
@@ -1303,7 +1303,8 @@ namespace HaCreator.MapSimulator
 
         private bool TryDispatchPacketOwnedRawFunctionEntry(int clientFunctionId, int currentTime)
         {
-            switch (ResolvePacketOwnedRawFunctionOwner(clientFunctionId))
+            PacketOwnedRawFunctionOwner owner = ResolvePacketOwnedRawFunctionOwner(clientFunctionId);
+            switch (owner)
             {
                 case PacketOwnedRawFunctionOwner.SocialListFriend:
                     _socialListRuntime.SelectTab(SocialListTab.Friend);
@@ -1353,16 +1354,9 @@ namespace HaCreator.MapSimulator
                     ShowPacketOwnedCashShopWindow();
                     return true;
                 case PacketOwnedRawFunctionOwner.Medal:
-                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.MedalQuestInfo, () =>
-                        ShowUtilityWindow(MapSimulatorWindowNames.MedalQuestInfo, "packet-owned-funckey:26"));
-                    return true;
                 case PacketOwnedRawFunctionOwner.ItemPot:
-                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.ItemPot, () =>
-                        ShowUtilityWindow(MapSimulatorWindowNames.ItemPot, "packet-owned-funckey:30"));
-                    return true;
                 case PacketOwnedRawFunctionOwner.MagicWheel:
-                    TogglePacketOwnedRawUtilityWindow(MapSimulatorWindowNames.MagicWheel, () =>
-                        ShowUtilityWindow(MapSimulatorWindowNames.MagicWheel, "packet-owned-funckey:32"));
+                    TogglePacketOwnedRawFunctionOwnerWindow(owner, clientFunctionId);
                     return true;
                 default:
                     break;
@@ -1408,6 +1402,17 @@ namespace HaCreator.MapSimulator
             }
 
             showAction?.Invoke();
+        }
+
+        private void TogglePacketOwnedRawFunctionOwnerWindow(PacketOwnedRawFunctionOwner owner, int clientFunctionId)
+        {
+            if (!TryResolvePacketOwnedRawFunctionOwnerWindowName(owner, out string windowName))
+            {
+                return;
+            }
+
+            TogglePacketOwnedRawUtilityWindow(windowName, () =>
+                ShowUtilityWindow(windowName, $"packet-owned-funckey:{clientFunctionId.ToString(CultureInfo.InvariantCulture)}"));
         }
 
         private bool TryUsePacketOwnedFuncKeyItem(int itemId, int currentTime)
@@ -1584,6 +1589,19 @@ namespace HaCreator.MapSimulator
                 32 => PacketOwnedRawFunctionOwner.MagicWheel,
                 _ => PacketOwnedRawFunctionOwner.None,
             };
+        }
+
+        internal static bool TryResolvePacketOwnedRawFunctionOwnerWindowName(PacketOwnedRawFunctionOwner owner, out string windowName)
+        {
+            windowName = owner switch
+            {
+                PacketOwnedRawFunctionOwner.Medal => MapSimulatorWindowNames.MedalQuestInfo,
+                PacketOwnedRawFunctionOwner.ItemPot => MapSimulatorWindowNames.ItemPot,
+                PacketOwnedRawFunctionOwner.MagicWheel => MapSimulatorWindowNames.MagicWheel,
+                _ => null,
+            };
+
+            return !string.IsNullOrEmpty(windowName);
         }
 
         internal static PacketOwnedRawChatOwner ResolvePacketOwnedRawChatOwner(int clientFunctionId)

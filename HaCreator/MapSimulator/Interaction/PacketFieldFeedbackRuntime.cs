@@ -1156,6 +1156,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case 2:
                     {
                         int durationSeconds = reader.ReadInt32();
+                        ClearExistingFieldClock(callbacks);
                         ApplyCountdownClock(PacketFieldClockVisualVariant.Default, durationSeconds, currentTick, callbacks, "field clock countdown");
                         _statusMessage = "Applied packet-owned clock countdown.";
                         message = _statusMessage;
@@ -1192,10 +1193,10 @@ namespace HaCreator.MapSimulator.Interaction
                     }
                 case 100:
                     {
+                        ClearExistingFieldClock(callbacks);
                         bool show = reader.ReadByte() != 0;
                         if (!show)
                         {
-                            ClearFieldClock(callbacks);
                             _statusMessage = "Cleared packet-owned cake-pie timerboard.";
                             message = _statusMessage;
                             return true;
@@ -1335,7 +1336,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (durationSeconds < 0)
             {
-                ClearFieldClock(callbacks);
+                ClearExistingFieldClock(callbacks);
                 return;
             }
 
@@ -1365,6 +1366,18 @@ namespace HaCreator.MapSimulator.Interaction
             _fieldClockEventFlag = false;
             _lastFieldClockSummary = string.Empty;
             callbacks?.ClearFieldClock?.Invoke();
+        }
+
+        private void ClearExistingFieldClock(PacketFieldFeedbackCallbacks callbacks)
+        {
+            if (_clockVisualState == null)
+            {
+                _fieldClockEventFlag = false;
+                _lastFieldClockSummary = string.Empty;
+                return;
+            }
+
+            ClearFieldClock(callbacks);
         }
 
         private bool TryApplyFieldFadeOutForce(byte[] payload, PacketFieldFeedbackCallbacks callbacks, out string message)

@@ -9004,6 +9004,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     LastResolvedShootAmmoSelection = refreshedQueuedSelection?.Snapshot();
                     _shootAmmoBypassTemporaryStatOverride = pending.ShootAmmoBypassActive;
+                    Vector2? deferredAttackOriginOverride = ResolveDeferredExecutionAttackOriginOverride(
+                        pending.Skill,
+                        pending.AttackOrigin);
                     ExecuteSkillPayload(
                         pending.Skill,
                         pendingLevel,
@@ -9016,7 +9019,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         isQueuedFinalAttack: pending.IsQueuedFinalAttack,
                         isQueuedSparkAttack: pending.IsQueuedSparkAttack,
                         facingRightOverride: pending.FacingRight,
-                        attackOriginOverride: pending.AttackOrigin,
+                        attackOriginOverride: deferredAttackOriginOverride,
                         shootRange0Override: pending.ShootRange0,
                         currentActionNameOverride: pending.ActionName,
                         currentRawActionCodeOverride: pending.RawActionCode);
@@ -9259,6 +9262,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 RepeatCount = 0,
                 CountLimit = ResolveMovingShootAntiRepeatCountLimit(pending)
             };
+        }
+
+        internal static Vector2? ResolveDeferredExecutionAttackOriginOverride(
+            SkillData skill,
+            Vector2? queuedAttackOrigin)
+        {
+            return ShouldUseSmoothingMovingShoot(skill)
+                ? null
+                : queuedAttackOrigin;
         }
 
         private static bool MatchesDeferredMovingShootExecutionMetadata(int? queuedValue, int? previousValue)

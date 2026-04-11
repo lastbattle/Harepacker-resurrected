@@ -23,7 +23,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_transportOfficialSessionBridge.IsRunning || _transportOfficialSessionBridge.HasAttachedClient)
+            if (_transportOfficialSessionBridge.IsRunning
+                || _transportOfficialSessionBridge.HasAttachedClient
+                || _transportOfficialSessionBridge.HasPassiveEstablishedSocketPair)
             {
                 _lastTransportFieldInitRequestSummary = _transportOfficialSessionBridge.TryQueueFieldInitRequest(fieldId, shipKind, out string queueStatus)
                     ? queueStatus

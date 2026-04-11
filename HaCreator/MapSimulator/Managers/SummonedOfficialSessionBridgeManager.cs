@@ -1866,7 +1866,7 @@ namespace HaCreator.MapSimulator.Managers
                         candidate.PrimaryTargetMobId,
                         candidate.TargetMobIds);
                     if (learnedTemplate != null
-                        && !ShouldPreferSg88LearnedTemplateCandidate(
+                        && !ShouldPreferTeslaLearnedTemplateCandidate(
                             candidatePreference,
                             candidate.ResolutionSource,
                             candidate.ObservedAt,
@@ -2268,7 +2268,14 @@ namespace HaCreator.MapSimulator.Managers
                 preferredResolutionSource = PreferTeslaTemplateResolutionSource(
                     capture.ResolutionSource,
                     existingTemplate.ResolutionSource);
-                if (existingTemplate.ObservedAt > trace.ObservedAt)
+                int existingRetentionCompare = CompareTeslaLearnedTemplateRetentionOrder(
+                    existingTemplate.ResolutionSource,
+                    existingTemplate.ObservedAt,
+                    existingTemplate.Evidence,
+                    preferredResolutionSource,
+                    trace.ObservedAt,
+                    binding.Evidence);
+                if (existingRetentionCompare <= 0)
                 {
                     existingTemplate.ResolutionSource = preferredResolutionSource;
                     return;
@@ -2288,23 +2295,13 @@ namespace HaCreator.MapSimulator.Managers
                 TargetMobIds = capture.TargetMobIds.ToArray(),
                 ResolutionSource = preferredResolutionSource
             });
-            templates.Sort((left, right) =>
-            {
-                int observedCompare = right.ObservedAt.CompareTo(left.ObservedAt);
-                if (observedCompare != 0)
-                {
-                    return observedCompare;
-                }
-
-                int resolutionCompare = GetTeslaTemplateResolutionRank(right.ResolutionSource)
-                    .CompareTo(GetTeslaTemplateResolutionRank(left.ResolutionSource));
-                if (resolutionCompare != 0)
-                {
-                    return resolutionCompare;
-                }
-
-                return string.CompareOrdinal(right.Evidence, left.Evidence);
-            });
+            templates.Sort((left, right) => CompareTeslaLearnedTemplateRetentionOrder(
+                left.ResolutionSource,
+                left.ObservedAt,
+                left.Evidence,
+                right.ResolutionSource,
+                right.ObservedAt,
+                right.Evidence));
 
             while (templates.Count > MaxLearnedTeslaAttackTemplatesPerTargetCount)
             {
@@ -2479,6 +2476,50 @@ namespace HaCreator.MapSimulator.Managers
             return candidateObservedAt >= selectedObservedAt;
         }
 
+        internal static bool ShouldPreferTeslaLearnedTemplateCandidate(
+            Sg88ManualAttackTemplateLanePreference candidate,
+            string candidateResolutionSource,
+            int candidateObservedAt,
+            Sg88ManualAttackTemplateLanePreference selected,
+            string selectedResolutionSource,
+            int selectedObservedAt)
+        {
+            if (candidate.LaneScore != selected.LaneScore)
+            {
+                return candidate.LaneScore > selected.LaneScore;
+            }
+
+            if (candidate.LaneScore > 0
+                && candidate.LeadingOrderedMatchCount != selected.LeadingOrderedMatchCount)
+            {
+                return candidate.LeadingOrderedMatchCount > selected.LeadingOrderedMatchCount;
+            }
+
+            if (candidate.LaneScore > 0
+                && candidate.ExactOrderedMatchCount != selected.ExactOrderedMatchCount)
+            {
+                return candidate.ExactOrderedMatchCount > selected.ExactOrderedMatchCount;
+            }
+
+            if (candidate.LaneScore > 0
+                && candidate.OrderedMatchScore != selected.OrderedMatchScore)
+            {
+                return candidate.OrderedMatchScore > selected.OrderedMatchScore;
+            }
+
+            if (candidate.LaneScore > 0)
+            {
+                int candidateResolutionRank = GetTeslaTemplateResolutionRank(candidateResolutionSource);
+                int selectedResolutionRank = GetTeslaTemplateResolutionRank(selectedResolutionSource);
+                if (candidateResolutionRank != selectedResolutionRank)
+                {
+                    return candidateResolutionRank > selectedResolutionRank;
+                }
+            }
+
+            return candidateObservedAt >= selectedObservedAt;
+        }
+
         internal static int CompareSg88LearnedTemplateRetentionOrder(
             string leftResolutionSource,
             int leftObservedAt,
@@ -2489,6 +2530,30 @@ namespace HaCreator.MapSimulator.Managers
         {
             int resolutionCompare = GetSg88TemplateResolutionRank(rightResolutionSource)
                 .CompareTo(GetSg88TemplateResolutionRank(leftResolutionSource));
+            if (resolutionCompare != 0)
+            {
+                return resolutionCompare;
+            }
+
+            int observedCompare = rightObservedAt.CompareTo(leftObservedAt);
+            if (observedCompare != 0)
+            {
+                return observedCompare;
+            }
+
+            return string.CompareOrdinal(rightEvidence, leftEvidence);
+        }
+
+        internal static int CompareTeslaLearnedTemplateRetentionOrder(
+            string leftResolutionSource,
+            int leftObservedAt,
+            string leftEvidence,
+            string rightResolutionSource,
+            int rightObservedAt,
+            string rightEvidence)
+        {
+            int resolutionCompare = GetTeslaTemplateResolutionRank(rightResolutionSource)
+                .CompareTo(GetTeslaTemplateResolutionRank(leftResolutionSource));
             if (resolutionCompare != 0)
             {
                 return resolutionCompare;

@@ -292,6 +292,70 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public bool TryAttachEstablishedSessionAndStartProxy(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            return TryAttachEstablishedSessionAndStartProxy(listenPort, candidate, out status);
+        }
+
+        public bool TryAttachEstablishedSessionAndStartProxy(int listenPort, SessionDiscoveryCandidate candidate, out string status)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
+            {
+                status = "Massacre official-session proxy attach requires an established Maple client socket pair.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (listenPort < 0 || listenPort > ushort.MaxValue)
+            {
+                status = "Massacre official-session proxy attach listen port must be 0 or a valid TCP port.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (HasAttachedClient)
+                {
+                    status = $"Massacre official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before preparing an already-established socket pair for reconnect.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                StopInternal(clearPending: true);
+                _passiveEstablishedSession = candidate;
+
+                if (!TryStartProxyListener(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
+                {
+                    LastStatus = $"Observed already-established Massacre Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
+                    status = LastStatus;
+                    return false;
+                }
+
+                LastStatus =
+                    $"Observed already-established Massacre Maple socket pair {DescribeEstablishedSession(candidate)}. " +
+                    $"Armed localhost proxy on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}; reconnect Maple through this proxy to recover Massacre decrypt/inject ownership for clock/context/result traffic through the existing bridge seam.";
+                status = LastStatus;
+                return true;
+            }
+        }
+
         public string DescribeDiscoveredSessions(int remotePort, string processSelector = null, int? localPort = null)
         {
             int? owningProcessId = null;
@@ -447,6 +511,35 @@ namespace HaCreator.MapSimulator.Managers
             catch (Exception ex)
             {
                 LastStatus = $"Massacre official-session bridge error: {ex.Message}";
+            }
+        }
+
+        private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
+        {
+            bool autoSelectListenPort = listenPort <= 0;
+            int requestedListenPort = autoSelectListenPort ? DefaultListenPort : listenPort;
+            string resolvedRemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
+
+            try
+            {
+                ListenPort = requestedListenPort;
+                RemoteHost = resolvedRemoteHost;
+                RemotePort = remotePort;
+                _listenerCancellation = new CancellationTokenSource();
+                _listener = new TcpListener(IPAddress.Loopback, autoSelectListenPort ? 0 : requestedListenPort);
+                _listener.Start();
+                ListenPort = (_listener.LocalEndpoint as IPEndPoint)?.Port ?? requestedListenPort;
+                _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
+                status = $"Massacre official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                StopInternal(clearPending: false);
+                status = $"Massacre official-session bridge failed to start: {ex.Message}";
+                LastStatus = status;
+                return false;
             }
         }
 
@@ -854,6 +947,11 @@ namespace HaCreator.MapSimulator.Managers
                 : string.IsNullOrWhiteSpace(owningProcessName)
                     ? "the selected process"
                     : $"process '{owningProcessName}'";
+        }
+
+        private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
         }
 
         private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)

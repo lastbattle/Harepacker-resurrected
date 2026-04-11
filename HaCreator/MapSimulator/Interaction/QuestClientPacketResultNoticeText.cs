@@ -19,7 +19,6 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int UseInventoryCategoryStringPoolId = 6791;
         internal const int SetupInventoryCategoryStringPoolId = 11;
         internal const int EtcInventoryCategoryStringPoolId = 6712;
-        internal const int CashInventoryCategoryStringPoolId = 6700;
         internal const int QuestExpiredStringPoolId = 0x1015;
 
         private const string RewardInventorySeparatorText = " or";
@@ -46,10 +45,6 @@ namespace HaCreator.MapSimulator.Interaction
                 case InventoryType.ETC:
                     label = MapleStoryStringPool.GetOrFallback(EtcInventoryCategoryStringPoolId, "Etc");
                     stringPoolId = EtcInventoryCategoryStringPoolId;
-                    return true;
-                case InventoryType.CASH:
-                    label = MapleStoryStringPool.GetOrFallback(CashInventoryCategoryStringPoolId, "Cash");
-                    stringPoolId = CashInventoryCategoryStringPoolId;
                     return true;
                 default:
                     label = null;
@@ -87,6 +82,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string FormatRewardInventoryNotice(IEnumerable<int> itemIds)
         {
             string categoryText = DescribeRewardItemCategories(itemIds);
+            if (string.IsNullOrWhiteSpace(categoryText))
+            {
+                return string.Empty;
+            }
+
             string format = MapleStoryStringPool.GetCompositeFormatOrFallback(RewardInventorySummaryStringPoolId, RewardInventorySummaryText, 1, out _);
             return string.Format(CultureInfo.InvariantCulture, format, categoryText);
         }

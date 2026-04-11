@@ -1122,7 +1122,7 @@ namespace HaCreator.MapSimulator.Interaction
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 69,
                 new byte[] { 27 },
-                $"Mirrored CStoreBankDlg::SendGetAllRequest for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) and fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()} (opcode 69, mode 27).");
+                $"Mirrored CStoreBankDlg::SendGetAllRequest for {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s) and fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)}{BuildPendingGetAllSelectionSuffix()} (opcode 69, mode 27; IDA 0x7449f0 confirms no selected-row body bytes are encoded after the mode byte).");
             return true;
         }
 
@@ -1467,7 +1467,7 @@ namespace HaCreator.MapSimulator.Interaction
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 69,
                 new byte[] { 26 },
-                $"Mirrored CStoreBankDlg::SendCalculateFeeRequest for owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)} / packet row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); client decompile 0x743f70 encodes only 69 [26], with selection retained in owner state until subtype 36.");
+                $"Mirrored CStoreBankDlg::SendCalculateFeeRequest for owner row {_pendingFeeCalculationOwnerRowIndex.ToString(CultureInfo.InvariantCulture)} / packet row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); client decompile 0x743f70 encodes only 69 [26], with no selected-row body bytes and selection retained in owner state until subtype 36.");
             message = StatusMessage;
             return true;
         }
@@ -1515,7 +1515,7 @@ namespace HaCreator.MapSimulator.Interaction
             else if (ownerRowIndex >= 0 && ownerRowIndex < _decodedItems.Count)
             {
                 StoreBankItemEntry selectedItem = _decodedItems[ownerRowIndex];
-                StatusMessage = $"CStoreBankDlg BtGet acknowledged selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); SendCalculateFeeRequest itself is the byte-accurate 69 [26] request, but the native fee-result retrieval follow-up is still not modeled.";
+                StatusMessage = $"CStoreBankDlg BtGet acknowledged selected row {selectedItem.PacketGroupRowIndex.ToString(CultureInfo.InvariantCulture)} ({selectedItem.ItemName}); the byte-accurate outbound flow is 69 [26] now, then 69 [27] with no row body after subtype 36 and the Yes/No owner acceptance.";
             }
             else if (HasDecodedItems)
             {

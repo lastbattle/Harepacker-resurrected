@@ -246,7 +246,7 @@ namespace HaCreator.MapSimulator.Managers
                 for (int i = 0; i < removals.Count; i++)
                 {
                     PacketOwnedItemMakerSessionHiddenEntry removal = removals[i];
-                    currentEntries.RemoveAll(entry => entry.BucketKey == removal.BucketKey && entry.OutputItemId == removal.OutputItemId);
+                    currentEntries.RemoveAll(entry => MatchesHiddenRecipeRemoval(entry, removal));
                 }
             }
 
@@ -270,6 +270,20 @@ namespace HaCreator.MapSimulator.Managers
                     currentEntries.Add(addition);
                 }
             }
+        }
+
+        private static bool MatchesHiddenRecipeRemoval(
+            PacketOwnedItemMakerSessionHiddenEntry entry,
+            PacketOwnedItemMakerSessionHiddenEntry removal)
+        {
+            if (removal.OutputItemId <= 0 || entry.OutputItemId != removal.OutputItemId)
+            {
+                return false;
+            }
+
+            return removal.BucketKey >= 0
+                ? entry.BucketKey == removal.BucketKey
+                : true;
         }
     }
 }

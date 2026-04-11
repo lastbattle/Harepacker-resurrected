@@ -95,6 +95,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private const int RowLeft = 11;
+        private const int SelectedRowLeft = 47;
         private const int RowTop = 109;
         private const int RowWidth = 199;
         private const int RowHeight = 35;
@@ -554,7 +555,8 @@ namespace HaCreator.MapSimulator.UI
                 Texture2D rowTexture = selected ? _selectedRowTexture ?? _normalRowTexture : _normalRowTexture;
                 if (rowTexture != null)
                 {
-                    sprite.Draw(rowTexture, new Vector2(rowBounds.X, rowBounds.Y), Color.White);
+                    Point rowChromePoint = ResolveClientRowChromeDrawPoint(selected, _selectedRowTexture != null);
+                    sprite.Draw(rowTexture, new Vector2(Position.X + rowChromePoint.X, rowY), Color.White);
                 }
                 else
                 {
@@ -1626,6 +1628,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return -1;
+        }
+
+        internal static Point ResolveClientRowChromeDrawPoint(bool selected, bool hasSelectedTexture)
+        {
+            return new Point(selected && hasSelectedTexture ? SelectedRowLeft : RowLeft, RowTop);
         }
 
         private int ResolveSelectionIndex(CharacterPart previousPart, InventorySlotData previousInventorySlot, int previousEncodedSlotPosition, bool previousIsInventorySlot, int preferredItemId)

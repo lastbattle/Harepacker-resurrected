@@ -8881,21 +8881,13 @@ namespace HaCreator.MapSimulator.Loaders
             Point position)
         {
             const int clientOwnerWidth = 398;
-            const int clientOwnerHeight = 364;
-            IDXObject frame = null;
-            foreach (string backgroundPath in AccountMoreInfoOwnerStringPoolText.EnumerateBackgroundResourcePaths())
-            {
-                frame = LoadWindowCanvasLayerFromClientUiPath(
-                    backgroundPath,
-                    uiWindow1Image,
-                    uiWindow2Image,
-                    device,
-                    out _);
-                if (frame != null)
-                {
-                    break;
-                }
-            }
+            const int clientOwnerHeight = 355;
+            IDXObject frame = CreateAccountMoreInfoClientSizedFrame(
+                uiWindow1Image,
+                uiWindow2Image,
+                device,
+                clientOwnerWidth,
+                clientOwnerHeight);
 
             if (frame == null)
             {
@@ -8960,6 +8952,98 @@ namespace HaCreator.MapSimulator.Loaders
             window.InitializeActionButtons(okButton, cancelButton);
 
             return window;
+        }
+
+        private static IDXObject CreateAccountMoreInfoClientSizedFrame(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            GraphicsDevice device,
+            int clientOwnerWidth,
+            int clientOwnerHeight)
+        {
+            foreach (string backgroundPath in AccountMoreInfoOwnerStringPoolText.EnumerateBackgroundResourcePaths())
+            {
+                IDXObject candidateFrame = LoadWindowCanvasLayerFromClientUiPath(
+                    backgroundPath,
+                    uiWindow1Image,
+                    uiWindow2Image,
+                    device,
+                    out _);
+                Texture2D candidateTexture = candidateFrame?.Texture;
+                if (candidateTexture == null)
+                {
+                    continue;
+                }
+
+                Texture2D clientSizedTexture = CreateAccountMoreInfoClientSizedBackgroundTexture(
+                    device,
+                    candidateTexture,
+                    clientOwnerWidth,
+                    clientOwnerHeight);
+                if (clientSizedTexture != null)
+                {
+                    return new DXObject(0, 0, clientSizedTexture, 0);
+                }
+            }
+
+            return null;
+        }
+
+        private static Texture2D CreateAccountMoreInfoClientSizedBackgroundTexture(
+            GraphicsDevice device,
+            Texture2D sourceTexture,
+            int clientOwnerWidth,
+            int clientOwnerHeight)
+        {
+            if (device == null || sourceTexture == null || clientOwnerWidth <= 0 || clientOwnerHeight <= 0)
+            {
+                return null;
+            }
+
+            if (sourceTexture.Width == clientOwnerWidth && sourceTexture.Height == clientOwnerHeight)
+            {
+                return sourceTexture;
+            }
+
+            Color[] clientFrameData = CreateAccountMoreInfoClientFramePixels(clientOwnerWidth, clientOwnerHeight);
+            Color[] sourceData = new Color[sourceTexture.Width * sourceTexture.Height];
+            sourceTexture.GetData(sourceData);
+
+            int copyWidth = Math.Min(clientOwnerWidth, sourceTexture.Width);
+            int copyHeight = Math.Min(clientOwnerHeight, sourceTexture.Height);
+            for (int y = 0; y < copyHeight; y++)
+            {
+                for (int x = 0; x < copyWidth; x++)
+                {
+                    Color sourceColor = sourceData[(y * sourceTexture.Width) + x];
+                    if (sourceColor.A != 0)
+                    {
+                        clientFrameData[(y * clientOwnerWidth) + x] = sourceColor;
+                    }
+                }
+            }
+
+            Texture2D clientSizedTexture = new Texture2D(device, clientOwnerWidth, clientOwnerHeight);
+            clientSizedTexture.SetData(clientFrameData);
+            return clientSizedTexture;
+        }
+
+        private static Color[] CreateAccountMoreInfoClientFramePixels(int width, int height)
+        {
+            Color[] data = new Color[width * height];
+            Color backgroundColor = new(28, 34, 45, 230);
+            Color borderColor = new(86, 100, 130, 255);
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    bool border = x == 0 || y == 0 || x == width - 1 || y == height - 1;
+                    data[(y * width) + x] = border ? borderColor : backgroundColor;
+                }
+            }
+
+            return data;
         }
 
         private static Texture2D LoadTextureFromClientUiPath(

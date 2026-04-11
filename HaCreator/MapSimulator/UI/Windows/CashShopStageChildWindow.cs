@@ -749,22 +749,22 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
-            if (state.CounterSlots.Count > 0)
+            if (_oneADayCounterRuntime.Count > 0)
             {
                 string counterSlotLine = string.Join(
                     " ",
-                    state.CounterSlots.Select(slot =>
+                    _oneADayCounterRuntime.Select(slot =>
                         slot.IsSeparator
                             ? $"{slot.SlotIndex.ToString(CultureInfo.InvariantCulture)}::"
                             : $"{slot.SlotIndex.ToString(CultureInfo.InvariantCulture)}:{slot.Digit}{(slot.HasDigitCanvas ? string.Empty : "!")}"));
                 DrawWrapped(sprite, counterSlotLine, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
             }
 
-            if (state.PlateButtons.Count > 0)
+            if (_oneADayPlateButtonRuntime.Count > 0)
             {
                 string plateButtonLine = string.Join(
                     " ",
-                    state.PlateButtons.Take(6).Select(button =>
+                    _oneADayPlateButtonRuntime.Take(6).Select(button =>
                         $"{(button.IsFocused ? ">" : string.Empty)}{button.SlotIndex.ToString(CultureInfo.InvariantCulture)}:{(button.IsLoaded ? "on" : "off")}{(button.HasCanvas ? string.Empty : "!")}"));
                 DrawWrapped(sprite, $"Plate buttons {plateButtonLine}", Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
             }
@@ -775,9 +775,12 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
             lineY += _font.LineSpacing;
-            if (!string.IsNullOrWhiteSpace(state.RewardSessionSummary))
+            string rewardSessionSummary = string.IsNullOrWhiteSpace(state.RewardSessionSummary)
+                ? BuildOneADayRewardSessionSummary()
+                : state.RewardSessionSummary;
+            if (!string.IsNullOrWhiteSpace(rewardSessionSummary))
             {
-                DrawWrapped(sprite, state.RewardSessionSummary, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
+                DrawWrapped(sprite, rewardSessionSummary, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, detailColor);
             }
 
             DrawWrapped(sprite, _oneADaySessionState, Position.X + contentBounds.X + 12, ref lineY, contentBounds.Width - 24f, accentColor);
@@ -1972,10 +1975,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _oneADayCounterDigits = FormatOneADayCounterDigits(_oneADayRemainingSeconds);
+            RefreshOneADaySelectorRuntime(state);
+            RefreshOneADayCounterRuntime();
+            RefreshOneADayPlateButtonRuntime(state);
+            RefreshOneADayRewardSessionRuntime(state);
             _oneADayRuntimeSeeded = true;
             _oneADaySessionState = state.IsPending
-                ? $"CCSWnd_OneADay::ChangeState(0,1) armed selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)}, {state.CounterSlots.Count.ToString(CultureInfo.InvariantCulture)} counter slots, and {state.PlateButtons.Count.ToString(CultureInfo.InvariantCulture)} recovered plate-button lanes."
-                : $"CCSWnd_OneADay::ChangeState(0,1) left selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} and {state.PlateButtons.Count.ToString(CultureInfo.InvariantCulture)} plate-button lanes alive while no packet-authored reward is pending.";
+                ? $"CCSWnd_OneADay::ChangeState(0,1) armed selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)}, {_oneADayCounterRuntime.Count.ToString(CultureInfo.InvariantCulture)} counter slots, and {_oneADayPlateButtonRuntime.Count.ToString(CultureInfo.InvariantCulture)} recovered plate-button lanes."
+                : $"CCSWnd_OneADay::ChangeState(0,1) left selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} and {_oneADayPlateButtonRuntime.Count.ToString(CultureInfo.InvariantCulture)} plate-button lanes alive while no packet-authored reward is pending.";
             _statusMessage = _oneADaySessionState;
         }
 
@@ -1995,10 +2002,13 @@ namespace HaCreator.MapSimulator.UI
 
             _oneADayRemainingSeconds = nextRemainingSeconds;
             _oneADayCounterDigits = FormatOneADayCounterDigits(_oneADayRemainingSeconds);
+            RefreshOneADayCounterRuntime();
             if (_oneADayRemainingSeconds == 0)
             {
                 _oneADayPending = false;
                 _oneADayCountdownDeadlineTick = int.MinValue;
+                _oneADayRewardSessionByte &= ~1;
+                _oneADayRewardSessionRevision++;
                 _oneADaySessionState = "CCSWnd_OneADay exhausted the current reward countdown and returned to the idle owner state.";
                 _statusMessage = _oneADaySessionState;
             }
@@ -2021,6 +2031,161 @@ namespace HaCreator.MapSimulator.UI
                     span[5] = ':';
                     state.seconds.TryFormat(span.Slice(6, 2), out _, "00", CultureInfo.InvariantCulture);
                 });
+        }
+
+        private void RefreshOneADaySelectorRuntime(OneADayOwnerState state)
+        {
+            if (state == null)
+            {
+                _oneADaySelectorRuntime = Array.Empty<OneADayOwnerState.SelectorEntryState>();
+                return;
+            }
+
+            if (state.SelectorEntries != null && state.SelectorEntries.Count > 0)
+            {
+                _oneADaySelectorRuntime = state.SelectorEntries
+                    .Select(entry => new OneADayOwnerState.SelectorEntryState
+                    {
+                        Index = entry.Index,
+                        Label = entry.Label,
+                        IsActive = entry.Index == _oneADaySelectorIndex
+                    })
+                    .ToArray();
+                return;
+            }
+
+            string todayLabel = string.IsNullOrWhiteSpace(state.TodaySelectorLabel) ? "Today" : state.TodaySelectorLabel.Trim();
+            string previousLabel = string.IsNullOrWhiteSpace(state.PreviousSelectorLabel) ? "Previous" : state.PreviousSelectorLabel.Trim();
+            _oneADaySelectorRuntime = new[]
+            {
+                new OneADayOwnerState.SelectorEntryState
+                {
+                    Index = 0,
+                    Label = todayLabel,
+                    IsActive = _oneADaySelectorIndex == 0
+                },
+                new OneADayOwnerState.SelectorEntryState
+                {
+                    Index = 1,
+                    Label = previousLabel,
+                    IsActive = _oneADaySelectorIndex == 1
+                }
+            };
+        }
+
+        private void RefreshOneADayCounterRuntime()
+        {
+            List<OneADayOwnerState.CounterSlotState> slots = new(_oneADayCounterDigits.Length);
+            for (int i = 0; i < _oneADayCounterDigits.Length; i++)
+            {
+                char character = _oneADayCounterDigits[i];
+                bool isDigit = char.IsDigit(character);
+                int digit = isDigit ? character - '0' : -1;
+                slots.Add(new OneADayOwnerState.CounterSlotState
+                {
+                    SlotIndex = i,
+                    Digit = character,
+                    IsSeparator = !isDigit,
+                    HasDigitCanvas = isDigit && digit >= 0 && digit < 10 && ((_oneADayNumberCanvasReadyMask & (1 << digit)) != 0)
+                });
+            }
+
+            _oneADayCounterRuntime = slots;
+        }
+
+        private void RefreshOneADayPlateButtonRuntime(OneADayOwnerState state)
+        {
+            if (state == null)
+            {
+                _oneADayPlateButtonRuntime = Array.Empty<OneADayOwnerState.PlateButtonState>();
+                return;
+            }
+
+            if (state.PlateButtons != null && state.PlateButtons.Count > 0)
+            {
+                _oneADayPlateButtonRuntime = state.PlateButtons
+                    .Select(button => new OneADayOwnerState.PlateButtonState
+                    {
+                        SlotIndex = button.SlotIndex,
+                        HasCanvas = button.HasCanvas,
+                        IsLoaded = button.IsLoaded,
+                        IsFocused = button.SlotIndex == _oneADayPlateFocusIndex,
+                        Label = button.Label
+                    })
+                    .ToArray();
+                return;
+            }
+
+            int buttonCount = Math.Max(1, state.PlateButtonCount);
+            int loadedCount = _oneADaySelectorIndex == 1
+                ? Math.Min(buttonCount, Math.Max(0, state.HistoryEntries?.Count ?? 0))
+                : (state.IsPending ? 1 : 0);
+            int authoredCanvasCount = _oneADaySelectorIndex == 1
+                ? (state.HasPlateBigCanvas ? buttonCount : Math.Min(buttonCount, Math.Max(1, state.PlateCount)))
+                : (state.HasPlateCanvas ? Math.Max(1, state.PlateCount) : 0);
+            List<OneADayOwnerState.PlateButtonState> buttons = new(buttonCount);
+            for (int i = 0; i < buttonCount; i++)
+            {
+                buttons.Add(new OneADayOwnerState.PlateButtonState
+                {
+                    SlotIndex = i,
+                    HasCanvas = i < authoredCanvasCount,
+                    IsLoaded = i < loadedCount,
+                    IsFocused = i == _oneADayPlateFocusIndex,
+                    Label = _oneADaySelectorIndex == 1 ? $"History {i + 1}" : $"Today {i + 1}"
+                });
+            }
+
+            _oneADayPlateButtonRuntime = buttons;
+        }
+
+        private void RefreshOneADayRewardSessionRuntime(OneADayOwnerState state)
+        {
+            int nextSessionByte = 0;
+            if (state?.IsPending == true)
+            {
+                nextSessionByte |= 1;
+            }
+
+            if (_oneADaySelectorIndex == 1)
+            {
+                nextSessionByte |= 2;
+            }
+
+            if (_oneADayShortcutHelpActive)
+            {
+                nextSessionByte |= 4;
+            }
+
+            if (state?.HistoryEntries?.Count > 0)
+            {
+                nextSessionByte |= 8;
+            }
+
+            if (_oneADayRewardSessionByte != nextSessionByte)
+            {
+                _oneADayRewardSessionByte = nextSessionByte;
+                _oneADayRewardSessionRevision++;
+            }
+
+            _oneADayNumberCanvasReadyMask = BuildOneADayNumberCanvasReadyMask(state?.NumberCanvasCount ?? 0);
+        }
+
+        private string BuildOneADayRewardSessionSummary()
+        {
+            return $"Reward session byte 0x{_oneADayRewardSessionByte:X2} rev {_oneADayRewardSessionRevision.ToString(CultureInfo.InvariantCulture)}  Selector runtime {_oneADaySelectorRuntime.Count.ToString(CultureInfo.InvariantCulture)}  Number mask 0x{_oneADayNumberCanvasReadyMask:X3}.";
+        }
+
+        private static int BuildOneADayNumberCanvasReadyMask(int numberCanvasCount)
+        {
+            int count = Math.Clamp(numberCanvasCount, 0, 10);
+            int mask = 0;
+            for (int i = 0; i < count; i++)
+            {
+                mask |= 1 << i;
+            }
+
+            return mask;
         }
 
         private string ResolveOneADayPlateName(OneADayOwnerState state)

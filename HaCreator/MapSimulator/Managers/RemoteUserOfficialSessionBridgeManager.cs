@@ -37,7 +37,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18492;
         private const string DefaultProcessName = "MapleStory";
 
-        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnUserRemotePacket (0x94b390) routes enter/leave and remote-user opcodes 210-230; CUserPool::OnUserCommonPacket (0x94cdb0) routes common chat opcodes 181/182 through CUser::OnChat; tutor remains local under CUserLocal::OnPacket 255/256.";
+        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, and remote-user opcodes 210-230; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; tutor remains local under CUserLocal::OnPacket 255/256.";
 
         private static readonly IReadOnlyDictionary<ushort, int> DefaultPacketMap = new Dictionary<ushort, int>
         {
@@ -208,7 +208,7 @@ namespace HaCreator.MapSimulator.Managers
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
                     _listener.Start();
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Remote-user official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering CUserPool opcodes 179, 180, and 210-230.";
+                    LastStatus = $"Remote-user official-session bridge listening on 127.0.0.1:{ListenPort}, proxying to {RemoteHost}:{RemotePort}, and filtering CUserPool opcodes 179, 180, and 181-230.";
                 }
                 catch (Exception ex)
                 {
@@ -421,8 +421,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             return opcode == 179
                 || opcode == 180
-                || opcode == 181
-                || opcode == 182
+                || (opcode >= 181 && opcode <= 209)
                 || (opcode >= 210 && opcode <= 230);
         }
 

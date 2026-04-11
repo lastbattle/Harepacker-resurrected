@@ -10,6 +10,15 @@ using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal sealed record ParcelAlarmPromptSnapshot(
+        int PacketSubtype,
+        string Sender,
+        bool IsQuickDelivery,
+        bool RequiresFadeYesNoOwner,
+        int LifetimeMilliseconds,
+        string Title,
+        string Body);
+
     internal sealed class PacketOwnedSocialUtilityDialogDispatcher
     {
         private readonly MapleTvRuntime _mapleTvRuntime;
@@ -63,6 +72,8 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal bool ShouldShowParcelOwnerAfterLastPacket => _parcelDialogRuntime.ShouldShowOwnerWindowAfterApply;
+
+        internal ParcelAlarmPromptSnapshot LastParcelAlarmPrompt => _parcelDialogRuntime.LastAlarmPrompt;
 
         internal bool TryDeliverParcel(
             string sender,
@@ -350,11 +361,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal int LastSubtype { get; private set; } = -1;
         internal string StatusMessage { get; private set; } = "CParcelDlg::OnPacket idle.";
         internal bool ShouldShowOwnerWindowAfterApply { get; private set; }
+        internal ParcelAlarmPromptSnapshot LastAlarmPrompt { get; private set; }
 
         internal bool TryApplyPacket(byte[] payload, out string message)
         {
             message = null;
             ShouldShowOwnerWindowAfterApply = false;
+            LastAlarmPrompt = null;
             if (payload == null || payload.Length == 0)
             {
                 message = "Parcel dialog packet payload must contain a subtype byte.";
@@ -572,11 +585,36 @@ namespace HaCreator.MapSimulator.Interaction
             _noticeCount++;
             _lastAlarmSender = sender ?? string.Empty;
             _lastAlarmWasQuickDelivery = hasAttachment;
+            bool requiresFadeOwner = !IsOpen;
+            if (requiresFadeOwner)
+            {
+                LastAlarmPrompt = BuildParcelAlarmPrompt(LastSubtype, sender, hasAttachment);
+            }
+
             StatusMessage = expectsSender
-                ? $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} raised a packet-owned {(hasAttachment ? "quick-delivery" : "standard")} parcel alarm from {sender}."
-                : $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} raised the packet-owned empty-sender {(hasAttachment ? "quick-delivery" : "standard")} parcel alarm branch.";
+                ? $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} {(requiresFadeOwner ? "created" : "refreshed")} a CUIFadeYesNo parcel alarm for {(hasAttachment ? "quick-delivery" : "standard")} delivery from {sender}."
+                : $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} {(requiresFadeOwner ? "created" : "refreshed")} the CUIFadeYesNo empty-sender {(hasAttachment ? "quick-delivery" : "standard")} parcel alarm branch.";
             message = StatusMessage;
             return true;
+        }
+
+        private static ParcelAlarmPromptSnapshot BuildParcelAlarmPrompt(int packetSubtype, string sender, bool isQuickDelivery)
+        {
+            string resolvedSender = string.IsNullOrWhiteSpace(sender)
+                ? "Maple Delivery Service"
+                : sender.Trim();
+            string deliveryKind = isQuickDelivery ? "quick delivery" : "parcel delivery";
+            string body = string.IsNullOrWhiteSpace(sender)
+                ? $"A {deliveryKind} notice has arrived."
+                : $"{resolvedSender} sent you a {deliveryKind} notice.";
+            return new ParcelAlarmPromptSnapshot(
+                packetSubtype,
+                resolvedSender,
+                isQuickDelivery,
+                RequiresFadeYesNoOwner: true,
+                LifetimeMilliseconds: isQuickDelivery ? int.MaxValue : 6000,
+                Title: isQuickDelivery ? "Quick Delivery" : "Parcel Delivery",
+                Body: body);
         }
 
         private static string DescribeArrivalNoticeSummary(IReadOnlyList<PacketOwnedParcelDecodedEntry> arrivalEntries)

@@ -89,6 +89,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color SuccessColor = new Color(56, 118, 66);
         private static readonly Color WarningColor = new Color(153, 99, 37);
         private static readonly Color PanelColor = new Color(255, 250, 242, 210);
+        private static readonly Color TradeSlotColor = new Color(255, 250, 242, 175);
+        private static readonly Color TradeSlotBorderColor = new Color(89, 66, 32, 150);
 
         public SocialRoomWindow(IDXObject frame, string windowName, Texture2D panelTexture, SocialRoomRuntime runtime)
             : base(frame)
@@ -716,18 +718,106 @@ namespace HaCreator.MapSimulator.UI
             DrawText(sprite, stage, new Vector2(panel.X + 8, panel.Y + 23), accepted ? SuccessColor : locked ? WarningColor : ValueColor, 0.48f);
             DrawText(sprite, $"{offerMeso:N0} mesos", new Vector2(panel.X + 8, panel.Y + 38), AccentColor, 0.46f);
 
-            float rowY = panel.Y + 56;
-            foreach (SocialRoomItemEntry item in _runtime.Items.Where(entry => string.Equals(entry.OwnerName, partyName, StringComparison.OrdinalIgnoreCase)).Take(3))
-            {
-                DrawText(sprite, Truncate($"{item.ItemName} x{item.Quantity}", 15), new Vector2(panel.X + 8, rowY), ValueColor, 0.42f);
-                rowY += 15f;
-            }
+            DrawTradingRoomItemGrid(sprite, isLocalParty, partyName);
 
             if (locked)
             {
                 sprite.Draw(_panelTexture, panel, new Color(0, 0, 0, 96));
                 DrawCenteredText(sprite, accepted ? "READY" : "LOCKED", panel.Center.X, panel.Center.Y - 8, Color.White, 0.6f);
             }
+        }
+
+        private void DrawTradingRoomItemGrid(SpriteBatch sprite, bool isLocalParty, string partyName)
+        {
+            IEnumerable<SocialRoomItemEntry> partyItems = _runtime.Items
+                .Where(entry => string.Equals(entry.OwnerName, partyName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(entry => entry.PacketSlotIndex ?? int.MaxValue)
+                .ThenBy(entry => entry.ItemId)
+                .Take(9);
+            Dictionary<int, SocialRoomItemEntry> itemsByClientSlot = new Dictionary<int, SocialRoomItemEntry>();
+            int fallbackSlot = 1;
+            foreach (SocialRoomItemEntry item in partyItems)
+            {
+                int slotIndex = item.PacketSlotIndex.GetValueOrDefault();
+                if (slotIndex < 1 || slotIndex > 9 || itemsByClientSlot.ContainsKey(slotIndex))
+                {
+                    while (itemsByClientSlot.ContainsKey(fallbackSlot) && fallbackSlot <= 9)
+                    {
+                        fallbackSlot++;
+                    }
+
+                    slotIndex = fallbackSlot;
+                }
+
+                if (slotIndex >= 1 && slotIndex <= 9)
+                {
+                    itemsByClientSlot[slotIndex] = item;
+                }
+            }
+
+            for (int slotIndex = 1; slotIndex <= 9; slotIndex++)
+            {
+                Rectangle slotRect = GetTradingRoomClientSlotRect(isLocalParty, slotIndex);
+                DrawTradingRoomSlot(sprite, slotRect, itemsByClientSlot.TryGetValue(slotIndex, out SocialRoomItemEntry item) ? item : null);
+            }
+        }
+
+        private Rectangle GetTradingRoomClientSlotRect(bool isLocalParty, int slotIndex)
+        {
+            int zeroBasedSlot = Math.Clamp(slotIndex, 1, 9) - 1;
+            int x = Position.X + (isLocalParty ? 151 : 12) + (39 * (zeroBasedSlot % 3));
+            int y = Position.Y + 182 + (37 * (zeroBasedSlot / 3));
+            return new Rectangle(x, y, 31, 31);
+        }
+
+        private void DrawTradingRoomSlot(SpriteBatch sprite, Rectangle slotRect, SocialRoomItemEntry item)
+        {
+            if (_panelTexture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(_panelTexture, slotRect, TradeSlotColor);
+            DrawRectangleBorder(sprite, slotRect, TradeSlotBorderColor);
+            if (item == null)
+            {
+                return;
+            }
+
+            Rectangle innerRect = new Rectangle(slotRect.X + 3, slotRect.Y + 3, slotRect.Width - 6, slotRect.Height - 6);
+            sprite.Draw(_panelTexture, innerRect, ResolveTradeItemTint(item.ItemId));
+            string label = item.ItemId > 0
+                ? (item.ItemId % 10000).ToString("D4")
+                : Truncate(item.ItemName, 4);
+            DrawCenteredText(sprite, label, slotRect.Center.X, slotRect.Y + 8, Color.White, 0.34f);
+            if (ShouldDrawTradeItemQuantity(item))
+            {
+                DrawRightAlignedText(sprite, item.Quantity.ToString(), slotRect.Right - 1, slotRect.Y - 12, ValueColor, 0.42f);
+            }
+        }
+
+        private static bool ShouldDrawTradeItemQuantity(SocialRoomItemEntry item)
+        {
+            if (item == null || item.Quantity <= 1)
+            {
+                return false;
+            }
+
+            int itemCategory = item.ItemId / 1000000;
+            return itemCategory is 2 or 3 or 4;
+        }
+
+        private static Color ResolveTradeItemTint(int itemId)
+        {
+            return (itemId / 1000000) switch
+            {
+                1 => new Color(96, 128, 184, 230),
+                2 => new Color(88, 151, 90, 230),
+                3 => new Color(179, 132, 61, 230),
+                4 => new Color(163, 90, 151, 230),
+                5 => new Color(82, 148, 159, 230),
+                _ => new Color(109, 112, 122, 230)
+            };
         }
 
         public override void Update(GameTime gameTime)
@@ -1230,6 +1320,19 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(_panelTexture, rect, PanelColor);
             }
+        }
+
+        private void DrawRectangleBorder(SpriteBatch sprite, Rectangle rect, Color color)
+        {
+            if (_panelTexture == null || rect.Width <= 0 || rect.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_panelTexture, new Rectangle(rect.Left, rect.Top, rect.Width, 1), color);
+            sprite.Draw(_panelTexture, new Rectangle(rect.Left, rect.Bottom - 1, rect.Width, 1), color);
+            sprite.Draw(_panelTexture, new Rectangle(rect.Left, rect.Top, 1, rect.Height), color);
+            sprite.Draw(_panelTexture, new Rectangle(rect.Right - 1, rect.Top, 1, rect.Height), color);
         }
 
         private void DrawKeyValue(SpriteBatch sprite, int x, int y, string label, string value)

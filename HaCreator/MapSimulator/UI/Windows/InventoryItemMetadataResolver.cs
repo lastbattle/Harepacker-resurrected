@@ -1900,6 +1900,7 @@ namespace HaCreator.MapSimulator.UI
             AppendReplaceMetadataLines(metadataLines, infoProperty);
             AppendRecoveryRateMetadataLines(metadataLines, infoProperty);
             AppendScrollUpgradeMetadataLines(metadataLines, infoProperty);
+            AppendEquipLevelBypassMetadataLines(metadataLines, infoProperty);
             AppendRandomChairEffectMetadataLines(metadataLines, infoProperty);
             AppendAdditionalExperienceMetadataLines(metadataLines, infoProperty);
             AppendGrowthItemMetadataLines(metadataLines, infoProperty);
@@ -2369,6 +2370,11 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add("Randomizes applied stat values");
             }
 
+            if (GetIntValue(infoProperty["incRandVol"]) == 1)
+            {
+                metadataLines.Add("Uses stronger random stat variance");
+            }
+
             if (GetIntValue(infoProperty["blackUpgrade"]) == 1)
             {
                 metadataLines.Add("Lets the previous upgrade result be kept");
@@ -2383,6 +2389,17 @@ namespace HaCreator.MapSimulator.UI
             {
                 metadataLines.Add("Resets upgrade state");
             }
+        }
+
+        private static void AppendEquipLevelBypassMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            int levelBypass = GetIntOrStringValue(infoProperty?["incLEV"]);
+            if (levelBypass <= 0)
+            {
+                return;
+            }
+
+            metadataLines.Add($"Equip Level Bypass: {levelBypass.ToString(CultureInfo.InvariantCulture)} level{(levelBypass == 1 ? string.Empty : "s")}");
         }
 
         private static void AppendRandomChairEffectMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
@@ -2427,6 +2444,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int questId = GetIntOrStringValue(infoProperty["questId"]);
+            if (questId <= 0)
+            {
+                questId = GetIntOrStringValue(infoProperty["qid"]);
+            }
+
             if (questId > 0)
             {
                 metadataLines.Add($"Related Quest: {ResolveQuestTooltipLabel(questId)}");

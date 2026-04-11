@@ -64,6 +64,34 @@ namespace HaCreator.MapSimulator.Fields
             3001
         };
 
+        private static readonly HashSet<int> ClientDojoOrBalrogOnlySkillIds = new HashSet<int>
+        {
+            1009,
+            1010,
+            1011,
+            10001009,
+            10001010,
+            10001011,
+            20001009,
+            20001010,
+            20001011,
+            20011009,
+            20011010,
+            20011011,
+            30001009,
+            30001010,
+            30001011
+        };
+
+        private static readonly HashSet<int> ClientMassacreOnlySkillIds = new HashSet<int>
+        {
+            1020,
+            10001020,
+            20001020,
+            20011020,
+            30001020
+        };
+
         public static bool CanUseSkill(MapInfo mapInfo, SkillData skill)
         {
             return CanUseSkill(mapInfo, skill, 0);
@@ -236,6 +264,12 @@ namespace HaCreator.MapSimulator.Fields
                 return noSkillRestrictionMessage;
             }
 
+            string fieldTypeRestrictionMessage = GetClientFieldTypeSkillRestrictionMessage(mapInfo, skill);
+            if (!string.IsNullOrWhiteSpace(fieldTypeRestrictionMessage))
+            {
+                return fieldTypeRestrictionMessage;
+            }
+
             if (runtimeState?.CoconutBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Coconut minigame owns basic attacks.";
@@ -280,6 +314,29 @@ namespace HaCreator.MapSimulator.Fields
             if (MatchesAnyListedSkillClass(noSkillProperty, currentJobId, skill))
             {
                 return "This field forbids skills for your job branch.";
+            }
+
+            return null;
+        }
+
+        private static string GetClientFieldTypeSkillRestrictionMessage(MapInfo mapInfo, SkillData skill)
+        {
+            if (mapInfo == null || skill == null)
+            {
+                return null;
+            }
+
+            if (ClientDojoOrBalrogOnlySkillIds.Contains(skill.SkillId)
+                && mapInfo.fieldType != FieldType.FIELDTYPE_DOJANG
+                && mapInfo.fieldType != FieldType.FIELDTYPE_BALROG)
+            {
+                return "This event skill can only be used in Dojo or Balrog fields.";
+            }
+
+            if (ClientMassacreOnlySkillIds.Contains(skill.SkillId)
+                && mapInfo.fieldType != FieldType.FIELDTYPE_MASSACRE)
+            {
+                return "This event skill can only be used in massacre fields.";
             }
 
             return null;

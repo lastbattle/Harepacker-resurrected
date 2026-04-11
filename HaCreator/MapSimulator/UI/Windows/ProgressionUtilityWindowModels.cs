@@ -1429,6 +1429,7 @@ namespace HaCreator.MapSimulator.UI
         public string Text { get; init; } = string.Empty;
         public int Left { get; init; }
         public int Top { get; init; }
+        public int? FontIndex { get; init; }
         public bool IsHighlighted { get; init; }
         public int? TextColorArgb { get; init; }
     }

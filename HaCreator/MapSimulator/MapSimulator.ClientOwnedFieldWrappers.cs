@@ -1160,8 +1160,12 @@ namespace HaCreator.MapSimulator
                 string bgm = string.IsNullOrWhiteSpace(weddingPhotoContract.BackgroundMusicPath)
                     ? string.Empty
                     : $" bgm={weddingPhotoContract.BackgroundMusicPath}.";
+                string presentationState = _specialFieldRuntime?.SpecialEffects?.Wedding?.DescribeWeddingPhotoScenePresentationState();
+                string presentation = string.IsNullOrWhiteSpace(presentationState)
+                    ? string.Empty
+                    : $" {presentationState}";
                 activeWrappers.Add(
-                    $"{ownerLabel} ({weddingPhotoContract.SceneDescription}, client owner {weddingPhotoContract.SourceDescription}) on map {mapInfo.id}, returnMap {weddingPhotoContract.ReturnMapId}.{safeArea}{viewport}{cameraFocus}{bgm}");
+                    $"{ownerLabel} ({weddingPhotoContract.SceneDescription}, client owner {weddingPhotoContract.SourceDescription}) on map {mapInfo.id}, returnMap {weddingPhotoContract.ReturnMapId}.{safeArea}{viewport}{cameraFocus}{bgm}{presentation}");
             }
 
             if (_specialFieldRuntime.PartyRaid.HasNativePartyRaidWrapperOwner)

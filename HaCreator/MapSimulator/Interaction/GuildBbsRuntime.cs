@@ -35,11 +35,11 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int VisibleThreadCount = 8;
         private const int VisibleCommentCount = 4;
-        private const int VisibleCashEmoticonCount = 7;
+        private const int VisibleCashEmoticonCount = 8;
         private const int DefaultBasicEmoticonCount = 3;
         private const int DefaultCashEmoticonCount = ClientInventoryCashEmoticonItemCount;
-        internal const int ClientVisibleCashEmoticonCount = 7;
-        internal const int ClientInventoryCashEmoticonItemCount = 7;
+        internal const int ClientVisibleCashEmoticonCount = 8;
+        internal const int ClientInventoryCashEmoticonItemCount = 8;
         private const int CashEmoticonItemIdStart = 5290000;
         private const int ClientCashEmoticonIdStart = 100;
         private const GuildBbsPermissionMask SupportedPermissionMask =

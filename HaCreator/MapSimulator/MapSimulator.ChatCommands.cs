@@ -743,7 +743,11 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error(attachStatus);
                     }
 
-                    return ChatCommandHandler.CommandResult.Ok(attachStatus);
+                    string attachInitStatus = ArmTransportFieldInitRequestForActiveWrapperMap();
+                    return ChatCommandHandler.CommandResult.Ok(
+                        string.IsNullOrWhiteSpace(attachInitStatus)
+                            ? attachStatus
+                            : $"{attachStatus}{Environment.NewLine}{attachInitStatus}");
 
                 case "attachproxy":
                     if (args.Length < 4

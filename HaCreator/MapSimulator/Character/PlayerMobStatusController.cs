@@ -359,6 +359,14 @@ namespace HaCreator.MapSimulator.Character
             for (int i = 0; i < statuses.Count; i++)
             {
                 RemoteHostilePlayerAreaStatus status = statuses[i];
+                int statusPropPercent = status.PropPercent > 0
+                    ? Math.Clamp(status.PropPercent, 0, 100)
+                    : 100;
+                if (statusPropPercent <= 0 || statusPropPercent < 100 && Random.Shared.Next(100) >= statusPropPercent)
+                {
+                    continue;
+                }
+
                 if (status.TickIntervalMs > 0)
                 {
                     ApplyPeriodicDamageStatus(

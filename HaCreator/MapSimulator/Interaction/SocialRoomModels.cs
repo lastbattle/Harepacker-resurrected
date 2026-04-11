@@ -507,6 +507,7 @@ namespace HaCreator.MapSimulator.Interaction
         private Action _miniRoomModeHandler;
         private Action<string, SocialRoomRuntimeSnapshot> _persistStateHandler;
         private readonly ShopDialogPacketOwner _shopDialogPacketOwner;
+        private readonly HashSet<string> _announcedPacketOwnedChatHistorySignatures = new(StringComparer.Ordinal);
         private IInventoryRuntime _inventoryRuntime;
         public Func<LoginAvatarLook, CharacterBuild> AvatarBuildResolver { get; set; }
         public Action<string, int> SocialChatObserved { get; set; }
@@ -2577,10 +2578,10 @@ namespace HaCreator.MapSimulator.Interaction
             int? previousBonusExpRate)
         {
             List<string> parts = new List<string>();
-            parts.Add($"RUC {remainingUpgradeCount}");
+            parts.Add($"nRUC {remainingUpgradeCount}");
             if (upgradeCount > 0)
             {
-                parts.Add($"CUC {upgradeCount}");
+                parts.Add($"nCUC {upgradeCount}");
             }
 
             AppendStatPart(parts, "STR", strength);
@@ -2595,9 +2596,9 @@ namespace HaCreator.MapSimulator.Interaction
             AppendStatPart(parts, "MDD", magicDefense);
             AppendStatPart(parts, "ACC", accuracy);
             AppendStatPart(parts, "EVA", avoidability);
-            AppendStatPart(parts, "Hands", hands);
-            AppendStatPart(parts, "Speed", speed);
-            AppendStatPart(parts, "Jump", jump);
+            AppendStatPart(parts, "niCraft", hands);
+            AppendStatPart(parts, "niSpeed", speed);
+            AppendStatPart(parts, "niJump", jump);
 
             if (attribute != 0)
             {
@@ -2606,12 +2607,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (levelUpType > 0)
             {
-                parts.Add($"LvType {levelUpType}");
+                parts.Add($"nLevelUpType {levelUpType}");
             }
 
             if (level > 0)
             {
-                parts.Add($"Lv {level}");
+                parts.Add($"nLevel {level}");
             }
 
             if (experience > 0)
@@ -2621,32 +2622,32 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (durability > 0)
             {
-                parts.Add($"Dur {durability}");
+                parts.Add($"nDurability {durability}");
             }
 
             if (itemUpgradeCount > 0)
             {
-                parts.Add($"IUC {itemUpgradeCount}");
+                parts.Add($"nIUC {itemUpgradeCount}");
             }
 
             if (grade > 0)
             {
-                parts.Add($"Grade {grade}");
+                parts.Add($"nGrade {grade}");
             }
 
             if (bonusUpgradeCount > 0)
             {
-                parts.Add($"CHUC {bonusUpgradeCount}");
+                parts.Add($"nCHUC {bonusUpgradeCount}");
             }
 
             if (option1 != 0 || option2 != 0 || option3 != 0)
             {
-                parts.Add($"Opt {option1}/{option2}/{option3}");
+                parts.Add($"nOption {option1}/{option2}/{option3}");
             }
 
             if (socket1 != 0 || socket2 != 0)
             {
-                parts.Add($"Socket {socket1}/{socket2}");
+                parts.Add($"nSocket {socket1}/{socket2}");
             }
 
             string expirationText = FormatTradePacketFileTime(expirationTime);
@@ -2668,12 +2669,12 @@ namespace HaCreator.MapSimulator.Interaction
             List<string> parts = new List<string>();
             if (attribute != 0)
             {
-                parts.Add($"Attr 0x{(ushort)attribute:X4}");
+                parts.Add($"nAttribute 0x{(ushort)attribute:X4}");
             }
 
             if (rechargeableSerialNumber > 0)
             {
-                parts.Add($"RechargeSN {rechargeableSerialNumber}");
+                parts.Add($"liSN {rechargeableSerialNumber}");
             }
 
             return string.Join(", ", parts);
@@ -2690,27 +2691,22 @@ namespace HaCreator.MapSimulator.Interaction
             long? expirationTime)
         {
             List<string> parts = new List<string>();
-            parts.Add($"PetLv {level}");
-            parts.Add($"Closeness {closeness}");
-            parts.Add($"Fullness {fullness}");
+            parts.Add($"nLevel {level}");
+            parts.Add($"nTameness {closeness}");
+            parts.Add($"nRepleteness {fullness}");
             if (attribute != 0)
             {
-                parts.Add($"Attr 0x{(ushort)attribute:X4}");
+                parts.Add($"nPetAttribute 0x{(ushort)attribute:X4}");
             }
 
             if (skill > 0)
             {
-                parts.Add($"Skill 0x{skill:X4}");
+                parts.Add($"usPetSkill 0x{skill:X4}");
             }
 
             if (remainingLife > 0)
             {
-                parts.Add($"Life {remainingLife}");
-            }
-
-            if (itemAttribute > 0)
-            {
-                parts.Add($"Fatigue {itemAttribute}");
+                parts.Add($"nRemainLife {remainingLife}");
             }
 
             string expirationText = FormatTradePacketFileTime(expirationTime);
@@ -2721,7 +2717,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (itemAttribute != 0)
             {
-                parts.Add($"ItemAttr 0x{(ushort)itemAttribute:X4}");
+                parts.Add($"nAttribute 0x{(ushort)itemAttribute:X4}");
             }
 
             return string.Join(", ", parts);
@@ -3067,6 +3063,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 AppendSocialRoomChatEntry(entry.Text, entry.Tone, persistState: false);
             }
+
+            NotifyPacketOwnedChatHistoryObserved(decodedChatEntries);
 
             if (decodedOwnerLedger)
             {
@@ -3967,6 +3965,29 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             SocialChatObserved?.Invoke(message.Trim(), Environment.TickCount);
+        }
+
+        private void NotifyPacketOwnedChatHistoryObserved(IEnumerable<SocialRoomChatEntry> entries)
+        {
+            if (entries == null)
+            {
+                return;
+            }
+
+            foreach (SocialRoomChatEntry entry in entries)
+            {
+                string observedText = ExtractObservedChatMessage(entry?.Text);
+                if (string.IsNullOrWhiteSpace(observedText))
+                {
+                    continue;
+                }
+
+                string signature = $"{(int)(entry?.Tone ?? SocialRoomChatTone.Neutral)}|{observedText}";
+                if (_announcedPacketOwnedChatHistorySignatures.Add(signature))
+                {
+                    NotifySocialChatObserved(observedText);
+                }
+            }
         }
 
         private void AppendSocialRoomChatEntry(string text, SocialRoomChatTone tone, bool persistState)

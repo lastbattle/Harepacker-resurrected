@@ -61,6 +61,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int? _packetChartJuniorLimit;
         private int? _packetChartLocalMemberId;
         private bool? _packetChartIsMine;
+        private bool _packetChartSuppressRootSlot;
 
         private int FamilyHeadId => _familyHeadId;
 
@@ -534,12 +535,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Family local-chart packet snapshot is empty.";
             }
 
+            FamilyMemberState previousLocalPlayer = GetMember(LocalPlayerId);
             _members.Clear();
             _packetChartStatistics.Clear();
             _entitlementUseCounts.Clear();
             _packetChartLocalMemberId = snapshot.FocusMemberId > 0 ? snapshot.FocusMemberId : null;
             _packetChartJuniorLimit = Math.Max(0, snapshot.JuniorLimit);
             _packetChartIsMine = _packetChartLocalMemberId == LocalPlayerId;
+            // CUIFamilyChart::DecodeLocalChart clears m_apItem[0] after decode when the packet has two or fewer entries.
+            _packetChartSuppressRootSlot = snapshot.Members.Count <= 2;
 
             foreach (KeyValuePair<int, int> pair in snapshot.Statistics)
             {
@@ -580,6 +584,12 @@ namespace HaCreator.MapSimulator.Interaction
                         ? _packetChartIsMine == true
                         : packetMember.IsOnline,
                     Vector2.Zero);
+            }
+
+            if (_packetChartIsMine == true
+                && !_members.ContainsKey(LocalPlayerId))
+            {
+                _members[LocalPlayerId] = CreatePacketLocalPlayerFallback(previousLocalPlayer);
             }
 
             foreach (FamilyMemberState member in _members.Values)
@@ -983,6 +993,7 @@ namespace HaCreator.MapSimulator.Interaction
             _packetChartJuniorLimit = null;
             _packetChartLocalMemberId = null;
             _packetChartIsMine = null;
+            _packetChartSuppressRootSlot = false;
         }
 
         private void SeedDefaultFamily()
@@ -1077,7 +1088,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             Dictionary<int, int> layout = new();
             FamilyMemberState head = GetMember(_familyHeadId);
-            if (head != null)
+            if (head != null && !_packetChartSuppressRootSlot)
             {
                 layout[0] = head.Id;
             }
@@ -1762,6 +1773,21 @@ namespace HaCreator.MapSimulator.Interaction
                 >= 3000 and < 4000 => "Citizen",
                 _ => $"Job {jobId}"
             };
+        }
+
+        private FamilyMemberState CreatePacketLocalPlayerFallback(FamilyMemberState previousLocalPlayer)
+        {
+            return new FamilyMemberState(
+                LocalPlayerId,
+                string.IsNullOrWhiteSpace(previousLocalPlayer?.Name) ? "Player" : previousLocalPlayer.Name,
+                string.IsNullOrWhiteSpace(previousLocalPlayer?.JobName) ? "Beginner" : previousLocalPlayer.JobName,
+                Math.Max(1, previousLocalPlayer?.Level ?? 1),
+                string.IsNullOrWhiteSpace(previousLocalPlayer?.LocationSummary) ? _locationSummary : previousLocalPlayer.LocationSummary,
+                null,
+                Math.Max(0, previousLocalPlayer?.CurrentReputation ?? 0),
+                Math.Max(0, previousLocalPlayer?.TodayReputation ?? 0),
+                true,
+                previousLocalPlayer?.SimulatedPosition ?? Vector2.Zero);
         }
 
         private static string FormatPacketLocation(int channelId, int loginMinutes)

@@ -52,7 +52,8 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject premiumButton = LoadButton(utilDialogProperty, "BtYes", btClickSound, btOverSound, device);
             UIObject declineButton = LoadButton(utilDialogProperty, "BtNo", btClickSound, btOverSound, device)
                 ?? LoadButton(utilDialogProperty, "BtOK", btClickSound, btOverSound, device);
-            UIObject defaultButton = LoadButton(utilDialogProperty, "BtOK", btClickSound, btOverSound, device)
+            UIObject defaultButton = LoadButton(utilDialogProperty, "BtYes", btClickSound, btOverSound, device)
+                ?? LoadButton(utilDialogProperty, "BtOK", btClickSound, btOverSound, device)
                 ?? declineButton;
             UIObject closeButton = LoadButton(utilDialogProperty, "BtClose", btClickSound, btOverSound, device);
 

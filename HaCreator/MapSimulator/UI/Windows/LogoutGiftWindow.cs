@@ -13,14 +13,14 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int DefaultWidth = 250;
         private const int DefaultHeight = 236;
-        private const int ClientIconTop = 182;
+        private const int ClientIconTop = 150;
         private const int ClientIconLeft = 25;
         private const int ClientSelectButtonTop = 196;
         private const int ClientSelectButtonLeft = 21;
         private const int ClientColumnStride = 66;
         private const int ClientSelectButtonBaseId = 1000;
         private const int ClientSelectButtonCount = 3;
-        private const int ClientItemIconSize = 40;
+        private const int ClientItemIconSize = 32;
         private const int ClientSelectButtonWidth = 52;
         private const int ClientSelectButtonHeight = 18;
         private const int ClientSelectionHighlightPadding = 4;

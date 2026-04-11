@@ -153,6 +153,9 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind.Notice => SetPacketGuildNoticeText(packet.Notice, packet.GuildId),
                 SocialListClientGuildResultKind.Mark when packet.MarkSelection.HasValue => SetPacketGuildMarkSelection(packet.MarkSelection.Value, packet.GuildId),
                 SocialListClientGuildResultKind.PointsAndLevel => SetPacketGuildPointsAndLevel(packet.GuildPoints, packet.GuildLevel, packet.GuildId),
+                SocialListClientGuildResultKind.GuildQuestQueueNotice => SetPacketSyncSummary(
+                    SocialListTab.Guild,
+                    BuildClientGuildQuestQueueNoticeSummary(packet)),
                 SocialListClientGuildResultKind.SkillRecord when packet.GuildSkillRecord.HasValue =>
                     $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.SkillRecord}) decoded guild-skill record {packet.GuildSkillRecord.Value.SkillId} for guild {packet.GuildId}.",
                 SocialListClientGuildResultKind.ResultNotice => SetPacketSyncSummary(
@@ -174,6 +177,14 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"shared StringPool 0x{SocialListGuildResultClientText.SharedResultNoticeStringPoolId:X} notice";
 
             return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.ResultNotice}) reported {noticeSource}: {notice}.";
+        }
+
+        private static string BuildClientGuildQuestQueueNoticeSummary(SocialListClientGuildResultPacket packet)
+        {
+            string notice = SocialListGuildResultClientText.FormatGuildQuestQueueNotice(packet.GuildQuestChannel, packet.GuildQuestWaitStatus);
+            return packet.GuildQuestWaitStatus <= 0
+                ? $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildQuestQueueNotice}) cleared the guild-quest queue temporary notice."
+                : $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.GuildQuestQueueNotice}) reported guild-quest queue notice: {notice}";
         }
 
         private static string BuildClientGuildResultFallbackNoticeSummary(SocialListClientGuildResultPacket packet)

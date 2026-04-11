@@ -407,20 +407,20 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (payload.Length < 2)
+            if (!AdminShopPacketOwnedResultCodec.TryDecode(payload, out AdminShopPacketOwnedResultPayloadSnapshot resultSnapshot))
             {
-                message = "Admin-shop packet 366 requires subtype and result-code bytes.";
+                message = payload.Length < 1
+                    ? "Admin-shop packet 366 requires the subtype byte."
+                    : "Admin-shop packet 366 subtype 4 requires the result-code byte.";
                 return false;
             }
 
-            byte subtype = payload[0];
-            byte resultCode = payload[1];
             string resultBlockingOwner = GetVisibleUniqueModelessOwner(MapSimulatorWindowNames.CashShop);
             if (!string.IsNullOrWhiteSpace(resultBlockingOwner))
             {
                 message = adminShopWindow.ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(
-                    subtype,
-                    resultCode,
+                    resultSnapshot.Subtype,
+                    resultSnapshot.ResultCode,
                     resultBlockingOwner);
                 return true;
             }
@@ -429,15 +429,15 @@ namespace HaCreator.MapSimulator
                 && !adminShopWindow.HasPacketOwnedAdminShopSession)
             {
                 message = adminShopWindow.ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(
-                    subtype,
-                    resultCode,
+                    resultSnapshot.Subtype,
+                    resultSnapshot.ResultCode,
                     blockingOwner: null);
                 return true;
             }
 
             bool applied = adminShopWindow.TryApplyPacketOwnedAdminShopResult(
-                subtype,
-                resultCode,
+                resultSnapshot.Subtype,
+                resultSnapshot.ResultCode,
                 out message,
                 out string notice,
                 out bool reopenRequested);

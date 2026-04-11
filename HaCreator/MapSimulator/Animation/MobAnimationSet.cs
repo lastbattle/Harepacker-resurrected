@@ -110,6 +110,12 @@ namespace HaCreator.MapSimulator.Animation
                 return HitAttach;
             }
 
+            public bool HasExplicitHitAttachMetadata(int frameIndex)
+            {
+                return frameIndex >= 0
+                       && FrameHitAttachOverrides.ContainsKey(frameIndex);
+            }
+
             public bool ResolveHitAttachForHitAnimationFrame(int frameIndex)
             {
                 return ResolveHitAttach(ResolveHitAnimationMetadataFrameIndex(frameIndex));
@@ -121,6 +127,12 @@ namespace HaCreator.MapSimulator.Animation
                        && FrameFacingAttachOverrides.TryGetValue(frameIndex, out bool overrideValue)
                     ? overrideValue
                     : FacingAttach;
+            }
+
+            public bool HasExplicitFacingAttachMetadata(int frameIndex)
+            {
+                return frameIndex >= 0
+                       && FrameFacingAttachOverrides.ContainsKey(frameIndex);
             }
 
             public bool ResolveFacingAttachForHitAnimationFrame(int frameIndex)

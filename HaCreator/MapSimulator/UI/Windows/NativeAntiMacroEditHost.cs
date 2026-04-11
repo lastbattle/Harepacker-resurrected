@@ -635,7 +635,7 @@ namespace HaCreator.MapSimulator.UI
 
             bool controlHeld = IsControlKeyDown();
             bool shiftHeld = IsShiftKeyDown();
-            bool allowImeOwnedDownHandling = ShouldDeferDownKeyToIme(controlHeld, shiftHeld, HasActiveImeComposition());
+            bool allowImeOwnedDownHandling = ShouldDeferDownKeyToIme(virtualKey, controlHeld, shiftHeld, HasActiveImeComposition());
             if (msg == WmKeyDown && !allowImeOwnedDownHandling && HandleClientOwnedKeyDown(virtualKey, controlHeld, shiftHeld, wParam, lParam))
             {
                 _clientOwnedKeyDowns.Add(virtualKey);
@@ -655,6 +655,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (ShouldSuppressClientUnsupportedEditKey(msg, virtualKey, controlHeld, shiftHeld))
             {
+                if (msg == WmKeyDown)
+                {
+                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                }
+
                 return IntPtr.Zero;
             }
 
@@ -728,19 +733,9 @@ namespace HaCreator.MapSimulator.UI
                     SubmitRequested?.Invoke();
                     return true;
                 case VkBack:
-                    if (controlHeld)
-                    {
-                        return false;
-                    }
-
                     TryBackspace();
                     return true;
                 case VkDelete:
-                    if (controlHeld)
-                    {
-                        return false;
-                    }
-
                     if (shiftHeld)
                     {
                         CutSelectionToClipboard();
@@ -752,7 +747,7 @@ namespace HaCreator.MapSimulator.UI
 
                     return true;
                 case VkInsert:
-                    if (shiftHeld && !controlHeld)
+                    if (shiftHeld)
                     {
                         PasteClipboardText();
                         return true;
@@ -784,25 +779,15 @@ namespace HaCreator.MapSimulator.UI
                     CutSelectionToClipboard();
                     return true;
                 case VkLeft:
-                    if (controlHeld || shiftHeld)
-                    {
-                        return false;
-                    }
-
                     MoveCaretHorizontally(moveRight: false);
                     ForwardKeyToParent(WmKeyDown, wParam, lParam);
                     return true;
                 case VkRight:
-                    if (controlHeld || shiftHeld)
-                    {
-                        return false;
-                    }
-
                     MoveCaretHorizontally(moveRight: true);
                     ForwardKeyToParent(WmKeyDown, wParam, lParam);
                     return true;
                 case VkHome:
-                    if (controlHeld || shiftHeld)
+                    if (controlHeld)
                     {
                         return false;
                     }
@@ -810,7 +795,7 @@ namespace HaCreator.MapSimulator.UI
                     MoveCaretToBoundary(moveToEnd: false);
                     return true;
                 case VkEnd:
-                    if (controlHeld || shiftHeld)
+                    if (controlHeld)
                     {
                         return false;
                     }
@@ -819,11 +804,6 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 case VkUp:
                 case VkDown:
-                    if (controlHeld || shiftHeld)
-                    {
-                        return false;
-                    }
-
                     ForwardKeyToParent(WmKeyDown, wParam, lParam);
                     return true;
                 default:
@@ -855,9 +835,9 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        internal static bool ShouldDeferDownKeyToIme(bool controlHeld, bool shiftHeld, bool imeCompositionActive)
+        internal static bool ShouldDeferDownKeyToIme(int virtualKey, bool controlHeld, bool shiftHeld, bool imeCompositionActive)
         {
-            return imeCompositionActive && !controlHeld && !shiftHeld;
+            return virtualKey == VkDown && imeCompositionActive;
         }
 
         internal static bool ShouldSuppressClientUnsupportedEditKey(uint msg, int virtualKey, bool controlHeld, bool shiftHeld)
@@ -874,26 +854,19 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
-                // `CCtrlEdit::OnKey` handles Ctrl+C/V/X, but not Win32 EDIT affordances
-                // such as select-all, undo/redo, Ctrl+Insert, Ctrl+Delete, or word/home/end
-                // navigation. Keep those hosted-control extras out of this recovered seam.
+                // `CCtrlEdit::OnKey` does not expose Win32 EDIT affordances such
+                // as select-all, undo/redo, Ctrl+Insert, or Ctrl+Home/End.
                 return virtualKey is VkA
                     or VkY
                     or VkZ
                     or VkInsert
-                    or VkDelete
-                    or VkBack
-                    or VkLeft
-                    or VkRight
                     or VkHome
                     or VkEnd;
             }
 
             if (shiftHeld)
             {
-                // The recovered `CCtrlEdit::OnKey` uses Shift+Insert and Shift+Delete for
-                // paste/cut, but does not expose Win32 shift-selection navigation.
-                return virtualKey is VkLeft or VkRight or VkHome or VkEnd or VkUp or VkDown;
+                return false;
             }
 
             return false;

@@ -215,6 +215,7 @@ namespace HaCreator.MapSimulator
             Friend = 3,
             Guild = 4,
             Alliance = 5,
+            Couple = 6,
             Type11 = 11,
             System = 12,
             Notice = 13,
@@ -1669,6 +1670,7 @@ namespace HaCreator.MapSimulator
                 ClientChatLogType.Friend => FriendMessageColor,
                 ClientChatLogType.Guild => GuildMessageColor,
                 ClientChatLogType.Alliance => AllianceMessageColor,
+                ClientChatLogType.Couple => DefaultMessageColor,
                 ClientChatLogType.Type11 => ClientType11Color,
                 ClientChatLogType.Expedition => ExpeditionMessageColor,
                 ClientChatLogType.Notice => NoticeMessageColor,
@@ -1796,6 +1798,12 @@ namespace HaCreator.MapSimulator
             if (text.StartsWith("[Association]", StringComparison.OrdinalIgnoreCase))
             {
                 chatLogType = ClientChatLogType.Alliance;
+                return true;
+            }
+
+            if (text.StartsWith("[Couple]", StringComparison.OrdinalIgnoreCase))
+            {
+                chatLogType = ClientChatLogType.Couple;
                 return true;
             }
 

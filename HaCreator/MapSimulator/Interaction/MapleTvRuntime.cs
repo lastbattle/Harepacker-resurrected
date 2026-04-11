@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int PacketTypeSetMessage = 405;
         internal const int PacketTypeClearMessage = 406;
         internal const int PacketTypeSendMessageResult = 407;
+        internal const int ConsumeCashItemUseRequestOpcode = 0x55;
 
         private const int DefaultMediaIndex = 1;
         private const int DefaultDurationMs = 15000;
@@ -496,6 +497,52 @@ namespace HaCreator.MapSimulator.Interaction
                     error = $"MapleTV outbound packet payload generation is not supported for opcode {packetType}.";
                     return false;
             }
+        }
+
+        internal bool TryBuildConsumeCashItemUseRequestPayload(
+            int currentTick,
+            int inventoryPosition,
+            int overrideItemId,
+            out byte[] payload,
+            out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = string.Empty;
+
+            int itemId = overrideItemId > 0 ? overrideItemId : (_itemId > 0 ? _itemId : _defaultItemId);
+            if (itemId <= 0)
+            {
+                error = "MapleTV client send request requires a MapleTV cash item id.";
+                return false;
+            }
+
+            if (inventoryPosition < short.MinValue || inventoryPosition > ushort.MaxValue)
+            {
+                error = $"MapleTV client send request inventory position {inventoryPosition} is outside the 16-bit client packet range.";
+                return false;
+            }
+
+            IReadOnlyList<string> lines = (_showMessage && _displayLines.Any(line => !string.IsNullOrWhiteSpace(line)))
+                ? _displayLines
+                : _draftLines;
+            if (lines.All(line => string.IsNullOrWhiteSpace(line)))
+            {
+                error = "MapleTV client send request requires at least one message line.";
+                return false;
+            }
+
+            PacketWriter writer = new();
+            writer.WriteInt(Math.Max(0, currentTick));
+            writer.WriteShort(inventoryPosition);
+            writer.WriteInt(itemId);
+            writer.WriteMapleString(_useReceiver ? _receiverName ?? string.Empty : string.Empty);
+            for (int i = 0; i < DisplayLineCount; i++)
+            {
+                writer.WriteMapleString(i < lines.Count ? lines[i] ?? string.Empty : string.Empty);
+            }
+
+            payload = writer.ToArray();
+            return true;
         }
 
         internal string BuildMegassengerChatMirrorMessage()

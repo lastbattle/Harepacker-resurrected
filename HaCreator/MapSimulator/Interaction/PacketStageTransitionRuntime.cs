@@ -1773,14 +1773,21 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < count; i++)
             {
                 int skillId = reader.ReadInt32();
-                int skillLevel = reader.ReadInt32();
-                int masterLevel = IsSkillNeedMasterLevel(skillId)
-                    ? Math.Max(0, reader.ReadInt32())
+                int rawSkillLevel = reader.ReadInt32();
+                int rawMasterLevel = IsSkillNeedMasterLevel(skillId)
+                    ? reader.ReadInt32()
                     : 0;
                 if (skillId > 0)
                 {
-                    int normalizedSkillLevel = Math.Max(0, skillLevel);
-                    entries.Add(new PacketCharacterDataSkillRecord(skillId, normalizedSkillLevel, 0, masterLevel));
+                    int normalizedSkillLevel = Math.Max(0, rawSkillLevel);
+                    int masterLevel = Math.Max(0, rawMasterLevel);
+                    entries.Add(new PacketCharacterDataSkillRecord(
+                        skillId,
+                        normalizedSkillLevel,
+                        0,
+                        masterLevel,
+                        rawSkillLevel,
+                        rawMasterLevel));
                     levelsBySkillId[skillId] = normalizedSkillLevel;
                     if (masterLevel > 0)
                     {
@@ -2402,7 +2409,13 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct PacketCharacterDataTransferHead(int FieldId, byte PortalIndex, int Hp);
 
-    internal readonly record struct PacketCharacterDataSkillRecord(int SkillId, int SkillLevel, long ExpirationFileTime, int MasterLevel = 0);
+    internal readonly record struct PacketCharacterDataSkillRecord(
+        int SkillId,
+        int SkillLevel,
+        long ExpirationFileTime,
+        int MasterLevel = 0,
+        int RawSkillLevel = 0,
+        int RawMasterLevel = 0);
 
     internal readonly record struct PacketCharacterDataNewYearCardRecord(
         int SerialNumber,

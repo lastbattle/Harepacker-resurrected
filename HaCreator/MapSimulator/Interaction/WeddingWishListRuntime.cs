@@ -5,7 +5,9 @@ using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -33,6 +35,12 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class WeddingWishListRuntime
     {
+        internal const int EngagementPacketOpcode = 161;
+        internal const int WishListTransferPacketOpcode = 162;
+        internal const byte SendWishListInputSubtype = 9;
+        internal const byte SendPutItemRequestSubtype = 6;
+        internal const byte SendGetItemRequestSubtype = 7;
+
         private const int MaxWishListEntryCount = 10;
         private const int ConfirmWishListInputStringPoolId = 0x1097;
         private const int WishListGiftAlreadySentStringPoolId = 0x1098;
@@ -83,9 +91,14 @@ namespace HaCreator.MapSimulator.Interaction
         private int _putQuantityPromptWishItemId;
         private InventorySlotData _putQuantityPromptSourceItem;
         private int _putQuantityPromptQuantity = 1;
+        private int _putQuantityPromptSourceSlotIndex;
         private int _pendingPutWishItemId;
         private InventorySlotData _pendingPutSourceItem;
         private int _pendingPutQuantity = 1;
+        private int _pendingPutSourceSlotIndex;
+        private int _lastOutboundPacketOpcode = -1;
+        private byte[] _lastOutboundPacketPayload = Array.Empty<byte>();
+        private string _lastOutboundPacketSummary = string.Empty;
         private bool _inputConfirmationArmed;
         private bool _isOpen;
         private string _statusMessage = "Wedding wish-list dialog is idle.";
@@ -332,6 +345,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _putQuantityPromptSourceItem = CloneForDialog(source, ResolveInventoryTypeForSlot(source, ResolveSelectedInventoryType()), source.Quantity);
                 _putQuantityPromptWishItemId = selectedWish.ItemId;
                 _putQuantityPromptQuantity = 1;
+                _putQuantityPromptSourceSlotIndex = ResolveSelectedInventoryPacketSlotIndex();
                 _isPutQuantityPromptOpen = true;
                 _isPutConfirmationArmed = false;
                 _isGetConfirmationArmed = false;
@@ -340,7 +354,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return _statusMessage;
             }
 
-            return ArmPendingPutConfirmation(selectedWish, source, 1);
+            return ArmPendingPutConfirmation(selectedWish, source, 1, ResolveSelectedInventoryPacketSlotIndex());
         }
 
         internal string TryGetSelectedItem()
@@ -380,6 +394,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _inventory.AddItem(type, CloneForDialog(selected, type, 1));
+            StageGetItemRequestPacket(selected, type, ResolvePacketSlotIndex(_selectedGiftIndex));
             giftList.RemoveAt(_selectedGiftIndex);
             _isGetConfirmationArmed = false;
             _hasPendingTransferRequest = true;
@@ -608,6 +623,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isOpen = false;
             _inputConfirmationArmed = false;
+            StageWishListInputPacket();
             _statusMessage = $"Confirmed {_wishListEntries.Count} wedding wish-list item(s) through the dedicated OK/SetRet owner path. Downstream packet or script handoff is still not modeled.";
             NotifySocialChatObserved(_wishListEntries.Select(ResolveItemLabel));
             return _statusMessage;
@@ -682,6 +698,9 @@ namespace HaCreator.MapSimulator.Interaction
                 PutQuantityPromptItemLabel = _isPutQuantityPromptOpen ? ResolveItemLabel(_putQuantityPromptSourceItem) : string.Empty,
                 PutQuantityPromptQuantity = _isPutQuantityPromptOpen ? _putQuantityPromptQuantity : 0,
                 PutQuantityPromptMaxQuantity = _isPutQuantityPromptOpen ? GetPendingPutQuantityMax() : 0,
+                LastOutboundPacketOpcode = _lastOutboundPacketOpcode,
+                LastOutboundPacketPayload = Array.AsReadOnly(_lastOutboundPacketPayload),
+                LastOutboundPacketSummary = _lastOutboundPacketSummary,
                 StatusMessage = _statusMessage,
                 LocalCharacterName = _localCharacterName
             };
@@ -1282,6 +1301,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             InventorySlotData gifted = CloneForDialog(source, type, quantity);
+            StagePutItemRequestPacket(selectedWish, gifted, type, _pendingPutSourceSlotIndex);
             _giftByWishItemId[selectedWish.ItemId] = gifted;
             _hasPendingTransferRequest = true;
             ClearTransientActionState();
@@ -1315,10 +1335,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return _statusMessage;
             }
 
-            return ArmPendingPutConfirmation(selectedWish, _putQuantityPromptSourceItem, _putQuantityPromptQuantity);
+            return ArmPendingPutConfirmation(selectedWish, _putQuantityPromptSourceItem, _putQuantityPromptQuantity, _putQuantityPromptSourceSlotIndex);
         }
 
-        private string ArmPendingPutConfirmation(InventorySlotData selectedWish, InventorySlotData source, int quantity)
+        private string ArmPendingPutConfirmation(InventorySlotData selectedWish, InventorySlotData source, int quantity, int sourceSlotIndex)
         {
             if (selectedWish == null || source == null)
             {
@@ -1328,6 +1348,7 @@ namespace HaCreator.MapSimulator.Interaction
             _pendingPutWishItemId = selectedWish.ItemId;
             _pendingPutSourceItem = CloneForDialog(source, ResolveInventoryTypeForSlot(source, ResolveSelectedInventoryType()), quantity);
             _pendingPutQuantity = Math.Max(1, quantity);
+            _pendingPutSourceSlotIndex = sourceSlotIndex;
             _isPutConfirmationArmed = true;
             _isPutQuantityPromptOpen = false;
             _isGetConfirmationArmed = false;
@@ -1373,6 +1394,71 @@ namespace HaCreator.MapSimulator.Interaction
             _statusMessage = $"{GetPutQuantityPromptText()} {ResolveItemLabel(_putQuantityPromptSourceItem)} [{_putQuantityPromptQuantity}/{maxQuantity}]";
         }
 
+        private int ResolveSelectedInventoryPacketSlotIndex()
+        {
+            return ResolvePacketSlotIndex(_selectedInventoryIndex);
+        }
+
+        private static int ResolvePacketSlotIndex(int zeroBasedIndex)
+        {
+            return Math.Max(1, zeroBasedIndex + 1);
+        }
+
+        private void StageWishListInputPacket()
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
+            writer.Write(SendWishListInputSubtype);
+            writer.Write((byte)_wishListEntries.Count);
+            foreach (InventorySlotData entry in _wishListEntries)
+            {
+                writer.Write(entry?.ItemId ?? 0);
+                WritePacketString(writer, ResolveItemLabel(entry));
+            }
+
+            StageOutboundPacket(EngagementPacketOpcode, stream.ToArray(), $"SendWishListInput staged {_wishListEntries.Count} item(s).");
+        }
+
+        private void StageGetItemRequestPacket(InventorySlotData item, InventoryType type, int sourceSlotIndex)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
+            writer.Write(SendGetItemRequestSubtype);
+            writer.Write((byte)type);
+            writer.Write((short)Math.Max(1, sourceSlotIndex));
+            writer.Write(item?.ItemId ?? 0);
+            writer.Write((short)1);
+            StageOutboundPacket(WishListTransferPacketOpcode, stream.ToArray(), $"SendGetItemRequest staged {ResolveItemLabel(item)} from slot {sourceSlotIndex}.");
+        }
+
+        private void StagePutItemRequestPacket(InventorySlotData wish, InventorySlotData item, InventoryType type, int sourceSlotIndex)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
+            writer.Write(SendPutItemRequestSubtype);
+            writer.Write((byte)type);
+            writer.Write((short)Math.Max(1, sourceSlotIndex));
+            writer.Write(wish?.ItemId ?? 0);
+            writer.Write(item?.ItemId ?? 0);
+            writer.Write((short)Math.Max(1, item?.Quantity ?? 1));
+            StageOutboundPacket(WishListTransferPacketOpcode, stream.ToArray(), $"SendPutItemRequest staged {ResolveItemLabel(item)} for {ResolveItemLabel(wish)} from slot {sourceSlotIndex}.");
+        }
+
+        private void StageOutboundPacket(int opcode, byte[] payload, string summary)
+        {
+            _lastOutboundPacketOpcode = opcode;
+            _lastOutboundPacketPayload = payload ?? Array.Empty<byte>();
+            _lastOutboundPacketSummary = summary ?? string.Empty;
+        }
+
+        private static void WritePacketString(BinaryWriter writer, string value)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
+            int byteCount = Math.Min(short.MaxValue, bytes.Length);
+            writer.Write((short)byteCount);
+            writer.Write(bytes, 0, byteCount);
+        }
+
         private void ClearTransientActionState()
         {
             _isGetConfirmationArmed = false;
@@ -1381,9 +1467,11 @@ namespace HaCreator.MapSimulator.Interaction
             _putQuantityPromptWishItemId = 0;
             _putQuantityPromptSourceItem = null;
             _putQuantityPromptQuantity = 1;
+            _putQuantityPromptSourceSlotIndex = 0;
             _pendingPutWishItemId = 0;
             _pendingPutSourceItem = null;
             _pendingPutQuantity = 1;
+            _pendingPutSourceSlotIndex = 0;
             _inputConfirmationArmed = false;
         }
 
@@ -1487,6 +1575,9 @@ namespace HaCreator.MapSimulator.Interaction
         public string PutQuantityPromptItemLabel { get; init; } = string.Empty;
         public int PutQuantityPromptQuantity { get; init; }
         public int PutQuantityPromptMaxQuantity { get; init; }
+        public int LastOutboundPacketOpcode { get; init; } = -1;
+        public IReadOnlyList<byte> LastOutboundPacketPayload { get; init; } = Array.Empty<byte>();
+        public string LastOutboundPacketSummary { get; init; } = string.Empty;
         public string StatusMessage { get; init; } = string.Empty;
         public string LocalCharacterName { get; init; } = string.Empty;
     }

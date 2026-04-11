@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.Entities
         private readonly Dictionary<int, WzImageProperty> _stateHitProperties;
         private readonly Dictionary<(int State, int ProperEventIndex), WzImageProperty> _stateIndexedHitProperties;
         private readonly Dictionary<int, bool> _stateRepeatModes;
+        private readonly Dictionary<int, int[]> _stateEventTypes;
         private readonly Dictionary<int, AuthoredStateTransition[]> _stateTransitions;
         private readonly Dictionary<WzImageProperty, IDXObject[]> _lazySourceFrameCache;
         private readonly Func<WzImageProperty, List<IDXObject>> _lazySourceFrameLoader;
@@ -136,6 +137,7 @@ namespace HaCreator.MapSimulator.Entities
             _stateHitProperties = new Dictionary<int, WzImageProperty>();
             _stateIndexedHitProperties = new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
             _stateRepeatModes = new Dictionary<int, bool>();
+            _stateEventTypes = new Dictionary<int, int[]>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _lazySourceFrameCache = new Dictionary<WzImageProperty, IDXObject[]>();
             _lazySourceFrameLoader = null;
@@ -181,6 +183,7 @@ namespace HaCreator.MapSimulator.Entities
                 ? new Dictionary<(int State, int ProperEventIndex), WzImageProperty>(stateIndexedHitProperties)
                 : new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
             _stateRepeatModes = LoadStateRepeatModes(reactorInstance);
+            _stateEventTypes = LoadStateEventTypes(reactorInstance);
             _stateTransitions = LoadStateTransitions(reactorInstance);
             _lazySourceFrameCache = new Dictionary<WzImageProperty, IDXObject[]>();
             _lazySourceFrameLoader = lazySourceFrameLoader;
@@ -223,6 +226,7 @@ namespace HaCreator.MapSimulator.Entities
             _stateHitProperties = new Dictionary<int, WzImageProperty>();
             _stateIndexedHitProperties = new Dictionary<(int State, int ProperEventIndex), WzImageProperty>();
             _stateRepeatModes = new Dictionary<int, bool>();
+            _stateEventTypes = new Dictionary<int, int[]>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _lazySourceFrameCache = new Dictionary<WzImageProperty, IDXObject[]>();
             _lazySourceFrameLoader = null;
@@ -480,6 +484,13 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return remainingDuration;
+        }
+
+        public int GetRemainingStoppedAnimationDuration(int tickCount)
+        {
+            return _transientFrames == null && IsStateRepeat(_activeState)
+                ? 0
+                : GetRemainingAnimationDuration(tickCount);
         }
 
         public int GetHitAnimationDuration(int state)
@@ -1278,6 +1289,7 @@ namespace HaCreator.MapSimulator.Entities
                 .ThenBy(transition => GetSelectorLookaheadPriority(transition, request))
                 .ThenBy(transition => GetHitPriorityLookaheadPriority(transition, request))
                 .ThenBy(transition => GetSameTypeDescendantLookaheadPriority(transition, request))
+                .ThenBy(transition => GetAuthoredGraphContinuationLookaheadPriority(transition, request))
                 .ThenBy(transition => transition.Order)
                 .ToArray();
 
@@ -1535,6 +1547,60 @@ namespace HaCreator.MapSimulator.Entities
             return false;
         }
 
+        private int GetAuthoredGraphContinuationLookaheadPriority(AuthoredStateTransition transition, ReactorTransitionRequest request)
+        {
+            if (request.ActivationType == ReactorActivationType.None
+                || request.ActivationType == ReactorActivationType.Quest)
+            {
+                return 0;
+            }
+
+            int resolvedTargetState = ResolveState(transition.TargetState);
+            int continuationDepth = ResolveAuthoredGraphContinuationDepth(
+                resolvedTargetState,
+                new HashSet<int> { resolvedTargetState });
+            return continuationDepth > 0
+                ? -Math.Min(continuationDepth, 32)
+                : 0;
+        }
+
+        private int ResolveAuthoredGraphContinuationDepth(int state, HashSet<int> visitedStates)
+        {
+            int resolvedState = ResolveState(state);
+            if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                return 0;
+            }
+
+            int bestDepth = 0;
+            foreach (AuthoredStateTransition transition in transitions)
+            {
+                if (transition.SelectorValues.Length != 0
+                    || transition.TargetState == resolvedState
+                    || !HasRenderableState(transition.TargetState))
+                {
+                    continue;
+                }
+
+                int nextState = ResolveState(transition.TargetState);
+                if (!visitedStates.Add(nextState))
+                {
+                    continue;
+                }
+
+                int depth = 1 + ResolveAuthoredGraphContinuationDepth(nextState, visitedStates);
+                if (depth > bestDepth)
+                {
+                    bestDepth = depth;
+                }
+
+                visitedStates.Remove(nextState);
+            }
+
+            return bestDepth;
+        }
+
         internal static bool ShouldRejectSelectorDrivenTransitionWithoutSelector(ReactorActivationType activationType)
         {
             return activationType == ReactorActivationType.Item
@@ -1717,6 +1783,43 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return transitions;
+        }
+
+        private static Dictionary<int, int[]> LoadStateEventTypes(ReactorInstance reactorInstance)
+        {
+            var eventTypes = new Dictionary<int, int[]>();
+
+            WzImage linkedImage = reactorInstance?.ReactorInfo?.LinkedWzImage;
+            if (linkedImage == null)
+            {
+                return eventTypes;
+            }
+
+            foreach (WzImageProperty property in linkedImage.WzProperties)
+            {
+                if (!int.TryParse(property?.Name, out int stateId))
+                {
+                    continue;
+                }
+
+                if (WzInfoTools.GetRealProperty(property)?["event"] is not WzSubProperty eventProperty)
+                {
+                    continue;
+                }
+
+                int[] stateEventTypes = eventProperty.WzProperties
+                    .OfType<WzSubProperty>()
+                    .Select(eventNode => TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode?["type"])))
+                    .Where(static eventType => eventType.HasValue)
+                    .Select(static eventType => eventType.Value)
+                    .ToArray();
+                if (stateEventTypes.Length > 0)
+                {
+                    eventTypes[stateId] = stateEventTypes;
+                }
+            }
+
+            return eventTypes;
         }
 
         private static HashSet<int> LoadAuthoredStates(ReactorInstance reactorInstance)

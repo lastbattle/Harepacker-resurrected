@@ -139,7 +139,7 @@ namespace HaCreator.MapSimulator
             }
 
             int slotPosition = slotIndex >= 0 ? slotIndex + 1 : 0;
-            int modifierItemToken = BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot: null);
+            int modifierItemToken = ResolveLiveVegaModifierItemToken(inventoryType, slotIndex, itemId);
             byte[] payload = BuildVegaConsumeCashLaunchPayload(
                 slotPosition,
                 itemId,
@@ -171,7 +171,7 @@ namespace HaCreator.MapSimulator
             }
 
             int slotPosition = slotIndex >= 0 ? slotIndex + 1 : 0;
-            int modifierItemToken = BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot: null);
+            int modifierItemToken = ResolveLiveVegaModifierItemToken(inventoryType, slotIndex, itemId);
             byte[] payload = BuildVegaConsumeCashLaunchPayload(
                 slotPosition,
                 itemId,
@@ -912,6 +912,17 @@ namespace HaCreator.MapSimulator
                 out slot);
         }
 
+        private int ResolveLiveVegaModifierItemToken(InventoryType inventoryType, int slotIndex, int itemId)
+        {
+            InventorySlotData slot = null;
+            if (uiWindowManager?.InventoryWindow is UI.IInventoryRuntime inventoryWindow)
+            {
+                TryGetInventorySlot(inventoryWindow, inventoryType, slotIndex, itemId, out slot);
+            }
+
+            return BuildVegaModifierItemToken(inventoryType, slotIndex, itemId, slot);
+        }
+
         private static bool TryResolveInventorySlotIndex(
             UI.IInventoryRuntime inventoryWindow,
             int itemId,
@@ -1075,6 +1086,15 @@ namespace HaCreator.MapSimulator
             return BuildSyntheticVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
         }
 
+        private static int BuildVegaModifierItemToken(
+            InventoryType inventoryType,
+            int slotIndex,
+            int itemId,
+            InventorySlotData slot)
+        {
+            return BuildVegaInventoryItemToken(inventoryType, slotIndex, itemId, slot);
+        }
+
         private static bool TryResolveClientAuthoredVegaInventoryItemToken(InventorySlotData slot, out int itemToken)
         {
             itemToken = 0;
@@ -1134,6 +1154,23 @@ namespace HaCreator.MapSimulator
                 inventoryType,
                 slotIndex,
                 modifierItemToken);
+        }
+
+        internal static byte[] BuildVegaConsumeCashLaunchPayloadWithSlotForTests(
+            int modifierSlotPosition,
+            int modifierItemId,
+            int updateTick,
+            InventoryType inventoryType,
+            int slotIndex,
+            InventorySlotData slot)
+        {
+            return BuildVegaConsumeCashLaunchPayload(
+                modifierSlotPosition,
+                modifierItemId,
+                updateTick,
+                inventoryType,
+                slotIndex,
+                BuildVegaModifierItemToken(inventoryType, slotIndex, modifierItemId, slot));
         }
 
         internal static (byte PrimaryCode, byte SecondaryCode) ResolveVegaResultCodesForTests(bool success)

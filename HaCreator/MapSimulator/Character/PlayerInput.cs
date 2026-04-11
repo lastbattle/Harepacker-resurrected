@@ -206,6 +206,8 @@ namespace HaCreator.MapSimulator.Character
             Buttons.RightTrigger,
             Buttons.Back,
             Buttons.Start,
+            Buttons.LeftStick,
+            Buttons.RightStick,
         };
 
         #region Key Bindings

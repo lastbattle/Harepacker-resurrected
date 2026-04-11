@@ -96,6 +96,7 @@ namespace HaCreator.MapSimulator.Managers
         public int RemotePort { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        internal Func<int> ActiveFieldMapIdProvider { get; set; }
         internal int ObservedOutboundRequestCount
         {
             get
@@ -276,6 +277,8 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            request = SnapshotObservedOutboundRegisterMapId(request);
+
             lock (_sync)
             {
                 _observedOutboundRequests.Add(new ObservedOutboundRequest
@@ -289,6 +292,28 @@ namespace HaCreator.MapSimulator.Managers
             status = $"Observed map transfer opcode {MapTransferPacketCodec.OutboundRequestOpcode} from {source ?? "official-session"}.";
             LastStatus = status;
             return true;
+        }
+
+        private MapTransferRuntimeRequest SnapshotObservedOutboundRegisterMapId(MapTransferRuntimeRequest request)
+        {
+            if (request?.Type != MapTransferRuntimeRequestType.Register || request.MapId > 0)
+            {
+                return request;
+            }
+
+            int activeFieldMapId = ActiveFieldMapIdProvider?.Invoke() ?? 0;
+            if (activeFieldMapId <= 0)
+            {
+                return request;
+            }
+
+            return new MapTransferRuntimeRequest
+            {
+                Type = request.Type,
+                Book = request.Book,
+                MapId = activeFieldMapId,
+                SlotIndex = request.SlotIndex
+            };
         }
 
         public void RecordDispatchResult(string source, bool success, string detail)

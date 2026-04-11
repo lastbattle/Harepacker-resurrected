@@ -26,6 +26,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex ItemCountRegex = new(@"#c(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex NpcRegex = new(@"#p(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemNameRegex = new(@"#t(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex MalformedItemNameRegex = new(@"#(?<id>\d{7,8}):?#", RegexOptions.Compiled);
         private static readonly Regex MobNameRegex = new(@"#o(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestNameRegex = new(@"#q(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CurrentQuestNameRegex = new(@"#q#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -79,6 +80,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = ItemNameRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
             formatted = MobNameRegex.Replace(formatted, static match => ResolveMobName(match.Groups[1].Value));
             formatted = ItemNameAliasRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
+            formatted = MalformedItemNameRegex.Replace(formatted, static match => ResolveItemName(match.Groups["id"].Value));
             formatted = QuestNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
             formatted = CurrentQuestNameRegex.Replace(formatted, match => ResolveActiveQuestNameText(context));
             formatted = QuestReferenceNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));

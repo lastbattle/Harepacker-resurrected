@@ -52,6 +52,8 @@ namespace HaCreator.MapSimulator
         private string _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
         private bool _packetOwnedAntiMacroComboHeld;
         private bool _packetOwnedAntiMacroAwaitingResult;
+        private bool _lastPacketOwnedAntiMacroAuthoritativeRoundTrip;
+        private string _lastPacketOwnedAntiMacroResultSource = string.Empty;
         private PacketOwnedAntiMacroSubmitTransportPath _lastPacketOwnedAntiMacroSubmitTransportPath;
         private byte[] _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
 
@@ -553,6 +555,12 @@ namespace HaCreator.MapSimulator
             return officialSessionBridgeEnabled
                 && hasAttachedClient
                 && !hasConnectedSession;
+        }
+
+        internal static bool IsPacketOwnedAntiMacroAuthoritativeResultSource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static PacketOwnedAntiMacroNoticeMapping ResolvePacketOwnedAntiMacroNoticeMappingForTest(int noticeType, int antiMacroType)

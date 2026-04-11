@@ -188,6 +188,7 @@ namespace HaCreator.MapSimulator
         private static readonly Lazy<HashSet<int>> PacketOwnedTimeBombSkillIdCatalog = new(CreatePacketOwnedTimeBombSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedVengeanceSkillIdCatalog = new(CreatePacketOwnedVengeanceSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedExJablinSkillIdCatalog = new(CreatePacketOwnedExJablinSkillIdCatalog);
+        private static readonly Lazy<int[]> PacketOwnedAuthoredTimeBombSkillIdCandidates = new(CreatePacketOwnedAuthoredTimeBombSkillIdCandidates);
         private static readonly Lazy<int[]> PacketOwnedTimeBombInvincibilityOptionIds = new(CreatePacketOwnedTimeBombInvincibilityOptionIds);
         private static readonly Lazy<IReadOnlyDictionary<string, int>> PacketOwnedVisiblePotentialItemOptionIdsByLine = new(CreatePacketOwnedVisiblePotentialItemOptionIdsByLine);
         private static readonly Lazy<HashSet<int>> PacketOwnedVisiblePotentialItemOptionIds = new(CreatePacketOwnedVisiblePotentialItemOptionIdSet);
@@ -521,7 +522,8 @@ namespace HaCreator.MapSimulator
             IReadOnlyList<QuestDeliveryWindow.DeliveryEntry> entries = BuildQuestDeliveryEntries(
                 _lastDeliveryQuestId,
                 _lastDeliveryItemId,
-                _lastDeliveryDisallowedQuestIds);
+                _lastDeliveryDisallowedQuestIds,
+                _lastPacketOwnedDeliveryType);
             if (entries.Count == 0)
             {
                 string emptyMessage = _lastDeliveryQuestId > 0
@@ -901,7 +903,11 @@ namespace HaCreator.MapSimulator
             };
         }
 
-        private IReadOnlyList<QuestDeliveryWindow.DeliveryEntry> BuildQuestDeliveryEntries(int requestedQuestId, int itemId, IReadOnlyList<int> disallowedQuestIds)
+        private IReadOnlyList<QuestDeliveryWindow.DeliveryEntry> BuildQuestDeliveryEntries(
+            int requestedQuestId,
+            int itemId,
+            IReadOnlyList<int> disallowedQuestIds,
+            QuestDetailDeliveryType packetOwnedDeliveryType)
         {
             var entries = new List<QuestDeliveryWindow.DeliveryEntry>();
             var appendedQuestIds = new HashSet<int>();
@@ -911,7 +917,8 @@ namespace HaCreator.MapSimulator
                 requestedQuestId,
                 itemId,
                 disallowedQuestIds,
-                _playerManager?.Player?.Build);
+                _playerManager?.Player?.Build,
+                packetOwnedDeliveryType);
 
             for (int i = 0; i < deliverySnapshot.Count; i++)
             {
@@ -2428,7 +2435,7 @@ namespace HaCreator.MapSimulator
                     return TryApplyPacketOwnedMechanicEquipPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.CharacterEquipStatePacketType:
-                    return TryApplyPacketOwnedCharacterEquipPayload(payload, out message);
+                    return TryApplyPacketOwnedCharacterEquipPayload(packetType, payload, out message);
 
                 case LocalUtilityPacketInboxManager.RepairDurabilityResultPacketType:
                     return TryApplyRepairDurabilityResultPayload(payload, out message);
@@ -3983,10 +3990,22 @@ namespace HaCreator.MapSimulator
             return applied;
         }
 
-        private bool TryDispatchMessengerOfficialSessionRequest(int opcode, byte[] payload, string source, out string message)
+        private bool TryDispatchMessengerOfficialSessionRequest(int opcode, byte[] payload, string source, out string message, bool queueOnly = false)
         {
             byte[] safePayload = payload ?? Array.Empty<byte>();
             string payloadHex = safePayload.Length > 0 ? Convert.ToHexString(safePayload) : "<empty>";
+            if (queueOnly)
+            {
+                if (_messengerOfficialSessionBridge.TryQueueOutboundPacket(opcode, safePayload, out string queueOnlyStatus))
+                {
+                    message = $"{source} queued opcode {opcode} [{payloadHex}] for deferred Messenger session injection. {queueOnlyStatus}";
+                    return true;
+                }
+
+                message = $"{source} could not queue opcode {opcode} [{payloadHex}] for deferred Messenger session injection. Bridge: {queueOnlyStatus}";
+                return false;
+            }
+
             string dispatchStatus = "live Messenger bridge unavailable";
             if (_messengerOfficialSessionBridge.TrySendOutboundPacket(opcode, safePayload, out dispatchStatus))
             {
@@ -4006,7 +4025,7 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private bool TryMirrorMessengerInviteClientRequest(string contactName, out string message)
+        private bool TryMirrorMessengerInviteClientRequest(string contactName, out string message, bool queueOnly = false)
         {
             if (!_messengerRuntime.TryBuildClientInviteRequestPayload(contactName, out byte[] payload, out string resolvedContactName, out message))
             {
@@ -4017,7 +4036,8 @@ namespace HaCreator.MapSimulator
                     MessengerPacketCodec.ClientMessengerRequestOpcode,
                     payload,
                     $"CUIMessenger::SendInviteMsg targeted {resolvedContactName}",
-                    out string dispatchStatus))
+                    out string dispatchStatus,
+                    queueOnly))
             {
                 message = dispatchStatus;
                 return false;
@@ -4028,7 +4048,7 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryMirrorMessengerProcessChatClientRequest(string chatText, out string message)
+        private bool TryMirrorMessengerProcessChatClientRequest(string chatText, out string message, bool queueOnly = false)
         {
             if (!_messengerRuntime.TryBuildClientProcessChatRequestPayload(chatText, out byte[] payload, out string normalizedMessage, out message))
             {
@@ -4039,18 +4059,44 @@ namespace HaCreator.MapSimulator
                     MessengerPacketCodec.ClientMessengerRequestOpcode,
                     payload,
                     "CUIMessenger::ProcessChat",
-                    out string dispatchStatus))
+                    out string dispatchStatus,
+                    queueOnly))
             {
                 message = dispatchStatus;
                 return false;
             }
 
-            string localStatus = _messengerRuntime.SendMessage(normalizedMessage);
+            string localStatus = queueOnly
+                ? $"Queued CUIMessenger::ProcessChat for '{normalizedMessage}' and left room state waiting for the session-owned chat result."
+                : _messengerRuntime.SendMessage(normalizedMessage);
             message = $"{localStatus} {dispatchStatus}";
             return true;
         }
 
-        private bool TryMirrorMessengerClaimClientRequest(string claimArguments, out string message)
+        private bool TryMirrorMessengerIncomingInviteAcceptClientRequest(string contactName, out string message, bool queueOnly = false)
+        {
+            if (!_messengerRuntime.TryBuildClientAcceptInviteRequestPayload(contactName, out byte[] payload, out string resolvedContactName, out int inviteSequence, out message))
+            {
+                return false;
+            }
+
+            if (!TryDispatchMessengerOfficialSessionRequest(
+                    MessengerPacketCodec.ClientMessengerRequestOpcode,
+                    payload,
+                    $"CUIFadeYesNo::OnButtonClicked accepted Messenger invite from {resolvedContactName}",
+                    out string dispatchStatus,
+                    queueOnly))
+            {
+                message = dispatchStatus;
+                return false;
+            }
+
+            string runtimeStatus = _messengerRuntime.QueueSessionOwnedIncomingInviteAccept(resolvedContactName);
+            message = $"{runtimeStatus} {dispatchStatus}";
+            return true;
+        }
+
+        private bool TryMirrorMessengerClaimClientRequest(string claimArguments, out string message, bool queueOnly = false)
         {
             message = null;
             string packedArguments = claimArguments?.Trim();
@@ -4089,7 +4135,8 @@ namespace HaCreator.MapSimulator
                     118,
                     payload,
                     $"CWvsContext::SendClaimRequest targeted {targetCharacterName}",
-                    out string dispatchStatus))
+                    out string dispatchStatus,
+                    queueOnly))
             {
                 message = dispatchStatus;
                 return false;
@@ -4123,6 +4170,10 @@ namespace HaCreator.MapSimulator
                 case "invite":
                     return !string.IsNullOrWhiteSpace(argument)
                         && TryMirrorMessengerInviteClientRequest(argument, out message);
+                case "accept":
+                case "yes":
+                case "join":
+                    return TryMirrorMessengerIncomingInviteAcceptClientRequest(argument, out message);
                 default:
                     return false;
             }
@@ -4668,7 +4719,7 @@ namespace HaCreator.MapSimulator
             }
 
             remainingDurationMs = Math.Max(0, trackDurationMs - startOffsetMs);
-            return true;
+            return IsPacketOwnedRadioPlaybackOffsetUsable(startOffsetMs, trackDurationMs);
         }
 
         internal static bool TryResolvePacketOwnedRadioPlaybackOffset(int timeValue, out int normalizedTimeValue, out int startOffsetMs)
@@ -4684,11 +4735,11 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        internal static bool IsPacketOwnedRadioPlaybackOffsetUsable(int startOffsetMs, int availableDurationMs)
+        internal static bool IsPacketOwnedRadioPlaybackOffsetUsable(int startOffsetMs, int trackDurationMs)
         {
             return startOffsetMs >= 0
-                && availableDurationMs >= 0
-                && startOffsetMs <= availableDurationMs;
+                && trackDurationMs > 0
+                && startOffsetMs <= trackDurationMs;
         }
 
         internal static void ResolvePacketOwnedRadioRealizedPlaybackWindow(
@@ -5664,7 +5715,7 @@ namespace HaCreator.MapSimulator
                     _playerManager.Combat.SetInvincible(currTickCount, appliedHitPeriodMs);
                 }
 
-                float impactMagnitude = Math.Max(390f, impactPercent * 4f);
+                float impactMagnitude = ResolvePacketOwnedTimeBombImpactVelocity(impactPercent);
                 float knockbackX = _playerManager.Player.FacingRight ? -impactMagnitude : impactMagnitude;
                 float knockbackY = -impactMagnitude;
                 _playerManager.Player.ApplyPacketDamageReaction(
@@ -8330,6 +8381,10 @@ namespace HaCreator.MapSimulator
                     route = new PacketOwnedChatRoute($"[Association] {message}", 5);
                     return true;
 
+                case "couple":
+                    route = new PacketOwnedChatRoute($"[Couple] {message}", 6);
+                    return true;
+
                 case "expedition":
                     route = new PacketOwnedChatRoute($"[Expedition] {message}", 26);
                     return true;
@@ -8446,6 +8501,7 @@ namespace HaCreator.MapSimulator
                 "friend" => $"[Friend] {message}",
                 "guild" => $"[Guild] {message}",
                 "alliance" or "association" => $"[Alliance] {message}",
+                "couple" => $"[Couple] {message}",
                 "expedition" => $"[Expedition] {message}",
                 "error" => $"[Error] {message}",
                 _ => message
@@ -9360,7 +9416,8 @@ namespace HaCreator.MapSimulator
                 packetSkillId,
                 packetSkillLevel,
                 normalizedSkillId,
-                IsPacketOwnedTimeBombSkillId);
+                IsPacketOwnedTimeBombSkillId,
+                PacketOwnedAuthoredTimeBombSkillIdCandidates.Value);
         }
 
         internal static int ResolvePacketOwnedTimeBombLocalSkillId(
@@ -9369,11 +9426,33 @@ namespace HaCreator.MapSimulator
             int normalizedSkillId,
             Func<int, bool> isTimeBombSkillId)
         {
+            return ResolvePacketOwnedTimeBombLocalSkillId(
+                packetSkillId,
+                packetSkillLevel,
+                normalizedSkillId,
+                isTimeBombSkillId,
+                Array.Empty<int>());
+        }
+
+        internal static int ResolvePacketOwnedTimeBombLocalSkillId(
+            int packetSkillId,
+            int packetSkillLevel,
+            int normalizedSkillId,
+            Func<int, bool> isTimeBombSkillId,
+            IReadOnlyList<int> authoredFallbackSkillIds)
+        {
             if ((isTimeBombSkillId?.Invoke(packetSkillId) ?? false)
                 || packetSkillLevel > 0
                 || normalizedSkillId != packetSkillId)
             {
                 return normalizedSkillId;
+            }
+
+            if (packetSkillId > 0
+                && authoredFallbackSkillIds?.Count == 1
+                && authoredFallbackSkillIds[0] > 0)
+            {
+                return authoredFallbackSkillIds[0];
             }
 
             return packetSkillId;
@@ -9387,6 +9466,11 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldApplyPacketOwnedTimeBombImpactReaction(int impactPercent)
         {
             return impactPercent != 0;
+        }
+
+        internal static int ResolvePacketOwnedTimeBombImpactVelocity(int impactPercent)
+        {
+            return Math.Max(390, (int)(impactPercent / 100d * 400d));
         }
 
         internal static PacketOwnedTimeBombHpEffectKind ResolvePacketOwnedTimeBombHpEffectKind(int damage)
@@ -9482,6 +9566,13 @@ namespace HaCreator.MapSimulator
                 authoredSkillIds,
                 PacketOwnedCurrentTimeBombSkillId,
                 0);
+        }
+
+        private static int[] CreatePacketOwnedAuthoredTimeBombSkillIdCandidates()
+        {
+            return CreatePacketOwnedAuthoredTimeBombSkillIdCandidates(
+                PacketOwnedTimeBombSkillIdCatalog.Value,
+                TryResolvePacketOwnedTimeBombAuthoredBranchCoverage);
         }
 
         internal static HashSet<int> CreatePacketOwnedExJablinSkillIdCatalog(
@@ -13240,7 +13331,7 @@ namespace HaCreator.MapSimulator
                 case "chat":
                     if (args.Length < 2)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility chat [channel|type19|whisper:name|whisperout:name] <text>");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility chat [channel|type19|couple|whisper:name|whisperout:name] <text>");
                     }
 
                     if (args.Length >= 3)
@@ -13497,7 +13588,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                    "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|minimaponoff|radioctx|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv] [accept|complete|none]|classcompetition|skillguide|radioctx <status|left|right|on|off|1|0|reset>|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|classcompetitionauth|skillguide|hiretutor|tutormsg|minimaponoff|radioctx|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|250|251|252|255|256|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|1035> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+                    "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|minimaponoff|radioctx|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|couple|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv] [accept|complete|none]|classcompetition|skillguide|radioctx <status|left|right|on|off|1|0|reset>|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|classcompetitionauth|skillguide|hiretutor|tutormsg|minimaponoff|radioctx|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|250|251|252|255|256|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|1035> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
             }
         }
 
@@ -14464,3 +14555,4 @@ namespace HaCreator.MapSimulator
         }
     }
 }
+

@@ -23,9 +23,9 @@ namespace HaCreator.MapSimulator
         private int _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt;
 
         private const string SocialListPacketPayloadUsage =
-            "Usage: /sociallist packet [status|session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> <opcode>|stop]|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|friendresult <payloadhex=..|payloadb64=..>|partyresult <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|guildskillresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>|guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>]";
+            "Usage: /sociallist packet [status|session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> <opcode>|stop]|clientraw <hex>|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|friendresult <payloadhex=..|payloadb64=..>|partyresult <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|guildskillresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>|guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>]";
         private const string SocialListPacketRawUsage =
-            "Usage: /sociallist packetraw <friend|party|guild|alliance|blacklist|guildauth|allianceauth|guildui|friendresult|partyresult|guildresult|guildskillresult|allianceresult> <hex>";
+            "Usage: /sociallist packetraw <friend|party|guild|alliance|blacklist|guildauth|allianceauth|guildui|friendresult|partyresult|guildresult|guildskillresult|allianceresult|clientresult> <hex>";
 
         private ChatCommandHandler.CommandResult HandleSocialListPacketCommand(string[] args)
         {
@@ -40,6 +40,12 @@ namespace HaCreator.MapSimulator
             }
 
             string packetAction = args[0].ToLowerInvariant();
+            if (string.Equals(packetAction, "clientraw", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(packetAction, "clientresult", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandleSocialListClientResultRawCommand(args.Skip(1).ToArray());
+            }
+
             if (TryParseSocialListTabToken(packetAction, out SocialListTab packetTab))
             {
                 if (!TryParseSocialListPacketPayloadArgument(args, 1, out byte[] rosterPayload, out string payloadError))
@@ -171,7 +177,55 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ApplyClientAllianceResultPayload(payload));
             }
 
+            if (string.Equals(target, "clientresult", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(target, "clientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return ApplySocialListClientResultRawPacket(payload);
+            }
+
             return ChatCommandHandler.CommandResult.Error(SocialListPacketRawUsage);
+        }
+
+        private ChatCommandHandler.CommandResult HandleSocialListClientResultRawCommand(string[] args)
+        {
+            if (args.Length < 1 || !TryDecodeHexBytes(string.Join(string.Empty, args), out byte[] rawPacket))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet clientraw <opcode-framed-hex>");
+            }
+
+            return ApplySocialListClientResultRawPacket(rawPacket);
+        }
+
+        private ChatCommandHandler.CommandResult ApplySocialListClientResultRawPacket(byte[] rawPacket)
+        {
+            ushort guildResultOpcode = _socialListOfficialSessionBridgeConfiguredGuildResultOpcode > 0
+                ? _socialListOfficialSessionBridgeConfiguredGuildResultOpcode
+                : SocialListOfficialSessionBridgeManager.ClientGuildResultOpcode;
+            ushort allianceResultOpcode = _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode > 0
+                ? _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode
+                : SocialListOfficialSessionBridgeManager.ClientAllianceResultOpcode;
+
+            if (!SocialListPacketCodec.TryParseOpcodeFramedClientResult(
+                    rawPacket,
+                    SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode,
+                    SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode,
+                    guildResultOpcode,
+                    allianceResultOpcode,
+                    out SocialListClientResultOpcodeKind kind,
+                    out byte[] payload,
+                    out string error))
+            {
+                return ChatCommandHandler.CommandResult.Error(error ?? SocialListPacketRawUsage);
+            }
+
+            string detail = kind switch
+            {
+                SocialListClientResultOpcodeKind.FriendResult => _socialListRuntime.ApplyClientFriendResultPayload(payload),
+                SocialListClientResultOpcodeKind.PartyResult => _socialListRuntime.ApplyClientPartyResultPayload(payload),
+                SocialListClientResultOpcodeKind.AllianceResult => _socialListRuntime.ApplyClientAllianceResultPayload(payload),
+                _ => ApplyClientGuildResultPayload(payload)
+            };
+            return ChatCommandHandler.CommandResult.Ok($"CWvsContext::{kind} opcode-framed packet: {detail}");
         }
 
         private static bool TryParseSocialListPacketPayloadArgument(string[] args, int payloadIndex, out byte[] payload, out string error)

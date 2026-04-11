@@ -13,6 +13,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int FireArrowIceArrowSkillId = 2111002;
         private const int AssaulterShadowChargeSkillId = 4211001;
         private const int PirateScrewPunchSkillId = 5101004;
+        private const int PoisonBombSkillId = 14111006;
+        private const int GrenadeSkillId = 5201002;
         private const int MonkeyWaveSkillId = 5311002;
         private const int ThunderBreakerSharkWaveSkillId = 15101003;
         private const int WildHunterSwallowSkillId = 33101005;
@@ -26,11 +28,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             3221001,
             AssaulterShadowChargeSkillId,
             PirateScrewPunchSkillId,
+            PoisonBombSkillId,
             ThunderBreakerSharkWaveSkillId,
             22121000,
             22151001,
             4341002,
             4341003,
+            GrenadeSkillId,
             MonkeyWaveSkillId,
             WildHunterSwallowSkillId
         };
@@ -77,8 +81,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             2321001,
             3221001,
             PirateScrewPunchSkillId,
+            PoisonBombSkillId,
             4341002,
             4341003,
+            GrenadeSkillId,
             MonkeyWaveSkillId,
             ThunderBreakerSharkWaveSkillId,
             WildHunterSwallowSkillId
@@ -104,7 +110,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 4341002 => new PreparedSkillHudProfile(true, "KeyDownBar1", 600),
                 PirateScrewPunchSkillId => new PreparedSkillHudProfile(true, "KeyDownBar1", 1000),
                 ThunderBreakerSharkWaveSkillId => new PreparedSkillHudProfile(true, "KeyDownBar1", 1000),
-                14111006 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
+                PoisonBombSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 2121001 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 2221001 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 2321001 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
@@ -115,7 +121,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // authored charge window when available, so the profile itself stays open.
                 MonkeyWaveSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 0),
                 5221004 => new PreparedSkillHudProfile(false, "KeyDownBar", 2000),
-                5201002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
+                GrenadeSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 13111002 => new PreparedSkillHudProfile(false, "KeyDownBar", 1000),
                 22121000 => new PreparedSkillHudProfile(true, "KeyDownBar3", 500, PreparedSkillHudSurface.World, showText: false),
                 22151001 => new PreparedSkillHudProfile(true, "KeyDownBar2", 500, PreparedSkillHudSurface.World, showText: false),

@@ -363,6 +363,7 @@ namespace HaCreator.MapSimulator
             UpdatePacketOwnedRadioSchedule(currTickCount);
             UpdateUtilityAudioMix(currTickCount);
             DrainRockPaperScissorsPendingClientPackets();
+            UpdateDirectionModeState(currTickCount);
 
             if (isWindowActive)
             {

@@ -57,7 +57,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_SECTION_GAP = 4;
         private const int TOOLTIP_FALLBACK_WIDTH = 220;
         private static readonly Regex RichTextTokenRegex = new(
-            @"(\{\{ITEMICON:\d+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\{\{QUESTSTYLE:[^}]+\}\}|\r?\n|\s+)",
+            @"(\{\{ITEMICON:\d+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\{\{QUESTSTYLE:[^}]+\}\}|\{\{QUESTREF:[^}]+\}\}|\r?\n|\s+)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly string _windowName;
@@ -497,13 +497,6 @@ namespace HaCreator.MapSimulator.UI
                     Color.White, false, drawReflectionInfo);
             }
 
-            if (_summaryPanel != null && HasSummaryPaneContent())
-            {
-                _summaryPanel.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
-                    Position.X + _summaryPanelOffset.X, Position.Y + _summaryPanelOffset.Y,
-                    Color.White, false, drawReflectionInfo);
-            }
-
             if (_detailTip != null && ShouldDrawDetailTip())
             {
                 _detailTip.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
@@ -530,19 +523,7 @@ namespace HaCreator.MapSimulator.UI
                 ClientTitleScale,
                 lane: QuestDetailTextLane.Title);
 
-            if (!string.IsNullOrWhiteSpace(_state.HeaderNoteText))
-            {
-                float headerNoteY = _state.QuestId == QuestWindowDetailState.MateNameHeaderQuestId
-                    ? ClientMateHeaderNoteY
-                    : ClientHeaderNoteY;
-                DrawTextLine(
-                    sprite,
-                    _state.HeaderNoteText,
-                    new Vector2(Position.X + ClientHeaderNoteX, Position.Y + headerNoteY),
-                    new Color(244, 232, 192),
-                    ClientHeaderScale,
-                    lane: QuestDetailTextLane.Header);
-            }
+            DrawHeaderNote(sprite, drawMateNameHeader: false);
 
             if (!string.IsNullOrWhiteSpace(_state.NpcText))
             {
@@ -558,7 +539,56 @@ namespace HaCreator.MapSimulator.UI
             DrawDetailInset(sprite, TickCount);
             DrawNoticeSurface(sprite, TickCount);
             DrawLogPane(sprite);
+            DrawSummaryPanel(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
             DrawSummaryPane(sprite);
+            DrawHeaderNote(sprite, drawMateNameHeader: true);
+        }
+
+        private void DrawSummaryPanel(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo)
+        {
+            if (_summaryPanel == null || !HasSummaryPaneContent())
+            {
+                return;
+            }
+
+            _summaryPanel.DrawBackground(
+                sprite,
+                skeletonMeshRenderer,
+                gameTime,
+                Position.X + _summaryPanelOffset.X,
+                Position.Y + _summaryPanelOffset.Y,
+                Color.White,
+                false,
+                drawReflectionInfo);
+        }
+
+        private void DrawHeaderNote(SpriteBatch sprite, bool drawMateNameHeader)
+        {
+            if (string.IsNullOrWhiteSpace(_state?.HeaderNoteText))
+            {
+                return;
+            }
+
+            bool isMateNameHeader = _state.QuestId == QuestWindowDetailState.MateNameHeaderQuestId;
+            if (isMateNameHeader != drawMateNameHeader)
+            {
+                return;
+            }
+
+            float headerNoteY = isMateNameHeader
+                ? ClientMateHeaderNoteY
+                : ClientHeaderNoteY;
+            DrawTextLine(
+                sprite,
+                _state.HeaderNoteText,
+                new Vector2(Position.X + ClientHeaderNoteX, Position.Y + headerNoteY),
+                new Color(244, 232, 192),
+                ClientHeaderScale,
+                lane: QuestDetailTextLane.Header);
         }
 
         protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -1165,6 +1195,7 @@ namespace HaCreator.MapSimulator.UI
 
             const string itemPrefix = "{{ITEMICON:";
             const string questSurfacePrefix = "{{QUESTSURFACE:";
+            const string questReferencePrefix = "{{QUESTREF:";
             if (value.StartsWith(itemPrefix, StringComparison.OrdinalIgnoreCase) &&
                 value.EndsWith("}}", StringComparison.Ordinal) &&
                 int.TryParse(
@@ -1195,6 +1226,23 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (value.StartsWith(questReferencePrefix, StringComparison.OrdinalIgnoreCase) &&
+                value.EndsWith("}}", StringComparison.Ordinal))
+            {
+                string referencePayload = value.Substring(questReferencePrefix.Length, value.Length - questReferencePrefix.Length - 2);
+                if (TryParseQuestInlineReferenceToken(referencePayload, out QuestDetailInlineReference reference))
+                {
+                    string label = string.IsNullOrWhiteSpace(reference.Label)
+                        ? $"{reference.Kind} #{reference.TargetId}"
+                        : reference.Label;
+                    int width = (int)Math.Ceiling(MeasureText(label, ClientDetailScale, false, QuestDetailTextLane.Detail).X);
+                    int height = (int)Math.Ceiling(GetLineHeight(ClientDetailScale));
+                    token = RichTextToken.ReferenceToken(reference, label, width, height);
+                }
+
+                return true;
+            }
+
             const string questStylePrefix = "{{QUESTSTYLE:";
             if (value.StartsWith(questStylePrefix, StringComparison.OrdinalIgnoreCase) &&
                 value.EndsWith("}}", StringComparison.Ordinal))
@@ -1209,6 +1257,46 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        internal static bool TryParseQuestInlineReferenceTokenForTesting(string payload, out QuestDetailInlineReference reference)
+        {
+            return TryParseQuestInlineReferenceToken(payload, out reference);
+        }
+
+        private static bool TryParseQuestInlineReferenceToken(string payload, out QuestDetailInlineReference reference)
+        {
+            reference = default;
+            if (string.IsNullOrWhiteSpace(payload))
+            {
+                return false;
+            }
+
+            string[] parts = payload.Split(new[] { ':' }, 3);
+            if (parts.Length < 2 ||
+                !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int targetId) ||
+                targetId <= 0)
+            {
+                return false;
+            }
+
+            QuestDetailInlineReferenceKind kind = parts[0].Trim().ToLowerInvariant() switch
+            {
+                "npc" => QuestDetailInlineReferenceKind.Npc,
+                "map" => QuestDetailInlineReferenceKind.Map,
+                "mob" => QuestDetailInlineReferenceKind.Mob,
+                "item" => QuestDetailInlineReferenceKind.Item,
+                _ => QuestDetailInlineReferenceKind.None
+            };
+
+            if (kind == QuestDetailInlineReferenceKind.None)
+            {
+                return false;
+            }
+
+            string label = parts.Length >= 3 ? parts[2].Trim() : string.Empty;
+            reference = new QuestDetailInlineReference(kind, targetId, label);
+            return true;
         }
 
         private static RichTextStyleState ApplyQuestDetailStyle(string styleTag, RichTextStyleState currentStyle, Color defaultColor)
@@ -2624,6 +2712,7 @@ namespace HaCreator.MapSimulator.UI
             Icon,
             Surface,
             Style,
+            Reference,
             NewLine
         }
 
@@ -2631,7 +2720,15 @@ namespace HaCreator.MapSimulator.UI
         {
             public static readonly RichTextToken NewLineToken = new(RichTextTokenKind.NewLine, null, null, null, 0, 0);
 
-            public RichTextToken(RichTextTokenKind kind, string text, Texture2D texture, string styleTag, int width, int height, int? itemId = null)
+            public RichTextToken(
+                RichTextTokenKind kind,
+                string text,
+                Texture2D texture,
+                string styleTag,
+                int width,
+                int height,
+                int? itemId = null,
+                QuestDetailInlineReference? inlineReference = null)
             {
                 Kind = kind;
                 Text = text;
@@ -2640,6 +2737,7 @@ namespace HaCreator.MapSimulator.UI
                 Width = Math.Max(0, width);
                 Height = Math.Max(0, height);
                 ItemId = itemId;
+                InlineReference = inlineReference;
             }
 
             public RichTextTokenKind Kind { get; }
@@ -2649,10 +2747,16 @@ namespace HaCreator.MapSimulator.UI
             public int Width { get; }
             public int Height { get; }
             public int? ItemId { get; }
+            public QuestDetailInlineReference? InlineReference { get; }
 
             public static RichTextToken StyleToken(string styleTag)
             {
                 return new RichTextToken(RichTextTokenKind.Style, null, null, styleTag, 0, 0);
+            }
+
+            public static RichTextToken ReferenceToken(QuestDetailInlineReference inlineReference, string label, int width, int height)
+            {
+                return new RichTextToken(RichTextTokenKind.Reference, label, null, null, width, height, inlineReference: inlineReference);
             }
         }
 

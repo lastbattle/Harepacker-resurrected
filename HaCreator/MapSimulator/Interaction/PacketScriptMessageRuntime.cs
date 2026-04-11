@@ -630,8 +630,7 @@ namespace HaCreator.MapSimulator.Interaction
                 List<PacketScriptPetSelectionCandidate> selectablePets = FilterSelectablePets(petSerialNumbers, resolveSelectablePet);
                 int droppedSerialCount = petSerialNumbers.Count - selectablePets.Count;
 
-                bool implicitFallbackOnly = selectablePets.Count == 0 ||
-                    (isPetAll && !exceptionExists && selectablePets.Count == 1);
+                bool implicitFallbackOnly = ShouldAutoClosePetClientPacket(isPetAll, count, exceptionExists);
                 if (implicitFallbackOnly)
                 {
                     result = CreateDecodedResult(
@@ -721,6 +720,16 @@ namespace HaCreator.MapSimulator.Interaction
                 result = null;
                 return false;
             }
+        }
+
+        private static bool ShouldAutoClosePetClientPacket(bool isPetAll, int packetPetCount, bool exceptionExists)
+        {
+            if (packetPetCount <= 0)
+            {
+                return true;
+            }
+
+            return isPetAll && !exceptionExists && packetPetCount == 1;
         }
 
         private static NpcInteractionEntry DecodeAskPetCompactPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll)

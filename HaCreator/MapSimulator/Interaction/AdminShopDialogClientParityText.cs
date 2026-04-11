@@ -37,6 +37,11 @@ namespace HaCreator.MapSimulator.Interaction
             return subtype == 4;
         }
 
+        internal static bool IsNoticeOnlyResult(byte resultCode)
+        {
+            return resultCode == 10;
+        }
+
         internal static bool TryGetResultNotice(byte resultCode, out string notice, out bool reopensDialog)
         {
             reopensDialog = false;

@@ -189,11 +189,13 @@ namespace HaCreator.MapSimulator.Fields
                 yield break;
             }
 
+            int argumentIndex = 0;
             foreach (string argument in EnumerateFunctionArguments(scriptName))
             {
                 string normalizedArgument = NormalizeFunctionAliasArgument(argument);
-                if (!IsPotentialAliasArgument(normalizedArgument))
+                if (!IsPotentialAliasArgument(normalizedArgument, argumentIndex))
                 {
+                    argumentIndex++;
                     continue;
                 }
 
@@ -203,6 +205,8 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     yield return nestedArgument;
                 }
+
+                argumentIndex++;
             }
         }
 
@@ -355,7 +359,7 @@ namespace HaCreator.MapSimulator.Fields
             return value.Trim().Trim('"', '\'').Trim();
         }
 
-        private static bool IsPotentialAliasArgument(string value)
+        private static bool IsPotentialAliasArgument(string value, int argumentIndex)
         {
             if (string.IsNullOrWhiteSpace(value))
             {
@@ -363,6 +367,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             bool hasAliasCharacter = false;
+            bool hasDigit = false;
             for (int i = 0; i < value.Length; i++)
             {
                 char current = value[i];
@@ -372,7 +377,13 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
                 }
 
-                if (char.IsDigit(current) || current == '(' || current == ')' || current == '"' || current == '\'')
+                if (char.IsDigit(current))
+                {
+                    hasDigit = true;
+                    continue;
+                }
+
+                if (current == '(' || current == ')' || current == '"' || current == '\'')
                 {
                     continue;
                 }
@@ -380,7 +391,7 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
-            return hasAliasCharacter;
+            return hasAliasCharacter || (argumentIndex == 0 && hasDigit && value.Trim().Length > 1);
         }
 
         private static string TrimPathPrefix(string scriptName)

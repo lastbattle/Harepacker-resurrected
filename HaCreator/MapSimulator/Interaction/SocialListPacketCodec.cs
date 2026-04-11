@@ -169,6 +169,7 @@ namespace HaCreator.MapSimulator.Interaction
         Notice = 71,
         Mark = 69,
         PointsAndLevel = 75,
+        GuildQuestQueueNotice = 79,
         SkillRecord = 81,
         ResultNotice = 82
     }
@@ -185,7 +186,9 @@ namespace HaCreator.MapSimulator.Interaction
         bool HasExplicitNotice,
         string ResultNotice,
         SocialListGradeChangePacket GradeChange,
-        SocialListGuildSkillRecordPacket? GuildSkillRecord);
+        SocialListGuildSkillRecordPacket? GuildSkillRecord,
+        int GuildQuestChannel = 0,
+        int GuildQuestWaitStatus = 0);
 
     internal readonly record struct SocialListGuildSkillRecordPacket(
         int SkillId,
@@ -963,6 +966,28 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             default,
                             new SocialListGuildSkillRecordPacket(skillId, skillLevel, expiration, buyCharacterName));
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.GuildQuestQueueNotice:
+                    {
+                        int channel = reader.ReadByte();
+                        int waitStatus = reader.ReadInt32();
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null,
+                            channel,
+                            waitStatus);
                         return true;
                     }
 

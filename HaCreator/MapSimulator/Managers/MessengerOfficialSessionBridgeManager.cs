@@ -191,7 +191,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             var candidates = CoconutOfficialSessionBridgeManager.DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
-            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out var candidate, out status))
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, _ownerName, out var candidate, out status))
             {
                 LastStatus = status;
                 return false;
@@ -561,12 +561,12 @@ namespace HaCreator.MapSimulator.Managers
             return flushed;
         }
 
-        private static bool TryBuildRawPacket(int opcode, IReadOnlyList<byte> payload, out byte[] rawPacket, out string status)
+        private bool TryBuildRawPacket(int opcode, IReadOnlyList<byte> payload, out byte[] rawPacket, out string status)
         {
             rawPacket = Array.Empty<byte>();
             if (opcode < ushort.MinValue || opcode > ushort.MaxValue)
             {
-                status = $"Messenger outbound opcode {opcode} is outside the 16-bit Maple packet range.";
+                status = $"{_ownerName} outbound opcode {opcode} is outside the 16-bit Maple packet range.";
                 return false;
             }
 
@@ -635,13 +635,14 @@ namespace HaCreator.MapSimulator.Managers
             int? owningProcessId,
             string owningProcessName,
             int? localPort,
+            string ownerName,
             out CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate candidate,
             out string status)
         {
             var filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
             if (filteredCandidates.Count == 0)
             {
-                status = $"{DescribeDiscoveryOwner()} official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+                status = $"{DescribeDiscoveryOwner(ownerName)} official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
                 candidate = default;
                 return false;
             }
@@ -650,7 +651,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 string matches = string.Join(", ", filteredCandidates.Select(match =>
                     $"{match.ProcessName}({match.ProcessId}) local {match.LocalEndpoint.Port} -> remote {match.RemoteEndpoint.Port}"));
-                status = $"{DescribeDiscoveryOwner()} official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Add a localPort filter.";
+                status = $"{DescribeDiscoveryOwner(ownerName)} official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Add a localPort filter.";
                 candidate = default;
                 return false;
             }
@@ -674,9 +675,9 @@ namespace HaCreator.MapSimulator.Managers
                 .ToArray();
         }
 
-        private static string DescribeDiscoveryOwner()
+        private static string DescribeDiscoveryOwner(string ownerName)
         {
-            return "Messenger";
+            return string.IsNullOrWhiteSpace(ownerName) ? "Messenger" : ownerName.Trim();
         }
 
         private static string DescribeDiscoveryScope(int? owningProcessId, string owningProcessName, int remotePort, int? localPort)

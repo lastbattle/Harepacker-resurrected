@@ -98,19 +98,30 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (TryApplyStructuredFieldSpecificPair(
-                    key,
-                    value,
-                    PacketFieldSpecificDataOwnerHint.Session,
-                    currentTick,
-                    out string target))
+            bool releasedPendingImpact = TryApplyPendingPortalSessionValueImpact(
+                key,
+                value,
+                PartyRaidField.ClientSessionValuePacketType,
+                PacketFieldSpecificDataOwnerHint.Session);
+
+            bool structuredApplied = TryApplyStructuredFieldSpecificPair(
+                key,
+                value,
+                PacketFieldSpecificDataOwnerHint.Session,
+                currentTick,
+                out string target);
+            if (structuredApplied)
             {
-                TryApplyPendingPortalSessionValueImpact(
-                    key,
-                    value,
-                    PartyRaidField.ClientSessionValuePacketType,
-                    PacketFieldSpecificDataOwnerHint.Session);
-                message = $"CWvsContext::OnSessionValue applied {key}={value} ({target}).";
+                string impactSuffix = releasedPendingImpact
+                    ? " Released the pending portal session-value impact before the field virtual owner ran."
+                    : string.Empty;
+                message = $"CWvsContext::OnSessionValue applied {key}={value} ({target}).{impactSuffix}";
+                return true;
+            }
+
+            if (releasedPendingImpact)
+            {
+                message = $"CWvsContext::OnSessionValue released pending portal session-value impact for {key}={value} before any active session owner accepted it.";
                 return true;
             }
 

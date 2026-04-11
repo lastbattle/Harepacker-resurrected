@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizTimerStringPoolIdTensMinutes = 0x0F73;
         private const int InitialQuizTimerStringPoolIdOnesMinutes = 3955;
         private const int InitialQuizOkButtonUolStringPoolId = 0x0512;
+        private const int InitialQuizQuestionLabelStringPoolId = 0x0F75;
         private const int InitialQuizHintLabelStringPoolId = 3958;
         private const int InitialQuizAnswerLabelStringPoolId = 3959;
         private const int InitialQuizAnswerNoticeStringPoolId = 3960;
@@ -468,6 +469,7 @@ namespace HaCreator.MapSimulator
                 new Rectangle(ownerBounds.X + 30, ownerBounds.Y + 84, 190, 18),
                 Color.White,
                 InitialQuizOwnerTextScale);
+            DrawInitialQuizOwnerQuestionLabel(ownerBounds);
             DrawInitialQuizOwnerSingleLineText(
                 snapshot.ProblemText,
                 new Rectangle(ownerBounds.X + 92, ownerBounds.Y + 110, 146, 18),
@@ -536,6 +538,16 @@ namespace HaCreator.MapSimulator
                 new Rectangle(inputBounds.X - 64, inputBounds.Y, 60, inputBounds.Height),
                 Color.White,
                 0.37f);
+        }
+
+        private void DrawInitialQuizOwnerQuestionLabel(Rectangle ownerBounds)
+        {
+            string questionLabel = MapleStoryStringPool.GetOrFallback(InitialQuizQuestionLabelStringPoolId, "Question:");
+            DrawInitialQuizOwnerSingleLineText(
+                questionLabel,
+                new Rectangle(ownerBounds.X + 52, ownerBounds.Y + 110, 38, 18),
+                Color.White,
+                InitialQuizOwnerSecondaryTextScale);
         }
 
         private void DrawInitialQuizOwnerInputField(Rectangle inputBounds, int currentTickCount)

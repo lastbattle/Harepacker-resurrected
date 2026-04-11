@@ -5481,6 +5481,7 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.ItemUseRequested = TryUseInventoryItem;
                 inventoryWindow.ItemUseRequestedAtSlot = TryUseInventoryItemAtSlot;
                 inventoryWindow.InventoryDropRequested = HandleLocalInventoryDropRequest;
+                inventoryWindow.MesoDropRequested = requestedAmount => HandleLocalMesoDropRequest(requestedAmount, out _);
                 inventoryWindow.CashShopRequested = ShowCashShopWindow;
                 inventoryWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
             }
@@ -16923,6 +16924,7 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.GenericUserStateRegistered += HandleRemoteGenericUserStateEffect;
             _remoteUserPool.ItemMakeRegistered += HandleRemoteItemMakeEffect;
             _remoteUserPool.HitFeedbackRegistered += HandleRemoteHitFeedback;
+            _remoteUserPool.MobAttackHitEffectRegistered += HandleRemoteMobAttackHitEffect;
             _remoteUserPool.FieldSoundRegistered += HandleRemoteFieldSoundEffect;
             _remoteUserPool.StringEffectRegistered += HandleRemoteStringEffect;
             _remoteUserPool.ChatLogMessageRegistered += HandleRemoteEffectChatLogMessage;
@@ -22097,6 +22099,7 @@ namespace HaCreator.MapSimulator
             public bool CuresFreeze { get; init; }
             public bool CuresCurse { get; init; }
             public bool CuresPainMark { get; init; }
+            public bool CuresDeathMark { get; init; }
             public bool CuresAttract { get; init; }
             public bool CuresReverseInput { get; init; }
             public bool CuresUndead { get; init; }
@@ -22184,6 +22187,7 @@ namespace HaCreator.MapSimulator
                 CuresFreeze ||
                 CuresCurse ||
                 CuresPainMark ||
+                CuresDeathMark ||
                 CuresAttract ||
                 CuresReverseInput ||
                 CuresUndead;
@@ -22773,6 +22777,7 @@ namespace HaCreator.MapSimulator
                 CuresFreeze = GetWzIntValue(specProperty["freeze"]) > 0,
                 CuresCurse = GetWzIntValue(specProperty["curse"]) > 0,
                 CuresPainMark = GetWzIntValue(specProperty["painmark"]) > 0,
+                CuresDeathMark = GetWzIntValue(specProperty["deathmark"]) > 0,
                 CuresAttract = GetWzIntValue(specProperty["seduce"]) > 0 || GetWzIntValue(specProperty["attract"]) > 0,
                 CuresReverseInput = GetWzIntValue(specProperty["confusion"]) > 0 || GetWzIntValue(specProperty["reverseInput"]) > 0,
                 CuresUndead = GetWzIntValue(specProperty["undead"]) > 0 || GetWzIntValue(specProperty["zombie"]) > 0
@@ -22868,6 +22873,11 @@ namespace HaCreator.MapSimulator
 
 
             if (effect.CuresPainMark)
+            {
+                yield return PlayerMobStatusEffect.PainMark;
+            }
+
+            if (effect.CuresDeathMark)
             {
                 yield return PlayerMobStatusEffect.PainMark;
             }
@@ -24890,11 +24900,6 @@ namespace HaCreator.MapSimulator
             bool hasAvatarBuild,
             bool hasOccupant)
         {
-            if (hasVisibleRemoteTrackedUserActor)
-            {
-                return true;
-            }
-
             if (kind is not SocialRoomKind.MiniRoom
                 && kind is not SocialRoomKind.PersonalShop
                 && kind is not SocialRoomKind.EntrustedShop)
@@ -24905,6 +24910,11 @@ namespace HaCreator.MapSimulator
             if (hasDedicatedFieldActorMarker && isRepresentedByDedicatedFieldActor)
             {
                 return false;
+            }
+
+            if (hasVisibleRemoteTrackedUserActor)
+            {
+                return true;
             }
 
             if (hasRemotePosition)
@@ -26850,9 +26860,7 @@ namespace HaCreator.MapSimulator
             }
 
             int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
-            return portal.tm > 0
-                   && portal.tm != MapConstants.MaxMap
-                   && (portal.tm != currentMapId || IsChangeablePortalType(portal.pt));
+            return ShouldSendTransferFieldRequestForPortal(portal.tm, currentMapId, portal.pt);
         }
 
         private static bool IsPassiveTransferFieldPortalType(PortalType portalType)
@@ -26866,6 +26874,16 @@ namespace HaCreator.MapSimulator
         {
             return portalType == PortalType.Changeable
                    || portalType == PortalType.ChangeableInvisible;
+        }
+
+        internal static bool ShouldSendTransferFieldRequestForPortal(
+            int targetMapId,
+            int currentMapId,
+            PortalType portalType)
+        {
+            return targetMapId > 0
+                   && targetMapId != MapConstants.MaxMap
+                   && (targetMapId != currentMapId || IsChangeablePortalType(portalType));
         }
 
 
@@ -27517,7 +27535,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (portal.tm != (_mapBoard?.MapInfo?.id ?? -1))
+            if (ShouldSendTransferFieldRequestForPortal(portal.tm, _mapBoard?.MapInfo?.id ?? -1, portal.pt))
             {
                 string transferRestrictionMessage =
                     FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(fieldLimit);
@@ -27639,6 +27657,7 @@ namespace HaCreator.MapSimulator
             if (sourcePortal == null
                 || _mapBoard?.MapInfo == null
                 || sourcePortal.tm != _mapBoard.MapInfo.id
+                || ShouldSendTransferFieldRequestForPortal(sourcePortal.tm, _mapBoard.MapInfo.id, sourcePortal.pt)
                 || _portalPool == null
                 || string.IsNullOrWhiteSpace(sourcePortal.tn))
             {
@@ -36484,6 +36503,7 @@ namespace HaCreator.MapSimulator
                 || normalized.StartsWith("[Guild]", StringComparison.OrdinalIgnoreCase)
                 || normalized.StartsWith("[Alliance]", StringComparison.OrdinalIgnoreCase)
                 || normalized.StartsWith("[Association]", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("[Couple]", StringComparison.OrdinalIgnoreCase)
                 || normalized.StartsWith("[Expedition]", StringComparison.OrdinalIgnoreCase)
                 || normalized.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase)
                 || normalized.StartsWith("[GM Whisper]", StringComparison.OrdinalIgnoreCase)

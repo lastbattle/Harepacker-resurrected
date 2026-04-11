@@ -64,6 +64,14 @@ namespace HaCreator.MapSimulator.Pools
             int Delta,
             int CurrentTime,
             byte GuardType = 0);
+        public readonly record struct RemoteMobAttackHitPresentation(
+            int CharacterId,
+            int MobTemplateId,
+            sbyte AttackIndex,
+            string EffectPath,
+            Vector2 Position,
+            bool FacingRight,
+            int CurrentTime);
         public readonly record struct RemoteFieldSoundPresentation(
             int CharacterId,
             string SoundPath,
@@ -347,6 +355,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly HashSet<(int LeftId, int RightId)> _renderedCouplePairsBuffer = new();
         private readonly HashSet<(RemoteRelationshipOverlayType Type, int ItemId, int LeftId, int RightId)> _renderedItemEffectPairsBuffer = new();
         private readonly Dictionary<int, List<PendingRemoteTransientSkillUseAvatarEffectState>> _pendingTransientSkillUseAvatarEffectsByCharacterId = new();
+        private readonly Dictionary<int, bool> _remoteDamageReactiveSpecialBranchCache = new();
         private const int MakerSkillEffectStringPoolId = 0x931;
         private const int MakerResultMessageStringPoolId = 0x1493;
         private const int IncubatorMessageStringPoolId = 0x1559;
@@ -369,6 +378,7 @@ namespace HaCreator.MapSimulator.Pools
         public event Action<RemoteGenericUserStatePresentation> GenericUserStateRegistered;
         public event Action<RemoteItemMakePresentation> ItemMakeRegistered;
         public event Action<RemoteHitFeedbackPresentation> HitFeedbackRegistered;
+        public event Action<RemoteMobAttackHitPresentation> MobAttackHitEffectRegistered;
         public event Action<RemoteFieldSoundPresentation> FieldSoundRegistered;
         public event Action<RemoteStringEffectPresentation> StringEffectRegistered;
         public event Action<RemoteChatLogMessagePresentation> ChatLogMessageRegistered;
@@ -2029,6 +2039,18 @@ namespace HaCreator.MapSimulator.Pools
                 RegisterRemoteHitSpecialSkillUseEffect(actor, stanceSkillId, currentTime);
             }
 
+            if (TryResolveRemoteHitMobAttackEffectPath(packet, out string mobAttackEffectPath))
+            {
+                MobAttackHitEffectRegistered?.Invoke(new RemoteMobAttackHitPresentation(
+                    packet.CharacterId,
+                    packet.MobTemplateId.Value,
+                    packet.AttackIndex,
+                    mobAttackEffectPath,
+                    ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f),
+                    !packet.MobHitFacingLeft,
+                    currentTime));
+            }
+
             if (packet.HpDelta > 0)
             {
                 if (actor.PacketOwnedEmotion?.ByItemOption != true
@@ -2074,6 +2096,7 @@ namespace HaCreator.MapSimulator.Pools
                          actor?.Build?.Job ?? 0,
                          actor?.TemporaryStats.KnownState ?? default,
                          skillId => _skillLoader?.LoadSkill(skillId),
+                         HasRemoteAnimationDisplayerSpecialBranch,
                          randomRollPercent: null,
                          out damageReactiveSkillId))
             {
@@ -2093,6 +2116,28 @@ namespace HaCreator.MapSimulator.Pools
             {
                 message = $"Remote user {packet.CharacterId} hit packet stored.";
             }
+            return true;
+        }
+
+        internal static bool TryResolveRemoteHitMobAttackEffectPath(RemoteUserHitPacket packet, out string effectPath)
+        {
+            effectPath = null;
+            if (packet.AttackIndex < 0 || packet.MobTemplateId.GetValueOrDefault() <= 0)
+            {
+                return false;
+            }
+
+            int attackNumber = packet.AttackIndex + 1;
+            if (attackNumber <= 0)
+            {
+                return false;
+            }
+
+            effectPath = string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "Mob/{0:D7}.img/attack{1}/info/hit",
+                packet.MobTemplateId.Value,
+                attackNumber);
             return true;
         }
 
@@ -2129,6 +2174,7 @@ namespace HaCreator.MapSimulator.Pools
             int jobId,
             RemoteUserTemporaryStatKnownState knownState,
             Func<int, SkillData> loadSkill,
+            Func<int, bool> hasSpecialBranch,
             int? randomRollPercent,
             out int skillId)
         {
@@ -2143,7 +2189,7 @@ namespace HaCreator.MapSimulator.Pools
                 SkillData skill = loadSkill(candidateSkillId);
                 if (!SkillManager.IsDamageReactiveSpecialSkillUseEffectCandidate(
                         skill,
-                        HasRemoteDamageReactiveSpecialAnimation(skill)))
+                        HasRemoteDamageReactiveSpecialBranch(skill, hasSpecialBranch)))
                 {
                     continue;
                 }
@@ -2159,6 +2205,22 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        internal static bool TryResolveRemoteHitDamageReactiveSpecialEffectSkillId(
+            int jobId,
+            RemoteUserTemporaryStatKnownState knownState,
+            Func<int, SkillData> loadSkill,
+            int? randomRollPercent,
+            out int skillId)
+        {
+            return TryResolveRemoteHitDamageReactiveSpecialEffectSkillId(
+                jobId,
+                knownState,
+                loadSkill,
+                hasSpecialBranch: null,
+                randomRollPercent,
+                out skillId);
         }
 
         internal static IReadOnlyList<int> EnumerateRemoteHitDamageReactiveSkillCandidateIds(
@@ -2208,6 +2270,36 @@ namespace HaCreator.MapSimulator.Pools
         {
             return skill?.AvatarOverlayEffect?.Frames?.Count > 0
                    || skill?.AvatarUnderFaceEffect?.Frames?.Count > 0;
+        }
+
+        private static bool HasRemoteDamageReactiveSpecialBranch(SkillData skill, Func<int, bool> hasSpecialBranch)
+        {
+            if (skill?.SkillId <= 0)
+            {
+                return false;
+            }
+
+            return hasSpecialBranch?.Invoke(skill.SkillId) == true
+                   || HasRemoteDamageReactiveSpecialAnimation(skill);
+        }
+
+        private bool HasRemoteAnimationDisplayerSpecialBranch(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return false;
+            }
+
+            if (_remoteDamageReactiveSpecialBranchCache.TryGetValue(skillId, out bool cached))
+            {
+                return cached;
+            }
+
+            WzImage skillImage = Program.FindImage("Skill", $"{skillId / 10000}.img");
+            skillImage?.ParseImage();
+            bool hasSpecial = skillImage?["skill"]?[skillId.ToString("D7", System.Globalization.CultureInfo.InvariantCulture)]?["special"] != null;
+            _remoteDamageReactiveSpecialBranchCache[skillId] = hasSpecial;
+            return hasSpecial;
         }
 
         private static int ResolveRemoteHitDamageReactiveProp(SkillData skill)
@@ -8422,6 +8514,23 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             RemoteMeleeAfterImageState state = actor.MeleeAfterImage;
+            if (MeleeAfterimagePlaybackResolver.ShouldDeferUntilActivation(
+                    currentTime,
+                    state.ActivationStartTime,
+                    actor.ActionName,
+                    state.ActionName,
+                    state.AnimationStartTime,
+                    state.ActionDuration,
+                    out bool shouldClear))
+            {
+                if (shouldClear)
+                {
+                    actor.ClearMeleeAfterImage();
+                }
+
+                return;
+            }
+
             bool activeAction = state.FadeStartTime < 0
                 && string.Equals(actor.ActionName, state.ActionName, StringComparison.OrdinalIgnoreCase);
             int frameIndex = state.LastFrameIndex;
@@ -8870,9 +8979,15 @@ namespace HaCreator.MapSimulator.Pools
 
             if (currentTime < MeleeAfterImage.ActivationStartTime)
             {
-                if (!string.Equals(ActionName, MeleeAfterImage.ActionName, StringComparison.OrdinalIgnoreCase)
-                    || (MeleeAfterImage.ActionDuration > 0
-                        && currentTime - MeleeAfterImage.AnimationStartTime >= MeleeAfterImage.ActionDuration))
+                MeleeAfterimagePlaybackResolver.ShouldDeferUntilActivation(
+                    currentTime,
+                    MeleeAfterImage.ActivationStartTime,
+                    ActionName,
+                    MeleeAfterImage.ActionName,
+                    MeleeAfterImage.AnimationStartTime,
+                    MeleeAfterImage.ActionDuration,
+                    out bool shouldClear);
+                if (shouldClear)
                 {
                     MeleeAfterImage = null;
                 }

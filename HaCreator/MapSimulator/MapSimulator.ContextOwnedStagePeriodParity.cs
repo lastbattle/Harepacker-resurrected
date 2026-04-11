@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator
         private ContextOwnedStagePeriodCatalogEntry _contextOwnedStageCurrentPeriod;
         private IReadOnlyList<ContextOwnedStageBackImageEntry> _contextOwnedStageCurrentBackImages = Array.Empty<ContextOwnedStageBackImageEntry>();
         private uint? _contextOwnedStageCurrentBackColorArgb;
+        private int _contextOwnedStagePeriodStartTick;
 
         private bool TryApplyContextOwnedStagePeriodPacket(byte[] payload, out string message)
         {
@@ -98,6 +99,7 @@ namespace HaCreator.MapSimulator
                 _contextOwnedStageQuestCache,
                 _contextOwnedStagePeriodCache);
             _contextOwnedStageCurrentPeriod = period;
+            _contextOwnedStagePeriodStartTick = currentTick;
             _contextOwnedStageCurrentBackColorArgb = period.ResolveActiveBackColorArgb();
             _contextOwnedStageCurrentBackImages = period.ResolveActiveBackImages();
             _contextOwnedStageActiveKeywords = ContextOwnedStageSystemCatalog.CaptureEnabledKeywords(_contextOwnedStageKeywordCache);
@@ -242,7 +244,15 @@ namespace HaCreator.MapSimulator
             Func<int, MapleLib.WzLib.WzStructure.Data.QuestStructure.QuestStateType> questStateProvider = _questRuntime != null
                 ? _questRuntime.GetCurrentState
                 : null;
-            return catalog?.ResolveAffectedMaps(period, questStateProvider) ?? new HashSet<int>();
+            return catalog?.ResolveAffectedMaps(
+                period,
+                questStateProvider,
+                CalculateContextOwnedStagePeriodElapsedMilliseconds(currTickCount, _contextOwnedStagePeriodStartTick)) ?? new HashSet<int>();
+        }
+
+        internal static int CalculateContextOwnedStagePeriodElapsedMilliseconds(int currentTick, int startTick)
+        {
+            return Math.Max(0, unchecked(currentTick - startTick));
         }
 
         private void RefreshContextOwnedStagePeriodQuestStateGates()
@@ -275,7 +285,7 @@ namespace HaCreator.MapSimulator
                 ? $"0x{_contextOwnedStageCurrentBackColorArgb.Value:X8}"
                 : "none";
             int mapId = _mapBoard?.MapInfo?.id ?? 0;
-            string cacheSummary = $"stageBacks={_contextOwnedStageCurrentBackImages.Count.ToString(CultureInfo.InvariantCulture)} backColor={backColorText} keywords={_contextOwnedStageActiveKeywords.Count.ToString(CultureInfo.InvariantCulture)} quests={_contextOwnedStageActiveQuestIds.Count.ToString(CultureInfo.InvariantCulture)} affectedMaps={_contextOwnedStageAffectedMapIds.Count.ToString(CultureInfo.InvariantCulture)} themeModes={_contextOwnedStagePeriodCache.Count.ToString(CultureInfo.InvariantCulture)} applyToCurrentMap={ShouldApplyContextOwnedStageBackData(mapId)}";
+            string cacheSummary = $"stageBacks={_contextOwnedStageCurrentBackImages.Count.ToString(CultureInfo.InvariantCulture)} backColor={backColorText} keywords={_contextOwnedStageActiveKeywords.Count.ToString(CultureInfo.InvariantCulture)} quests={_contextOwnedStageActiveQuestIds.Count.ToString(CultureInfo.InvariantCulture)} affectedMaps={_contextOwnedStageAffectedMapIds.Count.ToString(CultureInfo.InvariantCulture)} themeModes={_contextOwnedStagePeriodCache.Count.ToString(CultureInfo.InvariantCulture)} elapsedMs={CalculateContextOwnedStagePeriodElapsedMilliseconds(currTickCount, _contextOwnedStagePeriodStartTick).ToString(CultureInfo.InvariantCulture)} applyToCurrentMap={ShouldApplyContextOwnedStageBackData(mapId)}";
             return $"{_contextOwnedStagePeriodRuntime.DescribeStatus()}{Environment.NewLine}{cacheSummary}{Environment.NewLine}{_contextStagePeriodPacketInbox.LastStatus}";
         }
 

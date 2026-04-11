@@ -41,7 +41,7 @@ namespace HaCreator.MapSimulator.UI
         private const int EmoticonSelectionSize = 22;
         private const int CashEmoticonSpacing = 23;
         private const int BasicEmoticonSpacing = 23;
-        private const int VisibleCashEmoticonCount = 7;
+        private const int VisibleCashEmoticonCount = 8;
         private const int ComposeBodyLineHeight = 12;
         private const int ComposeBodyVisibleLineCount = 15;
         private const int ComposeBodyClientMaxLineWidth = 240;

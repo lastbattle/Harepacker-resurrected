@@ -16,7 +16,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const string OkButtonUolFallback = "UI/Basic.img/BtOK2";
         private const string CancelButtonUolFallback = "UI/Basic.img/BtCancel2";
         private const string BackgroundFallback = "UI/UIWindow.img/FriendRecommendations/UserInfo/back";
-        private static readonly string[] BackgroundRecoveryCandidates =
+        private static readonly string[] MountedBackgroundRecoveryCandidates =
         {
             // Active WZ evidence: the mounted UI set exposes `UserInfo/backgrnd7`
             // while the older FriendRecommendations path is absent. Keep the
@@ -24,7 +24,6 @@ namespace HaCreator.MapSimulator.Interaction
             // usable owner frame when the exact string-pool skin is unavailable.
             "UI/UIWindow.img/UserInfo/backgrnd7",
             "UI/UIWindow.img/UserInfo/backgrnd8",
-            BackgroundFallback,
         };
         private const string ExitWithoutInfoNoticeFallback = "Are you sure you want to exit without filling in any information? (You can fill out your info later by clicking My Info in the Friends window.)";
         private const string SaveFailedNoticeFallback = "Fail. Please try again later.";
@@ -76,19 +75,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             List<string> candidates = new();
 
-            AddDistinctCandidate(candidates, ResolveExactBackgroundResourcePath());
-
             // The generated table in this workspace currently resolves 0x16AE to
-            // `UI/UIWindow.img/UserInfo/backgrnd8`, while older reverse-engineered
-            // notes pinned a FriendRecommendations path that is absent from the
-            // active mounted UI set. Try the explicit client-authored StringPool
-            // path first, then fall back to mounted `UserInfo` shells that are
-            // actually present in the active UI set.
-            foreach (string candidate in BackgroundRecoveryCandidates)
+            // a FriendRecommendations path that is absent from the active mounted
+            // UI set. Probe the mounted `UserInfo` shells first, then keep the
+            // exact client string-pool path as the final non-fabricated fallback.
+            foreach (string candidate in MountedBackgroundRecoveryCandidates)
             {
                 AddDistinctCandidate(candidates, candidate);
             }
 
+            AddDistinctCandidate(candidates, ResolveExactBackgroundResourcePath());
             return candidates;
         }
 

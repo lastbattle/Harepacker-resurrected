@@ -7,6 +7,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Pools;
+using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -40,7 +41,7 @@ namespace HaCreator.MapSimulator.Loaders
         private const string QuestConditionStatePropertyName = "state";
         private const string QuestConditionValuePropertyName = "value";
 
-        private static readonly ConcurrentDictionary<NpcActionCacheKey, List<IDXObject>> ActionFrameCache = new();
+        private static readonly ConcurrentDictionary<NpcActionCacheKey, CachedNpcActionFrames> ActionFrameCache = new();
 
         internal static NpcAnimationSet LoadAnimationSet(
             TexturePool texturePool,
@@ -76,6 +77,8 @@ namespace HaCreator.MapSimulator.Loaders
                     templateId,
                     animationSet.ClientActionSetIndex,
                     action.ActionName,
+                    npcInstance.X,
+                    npcInstance.Y,
                     () =>
                     {
                         List<IDXObject> loadedFrames = MapSimulatorLoader.LoadFrames(
@@ -184,6 +187,23 @@ namespace HaCreator.MapSimulator.Loaders
             string actionName,
             Func<List<IDXObject>> loader)
         {
+            return GetOrLoadActionFrames(
+                templateId,
+                clientActionSetIndex,
+                actionName,
+                x: 0,
+                y: 0,
+                loader);
+        }
+
+        internal static List<IDXObject> GetOrLoadActionFrames(
+            int templateId,
+            int clientActionSetIndex,
+            string actionName,
+            int x,
+            int y,
+            Func<List<IDXObject>> loader)
+        {
             if (templateId <= 0 || string.IsNullOrWhiteSpace(actionName) || loader == null)
             {
                 return loader?.Invoke() ?? new List<IDXObject>();
@@ -194,8 +214,9 @@ namespace HaCreator.MapSimulator.Loaders
                 _ =>
                 {
                     List<IDXObject> frames = loader();
-                    return frames ?? new List<IDXObject>();
-                });
+                    return new CachedNpcActionFrames(x, y, frames ?? new List<IDXObject>());
+                })
+                .CreateFramesFor(x, y);
         }
 
         internal static void ClearCaches()
@@ -958,5 +979,100 @@ namespace HaCreator.MapSimulator.Loaders
         private readonly record struct NpcActionCacheKey(int TemplateId, int ClientActionSetIndex, string ActionName);
 
         private readonly record struct NpcActionDescriptor(string ActionName, WzImageProperty Property, bool ZigZag);
+
+        private sealed class CachedNpcActionFrames
+        {
+            private readonly int _x;
+            private readonly int _y;
+            private readonly List<IDXObject> _frames;
+
+            public CachedNpcActionFrames(int x, int y, List<IDXObject> frames)
+            {
+                _x = x;
+                _y = y;
+                _frames = frames ?? new List<IDXObject>();
+            }
+
+            public List<IDXObject> CreateFramesFor(int x, int y)
+            {
+                int offsetX = x - _x;
+                int offsetY = y - _y;
+                if (offsetX == 0 && offsetY == 0)
+                {
+                    return _frames;
+                }
+
+                var positionedFrames = new List<IDXObject>(_frames.Count);
+                for (int i = 0; i < _frames.Count; i++)
+                {
+                    positionedFrames.Add(new PositionedNpcFrame(_frames[i], offsetX, offsetY));
+                }
+
+                return positionedFrames;
+            }
+        }
+
+        private sealed class PositionedNpcFrame : IDXObject
+        {
+            private readonly IDXObject _inner;
+            private readonly int _offsetX;
+            private readonly int _offsetY;
+
+            public PositionedNpcFrame(IDXObject inner, int offsetX, int offsetY)
+            {
+                _inner = inner;
+                _offsetX = offsetX;
+                _offsetY = offsetY;
+            }
+
+            public void DrawObject(
+                Microsoft.Xna.Framework.Graphics.SpriteBatch sprite,
+                Spine.SkeletonMeshRenderer meshRenderer,
+                Microsoft.Xna.Framework.GameTime gameTime,
+                int mapShiftX,
+                int mapShiftY,
+                bool flip,
+                ReflectionDrawableBoundary drawReflectionInfo)
+            {
+                _inner?.DrawObject(sprite, meshRenderer, gameTime, mapShiftX - _offsetX, mapShiftY - _offsetY, flip, drawReflectionInfo);
+            }
+
+            public void DrawBackground(
+                Microsoft.Xna.Framework.Graphics.SpriteBatch sprite,
+                Spine.SkeletonMeshRenderer meshRenderer,
+                Microsoft.Xna.Framework.GameTime gameTime,
+                int x,
+                int y,
+                Microsoft.Xna.Framework.Color color,
+                bool flip,
+                ReflectionDrawableBoundary drawReflectionInfo)
+            {
+                _inner?.DrawBackground(sprite, meshRenderer, gameTime, x + _offsetX, y + _offsetY, color, flip, drawReflectionInfo);
+            }
+
+            public int Delay => _inner?.Delay ?? 0;
+
+            public int X => (_inner?.X ?? 0) + _offsetX;
+
+            public int Y => (_inner?.Y ?? 0) + _offsetY;
+
+            public int Width => _inner?.Width ?? 0;
+
+            public int Height => _inner?.Height ?? 0;
+
+            public object Tag
+            {
+                get => _inner?.Tag;
+                set
+                {
+                    if (_inner != null)
+                    {
+                        _inner.Tag = value;
+                    }
+                }
+            }
+
+            public Texture2D Texture => _inner?.Texture;
+        }
     }
 }

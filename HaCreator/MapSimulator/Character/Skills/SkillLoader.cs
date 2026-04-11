@@ -94,6 +94,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "summonUOL",
             "summonUol"
         };
+        private const string ClientSummonedUolBranchName = "summon";
 
         private static readonly string[] PersistentAvatarEffectBranches =
         {
@@ -1671,13 +1672,39 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            skill.AvatarOverlayEffect = LoadAvatarEffectAnimation(skillNode, "special")
-                                        ?? LoadSuddenDeathRepeatAnimation(skill, skillNode);
+            skill.AvatarOverlayEffect = LoadAvatarEffectAnimation(skillNode, "special");
             skill.AvatarUnderFaceEffect = LoadAvatarEffectAnimation(skillNode, "special0");
+            AssignSuddenDeathRepeatAvatarEffectPlane(skill, LoadSuddenDeathRepeatAnimation(skill, skillNode));
             skill.AvatarLadderEffect = LoadAvatarEffectAnimation(skillNode, "back");
             skill.AvatarOverlayFinishEffect = LoadAvatarEffectAnimation(skillNode, "finish");
             skill.AvatarUnderFaceFinishEffect = LoadAvatarEffectAnimation(skillNode, "finish0");
             skill.AvatarLadderFinishEffect = LoadAvatarEffectAnimation(skillNode, "back_finish");
+        }
+
+        internal static void AssignSuddenDeathRepeatAvatarEffectPlaneForTesting(
+            SkillData skill,
+            SkillAnimation repeatAnimation)
+        {
+            AssignSuddenDeathRepeatAvatarEffectPlane(skill, repeatAnimation);
+        }
+
+        private static void AssignSuddenDeathRepeatAvatarEffectPlane(
+            SkillData skill,
+            SkillAnimation repeatAnimation)
+        {
+            if (skill == null || repeatAnimation == null)
+            {
+                return;
+            }
+
+            if (ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(repeatAnimation))
+            {
+                skill.AvatarUnderFaceEffect ??= repeatAnimation;
+            }
+            else
+            {
+                skill.AvatarOverlayEffect ??= repeatAnimation;
+            }
         }
 
         private void LoadAfterImages(SkillData skill, WzImageProperty skillNode)
@@ -2488,8 +2515,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             var pieces = new List<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece>(actionNode.WzProperties.Count);
-            int slotIndex = 0;
-            foreach (WzImageProperty pieceNode in actionNode.WzProperties)
+            int fallbackSlotIndex = 0;
+            foreach (WzImageProperty pieceNode in EnumerateShadowPartnerClientActionPieceNodesInClientOrder(actionNode))
             {
                 if (pieceNode == null)
                 {
@@ -2503,7 +2530,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 pieces.Add(new ShadowPartnerClientActionResolver.ShadowPartnerActionPiece(
-                    slotIndex++,
+                    ResolveShadowPartnerClientActionPieceSlotIndex(pieceNode.Name, fallbackSlotIndex++),
                     pieceActionName,
                     GetInt(pieceNode, "frame"),
                     pieceNode["delay"] != null ? Math.Abs(GetInt(pieceNode, "delay")) : null,
@@ -2519,6 +2546,50 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             piecePlan = pieces.AsReadOnly();
             return true;
+        }
+
+        private static int ResolveShadowPartnerClientActionPieceSlotIndex(string pieceName, int fallbackSlotIndex)
+        {
+            return !string.IsNullOrWhiteSpace(pieceName) && int.TryParse(pieceName, out int slotIndex)
+                ? slotIndex
+                : fallbackSlotIndex;
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateShadowPartnerClientActionPieceNodesInClientOrder(WzImageProperty actionNode)
+        {
+            if (actionNode?.WzProperties == null || actionNode.WzProperties.Count == 0)
+            {
+                return Array.Empty<WzImageProperty>();
+            }
+
+            var numericChildren = new List<(int Index, WzImageProperty Node)>();
+            var nonNumericChildren = new List<WzImageProperty>();
+            foreach (WzImageProperty child in actionNode.WzProperties)
+            {
+                if (child == null)
+                {
+                    continue;
+                }
+
+                if (int.TryParse(child.Name, out int index))
+                {
+                    numericChildren.Add((index, child));
+                }
+                else
+                {
+                    nonNumericChildren.Add(child);
+                }
+            }
+
+            if (numericChildren.Count == 0)
+            {
+                return nonNumericChildren;
+            }
+
+            return numericChildren
+                .OrderBy(static child => child.Index)
+                .Select(static child => child.Node)
+                .Concat(nonNumericChildren);
         }
 
         internal static void ApplyClientReplayTailsToShadowPartnerActionAnimations(
@@ -4799,7 +4870,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
-            return null;
+            return BuildClientSummonedUolPathFromSkillNode(skillNode);
         }
 
         private static IEnumerable<string> EnumerateClientSummonedUolCandidateValues(
@@ -4824,9 +4895,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private static string BuildClientSummonedUolPathFromSkillNode(WzImageProperty skillNode)
+        {
+            WzImageProperty summonProperty = skillNode?[ClientSummonedUolBranchName];
+            if (summonProperty == null)
+            {
+                return null;
+            }
+
+            string normalizedPath = NormalizeClientSummonedUolFullPath(ResolveLinkedProperty(summonProperty)?.FullPath);
+            return !string.IsNullOrWhiteSpace(normalizedPath)
+                ? normalizedPath
+                : NormalizeClientSummonedUolFullPath(summonProperty.FullPath);
+        }
+
         internal static string NormalizeClientSummonedUolPathForTest(string summonedUolPath)
         {
             return NormalizeClientSummonedUolPath(summonedUolPath);
+        }
+
+        internal static string NormalizeClientSummonedUolFullPathForTest(string summonedUolFullPath)
+        {
+            return NormalizeClientSummonedUolFullPath(summonedUolFullPath);
         }
 
         internal static IEnumerable<int> EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPathForTest(
@@ -4892,6 +4982,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return string.Join("/", parts);
+        }
+
+        private static string NormalizeClientSummonedUolFullPath(string summonedUolFullPath)
+        {
+            if (string.IsNullOrWhiteSpace(summonedUolFullPath))
+            {
+                return null;
+            }
+
+            string normalizedPath = summonedUolFullPath
+                .Replace('\\', '/')
+                .Trim()
+                .TrimStart('/');
+
+            string[] parts = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+            {
+                return null;
+            }
+
+            if (parts[0].Equals("Skill", StringComparison.OrdinalIgnoreCase)
+                || parts[0].Equals("Skill.wz", StringComparison.OrdinalIgnoreCase))
+            {
+                return NormalizeClientSummonedUolPath(normalizedPath);
+            }
+
+            if (parts[0].EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+            {
+                return NormalizeClientSummonedUolPath($"Skill/{normalizedPath}");
+            }
+
+            return null;
         }
 
         private static IEnumerable<int> EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPath(
@@ -5492,6 +5614,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Load ball animation
             projectile.Animation = LoadSkillAnimation(ballNode, "ball");
+            projectile.FlipAnimation = LoadSkillAnimation(skillNode?["flipBall"], "flipBall");
             projectile.AnimationPath = NormalizeSkillAssetPath(ballNode);
             projectile.VariantAnimations = LoadSummonIndexedAnimations(ballNode, "ball");
             projectile.VariantAnimationPaths = LoadSummonIndexedAnimationPaths(ballNode);
@@ -6247,6 +6370,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.MP = GetInt(node, "mp", 0, level);
 
             levelData.Prop = GetInt(node, "prop", 0, level);
+            levelData.SubProp = GetInt(node, "subProp", 0, level);
             levelData.X = GetInt(node, "x", 0, level);
             levelData.Y = GetInt(node, "y", 0, level);
             levelData.Z = GetInt(node, "z", 0, level);
@@ -6843,9 +6967,30 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static int ResolveDescriptionBackedMagicAttackPercentAlias(SkillData skill, WzImageProperty node, int level)
         {
-            return UsesEchoOfHeroAttackPercentAlias(skill, node)
+            int magicAttackPercent = UsesEchoOfHeroAttackPercentAlias(skill, node)
                 ? Math.Max(0, GetInt(node, "x", 0, level))
                 : 0;
+
+            string normalizedSurface = NormalizeDescriptionBackedAliasSurface(SkillDataTextSurface.GetDescriptionSurface(skill));
+            magicAttackPercent = PreferPrimaryStat(
+                magicAttackPercent,
+                ResolveDescriptionBackedGenericMagicAttackPercentAlias(normalizedSurface, "#x", GetInt(node, "x", 0, level)));
+            magicAttackPercent = PreferPrimaryStat(
+                magicAttackPercent,
+                ResolveDescriptionBackedGenericMagicAttackPercentAlias(normalizedSurface, "#y", GetInt(node, "y", 0, level)));
+            magicAttackPercent = PreferPrimaryStat(
+                magicAttackPercent,
+                ResolveDescriptionBackedGenericMagicAttackPercentAlias(normalizedSurface, "#z", GetInt(node, "z", 0, level)));
+            magicAttackPercent = PreferPrimaryStat(
+                magicAttackPercent,
+                ResolveDescriptionBackedGenericMagicAttackPercentAlias(normalizedSurface, "#u", GetInt(node, "u", 0, level)));
+            magicAttackPercent = PreferPrimaryStat(
+                magicAttackPercent,
+                ResolveDescriptionBackedGenericMagicAttackPercentAlias(normalizedSurface, "#v", GetInt(node, "v", 0, level)));
+            magicAttackPercent = PreferPrimaryStat(
+                magicAttackPercent,
+                ResolveDescriptionBackedGenericMagicAttackPercentAlias(normalizedSurface, "#w", GetInt(node, "w", 0, level)));
+            return magicAttackPercent;
         }
 
         private static int ResolveDescriptionBackedGenericAttackPercentAlias(
@@ -6854,6 +6999,21 @@ namespace HaCreator.MapSimulator.Character.Skills
             int aliasValue)
         {
             return PlaceholderMatchesGenericAttackHint(normalizedSurface, placeholderToken, requirePercentSuffix: true)
+                ? Math.Max(0, aliasValue)
+                : 0;
+        }
+
+        internal static int ResolveDescriptionBackedGenericMagicAttackPercentAlias(
+            string normalizedSurface,
+            string placeholderToken,
+            int aliasValue)
+        {
+            return PlaceholderMatchesHintLabel(
+                    normalizedSurface,
+                    placeholderToken,
+                    requirePercentSuffix: true,
+                    "magic att",
+                    "magic attack")
                 ? Math.Max(0, aliasValue)
                 : 0;
         }

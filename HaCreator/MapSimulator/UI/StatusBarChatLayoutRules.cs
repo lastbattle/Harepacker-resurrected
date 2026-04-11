@@ -246,33 +246,57 @@ namespace HaCreator.MapSimulator.UI
             int minimumRowWidth,
             float maxMeasuredTextWidth)
         {
+            return ResolveWhisperPickerModalDropdownBounds(
+                comboBounds,
+                rowHeight,
+                visibleRowCount,
+                visibleRowCount,
+                minimumRowWidth,
+                maxMeasuredTextWidth);
+        }
+
+        public static Rectangle ResolveWhisperPickerModalDropdownBounds(
+            Rectangle comboBounds,
+            int rowHeight,
+            int visibleRowCount,
+            int candidateCount,
+            int minimumRowWidth,
+            float maxMeasuredTextWidth)
+        {
             int safeRowHeight = Math.Max(1, rowHeight);
             int safeVisibleRowCount = Math.Max(1, visibleRowCount);
             int resolvedWidth = Math.Max(
                 Math.Max(1, minimumRowWidth),
                 comboBounds.Width);
-            int listHeight = safeRowHeight * safeVisibleRowCount;
+            int visibleRowsHeight = safeRowHeight * safeVisibleRowCount;
+            int listHeight = ResolveWhisperPickerModalDropdownHeight(
+                safeRowHeight,
+                safeVisibleRowCount,
+                candidateCount);
             return new Rectangle(
                 comboBounds.X,
-                comboBounds.Y - listHeight - 1,
+                comboBounds.Y - visibleRowsHeight - 1,
                 resolvedWidth,
                 listHeight);
         }
 
+        public static int ResolveWhisperPickerModalDropdownHeight(
+            int rowHeight,
+            int visibleRowCount,
+            int candidateCount)
+        {
+            int safeRowHeight = Math.Max(1, rowHeight);
+            int safeVisibleRowCount = Math.Max(1, visibleRowCount);
+            int listHeight = safeRowHeight * safeVisibleRowCount;
+            int safeCandidateCount = Math.Max(0, candidateCount);
+            return safeCandidateCount <= safeVisibleRowCount
+                ? listHeight + 1
+                : listHeight;
+        }
+
         public static int ResolveWhisperPickerModalComboDropdownRowHeight(params int[] textureHeights)
         {
-            int resolvedHeight = ClientWhisperPickerModalComboDropdownRowHeight;
-            if (textureHeights == null)
-            {
-                return resolvedHeight;
-            }
-
-            for (int i = 0; i < textureHeights.Length; i++)
-            {
-                resolvedHeight = Math.Max(resolvedHeight, textureHeights[i]);
-            }
-
-            return resolvedHeight;
+            return ClientWhisperPickerModalComboDropdownRowHeight;
         }
 
         public static int ResolveWhisperPickerModalComboDropdownMinimumWidth(

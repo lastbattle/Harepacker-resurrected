@@ -182,7 +182,7 @@ namespace HaCreator.MapSimulator.Companions
                     {
                         if (stream.Length - stream.Position != sizeof(byte) + sizeof(int))
                         {
-                            errorMessage = "Mechanic slot-mutation payload must contain a slot byte followed by an Int32 item id. Use item id 0 to clear that slot.";
+                            errorMessage = "Mechanic slot-mutation payload must contain a client body-part Int32 followed by an Int32 item id. Legacy one-byte slot ids are still accepted. Use item id 0 to clear that slot.";
                             return false;
                         }
 
@@ -214,13 +214,18 @@ namespace HaCreator.MapSimulator.Companions
                     }
                     case MechanicEquipPacketPayloadMode.AuthorityRequest:
                     {
-                        const long authorityRequestLength =
+                        const long clientAuthorityRequestLength =
+                            sizeof(int) * 10
+                            + sizeof(byte) * 3;
+                        const long legacyAuthorityRequestLength =
                             sizeof(int) * 8
                             + sizeof(byte) * 5;
-                        if (stream.Length - stream.Position != authorityRequestLength)
+                        long authorityRequestLength = stream.Length - stream.Position;
+                        if (authorityRequestLength != clientAuthorityRequestLength
+                            && authorityRequestLength != legacyAuthorityRequestLength)
                         {
                             errorMessage =
-                                "Mechanic authority-request payload must contain request id, requested tick, request kind, owner kind, owner session id, expected character id, build token, mechanic token, item id, source inventory type/index, target slot, and source slot.";
+                                "Mechanic authority-request payload must contain request id, requested tick, request kind, owner kind, owner session id, expected character id, build token, mechanic token, item id, source inventory type/index, target client body part, and source client body part.";
                             return false;
                         }
 
@@ -256,8 +261,8 @@ namespace HaCreator.MapSimulator.Companions
                         }
 
                         int sourceInventoryIndex = reader.ReadInt32();
-                        if (!TryReadOptionalMechanicSlot(reader, out MechanicEquipSlot? targetSlot, out errorMessage)
-                            || !TryReadOptionalMechanicSlot(reader, out MechanicEquipSlot? sourceSlot, out errorMessage))
+                        if (!TryReadOptionalMechanicSlot(reader, authorityRequestLength == legacyAuthorityRequestLength, out MechanicEquipSlot? targetSlot, out errorMessage)
+                            || !TryReadOptionalMechanicSlot(reader, authorityRequestLength == legacyAuthorityRequestLength, out MechanicEquipSlot? sourceSlot, out errorMessage))
                         {
                             return false;
                         }
@@ -368,13 +373,15 @@ namespace HaCreator.MapSimulator.Companions
                             }
                             case MechanicEquipAuthorityResultKind.SlotMutationAccept:
                             {
-                                if (stream.Length - stream.Position != sizeof(byte) + sizeof(int))
+                                long slotMutationLength = stream.Length - stream.Position;
+                                if (slotMutationLength != sizeof(int) * 2
+                                    && slotMutationLength != sizeof(byte) + sizeof(int))
                                 {
-                                    errorMessage = "Mechanic slot-mutation authority acceptance must contain a slot byte followed by an Int32 item id.";
+                                    errorMessage = "Mechanic slot-mutation authority acceptance must contain a client body-part Int32 followed by an Int32 item id. Legacy one-byte slot ids are still accepted.";
                                     return false;
                                 }
 
-                                if (!TryReadMechanicSlot(reader, out MechanicEquipSlot slot, out errorMessage))
+                                if (!TryReadMechanicSlot(reader, slotMutationLength == sizeof(byte) + sizeof(int), out MechanicEquipSlot slot, out errorMessage))
                                 {
                                     return false;
                                 }
@@ -509,46 +516,81 @@ namespace HaCreator.MapSimulator.Companions
                 throw new InvalidOperationException("Mechanic payload requires a concrete mechanic slot.");
             }
 
-            writer.Write((byte)slot.Value);
+            writer.Write(MechanicEquipmentSlotMap.GetBodyPart(slot.Value));
         }
 
         private static void WriteOptionalMechanicSlot(BinaryWriter writer, MechanicEquipSlot? slot)
         {
-            writer.Write(slot.HasValue ? (byte)slot.Value : byte.MaxValue);
+            writer.Write(slot.HasValue ? MechanicEquipmentSlotMap.GetBodyPart(slot.Value) : 0);
         }
 
         private static bool TryReadMechanicSlot(BinaryReader reader, out MechanicEquipSlot slot, out string errorMessage)
         {
+            return TryReadMechanicSlot(reader, legacySlotByte: false, out slot, out errorMessage);
+        }
+
+        private static bool TryReadMechanicSlot(BinaryReader reader, bool legacySlotByte, out MechanicEquipSlot slot, out string errorMessage)
+        {
             slot = default;
             errorMessage = null;
-            byte slotValue = reader.ReadByte();
-            if (!Enum.IsDefined(typeof(MechanicEquipSlot), (int)slotValue))
+            if (legacySlotByte)
             {
-                errorMessage = $"Mechanic slot value {slotValue} is invalid.";
+                byte slotValue = reader.ReadByte();
+                if (!Enum.IsDefined(typeof(MechanicEquipSlot), (int)slotValue))
+                {
+                    errorMessage = $"Mechanic slot value {slotValue} is invalid.";
+                    return false;
+                }
+
+                slot = (MechanicEquipSlot)slotValue;
+                return true;
+            }
+
+            int bodyPart = reader.ReadInt32();
+            if (!MechanicEquipmentSlotMap.TryResolveBodyPart(bodyPart, out slot))
+            {
+                errorMessage = $"Mechanic body-part value {bodyPart} is invalid.";
                 return false;
             }
 
-            slot = (MechanicEquipSlot)slotValue;
             return true;
         }
 
-        private static bool TryReadOptionalMechanicSlot(BinaryReader reader, out MechanicEquipSlot? slot, out string errorMessage)
+        private static bool TryReadOptionalMechanicSlot(BinaryReader reader, bool legacySlotByte, out MechanicEquipSlot? slot, out string errorMessage)
         {
             slot = null;
             errorMessage = null;
-            byte slotValue = reader.ReadByte();
-            if (slotValue == byte.MaxValue)
+            if (legacySlotByte)
+            {
+                byte slotValue = reader.ReadByte();
+                if (slotValue == byte.MaxValue)
+                {
+                    return true;
+                }
+
+                if (!Enum.IsDefined(typeof(MechanicEquipSlot), (int)slotValue))
+                {
+                    errorMessage = $"Mechanic slot value {slotValue} is invalid.";
+                    return false;
+                }
+
+                slot = (MechanicEquipSlot)slotValue;
+                return true;
+            }
+
+            int bodyPart = reader.ReadInt32();
+            if (bodyPart == 0)
             {
                 return true;
             }
 
-            if (!Enum.IsDefined(typeof(MechanicEquipSlot), (int)slotValue))
+            if (!MechanicEquipmentSlotMap.TryResolveBodyPart(bodyPart, out MechanicEquipSlot resolvedSlot))
             {
-                errorMessage = $"Mechanic slot value {slotValue} is invalid.";
+                errorMessage = $"Mechanic body-part value {bodyPart} is invalid.";
                 return false;
             }
 
-            slot = (MechanicEquipSlot)slotValue;
+            slot = resolvedSlot;
             return true;
         }
 

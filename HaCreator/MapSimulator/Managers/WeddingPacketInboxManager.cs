@@ -82,6 +82,16 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeTemporaryStatSet = 225;
         private const int PacketTypeTemporaryStatReset = 226;
         private const int PacketTypeGuildNameChanged = 228;
+        private const int PacketTypeGuildMarkChanged = 229;
+        private const int PacketTypeUserProfile = -1003;
+        private const int PacketTypeCoupleRecordAdd = -1101;
+        private const int PacketTypeCoupleRecordRemove = -1102;
+        private const int PacketTypeFriendRecordAdd = -1103;
+        private const int PacketTypeFriendRecordRemove = -1104;
+        private const int PacketTypeMarriageRecordAdd = -1105;
+        private const int PacketTypeMarriageRecordRemove = -1106;
+        private const int PacketTypeNewYearCardRecordAdd = -1107;
+        private const int PacketTypeNewYearCardRecordRemove = -1108;
 
         private readonly ConcurrentQueue<WeddingInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -750,6 +760,16 @@ namespace HaCreator.MapSimulator.Managers
                 "225" or "tempset" or "tempstatset" => AssignPacketType(PacketTypeTemporaryStatSet, out packetType),
                 "226" or "tempreset" or "tempstatreset" => AssignPacketType(PacketTypeTemporaryStatReset, out packetType),
                 "228" or "guildnamechanged" or "guildname" => AssignPacketType(PacketTypeGuildNameChanged, out packetType),
+                "229" or "guildmarkchanged" or "guildmark" => AssignPacketType(PacketTypeGuildMarkChanged, out packetType),
+                "-1003" or "profile" or "userprofile" => AssignPacketType(PacketTypeUserProfile, out packetType),
+                "-1101" or "couplerecordadd" or "coupleadd" => AssignPacketType(PacketTypeCoupleRecordAdd, out packetType),
+                "-1102" or "couplerecordremove" or "coupleremove" => AssignPacketType(PacketTypeCoupleRecordRemove, out packetType),
+                "-1103" or "friendrecordadd" or "friendadd" => AssignPacketType(PacketTypeFriendRecordAdd, out packetType),
+                "-1104" or "friendrecordremove" or "friendremove" => AssignPacketType(PacketTypeFriendRecordRemove, out packetType),
+                "-1105" or "marriagerecordadd" or "marriageadd" => AssignPacketType(PacketTypeMarriageRecordAdd, out packetType),
+                "-1106" or "marriagerecordremove" or "marriageremove" => AssignPacketType(PacketTypeMarriageRecordRemove, out packetType),
+                "-1107" or "newyearcardrecordadd" or "newyearcardadd" => AssignPacketType(PacketTypeNewYearCardRecordAdd, out packetType),
+                "-1108" or "newyearcardrecordremove" or "newyearcardremove" => AssignPacketType(PacketTypeNewYearCardRecordRemove, out packetType),
                 _ => int.TryParse(normalized, out packetType)
             };
         }
@@ -767,7 +787,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == 223
                 || packetType == 225
                 || packetType == 226
-                || packetType == PacketTypeGuildNameChanged;
+                || packetType == PacketTypeGuildNameChanged
+                || packetType == PacketTypeGuildMarkChanged;
         }
 
         private static bool AssignPacketType(int value, out int packetType)
@@ -792,6 +813,16 @@ namespace HaCreator.MapSimulator.Managers
                 PacketTypeTemporaryStatSet => "tempset (225)",
                 PacketTypeTemporaryStatReset => "tempreset (226)",
                 PacketTypeGuildNameChanged => "guildnamechanged (228)",
+                PacketTypeGuildMarkChanged => "guildmarkchanged (229)",
+                PacketTypeUserProfile => "profile (-1003)",
+                PacketTypeCoupleRecordAdd => "couplerecordadd (-1101)",
+                PacketTypeCoupleRecordRemove => "couplerecordremove (-1102)",
+                PacketTypeFriendRecordAdd => "friendrecordadd (-1103)",
+                PacketTypeFriendRecordRemove => "friendrecordremove (-1104)",
+                PacketTypeMarriageRecordAdd => "marriagerecordadd (-1105)",
+                PacketTypeMarriageRecordRemove => "marriagerecordremove (-1106)",
+                PacketTypeNewYearCardRecordAdd => "newyearcardrecordadd (-1107)",
+                PacketTypeNewYearCardRecordRemove => "newyearcardrecordremove (-1108)",
                 _ => packetType.ToString(CultureInfo.InvariantCulture)
             };
         }

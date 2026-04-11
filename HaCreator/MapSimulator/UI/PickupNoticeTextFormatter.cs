@@ -8,14 +8,16 @@ namespace HaCreator.MapSimulator.UI
 {
     public readonly struct PickupNoticeMessagePair
     {
-        public PickupNoticeMessagePair(string screenMessage, string chatMessage)
+        public PickupNoticeMessagePair(string screenMessage, string chatMessage, int chatLogType = -1)
         {
             ScreenMessage = screenMessage ?? string.Empty;
             ChatMessage = chatMessage ?? string.Empty;
+            ChatLogType = chatLogType;
         }
 
         public string ScreenMessage { get; }
         public string ChatMessage { get; }
+        public int ChatLogType { get; }
     }
 
     public readonly struct PickupNoticeSuccessMessages
@@ -24,18 +26,21 @@ namespace HaCreator.MapSimulator.UI
             string screenMessage,
             string chatMessage = "",
             string secondaryScreenMessage = "",
-            Color? secondaryScreenColor = null)
+            Color? secondaryScreenColor = null,
+            int chatLogType = -1)
         {
             ScreenMessage = screenMessage ?? string.Empty;
             ChatMessage = chatMessage ?? string.Empty;
             SecondaryScreenMessage = secondaryScreenMessage ?? string.Empty;
             SecondaryScreenColor = secondaryScreenColor ?? Color.White;
+            ChatLogType = chatLogType;
         }
 
         public string ScreenMessage { get; }
         public string ChatMessage { get; }
         public string SecondaryScreenMessage { get; }
         public Color SecondaryScreenColor { get; }
+        public int ChatLogType { get; }
     }
 
     public readonly struct PickupNoticeFailureContext
@@ -71,6 +76,8 @@ namespace HaCreator.MapSimulator.UI
         private const int CantPickupScreenStringPoolId = 0x14D9;
         private const int CantPickupChatStringPoolId = 0x14D3;
         private const int GenericFailureScreenStringPoolId = 0x134;
+        private const int PetMesoPickupChatLogType = 8;
+        private const int CantPickupChatLogType = 12;
         private const int ItemSingleNameWidth = 120;
         private const int ItemMultiNameWidth = 96;
 
@@ -92,7 +99,8 @@ namespace HaCreator.MapSimulator.UI
                 FormatClientString(MesoScreenStringPoolId, $"You have gained mesos (+{Math.Max(0, amount)})", Math.Max(0, amount)),
                 chatMessage,
                 secondaryScreenMessage,
-                Color.Yellow);
+                Color.Yellow,
+                pickedByPet ? PetMesoPickupChatLogType : -1);
         }
 
         public static string FormatItemPickup(string itemName, string itemTypeName, int quantity)
@@ -335,7 +343,8 @@ namespace HaCreator.MapSimulator.UI
         {
             return new PickupNoticeMessagePair(
                 FormatClientString(CantPickupScreenStringPoolId, "You cannot acquire any items."),
-                FormatClientString(CantPickupChatStringPoolId, "You cannot acquire any items because the game file has been damaged. Please try again after reinstalling the game."));
+                FormatClientString(CantPickupChatStringPoolId, "You cannot acquire any items because the game file has been damaged. Please try again after reinstalling the game."),
+                CantPickupChatLogType);
         }
 
         private static string FormatClientString(int stringPoolId, string fallbackFormat, params object[] args)

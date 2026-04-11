@@ -1188,13 +1188,7 @@ namespace HaCreator.MapSimulator.UI
                 chatState.WhisperTargetPickerSelectionIndex,
                 candidates.Count,
                 WhisperPickerVisibleRows);
-            int rowHeight = Math.Max(
-                Math.Max(
-                    ResolveWhisperPickerModalComboDropdownRowHeight(),
-                    Math.Max(
-                        _whisperPickerSelectedTexture?.Height ?? 0,
-                        _whisperPickerRowTexture?.Height ?? 0)),
-                ResolveFontLineSpacing() + WhisperPickerRowPadding);
+            int rowHeight = ResolveWhisperPickerModalComboDropdownRowHeight();
             int buttonRowHeight = ResolveWhisperPickerButtonRowHeight();
             int modalWidth = StatusBarChatLayoutRules.ClientWhisperPickerModalWidth;
             string titleText = MapleStoryStringPool.GetOrFallback(0x031E, "Whisper Target");
@@ -1254,6 +1248,7 @@ namespace HaCreator.MapSimulator.UI
                     comboBounds,
                     rowHeight,
                     visibleCount,
+                    candidates.Count,
                     ResolveWhisperPickerMinimumRowWidth(),
                     ResolveWhisperPickerMaxCandidateWidth(chatState, firstVisibleIndex, visibleCount));
                 _whisperPickerDropdownBounds = listBounds;

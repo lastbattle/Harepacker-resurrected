@@ -261,19 +261,23 @@ namespace HaCreator.MapSimulator.Character
             public string PreparedActionName { get; set; }
             public int PreparedFrameIndex { get; set; } = -1;
             public int PreparedFeetOffset { get; set; }
+            public int NextPreparedLayerObjectId { get; set; } = 1;
             public MirrorImagePreparedSourceLayer[] PreparedSourceLayers { get; set; } = CreateEmptyMirrorImagePreparedSourceLayers();
         }
 
         private sealed class MirrorImagePreparedSourceLayer
         {
             public AvatarRenderLayer RenderLayer { get; set; }
+            public int PreparedLayerObjectId { get; set; }
             public int SourceSignature { get; set; }
+            public int LastInsertedSourceSignature { get; set; }
             public Rectangle Bounds { get; set; }
             public Rectangle TextureSourceBounds { get; set; }
             public Point Origin { get; set; }
             public int PreparedCurrentTime { get; set; } = int.MinValue;
             public int PreparedSourceLayerCurrentTime { get; set; } = int.MinValue;
             public int PreparedTransitionStartTime { get; set; } = int.MinValue;
+            public int LastInsertCanvasTime { get; set; } = int.MinValue;
             public bool PreparedFacingRight { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
             public Texture2D ComposedTexture { get; set; }
@@ -843,6 +847,7 @@ namespace HaCreator.MapSimulator.Character
                 chair,
                 Build != null,
                 IsAlive,
+                Level,
                 State,
                 Physics?.IsOnFoothold() == true,
                 HasActiveMorphTransform,
@@ -2029,7 +2034,13 @@ namespace HaCreator.MapSimulator.Character
 
         private bool TryResolveMountedTransitionCurrentFrame(int currentTime, out AssembledFrame frame)
         {
+            return TryResolveMountedTransitionCurrentFrame(currentTime, out frame, out _);
+        }
+
+        private bool TryResolveMountedTransitionCurrentFrame(int currentTime, out AssembledFrame frame, out int currentFrameIndex)
+        {
             frame = null;
+            currentFrameIndex = -1;
             if (Assembler == null
                 || State != PlayerState.Attacking
                 || _sustainedSkillAnimation)
@@ -2068,7 +2079,13 @@ namespace HaCreator.MapSimulator.Character
                 bodyAnimationTime,
                 CurrentActionName,
                 animationTime);
-            return frame != null;
+            if (frame == null)
+            {
+                return false;
+            }
+
+            currentFrameIndex = Assembler.GetFrameIndexAtTime(persistentBodyActionName, bodyAnimationTime);
+            return true;
         }
 
         private string ResolveMountedTransitionPersistentBodyActionName()
@@ -2547,7 +2564,11 @@ namespace HaCreator.MapSimulator.Character
         /// <summary>
         /// Trigger a specific skill animation (called by SkillManager)
         /// </summary>
-        public void TriggerSkillAnimation(string actionName, int skillId = 0, int currentTime = int.MinValue)
+        public void TriggerSkillAnimation(
+            string actionName,
+            int skillId = 0,
+            int currentTime = int.MinValue,
+            bool playEffectiveWeaponSfx = false)
         {
             // Map action name to CharacterAction
             ClearPortableChair(standUp: false);
@@ -2570,6 +2591,10 @@ namespace HaCreator.MapSimulator.Character
             _attackFrame = 0;
             _animationStartTime = Environment.TickCount; // Set animation start time for completion check
             SyncAssemblerActionLayerContext();
+            if (playEffectiveWeaponSfx)
+            {
+                PlayEffectiveWeaponSfx();
+            }
 
             System.Diagnostics.Debug.WriteLine($"[TriggerSkillAnimation] actionName={actionName}, CurrentAction={CurrentActionName}, State={State}");
         }
@@ -2632,7 +2657,6 @@ namespace HaCreator.MapSimulator.Character
                 ActionDuration = GetMeleeAfterImageActionDuration(actionName)
             };
 
-            PlayEffectiveWeaponSfx();
         }
 
         public void PlayEffectiveWeaponSfx()
@@ -3703,11 +3727,7 @@ namespace HaCreator.MapSimulator.Character
 
             SyncAssemblerActionLayerContext();
 
-            // Get current frame
-            int animTime = GetRenderAnimationTime(currentTime);
-
-            var frame = Assembler.GetFrameAtTime(CurrentActionName, animTime);
-            int currentFrameIndex = Assembler?.GetFrameIndexAtTime(CurrentActionName, animTime) ?? -1;
+            AssembledFrame frame = ResolveCurrentRenderFrame(currentTime, out int currentFrameIndex);
 
             if (frame != null)
             {
@@ -4174,11 +4194,18 @@ namespace HaCreator.MapSimulator.Character
 
             if (currentTime < _activeMeleeAfterImage.ActivationStartTime)
             {
-                bool sameAction = State == PlayerState.Attacking
-                    && string.Equals(CurrentActionName, _activeMeleeAfterImage.ActionName, StringComparison.OrdinalIgnoreCase);
-                if (!sameAction
-                    || (_activeMeleeAfterImage.ActionDuration > 0
-                        && currentTime - _activeMeleeAfterImage.AnimationStartTime >= _activeMeleeAfterImage.ActionDuration))
+                string currentActionName = State == PlayerState.Attacking
+                    ? CurrentActionName
+                    : null;
+                MeleeAfterimagePlaybackResolver.ShouldDeferUntilActivation(
+                    currentTime,
+                    _activeMeleeAfterImage.ActivationStartTime,
+                    currentActionName,
+                    _activeMeleeAfterImage.ActionName,
+                    _activeMeleeAfterImage.AnimationStartTime,
+                    _activeMeleeAfterImage.ActionDuration,
+                    out bool shouldClear);
+                if (shouldClear)
                 {
                     _activeMeleeAfterImage = null;
                 }
@@ -4600,13 +4627,16 @@ namespace HaCreator.MapSimulator.Character
                 layers[layerIndex] = new MirrorImagePreparedSourceLayer
                 {
                     RenderLayer = renderLayer,
+                    PreparedLayerObjectId = 0,
                     SourceSignature = 0,
+                    LastInsertedSourceSignature = 0,
                     Bounds = Rectangle.Empty,
                     TextureSourceBounds = Rectangle.Empty,
                     Origin = Point.Zero,
                     PreparedCurrentTime = int.MinValue,
                     PreparedSourceLayerCurrentTime = int.MinValue,
                     PreparedTransitionStartTime = int.MinValue,
+                    LastInsertCanvasTime = int.MinValue,
                     PreparedFacingRight = false,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
                     ComposedTexture = null,
@@ -4813,6 +4843,11 @@ namespace HaCreator.MapSimulator.Character
                     mirrorStartTime: _activeMirrorImage?.StartTime ?? currentTime,
                     sourceLayerCurrentTime: refreshedSourceLayerCurrentTime,
                     currentTime);
+                preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
+                    preparedLayer.PreparedLayerObjectId,
+                    preservesExistingLayerObject: true);
+                preparedLayer.LastInsertedSourceSignature = sourceSignature;
+                preparedLayer.LastInsertCanvasTime = currentTime;
                 preparedLayer.PreparedFacingRight = facingRight;
                 preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
                 return preparedLayer;
@@ -4858,6 +4893,11 @@ namespace HaCreator.MapSimulator.Character
                 _activeMirrorImage?.StartTime ?? currentTime,
                 sourceLayerCurrentTime,
                 currentTime);
+            preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
+                preparedLayer.PreparedLayerObjectId,
+                preservesExistingLayerObject);
+            preparedLayer.LastInsertedSourceSignature = sourceSignature;
+            preparedLayer.LastInsertCanvasTime = currentTime;
             preparedLayer.PreparedFacingRight = facingRight;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = clonedParts;
@@ -4872,13 +4912,16 @@ namespace HaCreator.MapSimulator.Character
             MirrorImagePreparedSourceLayer preparedLayer = existingLayer ?? new MirrorImagePreparedSourceLayer();
             DisposeMirrorImagePreparedSourceLayerTexture(preparedLayer);
             preparedLayer.RenderLayer = renderLayer;
+            preparedLayer.PreparedLayerObjectId = 0;
             preparedLayer.SourceSignature = sourceSignature;
+            preparedLayer.LastInsertedSourceSignature = 0;
             preparedLayer.Bounds = Rectangle.Empty;
             preparedLayer.TextureSourceBounds = Rectangle.Empty;
             preparedLayer.Origin = Point.Zero;
             preparedLayer.PreparedCurrentTime = int.MinValue;
             preparedLayer.PreparedSourceLayerCurrentTime = int.MinValue;
             preparedLayer.PreparedTransitionStartTime = int.MinValue;
+            preparedLayer.LastInsertCanvasTime = int.MinValue;
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = Array.Empty<AssembledPart>();
@@ -4928,6 +4971,55 @@ namespace HaCreator.MapSimulator.Character
             return !ShouldRecreateMirrorImagePreparedSourceLayerObject(
                 existingPartCount > 0,
                 existingFacingRight == currentFacingRight);
+        }
+
+        private int AllocateMirrorImagePreparedLayerObjectId(
+            int existingLayerObjectId,
+            bool preservesExistingLayerObject)
+        {
+            if (_activeMirrorImage == null)
+            {
+                return ResolveMirrorImagePreparedLayerObjectId(
+                    existingLayerObjectId,
+                    preservesExistingLayerObject,
+                    nextLayerObjectId: 1);
+            }
+
+            int resolvedLayerObjectId = ResolveMirrorImagePreparedLayerObjectId(
+                existingLayerObjectId,
+                preservesExistingLayerObject,
+                _activeMirrorImage.NextPreparedLayerObjectId);
+            if (ShouldAdvanceMirrorImagePreparedLayerObjectId(
+                    existingLayerObjectId,
+                    resolvedLayerObjectId,
+                    preservesExistingLayerObject))
+            {
+                _activeMirrorImage.NextPreparedLayerObjectId++;
+            }
+
+            return resolvedLayerObjectId;
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerObjectId(
+            int existingLayerObjectId,
+            bool preservesExistingLayerObject,
+            int nextLayerObjectId)
+        {
+            if (preservesExistingLayerObject && existingLayerObjectId > 0)
+            {
+                return existingLayerObjectId;
+            }
+
+            return Math.Max(1, nextLayerObjectId);
+        }
+
+        internal static bool ShouldAdvanceMirrorImagePreparedLayerObjectId(
+            int existingLayerObjectId,
+            int resolvedLayerObjectId,
+            bool preservesExistingLayerObject)
+        {
+            return resolvedLayerObjectId > 0
+                   && (!preservesExistingLayerObject || existingLayerObjectId <= 0);
         }
 
         internal static bool ShouldRecreateMirrorImagePreparedSourceLayerObject(
@@ -5897,9 +5989,7 @@ namespace HaCreator.MapSimulator.Character
             _activeMirrorImage.Visible = true;
             _activeMirrorImage.CurrentOffsetPx = ResolveMirrorImageCurrentOffset(currentTime);
 
-            int animationTime = GetRenderAnimationTime(currentTime);
-            AssembledFrame currentFrame = Assembler?.GetFrameAtTime(CurrentActionName, animationTime);
-            int currentFrameIndex = Assembler?.GetFrameIndexAtTime(CurrentActionName, animationTime) ?? -1;
+            AssembledFrame currentFrame = ResolveCurrentRenderFrame(currentTime, out int currentFrameIndex);
             PrepareMirrorImageSourceLayers(currentFrame, currentFrameIndex, currentTime);
         }
 
@@ -6874,6 +6964,7 @@ namespace HaCreator.MapSimulator.Character
             PortableChair chair,
             bool hasBuild,
             bool isAlive,
+            int playerLevel,
             PlayerState state,
             bool isOnFoothold,
             bool hasActiveMorphTransform,
@@ -6887,6 +6978,11 @@ namespace HaCreator.MapSimulator.Character
             if (!isAlive)
             {
                 return "Portable chairs cannot be activated while dead.";
+            }
+
+            if (chair.RequiredLevel > 0 && playerLevel < chair.RequiredLevel)
+            {
+                return $"Portable chairs require level {chair.RequiredLevel.ToString(System.Globalization.CultureInfo.InvariantCulture)}.";
             }
 
             if (state != PlayerState.Standing)
@@ -7743,18 +7839,26 @@ namespace HaCreator.MapSimulator.Character
 
         public AssembledFrame TryGetCurrentFrame(int currentTime)
         {
+            return ResolveCurrentRenderFrame(currentTime, out _);
+        }
+
+        private AssembledFrame ResolveCurrentRenderFrame(int currentTime, out int currentFrameIndex)
+        {
+            currentFrameIndex = -1;
             if (Assembler == null)
             {
                 return null;
             }
 
             SyncAssemblerActionLayerContext();
-            if (TryResolveMountedTransitionCurrentFrame(currentTime, out AssembledFrame mountedTransitionFrame))
+            if (TryResolveMountedTransitionCurrentFrame(currentTime, out AssembledFrame mountedTransitionFrame, out currentFrameIndex))
             {
                 return mountedTransitionFrame;
             }
 
-            return Assembler.GetFrameAtTime(CurrentActionName, GetRenderAnimationTime(currentTime));
+            int animationTime = GetRenderAnimationTime(currentTime);
+            currentFrameIndex = Assembler.GetFrameIndexAtTime(CurrentActionName, animationTime);
+            return Assembler.GetFrameAtTime(CurrentActionName, animationTime);
         }
 
         public Point? TryGetCurrentBodyMapPoint(string mapPointName, int currentTime)
@@ -9470,20 +9574,33 @@ namespace HaCreator.MapSimulator.Character
     public sealed class PlayerMovementSyncSnapshot
     {
         public PlayerMovementSyncSnapshot(PassivePositionSnapshot passivePosition, System.Collections.Generic.List<MovePathElement> movePath)
+            : this(passivePosition, movePath, null, Rectangle.Empty)
+        {
+        }
+
+        public PlayerMovementSyncSnapshot(
+            PassivePositionSnapshot passivePosition,
+            System.Collections.Generic.List<MovePathElement> movePath,
+            System.Collections.Generic.IReadOnlyList<byte> passiveKeyPadStates,
+            Rectangle passiveMoveBounds)
         {
             PassivePosition = passivePosition;
             MovePath = movePath ?? throw new ArgumentNullException(nameof(movePath));
+            PassiveKeyPadStates = passiveKeyPadStates ?? Array.Empty<byte>();
+            PassiveMoveBounds = passiveMoveBounds;
         }
 
         public PassivePositionSnapshot PassivePosition { get; }
         public System.Collections.Generic.List<MovePathElement> MovePath { get; }
+        public System.Collections.Generic.IReadOnlyList<byte> PassiveKeyPadStates { get; }
+        public Rectangle PassiveMoveBounds { get; }
 
         public byte[] Encode()
         {
             using var stream = new MemoryStream();
             using var writer = new BinaryWriter(stream);
 
-            writer.Write((byte)2);
+            writer.Write((byte)3);
             WriteSnapshot(writer, PassivePosition);
             writer.Write(MovePath.Count);
 
@@ -9491,6 +9608,17 @@ namespace HaCreator.MapSimulator.Character
             {
                 WriteElement(writer, MovePath[i]);
             }
+
+            writer.Write(PassiveKeyPadStates.Count);
+            for (int i = 0; i < PassiveKeyPadStates.Count; i++)
+            {
+                writer.Write(PassiveKeyPadStates[i]);
+            }
+
+            writer.Write(PassiveMoveBounds.Left);
+            writer.Write(PassiveMoveBounds.Top);
+            writer.Write(PassiveMoveBounds.Right);
+            writer.Write(PassiveMoveBounds.Bottom);
 
             writer.Flush();
             return stream.ToArray();
@@ -9507,7 +9635,7 @@ namespace HaCreator.MapSimulator.Character
             using var reader = new BinaryReader(stream);
 
             byte version = reader.ReadByte();
-            if (version != 1 && version != 2)
+            if (version != 1 && version != 2 && version != 3)
             {
                 throw new InvalidDataException($"Unsupported movement snapshot version: {version}");
             }
@@ -9521,7 +9649,26 @@ namespace HaCreator.MapSimulator.Character
                 movePath.Add(ReadElement(reader, version));
             }
 
-            return new PlayerMovementSyncSnapshot(passivePosition, movePath);
+            System.Collections.Generic.IReadOnlyList<byte> passiveKeyPadStates = Array.Empty<byte>();
+            Rectangle passiveMoveBounds = Rectangle.Empty;
+            if (version >= 3)
+            {
+                int passiveKeyPadStateCount = reader.ReadInt32();
+                byte[] passiveKeyPadStateValues = new byte[passiveKeyPadStateCount];
+                for (int i = 0; i < passiveKeyPadStateValues.Length; i++)
+                {
+                    passiveKeyPadStateValues[i] = reader.ReadByte();
+                }
+
+                int left = reader.ReadInt32();
+                int top = reader.ReadInt32();
+                int right = reader.ReadInt32();
+                int bottom = reader.ReadInt32();
+                passiveKeyPadStates = passiveKeyPadStateValues;
+                passiveMoveBounds = new Rectangle(left, top, right - left, bottom - top);
+            }
+
+            return new PlayerMovementSyncSnapshot(passivePosition, movePath, passiveKeyPadStates, passiveMoveBounds);
         }
 
         public PassivePositionSnapshot SampleAtTime(int currentTime)

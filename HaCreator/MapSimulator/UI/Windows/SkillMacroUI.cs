@@ -157,6 +157,9 @@ namespace HaCreator.MapSimulator.UI
         private int _editingSelectionAnchor = -1;
         private bool _nameSelectionDragActive;
         private int _caretBlinkTick;
+        private Keys _lastHeldNameEditKey = Keys.None;
+        private int _nameEditKeyHoldStartTime = int.MinValue;
+        private int _lastNameEditKeyRepeatTime = int.MinValue;
         private string _compositionText = string.Empty;
         private int _compositionInsertionIndex = -1;
         private IReadOnlyList<int> _compositionClauseOffsets = Array.Empty<int>();
@@ -463,6 +466,7 @@ namespace HaCreator.MapSimulator.UI
             _editingCursorPosition = 0;
             ClearNameSelection();
             _nameSelectionDragActive = false;
+            ResetNameEditKeyRepeatState();
             _caretBlinkTick = Environment.TickCount;
             ClearCompositionText();
             Array.Clear(_editingSkillIds, 0, _editingSkillIds.Length);
@@ -1152,6 +1156,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _softKeyboardActive = false;
                 _nameSelectionDragActive = false;
+                ResetNameEditKeyRepeatState();
                 ClearNameSelection();
                 ClearCompositionText();
             }
@@ -2313,6 +2318,7 @@ namespace HaCreator.MapSimulator.UI
         {
             bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
             bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+            int tickCount = Environment.TickCount;
 
             if (!ctrl && shift && keyboardState.IsKeyDown(Keys.Insert) && _previousKeyboardState.IsKeyUp(Keys.Insert))
             {
@@ -2326,7 +2332,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (keyboardState.IsKeyDown(Keys.Back) && _previousKeyboardState.IsKeyUp(Keys.Back))
+            if (WasNameEditKeyPressedOrRepeated(keyboardState, Keys.Back, tickCount))
             {
                 if (_compositionText.Length > 0)
                 {
@@ -2345,7 +2351,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            if (keyboardState.IsKeyDown(Keys.Delete) && _previousKeyboardState.IsKeyUp(Keys.Delete))
+            if (WasNameEditKeyPressedOrRepeated(keyboardState, Keys.Delete, tickCount))
             {
                 if (_compositionText.Length > 0)
                 {
@@ -2364,7 +2370,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            if (keyboardState.IsKeyDown(Keys.Left) && _previousKeyboardState.IsKeyUp(Keys.Left))
+            if (WasNameEditKeyPressedOrRepeated(keyboardState, Keys.Left, tickCount))
             {
                 ClearCompositionText();
                 ClearOwnerNotice();
@@ -2382,7 +2388,7 @@ namespace HaCreator.MapSimulator.UI
                 _caretBlinkTick = Environment.TickCount;
             }
 
-            if (keyboardState.IsKeyDown(Keys.Right) && _previousKeyboardState.IsKeyUp(Keys.Right))
+            if (WasNameEditKeyPressedOrRepeated(keyboardState, Keys.Right, tickCount))
             {
                 ClearCompositionText();
                 ClearOwnerNotice();
@@ -2450,6 +2456,48 @@ namespace HaCreator.MapSimulator.UI
                 CopySelectedNameText(cutSelection: true);
                 return;
             }
+        }
+
+        private bool WasNameEditKeyPressedOrRepeated(KeyboardState keyboardState, Keys key, int tickCount)
+        {
+            if (!keyboardState.IsKeyDown(key))
+            {
+                if (_lastHeldNameEditKey == key)
+                {
+                    ResetNameEditKeyRepeatState();
+                }
+
+                return false;
+            }
+
+            if (_previousKeyboardState.IsKeyUp(key))
+            {
+                _lastHeldNameEditKey = key;
+                _nameEditKeyHoldStartTime = tickCount;
+                _lastNameEditKeyRepeatTime = tickCount;
+                return true;
+            }
+
+            if (_lastHeldNameEditKey == key
+                && KeyboardTextInputHelper.ShouldRepeatKeyUsingFixedCadence(
+                    key,
+                    keyboardState,
+                    _nameEditKeyHoldStartTime,
+                    _lastNameEditKeyRepeatTime,
+                    tickCount))
+            {
+                _lastNameEditKeyRepeatTime = tickCount;
+                return true;
+            }
+
+            return false;
+        }
+
+        private void ResetNameEditKeyRepeatState()
+        {
+            _lastHeldNameEditKey = Keys.None;
+            _nameEditKeyHoldStartTime = int.MinValue;
+            _lastNameEditKeyRepeatTime = int.MinValue;
         }
 
         private void HandleClipboardPaste()

@@ -78,6 +78,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
+        internal static bool ShouldDeferUntilActivation(
+            int currentTime,
+            int activationStartTime,
+            string currentActionName,
+            string afterImageActionName,
+            int animationStartTime,
+            int actionDuration,
+            out bool shouldClear)
+        {
+            shouldClear = false;
+            if (currentTime >= activationStartTime)
+            {
+                return false;
+            }
+
+            bool sameAction = string.Equals(currentActionName, afterImageActionName, StringComparison.OrdinalIgnoreCase);
+            if (!sameAction
+                || (actionDuration > 0
+                    && currentTime - animationStartTime >= actionDuration))
+            {
+                shouldClear = true;
+            }
+
+            return true;
+        }
+
         internal static bool TryResolveSnapshot(
             CharacterAssembler assembler,
             string actionName,

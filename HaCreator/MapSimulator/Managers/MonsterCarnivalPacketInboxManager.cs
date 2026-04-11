@@ -11,18 +11,21 @@ namespace HaCreator.MapSimulator.Managers
 {
     public sealed class MonsterCarnivalPacketInboxMessage
     {
-        public MonsterCarnivalPacketInboxMessage(int packetType, byte[] payload, string source, string rawText)
+        public MonsterCarnivalPacketInboxMessage(int packetType, byte[] payload, string source, string rawText, int? relayedPacketType = null)
         {
             PacketType = packetType;
             Payload = payload != null ? (byte[])payload.Clone() : Array.Empty<byte>();
             Source = string.IsNullOrWhiteSpace(source) ? "mcarnival-inbox" : source;
             RawText = rawText ?? string.Empty;
+            RelayedPacketType = relayedPacketType;
         }
 
         public int PacketType { get; }
         public byte[] Payload { get; }
         public string Source { get; }
         public string RawText { get; }
+        public int? RelayedPacketType { get; }
+        public int OwnerPacketType => RelayedPacketType ?? PacketType;
     }
 
     /// <summary>
@@ -101,7 +104,7 @@ namespace HaCreator.MapSimulator.Managers
                 packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
             }
 
-            _pendingMessages.Enqueue(new MonsterCarnivalPacketInboxMessage(packetType, payload, source, $"{packetType}"));
+            _pendingMessages.Enqueue(new MonsterCarnivalPacketInboxMessage(packetType, payload, source, $"{packetType}", relayedPacketType: packetType));
         }
 
         public bool TryDequeue(out MonsterCarnivalPacketInboxMessage message)

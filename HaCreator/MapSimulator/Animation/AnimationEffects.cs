@@ -42,6 +42,7 @@ namespace HaCreator.MapSimulator.Animation
             public Point SpawnOffsetMin { get; init; }
             public Point SpawnOffsetMax { get; init; }
             public Rectangle SpawnArea { get; init; }
+            public int SpawnZOrder { get; init; }
         }
 
         private readonly List<OneTimeAnimation> _oneTimeAnimations = new();
@@ -124,7 +125,8 @@ namespace HaCreator.MapSimulator.Animation
                 AnimationOneTimeOwner.FullChargedAngerGauge,
                 AnimationOneTimePlaybackMode.GA_STOP,
                 sourceUol,
-                usesOverlayParent: true);
+                usesOverlayParent: true,
+                OneTimeAnimationRecoveredRegistrationTrace.CreateFullChargedAngerGauge(sourceUol));
             InsertOneTimeAnimation(anim);
         }
 
@@ -216,7 +218,7 @@ namespace HaCreator.MapSimulator.Animation
                 registration.RecoveredLayerSettings,
                 recoveredRegistrationTrace,
                 recoveredOwnerTrace);
-            _oneTimeCanvasLayers.Add(anim);
+            InsertOneTimeCanvasLayer(anim);
         }
 
         internal void RegisterOneTimeCanvasLayer(
@@ -247,10 +249,27 @@ namespace HaCreator.MapSimulator.Animation
                 registration.RecoveredLayerSettings,
                 registration.RecoveredRegistrationTrace,
                 registration.RecoveredOwnerTrace);
-            _oneTimeCanvasLayers.Add(anim);
+            InsertOneTimeCanvasLayer(anim);
         }
 
         internal IReadOnlyList<OneTimeCanvasLayerAnimation> OneTimeCanvasLayers => _oneTimeCanvasLayers;
+
+        private void InsertOneTimeCanvasLayer(OneTimeCanvasLayerAnimation animation)
+        {
+            if (animation == null)
+            {
+                return;
+            }
+
+            int insertIndex = _oneTimeCanvasLayers.Count;
+            while (insertIndex > 0
+                && _oneTimeCanvasLayers[insertIndex - 1].RecoveredLayerSettings.LayerPriorityValue > animation.RecoveredLayerSettings.LayerPriorityValue)
+            {
+                insertIndex--;
+            }
+
+            _oneTimeCanvasLayers.Insert(insertIndex, animation);
+        }
 
         public void ClearCanvasLayers(AnimationCanvasLayerOwner owner)
         {
@@ -643,6 +662,7 @@ namespace HaCreator.MapSimulator.Animation
             {
                 if (!_oneTimeCanvasLayers[i].Update(currentTimeMs))
                 {
+                    _oneTimeCanvasLayers[i].Reset();
                     _oneTimeCanvasLayerPool.Enqueue(_oneTimeCanvasLayers[i]);
                     _oneTimeCanvasLayers.RemoveAt(i);
                 }
@@ -862,6 +882,7 @@ namespace HaCreator.MapSimulator.Animation
             float offsetY,
             Vector2 startOffset,
             Vector2 endOffset,
+            int zOrder,
             int durationMs,
             int currentTimeMs)
         {
@@ -883,9 +904,26 @@ namespace HaCreator.MapSimulator.Animation
                 offsetY,
                 startOffset,
                 endOffset,
+                zOrder,
                 durationMs,
                 currentTimeMs);
-            _followParticleAnimations.Add(particle);
+            InsertFollowParticleAnimation(particle);
+        }
+
+        private void InsertFollowParticleAnimation(FollowParticleAnimation particle)
+        {
+            if (particle == null)
+            {
+                return;
+            }
+
+            int insertIndex = _followParticleAnimations.Count;
+            while (insertIndex > 0 && _followParticleAnimations[insertIndex - 1].ZOrder > particle.ZOrder)
+            {
+                insertIndex--;
+            }
+
+            _followParticleAnimations.Insert(insertIndex, particle);
         }
 
         internal static Vector2 ResolveFollowGenerationPointOffset(
@@ -1117,6 +1155,7 @@ namespace HaCreator.MapSimulator.Animation
         public int AreaAnimationCount => _areaAnimations.Count;
         public int FollowAnimationCount => _followAnimations.Count;
         public int FollowParticleCount => _followParticleAnimations.Count;
+        internal IReadOnlyList<FollowParticleAnimation> FollowParticles => _followParticleAnimations;
         internal IReadOnlyList<OneTimeAnimation> OneTimeAnimations => _oneTimeAnimations;
 
         #endregion
@@ -1143,6 +1182,51 @@ namespace HaCreator.MapSimulator.Animation
     {
         Default = 0,
         GA_STOP = 1
+    }
+
+    /// <summary>
+    /// Recovered native call shape for one-time animation-displayer owners that are still drawn through managed DX frames.
+    /// </summary>
+    internal readonly record struct OneTimeAnimationRecoveredRegistrationTrace(
+        string SourceUol,
+        int MobTemplatePathStringPoolId,
+        int EffectNameStringPoolId,
+        int LoadLayerCanvasValue,
+        bool UsesOriginVector,
+        int LoadLayerOriginOffsetX,
+        int LoadLayerOriginOffsetY,
+        bool UsesOverlayLayer,
+        int LoadLayerOptionValue,
+        int LoadLayerAlphaValue,
+        int LoadLayerReservedValue,
+        AnimationOneTimePlaybackMode AnimatePlaybackMode,
+        bool AnimateUsesMissingStartTime,
+        bool AnimateUsesMissingRepeatCount,
+        bool RegistersOneTimeAnimation,
+        int RegisterOneTimeAnimationDelayMs,
+        bool RegisterOneTimeAnimationHasCallback)
+    {
+        public static OneTimeAnimationRecoveredRegistrationTrace CreateFullChargedAngerGauge(string sourceUol)
+        {
+            return new OneTimeAnimationRecoveredRegistrationTrace(
+                sourceUol,
+                0x03CE,
+                0x0C2F,
+                LoadLayerCanvasValue: 0,
+                UsesOriginVector: true,
+                LoadLayerOriginOffsetX: 0,
+                LoadLayerOriginOffsetY: 0,
+                UsesOverlayLayer: true,
+                LoadLayerOptionValue: unchecked((int)0xC00614A4),
+                LoadLayerAlphaValue: 255,
+                LoadLayerReservedValue: 0,
+                AnimatePlaybackMode: AnimationOneTimePlaybackMode.GA_STOP,
+                AnimateUsesMissingStartTime: true,
+                AnimateUsesMissingRepeatCount: true,
+                RegistersOneTimeAnimation: true,
+                RegisterOneTimeAnimationDelayMs: 0,
+                RegisterOneTimeAnimationHasCallback: false);
+        }
     }
 
     internal enum AnimationCanvasLayerContent
@@ -1604,6 +1688,7 @@ namespace HaCreator.MapSimulator.Animation
         public AnimationOneTimePlaybackMode PlaybackMode { get; private set; } = AnimationOneTimePlaybackMode.Default;
         public string SourceUol { get; private set; }
         public bool UsesOverlayParent { get; private set; }
+        public OneTimeAnimationRecoveredRegistrationTrace? RecoveredRegistrationTrace { get; private set; }
 
         public void Initialize(List<IDXObject> frames, float x, float y, bool flip, int currentTimeMs, int zOrder)
         {
@@ -1632,7 +1717,8 @@ namespace HaCreator.MapSimulator.Animation
                 AnimationOneTimeOwner.Generic,
                 AnimationOneTimePlaybackMode.Default,
                 sourceUol: null,
-                usesOverlayParent: false);
+                usesOverlayParent: false,
+                recoveredRegistrationTrace: null);
         }
 
         public void Initialize(
@@ -1647,7 +1733,8 @@ namespace HaCreator.MapSimulator.Animation
             AnimationOneTimeOwner owner,
             AnimationOneTimePlaybackMode playbackMode,
             string sourceUol,
-            bool usesOverlayParent)
+            bool usesOverlayParent,
+            OneTimeAnimationRecoveredRegistrationTrace? recoveredRegistrationTrace = null)
         {
             _frames = frames;
             _x = x;
@@ -1667,6 +1754,7 @@ namespace HaCreator.MapSimulator.Animation
             PlaybackMode = playbackMode;
             SourceUol = sourceUol;
             UsesOverlayParent = usesOverlayParent;
+            RecoveredRegistrationTrace = recoveredRegistrationTrace;
         }
 
         public bool Update(int currentTimeMs)
@@ -2009,6 +2097,7 @@ namespace HaCreator.MapSimulator.Animation
         private Point _spawnOffsetMin;
         private Point _spawnOffsetMax;
         private Rectangle _spawnArea;
+        private int _spawnZOrder;
         private bool _suppressTargetFlip;
         private Vector2 _lastObservedTargetPosition;
 
@@ -2047,6 +2136,7 @@ namespace HaCreator.MapSimulator.Animation
             _spawnOffsetMin = options?.SpawnOffsetMin ?? Point.Zero;
             _spawnOffsetMax = options?.SpawnOffsetMax ?? Point.Zero;
             _spawnArea = options?.SpawnArea ?? Rectangle.Empty;
+            _spawnZOrder = options?.SpawnZOrder ?? 0;
             _currentAngleDegrees = options?.RandomizeStartupAngle == true
                 ? random?.Next(0, 360) ?? 0
                 : 0;
@@ -2170,8 +2260,9 @@ namespace HaCreator.MapSimulator.Animation
                                 _offsetY,
                                 startOffset: particleStartOffset,
                                 endOffset: particleEndOffset,
-                                resolvedDurationMs,
-                                _nextSpawnTime);
+                                zOrder: _spawnZOrder,
+                                durationMs: resolvedDurationMs,
+                                currentTimeMs: _nextSpawnTime);
                         }
                     }
                 }
@@ -2232,12 +2323,14 @@ namespace HaCreator.MapSimulator.Animation
         private float _offsetY;
         private Vector2 _startOffset;
         private Vector2 _endOffset;
+        private int _zOrder;
         private int _startTime;
         private int _duration;
         private int _currentFrame;
         private int _lastFrameTime;
 
         public int FollowRegistrationId { get; private set; }
+        public int ZOrder => _zOrder;
 
         public void Initialize(
             int followRegistrationId,
@@ -2251,6 +2344,7 @@ namespace HaCreator.MapSimulator.Animation
             float offsetY,
             Vector2 startOffset,
             Vector2 endOffset,
+            int zOrder,
             int durationMs,
             int currentTimeMs)
         {
@@ -2265,6 +2359,7 @@ namespace HaCreator.MapSimulator.Animation
             _offsetY = offsetY;
             _startOffset = startOffset;
             _endOffset = endOffset;
+            _zOrder = zOrder;
             _startTime = currentTimeMs;
             _duration = Math.Max(1, durationMs);
             _currentFrame = 0;

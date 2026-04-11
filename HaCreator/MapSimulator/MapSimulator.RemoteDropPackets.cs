@@ -352,7 +352,13 @@ namespace HaCreator.MapSimulator
             }
 
             return _socialListRuntime.IsTrackedPartyMember(actor.Name)
-                || IsClientPartyHelperMarker(actor.HelperMarkerType);
+                || IsClientPartyHelperMarker(actor.HelperMarkerType)
+                || HasClientPartyHpGauge(actor);
+        }
+
+        internal static bool HasClientPartyHpGauge(RemoteUserActor actor)
+        {
+            return actor?.PartyHpGaugePos.HasValue == true;
         }
 
         private string ResolveRemoteDropPacketActorName(PacketDropLeaveReason reason, RemoteDropLeavePacket packet)

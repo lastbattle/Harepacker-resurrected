@@ -1940,15 +1940,17 @@ namespace HaCreator.MapSimulator.Pools
 
             foreach (MobItem mob in _mobPool.ActiveMobs)
             {
-                if (mob?.AI?.IsDead == true
-                    || mob.AI?.IsTargetingSummoned != true
-                    || mob.AI.Target.TargetId != state.Summon.ObjectId)
+                if (mob == null)
                 {
                     continue;
                 }
 
                 Rectangle mobHitbox = mob.GetBodyHitbox(currentTime);
-                if (mobHitbox.IsEmpty || !mobHitbox.Intersects(summonHitbox))
+                if (!PacketOwnedSummonUpdateRules.IsClientBodyAttackMobCandidate(
+                        mob.AI?.IsDead == true,
+                        state.Summon.ObjectId,
+                        mobHitbox,
+                        summonHitbox))
                 {
                     continue;
                 }
@@ -4590,7 +4592,7 @@ namespace HaCreator.MapSimulator.Pools
                 FollowSummon = followSummon,
                 FollowSummonFacing = followSummonFacing,
                 MirrorOffsetWithSummonFacing = facingAttach,
-                AttachedOffset = PacketOwnedSummonUpdateRules.ResolvePacketOwnedAuthoredHitOffset(attackInfo),
+                AttachedOffset = PacketOwnedSummonUpdateRules.ResolvePacketOwnedAttachedMobAttackHitOffset(attackInfo),
                 AttackInfo = attackInfo,
                 HitAnimationSourceFrameIndex = hitAnimationSourceFrameIndex,
                 StartTime = startTime,

@@ -523,19 +523,22 @@ namespace HaCreator.MapSimulator.Pools
                 if (reactor?.ReactorInstance == null)
                     continue;
 
-                // Check if reactor is in touchable state
                 var data = GetReactorData(i);
-                if (data == null
-                    || data.State != ReactorState.Idle
-                    || data.PacketLeavePending)
+                if (!CanPollLocalUserTouchReactor(data))
+                {
                     continue;
+                }
 
                 // Only touch-type reactors
-                if (!CanActivateWith(reactor, data, ReactorActivationType.Touch))
+                if (!SupportsActivationType(data, ReactorActivationType.Touch))
+                {
                     continue;
+                }
 
                 if (!MeetsQuestRequirement(data))
+                {
                     continue;
+                }
 
                 // Get reactor hitbox
                 Rectangle reactorRect = reactor.GetCurrentBounds(resolvedTick);
@@ -1893,7 +1896,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int previousVisualState = ResolvePacketVisualOwnershipSourceState(data);
-            int remainingCurrentAnimationDuration = reactor.GetRemainingAnimationDuration(currentTick);
+            int remainingCurrentAnimationDuration = reactor.GetRemainingStoppedAnimationDuration(currentTick);
             ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick, applyAnimationState: false);
             data.PacketLeavePending = true;
             ClearLocalTouchOwnership(index, data);
@@ -1969,7 +1972,7 @@ namespace HaCreator.MapSimulator.Pools
                                 data.PacketAnimationEndTime = ResolvePacketLeaveNoHitLayerAnimationEndTime(
                                     currentTick,
                                     data.PacketAnimationEndTime,
-                                    reactor?.GetRemainingAnimationDuration(currentTick) ?? 0);
+                                    reactor?.GetRemainingStoppedAnimationDuration(currentTick) ?? 0);
                             }
                         }
 
@@ -1998,7 +2001,7 @@ namespace HaCreator.MapSimulator.Pools
                         }
                         else
                         {
-                            int remainingCurrentAnimationDuration = reactor?.GetRemainingAnimationDuration(currentTick) ?? 0;
+                            int remainingCurrentAnimationDuration = reactor?.GetRemainingStoppedAnimationDuration(currentTick) ?? 0;
                             data.PacketAnimationPhase = ResolvePacketAnimationPhaseAfterNoHitLayer(data.PacketProperEventIndex);
                             data.PacketAnimationEndTime = ResolvePacketChangeStateNoHitLayerAnimationEndTime(
                                 currentTick,
@@ -3009,9 +3012,8 @@ namespace HaCreator.MapSimulator.Pools
                 || data == null
                 || !localPlayerX.HasValue
                 || !localPlayerY.HasValue
-                || data.State != ReactorState.Idle
-                || data.PacketLeavePending
-                || !CanActivateWith(reactor, data, ReactorActivationType.Touch)
+                || !CanPollLocalUserTouchReactor(data)
+                || !SupportsActivationType(data, ReactorActivationType.Touch)
                 || !MeetsQuestRequirement(data))
             {
                 return false;
@@ -3058,6 +3060,14 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return data.PoolId > 0 ? -data.PoolId : 0;
+        }
+
+        internal static bool CanPollLocalUserTouchReactor(ReactorRuntimeData data)
+        {
+            return data != null
+                && data.State != ReactorState.Destroyed
+                && data.State != ReactorState.Respawning
+                && !data.PacketLeavePending;
         }
 
         private void AddReactorNameLookup(string name, int index)

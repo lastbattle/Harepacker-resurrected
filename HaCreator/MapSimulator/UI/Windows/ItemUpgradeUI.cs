@@ -4268,7 +4268,10 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.Pants);
             }
 
-            if (normalized.IndexOf("helmet", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("cap", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("hat", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (normalized.IndexOf("helmet", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("headwear", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("cap", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("hat", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Cap);
             }
@@ -4409,7 +4412,7 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (ContainsAny(normalized, "helmets", "helmet", "caps", "cap", "hats", "hat", "circlet"))
+            if (ContainsAny(normalized, "helmets", "helmet", "headwear", "caps", "cap", "hats", "hat", "circlet"))
             {
                 label = "hats";
                 return true;

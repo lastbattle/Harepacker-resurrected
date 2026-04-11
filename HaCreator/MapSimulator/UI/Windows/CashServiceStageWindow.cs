@@ -1459,9 +1459,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _ = reader.ReadByte();
-            string actorLabel = TryReadMapleString(reader, out string decodedString)
-                ? SanitizePacketString(decodedString, isGiftCoupon ? "coupon recipient" : "coupon code")
-                : string.Empty;
+            string actorLabel = string.Empty;
+            if (isGiftCoupon)
+            {
+                if (!TryReadMapleString(reader, out string decodedString))
+                {
+                    return false;
+                }
+
+                actorLabel = SanitizePacketString(decodedString, "coupon recipient");
+            }
+
             int lockerItemCount = stream.Length - stream.Position >= sizeof(byte)
                 ? Math.Max(0, (int)reader.ReadByte())
                 : 0;
@@ -1542,9 +1550,7 @@ namespace HaCreator.MapSimulator.UI
                 ? (string.IsNullOrWhiteSpace(actorLabel)
                     ? "Gift coupon registration completed inside the dedicated Cash Shop status owner."
                     : $"Gift coupon registration completed for {actorLabel}.")
-                : (string.IsNullOrWhiteSpace(actorLabel)
-                    ? "Coupon registration completed inside the dedicated Cash Shop status owner."
-                    : $"Coupon registration completed for {actorLabel}.");
+                : "Coupon registration completed inside the dedicated Cash Shop status owner.";
             if (!string.IsNullOrWhiteSpace(countSummary))
             {
                 _cashCouponLastSummary += $" {countSummary}";
@@ -2197,6 +2203,19 @@ namespace HaCreator.MapSimulator.UI
             RemoveCashGiftPacketCatalogEntry(selectedEntry);
             _cashGiftLastSummary =
                 $"CUIReceiveGift accepted {selectedEntry.Title} from {sender} {reply}; {Math.Max(0, _cashGiftPacketEntries.Count).ToString(CultureInfo.InvariantCulture)} gift row(s) remain staged.";
+            _noticeState = _cashGiftLastSummary;
+            return _cashGiftLastSummary;
+        }
+
+        public string CompleteReceiveGiftDialog(int selectedGiftIndex, string replyText, string dispatchSummary)
+        {
+            string summary = CompleteReceiveGiftDialog(selectedGiftIndex, replyText);
+            if (string.IsNullOrWhiteSpace(dispatchSummary))
+            {
+                return summary;
+            }
+
+            _cashGiftLastSummary = $"{summary} {dispatchSummary}";
             _noticeState = _cashGiftLastSummary;
             return _cashGiftLastSummary;
         }

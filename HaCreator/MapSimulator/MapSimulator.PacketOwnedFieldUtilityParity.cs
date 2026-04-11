@@ -424,16 +424,33 @@ namespace HaCreator.MapSimulator
             platform.IsVisible = entry.State != 0;
             if (entry.MovingState != null)
             {
-                platform.Speed = Math.Max(0f, entry.MovingState.Speed);
-                platform.LeftBound = Math.Min(entry.MovingState.X1, entry.MovingState.X2);
-                platform.RightBound = Math.Max(entry.MovingState.X1, entry.MovingState.X2);
-                platform.TopBound = Math.Min(entry.MovingState.Y1, entry.MovingState.Y2);
-                platform.BottomBound = Math.Max(entry.MovingState.Y1, entry.MovingState.Y2);
-                platform.X = entry.MovingState.CurrentX;
-                platform.Y = entry.MovingState.CurrentY;
-                platform.MovingDown = !entry.MovingState.ReverseVertical;
-                platform.MovingRight = !entry.MovingState.ReverseHorizontal;
+                ApplyPacketOwnedFootholdMovingStateToPlatform(platform, entry.MovingState);
             }
+        }
+
+        internal static void ApplyPacketOwnedFootholdMovingStateToPlatform(
+            DynamicPlatform platform,
+            PacketFieldUtilityMovingFootholdState movingState)
+        {
+            if (platform == null || movingState == null)
+            {
+                return;
+            }
+
+            float previousX = platform.X;
+            float previousY = platform.Y;
+
+            platform.Speed = Math.Max(0f, movingState.Speed);
+            platform.LeftBound = Math.Min(movingState.X1, movingState.X2);
+            platform.RightBound = Math.Max(movingState.X1, movingState.X2);
+            platform.TopBound = Math.Min(movingState.Y1, movingState.Y2);
+            platform.BottomBound = Math.Max(movingState.Y1, movingState.Y2);
+            platform.X = movingState.CurrentX;
+            platform.Y = movingState.CurrentY;
+            platform.MovingDown = !movingState.ReverseVertical;
+            platform.MovingRight = !movingState.ReverseHorizontal;
+            platform.DeltaX = platform.X - previousX;
+            platform.DeltaY = platform.Y - previousY;
         }
 
         private void CachePacketOwnedFootholdNames(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)

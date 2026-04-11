@@ -44,6 +44,19 @@ namespace HaCreator.MapSimulator.Pools
                    && currentTime - summon.LastBodyContactTime >= bodyContactCooldownMs;
         }
 
+        public static bool IsClientBodyAttackMobCandidate(
+            bool mobIsDead,
+            int summonObjectId,
+            Rectangle mobHitbox,
+            Rectangle summonHitbox)
+        {
+            return !mobIsDead
+                   && summonObjectId > 0
+                   && !mobHitbox.IsEmpty
+                   && !summonHitbox.IsEmpty
+                   && mobHitbox.Intersects(summonHitbox);
+        }
+
         public static bool ShouldTriggerExpirySelfDestruct(ActiveSummon summon, int currentTime)
         {
             return summon?.SkillData?.SelfDestructMinion == true
@@ -393,6 +406,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return new Vector2(attackInfo.RangeOrigin.X, attackInfo.RangeOrigin.Y);
+        }
+
+        internal static Vector2 ResolvePacketOwnedAttachedMobAttackHitOffset(
+            MobAnimationSet.AttackInfoMetadata attackInfo)
+        {
+            return Vector2.Zero;
         }
 
         internal static Vector2 ResolvePacketOwnedAttachedHitPosition(

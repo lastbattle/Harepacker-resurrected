@@ -980,6 +980,7 @@ namespace HaCreator.MapSimulator.Character
                 Description = ResolvePortableChairDescription(itemId),
                 RecoveryHp = Math.Max(0, GetIntValue(info?["recoveryHP"]) ?? 0),
                 RecoveryMp = Math.Max(0, GetIntValue(info?["recoveryMP"]) ?? 0),
+                RequiredLevel = Math.Max(0, GetIntValue(info?["reqLevel"]) ?? GetIntValue(info?["reqLEV"]) ?? GetIntValue(info?["lv"]) ?? 0),
                 SitActionId = GetIntValue(info?["sitAction"]),
                 TamingMobItemId = GetIntValue(info?["tamingMob"]),
                 IsCoupleChair = itemId / 1000 == 3012,

@@ -1756,6 +1756,7 @@ namespace HaCreator.MapSimulator.Character
         public string Description { get; set; }
         public int RecoveryHp { get; set; }
         public int RecoveryMp { get; set; }
+        public int RequiredLevel { get; set; }
         public int? SitActionId { get; set; }
         public int? TamingMobItemId { get; set; }
         public bool IsCoupleChair { get; set; }

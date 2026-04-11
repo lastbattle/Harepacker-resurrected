@@ -427,9 +427,9 @@ namespace HaCreator.MapSimulator.UI
             };
             _mechanicSlotPositions = new Dictionary<MechanicEquipSlot, Point>
             {
-                { MechanicEquipSlot.Engine, new Point(11, 27) },
-                { MechanicEquipSlot.Frame, new Point(44, 27) },
-                { MechanicEquipSlot.Transistor, new Point(77, 27) },
+                { MechanicEquipSlot.Transistor, new Point(11, 27) },
+                { MechanicEquipSlot.Engine, new Point(44, 27) },
+                { MechanicEquipSlot.Frame, new Point(77, 27) },
                 { MechanicEquipSlot.Arm, new Point(11, 93) },
                 { MechanicEquipSlot.Leg, new Point(44, 93) }
             };
