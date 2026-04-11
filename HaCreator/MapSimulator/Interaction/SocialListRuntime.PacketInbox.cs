@@ -239,6 +239,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case SocialListClientFriendResultKind.NoticeFailure:
                 case SocialListClientFriendResultKind.NoticeFailureWithMessage:
                 case SocialListClientFriendResultKind.NoticeBlocked:
+                case SocialListClientFriendResultKind.NoticeRequestDenied:
                 case SocialListClientFriendResultKind.NoticeCapacityExpanded:
                     return SetPacketSyncSummary(
                         SocialListTab.Friend,
@@ -281,6 +282,27 @@ namespace HaCreator.MapSimulator.Interaction
                 case SocialListClientPartyResultKind.MemberJobLevel:
                     return ApplyClientPartyJobLevelChange(packet);
 
+                case SocialListClientPartyResultKind.Notice9:
+                case SocialListClientPartyResultKind.Notice10:
+                case SocialListClientPartyResultKind.Notice16:
+                case SocialListClientPartyResultKind.Notice17:
+                case SocialListClientPartyResultKind.Notice18:
+                case SocialListClientPartyResultKind.NoticeNamed:
+                case SocialListClientPartyResultKind.Notice29:
+                case SocialListClientPartyResultKind.Notice32:
+                case SocialListClientPartyResultKind.Notice33:
+                case SocialListClientPartyResultKind.Notice34:
+                case SocialListClientPartyResultKind.Notice36:
+                case SocialListClientPartyResultKind.Notice37:
+                case SocialListClientPartyResultKind.Notice44:
+                case SocialListClientPartyResultKind.NoticeOptionalMessage:
+                case SocialListClientPartyResultKind.TownPortal:
+                    return SetPacketSyncSummary(
+                        SocialListTab.Party,
+                        string.IsNullOrWhiteSpace(packet.Summary)
+                            ? $"Client OnPartyResult({(byte)packet.Kind}) reported {packet.Kind}."
+                            : packet.Summary.Trim());
+
                 case SocialListClientPartyResultKind.Invite:
                 case SocialListClientPartyResultKind.SearchPacket:
                 case SocialListClientPartyResultKind.SearchPacket2:
@@ -288,7 +310,11 @@ namespace HaCreator.MapSimulator.Interaction
                 case SocialListClientPartyResultKind.SearchApply:
                 case SocialListClientPartyResultKind.SearchPacket4:
                 case SocialListClientPartyResultKind.SearchPacket5:
-                    return SetPacketSyncSummary(SocialListTab.Party, $"Client OnPartyResult({(byte)packet.Kind}) reported {packet.Kind}.");
+                    return SetPacketSyncSummary(
+                        SocialListTab.Party,
+                        string.IsNullOrWhiteSpace(packet.Summary)
+                            ? $"Client OnPartyResult({(byte)packet.Kind}) reported {packet.Kind}."
+                            : packet.Summary.Trim());
 
                 default:
                     return $"Unsupported client party-result subtype {(byte)packet.Kind}.";

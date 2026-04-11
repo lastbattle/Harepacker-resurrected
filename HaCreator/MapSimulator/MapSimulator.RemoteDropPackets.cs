@@ -308,8 +308,16 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            bool packetTrackedOwner = trackedPartyActorEvaluator?.Invoke(ownerId) == true;
+            bool packetTrackedActor = actorId == localCharacterId
+                || trackedPartyActorEvaluator?.Invoke(actorId) == true;
+            if (packetTrackedOwner && packetTrackedActor)
+            {
+                return true;
+            }
+
             return legacyTrackedActorEvaluator?.Invoke(ownerId) == true
-                && legacyTrackedActorEvaluator?.Invoke(actorId) == true;
+                && (actorId == localCharacterId || legacyTrackedActorEvaluator?.Invoke(actorId) == true);
         }
 
         internal static bool ShouldSurfacePickupNotice(

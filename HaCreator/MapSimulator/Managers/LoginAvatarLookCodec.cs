@@ -352,6 +352,15 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            int rawSlotPosition = (int)slot;
+            if (rawSlotPosition > 0
+                && rawSlotPosition <= byte.MaxValue
+                && IsCorrectBodyPart(itemId, (byte)rawSlotPosition))
+            {
+                bodyPart = (byte)rawSlotPosition;
+                return true;
+            }
+
             int category = itemId / 10000;
             bodyPart = category switch
             {
@@ -381,11 +390,9 @@ namespace HaCreator.MapSimulator.Managers
                 118 => 53,
                 166 => 166,
                 167 => 167,
-                180 => 18,
+                190 => 18,
                 191 => 19,
                 192 => 20,
-                198 or 199 => 18,
-                >= 190 and < 200 => 18,
                 _ when IsWeaponCategory(category) => 11,
                 _ => 0
             };
@@ -422,12 +429,37 @@ namespace HaCreator.MapSimulator.Managers
                 118 => bodyPart == 53,
                 166 => bodyPart == 166,
                 167 => bodyPart == 167,
-                180 => bodyPart == 18,
+                180 => IsCorrectSpecialSaddleBodyPart(itemId, bodyPart),
+                181 => IsCorrectMonsterRidingAccessoryBodyPart(itemId, bodyPart),
+                182 => bodyPart is 21 or 31 or 39,
+                183 => bodyPart is 29 or 32 or 40,
+                190 => bodyPart == 18,
                 191 => bodyPart == 19,
                 192 => bodyPart == 20,
-                198 or 199 => bodyPart == 18,
-                >= 190 and < 200 => bodyPart == 18,
                 _ => IsWeaponCategory(category) && bodyPart == 11
+            };
+        }
+
+        private static bool IsCorrectSpecialSaddleBodyPart(int itemId, byte bodyPart)
+        {
+            return itemId == 1802100
+                ? bodyPart is 21 or 31 or 39
+                : bodyPart is 14 or 30 or 38;
+        }
+
+        private static bool IsCorrectMonsterRidingAccessoryBodyPart(int itemId, byte bodyPart)
+        {
+            return itemId switch
+            {
+                1812000 => bodyPart is 23 or 34 or 42,
+                1812001 => bodyPart is 22 or 33 or 41,
+                1812002 => bodyPart == 24,
+                1812003 => bodyPart == 25,
+                1812004 => bodyPart is 26 or 35 or 43,
+                1812005 => bodyPart is 27 or 36 or 44,
+                1812006 => bodyPart is 28 or 37 or 45,
+                1812007 => bodyPart is 46 or 47 or 48,
+                _ => false
             };
         }
 

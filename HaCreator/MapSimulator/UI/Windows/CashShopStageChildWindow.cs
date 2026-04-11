@@ -2005,7 +2005,7 @@ namespace HaCreator.MapSimulator.UI
 
             _oneADayCounterDigits = FormatOneADayCounterDigits(_oneADayRemainingSeconds);
             RefreshOneADaySelectorRuntime(state);
-            RefreshOneADayCounterRuntime();
+            RefreshOneADayCounterRuntime(state);
             RefreshOneADayPlateButtonRuntime(state);
             RefreshOneADayRewardSessionRuntime(state);
             _oneADayRuntimeSeeded = true;
@@ -2031,7 +2031,7 @@ namespace HaCreator.MapSimulator.UI
 
             _oneADayRemainingSeconds = nextRemainingSeconds;
             _oneADayCounterDigits = FormatOneADayCounterDigits(_oneADayRemainingSeconds);
-            RefreshOneADayCounterRuntime();
+            RefreshOneADayCounterRuntime(_oneADayStateProvider?.Invoke());
             if (_oneADayRemainingSeconds == 0)
             {
                 _oneADayPending = false;
@@ -2102,8 +2102,38 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private void RefreshOneADayCounterRuntime()
+        private void RefreshOneADayCounterRuntime(OneADayOwnerState state = null)
         {
+            if (state?.CounterSlots != null && state.CounterSlots.Count > 0)
+            {
+                int slotCount = Math.Max(_oneADayCounterDigits.Length, state.CounterSlots.Count);
+                List<OneADayOwnerState.CounterSlotState> templatedSlots = new(slotCount);
+                for (int i = 0; i < slotCount; i++)
+                {
+                    OneADayOwnerState.CounterSlotState template = i < state.CounterSlots.Count
+                        ? state.CounterSlots[i]
+                        : null;
+                    char character = i < _oneADayCounterDigits.Length
+                        ? _oneADayCounterDigits[i]
+                        : template?.Digit ?? '0';
+                    bool isDigit = char.IsDigit(character);
+                    int digit = isDigit ? character - '0' : -1;
+                    bool hasDigitCanvas = template != null
+                        ? template.HasDigitCanvas
+                        : isDigit && digit >= 0 && digit < 10 && ((_oneADayNumberCanvasReadyMask & (1 << digit)) != 0);
+                    templatedSlots.Add(new OneADayOwnerState.CounterSlotState
+                    {
+                        SlotIndex = template?.SlotIndex ?? i,
+                        Digit = character,
+                        IsSeparator = !isDigit,
+                        HasDigitCanvas = isDigit && hasDigitCanvas
+                    });
+                }
+
+                _oneADayCounterRuntime = templatedSlots;
+                return;
+            }
+
             List<OneADayOwnerState.CounterSlotState> slots = new(_oneADayCounterDigits.Length);
             for (int i = 0; i < _oneADayCounterDigits.Length; i++)
             {

@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18504;
         public const ushort DefaultInboundResultOpcode = 372;
         private const int MaxRecentOutboundPackets = 32;
+        private const int MaxRecentInboundPackets = 32;
         private const string DefaultProcessName = "MapleStory";
 
         private readonly string _ownerName;
@@ -44,6 +45,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
         private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
+        private readonly Queue<InboundPacketTrace> _recentInboundPackets = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -55,6 +57,15 @@ namespace HaCreator.MapSimulator.Managers
         public readonly record struct OutboundPacketTrace(
             int Opcode,
             byte RequestType,
+            int PayloadLength,
+            string PayloadHex,
+            string RawPacketHex,
+            string Source,
+            string Summary);
+
+        public readonly record struct InboundPacketTrace(
+            int Opcode,
+            byte ResultType,
             int PayloadLength,
             string PayloadHex,
             string RawPacketHex,
@@ -180,6 +191,29 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public string DescribeRecentInboundPackets(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentInboundPackets);
+            lock (_sync)
+            {
+                if (_recentInboundPackets.Count == 0)
+                {
+                    return $"{_ownerName} official-session bridge inbound history is empty.";
+                }
+
+                InboundPacketTrace[] entries = _recentInboundPackets
+                    .Reverse()
+                    .Take(normalizedCount)
+                    .ToArray();
+                return $"{_ownerName} official-session bridge inbound history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select(entry =>
+                            $"opcode={entry.Opcode} type={entry.ResultType} payloadLen={entry.PayloadLength} source={entry.Source} summary={entry.Summary} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+            }
+        }
+
         public string ClearRecentOutboundPackets()
         {
             lock (_sync)
@@ -189,6 +223,27 @@ namespace HaCreator.MapSimulator.Managers
 
             LastStatus = $"{_ownerName} official-session bridge outbound history cleared.";
             return LastStatus;
+        }
+
+        public string ClearRecentInboundPackets()
+        {
+            lock (_sync)
+            {
+                _recentInboundPackets.Clear();
+            }
+
+            LastStatus = $"{_ownerName} official-session bridge inbound history cleared.";
+            return LastStatus;
+        }
+
+        public string DescribeRecoveredPacketTable()
+        {
+            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Recovered MapleTV packet table: inbound CMapleTVMan::OnSetMessage(405), CMapleTVMan::OnClearMessage(406), CMapleTVMan::OnSendMessageResult(407); outbound CUserLocal::ConsumeCashItem(85).";
+            }
+
+            return "Recovered Messenger packet table: inbound CUIMessenger::OnPacket(372) subtypes 0-8; outbound CUIMessenger::TryNew/OnDestroy/SendInviteMsg/OnInvite blacklist auto-reject/ProcessChat on opcode 143 subtypes 0/2/3/5/6, plus CWvsContext::SendClaimRequest on opcode 118.";
         }
 
         public bool TryReplayRecentOutboundPacket(int historyIndexFromNewest, out string status)
@@ -552,6 +607,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 _pendingMessages.Enqueue(message);
+                RecordObservedInboundPacket(raw, message.Source);
                 ReceivedCount++;
                 LastStatus = $"Queued {_ownerName} opcode {message.Opcode} ({message.Payload.Length} byte(s)) from live session {pair.RemoteEndpoint}.";
             }
@@ -649,6 +705,36 @@ namespace HaCreator.MapSimulator.Managers
             LastStatus = $"Forwarded live {_ownerName} outbound opcode {opcode} type {payload[0]} from {source}.";
         }
 
+        private void RecordObservedInboundPacket(byte[] rawPacket, string source)
+        {
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
+            {
+                return;
+            }
+
+            byte resultType = payload.Length > 0 ? payload[0] : (byte)0;
+            string summary = TryDescribeOwnerClientResult(opcode, payload, out string described)
+                ? described
+                : $"{_ownerName} result opcode={opcode} type={resultType}";
+
+            lock (_sync)
+            {
+                while (_recentInboundPackets.Count >= MaxRecentInboundPackets)
+                {
+                    _recentInboundPackets.Dequeue();
+                }
+
+                _recentInboundPackets.Enqueue(new InboundPacketTrace(
+                    opcode,
+                    resultType,
+                    payload.Length,
+                    Convert.ToHexString(payload),
+                    Convert.ToHexString(rawPacket),
+                    source,
+                    summary));
+            }
+        }
+
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
         {
             opcode = 0;
@@ -685,6 +771,37 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return MessengerPacketCodec.TryDescribeClientRequest(opcode, payload, out summary);
+        }
+
+        private bool TryDescribeOwnerClientResult(int opcode, byte[] payload, out string summary)
+        {
+            summary = null;
+            if (string.Equals(_ownerName, "MapleTV", StringComparison.OrdinalIgnoreCase))
+            {
+                switch (opcode)
+                {
+                    case MapleTvRuntime.PacketTypeSetMessage:
+                        summary = "CMapleTVMan::OnSetMessage";
+                        return true;
+                    case MapleTvRuntime.PacketTypeClearMessage:
+                        summary = "CMapleTVMan::OnClearMessage";
+                        return true;
+                    case MapleTvRuntime.PacketTypeSendMessageResult:
+                        if (payload.Length >= 2)
+                        {
+                            bool showFeedback = payload[0] != 0;
+                            summary = showFeedback
+                                ? $"CMapleTVMan::OnSendMessageResult showFeedback=1 resultCode={payload[1]}"
+                                : "CMapleTVMan::OnSendMessageResult showFeedback=0";
+                            return true;
+                        }
+
+                        summary = "CMapleTVMan::OnSendMessageResult";
+                        return true;
+                }
+            }
+
+            return MessengerPacketCodec.TryDescribeClientResult(opcode, payload, out summary);
         }
 
         private void StopInternal(bool clearPending)

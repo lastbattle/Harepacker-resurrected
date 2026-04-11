@@ -100,6 +100,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal void Configure(QuestRewardRaiseState state)
         {
+            int previousSelectedItemId = GetSelectedOption()?.ItemId ?? 0;
             _state = state;
             _prompt = state?.Prompt;
             _groupIndex = state?.GroupIndex ?? 0;
@@ -108,7 +109,7 @@ namespace HaCreator.MapSimulator.UI
                 : null;
             _selectedIndex = ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement
                 ? Math.Clamp(_selectedIndex, 0, Math.Max(0, (_state?.PlacedPieces?.Count ?? 1) - 1))
-                : _group?.Options?.Count > 0 ? 0 : -1;
+                : ResolveSelectedOptionIndex(previousSelectedItemId);
             if (state != null && state.WindowPosition != Point.Zero)
             {
                 Position = state.WindowPosition;
@@ -558,6 +559,42 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return _state.PlacedPieces[_selectedIndex];
+        }
+
+        private int ResolveSelectedOptionIndex(int previousSelectedItemId)
+        {
+            if (_group?.Options == null || _group.Options.Count == 0)
+            {
+                return -1;
+            }
+
+            if (_group.GroupKey > 0
+                && _state?.SelectedItemsByGroup != null
+                && _state.SelectedItemsByGroup.TryGetValue(_group.GroupKey, out int selectedItemId))
+            {
+                int restoredIndex = _group.Options
+                    .Select((option, index) => new { option.ItemId, index })
+                    .FirstOrDefault(entry => entry.ItemId == selectedItemId)?.index ?? -1;
+                if (restoredIndex >= 0)
+                {
+                    return restoredIndex;
+                }
+            }
+
+            if (previousSelectedItemId > 0)
+            {
+                int preservedIndex = _group.Options
+                    .Select((option, index) => new { option.ItemId, index })
+                    .FirstOrDefault(entry => entry.ItemId == previousSelectedItemId)?.index ?? -1;
+                if (preservedIndex >= 0)
+                {
+                    return preservedIndex;
+                }
+            }
+
+            return _selectedIndex >= 0 && _selectedIndex < _group.Options.Count
+                ? _selectedIndex
+                : 0;
         }
 
         private Texture2D ResolveItemIcon(int itemId)

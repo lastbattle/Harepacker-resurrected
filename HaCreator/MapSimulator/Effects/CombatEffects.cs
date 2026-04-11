@@ -487,6 +487,7 @@ namespace HaCreator.MapSimulator.Effects
         private DamageNumberRenderer _wzDamageRenderer;
         private bool _useWzDamageNumbers = false;
         private AnimationEffects _animationEffects;
+        private Action<string, float, float, int, DamageColorType> _animationDisplayerSpecialTextSink;
         #endregion
 
         #region State
@@ -570,6 +571,12 @@ namespace HaCreator.MapSimulator.Effects
             _animationEffects = animationEffects;
             _wzDamageRenderer?.SetAnimationEffects(animationEffects);
         }
+
+        public void SetAnimationDisplayerSpecialTextSink(Action<string, float, float, int, DamageColorType> sink)
+        {
+            _animationDisplayerSpecialTextSink = sink;
+        }
+
         #endregion
 
         #region Add Effects
@@ -670,6 +677,7 @@ namespace HaCreator.MapSimulator.Effects
         public void AddMiss(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
         {
             AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType, "Miss");
+            _animationDisplayerSpecialTextSink?.Invoke("Miss", x, y, currentTime, colorType);
         }
 
         public void AddGuard(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
@@ -684,7 +692,10 @@ namespace HaCreator.MapSimulator.Effects
                 AddMiss(x, y, currentTime, colorType);
                 return;
             }
-            AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType, specialTextName);
+
+            string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
+            AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType, resolvedSpecialTextName);
+            _animationDisplayerSpecialTextSink?.Invoke(resolvedSpecialTextName, x, y, currentTime, colorType);
         }
 
         /// <summary>

@@ -166,7 +166,7 @@ namespace HaCreator.MapSimulator
         {
             string enabledText = _expeditionIntermediaryOfficialSessionBridgeEnabled ? "enabled" : "disabled";
             string modeText = _expeditionIntermediaryOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
-            string opcodeText = _expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode.ToString();
+            string opcodeText = $"{_expeditionIntermediaryOfficialSessionBridgeConfiguredOpcode} inbound / {ExpeditionIntermediaryPacketTable.OutboundRequestOpcode} outbound";
             string configuredTarget = _expeditionIntermediaryOfficialSessionBridgeUseDiscovery
                 ? _expeditionIntermediaryOfficialSessionBridgeConfiguredLocalPort.HasValue
                     ? $"discover remote port {_expeditionIntermediaryOfficialSessionBridgeConfiguredRemotePort} with local port {_expeditionIntermediaryOfficialSessionBridgeConfiguredLocalPort.Value}"
@@ -179,6 +179,51 @@ namespace HaCreator.MapSimulator
                 ? $"listening on 127.0.0.1:{_expeditionIntermediaryOfficialSessionBridge.ListenPort}"
                 : $"configured for 127.0.0.1:{_expeditionIntermediaryOfficialSessionBridgeConfiguredListenPort}";
             return $"Expedition intermediary session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, opcode {opcodeText}. {_expeditionIntermediaryOfficialSessionBridge.DescribeStatus()}";
+        }
+
+        private bool CanAutoSendExpeditionOutboundRequest()
+        {
+            return _expeditionIntermediaryOfficialSessionBridge.HasConnectedSession;
+        }
+
+        private bool TrySendExpeditionOutboundRequest(
+            ExpeditionIntermediaryOutboundRequest request,
+            out string status)
+        {
+            status = null;
+            if (!ExpeditionIntermediaryPacketCodec.TryEncodeOutboundRequest(request, out ExpeditionIntermediaryEncodedOutboundPacket packet, out string encodeError))
+            {
+                status = encodeError ?? $"Expedition request '{request.Kind}' could not be encoded.";
+                return false;
+            }
+
+            if (!_expeditionIntermediaryOfficialSessionBridge.TrySendRawPacket(packet.RawPacket, out string sendStatus))
+            {
+                status = sendStatus;
+                return false;
+            }
+
+            status = $"{packet.Detail} {sendStatus}";
+            return true;
+        }
+
+        private string ExecuteSocialSearchActionWithParityBridge(string actionKey)
+        {
+            ExpeditionIntermediaryOutboundRequest outboundRequest = default;
+            bool shouldMirrorExpeditionRequest = CanAutoSendExpeditionOutboundRequest()
+                && _socialListRuntime.TryBuildExpeditionSearchOutboundRequest(actionKey, out outboundRequest, out _);
+            string result = _socialListRuntime.ExecuteSearchAction(actionKey);
+            if (!shouldMirrorExpeditionRequest)
+            {
+                return result;
+            }
+
+            if (TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus))
+            {
+                return string.IsNullOrWhiteSpace(result) ? sendStatus : $"{result} {sendStatus}";
+            }
+
+            return string.IsNullOrWhiteSpace(result) ? sendStatus : $"{result} Live expedition send failed: {sendStatus}";
         }
 
         private void EnsureExpeditionIntermediaryOfficialSessionBridgeState(bool shouldRun)
@@ -350,11 +395,17 @@ namespace HaCreator.MapSimulator
                 case "status":
                     return ChatCommandHandler.CommandResult.Info(DescribeExpeditionIntermediaryOfficialSessionBridgeStatus());
 
+                case "opcodes":
+                    return ChatCommandHandler.CommandResult.Info(ExpeditionIntermediaryPacketTable.DescribeOpcodeMap());
+
                 case "history":
                     return HandleExpeditionBridgeHistoryCommand(args, actionIndex + 1);
 
                 case "clearhistory":
                     return ChatCommandHandler.CommandResult.Ok(_expeditionIntermediaryOfficialSessionBridge.ClearRecentOutboundPackets());
+
+                case "send":
+                    return HandleExpeditionBridgeSendCommand(args, actionIndex + 1);
 
                 case "replay":
                     return HandleExpeditionBridgeReplayCommand(args, actionIndex + 1);
@@ -381,7 +432,195 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Ok(DescribeExpeditionIntermediaryOfficialSessionBridgeStatus());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge [status|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|discoverstatus <remotePort> [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> [opcode]|discover <remotePort> [opcode] [listenPort] [process=selector] [localPort=n]|stop]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge [status|opcodes|history [count]|clearhistory|send <create|register|quickjoin|request|response|leave|disband|remove|master|changeboss|relocate> ...|replay <historyIndex>|sendraw <hex>|discoverstatus <remotePort> [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> [opcode]|discover <remotePort> [opcode] [listenPort] [process=selector] [localPort=n]|stop]");
+            }
+        }
+
+        private ChatCommandHandler.CommandResult HandleExpeditionBridgeSendCommand(string[] args, int actionIndex)
+        {
+            if (args.Length <= actionIndex)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /expedition bridge send <create|register|quickjoin|request|response|leave|disband|remove|master|changeboss|relocate> ...");
+            }
+
+            return TryBuildExpeditionOutboundRequestFromCommand(args, actionIndex, out ExpeditionIntermediaryOutboundRequest request, out string error)
+                ? TrySendExpeditionOutboundRequest(request, out string status)
+                    ? ChatCommandHandler.CommandResult.Ok(status)
+                    : ChatCommandHandler.CommandResult.Error(status)
+                : ChatCommandHandler.CommandResult.Error(error);
+        }
+
+        private static bool TryBuildExpeditionOutboundRequestFromCommand(
+            string[] args,
+            int actionIndex,
+            out ExpeditionIntermediaryOutboundRequest request,
+            out string error)
+        {
+            request = default;
+            error = null;
+            if (args == null || args.Length <= actionIndex)
+            {
+                error = "Usage: /expedition bridge send <create|register|quickjoin|request|response|leave|disband|remove|master|changeboss|relocate> ...";
+                return false;
+            }
+
+            string action = args[actionIndex].ToLowerInvariant();
+            string title = TryGetExpeditionCommandValue(args, actionIndex + 1, "title", out string namedTitle)
+                ? NormalizeExpeditionCommandText(namedTitle)
+                : string.Empty;
+            string ownerName = TryGetExpeditionCommandValue(args, actionIndex + 1, "owner", out string namedOwner)
+                ? NormalizeExpeditionCommandText(namedOwner)
+                : string.Empty;
+            string characterName = TryGetExpeditionCommandValue(args, actionIndex + 1, "name", out string namedCharacter)
+                ? NormalizeExpeditionCommandText(namedCharacter)
+                : string.Empty;
+            int partyIndex = TryGetExpeditionCommandInt(args, actionIndex + 1, "party", out int parsedPartyIndex) ? parsedPartyIndex : 0;
+            int partyQuestId = TryGetExpeditionCommandInt(args, actionIndex + 1, "pq", out int parsedPartyQuestId) ? parsedPartyQuestId : 0;
+            int characterId = TryGetExpeditionCommandInt(args, actionIndex + 1, "charid", out int parsedCharacterId) ? parsedCharacterId : 0;
+
+            switch (action)
+            {
+                case "create":
+                case "register":
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        string.Equals(action, "register", StringComparison.OrdinalIgnoreCase)
+                            ? ExpeditionIntermediaryOutboundRequestKind.Register
+                            : ExpeditionIntermediaryOutboundRequestKind.Start,
+                        title,
+                        ownerName,
+                        characterName,
+                        partyIndex,
+                        ExpeditionNoticeKind.Joined,
+                        ExpeditionRemovalKind.Leave,
+                        PartyQuestId: partyQuestId,
+                        CharacterId: characterId);
+                    return true;
+
+                case "quickjoin":
+                case "request":
+                    if (string.IsNullOrWhiteSpace(ownerName) && string.IsNullOrWhiteSpace(characterName))
+                    {
+                        error = "Usage: /expedition bridge send quickjoin|request owner=<leaderName> [title=Expedition]";
+                        return false;
+                    }
+
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        string.Equals(action, "quickjoin", StringComparison.OrdinalIgnoreCase)
+                            ? ExpeditionIntermediaryOutboundRequestKind.QuickJoin
+                            : ExpeditionIntermediaryOutboundRequestKind.Request,
+                        title,
+                        ownerName,
+                        string.IsNullOrWhiteSpace(characterName) ? ownerName : characterName,
+                        partyIndex,
+                        ExpeditionNoticeKind.Joined,
+                        ExpeditionRemovalKind.Leave,
+                        PartyQuestId: partyQuestId,
+                        CharacterId: characterId);
+                    return true;
+
+                case "response":
+                {
+                    bool accepted = true;
+                    if (TryGetExpeditionCommandValue(args, actionIndex + 1, "result", out string responseToken))
+                    {
+                        accepted = string.Equals(responseToken, "accept", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(responseToken, "accepted", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(responseToken, "yes", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(responseToken, "1", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(responseToken, "true", StringComparison.OrdinalIgnoreCase);
+                    }
+
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        ExpeditionIntermediaryOutboundRequestKind.Response,
+                        title,
+                        ownerName,
+                        characterName,
+                        partyIndex,
+                        ExpeditionNoticeKind.Joined,
+                        ExpeditionRemovalKind.Leave,
+                        PartyQuestId: partyQuestId,
+                        ResponseAccepted: accepted,
+                        CharacterId: characterId);
+                    return true;
+                }
+
+                case "leave":
+                case "disband":
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        string.Equals(action, "leave", StringComparison.OrdinalIgnoreCase)
+                            ? ExpeditionIntermediaryOutboundRequestKind.Leave
+                            : ExpeditionIntermediaryOutboundRequestKind.Disband,
+                        title,
+                        ownerName,
+                        characterName,
+                        partyIndex,
+                        ExpeditionNoticeKind.Joined,
+                        string.Equals(action, "leave", StringComparison.OrdinalIgnoreCase)
+                            ? ExpeditionRemovalKind.Leave
+                            : ExpeditionRemovalKind.Disband,
+                        PartyQuestId: partyQuestId,
+                        CharacterId: characterId);
+                    return true;
+
+                case "remove":
+                case "kick":
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        ExpeditionIntermediaryOutboundRequestKind.Remove,
+                        title,
+                        ownerName,
+                        characterName,
+                        partyIndex,
+                        ExpeditionNoticeKind.Removed,
+                        ExpeditionRemovalKind.Removed,
+                        PartyQuestId: partyQuestId,
+                        CharacterId: characterId);
+                    return true;
+
+                case "master":
+                case "changemaster":
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        ExpeditionIntermediaryOutboundRequestKind.Master,
+                        title,
+                        ownerName,
+                        characterName,
+                        partyIndex,
+                        ExpeditionNoticeKind.Joined,
+                        ExpeditionRemovalKind.Leave,
+                        PartyQuestId: partyQuestId,
+                        CharacterId: characterId);
+                    return true;
+
+                case "changeboss":
+                case "changepartyboss":
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        ExpeditionIntermediaryOutboundRequestKind.ChangePartyBoss,
+                        title,
+                        ownerName,
+                        characterName,
+                        partyIndex,
+                        ExpeditionNoticeKind.Joined,
+                        ExpeditionRemovalKind.Leave,
+                        PartyQuestId: partyQuestId,
+                        CharacterId: characterId);
+                    return true;
+
+                case "relocate":
+                case "relocateparty":
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        ExpeditionIntermediaryOutboundRequestKind.RelocateParty,
+                        title,
+                        ownerName,
+                        characterName,
+                        partyIndex,
+                        ExpeditionNoticeKind.Joined,
+                        ExpeditionRemovalKind.Leave,
+                        PartyQuestId: partyQuestId,
+                        CharacterId: characterId);
+                    return true;
+
+                default:
+                    error = $"Unsupported expedition bridge send action '{action}'.";
+                    return false;
             }
         }
 

@@ -1284,6 +1284,7 @@ namespace HaCreator.MapSimulator.Loaders
                 "Duration" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Interval" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Damage" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Damage Reduction" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "MP Cost" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "HP Cost" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Mastery" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
@@ -1291,6 +1292,10 @@ namespace HaCreator.MapSimulator.Loaders
                 "Critical Damage (Max)" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Bullet Count" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Speed" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Boss Damage" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Ignore Enemy DEF" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Bonus EXP" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Meso Rate" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Elemental Resistance" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 _ => false
             };

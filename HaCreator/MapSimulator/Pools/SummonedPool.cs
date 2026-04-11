@@ -893,16 +893,57 @@ namespace HaCreator.MapSimulator.Pools
             foreach (PacketOwnedSummonState teslaState in EnumerateOwnerSummonStates(state.OwnerCharacterId)
                          .Where(static candidate => candidate?.Summon?.SkillId == TeslaCoilSkillId && !candidate.Summon.IsPendingRemoval))
             {
+                if (ReferenceEquals(teslaState, state))
+                {
+                    continue;
+                }
+
                 PromotePacketOwnedTeslaRuntimeState(teslaState);
-                PreparePacketOwnedSkillActionOwner(teslaState);
-                teslaState.Summon.CurrentAnimationBranchName = state.Summon.CurrentAnimationBranchName;
-                teslaState.Summon.LastAttackAnimationStartTime = currentTime;
-                ArmPacketOwnedOneTimeAction(teslaState, currentTime, state.LastSkillAction, isSkillAction: true);
-                teslaState.Summon.ActorState = hasPrepareAnimation
-                    ? SummonActorState.Prepare
-                    : SummonActorState.Attack;
-                teslaState.Summon.LastStateChangeTime = currentTime;
+                int oneTimeAction = teslaState.OneTimeAction;
+                int oneTimeActionEndTime = teslaState.OneTimeActionEndTime;
+                PacketOwnedOneTimeActionClip? oneTimeActionClip = teslaState.OneTimeActionClip;
+                ClearPacketOwnedTeslaSiblingSkillActionOwner(
+                    teslaState.Summon,
+                    ref oneTimeAction,
+                    ref oneTimeActionEndTime,
+                    ref oneTimeActionClip,
+                    currentTime,
+                    TeslaCoilSkillId);
+                teslaState.OneTimeAction = oneTimeAction;
+                teslaState.OneTimeActionEndTime = oneTimeActionEndTime;
+                teslaState.OneTimeActionClip = oneTimeActionClip;
+                ClearPacketOwnedMobAttackHitEffects(teslaState.Summon.ObjectId);
             }
+        }
+
+        internal static void ClearPacketOwnedTeslaSiblingSkillActionOwner(
+            ActiveSummon summon,
+            ref int oneTimeAction,
+            ref int oneTimeActionEndTime,
+            ref PacketOwnedOneTimeActionClip? oneTimeActionClip,
+            int currentTime,
+            int teslaCoilSkillId)
+        {
+            if (summon?.SkillId != teslaCoilSkillId)
+            {
+                return;
+            }
+
+            oneTimeAction = 0;
+            oneTimeActionEndTime = int.MinValue;
+            oneTimeActionClip = null;
+            summon.OneTimeActionFallbackAnimation = null;
+            summon.OneTimeActionFallbackActionCode = 0;
+            summon.OneTimeActionFallbackStartTime = int.MinValue;
+            summon.OneTimeActionFallbackAnimationTime = int.MinValue;
+            summon.OneTimeActionFallbackEndTime = int.MinValue;
+            summon.CurrentAnimationBranchName = null;
+            summon.LastAttackAnimationStartTime = int.MinValue;
+            summon.ActorState = PacketOwnedSummonUpdateRules.ResolveIdleActorState(
+                summon,
+                currentTime,
+                teslaCoilSkillId);
+            summon.LastStateChangeTime = currentTime;
         }
 
         private void PreparePacketOwnedSkillActionOwner(PacketOwnedSummonState state)
@@ -4944,11 +4985,12 @@ namespace HaCreator.MapSimulator.Pools
                 return liveAttackInfo ?? templateAttackInfo;
             }
 
+            int sourceFrameIndex = liveHitEffectEntry.SourceFrameIndex;
             bool needsTemplateHitAfter = !liveAttackInfo.HasHitAfterMetadata && templateAttackInfo.HasHitAfterMetadata;
-            bool needsTemplateHitAttach = !liveAttackInfo.HasExplicitHitAttachMetadata(liveHitEffectEntry.SourceFrameIndex)
-                                          && templateAttackInfo.HasHitAttachMetadata;
-            bool needsTemplateFacingAttach = !liveAttackInfo.HasExplicitFacingAttachMetadata(liveHitEffectEntry.SourceFrameIndex)
-                                             && templateAttackInfo.HasFacingAttachMetadata;
+            bool needsTemplateHitAttach = !liveAttackInfo.HasExplicitHitAttachMetadata(sourceFrameIndex)
+                                          && templateAttackInfo.HasExplicitHitAttachMetadata(sourceFrameIndex);
+            bool needsTemplateFacingAttach = !liveAttackInfo.HasExplicitFacingAttachMetadata(sourceFrameIndex)
+                                             && templateAttackInfo.HasExplicitFacingAttachMetadata(sourceFrameIndex);
             bool needsTemplateRangeOrigin = !liveAttackInfo.HasRangeOrigin && templateAttackInfo.HasRangeOrigin;
             bool needsTemplateRangeBounds = !liveAttackInfo.HasRangeBounds && templateAttackInfo.HasRangeBounds;
             if (!needsTemplateHitAfter
@@ -4969,14 +5011,18 @@ namespace HaCreator.MapSimulator.Pools
 
             if (needsTemplateHitAttach)
             {
-                mergedAttackInfo.HitAttach = templateAttackInfo.HitAttach;
-                mergedAttackInfo.HasHitAttachMetadata = true;
+                CopyExplicitHitAttachMetadataForSourceFrame(
+                    mergedAttackInfo,
+                    templateAttackInfo,
+                    sourceFrameIndex);
             }
 
             if (needsTemplateFacingAttach)
             {
-                mergedAttackInfo.FacingAttach = templateAttackInfo.FacingAttach;
-                mergedAttackInfo.HasFacingAttachMetadata = true;
+                CopyExplicitFacingAttachMetadataForSourceFrame(
+                    mergedAttackInfo,
+                    templateAttackInfo,
+                    sourceFrameIndex);
             }
 
             if (needsTemplateRangeOrigin)
@@ -4992,6 +5038,48 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return mergedAttackInfo;
+        }
+
+        private static void CopyExplicitHitAttachMetadataForSourceFrame(
+            MobAnimationSet.AttackInfoMetadata destination,
+            MobAnimationSet.AttackInfoMetadata source,
+            int sourceFrameIndex)
+        {
+            if (destination == null || source == null)
+            {
+                return;
+            }
+
+            if (sourceFrameIndex >= 0
+                && source.FrameHitAttachOverrides.TryGetValue(sourceFrameIndex, out bool frameOverride))
+            {
+                destination.FrameHitAttachOverrides[sourceFrameIndex] = frameOverride;
+                return;
+            }
+
+            destination.HitAttach = source.HitAttach;
+            destination.HasHitAttachMetadata = source.HasHitAttachMetadata;
+        }
+
+        private static void CopyExplicitFacingAttachMetadataForSourceFrame(
+            MobAnimationSet.AttackInfoMetadata destination,
+            MobAnimationSet.AttackInfoMetadata source,
+            int sourceFrameIndex)
+        {
+            if (destination == null || source == null)
+            {
+                return;
+            }
+
+            if (sourceFrameIndex >= 0
+                && source.FrameFacingAttachOverrides.TryGetValue(sourceFrameIndex, out bool frameOverride))
+            {
+                destination.FrameFacingAttachOverrides[sourceFrameIndex] = frameOverride;
+                return;
+            }
+
+            destination.FacingAttach = source.FacingAttach;
+            destination.HasFacingAttachMetadata = source.HasFacingAttachMetadata;
         }
 
         private static MobAnimationSet.AttackInfoMetadata CloneAttackInfoMetadata(
@@ -5373,9 +5461,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             var candidates = new List<string>();
-            if (normalizedEffectPath.Split('/').Length >= 3)
+            if (TryNormalizePacketMobAttackGeneralEffectAbsolutePath(normalizedEffectPath, "Mob", out string absoluteCandidate))
             {
-                candidates.Add(normalizedEffectPath);
+                candidates.Add(absoluteCandidate);
             }
 
             string normalizedTemplateId = mobTemplateId?.Trim();
@@ -5385,11 +5473,12 @@ namespace HaCreator.MapSimulator.Pools
             }
             if (!string.IsNullOrWhiteSpace(normalizedTemplateId))
             {
-                candidates.Add($"Mob/{normalizedTemplateId}.img/{normalizedEffectPath}");
-                if (!string.IsNullOrWhiteSpace(attackAction))
+                foreach (string basePath in EnumeratePacketMobAttackGeneralEffectBasePaths(normalizedTemplateId, attackAction))
                 {
-                    candidates.Add($"Mob/{normalizedTemplateId}.img/{attackAction}/{normalizedEffectPath}");
-                    candidates.Add($"Mob/{normalizedTemplateId}.img/{attackAction}/info/{normalizedEffectPath}");
+                    if (TryCombinePacketMobAttackGeneralEffectPath(basePath, normalizedEffectPath, out string combinedCandidate))
+                    {
+                        candidates.Add(combinedCandidate);
+                    }
                 }
             }
 
@@ -5397,6 +5486,193 @@ namespace HaCreator.MapSimulator.Pools
                 .Where(static candidate => !string.IsNullOrWhiteSpace(candidate))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        private static IEnumerable<string> EnumeratePacketMobAttackGeneralEffectBasePaths(
+            string normalizedTemplateId,
+            string attackAction)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedTemplateId))
+            {
+                yield break;
+            }
+
+            yield return $"Mob/{normalizedTemplateId}.img";
+            if (string.IsNullOrWhiteSpace(attackAction))
+            {
+                yield break;
+            }
+
+            yield return $"Mob/{normalizedTemplateId}.img/{attackAction}";
+            yield return $"Mob/{normalizedTemplateId}.img/{attackAction}/info";
+        }
+
+        private static bool TryCombinePacketMobAttackGeneralEffectPath(
+            string basePath,
+            string relativeOrAbsolutePath,
+            out string combinedPath)
+        {
+            combinedPath = null;
+            if (string.IsNullOrWhiteSpace(basePath) || string.IsNullOrWhiteSpace(relativeOrAbsolutePath))
+            {
+                return false;
+            }
+
+            if (TryNormalizePacketMobAttackGeneralEffectAbsolutePath(relativeOrAbsolutePath, "Mob", out string absolutePath))
+            {
+                combinedPath = absolutePath;
+                return true;
+            }
+
+            string[] baseSegments = basePath
+                .Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] relativeSegments = relativeOrAbsolutePath
+                .Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (baseSegments.Length < 2 || relativeSegments.Length == 0)
+            {
+                return false;
+            }
+
+            var combinedSegments = new List<string>(baseSegments);
+            for (int i = 0; i < relativeSegments.Length; i++)
+            {
+                string segment = relativeSegments[i];
+                if (string.Equals(segment, ".", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (string.Equals(segment, "..", StringComparison.Ordinal))
+                {
+                    if (combinedSegments.Count <= 2)
+                    {
+                        return false;
+                    }
+
+                    combinedSegments.RemoveAt(combinedSegments.Count - 1);
+                    continue;
+                }
+
+                combinedSegments.Add(segment);
+            }
+
+            if (combinedSegments.Count < 3)
+            {
+                return false;
+            }
+
+            combinedPath = string.Join("/", combinedSegments);
+            return true;
+        }
+
+        private static bool TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
+            string effectPath,
+            string defaultCategory,
+            out string normalizedPath)
+        {
+            normalizedPath = null;
+            string normalizedEffectPath = effectPath?.Replace('\\', '/').Trim().Trim('/');
+            if (string.IsNullOrWhiteSpace(normalizedEffectPath))
+            {
+                return false;
+            }
+
+            string[] segments = normalizedEffectPath
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return false;
+            }
+
+            if (IsPacketMobAttackCategorySegment(segments[0]))
+            {
+                if (segments.Length < 2)
+                {
+                    return false;
+                }
+
+                normalizedPath = NormalizePacketMobAttackEffectImageSegmentPath(
+                    segments[0],
+                    segments[1],
+                    segments.Skip(2));
+                return !string.IsNullOrWhiteSpace(normalizedPath);
+            }
+
+            if (segments[0].EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedPath = NormalizePacketMobAttackEffectImageSegmentPath(
+                    defaultCategory,
+                    segments[0],
+                    segments.Skip(1));
+                return !string.IsNullOrWhiteSpace(normalizedPath);
+            }
+
+            if (IsPacketMobAttackImageIdSegment(segments[0]))
+            {
+                normalizedPath = NormalizePacketMobAttackEffectImageSegmentPath(
+                    defaultCategory,
+                    $"{segments[0]}.img",
+                    segments.Skip(1));
+                return !string.IsNullOrWhiteSpace(normalizedPath);
+            }
+
+            return false;
+        }
+
+        private static string NormalizePacketMobAttackEffectImageSegmentPath(
+            string categorySegment,
+            string imageSegment,
+            IEnumerable<string> propertySegments)
+        {
+            if (string.IsNullOrWhiteSpace(categorySegment) || string.IsNullOrWhiteSpace(imageSegment))
+            {
+                return null;
+            }
+
+            string normalizedImageSegment = imageSegment.Trim();
+            if (!normalizedImageSegment.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
+                && IsPacketMobAttackImageIdSegment(normalizedImageSegment))
+            {
+                normalizedImageSegment = $"{normalizedImageSegment}.img";
+            }
+
+            var normalizedSegments = new List<string> { categorySegment.Trim(), normalizedImageSegment };
+            foreach (string segment in propertySegments ?? Enumerable.Empty<string>())
+            {
+                if (!string.IsNullOrWhiteSpace(segment))
+                {
+                    normalizedSegments.Add(segment.Trim());
+                }
+            }
+
+            return normalizedSegments.Count >= 3
+                ? string.Join("/", normalizedSegments)
+                : null;
+        }
+
+        private static bool IsPacketMobAttackCategorySegment(string segment)
+        {
+            return string.Equals(segment, "Mob", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "Skill", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "Effect", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "Character", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "Item", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "Map", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "UI", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "Npc", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(segment, "Reactor", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPacketMobAttackImageIdSegment(string segment)
+        {
+            if (string.IsNullOrWhiteSpace(segment))
+            {
+                return false;
+            }
+
+            return segment.Trim().All(static ch => char.IsDigit(ch));
         }
 
         private static WzImageProperty ResolvePacketMobAttackGeneralEffectProperty(string effectUol)

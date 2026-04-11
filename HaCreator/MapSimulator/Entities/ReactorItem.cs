@@ -318,6 +318,12 @@ namespace HaCreator.MapSimulator.Entities
                 && transitions.Length > 0;
         }
 
+        internal bool HasExactAuthoredEventInfo(int state)
+        {
+            return _stateTransitions.TryGetValue(state, out AuthoredStateTransition[] transitions)
+                && transitions.Length > 0;
+        }
+
         public bool TryGetNextState(int currentState, out int nextState)
         {
             return TryGetNextState(currentState, ReactorActivationType.None, out nextState);
@@ -621,6 +627,19 @@ namespace HaCreator.MapSimulator.Entities
         {
             int resolvedState = ResolveState(currentState);
             if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            return transitions
+                .Select(static transition => transition.EventType)
+                .ToArray();
+        }
+
+        internal IReadOnlyList<int> GetExactAuthoredEventTypes(int currentState)
+        {
+            if (!_stateTransitions.TryGetValue(currentState, out AuthoredStateTransition[] transitions)
                 || transitions.Length == 0)
             {
                 return Array.Empty<int>();

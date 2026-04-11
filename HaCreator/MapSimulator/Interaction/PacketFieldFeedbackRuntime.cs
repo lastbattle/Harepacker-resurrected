@@ -40,6 +40,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal Action<string> ShowUtilityFeedback { get; init; }
         internal Action<string> ShowModalWarning { get; init; }
         internal Action<string> RememberWhisperTarget { get; init; }
+        internal Func<int> GetCurrentChannelId { get; init; }
+        internal Func<string> GetLastOutgoingWhisperText { get; init; }
+        internal Func<string> GetLastOutgoingWhisperTarget { get; init; }
         internal Action<int, int> TriggerTremble { get; init; }
         internal Action ClearFieldFade { get; init; }
         internal Action<string> RequestBgm { get; init; }
@@ -126,11 +129,18 @@ namespace HaCreator.MapSimulator.Interaction
         private const int HontaleTimerStageOneStringPoolId = 0x16F0;
         private const int HontaleTimerStageZeroStringPoolId = 0x16F1;
         private const int WhisperLocationUnavailableStringPoolId = 0x9A;
+        private const int WhisperSentStringPoolId = 0x9F;
         private const int WhisperChannelStringPoolId = 0x9B;
         private const int WhisperNotFoundStringPoolId = 0x9C;
         private const int WhisperLocationStringPoolId = 0x9D;
         private const int WhisperHiddenFieldStringPoolId = 0x9E;
         private const int WhisperUserListFormatStringPoolId = 0x2D7;
+        private const int IncomingWhisperSameChannelStringPoolId = 0x72E;
+        private const int IncomingWhisperOtherChannelStringPoolId = 0x72F;
+        private const int OutgoingWhisperLogStringPoolId = 0x730;
+        private const int CoupleSharedChatStringPoolId = 0x72D;
+        private const int CoupleNoticeUnavailableStringPoolId = 0xA1;
+        private const int JukeBoxMessageStringPoolId = 0x1AC3;
         private const string ZakumTimerBeforeFallback = "The Zakum Shrine will close if you do not summon Zakum in {0} minutes.";
         private const string ZakumTimerWarningFallback = "The Zakum Shrine will close in {0} minutes.";
         private const string ZakumTimerExpiredFallback = "The Zakum Shrine has closed.";
@@ -141,10 +151,18 @@ namespace HaCreator.MapSimulator.Interaction
         private const string HontaleTimerStageOneFallback = "The Horntail Expedition will end in {0} min(s).";
         private const string HontaleTimerStageZeroFallback = "The Horntail Expedition will end if it does not start within {0} min(s) of entering.";
         private const string WhisperLocationUnavailableFallback = "{0} cannot be followed right now.";
+        private const string WhisperDisabledFallback = "{0} have currently disabled whispers.";
+        private const string WhisperSentFallback = "You have whispered to '{0}'";
         private const string WhisperChannelFallback = "{0} is on {1}.";
         private const string WhisperNotFoundFallback = "{0} could not be found.";
         private const string WhisperLocationFallback = "{0} is in {1}.";
         private const string WhisperHiddenFieldFallback = "{0} is in a hidden field.";
+        private const string IncomingWhisperSameChannelFallback = "{0}: {1}";
+        private const string IncomingWhisperOtherChannelFallback = "{0} ({1}): {2}";
+        private const string OutgoingWhisperLogFallback = "> {0}: {1}";
+        private const string CoupleSharedChatFallback = "{0}: {1}";
+        private const string CoupleNoticeUnavailableFallback = "Couple notice is unavailable.";
+        private const string JukeBoxMessageFallback = "{0} played {1} through the field jukebox.";
         private const int HorntailBossHpFirstBodyMobId = 8810118;
         private const int HorntailBossHpLastBodyMobId = 8810122;
         private static readonly Encoding SwindleEncoding = Encoding.Default;
@@ -723,7 +741,7 @@ namespace HaCreator.MapSimulator.Interaction
             using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
             byte family = reader.ReadByte();
             string sender = ReadMapleString(reader);
-            string body = ReadMapleString(reader);
+            string body = NormalizeFieldChatText(ReadMapleString(reader));
 
             if (!TryResolveGroupFamily(family, out int chatLogType, out string prefix))
             {
@@ -738,7 +756,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            string text = $"{prefix} {sender}: {body}".Trim();
+            string text = FormatFieldFeedbackStringPoolText(
+                CoupleSharedChatStringPoolId,
+                CoupleSharedChatFallback,
+                sender,
+                body);
             callbacks?.AddClientChatMessage?.Invoke(text, chatLogType, null);
             TryAddSwindleWarning(body, family == 1, currentTick, callbacks);
             _statusMessage = $"Applied packet-owned {prefix.Trim('[', ']')} chat from {sender}.";
@@ -766,13 +788,8 @@ namespace HaCreator.MapSimulator.Interaction
                             return true;
                         }
 
-                        string channelText = channelId > 0
-                            ? callbacks?.ResolveChannelName?.Invoke(channelId) ?? $"Ch. {channelId}"
-                            : string.Empty;
-                        string prefix = fromAdmin ? "[GM Whisper]" : "[Whisper]";
-                        string text = string.IsNullOrWhiteSpace(channelText)
-                            ? $"{prefix} {sender}: {body}"
-                            : $"{prefix} {sender} ({channelText}): {body}";
+                        body = NormalizeFieldChatText(body);
+                        string text = ResolveIncomingWhisperLogText(sender, channelId, body, callbacks);
                         callbacks?.AddClientChatMessage?.Invoke(text, 16, sender);
                         TryAddSwindleWarning(body, allowGroupFamilyWarning: true, currentTick, callbacks);
                         callbacks?.RememberWhisperTarget?.Invoke(sender);
@@ -786,18 +803,22 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         string target = ReadMapleString(reader);
                         bool success = reader.ReadByte() != 0;
-                        if (success)
+                        TryAddOutgoingWhisperEcho(target, callbacks);
+                        if (!success)
                         {
-                            callbacks?.RememberWhisperTarget?.Invoke(target);
-                            _lastWhisperTarget = target;
-                            _statusMessage = $"Applied packet-owned whisper target update for {target}.";
-                        }
-                        else
-                        {
-                            callbacks?.AddClientChatMessage?.Invoke($"[System] {target} is unavailable for whisper.", 12, null);
+                            string warning = FormatFieldFeedbackStringPoolText(
+                                WhisperLocationUnavailableStringPoolId,
+                                WhisperDisabledFallback,
+                                target.Trim().ToLowerInvariant());
+                            callbacks?.AddClientChatMessage?.Invoke(warning, 12, null);
                             _statusMessage = $"Applied packet-owned whisper failure for {target}.";
+                            message = _statusMessage;
+                            return true;
                         }
 
+                        callbacks?.RememberWhisperTarget?.Invoke(target);
+                        _lastWhisperTarget = target;
+                        _statusMessage = $"Applied packet-owned whisper target update for {target}.";
                         message = _statusMessage;
                         return true;
                     }
@@ -837,11 +858,17 @@ namespace HaCreator.MapSimulator.Interaction
                 case 34:
                     {
                         string target = ReadMapleString(reader);
-                        bool available = reader.ReadByte() != 0;
-                        string text = available
-                            ? $"[System] {target.ToLowerInvariant()} is available for whisper."
-                            : $"[System] {target} is no longer available for whisper.";
-                        callbacks?.AddClientChatMessage?.Invoke(text, 12, available ? target : null);
+                        bool disabled = reader.ReadByte() != 0;
+                        string text = disabled
+                            ? FormatFieldFeedbackStringPoolText(
+                                WhisperLocationUnavailableStringPoolId,
+                                WhisperDisabledFallback,
+                                target.Trim().ToLowerInvariant())
+                            : FormatFieldFeedbackStringPoolText(
+                                WhisperSentStringPoolId,
+                                WhisperSentFallback,
+                                target);
+                        callbacks?.AddClientChatMessage?.Invoke(text, disabled ? 12 : 14, disabled ? null : target);
                         _statusMessage = $"Applied packet-owned whisper availability notice for {target}.";
                         message = _statusMessage;
                         return true;
@@ -864,14 +891,20 @@ namespace HaCreator.MapSimulator.Interaction
                         bool hasMessage = reader.ReadByte() != 0;
                         if (!hasMessage)
                         {
-                            callbacks?.AddClientChatMessage?.Invoke("[System] Couple notice is unavailable.", 12, null);
+                            callbacks?.AddClientChatMessage?.Invoke(
+                                MapleStoryStringPool.GetOrFallback(
+                                    CoupleNoticeUnavailableStringPoolId,
+                                    CoupleNoticeUnavailableFallback),
+                                12,
+                                null);
                             _statusMessage = "Applied packet-owned empty couple notice.";
                             message = _statusMessage;
                             return true;
                         }
 
                         string body = ReadMapleString(reader);
-                        callbacks?.AddClientChatMessage?.Invoke($"[Couple] {body}", 6, null);
+                        body = NormalizeFieldChatText(body);
+                        callbacks?.AddClientChatMessage?.Invoke(body, 6, null);
                         _statusMessage = "Applied packet-owned couple notice.";
                         message = _statusMessage;
                         return true;
@@ -881,7 +914,15 @@ namespace HaCreator.MapSimulator.Interaction
                         string sender = ReadMapleString(reader);
                         reader.ReadByte();
                         string body = ReadMapleString(reader);
-                        callbacks?.AddClientChatMessage?.Invoke($"[Couple] {sender}: {body}", 6, null);
+                        body = NormalizeFieldChatText(body);
+                        callbacks?.AddClientChatMessage?.Invoke(
+                            FormatFieldFeedbackStringPoolText(
+                                CoupleSharedChatStringPoolId,
+                                CoupleSharedChatFallback,
+                                sender,
+                                body),
+                            6,
+                            null);
                         _statusMessage = $"Applied packet-owned couple chat from {sender}.";
                         message = _statusMessage;
                         return true;
@@ -1076,8 +1117,12 @@ namespace HaCreator.MapSimulator.Interaction
             int itemId = reader.ReadInt32();
             string owner = ReadMapleString(reader);
             string itemName = callbacks?.ResolveItemName?.Invoke(itemId) ?? $"Item {itemId}";
-            string text = $"[System] {owner} played {itemName} through the field jukebox.";
-            callbacks?.AddClientChatMessage?.Invoke(text, 12, null);
+            string text = FormatFieldFeedbackStringPoolText(
+                JukeBoxMessageStringPoolId,
+                JukeBoxMessageFallback,
+                owner,
+                itemName);
+            callbacks?.AddClientChatMessage?.Invoke(text, 13, null);
             _lastJukeboxSummary = $"{owner} -> {itemName}";
             _statusMessage = $"Applied packet-owned jukebox request for {itemName}.";
             message = _statusMessage;
@@ -1472,6 +1517,49 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"{target} is in {mapName}.";
         }
 
+        private static string ResolveIncomingWhisperLogText(string sender, byte channelId, string body, PacketFieldFeedbackCallbacks callbacks)
+        {
+            int currentChannelId = callbacks?.GetCurrentChannelId?.Invoke() ?? 0;
+            if (channelId <= 0 || channelId == currentChannelId)
+            {
+                return FormatFieldFeedbackStringPoolText(
+                    IncomingWhisperSameChannelStringPoolId,
+                    IncomingWhisperSameChannelFallback,
+                    sender,
+                    body);
+            }
+
+            string channelName = callbacks?.ResolveChannelName?.Invoke(channelId) ?? $"Ch. {channelId}";
+            return FormatFieldFeedbackStringPoolText(
+                IncomingWhisperOtherChannelStringPoolId,
+                IncomingWhisperOtherChannelFallback,
+                sender,
+                channelName,
+                body);
+        }
+
+        private static void TryAddOutgoingWhisperEcho(string target, PacketFieldFeedbackCallbacks callbacks)
+        {
+            string outgoingText = callbacks?.GetLastOutgoingWhisperText?.Invoke();
+            if (string.IsNullOrWhiteSpace(outgoingText))
+            {
+                return;
+            }
+
+            string outgoingTarget = callbacks?.GetLastOutgoingWhisperTarget?.Invoke();
+            string resolvedTarget = string.IsNullOrWhiteSpace(outgoingTarget)
+                ? target?.Trim() ?? string.Empty
+                : outgoingTarget.Trim();
+            callbacks?.AddClientChatMessage?.Invoke(
+                FormatFieldFeedbackStringPoolText(
+                    OutgoingWhisperLogStringPoolId,
+                    OutgoingWhisperLogFallback,
+                    resolvedTarget,
+                    outgoingText.Trim()),
+                14,
+                resolvedTarget);
+        }
+
         private static bool HasWhisperTransferTarget(int mapId, PacketFieldFeedbackCallbacks callbacks)
         {
             if (mapId <= 0)
@@ -1512,6 +1600,28 @@ namespace HaCreator.MapSimulator.Interaction
                         ? fallbackFormat
                         : string.Format(CultureInfo.InvariantCulture, fallbackFormat, args));
             }
+        }
+
+        private static string FormatFieldFeedbackStringPoolText(int stringPoolId, string fallbackFormat, params object[] args)
+        {
+            return FormatWhisperStringPoolText(stringPoolId, fallbackFormat, args);
+        }
+
+        private static string NormalizeFieldChatText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(text.Length);
+            for (int i = 0; i < text.Length; i++)
+            {
+                char character = text[i];
+                builder.Append(character < 32 || character == 127 ? ' ' : character);
+            }
+
+            return builder.ToString().Trim();
         }
 
         private static bool TryBuildWhisperFindMessage(
@@ -2086,6 +2196,11 @@ namespace HaCreator.MapSimulator.Interaction
             return TryBuildWhisperFindMessage(subtype, target, result, value, callbacks, out string text)
                 ? text
                 : string.Empty;
+        }
+
+        internal static string FormatFieldFeedbackStringPoolTextForTest(int stringPoolId, string fallbackFormat, params object[] args)
+        {
+            return FormatFieldFeedbackStringPoolText(stringPoolId, fallbackFormat, args);
         }
 
         [DllImport("kernel32.dll")]

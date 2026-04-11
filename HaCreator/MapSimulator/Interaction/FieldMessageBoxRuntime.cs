@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class FieldMessageBoxRuntime
     {
+        internal const int ConsumeCashItemUseRequestOpcode = 0x55;
         private const int DefaultItemId = 5370000;
         private const int DefaultFrameDelayMs = 100;
         private const int ClientLeaveCanvasFadeDurationMs = 1000;
@@ -101,7 +102,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return _statusMessage;
             }
 
-            int localActiveCount = _entries.Values.Count(entry => entry.Source == MessageBoxEntrySource.LocalCommand);
+            int localActiveCount = _entries.Values.Count(entry => entry.Source != MessageBoxEntrySource.PacketEnterField);
             int packetActiveCount = _entries.Count - localActiveCount;
             int leavingCount = _leavingEntries.Count;
             string activeSummary = $"{_entries.Count} active ({packetActiveCount} packet, {localActiveCount} local)";
@@ -629,6 +630,98 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryApplyConsumeCashItemUseRequestPayload(
+            byte[] payload,
+            int currentTick,
+            string characterName,
+            Point hostPosition,
+            out string message)
+        {
+            message = string.Empty;
+            if (!TryDecodeConsumeCashItemUseRequestPayload(payload, out MessageBoxConsumeCashItemUseRequest request, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            CreateLocalMessageBox(
+                request.ItemId,
+                request.MessageText,
+                characterName,
+                hostPosition,
+                currentTick,
+                source: MessageBoxEntrySource.LocalConsumeRequest);
+            message = $"Applied CUserLocal::ConsumeCashItem chalkboard request for item {request.ItemId} from slot {request.InventoryPosition}. {_statusMessage}";
+            return true;
+        }
+
+        internal static bool TryDecodeConsumeCashItemUseRequestPayload(
+            byte[] payload,
+            out MessageBoxConsumeCashItemUseRequest request,
+            out string error)
+        {
+            request = null;
+            error = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Message-box consume-cash item request payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload);
+                int clientTick = reader.ReadInt();
+                short inventoryPosition = reader.ReadShort();
+                int itemId = reader.ReadInt();
+                if (!IsKnownChalkboardItem(itemId))
+                {
+                    error = $"Consume-cash item request item {itemId} is not a WZ-observed field message-box cash item.";
+                    return false;
+                }
+
+                string messageText = reader.ReadMapleString();
+                request = new MessageBoxConsumeCashItemUseRequest(clientTick, inventoryPosition, itemId, messageText);
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "Message-box consume-cash item request ended before decoding completed.";
+                return false;
+            }
+            catch (IOException)
+            {
+                error = "Message-box consume-cash item request could not be read.";
+                return false;
+            }
+        }
+
+        internal static bool TryResolveConsumeCashItemUseRequestItemId(byte[] payload, out int itemId)
+        {
+            itemId = 0;
+            if (payload == null || payload.Length < sizeof(int) + sizeof(short) + sizeof(int))
+            {
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload);
+                _ = reader.ReadInt();
+                _ = reader.ReadShort();
+                itemId = reader.ReadInt();
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                return false;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+        }
+
         internal static byte[] BuildOpcodePrefixedRawPacket(ushort opcode, byte[] payload)
         {
             payload ??= Array.Empty<byte>();
@@ -666,9 +759,9 @@ namespace HaCreator.MapSimulator.Interaction
             return MessageBoxOwnerStringPoolText.GetCreateFailedNotice();
         }
 
-        private static bool IsKnownChalkboardItem(int itemId)
+        internal static bool IsKnownChalkboardItem(int itemId)
         {
-            return itemId / 10000 == 537;
+            return ExactChalkboardVisualFallbackPaths.ContainsKey(itemId);
         }
 
         private bool TryLoadItemProperty(string category, string imagePath, int itemId, out WzSubProperty itemProperty)
@@ -2476,6 +2569,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal enum MessageBoxEntrySource
         {
             LocalCommand,
+            LocalConsumeRequest,
             PacketEnterField
         }
 
@@ -2495,9 +2589,17 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return source == FieldMessageBoxRuntime.MessageBoxEntrySource.PacketEnterField
                 ? "packet-owned"
-                : "local";
+                : source == FieldMessageBoxRuntime.MessageBoxEntrySource.LocalConsumeRequest
+                    ? "client-request"
+                    : "local";
         }
     }
+
+    internal sealed record MessageBoxConsumeCashItemUseRequest(
+        int ClientTick,
+        int InventoryPosition,
+        int ItemId,
+        string MessageText);
 
     internal static class GraphicsDeviceServiceForTests
     {

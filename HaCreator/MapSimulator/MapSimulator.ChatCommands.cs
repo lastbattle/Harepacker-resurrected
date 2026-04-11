@@ -8371,6 +8371,36 @@ namespace HaCreator.MapSimulator
 
 
                     string action = args[actionIndex].ToLowerInvariant();
+                    if (string.Equals(action, "packetclientraw", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length <= actionIndex + 1)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /socialroom <miniroom|personalshop|entrustedshop|tradingroom> [packet] packetclientraw <opcode-framed-hex bytes>");
+                        }
+
+
+                        if (!MemoryGameField.TryParseMiniRoomPacketHex(string.Join(' ', args, actionIndex + 1, args.Length - actionIndex - 1), out byte[] clientPacketBytes, out string clientPacketParseError))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(clientPacketParseError);
+                        }
+
+
+                        if (!runtime.TryDispatchPacketBytes(clientPacketBytes, currTickCount, out string clientPacketMessage))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(clientPacketMessage);
+                        }
+
+
+                        if (!TryShowSocialRoomWindow(kind, out string clientPacketRoomRestriction))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(clientPacketRoomRestriction ?? "This social-room interaction is blocked in this map.");
+                        }
+
+                        return ChatCommandHandler.CommandResult.Ok(clientPacketMessage);
+
+                    }
+
+
                     if (string.Equals(action, "packetraw", StringComparison.OrdinalIgnoreCase))
                     {
                         if (args.Length <= actionIndex + 1)
@@ -12596,6 +12626,49 @@ namespace HaCreator.MapSimulator
                 case "bridge":
                     return HandleExpeditionBridgeCommand(args, index + 1);
 
+                case "quickjoin":
+                case "request":
+                {
+                    string title = TryGetExpeditionCommandValue(args, index + 1, "title", out string namedTitle)
+                        ? NormalizeExpeditionCommandText(namedTitle)
+                        : TryGetExpeditionPositionalValue(args, index + 1, out string positionalTitle)
+                            ? NormalizeExpeditionCommandText(positionalTitle)
+                            : string.Empty;
+                    string ownerName = TryGetExpeditionCommandValue(args, index + 1, "owner", out string namedOwner)
+                        ? NormalizeExpeditionCommandText(namedOwner)
+                        : TryGetExpeditionPositionalValue(args, index + 2, out string positionalOwner)
+                            ? NormalizeExpeditionCommandText(positionalOwner)
+                            : string.Empty;
+                    if (string.IsNullOrWhiteSpace(ownerName))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /expedition quickjoin|request [title=Name] owner=Leader");
+                    }
+
+                    string staged = _socialListRuntime.StageExpeditionRequest(
+                        title,
+                        ownerName,
+                        quickJoin: string.Equals(action, "quickjoin", StringComparison.OrdinalIgnoreCase),
+                        packetOwned: false);
+                    if (!CanAutoSendExpeditionOutboundRequest())
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(staged);
+                    }
+
+                    ExpeditionIntermediaryOutboundRequest outboundRequest = new(
+                        string.Equals(action, "quickjoin", StringComparison.OrdinalIgnoreCase)
+                            ? ExpeditionIntermediaryOutboundRequestKind.QuickJoin
+                            : ExpeditionIntermediaryOutboundRequestKind.Request,
+                        title,
+                        ownerName,
+                        ownerName,
+                        PartyIndex: 0,
+                        NoticeKind: ExpeditionNoticeKind.Joined,
+                        RemovalKind: ExpeditionRemovalKind.Leave);
+                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                        ? ChatCommandHandler.CommandResult.Ok($"{staged} {sendStatus}")
+                        : ChatCommandHandler.CommandResult.Error($"{staged} Live expedition send failed: {sendStatus}");
+                }
+
                 case "open":
                 case "search":
                     _socialListRuntime.OpenSearchWindow(SocialSearchTab.Expedition);
@@ -12614,8 +12687,32 @@ namespace HaCreator.MapSimulator
                         : TryGetExpeditionPositionalValue(args, index + 1, out string positionalTitle)
                             ? NormalizeExpeditionCommandText(positionalTitle)
                             : null;
-                    return ChatCommandHandler.CommandResult.Ok(
-                        _socialListRuntime.StartLocalExpeditionIntermediary(title, registrationDraft: string.Equals(action, "register", StringComparison.OrdinalIgnoreCase)));
+                    string localStatus = _socialListRuntime.StartLocalExpeditionIntermediary(title, registrationDraft: string.Equals(action, "register", StringComparison.OrdinalIgnoreCase));
+                    if (!CanAutoSendExpeditionOutboundRequest())
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(localStatus);
+                    }
+
+                    int partyQuestId = TryGetExpeditionCommandInt(args, index + 1, "pq", out int parsedPartyQuestId) ? parsedPartyQuestId : 0;
+                    if (partyQuestId <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(localStatus);
+                    }
+
+                    ExpeditionIntermediaryOutboundRequest outboundRequest = new(
+                        string.Equals(action, "register", StringComparison.OrdinalIgnoreCase)
+                            ? ExpeditionIntermediaryOutboundRequestKind.Register
+                            : ExpeditionIntermediaryOutboundRequestKind.Start,
+                        title,
+                        OwnerName: string.Empty,
+                        CharacterName: string.Empty,
+                        PartyIndex: 0,
+                        NoticeKind: ExpeditionNoticeKind.Joined,
+                        RemovalKind: ExpeditionRemovalKind.Leave,
+                        PartyQuestId: partyQuestId);
+                    return TrySendExpeditionOutboundRequest(outboundRequest, out string sendStatus)
+                        ? ChatCommandHandler.CommandResult.Ok($"{localStatus} {sendStatus}")
+                        : ChatCommandHandler.CommandResult.Error($"{localStatus} Live expedition send failed: {sendStatus}");
                 }
 
                 case "get":
@@ -12778,7 +12875,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /expedition [packet|local] [status|open|search|clear|start [title=Name]|register [title=Name]|get [title=Name] [master=n] [parties=party~name~role~level~map~channel~online~local;...]|modified [party=n] [members=name~role~level~map~channel~online~local;...] [master=n]|invite [name=Leader] [level=n] [job=n] [pq=n]|response [name=Leader] [result=accept|decline|busy|changed|blocked|unavailable|fail6|promptopen|n]|notice [kind=joined|left|removed] [name=Member]|master [party=n]|removed [kind=leave|disband|removed]|payload <payloadhex=..|payloadb64=..>|packetraw <hex> [opcode=n]|inbox [status|start [port]|stop]|bridge [status|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|discoverstatus <remotePort> [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> [opcode]|discover <remotePort> [opcode] [listenPort] [process=selector] [localPort=n]|stop]]");
+                        "Usage: /expedition [packet|local] [status|open|search|clear|start [title=Name] [pq=n]|register [title=Name] [pq=n]|quickjoin [title=Name] owner=Leader|request [title=Name] owner=Leader|get [title=Name] [master=n] [parties=party~name~role~level~map~channel~online~local;...]|modified [party=n] [members=name~role~level~map~channel~online~local;...] [master=n]|invite [name=Leader] [level=n] [job=n] [pq=n]|response [name=Leader] [result=accept|decline|busy|changed|blocked|unavailable|fail6|promptopen|n]|notice [kind=joined|left|removed] [name=Member]|master [party=n]|removed [kind=leave|disband|removed]|payload <payloadhex=..|payloadb64=..>|packetraw <hex> [opcode=n]|inbox [status|start [port]|stop]|bridge [status|opcodes|history [count]|clearhistory|send <create|register|quickjoin|request|response|leave|disband|remove|master|changeboss|relocate> ...|replay <historyIndex>|sendraw <hex>|discoverstatus <remotePort> [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> [opcode]|discover <remotePort> [opcode] [listenPort] [process=selector] [localPort=n]|stop]]");
             }
         }
 

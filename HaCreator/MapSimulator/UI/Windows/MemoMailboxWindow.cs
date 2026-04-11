@@ -1529,14 +1529,28 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleDialogKeyboardAction(ParcelDialogKeyboardAction action)
         {
+            TryHandleDialogKeyboardAction(action, Hide, HandleReceiveAttachment, HandleDispatch);
+        }
+
+        internal static bool TryHandleDialogKeyboardAction(
+            ParcelDialogKeyboardAction action,
+            Action closeDialog,
+            Action claimReceiveAttachment,
+            Action dispatchSend)
+        {
             switch (action)
             {
                 case ParcelDialogKeyboardAction.CloseDialog:
-                    Hide();
-                    break;
+                    closeDialog?.Invoke();
+                    return true;
+                case ParcelDialogKeyboardAction.ClaimReceiveAttachment:
+                    claimReceiveAttachment?.Invoke();
+                    return true;
                 case ParcelDialogKeyboardAction.DispatchSend:
-                    HandleDispatch();
-                    break;
+                    dispatchSend?.Invoke();
+                    return true;
+                default:
+                    return false;
             }
         }
 

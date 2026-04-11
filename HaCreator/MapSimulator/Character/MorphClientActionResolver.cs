@@ -447,15 +447,26 @@ namespace HaCreator.MapSimulator.Character
                 ["bloodyStorm"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["upperStab"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["chainPull"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["chainAttack"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["tornadoRush"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["finalCutPrepare"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["finalCut"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["phantomBlow"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["bladeFury"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["finishAttack"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["finishAttack_link"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["finishAttack_link2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                // A targeted WZ pass over Character/00002000.img plus the corresponding
+                // Dual Blade skill rows (430/431/432/433/434) shows these later raw
+                // requests already authored as ordered generic body-action sequences.
+                ["stabD1"] = new[] { "stabO1", "swingO3", "stabT1" },
+                ["tripleStab"] = new[] { "alert", "swingO1", "swingO3" },
+                ["flyingAssaulter"] = new[] { "swingPF", "swingOF", "stabT1", "swingO2" },
+                ["tornadoDash"] = new[] { "swingO3" },
+                ["tornadoRush"] = new[] { "alert", "swingOF" },
+                ["tornadoDashStop"] = new[] { "swingOF" },
+                ["fatalBlow"] = new[] { "alert", "stabO1", "swingO1", "swingOF" },
+                ["upperStab"] = new[] { "alert", "swingPF" },
+                ["chainPull"] = new[] { "stabO1", "swingO3" },
+                ["chainAttack"] = new[] { "swingO1", "swingOF", "swingO2", "swingO3", "swingPF" },
+                ["finalCutPrepare"] = new[] { "swingOF" },
+                ["finalCut"] = new[] { "swingO1" },
+                ["phantomBlow"] = new[] { "stabO1", "stabT1", "stabO2", "swingPF", "stabOF", "swingO1" },
+                ["bladeFury"] = new[] { "alert", "swingOF" },
+                ["finishAttack"] = new[] { "stabO1", "stabO2", "swingO1" },
+                ["finishAttack_link"] = new[] { "stabO1", "stabO2", "swingO1" },
+                ["finishAttack_link2"] = new[] { "stabO1", "stabO2", "swingOF", "alert" },
                 // The remaining checked dual-blade / thief body rows still publish no
                 // transform-only roots in Morph/*.img. Character/00002000.img backs
                 // these client raw requests with ordinary stab, swing, or alert frames.
@@ -490,15 +501,28 @@ namespace HaCreator.MapSimulator.Character
                 ["darkTornado_pre"] = new[] { "stabO1", "swingO2", "swingTF" },
                 ["darkTornado"] = new[] { "swingTF", "swingO2" },
                 ["darkTornado_after"] = new[] { "swingO2", "swingTF", "alert" },
-                ["darkImpale"] = new[] { "swingT1", "alert" },
-                ["glacialChain"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["windEffect"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["tripleBlow"] = new[] { "alert", "swingO1", "swingO3", "stabO1" },
+                ["quadBlow"] = new[] { "alert", "swingO1", "swingO3", "stabO2", "stabO1" },
+                ["deathBlow"] = new[] { "swingPF", "stabO2", "swingO1", "swingO2", "swingOF", "stabT2", "stabT1", "alert" },
+                ["finishBlow"] = new[] { "swingPF", "stabO2", "swingO1", "swingO2", "swingOF", "stabT2" },
+                // Later dark- and ice-family body rows still resolve onto ordinary
+                // alert / swing / stab families, but the checked Character/00002000.img
+                // rows keep a narrower order than generic melee collapse:
+                // `darkImpale -> alert / swingT2 / stabT2 / stabT1` and
+                // `glacialChain -> swingO3 / swingO2 / stabO1`.
+                ["darkImpale"] = new[] { "alert", "swingT2", "stabT2", "stabT1" },
+                ["glacialChain"] = new[] { "swingO3", "swingO2", "stabO1" },
+                // `windEffect` remains a client raw request on the skill side, while the
+                // checked body row keeps it on `swingT1` before `swingTF`.
+                ["windEffect"] = new[] { "swingT1", "swingTF" },
                 ["jShot"] = new[] { "swingT2", "swingPF", "swingOF" },
                 ["multiSniping"] = new[] { "swingT1", "swingTF", "shoot1", "shoot2" },
-                ["maxForce0"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["maxForce1"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["maxForce2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["maxForce3"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                // Xenon max-force rows under Character/00002000.img also stay on a
+                // narrower checked body-family order than generic melee fallback.
+                ["maxForce0"] = new[] { "swingO3" },
+                ["maxForce1"] = new[] { "stabO1" },
+                ["maxForce2"] = new[] { "stabOF", "swingOF", "swingO2", "swingO1" },
+                ["maxForce3"] = new[] { "swingO2", "swingO1", "swingO3", "stabOF" },
                 // `shotC1` is present on the recovered client raw-action surface and
                 // Character/00002000.img backs it with alert first, then stab frames.
                 // Current Morph/*.img publishes no verbatim cannon-shot branch.

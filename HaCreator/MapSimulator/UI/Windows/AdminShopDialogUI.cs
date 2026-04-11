@@ -1782,6 +1782,32 @@ namespace HaCreator.MapSimulator.UI
             return $"{quantity} / {period} / {price} mesos / {sale}";
         }
 
+        internal static string AppendPacketOwnedCommodityMetadataDetail(string detail, int rewardQuantity, int periodDays)
+        {
+            List<string> additions = new(2);
+            if (rewardQuantity > 1)
+            {
+                additions.Add($"Count: x{rewardQuantity.ToString(CultureInfo.InvariantCulture)}.");
+            }
+
+            if (periodDays > 0
+                && (string.IsNullOrWhiteSpace(detail)
+                    || !detail.Contains("Period:", StringComparison.OrdinalIgnoreCase)))
+            {
+                additions.Add($"Period: {periodDays.ToString(CultureInfo.InvariantCulture)} day(s).");
+            }
+
+            if (additions.Count == 0)
+            {
+                return detail ?? string.Empty;
+            }
+
+            string additionText = string.Join(" ", additions);
+            return string.IsNullOrWhiteSpace(detail)
+                ? additionText
+                : $"{detail} {additionText}";
+        }
+
         public override void Update(GameTime gameTime)
         {
             if (!IsVisible)
@@ -3763,6 +3789,10 @@ namespace HaCreator.MapSimulator.UI
         {
             _pendingPacketOwnedWishlistRegisterEntry = entry;
             _pendingPacketOwnedWishlistRegisterCategory = requestedCategory;
+            _packetOwnedAdminShopSession.RecordPendingWishlistRegister(
+                ResolveWishlistRegisterItemId(entry),
+                entry?.Title ?? string.Empty,
+                GetCategoryLabel(requestedCategory));
             string registerSummary = DispatchPacketOwnedAdminShopWishlistRegister(entry);
             _packetOwnedAdminShopSession.SetWaitingForResult(true);
             _packetOwnedAdminShopSession.SetLastOwnerState("CUIAdminShopWishListSearchResult::BtRegist confirmed the selected result, sent CUIAdminShopWishList::SendRegisterPacket opcode 74 mode 3, and closed the wishlist owner while waiting for packet 366 subtype 4.");
@@ -3853,6 +3883,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _pendingPacketOwnedWishlistRegisterEntry = null;
             _pendingPacketOwnedWishlistRegisterCategory = AdminShopCategory.All;
+            _packetOwnedAdminShopSession.ClearPendingWishlistRegister();
         }
 
         private WishlistSearchResult BuildWishlistSearchResult(AdminShopEntry entry, int score)
@@ -6949,6 +6980,19 @@ namespace HaCreator.MapSimulator.UI
                    && _commodityBySerialNumber.TryGetValue(serialNumber, out commodity);
         }
 
+        private static bool TryResolvePacketOwnedCommodityMetadata(
+            PacketOwnedAdminShopCommoditySnapshot commodity,
+            out AdminShopCommodityData resolvedCommodity)
+        {
+            resolvedCommodity = null;
+            return commodity != null
+                && commodity.SerialNumber > 0
+                && commodity.ItemId > 0
+                && TryGetCommodityBySerialNumber(commodity.SerialNumber, out resolvedCommodity)
+                && resolvedCommodity != null
+                && resolvedCommodity.ItemId == commodity.ItemId;
+        }
+
         private static bool IsPreferredCommodity(AdminShopCommodityData candidate, AdminShopCommodityData existing)
         {
             if (candidate == null)
@@ -7413,6 +7457,17 @@ namespace HaCreator.MapSimulator.UI
             detail = string.IsNullOrWhiteSpace(detail)
                 ? packetSummary
                 : $"{detail} {packetSummary}";
+            int rewardQuantity = 1;
+            bool commodityOnSale = commodity.SaleState == 0;
+            if (TryResolvePacketOwnedCommodityMetadata(commodity, out AdminShopCommodityData resolvedCommodity))
+            {
+                rewardQuantity = Math.Max(1, resolvedCommodity.Count);
+                commodityOnSale = resolvedCommodity.OnSale;
+                detail = AppendPacketOwnedCommodityMetadataDetail(
+                    detail,
+                    rewardQuantity,
+                    resolvedCommodity.PeriodDays);
+            }
 
             bool isBuyRow = commodity.Price > 0;
             bool isAvailable = isBuyRow && commodity.SaleState == 0;
@@ -7446,10 +7501,12 @@ namespace HaCreator.MapSimulator.UI
                 StateLabel = stateLabel,
                 RewardInventoryType = inventoryType,
                 RewardItemId = commodity.ItemId,
-                RewardQuantity = 1,
+                RewardQuantity = rewardQuantity,
                 RewardMaxStackSize = Math.Max(1, rewardMaxStackSize),
                 Response = isAvailable ? AdminShopResponse.GrantItem : AdminShopResponse.None,
                 MaxRequestCount = maxPerSlot,
+                CommoditySerialNumber = commodity.SerialNumber,
+                CommodityOnSale = commodityOnSale,
                 PacketSerialNumber = commodity.SerialNumber,
                 PacketSaleState = commodity.SaleState,
                 IsPacketOwnedSnapshotRow = true

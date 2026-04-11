@@ -1,3 +1,5 @@
+using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -419,6 +421,24 @@ namespace HaCreator.MapSimulator.Fields
             return GetMapTransferRegistrationRestrictionMessage(mapId, mapInfo, context) == null;
         }
 
+        public static string GetMapTransferRegisterPreflightRestrictionMessage(int mapId)
+        {
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            {
+                return GenericMapTransferRegistrationRestrictionMessage;
+            }
+
+            if (mapId < 100_000_000)
+            {
+                return RegularFieldMapTransferRegistrationRestrictionMessage;
+            }
+
+            int millionGroup = (mapId / 1_000_000) % 100;
+            return millionGroup == 9
+                ? GenericMapTransferRegistrationRestrictionMessage
+                : null;
+        }
+
         public static string GetMapTransferRegistrationRestrictionMessage(int mapId)
         {
             return GetMapTransferRegistrationRestrictionMessage(mapId, null, null);
@@ -434,23 +454,19 @@ namespace HaCreator.MapSimulator.Fields
             MapInfo mapInfo,
             FieldEntryRestrictionContext? context)
         {
-            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            string preflightRestrictionMessage = GetMapTransferRegisterPreflightRestrictionMessage(mapId);
+            if (!string.IsNullOrWhiteSpace(preflightRestrictionMessage))
             {
-                return GenericMapTransferRegistrationRestrictionMessage;
+                return preflightRestrictionMessage;
             }
 
-            if (mapId < 100_000_000)
+            MapTransferRuntimePacketResultCode? runtimeResultCode = GetMapTransferRegistrationResultCode(mapId, mapInfo, context);
+            return runtimeResultCode switch
             {
-                return RegularFieldMapTransferRegistrationRestrictionMessage;
-            }
-
-            int millionGroup = (mapId / 1_000_000) % 100;
-            if (millionGroup == 9)
-            {
-                return GenericMapTransferRegistrationRestrictionMessage;
-            }
-
-            return GetSharedMapTransferDestinationRestrictionMessage(mapInfo, context);
+                MapTransferRuntimePacketResultCode.OfficialFailure11 => MapTransferClientParityText.ResolveFailureMessage(MapTransferRuntimePacketResultCode.OfficialFailure11),
+                MapTransferRuntimePacketResultCode.CannotSaveDestination => GenericMapTransferRegistrationRestrictionMessage,
+                _ => null
+            };
         }
 
         public static string GetMapTransferEntryRestrictionMessage(
@@ -503,6 +519,46 @@ namespace HaCreator.MapSimulator.Fields
                 (mapInfo.fieldType.HasValue && mapInfo.fieldType.Value != FieldType.FIELDTYPE_DEFAULT))
             {
                 return GenericMapTransferRegistrationRestrictionMessage;
+            }
+
+            return null;
+        }
+
+        public static MapTransferRuntimePacketResultCode? GetMapTransferRegistrationResultCode(
+            int mapId,
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext? context)
+        {
+            string preflightRestrictionMessage = GetMapTransferRegisterPreflightRestrictionMessage(mapId);
+            if (!string.IsNullOrWhiteSpace(preflightRestrictionMessage))
+            {
+                return MapTransferRuntimePacketResultCode.CannotSaveDestination;
+            }
+
+            if (mapInfo == null)
+            {
+                return null;
+            }
+
+            string entryRestrictionMessage = context.HasValue
+                ? FieldEntryRestrictionEvaluator.GetRestrictionMessage(mapInfo, context.Value)
+                : null;
+            if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
+            {
+                return MapTransferRuntimePacketResultCode.OfficialFailure11;
+            }
+
+            string transferRestrictionMessage = GetTransferRestrictionMessage(mapInfo.fieldLimit);
+            if (!string.IsNullOrWhiteSpace(transferRestrictionMessage))
+            {
+                return MapTransferRuntimePacketResultCode.CannotSaveDestination;
+            }
+
+            if (mapInfo.noMapCmd == true ||
+                (mapInfo.moveLimit.HasValue && mapInfo.moveLimit.Value > 0) ||
+                (mapInfo.fieldType.HasValue && mapInfo.fieldType.Value != FieldType.FIELDTYPE_DEFAULT))
+            {
+                return MapTransferRuntimePacketResultCode.CannotSaveDestination;
             }
 
             return null;

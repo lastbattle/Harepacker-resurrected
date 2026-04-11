@@ -509,12 +509,10 @@ namespace HaCreator.MapSimulator.UI
                 return BuildOverviewPageRecords(page, measureTextWidth);
             }
 
-            List<CollectionBookRecordSnapshot> records = new()
-            {
-                CreateTextRecord(page?.Title, ClientCollectionTextLaneLeft, 14, ClientCollectionTextLaneWidthInt, 0, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Title),
-                CreateTextRecord(page?.Subtitle, ClientCollectionTextLaneLeft, 34, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Subtitle),
-                CreateClientRuleRecord(56),
-            };
+            List<CollectionBookRecordSnapshot> records = new();
+            AddCenteredTextRecords(records, page?.Title, 14, 0, CollectionBookRecordRole.Title, measureTextWidth);
+            AddCenteredTextRecords(records, page?.Subtitle, 34, 10, CollectionBookRecordRole.Subtitle, measureTextWidth);
+            records.Add(CreateClientRuleRecord(56));
 
             IReadOnlyList<CollectionBookEntrySnapshot> entries = page?.Entries ?? Array.Empty<CollectionBookEntrySnapshot>();
             int currentTop = ClientCollectionStandardEntryFirstTop;
@@ -537,12 +535,10 @@ namespace HaCreator.MapSimulator.UI
 
         private static IReadOnlyList<CollectionBookRecordSnapshot> BuildOverviewPageRecords(CollectionBookPageSnapshot page, Func<string, int, float> measureTextWidth = null)
         {
-            List<CollectionBookRecordSnapshot> records = new()
-            {
-                CreateTextRecord(page?.Title, ClientCollectionTextLaneLeft, 14, ClientCollectionTextLaneWidthInt, 0, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Title),
-                CreateTextRecord(page?.Subtitle, ClientCollectionTextLaneLeft, 34, ClientCollectionTextLaneWidthInt, 10, CollectionBookTextAlignment.Center, CollectionBookRecordRole.Subtitle),
-                CreateClientRuleRecord(56),
-            };
+            List<CollectionBookRecordSnapshot> records = new();
+            AddCenteredTextRecords(records, page?.Title, 14, 0, CollectionBookRecordRole.Title, measureTextWidth);
+            AddCenteredTextRecords(records, page?.Subtitle, 34, 10, CollectionBookRecordRole.Subtitle, measureTextWidth);
+            records.Add(CreateClientRuleRecord(56));
 
             IReadOnlyList<CollectionBookEntrySnapshot> entries = page?.Entries ?? Array.Empty<CollectionBookEntrySnapshot>();
             CollectionBookEntrySnapshot characterEntry = entries.Count > 0 ? entries[0] : null;
@@ -569,17 +565,32 @@ namespace HaCreator.MapSimulator.UI
             }
 
             records.Add(CreateClientRuleRecord(ClientCollectionFooterRuleTop));
-            if (!string.IsNullOrWhiteSpace(footer))
+            AddCenteredTextRecords(records, footer, ClientCollectionFooterTextTop, 11, CollectionBookRecordRole.Footer);
+        }
+
+        private static void AddCenteredTextRecords(
+            List<CollectionBookRecordSnapshot> records,
+            string text,
+            int top,
+            int styleIndex,
+            CollectionBookRecordRole role,
+            Func<string, int, float> measureTextWidth = null)
+        {
+            if (records == null || string.IsNullOrWhiteSpace(text))
             {
-                records.Add(CreateTextRecord(
-                    footer.Trim(),
-                    ClientCollectionTextLaneLeft,
-                    ClientCollectionFooterTextTop,
-                    ClientCollectionTextLaneWidthInt,
-                    11,
-                    CollectionBookTextAlignment.Center,
-                    CollectionBookRecordRole.Footer));
+                return;
             }
+
+            AddWrappedTextRecords(
+                records,
+                text.Trim(),
+                ClientCollectionTextLaneLeft,
+                top,
+                ClientCollectionTextLaneWidthInt,
+                styleIndex,
+                CollectionBookTextAlignment.Center,
+                role,
+                measureTextWidth);
         }
 
         private static int AddOverviewIdentityEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top, Func<string, int, float> measureTextWidth = null)

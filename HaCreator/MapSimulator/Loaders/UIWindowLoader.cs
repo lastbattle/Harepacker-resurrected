@@ -2933,7 +2933,13 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
 
-            WorldSelectWindow worldSelectWindow = CreateWorldSelectWindow(loginWorldSelectProperty, clickSound, overSound, device, worldBadges);
+            WorldSelectWindow worldSelectWindow = CreateWorldSelectWindow(
+                loginWorldSelectProperty,
+                loginImage?["WorldNotice"] as WzSubProperty,
+                clickSound,
+                overSound,
+                device,
+                worldBadges);
 
             worldSelectWindow.Position = new Point(
                 Math.Max(24, ((screenWidth / 2) - (ClientWorldSelectOwnerWidth / 2)) + ClientWorldSelectOwnerOffsetX),
@@ -3076,6 +3082,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static WorldSelectWindow CreateWorldSelectWindow(
             WzSubProperty loginWorldSelectProperty,
+            WzSubProperty worldNoticeProperty,
             WzBinaryProperty clickSound,
             WzBinaryProperty overSound,
             GraphicsDevice device,
@@ -3126,12 +3133,14 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
 
+            Dictionary<byte, SelectorAnimatedOverlay> worldStateAnimations = LoadWorldStateAnimations(worldNoticeProperty, device);
+
             return new WorldSelectWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 overlayTexture,
                 overlayOffset,
                 CreateSolidTexture(device, Color.White),
-                new Dictionary<byte, SelectorAnimatedOverlay>(),
+                worldStateAnimations,
                 worldButtons,
                 emptyWorldButtons,
                 LoadButton(loginWorldSelectProperty, "BtViewChoice", clickSound, overSound, device),
@@ -3139,6 +3148,35 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadSelectorOverlayFrame(loginWorldSelectProperty?["BtViewAll"]?["keyFocused"] as WzSubProperty, device),
                 LoadSelectorAnimatedOverlay(loginWorldSelectProperty?["BtViewAll"]?["mouseOver"], device));
 
+        }
+
+        private static Dictionary<byte, SelectorAnimatedOverlay> LoadWorldStateAnimations(
+            WzSubProperty worldNoticeProperty,
+            GraphicsDevice device)
+        {
+            Dictionary<byte, SelectorAnimatedOverlay> animations = new();
+            if (worldNoticeProperty == null || device == null)
+            {
+                return animations;
+            }
+
+            foreach (WzImageProperty property in worldNoticeProperty.WzProperties)
+            {
+                if (!byte.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte worldState))
+                {
+                    continue;
+                }
+
+                SelectorAnimatedOverlay overlay = LoadSelectorAnimatedOverlay(property, device);
+                if (overlay == null || overlay.IsEmpty)
+                {
+                    continue;
+                }
+
+                animations[worldState] = overlay;
+            }
+
+            return animations;
         }
 
 
@@ -5022,6 +5060,7 @@ namespace HaCreator.MapSimulator.Loaders
             SocialRoomWindow window = new SocialRoomWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 windowName,
+                device,
                 CreateSolidTexture(device, Color.White),
                 runtime)
             {
@@ -9601,6 +9640,7 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject okButton = LoadButton(sourceProperty, "BtOk", btClickSound, btOverSound, device)
                 ?? LoadButtonFromUiPath(PacketOwnedRewardResultRuntime.GetRandomMesoBagOkButtonResourcePath(), btClickSound, btOverSound, device, uiWindowImage, uiWindow2Image)
                 ?? LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtOK", btClickSound, btOverSound, device)
+                ?? LoadButtonFromUiPath(PacketOwnedRewardResultRuntime.GetUtilDlgNoticeOkButtonResourcePath(), btClickSound, btOverSound, device, uiWindow2Image, uiWindowImage)
                 ?? LoadButton(sourceProperty, "BtOK", btClickSound, btOverSound, device);
             window.InitializeButtons(okButton);
             return window;

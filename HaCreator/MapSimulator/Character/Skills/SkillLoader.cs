@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         private readonly record struct SummonActionCacheKey(int SkillId, int SkillLevel, string ActionKey);
         private readonly record struct SummonSourceCandidate(int SkillId, SkillData Skill, WzImageProperty SkillNode);
+        private readonly record struct ItemBulletAnimationCacheKey(int ItemId, int WeaponItemId);
 
         private static readonly string[] PreferredSummonAnimationBranches =
         {
@@ -175,8 +176,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterChargeAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterChargeAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<int, SkillAnimation> _itemBulletAnimationCache = new();
-        private readonly HashSet<int> _itemsWithoutBulletAnimation = new();
+        private readonly Dictionary<ItemBulletAnimationCacheKey, SkillAnimation> _itemBulletAnimationCache = new();
+        private readonly HashSet<ItemBulletAnimationCacheKey> _itemsWithoutBulletAnimation = new();
         private readonly Dictionary<SummonActionCacheKey, SkillAnimation> _summonActionCache = new();
         private readonly Dictionary<string, IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece>> _shadowPartnerClientActionPieceCache =
             new(StringComparer.OrdinalIgnoreCase);
@@ -209,31 +210,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill;
         }
 
-        public SkillAnimation LoadItemBulletAnimation(int itemId)
+        public SkillAnimation LoadItemBulletAnimation(int itemId, int weaponItemId = 0)
         {
             if (itemId <= 0)
             {
                 return null;
             }
 
-            if (_itemBulletAnimationCache.TryGetValue(itemId, out SkillAnimation cached))
+            var cacheKey = new ItemBulletAnimationCacheKey(itemId, weaponItemId);
+            if (_itemBulletAnimationCache.TryGetValue(cacheKey, out SkillAnimation cached))
             {
                 return cached;
             }
 
-            if (_itemsWithoutBulletAnimation.Contains(itemId))
+            if (_itemsWithoutBulletAnimation.Contains(cacheKey))
             {
                 return null;
             }
 
-            SkillAnimation animation = LoadItemBulletAnimationInternal(itemId);
+            SkillAnimation animation = LoadItemBulletAnimationInternal(itemId, weaponItemId);
             if (animation?.Frames?.Count > 0)
             {
-                _itemBulletAnimationCache[itemId] = animation;
+                _itemBulletAnimationCache[cacheKey] = animation;
                 return animation;
             }
 
-            _itemsWithoutBulletAnimation.Add(itemId);
+            _itemsWithoutBulletAnimation.Add(cacheKey);
             return null;
         }
 
@@ -537,6 +539,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.IsMovingAttack = GetInt(infoNode, "movingAttack") == 1;
                 skill.CasterMove = GetInt(infoNode, "casterMove") == 1;
                 skill.AreaAttack = GetInt(infoNode, "areaAttack") == 1;
+                skill.PullTarget = GetInt(infoNode, "pullTarget") == 1;
                 skill.RectBasedOnTarget = GetInt(infoNode, "rectBasedOnTarget") == 1;
                 skill.MultiTargeting = GetInt(infoNode, "multiTargeting") == 1;
                 skill.ChainAttack = GetInt(infoNode, "chainAttack") == 1;
@@ -1046,6 +1049,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.HitEffect = LoadSkillAnimation(hitNode, "hit");
                 skill.TargetHitEffects = LoadIndexedSkillAnimations(hitNode, "hit");
+            }
+
+            var mobNode = skillNode["mob"];
+            if (mobNode != null)
+            {
+                skill.MobAnimation = LoadSkillAnimation(mobNode, "mob");
+                skill.MobAnimationPath = NormalizeSkillAssetPath(mobNode);
             }
 
             // Load affected (buff visual)
@@ -2637,14 +2647,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
                 ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
 
-            foreach (WzImageProperty actionNode in actionImage.WzProperties)
+            foreach (string actionName in ShadowPartnerClientActionResolver.EnumerateMountedShadowPartnerActionCandidateNames(supportedRawActionNames))
             {
-                string actionName = actionNode?.Name;
+                WzImageProperty actionNode = ResolveLinkedProperty(actionImage[actionName]);
                 if (string.IsNullOrWhiteSpace(actionName)
+                    || actionNode?.WzProperties == null
+                    || actionNode.WzProperties.Count == 0
                     || actionAnimations.ContainsKey(actionName)
-                    || !ShadowPartnerClientActionResolver.ShouldSynthesizeMountedCharacterActionName(
-                        actionName,
-                        supportedRawActionNames)
                     || !TryGetShadowPartnerClientActionPieces(
                         actionName,
                         out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
@@ -5179,7 +5188,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
-            return TryResolveVisibleSummonSourcePropertyFromClientSummonedUolPath(normalizedPath, out summonNode);
+            return TryResolveVisibleSummonSourcePropertyFromClientSummonedUolPath(normalizedPath, candidateNode, out summonNode);
         }
 
         private bool TryResolveClientSummonedUolRootSkillNode(string normalizedPath, out WzImageProperty rootSkillNode)
@@ -5195,11 +5204,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private bool TryResolveVisibleSummonSourcePropertyFromClientSummonedUolPath(
             string summonedUolPath,
+            WzImageProperty resolvedProperty,
             out WzImageProperty summonNode)
         {
             summonNode = null;
             foreach (int linkedSkillId in EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPath(
                          summonedUolPath,
+                         resolvedProperty,
                          LoadSummonSourceCandidateSkillMetadata,
                          FindVisibleSummonSourceParentIds))
             {
@@ -5311,11 +5322,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static IEnumerable<int> EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPathForTest(
             string summonedUolPath,
+            WzImageProperty resolvedProperty = null,
             Func<int, SkillData> linkedSkillResolver = null,
             Func<int, IReadOnlyList<int>> reverseAffectedSkillResolver = null)
         {
             return EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPath(
                 summonedUolPath,
+                resolvedProperty,
                 linkedSkillResolver,
                 reverseAffectedSkillResolver);
         }
@@ -5436,27 +5449,49 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static IEnumerable<int> EnumerateVisibleSummonSourceCandidateSkillIdsFromClientSummonedUolPath(
             string summonedUolPath,
+            WzImageProperty resolvedProperty = null,
             Func<int, SkillData> linkedSkillResolver = null,
             Func<int, IReadOnlyList<int>> reverseAffectedSkillResolver = null)
         {
             string normalizedPath = NormalizeClientSummonedUolPath(summonedUolPath);
-            if (!TryParseClientSummonedUolRootSkillId(normalizedPath, out int resolvedSkillId))
+            var yieldedSkillIds = new HashSet<int>();
+            foreach (int resolvedSkillId in EnumerateVisibleSummonSourceCandidateSeedSkillIds(normalizedPath, resolvedProperty))
             {
-                yield break;
+                SkillData resolvedSkill = linkedSkillResolver?.Invoke(resolvedSkillId);
+                if (resolvedSkill == null)
+                {
+                    continue;
+                }
+
+                foreach (int linkedSkillId in EnumerateSummonSourceCandidateSkillIds(
+                             resolvedSkill,
+                             linkedSkillResolver,
+                             reverseAffectedSkillResolver))
+                {
+                    if (linkedSkillId > 0
+                        && linkedSkillId != resolvedSkillId
+                        && yieldedSkillIds.Add(linkedSkillId))
+                    {
+                        yield return linkedSkillId;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateVisibleSummonSourceCandidateSeedSkillIds(
+            string normalizedPath,
+            WzImageProperty resolvedProperty)
+        {
+            var yieldedSkillIds = new HashSet<int>();
+            if (TryParseClientSummonedUolRootSkillId(normalizedPath, out int rootSkillId)
+                && yieldedSkillIds.Add(rootSkillId))
+            {
+                yield return rootSkillId;
             }
 
-            SkillData resolvedSkill = linkedSkillResolver?.Invoke(resolvedSkillId);
-            if (resolvedSkill == null)
+            foreach (int linkedSkillId in EnumerateClientSummonedUolLinkedSkillIds(normalizedPath, resolvedProperty))
             {
-                yield break;
-            }
-
-            foreach (int linkedSkillId in EnumerateSummonSourceCandidateSkillIds(
-                         resolvedSkill,
-                         linkedSkillResolver,
-                         reverseAffectedSkillResolver))
-            {
-                if (linkedSkillId > 0 && linkedSkillId != resolvedSkillId)
+                if (linkedSkillId > 0 && yieldedSkillIds.Add(linkedSkillId))
                 {
                     yield return linkedSkillId;
                 }
@@ -5795,7 +5830,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return LoadSkillFrame(frameNode, 100, false);
         }
 
-        private SkillAnimation LoadItemBulletAnimationInternal(int itemId)
+        private SkillAnimation LoadItemBulletAnimationInternal(int itemId, int weaponItemId = 0)
         {
             if (!UI.InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
             {
@@ -5812,8 +5847,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             string itemText = category == "Character"
                 ? itemId.ToString("D8", CultureInfo.InvariantCulture)
                 : itemId.ToString("D7", CultureInfo.InvariantCulture);
-            if (itemImage[itemText] is not WzSubProperty itemProperty
-                || itemProperty["bullet"] is not WzImageProperty bulletProperty)
+            if (itemImage[itemText] is not WzSubProperty itemProperty)
+            {
+                return null;
+            }
+
+            WzImageProperty bulletProperty = ResolveItemBulletAnimationProperty(itemProperty, weaponItemId);
+            if (bulletProperty == null)
             {
                 return null;
             }
@@ -5823,6 +5863,90 @@ namespace HaCreator.MapSimulator.Character.Skills
                 "bullet",
                 frameNode => LoadSkillFrame(frameNode, 60, false));
             return animation.Frames.Count > 0 ? animation : null;
+        }
+
+        internal static WzImageProperty ResolveItemBulletAnimationProperty(WzSubProperty itemProperty, int weaponItemId)
+        {
+            if (itemProperty?["bullet"] is not WzImageProperty bulletProperty)
+            {
+                return null;
+            }
+
+            if (HasItemBulletAnimationFrames(bulletProperty))
+            {
+                return bulletProperty;
+            }
+
+            if (bulletProperty is not WzSubProperty bulletContainer)
+            {
+                return bulletProperty;
+            }
+
+            foreach (string candidate in EnumerateItemBulletAnimationBranchKeys(weaponItemId))
+            {
+                if (bulletContainer[candidate] is WzImageProperty candidateProperty
+                    && HasItemBulletAnimationFrames(candidateProperty))
+                {
+                    return candidateProperty;
+                }
+            }
+
+            foreach (WzImageProperty child in bulletContainer.WzProperties)
+            {
+                if (child is WzImageProperty candidateProperty
+                    && HasItemBulletAnimationFrames(candidateProperty))
+                {
+                    return candidateProperty;
+                }
+            }
+
+            return bulletProperty;
+        }
+
+        internal static IEnumerable<string> EnumerateItemBulletAnimationBranchKeys(int weaponItemId)
+        {
+            if (weaponItemId <= 0)
+            {
+                yield break;
+            }
+
+            HashSet<string> emitted = new(StringComparer.OrdinalIgnoreCase);
+            foreach (int candidate in new[]
+                     {
+                         weaponItemId,
+                         weaponItemId / 10000,
+                         weaponItemId / 1000000
+                     })
+            {
+                if (candidate <= 0)
+                {
+                    continue;
+                }
+
+                string text = candidate.ToString(CultureInfo.InvariantCulture);
+                if (emitted.Add(text))
+                {
+                    yield return text;
+                }
+            }
+        }
+
+        internal static bool HasItemBulletAnimationFrames(WzImageProperty bulletProperty)
+        {
+            if (bulletProperty == null)
+            {
+                return false;
+            }
+
+            if (bulletProperty is WzCanvasProperty)
+            {
+                return true;
+            }
+
+            return bulletProperty.WzProperties != null
+                   && bulletProperty.WzProperties.Any(child =>
+                       int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _)
+                       && child is WzCanvasProperty);
         }
 
         private SkillFrame LoadSummonActionFrame(WzImageProperty frameNode)

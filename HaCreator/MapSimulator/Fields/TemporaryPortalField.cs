@@ -228,8 +228,17 @@ namespace HaCreator.MapSimulator.Fields
             _remoteOpenGates.Clear();
             _remoteTownPortalRuntimes.Clear();
             _remoteOpenGateRuntimes.Clear();
+            ClearRemoteTownPortalInferenceState();
             RemovePortalsBySource(TemporaryPortalSource.RemoteTownPortalPool);
             RemovePortalsBySource(TemporaryPortalSource.RemoteOpenGatePool);
+        }
+
+        private void ClearRemoteTownPortalInferenceState()
+        {
+            ClearRemoteTownPortalInferenceState(
+                _remoteTownPortalFieldMetadata,
+                _remoteTownPortalOwnerFieldObservations,
+                _remoteTownPortalPendingOwnerFieldObservations);
         }
 
         public void RememberRemoteTownPortalOwnerFieldObservation(
@@ -2429,6 +2438,16 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
+        private static void ClearRemoteTownPortalInferenceState(
+            IDictionary<RemoteTownPortalOwnerTownKey, RemoteTownPortalFieldMetadata> fieldMetadata,
+            IDictionary<RemoteTownPortalOwnerTownKey, Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>>> ownerFieldObservations,
+            IDictionary<uint, Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation>>> pendingOwnerFieldObservations)
+        {
+            fieldMetadata?.Clear();
+            ownerFieldObservations?.Clear();
+            pendingOwnerFieldObservations?.Clear();
+        }
+
         private static int GetPortalDurationMs(SkillCastInfo castInfo)
         {
             int seconds = castInfo.LevelData?.Time ?? 0;
@@ -2962,6 +2981,54 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return phase;
+        }
+
+        internal static (bool MetadataCleared, bool ObservationsCleared, bool PendingCleared) ClearRemoteTownPortalInferenceStateForTesting()
+        {
+            Dictionary<RemoteTownPortalOwnerTownKey, RemoteTownPortalFieldMetadata> fieldMetadata = new()
+            {
+                [new RemoteTownPortalOwnerTownKey(1, 100000000)] = new RemoteTownPortalFieldMetadata(
+                    SourceMapId: 101000000,
+                    SourceX: 10,
+                    SourceY: 20,
+                    TownMapId: 100000000,
+                    ObservationSource: RemoteTownPortalObservationSource.WzReturnMapFallback,
+                    RecordedAt: 1)
+            };
+            Dictionary<RemoteTownPortalOwnerTownKey, Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>>> ownerFieldObservations = new()
+            {
+                [new RemoteTownPortalOwnerTownKey(1, 100000000)] = new Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>>
+                {
+                    [101000000] = new Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalOwnerFieldObservation>
+                    {
+                        [RemoteTownPortalObservationSource.MovementSnapshot] = new RemoteTownPortalOwnerFieldObservation(
+                            SourceMapId: 101000000,
+                            SourceX: 30,
+                            SourceY: 40,
+                            TownMapId: 100000000,
+                            ObservationSource: RemoteTownPortalObservationSource.MovementSnapshot,
+                            RecordedAt: 2)
+                    }
+                }
+            };
+            Dictionary<uint, Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation>>> pendingOwnerFieldObservations = new()
+            {
+                [1] = new Dictionary<int, Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation>>
+                {
+                    [101000000] = new Dictionary<RemoteTownPortalObservationSource, RemoteTownPortalPendingOwnerFieldObservation>
+                    {
+                        [RemoteTownPortalObservationSource.EnterField] = new RemoteTownPortalPendingOwnerFieldObservation(
+                            SourceMapId: 101000000,
+                            SourceX: 50,
+                            SourceY: 60,
+                            ObservationSource: RemoteTownPortalObservationSource.EnterField,
+                            RecordedAt: 3)
+                    }
+                }
+            };
+
+            ClearRemoteTownPortalInferenceState(fieldMetadata, ownerFieldObservations, pendingOwnerFieldObservations);
+            return (fieldMetadata.Count == 0, ownerFieldObservations.Count == 0, pendingOwnerFieldObservations.Count == 0);
         }
 
         internal static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalDestinationForTesting(

@@ -980,6 +980,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (_pendingAttackPacketRequests.Count == 0)
             {
+                _localBasicActionOwnerUntilTick = int.MinValue;
                 return;
             }
 

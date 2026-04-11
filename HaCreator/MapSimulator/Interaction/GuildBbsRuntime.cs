@@ -33,7 +33,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class GuildBbsRuntime
     {
-        private const int VisibleThreadCount = 8;
+        private const int VisibleThreadCount = 10;
         private const int VisibleCommentCount = 4;
         private const int VisibleCashEmoticonCount = 8;
         private const int DefaultBasicEmoticonCount = 3;
@@ -62,11 +62,16 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte ClientViewEntryRequestType = 3;
         private const byte ClientCommentRequestType = 4;
         private const byte ClientCommentDeleteRequestType = 5;
+        private const byte ClientLoadListResultType = 6;
+        private const byte ClientViewEntryResultType = 7;
+        private const byte ClientEntryNotFoundResultType = 8;
         private const int ClientRequestHistoryLimit = 16;
+        private const int DateBufferLength = 8;
 
         private sealed class GuildBbsCommentState
         {
             public int CommentId { get; init; }
+            public int CharacterId { get; set; }
             public string Author { get; set; } = string.Empty;
             public string Body { get; set; } = string.Empty;
             public DateTimeOffset CreatedAt { get; set; }
@@ -78,6 +83,7 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed class GuildBbsThreadState
         {
             public int ThreadId { get; init; }
+            public int CharacterId { get; set; }
             public string Title { get; set; } = string.Empty;
             public string Body { get; set; } = string.Empty;
             public string Author { get; set; } = string.Empty;
@@ -86,6 +92,8 @@ namespace HaCreator.MapSimulator.Interaction
             public GuildBbsEmoticonKind EmoticonKind { get; set; }
             public int EmoticonSlot { get; set; } = -1;
             public int CashEmoticonPageIndex { get; set; }
+            public int PacketCommentCount { get; set; } = -1;
+            public bool HasPacketDetail { get; set; }
             public List<GuildBbsCommentState> Comments { get; } = new();
         }
 
@@ -131,10 +139,12 @@ namespace HaCreator.MapSimulator.Interaction
         private int _basicEmoticonCount = DefaultBasicEmoticonCount;
         private int _cashEmoticonCount = DefaultCashEmoticonCount;
         private int _nextClientRequestSequence = 1;
+        private bool _hasPacketBoardState;
+        private string _boardStateSourceLabel = "Simulator";
 
         public GuildBbsRuntime()
         {
-            SeedDefaultThreads();
+            ResetBoardStateToDefault();
         }
 
         public bool IsWriteMode { get; private set; }
@@ -221,6 +231,24 @@ namespace HaCreator.MapSimulator.Interaction
             _hasPacketCashOwnershipOverride = false;
             NormalizeDraftState();
             return $"Guild BBS cash entitlement reverted to inventory-owned state: {OwnedCashEmoticonCount}/{_cashEmoticonCount}.";
+        }
+
+        public string ApplyBoardPacket(byte[] payload)
+        {
+            if (!TryApplyBoardPacket(payload, out string detail))
+            {
+                return detail;
+            }
+
+            _hasPacketBoardState = true;
+            _boardStateSourceLabel = "Packet";
+            return detail;
+        }
+
+        public string ClearBoardPacket()
+        {
+            ResetBoardStateToDefault();
+            return "Guild BBS board state reverted to the simulator-owned seeded board.";
         }
 
         public GuildBbsSnapshot BuildSnapshot()
@@ -865,7 +893,7 @@ namespace HaCreator.MapSimulator.Interaction
             string lastRequest = _clientRequestHistory.Count == 0
                 ? "none"
                 : $"#{_clientRequestHistory[^1].Sequence} {_clientRequestHistory[^1].Kind}";
-            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, listStart={ResolveClientListStart()}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, guild={_guildName}, role={_guildRoleLabel}, authority={AuthoritySourceLabel} [{DescribePermissionMask(EffectivePermissionMask)}], cashEmoticons={OwnedCashEmoticonCount}/{_cashEmoticonCount} ({CashOwnershipSourceLabel}), lastClientRequest={lastRequest}";
+            return $"Guild BBS: threads={_threads.Count}, threadPage={_threadPageIndex + 1}, commentPage={_commentPageIndex + 1}, listStart={ResolveClientListStart()}, selected={threadSummary}, mode={(IsWriteMode ? "write" : "read")}, board={_boardStateSourceLabel}, guild={_guildName}, role={_guildRoleLabel}, authority={AuthoritySourceLabel} [{DescribePermissionMask(EffectivePermissionMask)}], cashEmoticons={OwnedCashEmoticonCount}/{_cashEmoticonCount} ({CashOwnershipSourceLabel}), lastClientRequest={lastRequest}";
         }
 
         internal IReadOnlyList<GuildBbsClientRequestSnapshot> GetRecentClientRequestHistory()
@@ -1140,7 +1168,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Title = thread.Title,
                 Author = thread.Author,
                 DateText = thread.CreatedAt.ToLocalTime().ToString("yyyy.MM.dd"),
-                CommentCount = thread.Comments.Count,
+                CommentCount = thread.PacketCommentCount >= 0 ? thread.PacketCommentCount : thread.Comments.Count,
                 IsNotice = thread.IsNotice,
                 Emoticon = CreateEmoticonSnapshot(thread.EmoticonKind, thread.EmoticonSlot, thread.CashEmoticonPageIndex)
             };
@@ -1252,6 +1280,342 @@ namespace HaCreator.MapSimulator.Interaction
         private int ResolveClientListStart()
         {
             return Math.Max(0, _threadPageIndex * VisibleThreadCount);
+        }
+
+        private bool TryApplyBoardPacket(byte[] payload, out string detail)
+        {
+            detail = null;
+            if (payload == null || payload.Length == 0)
+            {
+                detail = "Guild BBS board packet payload is empty.";
+                return false;
+            }
+
+            int offset = 0;
+            byte resultType = payload[offset++];
+            switch (resultType)
+            {
+                case ClientLoadListResultType:
+                    return TryApplyLoadListResultPacket(payload, offset, out detail);
+                case ClientViewEntryResultType:
+                    return TryApplyViewEntryResultPacket(payload, offset, out detail);
+                case ClientEntryNotFoundResultType:
+                    ApplyEntryNotFoundPacket();
+                    detail = $"Decoded Guild BBS board packet -> entry-not-found result 0x{resultType:X2}.";
+                    return true;
+                default:
+                    detail = $"Guild BBS board packet result type 0x{resultType:X2} is not modeled; expected 0x06, 0x07, or 0x08.";
+                    return false;
+            }
+        }
+
+        private bool TryApplyLoadListResultPacket(byte[] payload, int offset, out string detail)
+        {
+            detail = null;
+            if (!TryReadByte(payload, ref offset, out byte hasNoticeByte))
+            {
+                detail = "Guild BBS load-list packet ended before the notice flag.";
+                return false;
+            }
+
+            GuildBbsThreadState noticeThread = null;
+            if (hasNoticeByte != 0 && !TryReadListEntry(payload, ref offset, isNotice: true, out noticeThread, out detail))
+            {
+                return false;
+            }
+
+            if (!TryReadInt32(payload, ref offset, out int totalThreadCount))
+            {
+                detail = "Guild BBS load-list packet ended before the total thread count.";
+                return false;
+            }
+
+            int visibleThreadCount = 0;
+            if (totalThreadCount > 0 && !TryReadInt32(payload, ref offset, out visibleThreadCount))
+            {
+                detail = "Guild BBS load-list packet ended before the visible thread count.";
+                return false;
+            }
+
+            visibleThreadCount = Math.Max(0, visibleThreadCount);
+            Dictionary<int, GuildBbsThreadState> existingThreads = _threads.ToDictionary(thread => thread.ThreadId);
+            var decodedThreads = new List<GuildBbsThreadState>(visibleThreadCount + (noticeThread == null ? 0 : 1));
+            if (noticeThread != null)
+            {
+                if (existingThreads.TryGetValue(noticeThread.ThreadId, out GuildBbsThreadState existingNotice))
+                {
+                    MergeThreadSummary(existingNotice, noticeThread, preserveBodyAndComments: true);
+                    existingNotice.IsNotice = true;
+                    noticeThread = existingNotice;
+                }
+
+                decodedThreads.Add(noticeThread);
+            }
+
+            for (int index = 0; index < visibleThreadCount; index++)
+            {
+                if (!TryReadListEntry(payload, ref offset, isNotice: false, out GuildBbsThreadState decodedThread, out detail))
+                {
+                    return false;
+                }
+
+                if (existingThreads.TryGetValue(decodedThread.ThreadId, out GuildBbsThreadState existingThread))
+                {
+                    MergeThreadSummary(existingThread, decodedThread, preserveBodyAndComments: true);
+                    existingThread.IsNotice = false;
+                    decodedThread = existingThread;
+                }
+
+                decodedThreads.Add(decodedThread);
+            }
+
+            _threads.Clear();
+            _threads.AddRange(decodedThreads);
+            if (_selectedThreadId != 0 && !_threads.Any(thread => thread.ThreadId == _selectedThreadId))
+            {
+                _selectedThreadId = 0;
+                _commentPageIndex = 0;
+            }
+
+            EnsureThreadPageInRange(Math.Max(totalThreadCount, _threads.Count));
+            detail = $"Decoded Guild BBS board packet -> load-list result with {totalThreadCount} total thread(s), {visibleThreadCount} visible row(s), notice={(noticeThread != null ? "present" : "absent")}.";
+            return true;
+        }
+
+        private bool TryApplyViewEntryResultPacket(byte[] payload, int offset, out string detail)
+        {
+            detail = null;
+            if (!TryReadInt32(payload, ref offset, out int entryId)
+                || !TryReadInt32(payload, ref offset, out int characterId)
+                || !TryReadFileTime(payload, ref offset, out DateTimeOffset createdAt)
+                || !TryReadString(payload, ref offset, out string title)
+                || !TryReadString(payload, ref offset, out string body)
+                || !TryReadInt32(payload, ref offset, out int emoticonId)
+                || !TryReadInt32(payload, ref offset, out int commentCount))
+            {
+                detail = "Guild BBS view-entry packet ended before the entry header finished decoding.";
+                return false;
+            }
+
+            GuildBbsThreadState thread = _threads.FirstOrDefault(candidate => candidate.ThreadId == entryId);
+            if (thread == null)
+            {
+                thread = new GuildBbsThreadState
+                {
+                    ThreadId = entryId
+                };
+                _threads.Add(thread);
+            }
+
+            thread.CharacterId = characterId;
+            thread.Author = ResolvePacketAuthorLabel(characterId, thread.Author);
+            thread.CreatedAt = createdAt;
+            thread.Title = title;
+            thread.Body = body;
+            thread.PacketCommentCount = Math.Max(0, commentCount);
+            thread.HasPacketDetail = true;
+            ApplyPacketEmoticon(thread, emoticonId);
+            thread.Comments.Clear();
+
+            for (int index = 0; index < commentCount; index++)
+            {
+                if (!TryReadInt32(payload, ref offset, out int commentId)
+                    || !TryReadInt32(payload, ref offset, out int commentCharacterId)
+                    || !TryReadFileTime(payload, ref offset, out DateTimeOffset commentCreatedAt)
+                    || !TryReadString(payload, ref offset, out string commentBody))
+                {
+                    detail = $"Guild BBS view-entry packet ended while decoding comment {index + 1}/{commentCount}.";
+                    return false;
+                }
+
+                thread.Comments.Add(new GuildBbsCommentState
+                {
+                    CommentId = commentId,
+                    CharacterId = commentCharacterId,
+                    Author = ResolvePacketAuthorLabel(commentCharacterId, string.Empty),
+                    Body = commentBody,
+                    CreatedAt = commentCreatedAt,
+                    EmoticonKind = GuildBbsEmoticonKind.None,
+                    EmoticonSlot = -1,
+                    CashEmoticonPageIndex = 0
+                });
+                _nextCommentId = Math.Max(_nextCommentId, commentId + 1);
+            }
+
+            _selectedThreadId = entryId;
+            _commentPageIndex = 0;
+            _nextThreadId = Math.Max(_nextThreadId, entryId + 1);
+            detail = $"Decoded Guild BBS board packet -> view-entry result for thread #{entryId} with {commentCount} comment(s).";
+            return true;
+        }
+
+        private void ApplyEntryNotFoundPacket()
+        {
+            _selectedThreadId = 0;
+            _commentPageIndex = 0;
+        }
+
+        private bool TryReadListEntry(byte[] payload, ref int offset, bool isNotice, out GuildBbsThreadState thread, out string detail)
+        {
+            thread = null;
+            detail = null;
+            if (!TryReadInt32(payload, ref offset, out int entryId)
+                || !TryReadInt32(payload, ref offset, out int characterId)
+                || !TryReadString(payload, ref offset, out string title)
+                || !TryReadFileTime(payload, ref offset, out DateTimeOffset createdAt)
+                || !TryReadInt32(payload, ref offset, out int emoticonId)
+                || !TryReadInt32(payload, ref offset, out int commentCount))
+            {
+                detail = isNotice
+                    ? "Guild BBS load-list packet ended while decoding the notice entry."
+                    : "Guild BBS load-list packet ended while decoding a visible thread row.";
+                return false;
+            }
+
+            thread = new GuildBbsThreadState
+            {
+                ThreadId = entryId,
+                CharacterId = characterId,
+                Title = title,
+                Author = ResolvePacketAuthorLabel(characterId, string.Empty),
+                CreatedAt = createdAt,
+                IsNotice = isNotice,
+                PacketCommentCount = Math.Max(0, commentCount)
+            };
+            ApplyPacketEmoticon(thread, emoticonId);
+            _nextThreadId = Math.Max(_nextThreadId, entryId + 1);
+            return true;
+        }
+
+        private static void MergeThreadSummary(GuildBbsThreadState target, GuildBbsThreadState source, bool preserveBodyAndComments)
+        {
+            target.CharacterId = source.CharacterId;
+            target.Title = source.Title;
+            target.Author = source.Author;
+            target.CreatedAt = source.CreatedAt;
+            target.IsNotice = source.IsNotice;
+            target.EmoticonKind = source.EmoticonKind;
+            target.EmoticonSlot = source.EmoticonSlot;
+            target.CashEmoticonPageIndex = source.CashEmoticonPageIndex;
+            target.PacketCommentCount = source.PacketCommentCount;
+            if (!preserveBodyAndComments)
+            {
+                target.Body = source.Body;
+                target.Comments.Clear();
+                target.Comments.AddRange(source.Comments);
+            }
+        }
+
+        private static string ResolvePacketAuthorLabel(int characterId, string existingAuthor)
+        {
+            if (!string.IsNullOrWhiteSpace(existingAuthor) && !existingAuthor.StartsWith("CID ", StringComparison.Ordinal))
+            {
+                return existingAuthor;
+            }
+
+            return characterId > 0 ? $"CID {characterId}" : string.Empty;
+        }
+
+        private static void ApplyPacketEmoticon(GuildBbsThreadState thread, int emoticonId)
+        {
+            if (thread == null)
+            {
+                return;
+            }
+
+            if (emoticonId >= ClientCashEmoticonIdStart)
+            {
+                thread.EmoticonKind = GuildBbsEmoticonKind.Cash;
+                thread.EmoticonSlot = emoticonId - ClientCashEmoticonIdStart;
+                thread.CashEmoticonPageIndex = Math.Max(0, thread.EmoticonSlot / ClientVisibleCashEmoticonCount);
+            }
+            else if (emoticonId >= 0 && emoticonId < DefaultBasicEmoticonCount)
+            {
+                thread.EmoticonKind = GuildBbsEmoticonKind.Basic;
+                thread.EmoticonSlot = emoticonId;
+                thread.CashEmoticonPageIndex = 0;
+            }
+            else
+            {
+                thread.EmoticonKind = GuildBbsEmoticonKind.None;
+                thread.EmoticonSlot = -1;
+                thread.CashEmoticonPageIndex = 0;
+            }
+        }
+
+        private static bool TryReadByte(byte[] payload, ref int offset, out byte value)
+        {
+            value = 0;
+            if (payload == null || offset < 0 || offset >= payload.Length)
+            {
+                return false;
+            }
+
+            value = payload[offset++];
+            return true;
+        }
+
+        private static bool TryReadInt32(byte[] payload, ref int offset, out int value)
+        {
+            value = 0;
+            if (payload == null || offset < 0 || payload.Length - offset < sizeof(int))
+            {
+                return false;
+            }
+
+            value = BitConverter.ToInt32(payload, offset);
+            offset += sizeof(int);
+            return true;
+        }
+
+        private static bool TryReadString(byte[] payload, ref int offset, out string value)
+        {
+            value = string.Empty;
+            if (payload == null || offset < 0 || payload.Length - offset < sizeof(ushort))
+            {
+                return false;
+            }
+
+            int length = BitConverter.ToUInt16(payload, offset);
+            offset += sizeof(ushort);
+            if (length < 0 || payload.Length - offset < length)
+            {
+                return false;
+            }
+
+            value = length == 0
+                ? string.Empty
+                : Encoding.Default.GetString(payload, offset, length);
+            offset += length;
+            return true;
+        }
+
+        private static bool TryReadFileTime(byte[] payload, ref int offset, out DateTimeOffset value)
+        {
+            value = DateTimeOffset.MinValue;
+            if (payload == null || offset < 0 || payload.Length - offset < DateBufferLength)
+            {
+                return false;
+            }
+
+            long rawFileTime = BitConverter.ToInt64(payload, offset);
+            offset += DateBufferLength;
+            if (rawFileTime <= 0)
+            {
+                value = DateTimeOffset.MinValue;
+                return true;
+            }
+
+            try
+            {
+                value = DateTimeOffset.FromFileTime(rawFileTime);
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                value = DateTimeOffset.MinValue;
+                return true;
+            }
         }
 
         private byte[] BuildClientRegisterRequestPayload(string resolvedTitle, string resolvedBody)
@@ -1984,6 +2348,19 @@ namespace HaCreator.MapSimulator.Interaction
                 minimumHexWidth: 0);
         }
 
+        private void ResetBoardStateToDefault()
+        {
+            _threads.Clear();
+            _selectedThreadId = 0;
+            _threadPageIndex = 0;
+            _commentPageIndex = 0;
+            _nextThreadId = 1;
+            _nextCommentId = 1;
+            _hasPacketBoardState = false;
+            _boardStateSourceLabel = "Simulator";
+            SeedDefaultThreads();
+        }
+
         private void SeedDefaultThreads()
         {
             GuildBbsThreadState welcomeThread = AddThread(
@@ -1995,9 +2372,12 @@ namespace HaCreator.MapSimulator.Interaction
                 GuildBbsEmoticonKind.Basic,
                 0,
                 0);
+            welcomeThread.CharacterId = 1000001;
+            welcomeThread.PacketCommentCount = 1;
             welcomeThread.Comments.Add(new GuildBbsCommentState
             {
                 CommentId = _nextCommentId++,
+                CharacterId = 1000002,
                 Author = "Targa",
                 Body = "Use this thread to verify board selection and notice rendering.",
                 CreatedAt = DateTimeOffset.Now.AddDays(-3).AddHours(2),
@@ -2014,9 +2394,12 @@ namespace HaCreator.MapSimulator.Interaction
                 GuildBbsEmoticonKind.Cash,
                 2,
                 0);
+            parityThread.CharacterId = 1000003;
+            parityThread.PacketCommentCount = 1;
             parityThread.Comments.Add(new GuildBbsCommentState
             {
                 CommentId = _nextCommentId++,
+                CharacterId = 1000004,
                 Author = "Rin",
                 Body = "Date labels and author columns now have a dedicated board owner.",
                 CreatedAt = DateTimeOffset.Now.AddDays(-2).AddHours(1),
@@ -2056,7 +2439,8 @@ namespace HaCreator.MapSimulator.Interaction
                 IsNotice = isNotice,
                 EmoticonKind = emoticonKind,
                 EmoticonSlot = emoticonSlot,
-                CashEmoticonPageIndex = cashEmoticonPageIndex
+                CashEmoticonPageIndex = cashEmoticonPageIndex,
+                PacketCommentCount = 0
             };
             _threads.Add(thread);
             return thread;

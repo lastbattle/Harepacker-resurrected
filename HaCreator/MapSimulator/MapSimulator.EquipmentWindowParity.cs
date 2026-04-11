@@ -30,6 +30,8 @@ namespace HaCreator.MapSimulator
             public int CharacterPacketAuthorityDeadlineAtTick { get; set; }
             public bool AwaitingMechanicPacketAuthority { get; set; }
             public int MechanicPacketAuthorityDeadlineAtTick { get; set; }
+            public bool AllowObservedLiveMechanicRecovery { get; set; }
+            public IReadOnlyDictionary<MechanicEquipSlot, int> MechanicStateBeforeLiveRecovery { get; set; }
         }
 
         private sealed class CompletedCharacterEquipmentAuthorityEnvelope
@@ -49,6 +51,11 @@ namespace HaCreator.MapSimulator
         internal readonly record struct CharacterAuthoritySlotParts(
             CharacterPart VisiblePart,
             CharacterPart HiddenPart);
+
+        private readonly record struct AuthorityInventoryStateCandidate(
+            InventoryType InventoryType,
+            int SlotIndex,
+            InventorySlotData Slot);
 
         private EquipmentChangeSubmission SubmitEquipmentChangeRequest(EquipmentChangeRequest request)
         {
@@ -92,10 +99,15 @@ namespace HaCreator.MapSimulator
                 envelope.CharacterPacketAuthorityDeadlineAtTick = currTickCount + CharacterEquipmentPacketAuthorityTimeoutMs;
             }
             else if (IsMechanicEquipmentRequest(request)
-                && TryDispatchMechanicEquipmentAuthorityRequest(request, out _))
+                && TryDispatchMechanicEquipmentAuthorityRequest(request, out MechanicAuthorityTransportOutcome mechanicTransportOutcome))
             {
                 envelope.AwaitingMechanicPacketAuthority = true;
                 envelope.MechanicPacketAuthorityDeadlineAtTick = currTickCount + MechanicEquipmentPacketAuthorityTimeoutMs;
+                if (ShouldAllowObservedLiveMechanicRecovery(request, mechanicTransportOutcome))
+                {
+                    envelope.AllowObservedLiveMechanicRecovery = true;
+                    envelope.MechanicStateBeforeLiveRecovery = CaptureMechanicStateSnapshot(_playerManager?.CompanionEquipment?.Mechanic);
+                }
             }
 
             _pendingEquipmentChangeRequests[request.RequestId] = envelope;
@@ -180,6 +192,25 @@ namespace HaCreator.MapSimulator
 
             if (_pendingMechanicEquipmentPacketResults.TryGetValue(resolutionQuery.RequestId, out EquipmentChangeResult packetResult))
             {
+                if (ShouldDeferQueuedCharacterPacketResultDrain(currTickCount, pendingEnvelope.ReadyAtTick))
+                {
+                    return null;
+                }
+
+                _pendingMechanicEquipmentPacketResults.Remove(resolutionQuery.RequestId);
+                _pendingEquipmentChangeRequests.Remove(resolutionQuery.RequestId);
+                return packetResult;
+            }
+
+            if (pendingEnvelope.AwaitingMechanicPacketAuthority
+                && TryQueueObservedLiveMechanicRecoveryResult(pendingEnvelope, out _)
+                && _pendingMechanicEquipmentPacketResults.TryGetValue(resolutionQuery.RequestId, out packetResult))
+            {
+                if (ShouldDeferQueuedCharacterPacketResultDrain(currTickCount, pendingEnvelope.ReadyAtTick))
+                {
+                    return null;
+                }
+
                 _pendingMechanicEquipmentPacketResults.Remove(resolutionQuery.RequestId);
                 _pendingEquipmentChangeRequests.Remove(resolutionQuery.RequestId);
                 return packetResult;
@@ -296,12 +327,20 @@ namespace HaCreator.MapSimulator
                     || request.SourceCompanionKind == EquipmentChangeCompanionKind.Mechanic);
         }
 
-        private bool TryDispatchMechanicEquipmentAuthorityRequest(EquipmentChangeRequest request, out string status)
+        private bool TryDispatchMechanicEquipmentAuthorityRequest(
+            EquipmentChangeRequest request,
+            out MechanicAuthorityTransportOutcome outcome)
         {
-            status = "Mechanic equipment authority dispatch is unavailable.";
+            outcome = new MechanicAuthorityTransportOutcome(
+                false,
+                MechanicAuthorityTransportRoute.None,
+                "Mechanic equipment authority dispatch is unavailable.");
             if (!IsMechanicEquipmentRequest(request))
             {
-                status = "Equipment request does not target the mechanic owner.";
+                outcome = new MechanicAuthorityTransportOutcome(
+                    false,
+                    MechanicAuthorityTransportRoute.None,
+                    "Equipment request does not target the mechanic owner.");
                 return false;
             }
 
@@ -318,7 +357,7 @@ namespace HaCreator.MapSimulator
                 bridgePayload = clientPayload;
             }
 
-            MechanicAuthorityTransportOutcome outcome = MechanicAuthorityTransportPlanner.DispatchRequest(
+            outcome = MechanicAuthorityTransportPlanner.DispatchRequest(
                 request.RequestId,
                 bridgeOpcode,
                 bridgePayload,
@@ -329,13 +368,25 @@ namespace HaCreator.MapSimulator
                 _localUtilityPacketOutbox.TrySendOutboundPacket,
                 _localUtilityOfficialSessionBridge.TryQueueOutboundPacket,
                 _localUtilityPacketOutbox.TryQueueOutboundPacket);
-            status = outcome.Status;
             return outcome.Accepted;
         }
 
         private byte[] BuildMechanicEquipmentAuthorityRequestPayload(EquipmentChangeRequest request)
         {
             return MechanicEquipmentPacketParity.EncodeAuthorityRequestPayload(request);
+        }
+
+        private static bool ShouldAllowObservedLiveMechanicRecovery(
+            EquipmentChangeRequest request,
+            MechanicAuthorityTransportOutcome outcome)
+        {
+            return request != null
+                && request.Kind == EquipmentChangeRequestKind.InventoryToCompanion
+                && request.TargetCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                && request.SourceInventoryType == InventoryType.EQUIP
+                && request.TargetMechanicSlot.HasValue
+                && outcome.Accepted
+                && outcome.Route == MechanicAuthorityTransportRoute.LiveBridge;
         }
 
         private bool TryApplyPacketOwnedCharacterEquipPayload(byte[] payload, out string message)
@@ -674,7 +725,9 @@ namespace HaCreator.MapSimulator
             }
 
             IReadOnlyList<CharacterPart> displacedParts = ResolvePacketOwnedAuthorityDisplacedParts(beforeParts, payload, targetSlot);
-            result = EquipmentChangeResult.Accept(displacedParts: displacedParts)
+            result = EquipmentChangeResult.Accept(
+                    displacedParts: displacedParts,
+                    authorityInventorySlotStates: payload.AuthorityInventorySlotStates)
                 .WithCompletionMetadata(
                     payload.RequestId,
                     payload.RequestedAtTick,
@@ -730,7 +783,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            result = EquipmentChangeResult.Accept(displacedParts: displacedParts)
+            result = EquipmentChangeResult.Accept(
+                    displacedParts: displacedParts,
+                    authorityInventorySlotStates: payload.AuthorityInventorySlotStates)
                 .WithCompletionMetadata(
                     payload.RequestId,
                     payload.RequestedAtTick,
@@ -787,7 +842,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            result = EquipmentChangeResult.Accept(returnedPart: liveSourcePart.Clone())
+            result = EquipmentChangeResult.Accept(
+                    returnedPart: liveSourcePart.Clone(),
+                    authorityInventorySlotStates: payload.AuthorityInventorySlotStates)
                 .WithCompletionMetadata(
                     payload.RequestId,
                     payload.RequestedAtTick,
@@ -1453,6 +1510,26 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (EquipmentChangeClientParity.HasAuthorityInventorySlotStates(result))
+            {
+                if (!TryResolveAuthoritativeInventorySnapshots(
+                        result,
+                        CaptureInventorySnapshot(inventoryWindow, InventoryType.EQUIP),
+                        inventoryWindow.GetSlotLimit(InventoryType.EQUIP),
+                        CaptureInventorySnapshot(inventoryWindow, InventoryType.CASH),
+                        inventoryWindow.GetSlotLimit(InventoryType.CASH),
+                        out IReadOnlyList<InventorySlotData> authoritativeEquipInventory,
+                        out IReadOnlyList<InventorySlotData> authoritativeCashInventory,
+                        out rejectReason))
+                {
+                    return false;
+                }
+
+                inventoryWindow.ReplaceInventory(InventoryType.EQUIP, authoritativeEquipInventory);
+                inventoryWindow.ReplaceInventory(InventoryType.CASH, authoritativeCashInventory);
+                return true;
+            }
+
             switch (request.Kind)
             {
                 case EquipmentChangeRequestKind.InventoryToCharacter:
@@ -1581,6 +1658,355 @@ namespace HaCreator.MapSimulator
         }
 
         private InventorySlotData CreateInventorySlot(CharacterPart part)
+        {
+            if (part == null)
+            {
+                return null;
+            }
+
+            return new InventorySlotData
+            {
+                ItemId = part.ItemId,
+                Quantity = 1,
+                MaxStackSize = 1,
+                PreferredInventoryType = part.IsCash ? InventoryType.CASH : InventoryType.EQUIP,
+                GradeFrameIndex = 0,
+                ItemName = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name,
+                ItemTypeName = string.IsNullOrWhiteSpace(part.ItemCategory) ? "Equip" : part.ItemCategory,
+                Description = part.Description,
+                OwnerAccountId = part.OwnerAccountId,
+                OwnerCharacterId = part.OwnerCharacterId,
+                IsCashOwnershipLocked = part.IsCashOwnershipLocked,
+                TooltipPart = part.Clone()
+            };
+        }
+
+        private bool TryQueueObservedLiveMechanicRecoveryResult(
+            PendingEquipmentChangeEnvelope pendingEnvelope,
+            out string message)
+        {
+            message = null;
+            if (pendingEnvelope?.Request == null
+                || !pendingEnvelope.AllowObservedLiveMechanicRecovery
+                || !pendingEnvelope.AwaitingMechanicPacketAuthority)
+            {
+                return false;
+            }
+
+            if (_playerManager?.Player?.Build is not CharacterBuild build)
+            {
+                return false;
+            }
+
+            MechanicEquipmentController controller = _playerManager?.CompanionEquipment?.Mechanic;
+            InventoryUI inventoryWindow = uiWindowManager?.InventoryWindow as InventoryUI;
+            if (controller == null || inventoryWindow == null)
+            {
+                return false;
+            }
+
+            controller.EnsureDefaults(build);
+            IReadOnlyDictionary<MechanicEquipSlot, int> currentMechanicState = CaptureMechanicStateSnapshot(controller);
+            IReadOnlyList<InventorySlotData> currentEquipInventory = CaptureInventorySnapshot(inventoryWindow, InventoryType.EQUIP);
+            if (!MechanicEquipmentPacketParity.TryRecognizeObservedLiveBridgeEquipInCompletion(
+                    pendingEnvelope.Request,
+                    pendingEnvelope.MechanicStateBeforeLiveRecovery,
+                    currentMechanicState,
+                    currentEquipInventory,
+                    out _))
+            {
+                return false;
+            }
+
+            EquipmentChangeResult observedResult = EquipmentChangeResult.Accept(
+                    displacedInventorySlots: Array.Empty<InventorySlotData>())
+                .WithCompletionMetadata(
+                    pendingEnvelope.Request.RequestId,
+                    pendingEnvelope.Request.RequestedAtTick,
+                    currTickCount,
+                    build.ComputeEquipmentStateToken(),
+                    ComputeMechanicEquipmentStateToken(build));
+            return TryQueueMechanicEquipmentPacketResult(
+                pendingEnvelope.Request.RequestId,
+                pendingEnvelope.Request.RequestedAtTick,
+                observedResult,
+                out message);
+        }
+
+        internal static bool TryResolveAuthoritativeInventorySnapshots(
+            EquipmentChangeResult result,
+            IReadOnlyList<InventorySlotData> liveEquipInventory,
+            int equipSlotLimit,
+            IReadOnlyList<InventorySlotData> liveCashInventory,
+            int cashSlotLimit,
+            out IReadOnlyList<InventorySlotData> resolvedEquipInventory,
+            out IReadOnlyList<InventorySlotData> resolvedCashInventory,
+            out string rejectReason)
+        {
+            resolvedEquipInventory = Array.Empty<InventorySlotData>();
+            resolvedCashInventory = Array.Empty<InventorySlotData>();
+            rejectReason = null;
+            if (!EquipmentChangeClientParity.HasAuthorityInventorySlotStates(result))
+            {
+                rejectReason = "Packet-authored inventory state is missing.";
+                return false;
+            }
+
+            if (!TryValidateAuthorityInventorySnapshotTargets(
+                    result.AuthorityInventorySlotStates,
+                    equipSlotLimit,
+                    cashSlotLimit,
+                    out rejectReason))
+            {
+                return false;
+            }
+
+            List<InventorySlotData> equipSnapshot = CloneInventorySnapshot(liveEquipInventory);
+            List<InventorySlotData> cashSnapshot = CloneInventorySnapshot(liveCashInventory);
+            Dictionary<int, Queue<AuthorityInventoryStateCandidate>> candidatePools = BuildAuthorityInventoryCandidatePools(
+                liveEquipInventory,
+                liveCashInventory,
+                result);
+
+            for (int i = 0; i < result.AuthorityInventorySlotStates.Count; i++)
+            {
+                CharacterEquipmentAuthorityInventorySlotState state = result.AuthorityInventorySlotStates[i];
+                List<InventorySlotData> snapshot = state.InventoryType == InventoryType.CASH
+                    ? cashSnapshot
+                    : equipSnapshot;
+
+                EnsureInventorySnapshotCapacity(snapshot, state.SlotIndex + 1);
+                if (state.ItemId <= 0)
+                {
+                    snapshot[state.SlotIndex] = null;
+                    continue;
+                }
+
+                if (!TryConsumeAuthorityInventoryStateCandidate(
+                        candidatePools,
+                        snapshot,
+                        state.ItemId,
+                        out InventorySlotData resolvedSlot))
+                {
+                    rejectReason = $"Packet-authored inventory state referenced unresolved item {state.ItemId}.";
+                    return false;
+                }
+
+                resolvedSlot.PendingRequestId = 0;
+                resolvedSlot.IsDisabled = false;
+                resolvedSlot.PreferredInventoryType = state.InventoryType;
+                snapshot[state.SlotIndex] = resolvedSlot;
+            }
+
+            TrimTrailingNullInventorySlots(equipSnapshot);
+            TrimTrailingNullInventorySlots(cashSnapshot);
+            resolvedEquipInventory = equipSnapshot.AsReadOnly();
+            resolvedCashInventory = cashSnapshot.AsReadOnly();
+            return true;
+        }
+
+        private static bool TryValidateAuthorityInventorySnapshotTargets(
+            IReadOnlyList<CharacterEquipmentAuthorityInventorySlotState> slotStates,
+            int equipSlotLimit,
+            int cashSlotLimit,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (slotStates == null || slotStates.Count == 0)
+            {
+                return true;
+            }
+
+            HashSet<(InventoryType InventoryType, int SlotIndex)> seenSlots = new();
+            for (int i = 0; i < slotStates.Count; i++)
+            {
+                CharacterEquipmentAuthorityInventorySlotState state = slotStates[i];
+                if (!EquipmentChangeClientParity.IsSupportedCharacterEquipmentSourceInventory(state.InventoryType))
+                {
+                    rejectReason = "Character equipment authority returned an unsupported inventory state.";
+                    return false;
+                }
+
+                int slotLimit = state.InventoryType == InventoryType.CASH ? cashSlotLimit : equipSlotLimit;
+                if (state.SlotIndex < 0 || state.SlotIndex >= slotLimit)
+                {
+                    rejectReason = "Character equipment authority returned an inventory state outside the active slot range.";
+                    return false;
+                }
+
+                if (!seenSlots.Add((state.InventoryType, state.SlotIndex)))
+                {
+                    rejectReason = "Character equipment authority returned duplicate inventory slot states.";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static Dictionary<int, Queue<AuthorityInventoryStateCandidate>> BuildAuthorityInventoryCandidatePools(
+            IReadOnlyList<InventorySlotData> liveEquipInventory,
+            IReadOnlyList<InventorySlotData> liveCashInventory,
+            EquipmentChangeResult result)
+        {
+            Dictionary<int, Queue<AuthorityInventoryStateCandidate>> candidatePools = new();
+            AddAuthorityInventoryStateCandidates(candidatePools, InventoryType.EQUIP, liveEquipInventory);
+            AddAuthorityInventoryStateCandidates(candidatePools, InventoryType.CASH, liveCashInventory);
+
+            if (result?.DisplacedParts != null)
+            {
+                for (int i = 0; i < result.DisplacedParts.Count; i++)
+                {
+                    InventorySlotData slot = CreateAuthorityInventorySlot(result.DisplacedParts[i]);
+                    EnqueueAuthorityInventoryStateCandidate(
+                        candidatePools,
+                        new AuthorityInventoryStateCandidate(
+                            slot?.PreferredInventoryType ?? InventoryType.EQUIP,
+                            -1,
+                            slot));
+                }
+            }
+
+            InventorySlotData returnedSlot = CreateAuthorityInventorySlot(result?.ReturnedPart);
+            EnqueueAuthorityInventoryStateCandidate(
+                candidatePools,
+                new AuthorityInventoryStateCandidate(
+                    returnedSlot?.PreferredInventoryType ?? InventoryType.EQUIP,
+                    -1,
+                    returnedSlot));
+            return candidatePools;
+        }
+
+        private static void AddAuthorityInventoryStateCandidates(
+            Dictionary<int, Queue<AuthorityInventoryStateCandidate>> candidatePools,
+            InventoryType inventoryType,
+            IReadOnlyList<InventorySlotData> slots)
+        {
+            if (slots == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                InventorySlotData slot = slots[i]?.Clone();
+                if (slot == null || slot.ItemId <= 0)
+                {
+                    continue;
+                }
+
+                slot.PendingRequestId = 0;
+                slot.IsDisabled = false;
+                slot.PreferredInventoryType = inventoryType;
+                EnqueueAuthorityInventoryStateCandidate(
+                    candidatePools,
+                    new AuthorityInventoryStateCandidate(inventoryType, i, slot));
+            }
+        }
+
+        private static void EnqueueAuthorityInventoryStateCandidate(
+            Dictionary<int, Queue<AuthorityInventoryStateCandidate>> candidatePools,
+            AuthorityInventoryStateCandidate candidate)
+        {
+            if (candidate.Slot == null || candidate.Slot.ItemId <= 0)
+            {
+                return;
+            }
+
+            if (!candidatePools.TryGetValue(candidate.Slot.ItemId, out Queue<AuthorityInventoryStateCandidate> candidates))
+            {
+                candidates = new Queue<AuthorityInventoryStateCandidate>();
+                candidatePools[candidate.Slot.ItemId] = candidates;
+            }
+
+            candidates.Enqueue(candidate);
+        }
+
+        private static bool TryConsumeAuthorityInventoryStateCandidate(
+            Dictionary<int, Queue<AuthorityInventoryStateCandidate>> candidatePools,
+            List<InventorySlotData> targetSnapshot,
+            int itemId,
+            out InventorySlotData resolvedSlot)
+        {
+            resolvedSlot = null;
+            if (itemId <= 0
+                || candidatePools == null
+                || !candidatePools.TryGetValue(itemId, out Queue<AuthorityInventoryStateCandidate> candidates))
+            {
+                return false;
+            }
+
+            while (candidates.Count > 0)
+            {
+                AuthorityInventoryStateCandidate candidate = candidates.Dequeue();
+                if (candidate.Slot == null || candidate.Slot.ItemId != itemId)
+                {
+                    continue;
+                }
+
+                if (candidate.SlotIndex >= 0
+                    && candidate.InventoryType == candidate.Slot.PreferredInventoryType
+                    && targetSnapshot != null
+                    && candidate.SlotIndex < targetSnapshot.Count)
+                {
+                    targetSnapshot[candidate.SlotIndex] = null;
+                }
+
+                resolvedSlot = candidate.Slot.Clone();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static List<InventorySlotData> CloneInventorySnapshot(IReadOnlyList<InventorySlotData> snapshot)
+        {
+            List<InventorySlotData> clone = new(snapshot?.Count ?? 0);
+            if (snapshot == null)
+            {
+                return clone;
+            }
+
+            for (int i = 0; i < snapshot.Count; i++)
+            {
+                clone.Add(snapshot[i]?.Clone());
+            }
+
+            return clone;
+        }
+
+        private static void EnsureInventorySnapshotCapacity(List<InventorySlotData> snapshot, int requiredCount)
+        {
+            if (snapshot == null || requiredCount <= 0)
+            {
+                return;
+            }
+
+            while (snapshot.Count < requiredCount)
+            {
+                snapshot.Add(null);
+            }
+        }
+
+        private static void TrimTrailingNullInventorySlots(List<InventorySlotData> snapshot)
+        {
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            for (int i = snapshot.Count - 1; i >= 0; i--)
+            {
+                if (snapshot[i] != null)
+                {
+                    break;
+                }
+
+                snapshot.RemoveAt(i);
+            }
+        }
+
+        private static InventorySlotData CreateAuthorityInventorySlot(CharacterPart part)
         {
             if (part == null)
             {

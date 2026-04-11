@@ -2320,6 +2320,12 @@ namespace HaCreator.MapSimulator.UI
             bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
             int tickCount = Environment.TickCount;
 
+            if (!ctrl && TryHandleImeCandidateKeyboardNavigation(keyboardState))
+            {
+                _caretBlinkTick = Environment.TickCount;
+                return;
+            }
+
             if (!ctrl && TryHandleImeCandidateKeyboardSelection(keyboardState))
             {
                 _caretBlinkTick = Environment.TickCount;
@@ -2467,6 +2473,20 @@ namespace HaCreator.MapSimulator.UI
         private bool TryHandleImeCandidateKeyboardSelection(KeyboardState keyboardState)
         {
             int candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveVisibleCandidateIndexFromKeyboard(
+                _candidateListState,
+                keyboardState,
+                WasNameEditKeyPressed);
+            if (candidateIndex < 0)
+            {
+                return false;
+            }
+
+            return OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex) == true;
+        }
+
+        private bool TryHandleImeCandidateKeyboardNavigation(KeyboardState keyboardState)
+        {
+            int candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveAdjacentCandidateIndexFromKeyboard(
                 _candidateListState,
                 keyboardState,
                 WasNameEditKeyPressed);

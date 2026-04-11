@@ -60,6 +60,120 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator : Microsoft.Xna.Framework.Game
     {
+        internal readonly struct ClientOwnedMapBoundaryContract
+        {
+            public ClientOwnedMapBoundaryContract(
+                Rectangle viewportRectangle,
+                Rectangle fieldBoundary,
+                int side,
+                int top,
+                int bottom,
+                Rectangle? mirrorBottomRectangle)
+            {
+                ViewportRectangle = viewportRectangle;
+                FieldBoundary = fieldBoundary;
+                Side = Math.Max(0, side);
+                Top = Math.Max(0, top);
+                Bottom = Math.Max(0, bottom);
+                MirrorBottomRectangle = mirrorBottomRectangle;
+            }
+
+            public Rectangle ViewportRectangle { get; }
+            public Rectangle FieldBoundary { get; }
+            public int Side { get; }
+            public int Top { get; }
+            public int Bottom { get; }
+            public Rectangle? MirrorBottomRectangle { get; }
+        }
+
+        internal static ClientOwnedMapBoundaryContract ResolveClientOwnedMapBoundaryContract(
+            MapInfo mapInfo,
+            Rectangle? mapVrRectangle,
+            Point centerPoint,
+            Point mapSize)
+        {
+            return ResolveClientOwnedMapBoundaryContract(mapInfo, mapVrRectangle, centerPoint, mapSize, linkedMapResolver: null);
+        }
+
+        internal static ClientOwnedMapBoundaryContract ResolveClientOwnedMapBoundaryContract(
+            MapInfo mapInfo,
+            Rectangle? mapVrRectangle,
+            Point centerPoint,
+            Point mapSize,
+            Func<int, WzImage> linkedMapResolver)
+        {
+            Rectangle viewportRectangle = ResolveClientOwnedViewportRectangle(mapInfo, mapVrRectangle, mapSize, linkedMapResolver);
+            Rectangle fieldBoundary = new(
+                viewportRectangle.X + centerPoint.X,
+                viewportRectangle.Y + centerPoint.Y,
+                viewportRectangle.Width,
+                viewportRectangle.Height);
+
+            (int side, int top, int bottom) = ResolveClientOwnedSafeArea(mapInfo, linkedMapResolver);
+            Rectangle? mirrorBottomRectangle = ResolveClientOwnedMirrorBottomRectangle(mapInfo, viewportRectangle);
+            return new ClientOwnedMapBoundaryContract(
+                viewportRectangle,
+                fieldBoundary,
+                side,
+                top,
+                bottom,
+                mirrorBottomRectangle);
+        }
+
+        private static Rectangle ResolveClientOwnedViewportRectangle(
+            MapInfo mapInfo,
+            Rectangle? mapVrRectangle,
+            Point mapSize,
+            Func<int, WzImage> linkedMapResolver)
+        {
+            if (TryBuildWeddingPhotoSceneContract(mapInfo, out WeddingPhotoSceneContract contract, linkedMapResolver)
+                && contract.HasViewport)
+            {
+                return new Rectangle(
+                    contract.ViewportLeft,
+                    contract.ViewportTop,
+                    Math.Max(0, contract.ViewportRight - contract.ViewportLeft),
+                    Math.Max(0, contract.ViewportBottom - contract.ViewportTop));
+            }
+
+            if (mapVrRectangle.HasValue)
+            {
+                return mapVrRectangle.Value;
+            }
+
+            return new Rectangle(0, 0, mapSize.X, mapSize.Y);
+        }
+
+        private static (int Side, int Top, int Bottom) ResolveClientOwnedSafeArea(
+            MapInfo mapInfo,
+            Func<int, WzImage> linkedMapResolver)
+        {
+            if (TryBuildWeddingPhotoSceneContract(mapInfo, out WeddingPhotoSceneContract contract, linkedMapResolver)
+                && contract.HasSafeArea)
+            {
+                return (contract.Side, contract.Top, contract.Bottom);
+            }
+
+            return (
+                Math.Max(0, mapInfo?.LBSide ?? 0),
+                Math.Max(0, mapInfo?.LBTop ?? 0),
+                Math.Max(0, mapInfo?.LBBottom ?? 0));
+        }
+
+        private static Rectangle? ResolveClientOwnedMirrorBottomRectangle(MapInfo mapInfo, Rectangle viewportRectangle)
+        {
+            if (mapInfo?.mirror_Bottom != true || viewportRectangle.Width <= 0 || viewportRectangle.Height <= 0)
+            {
+                return null;
+            }
+
+            const int objectMirrorBottomHeight = 200;
+            return new Rectangle(
+                viewportRectangle.Left,
+                viewportRectangle.Bottom - objectMirrorBottomHeight,
+                viewportRectangle.Width,
+                objectMirrorBottomHeight);
+        }
 
 
         /// <summary>
@@ -531,6 +645,7 @@ namespace HaCreator.MapSimulator
             _engagementProposalController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
+            _weddingWishListController.ClientPacketDispatcher = DispatchWeddingWishListClientRequest;
             _weddingInvitationController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
@@ -811,6 +926,7 @@ namespace HaCreator.MapSimulator
 
             _combatEffects.Initialize(_DxDeviceManager.GraphicsDevice, _fontDebugValues);
             _combatEffects.SetAnimationEffects(_animationEffects);
+            _combatEffects.SetAnimationDisplayerSpecialTextSink(HandleAnimationDisplayerCombatFeedbackRequested);
 
 
 
@@ -838,28 +954,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
                 statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currTickCount, enforceFieldCancelRestrictions: true);
             }
-            if (statusBarChatUI != null)
-            {
-                statusBarChatUI.SetFont(_fontChat);
-                statusBarChatUI.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
-                statusBarChatUI.SetChatRenderProvider(() => _chat.GetRenderState(_playerManager?.Player?.Name));
-                statusBarChatUI.SetPointNotificationRenderProvider(GetStatusBarPointNotificationState);
-                statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
-                statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
-                statusBarChatUI.WhisperTargetRequested = target => _chat.BeginWhisperTo(target, Environment.TickCount);
-                statusBarChatUI.WhisperTargetPickerRequested = () => _chat.OpenWhisperTargetPicker(Environment.TickCount);
-                statusBarChatUI.WhisperTargetPickerCandidateRequested = target => _chat.SelectWhisperTargetPickerCandidate(target, Environment.TickCount);
-                statusBarChatUI.WhisperTargetPickerSelectionDeltaRequested = delta => _chat.OffsetWhisperTargetPickerSelection(delta);
-                statusBarChatUI.WhisperTargetPickerConfirmRequested = () => _chat.ConfirmWhisperTargetPicker(Environment.TickCount);
-                statusBarChatUI.WhisperTargetPickerCancelRequested = () => _chat.CancelActiveWhisperTargetPicker();
-                statusBarChatUI.WhisperTargetPickerModalButtonFocusRequested = () => _chat.ActivateWhisperTargetPickerModalButtonFocus();
-                statusBarChatUI.WhisperTargetPickerModalComboFocusRequested = () => _chat.ActivateWhisperTargetPickerModalComboFocus();
-                statusBarChatUI.WhisperTargetPickerModalComboDropdownCloseRequested = () => _chat.CloseWhisperTargetPickerModalComboDropdown();
-                statusBarChatUI.WhisperTargetPickerModalComboDropdownToggleRequested = () => _chat.ToggleWhisperTargetPickerModalComboDropdown();
-                statusBarChatUI.WhisperTargetPickerModalComboDropdownHoverRequested = target => _chat.HighlightWhisperTargetPickerModalComboDropdownCandidate(target);
-                statusBarChatUI.WhisperTargetPickerModalComboDropdownDeleteRequested = target => _chat.DeleteWhisperTargetPickerModalComboDropdownCandidate(target);
-                statusBarChatUI.WhisperTargetPickerModalComboDropdownDeleteIndexRequested = rowIndex => _chat.DeleteWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(rowIndex);
-            }
+            ConfigureStatusBarChatUi();
 
 
             // Initialize Ability/Stat window with player's CharacterBuild
@@ -1671,6 +1766,7 @@ namespace HaCreator.MapSimulator
             _engagementProposalController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
+            _weddingWishListController.ClientPacketDispatcher = DispatchWeddingWishListClientRequest;
             _weddingInvitationController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
@@ -1700,14 +1796,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
                 statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currTickCount, enforceFieldCancelRestrictions: true);
             }
-            if (statusBarChatUI != null)
-            {
-                statusBarChatUI.SetFont(_fontChat);
-                statusBarChatUI.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
-                statusBarChatUI.SetChatRenderProvider(() => _chat.GetRenderState(_playerManager?.Player?.Name));
-                statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
-                statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
-            }
+            ConfigureStatusBarChatUi();
             LogStartupCheckpoint("LoadContent finished status/UI provider hookup");
             Debug.WriteLine($"[MapLoad] Status/UI provider hookup finished in {loadMapContentStopwatch.ElapsedMilliseconds} ms");
 
@@ -2007,6 +2096,37 @@ namespace HaCreator.MapSimulator
             LogStartupCheckpoint($"LoadContent completed for map {_mapBoard?.MapInfo?.id}");
             loadMapContentStopwatch.Stop();
             Debug.WriteLine($"[MapLoad] Total LoadMapContent for map {_mapBoard?.MapInfo?.id} took {loadMapContentStopwatch.ElapsedMilliseconds} ms");
+        }
+
+        private void ConfigureStatusBarChatUi()
+        {
+            if (statusBarChatUI == null)
+            {
+                return;
+            }
+
+            statusBarChatUI.SetFont(_fontChat);
+            statusBarChatUI.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
+            statusBarChatUI.SetChatRenderProvider(() => _chat.GetRenderState(_playerManager?.Player?.Name));
+            statusBarChatUI.SetPointNotificationRenderProvider(GetStatusBarPointNotificationState);
+            statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
+            statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
+            statusBarChatUI.WhisperTargetRequested = target => _chat.BeginWhisperTo(target, Environment.TickCount);
+            statusBarChatUI.WhisperTargetPickerRequested = () => _chat.OpenWhisperTargetPicker(Environment.TickCount);
+            statusBarChatUI.WhisperTargetPickerCandidateRequested = target => _chat.SelectWhisperTargetPickerCandidate(target, Environment.TickCount);
+            statusBarChatUI.WhisperTargetPickerSelectionDeltaRequested = delta => _chat.OffsetWhisperTargetPickerSelection(delta);
+            statusBarChatUI.WhisperTargetPickerConfirmRequested = () => _chat.ConfirmWhisperTargetPicker(Environment.TickCount);
+            statusBarChatUI.WhisperTargetPickerCancelRequested = () => _chat.CancelActiveWhisperTargetPicker();
+            statusBarChatUI.WhisperTargetPickerModalButtonFocusRequested = () => _chat.ActivateWhisperTargetPickerModalButtonFocus();
+            statusBarChatUI.WhisperTargetPickerModalComboFocusRequested = () => _chat.ActivateWhisperTargetPickerModalComboFocus();
+            statusBarChatUI.WhisperTargetPickerModalComboDropdownCloseRequested = () => _chat.CloseWhisperTargetPickerModalComboDropdown();
+            statusBarChatUI.WhisperTargetPickerModalComboDropdownToggleRequested = () => _chat.ToggleWhisperTargetPickerModalComboDropdown();
+            statusBarChatUI.WhisperTargetPickerModalComboDropdownHoverRequested = target => _chat.HighlightWhisperTargetPickerModalComboDropdownCandidate(target);
+            statusBarChatUI.WhisperTargetPickerModalComboDropdownDeleteRequested = target => _chat.DeleteWhisperTargetPickerModalComboDropdownCandidate(target);
+            statusBarChatUI.WhisperTargetPickerModalComboDropdownDeleteIndexRequested = rowIndex => _chat.DeleteWhisperTargetPickerModalComboDropdownCandidateAtClientRowIndex(rowIndex);
+            statusBarChatUI.WhisperTargetPickerModalComboDropdownScrollRequested = delta => _chat.ScrollWhisperTargetPickerModalComboDropdown(delta);
+            statusBarChatUI.WhisperTargetPickerModalComboDropdownPageRequested = delta => _chat.PageWhisperTargetPickerModalComboDropdown(delta);
+            statusBarChatUI.WhisperTargetPickerModalComboDropdownScrollPositionRequested = firstVisibleIndex => _chat.SetWhisperTargetPickerModalComboDropdownFirstVisibleIndex(firstVisibleIndex);
         }
     }
 }

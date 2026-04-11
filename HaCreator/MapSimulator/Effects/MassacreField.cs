@@ -312,6 +312,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _resultMissRate;
         private MassacreMapMode _mapMode;
         private int _mapFlowGroup;
+        private MassacreRoundOutcome _pendingResultOutcome;
         public bool IsActive => _isActive;
         public int CurrentGauge => _currentGauge;
         public int GaugeDepletion => _gaugeDepletion;
@@ -342,6 +343,9 @@ namespace HaCreator.MapSimulator.Effects
         internal char ResultRank => _resultRank;
         internal int ResultScore => _resultScore;
         internal bool IsDangerOverlayActive => ShouldDrawDangerOverlay();
+        internal string ResultPresentationOwner => _resultPresentationOwner;
+        internal string ResultPresentationKind => _resultPresentation.ToString();
+        internal string PendingResultOutcome => _pendingResultOutcome.ToString();
         public string GetPacketOwnerName(int packetType)
         {
             return packetType == PacketTypeResult
@@ -418,6 +422,7 @@ namespace HaCreator.MapSimulator.Effects
             int mapId = mapInfo?.id ?? 0;
             MassacreMapMode nextMode = ResolveMapMode(mapInfo);
             int nextFlowGroup = ResolveFlowGroup(mapId);
+            MassacreRoundOutcome transitionOutcome = ResolveTransitionOutcome(_mapMode, nextMode);
             bool preserveRoundContext = _isActive
                 && _mapFlowGroup == nextFlowGroup
                 && ShouldPreserveRoundContext(_mapMode, nextMode);
@@ -435,6 +440,13 @@ namespace HaCreator.MapSimulator.Effects
             {
                 ResetTransientMapPresentationState(nextMode);
             }
+
+            _pendingResultOutcome = nextMode switch
+            {
+                MassacreMapMode.Main => MassacreRoundOutcome.None,
+                _ when transitionOutcome != MassacreRoundOutcome.None => transitionOutcome,
+                _ => _pendingResultOutcome
+            };
 
             if (_mapMode == MassacreMapMode.Bonus)
             {
@@ -542,6 +554,7 @@ namespace HaCreator.MapSimulator.Effects
             _resultCoolRate = 0;
             _resultMissRate = 0;
             _resultPresentationOwner = string.Empty;
+            _pendingResultOutcome = MassacreRoundOutcome.None;
         }
         public void OnClock(int clockType, int durationSec, int currentTimeMs)
         {
@@ -1075,11 +1088,22 @@ namespace HaCreator.MapSimulator.Effects
             _resultScore = Math.Max(0, scoreOverride ?? _killCount);
             _resultRank = NormalizeRank(rankOverride ?? ComputeResultRank());
             (_resultKillRate, _resultCoolRate, _resultMissRate) = CalculateResultRates();
+            _pendingResultOutcome = clear ? MassacreRoundOutcome.Clear : MassacreRoundOutcome.Fail;
         }
         public void ShowPacketOwnedResultPresentation(int currentTimeMs, int? scoreOverride = null, char? rankOverride = null)
         {
-            _resultPresentation = MassacreResultPresentation.PacketOwned;
-            _resultPresentationOwner = "CField_MassacreResult::OnMassacreResult";
+            (_resultPresentation, _resultPresentationOwner) = _pendingResultOutcome switch
+            {
+                MassacreRoundOutcome.Clear => (
+                    MassacreResultPresentation.Clear,
+                    "CField_MassacreResult::OnMassacreResult + WZ-backed bonus/result wrapper clear carryover"),
+                MassacreRoundOutcome.Fail => (
+                    MassacreResultPresentation.Fail,
+                    "CField_MassacreResult::OnMassacreResult + result-wrapper fail carryover from prior field timer state"),
+                _ => (
+                    MassacreResultPresentation.PacketOwned,
+                    "CField_MassacreResult::OnMassacreResult")
+            };
             _resultPresentationStartTick = currentTimeMs;
             _resultScore = Math.Max(0, scoreOverride ?? _killCount);
             _resultRank = NormalizeRank(rankOverride ?? ComputeResultRank());
@@ -1876,6 +1900,28 @@ namespace HaCreator.MapSimulator.Effects
             return currentMode != MassacreMapMode.Result;
         }
 
+        private MassacreRoundOutcome ResolveTransitionOutcome(MassacreMapMode currentMode, MassacreMapMode nextMode)
+        {
+            if (nextMode == MassacreMapMode.Bonus)
+            {
+                // `info/onFirstUserEnter = killing_BonusSetting` marks the post-clear bonus wrapper.
+                return MassacreRoundOutcome.Clear;
+            }
+
+            if (nextMode != MassacreMapMode.Result)
+            {
+                return MassacreRoundOutcome.None;
+            }
+
+            return currentMode switch
+            {
+                MassacreMapMode.Bonus => MassacreRoundOutcome.Clear,
+                MassacreMapMode.Main when _showedClearEffect => MassacreRoundOutcome.Clear,
+                MassacreMapMode.Main => MassacreRoundOutcome.Fail,
+                _ => _pendingResultOutcome
+            };
+        }
+
         private static int ResolveFlowGroup(int mapId)
         {
             return mapId > 0 ? mapId / 1000 : 0;
@@ -2007,6 +2053,12 @@ namespace HaCreator.MapSimulator.Effects
             Main,
             Bonus,
             Result
+        }
+        private enum MassacreRoundOutcome
+        {
+            None,
+            Clear,
+            Fail
         }
         private enum MassacreResultPresentation
         {

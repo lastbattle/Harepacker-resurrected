@@ -372,7 +372,7 @@ namespace HaCreator.MapSimulator.AI
         private int _angerAttackIndex = -1;
         private int _runtimeAngerGaugeFullChargeEffectIntervalMs;
         private bool _hasSpecialAttackFullChargeEffectOwnerTiming;
-        private int _fullChargeEffectConsumedAttackStartTick = int.MinValue;
+        private int _fullChargeEffectStartTime = int.MinValue;
 
         // Status effects
         private MobStatusEffect _statusEffects = MobStatusEffect.None;
@@ -477,7 +477,7 @@ namespace HaCreator.MapSimulator.AI
             _angerAttackIndex = -1;
             _runtimeAngerGaugeFullChargeEffectIntervalMs = 0;
             _hasSpecialAttackFullChargeEffectOwnerTiming = false;
-            _fullChargeEffectConsumedAttackStartTick = int.MinValue;
+            _fullChargeEffectStartTime = int.MinValue;
 
             // Bosses have larger aggro range
             if (isBoss)
@@ -1218,13 +1218,16 @@ namespace HaCreator.MapSimulator.AI
                 return false;
             }
 
-            if (_fullChargeEffectConsumedAttackStartTick == _stateStartTime)
+            UpdateAngerGaugeFullChargeEffectInterval(attack);
+            int repeatIntervalMs = _runtimeAngerGaugeFullChargeEffectIntervalMs;
+            if (repeatIntervalMs > 0
+                && _fullChargeEffectStartTime != int.MinValue
+                && currentTick < _fullChargeEffectStartTime + repeatIntervalMs)
             {
                 return false;
             }
 
-            _fullChargeEffectConsumedAttackStartTick = _stateStartTime;
-            UpdateAngerGaugeFullChargeEffectInterval(attack);
+            _fullChargeEffectStartTime = currentTick;
             return true;
         }
 
@@ -1417,6 +1420,7 @@ namespace HaCreator.MapSimulator.AI
             _selfDestructPending = false;
             _angerChargeCount = 0;
             _runtimeAngerGaugeFullChargeEffectIntervalMs = 0;
+            _fullChargeEffectStartTime = int.MinValue;
             _skillUseCounts.Clear();
             _skillForbidUntil = 0;
             _externalTargetSource = MobExternalTargetSource.None;
@@ -1925,7 +1929,6 @@ namespace HaCreator.MapSimulator.AI
             _currentAttackIndex = attackIndex;
             MobAttackEntry attack = _attacks[attackIndex];
             UpdateAngerGaugeFullChargeEffectInterval(attack);
-            _fullChargeEffectConsumedAttackStartTick = int.MinValue;
             attack.LastUseTime = currentTick;
             _actionAnimationCompleted = false;
             _actionRecoveryUntil = currentTick + GetActionRecoveryDelay(attack);

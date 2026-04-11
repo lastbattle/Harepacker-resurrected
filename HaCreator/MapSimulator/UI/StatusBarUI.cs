@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.UI {
         public string FamilyDisplayName { get; set; }
         public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
         public IReadOnlyList<string> TemporaryStatDisplayNames { get; set; } = Array.Empty<string>();
+        public bool IsAlerting { get; set; }
     }
 
     public class StatusBarPreparedSkillRenderData
@@ -982,6 +983,11 @@ namespace HaCreator.MapSimulator.UI {
                     sprite.Draw(iconTexture, iconRect, Color.White);
                 }
 
+                if (buffEntry.IsAlerting)
+                {
+                    DrawBuffAlertOverlay(sprite, iconRect, currentTime);
+                }
+
                 bool hasCounterText = !string.IsNullOrWhiteSpace(buffEntry.CounterText);
                 if (!HasStatusBarTextRenderer() || (buffEntry.RemainingMs <= 0 && !hasCounterText))
                 {
@@ -998,6 +1004,26 @@ namespace HaCreator.MapSimulator.UI {
 
                 DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, 0.5f);
             }
+        }
+
+        private void DrawBuffAlertOverlay(SpriteBatch sprite, Rectangle iconRect, int currentTime)
+        {
+            if (_pixelTexture == null)
+            {
+                return;
+            }
+
+            int phase = Math.Abs((currentTime / 180) % 2);
+            byte fillAlpha = phase == 0 ? (byte)82 : (byte)46;
+            byte borderAlpha = phase == 0 ? (byte)220 : (byte)168;
+            Color fillColor = new Color(255, 118, 64, (int)fillAlpha);
+            Color borderColor = new Color(255, 204, 96, (int)borderAlpha);
+
+            sprite.Draw(_pixelTexture, iconRect, fillColor);
+            sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Y, iconRect.Width, 1), borderColor);
+            sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Bottom - 1, iconRect.Width, 1), borderColor);
+            sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Y, 1, iconRect.Height), borderColor);
+            sprite.Draw(_pixelTexture, new Rectangle(iconRect.Right - 1, iconRect.Y, 1, iconRect.Height), borderColor);
         }
 
         private void DrawHoveredBuffTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)

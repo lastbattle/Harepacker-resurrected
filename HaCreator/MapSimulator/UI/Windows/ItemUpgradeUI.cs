@@ -4145,7 +4145,10 @@ namespace HaCreator.MapSimulator.UI
             string normalized = NormalizeAuthoredScrollText(text.Trim());
             bool hasExplicitAccessorySubset = TryAddExplicitAccessorySubsetSlots(normalized, targetSlots);
             if (normalized.IndexOf("face accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                normalized.IndexOf("face accessories", StringComparison.OrdinalIgnoreCase) >= 0)
+                normalized.IndexOf("face accessories", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("rudolf's red nose", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("rudolph's red nose", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("rudolph's shiny nose", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.FaceAccessory);
             }
@@ -4352,7 +4355,16 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (ContainsAny(normalized, "face accessories", "face accessory", "mask", "face eqp", "face equipment"))
+            if (ContainsAny(
+                    normalized,
+                    "face accessories",
+                    "face accessory",
+                    "mask",
+                    "face eqp",
+                    "face equipment",
+                    "rudolf's red nose",
+                    "rudolph's red nose",
+                    "rudolph's shiny nose"))
             {
                 label = "face accessories";
                 return true;

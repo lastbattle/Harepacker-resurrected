@@ -41,6 +41,7 @@ namespace HaCreator.MapSimulator
 
         private bool _initialQuizOwnerVisualsLoaded;
         private ClientTextRasterizer _initialQuizOwnerInputTextRasterizer;
+        private AntiMacroEditControl _initialQuizOwnerEditControl;
         private Texture2D _initialQuizOwnerBackgroundTexture;
         private Texture2D _initialQuizOwnerBackgroundTexture2;
         private Texture2D _initialQuizOwnerBackgroundTexture3;
@@ -145,26 +146,34 @@ namespace HaCreator.MapSimulator
 
         private void ResetInitialQuizOwnerInputState(int currentTickCount)
         {
-            _initialQuizOwnerInput.Clear();
-            _initialQuizOwnerCursorIndex = 0;
             _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
             _initialQuizOwnerHoveringOkButton = false;
             _initialQuizOwnerPressedOkButton = false;
             _initialQuizOwnerResultSent = false;
             _initialQuizOwnerTimeoutCloseArmed = false;
             _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+            _initialQuizOwnerInput.Clear();
+            _initialQuizOwnerCursorIndex = 0;
+            if (_initialQuizOwnerEditControl != null)
+            {
+                _initialQuizOwnerEditControl.Reset();
+            }
             ResetInitialQuizOwnerHeldEditKey();
         }
 
         private void ClearInitialQuizOwnerInputState()
         {
-            _initialQuizOwnerInput.Clear();
-            _initialQuizOwnerCursorIndex = 0;
             _initialQuizOwnerHoveringOkButton = false;
             _initialQuizOwnerPressedOkButton = false;
             _initialQuizOwnerResultSent = false;
             _initialQuizOwnerTimeoutCloseArmed = false;
             _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
+            _initialQuizOwnerInput.Clear();
+            _initialQuizOwnerCursorIndex = 0;
+            if (_initialQuizOwnerEditControl != null)
+            {
+                _initialQuizOwnerEditControl.Clear();
+            }
             ResetInitialQuizOwnerHeldEditKey();
         }
 
@@ -226,10 +235,19 @@ namespace HaCreator.MapSimulator
                 {
                     _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
                     _initialQuizOwnerPressedOkButton = false;
-                    _initialQuizOwnerCursorIndex = ResolveInitialQuizOwnerCursorIndexFromClick(
-                        _initialQuizOwnerInput.ToString(),
-                        inputBounds,
-                        cursor.X);
+                    AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+                    if (editControl != null)
+                    {
+                        editControl.BeginSelectionAtMouseX(cursor.X, ownerBounds);
+                        SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+                    }
+                    else
+                    {
+                        _initialQuizOwnerCursorIndex = ResolveInitialQuizOwnerCursorIndexFromClick(
+                            _initialQuizOwnerInput.ToString(),
+                            inputBounds,
+                            cursor.X);
+                    }
                 }
                 else
                 {
@@ -243,6 +261,7 @@ namespace HaCreator.MapSimulator
             }
             if (justReleased)
             {
+                EnsureInitialQuizOwnerEditControl()?.EndMouseSelection();
                 bool confirm = ShouldSubmitInitialQuizOwnerOkButtonRelease(
                     _initialQuizOwnerPressedOkButton,
                     _initialQuizOwnerHoveringOkButton,
@@ -250,11 +269,21 @@ namespace HaCreator.MapSimulator
                 _initialQuizOwnerPressedOkButton = false;
                 if (confirm)
                 {
-                    SubmitInitialQuizOwnerResult(_initialQuizOwnerInput.ToString(), currentTickCount, showFeedback: true);
+                    SubmitInitialQuizOwnerResult(GetInitialQuizOwnerSubmittedText(), currentTickCount, showFeedback: true);
+                }
+            }
+            else if (leftPressed && showInput && _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input)
+            {
+                AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+                if (editControl?.IsSelectingWithMouse == true)
+                {
+                    editControl.UpdateSelectionAtMouseX(cursor.X, ownerBounds);
+                    SyncInitialQuizOwnerLegacyInputStateFromEditControl();
                 }
             }
             else if (!leftPressed)
             {
+                EnsureInitialQuizOwnerEditControl()?.EndMouseSelection();
                 _initialQuizOwnerPressedOkButton = false;
             }
 
@@ -286,51 +315,28 @@ namespace HaCreator.MapSimulator
 
             if (newKeyboardState.IsKeyDown(Keys.Enter) && oldKeyboardState.IsKeyUp(Keys.Enter))
             {
-                SubmitInitialQuizOwnerResult(_initialQuizOwnerInput.ToString(), currentTickCount, showFeedback: true);
+                SubmitInitialQuizOwnerResult(GetInitialQuizOwnerSubmittedText(), currentTickCount, showFeedback: true);
                 return true;
             }
 
             if (newKeyboardState.IsKeyDown(Keys.Space) && oldKeyboardState.IsKeyUp(Keys.Space) && buttonFocused)
             {
-                SubmitInitialQuizOwnerResult(_initialQuizOwnerInput.ToString(), currentTickCount, showFeedback: true);
+                SubmitInitialQuizOwnerResult(GetInitialQuizOwnerSubmittedText(), currentTickCount, showFeedback: true);
                 return true;
             }
 
             if (!inputFocused)
             {
+                EnsureInitialQuizOwnerEditControl()?.SetFocus(false);
                 ResetInitialQuizOwnerHeldEditKey();
                 return buttonFocused;
             }
 
-            bool shiftPressed = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
-            if (TryResolveInitialQuizOwnerNewEditKey(newKeyboardState, oldKeyboardState, out Keys newEditKey))
-            {
-                TrackInitialQuizOwnerHeldEditKey(newEditKey, currentTickCount);
-                ApplyInitialQuizOwnerEditKey(newEditKey, shiftPressed, currentTickCount);
-                return true;
-            }
-
-            if (_initialQuizOwnerHeldEditKey != Keys.None && newKeyboardState.IsKeyDown(_initialQuizOwnerHeldEditKey))
-            {
-                if (KeyboardTextInputHelper.ShouldRepeatKeyUsingFixedCadence(
-                    _initialQuizOwnerHeldEditKey,
-                    newKeyboardState,
-                    _initialQuizOwnerKeyHoldStartedAt,
-                    _initialQuizOwnerLastKeyRepeatAt,
-                    currentTickCount))
-                {
-                    _initialQuizOwnerLastKeyRepeatAt = currentTickCount;
-                    ApplyInitialQuizOwnerEditKey(_initialQuizOwnerHeldEditKey, shiftPressed, currentTickCount);
-                }
-
-                return true;
-            }
-
-            if (_initialQuizOwnerHeldEditKey != Keys.None)
-            {
-                ResetInitialQuizOwnerHeldEditKey();
-            }
-
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            editControl?.SetFocus(true);
+            editControl?.HandleKeyboardInput(newKeyboardState, oldKeyboardState);
+            SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+            ResetInitialQuizOwnerHeldEditKey();
             return true;
         }
 
@@ -529,7 +535,7 @@ namespace HaCreator.MapSimulator
             DrawInitialQuizOwnerAnswerLabel(inputBounds);
             if (showInput)
             {
-                DrawInitialQuizOwnerInputField(inputBounds, currentTickCount);
+                DrawInitialQuizOwnerInputField(ownerBounds, inputBounds, currentTickCount);
             }
 
             DrawInitialQuizOwnerSingleLineText(
@@ -586,7 +592,11 @@ namespace HaCreator.MapSimulator
 
         private void DrawInitialQuizOwnerInputField(Rectangle inputBounds, int currentTickCount)
         {
-            ClientTextRasterizer inputTextRasterizer = EnsureInitialQuizOwnerInputTextRasterizer();
+            DrawInitialQuizOwnerInputField(Rectangle.Empty, inputBounds, currentTickCount);
+        }
+
+        private void DrawInitialQuizOwnerInputField(Rectangle ownerBounds, Rectangle inputBounds, int currentTickCount)
+        {
             bool inputFocused = _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input;
             Color fillColor = inputFocused
                 ? new Color(255, 255, 255, 212)
@@ -596,6 +606,17 @@ namespace HaCreator.MapSimulator
                 : new Color(93, 80, 60);
             DrawPacketScriptOwnerFrame(inputBounds, fillColor, borderColor);
 
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (editControl != null && ownerBounds != Rectangle.Empty)
+            {
+                editControl.SetFocus(inputFocused);
+                editControl.Draw(_spriteBatch, ownerBounds, drawChrome: false);
+                editControl.DrawImeCandidateWindow(_spriteBatch, ownerBounds);
+                SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+                return;
+            }
+
+            ClientTextRasterizer inputTextRasterizer = EnsureInitialQuizOwnerInputTextRasterizer();
             string inputText = _initialQuizOwnerInput.ToString();
             int textAreaWidth = Math.Max(0, inputBounds.Width - 8);
             int[] glyphWidths = MeasureInitialQuizOwnerInputGlyphWidths(inputText);
@@ -697,6 +718,119 @@ namespace HaCreator.MapSimulator
             }
 
             return _initialQuizOwnerInputTextRasterizer;
+        }
+
+        private AntiMacroEditControl EnsureInitialQuizOwnerEditControl()
+        {
+            if (_initialQuizOwnerEditControl != null || _packetScriptOwnerPixelTexture == null)
+            {
+                return _initialQuizOwnerEditControl;
+            }
+
+            _initialQuizOwnerEditControl = new AntiMacroEditControl(
+                _packetScriptOwnerPixelTexture,
+                new Point(109, 157),
+                150,
+                13,
+                InitialQuizOwnerInputMaxLength);
+            _initialQuizOwnerEditControl.SetFont(_fontChat);
+            _initialQuizOwnerEditControl.UseClientAntiMacroVisualStyle();
+            _initialQuizOwnerEditControl.SetFocus(_initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input);
+            return _initialQuizOwnerEditControl;
+        }
+
+        private void SyncInitialQuizOwnerLegacyInputStateFromEditControl()
+        {
+            if (_initialQuizOwnerEditControl == null)
+            {
+                return;
+            }
+
+            string text = _initialQuizOwnerEditControl.Text ?? string.Empty;
+            _initialQuizOwnerInput.Clear();
+            _initialQuizOwnerInput.Append(text);
+            _initialQuizOwnerCursorIndex = text.Length;
+        }
+
+        private string GetInitialQuizOwnerSubmittedText()
+        {
+            if (_initialQuizOwnerEditControl != null)
+            {
+                SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+                return _initialQuizOwnerEditControl.Text ?? string.Empty;
+            }
+
+            return _initialQuizOwnerInput.ToString();
+        }
+
+        internal static bool ShouldCaptureInitialQuizOwnerTextInput(bool ownerActive, int remainingMs, InitialQuizOwnerFocusTarget focusTarget)
+        {
+            return ownerActive
+                && remainingMs > 0
+                && focusTarget == InitialQuizOwnerFocusTarget.Input;
+        }
+
+        private bool ShouldCaptureInitialQuizOwnerTextInput()
+        {
+            return _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currTickCount, out InitialQuizOwnerSnapshot snapshot)
+                && ShouldCaptureInitialQuizOwnerTextInput(true, snapshot.RemainingMs, _initialQuizOwnerFocusTarget);
+        }
+
+        private void HandleInitialQuizOwnerCommittedText(string text)
+        {
+            if (!ShouldCaptureInitialQuizOwnerTextInput())
+            {
+                return;
+            }
+
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            editControl?.HandleCommittedText(text, capturesKeyboardInput: true);
+            SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+        }
+
+        private void HandleInitialQuizOwnerCompositionText(string compositionText)
+        {
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (editControl == null)
+            {
+                return;
+            }
+
+            editControl.HandleCompositionText(compositionText, ShouldCaptureInitialQuizOwnerTextInput());
+            SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+        }
+
+        private void HandleInitialQuizOwnerCompositionState(ImeCompositionState compositionState)
+        {
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (editControl == null)
+            {
+                return;
+            }
+
+            editControl.HandleCompositionState(compositionState ?? ImeCompositionState.Empty, ShouldCaptureInitialQuizOwnerTextInput());
+            SyncInitialQuizOwnerLegacyInputStateFromEditControl();
+        }
+
+        private void HandleInitialQuizOwnerImeCandidateList(ImeCandidateListState candidateState)
+        {
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (editControl == null)
+            {
+                return;
+            }
+
+            editControl.HandleImeCandidateList(candidateState, ShouldCaptureInitialQuizOwnerTextInput());
+        }
+
+        private void ClearInitialQuizOwnerCompositionText()
+        {
+            _initialQuizOwnerEditControl?.ClearCompositionText();
+        }
+
+        private void ClearInitialQuizOwnerImeCandidateList()
+        {
+            _initialQuizOwnerEditControl?.ClearImeCandidateList();
         }
 
         private void DrawInitialQuizOwnerAnimationFrame(Rectangle ownerBounds, int currentTickCount)

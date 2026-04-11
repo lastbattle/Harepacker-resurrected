@@ -124,6 +124,8 @@ namespace HaCreator.MapSimulator
 
             IntPtr simulatorWindowHandle = Window?.Handle ?? IntPtr.Zero;
             WzSubProperty macroProperty = (Program.FindImage("UI", "UIWindow2.img")?["Macro"] as WzSubProperty);
+            WzCanvasProperty popupCanvas = ResolvePacketOwnedAntiMacroCanvas(PacketOwnedAntiMacroPopupCanvasPath);
+            Texture2D popupTexture = LoadUiCanvasTexture(popupCanvas);
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacro) == null)
             {
@@ -145,11 +147,9 @@ namespace HaCreator.MapSimulator
             {
                 AntiMacroNoticeWindow window = new(
                     MapSimulatorWindowNames.AntiMacroNotice,
-                    LoadUiCanvasTexture(ResolvePacketOwnedAntiMacroCanvas(PacketOwnedAntiMacroPopupCanvasPath)))
+                    popupTexture)
                 {
-                    Position = new Point(
-                        Math.Max(24, (_renderParams.RenderWidth / 2) - 130),
-                        Math.Max(24, (_renderParams.RenderHeight / 2) - 65))
+                    Position = ResolvePacketOwnedAntiMacroNoticeWindowPosition(popupTexture)
                 };
                 window.CloseRequested += HandlePacketOwnedAntiMacroNoticeClosed;
                 uiWindowManager.RegisterCustomWindow(window);
@@ -177,15 +177,13 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
             {
+                noticeWindow.Position = ResolvePacketOwnedAntiMacroNoticeWindowPosition(popupTexture);
                 if (_fontChat != null)
                 {
                     noticeWindow.SetFont(_fontChat);
                 }
 
-                noticeWindow.ConfigureVisuals(
-                    LoadUiCanvasTexture(ResolvePacketOwnedAntiMacroCanvas(PacketOwnedAntiMacroAdminCanvas0Path)),
-                    CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupOkButtonPath)),
-                    CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupCancelButtonPath)));
+                ConfigurePacketOwnedAntiMacroNoticeVisuals(noticeWindow, PacketOwnedAntiMacroAdminCanvas0Path);
             }
         }
 
@@ -201,6 +199,11 @@ namespace HaCreator.MapSimulator
             {
                 adminWindow.Position = ResolvePacketOwnedAntiMacroWindowPosition(adminWindow);
                 adminWindow.TryAttachNativeEditHost(Window?.Handle ?? IntPtr.Zero);
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
+            {
+                noticeWindow.Position = ResolvePacketOwnedAntiMacroNoticeWindowPosition(noticeWindow.FrameSize);
             }
         }
 
@@ -242,6 +245,38 @@ namespace HaCreator.MapSimulator
             return new Point(
                 Math.Max(24, (_renderParams.RenderWidth / 2) - (width / 2)),
                 Math.Max(24, (_renderParams.RenderHeight / 2) - (height / 2)));
+        }
+
+        private Point ResolvePacketOwnedAntiMacroNoticeWindowPosition(Texture2D frameTexture)
+        {
+            Point frameSize = frameTexture == null
+                ? new Point(260, 131)
+                : new Point(frameTexture.Width, frameTexture.Height);
+            return ResolvePacketOwnedAntiMacroNoticeWindowPosition(frameSize);
+        }
+
+        private Point ResolvePacketOwnedAntiMacroNoticeWindowPosition(Point frameSize)
+        {
+            int width = frameSize.X > 0 ? frameSize.X : 260;
+            int height = frameSize.Y > 0 ? frameSize.Y : 131;
+            return new Point(
+                Math.Max(24, (_renderParams.RenderWidth / 2) - (width / 2)),
+                Math.Max(24, (_renderParams.RenderHeight / 2) - (height / 2)));
+        }
+
+        private void ConfigurePacketOwnedAntiMacroNoticeVisuals(AntiMacroNoticeWindow noticeWindow, string avatarCanvasPath)
+        {
+            if (noticeWindow == null)
+            {
+                return;
+            }
+
+            WzCanvasProperty avatarCanvas = ResolvePacketOwnedAntiMacroCanvas(avatarCanvasPath);
+            noticeWindow.ConfigureVisuals(
+                LoadUiCanvasTexture(avatarCanvas),
+                ResolvePacketOwnedAntiMacroCanvasOrigin(avatarCanvas),
+                CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupOkButtonPath)),
+                CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupCancelButtonPath)));
         }
 
         private Texture2D ComposePacketOwnedAntiMacroFrameTexture(WzSubProperty stepProperty)
@@ -535,10 +570,8 @@ namespace HaCreator.MapSimulator
                 noticeWindow.Configure(
                     definition.Text,
                     definition.StringPoolId);
-                noticeWindow.ConfigureVisuals(
-                    LoadUiCanvasTexture(ResolvePacketOwnedAntiMacroCanvas(definition.AvatarCanvasPath)),
-                    CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupOkButtonPath)),
-                    CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupCancelButtonPath)));
+                ConfigurePacketOwnedAntiMacroNoticeVisuals(noticeWindow, definition.AvatarCanvasPath);
+                noticeWindow.Position = ResolvePacketOwnedAntiMacroNoticeWindowPosition(noticeWindow.FrameSize);
                 ShowWindow(
                     MapSimulatorWindowNames.AntiMacroNotice,
                     noticeWindow,

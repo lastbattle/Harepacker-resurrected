@@ -277,6 +277,9 @@ namespace HaCreator.MapSimulator
                         SelectorPosition = new Microsoft.Xna.Framework.Point(412, 406),
                         TodaySelectorLabel = MapleStoryStringPool.GetOrFallback(0x16A1, "Today"),
                         PreviousSelectorLabel = MapleStoryStringPool.GetOrFallback(0x16A2, "Previous"),
+                        SelectorEntries = BuildCashShopOneADaySelectorEntryStates(
+                            MapleStoryStringPool.GetOrFallback(0x16A1, "Today"),
+                            MapleStoryStringPool.GetOrFallback(0x16A2, "Previous")),
                         HasKeyFocusCanvas = artSnapshot.HasKeyFocusCanvas,
                         HasPlateCanvas = artSnapshot.HasPlateCanvas,
                         HasPlateBigCanvas = artSnapshot.HasPlateBigCanvas,
@@ -294,6 +297,19 @@ namespace HaCreator.MapSimulator
                         Hour = remainingHour,
                         Minute = remainingMinute,
                         Second = remainingSecond,
+                        CounterSlots = BuildCashShopOneADayCounterSlotStates(
+                            remainingHour,
+                            remainingMinute,
+                            remainingSecond,
+                            artSnapshot.NumberCanvasCount),
+                        RewardSessionSummary = BuildCashShopOneADayRewardSessionSummary(
+                            stageWindow,
+                            historyEntries,
+                            artSnapshot,
+                            currentCommoditySerialNumber,
+                            remainingHour,
+                            remainingMinute,
+                            remainingSecond),
                         PacketStateSignature = BuildCashShopOneADayPacketStateSignature(stageWindow, historyEntries),
                         HistoryEntries = historyEntries,
                         RecentPackets = stageWindow.GetRecentPacketSummaries()
@@ -358,6 +374,98 @@ namespace HaCreator.MapSimulator
             }
 
             return entries;
+        }
+
+        private static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState> BuildCashShopOneADaySelectorEntryStates(
+            string todayLabel,
+            string previousLabel)
+        {
+            return new[]
+            {
+                new CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState
+                {
+                    Index = 0,
+                    Label = string.IsNullOrWhiteSpace(todayLabel) ? "Today" : todayLabel.Trim(),
+                    IsActive = true
+                },
+                new CashShopStageChildWindow.OneADayOwnerState.SelectorEntryState
+                {
+                    Index = 1,
+                    Label = string.IsNullOrWhiteSpace(previousLabel) ? "Previous" : previousLabel.Trim(),
+                    IsActive = false
+                }
+            };
+        }
+
+        private static IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.CounterSlotState> BuildCashShopOneADayCounterSlotStates(
+            int hour,
+            int minute,
+            int second,
+            int numberCanvasCount)
+        {
+            string digits = string.Create(
+                8,
+                (Hour: Math.Max(0, hour), Minute: Math.Max(0, minute), Second: Math.Max(0, second)),
+                static (span, state) =>
+                {
+                    state.Hour.TryFormat(span[..2], out _, "00", CultureInfo.InvariantCulture);
+                    span[2] = ':';
+                    state.Minute.TryFormat(span.Slice(3, 2), out _, "00", CultureInfo.InvariantCulture);
+                    span[5] = ':';
+                    state.Second.TryFormat(span.Slice(6, 2), out _, "00", CultureInfo.InvariantCulture);
+                });
+
+            List<CashShopStageChildWindow.OneADayOwnerState.CounterSlotState> slots = new(digits.Length);
+            for (int i = 0; i < digits.Length; i++)
+            {
+                char character = digits[i];
+                bool isDigit = char.IsDigit(character);
+                int digit = isDigit ? character - '0' : -1;
+                slots.Add(new CashShopStageChildWindow.OneADayOwnerState.CounterSlotState
+                {
+                    SlotIndex = i,
+                    Digit = character,
+                    IsSeparator = !isDigit,
+                    HasDigitCanvas = isDigit && digit >= 0 && digit < numberCanvasCount
+                });
+            }
+
+            return slots;
+        }
+
+        private static string BuildCashShopOneADayRewardSessionSummary(
+            CashServiceStageWindow stageWindow,
+            IReadOnlyList<CashShopStageChildWindow.OneADayOwnerState.HistoryEntryState> historyEntries,
+            CashShopOneADayArtSnapshot artSnapshot,
+            int currentCommoditySerialNumber,
+            int remainingHour,
+            int remainingMinute,
+            int remainingSecond)
+        {
+            if (stageWindow == null)
+            {
+                return string.Empty;
+            }
+
+            int approximatedRewardSessionByte = 0;
+            if (stageWindow.IsOneADayPending)
+            {
+                approximatedRewardSessionByte |= 1;
+            }
+
+            if ((historyEntries?.Count ?? 0) > 0)
+            {
+                approximatedRewardSessionByte |= 8;
+            }
+
+            string todayState = stageWindow.IsOneADayPending
+                ? $"today armed for SN {currentCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                : "today idle";
+            string historyState = (historyEntries?.Count ?? 0) > 0
+                ? $"history {(historyEntries?.Count ?? 0).ToString(CultureInfo.InvariantCulture)}/{CashShopOneADayHistorySlotCount.ToString(CultureInfo.InvariantCulture)} loaded"
+                : "no previous history";
+            string counterState = $"{remainingHour.ToString("00", CultureInfo.InvariantCulture)}:{remainingMinute.ToString("00", CultureInfo.InvariantCulture)}:{remainingSecond.ToString("00", CultureInfo.InvariantCulture)}";
+            return $"Reward session approx 0x{approximatedRewardSessionByte:X2}: {todayState}, {historyState}, counter {counterState}, selector 2 lanes, number canvases {artSnapshot.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/10.";
         }
 
         internal static int ResolveCashShopOneADayHistorySlotCount()

@@ -585,6 +585,7 @@ namespace HaCreator.MapSimulator.Character
         private bool _clientOwnedVehicleTamingMobActive;
         private bool _suppressAutomaticTamingMobTransition;
         private MountedActionLayerState _mountedActionLayerState;
+        private string _mountedTamingMobOneTimeActionName;
         private AvatarActionLayerState _avatarActionLayerState;
         private readonly Dictionary<PlayerSkillBlockingStatus, PlayerSkillBlockingStatusState> _activeSkillBlockingStatuses = new();
 
@@ -2288,6 +2289,11 @@ namespace HaCreator.MapSimulator.Character
                 state.LastClockUpdateTimeMs);
         }
 
+        internal string GetMountedTamingMobOneTimeActionNameForTesting()
+        {
+            return _mountedTamingMobOneTimeActionName;
+        }
+
         private void RefreshMountedActionLayerState()
         {
             if (_mountedActionLayerState != null
@@ -2298,7 +2304,7 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            _mountedActionLayerState = null;
+            ClearMountedActionLayerState();
             if (Assembler == null
                 || State != PlayerState.Attacking
                 || _sustainedSkillAnimation
@@ -2354,6 +2360,7 @@ namespace HaCreator.MapSimulator.Character
                 WalkSpeed = Assembler.PreparedWalkSpeed,
                 HeldActionFrameDelay = Assembler.HeldActionFrameDelay
             };
+            _mountedTamingMobOneTimeActionName = CurrentActionName;
         }
 
         private bool HasCurrentActionLayerContext(int actionSpeedDegree, int walkSpeed, bool heldActionFrameDelay)
@@ -2506,6 +2513,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 mountedActionLayerState.TamingMobOneTimeActionName = null;
                 mountedActionLayerState.CurrentTamingMobActionName = persistentActionName;
+                _mountedTamingMobOneTimeActionName = null;
             }
 
             if (!Assembler.TryCreateMountedActionLayerFrameClocks(
@@ -2626,7 +2634,7 @@ namespace HaCreator.MapSimulator.Character
             return CharacterPart.GetActionString(ResolveClientStandAction());
         }
 
-        private static bool IsMountedOneTimeLayerActive(
+        private bool IsMountedOneTimeLayerActive(
             MountedActionLayerState mountedActionLayerState,
             bool bodyLayer)
         {
@@ -2637,7 +2645,7 @@ namespace HaCreator.MapSimulator.Character
 
             string oneTimeActionName = bodyLayer
                 ? mountedActionLayerState.CharacterOneTimeActionName
-                : mountedActionLayerState.TamingMobOneTimeActionName;
+                : _mountedTamingMobOneTimeActionName ?? mountedActionLayerState.TamingMobOneTimeActionName;
             return AvatarActionLayerCoordinator.HasActiveOneTimeActionOwner(oneTimeActionName);
         }
 
@@ -3009,7 +3017,7 @@ namespace HaCreator.MapSimulator.Character
             CurrentActionName = CharacterPart.GetActionString(CurrentAction);
             _forcedActionName = null;
             _avatarActionLayerState = null;
-            _mountedActionLayerState = null;
+            ClearMountedActionLayerState();
             PlayEffectiveWeaponSfx();
 
             // Trigger hitbox callback on attack frame
@@ -3173,7 +3181,7 @@ namespace HaCreator.MapSimulator.Character
 
             SyncAssemblerActionLayerContext();
             RefreshAvatarActionLayerState();
-            _mountedActionLayerState = null;
+            ClearMountedActionLayerState();
         }
 
         public void EndSustainedSkillAnimation()
@@ -5915,6 +5923,11 @@ namespace HaCreator.MapSimulator.Character
             bool reusesExistingSourceCanvas,
             int sourceLayerCurrentTime)
         {
+            if (sourceLayerCurrentTime != int.MinValue)
+            {
+                return sourceLayerCurrentTime;
+            }
+
             if (reusesExistingSourceCanvas && existingSourceLayerCurrentTime != int.MinValue)
             {
                 return existingSourceLayerCurrentTime;
@@ -8702,9 +8715,15 @@ namespace HaCreator.MapSimulator.Character
         {
             _sustainedSkillAnimation = false;
             _forcedActionName = null;
-            _mountedActionLayerState = null;
+            ClearMountedActionLayerState();
             _avatarActionLayerState = null;
             SetTransientTamingMobOverride(null);
+        }
+
+        private void ClearMountedActionLayerState()
+        {
+            _mountedActionLayerState = null;
+            _mountedTamingMobOneTimeActionName = null;
         }
 
         private void UpdateAutomaticTamingMobTransition()

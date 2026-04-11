@@ -279,10 +279,6 @@ namespace HaCreator.MapSimulator.Pools
         private const int RemoteDragonPassiveFollowStepMilliseconds = 30;
         private const int MechanicTamingMobItemId = 1932016;
         private const int PaladinDamageReactiveSpecialSkillId = 1220006;
-        private const float CarryItemEffectOrbitRadiusX = 26f;
-        private const float CarryItemEffectOrbitRadiusY = 16f;
-        private const float CarryItemEffectBaseVerticalOffset = -46f;
-        private const int CarryItemEffectOrbitDurationMs = 2000;
         private const int CarryItemEffectMaximumCount = 99;
         private const int CarryItemEffectAnimationOffsetMs = 120;
         private const int RelationshipOverlayVisibleRangeX = 700;
@@ -1402,8 +1398,7 @@ namespace HaCreator.MapSimulator.Pools
             int characterId,
             int? chairItemId,
             out string message,
-            int? pairCharacterId = null,
-            bool syncPairRecordFromChairState = false)
+            int? pairCharacterId = null)
         {
             message = null;
             if (_loader == null)
@@ -1423,20 +1418,10 @@ namespace HaCreator.MapSimulator.Pools
             {
                 actor.Build.ActivePortableChair = null;
                 actor.PreferredPortableChairPairCharacterId = null;
-                if (syncPairRecordFromChairState)
-                {
-                    SyncPortableChairRecordFromChairState(characterId, chairItemId: null, preferredPairCharacterId: null);
-                }
-
                 SetActorAction(actor, CharacterPart.GetActionString(CharacterAction.Stand1), allowSitFallback: false, Environment.TickCount);
                 SyncTemporaryStatPresentation(actor);
                 actor.ClearMeleeAfterImage();
                 return true;
-            }
-
-            if (syncPairRecordFromChairState)
-            {
-                SyncPortableChairRecordFromChairState(characterId, chairItemId.Value, pairCharacterId);
             }
 
             PortableChair chair = _loader.LoadPortableChair(chairItemId.Value);
@@ -1491,11 +1476,10 @@ namespace HaCreator.MapSimulator.Pools
             RemoteUserPortableChairRecordRemovePacket packet,
             out string message)
         {
-            message = null;
+            message = $"No remote couple-chair record matched character {packet.CharacterId}.";
             if (!_portableChairPairRecordsByCharacterId.TryGetValue(packet.CharacterId, out PortableChairPairRecord existingRecord))
             {
-                message = $"No remote couple-chair record matched character {packet.CharacterId}.";
-                return false;
+                return true;
             }
 
             if (existingRecord.PairCharacterId.HasValue
@@ -1770,14 +1754,9 @@ namespace HaCreator.MapSimulator.Pools
                 if (actor.Build.ActivePortableChair != null)
                 {
                     ApplyPortableChairMount(actor, actor.Build.ActivePortableChair);
-                    SyncPortableChairRecordFromChairState(
-                        actor.CharacterId,
-                        actor.Build.ActivePortableChair.ItemId,
-                        ResolvePortableChairPairPreference(actor.CharacterId));
                 }
                 else
                 {
-                    ClearPortableChairPairRecord(actor.CharacterId);
                     ClearPortableChairMountState(actor);
                 }
 
@@ -1956,12 +1935,11 @@ namespace HaCreator.MapSimulator.Pools
                 : null;
             long? pairLookupSerial = packet.PairLookupSerial;
             if (!pairLookupSerial.HasValue
-                || dispatchTable == null
-                || !dispatchTable.TryGetValue(
-                    new RemoteRelationshipRecordDispatchKey(
-                        RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
-                        pairLookupSerial,
-                        CharacterId: null),
+                || !TryResolvePairLookupMatchedOwnerCharacterId(
+                    ownerCharacterId,
+                    pairLookupSerial.Value,
+                    recordTable,
+                    dispatchTable,
                     out int matchedOwnerCharacterId)
                 || matchedOwnerCharacterId <= 0
                 || matchedOwnerCharacterId == ownerCharacterId
@@ -1996,6 +1974,43 @@ namespace HaCreator.MapSimulator.Pools
                 PairCharacterId = entryPairCharacterId
             };
             return true;
+        }
+
+        private static bool TryResolvePairLookupMatchedOwnerCharacterId(
+            int ownerCharacterId,
+            long pairLookupSerial,
+            IReadOnlyDictionary<int, RemoteUserRelationshipRecord> recordTable,
+            IReadOnlyDictionary<RemoteRelationshipRecordDispatchKey, int> dispatchTable,
+            out int matchedOwnerCharacterId)
+        {
+            matchedOwnerCharacterId = 0;
+            if (recordTable != null)
+            {
+                foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable)
+                {
+                    if (entry.Key == ownerCharacterId
+                        || !entry.Value.IsActive
+                        || entry.Value.PairItemSerial != pairLookupSerial)
+                    {
+                        continue;
+                    }
+
+                    matchedOwnerCharacterId = entry.Key;
+                    return true;
+                }
+            }
+
+            if (dispatchTable == null)
+            {
+                return false;
+            }
+
+            return dispatchTable.TryGetValue(
+                new RemoteRelationshipRecordDispatchKey(
+                    RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                    pairLookupSerial,
+                    CharacterId: null),
+                out matchedOwnerCharacterId);
         }
 
         public bool TryApplyRelationshipRecordRemove(
@@ -4732,7 +4747,7 @@ namespace HaCreator.MapSimulator.Pools
             return isVisibleInWorld
                 && !hiddenLikeClient
                 && (hasExplicitHelperMarker
-                    || (!hasPacketAuthoredHelperState && battlefieldTeamId.HasValue));
+                    || battlefieldTeamId.HasValue);
         }
 
         internal static MinimapUI.HelperMarkerType ResolvePacketAuthoredMinimapHelperMarker(
@@ -5322,31 +5337,26 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                float phase = ((currentTime % CarryItemEffectOrbitDurationMs) / (float)CarryItemEffectOrbitDurationMs)
-                    + (index / (float)Math.Max(1, totalTokenCount));
-                float angle = MathHelper.TwoPi * (phase - (float)Math.Floor(phase));
-                bool isFrontLayer = Math.Sin(angle) >= 0f;
+                Point offset = ResolveCarryItemEffectOffset(
+                    index,
+                    totalTokenCount,
+                    tensTokenCount,
+                    actor.FacingRight,
+                    out bool isFrontLayer);
                 if (isFrontLayer != drawFrontLayers)
                 {
                     continue;
                 }
 
-                float orbitX = (float)Math.Cos(angle) * CarryItemEffectOrbitRadiusX;
-                float orbitY = CarryItemEffectBaseVerticalOffset + ((float)Math.Sin(angle) * CarryItemEffectOrbitRadiusY);
-                if (!actor.FacingRight)
-                {
-                    orbitX = -orbitX;
-                }
-
                 CharacterFrame frame = PlayerCharacter.GetPortableChairLayerFrameAtTime(
                     layer,
-                    currentTime + (index * CarryItemEffectAnimationOffsetMs));
+                    ResolveCarryItemEffectAnimationTime(currentTime, index));
                 PlayerCharacter.DrawPortableChairLayerFrame(
                     spriteBatch,
                     skeletonMeshRenderer,
                     frame,
-                    screenX + (int)Math.Round(orbitX),
-                    screenY + (int)Math.Round(orbitY),
+                    screenX + offset.X,
+                    screenY + offset.Y,
                     actor.FacingRight);
             }
         }
@@ -5544,28 +5554,59 @@ namespace HaCreator.MapSimulator.Pools
             return (totalTokenCount, tensTokenCount);
         }
 
-        internal static Point ResolveCarryItemEffectOrbitOffset(
-            int currentTime,
+        internal static Point ResolveCarryItemEffectOffset(
             int index,
             int totalTokenCount,
+            int tensTokenCount,
             bool facingRight,
             out bool isFrontLayer)
         {
-            float phase = ((currentTime % CarryItemEffectOrbitDurationMs) / (float)CarryItemEffectOrbitDurationMs)
-                + (index / (float)Math.Max(1, totalTokenCount));
-            float angle = MathHelper.TwoPi * (phase - (float)Math.Floor(phase));
-            isFrontLayer = Math.Sin(angle) >= 0f;
+            int clampedTotalTokenCount = Math.Max(0, totalTokenCount);
+            int clampedTensTokenCount = Math.Clamp(tensTokenCount, 0, clampedTotalTokenCount);
+            int singleTokenCount = Math.Max(0, clampedTotalTokenCount - clampedTensTokenCount);
+            int x;
+            int y;
 
-            float orbitX = (float)Math.Cos(angle) * CarryItemEffectOrbitRadiusX;
-            float orbitY = CarryItemEffectBaseVerticalOffset + ((float)Math.Sin(angle) * CarryItemEffectOrbitRadiusY);
-            if (!facingRight)
+            if (index >= singleTokenCount)
             {
-                orbitX = -orbitX;
+                int bundleIndex = index - singleTokenCount;
+                int bundleColumn = Math.Max(0, bundleIndex % 5);
+                int bundleRow = Math.Max(0, bundleIndex / 5);
+                int bundleCountInFrontRow = clampedTensTokenCount % 5;
+                if (bundleCountInFrontRow == 0 && clampedTensTokenCount > 0)
+                {
+                    bundleCountInFrontRow = 5;
+                }
+
+                x = (15 * bundleColumn) + (7 * (1 - bundleCountInFrontRow));
+                y = (-15 * bundleRow) - (10 * Math.Max(0, (singleTokenCount - 1) / 5)) - 35;
+            }
+            else if (singleTokenCount <= 5)
+            {
+                x = 10 * ((index % 5) - 2);
+                y = 10 * (-2 - (index / 5));
+            }
+            else if ((index % 10) >= 5)
+            {
+                int row = index / 5;
+                x = 10 * index - (5 * singleTokenCount) - 20;
+                y = 10 * (-2 - row);
+            }
+            else
+            {
+                x = 10 * ((index % 5) - 2);
+                y = 10 * (-2 - (index / 5));
             }
 
-            return new Point(
-                (int)Math.Round(orbitX),
-                (int)Math.Round(orbitY));
+            if (!facingRight)
+            {
+                x = -x;
+            }
+
+            // CUser::SetCarryItemEffect attaches these layers as a dedicated additional
+            // overlay owner rather than splitting them around the avatar draw.
+            isFrontLayer = true;
+            return new Point(x, y);
         }
 
         internal static int ResolveCarryItemEffectAnimationTime(int currentTime, int index)
@@ -6117,16 +6158,23 @@ namespace HaCreator.MapSimulator.Pools
 
             EnsureRelationshipRecordTablesInitialized();
             Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(relationshipType);
+            RemoveRelationshipRecordDispatchKeysForOwner(relationshipType, actor.CharacterId);
             if (relationshipRecord.IsActive)
             {
                 int? pairCharacterId = relationshipType == RemoteRelationshipOverlayType.Marriage
                     ? ResolveMarriagePairCharacterId(actor.CharacterId, relationshipRecord)
                     : relationshipRecord.PairCharacterId;
-                recordTable[actor.CharacterId] = relationshipRecord with
+                RemoteUserRelationshipRecord normalizedRecord = relationshipRecord with
                 {
                     CharacterId = actor.CharacterId,
                     PairCharacterId = pairCharacterId
                 };
+                recordTable[actor.CharacterId] = normalizedRecord;
+                RegisterRelationshipRecordDispatchKeys(
+                    relationshipType,
+                    default,
+                    normalizedRecord,
+                    actor.CharacterId);
             }
             else
             {
@@ -6999,38 +7047,6 @@ namespace HaCreator.MapSimulator.Pools
             _portableChairPairRecordsByCharacterId[characterId] = new PortableChairPairRecord(
                 characterId,
                 chairItemId,
-                preferredPairCharacterId);
-        }
-
-        private void SyncPortableChairRecordFromChairState(int characterId, int? chairItemId, int? preferredPairCharacterId)
-        {
-            PortableChairPairRecord? record = ResolvePortableChairPairRecordFromChairState(
-                characterId,
-                chairItemId,
-                preferredPairCharacterId);
-            if (!record.HasValue)
-            {
-                ClearPortableChairPairRecord(characterId);
-                return;
-            }
-
-            _portableChairPairRecordsByCharacterId[characterId] = record.Value;
-        }
-
-        internal static PortableChairPairRecord? ResolvePortableChairPairRecordFromChairState(
-            int characterId,
-            int? chairItemId,
-            int? preferredPairCharacterId)
-        {
-            int resolvedChairItemId = chairItemId ?? 0;
-            if (characterId <= 0 || resolvedChairItemId <= 0 || resolvedChairItemId / 1000 != 3012)
-            {
-                return null;
-            }
-
-            return new PortableChairPairRecord(
-                characterId,
-                resolvedChairItemId,
                 preferredPairCharacterId);
         }
 
@@ -8117,7 +8133,11 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool HasRemoteTemporaryStatAvatarEffect(SkillData skill)
         {
-            return skill?.AffectedEffect != null
+            return skill?.AvatarOverlayEffect != null
+                   || skill?.AvatarOverlaySecondaryEffect != null
+                   || skill?.AvatarUnderFaceEffect != null
+                   || skill?.AvatarUnderFaceSecondaryEffect != null
+                   || skill?.AffectedEffect != null
                    || skill?.AffectedSecondaryEffect != null
                    || skill?.Effect != null
                    || skill?.EffectSecondary != null
@@ -8172,6 +8192,31 @@ namespace HaCreator.MapSimulator.Pools
             SkillAnimation overlaySecondaryAnimation = null;
             SkillAnimation underFaceAnimation = null;
             SkillAnimation underFaceSecondaryAnimation = null;
+
+            AssignRemoteTemporaryStatAvatarEffectPlane(
+                CreateLoopingRemoteTemporaryStatAvatarEffect(skill.AvatarOverlayEffect),
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+            AssignRemoteTemporaryStatAvatarEffectPlane(
+                CreateLoopingRemoteTemporaryStatAvatarEffect(skill.AvatarOverlaySecondaryEffect),
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+            AssignRemoteTemporaryStatAvatarEffectPlane(
+                CreateLoopingRemoteTemporaryStatAvatarEffect(skill.AvatarUnderFaceEffect),
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+            AssignRemoteTemporaryStatAvatarEffectPlane(
+                CreateLoopingRemoteTemporaryStatAvatarEffect(skill.AvatarUnderFaceSecondaryEffect),
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
 
             if (skill.AffectedEffect != null || skill.AffectedSecondaryEffect != null)
             {

@@ -2677,7 +2677,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (entry.Tab == MonsterCarnivalTab.Guardian
-                && _occupiedGuardianSlots.Contains(entry.Index))
+                && !CanPlaceGuardianEntry(entry, _localTeam))
             {
                 reasonCode = 4;
                 return false;
@@ -2704,6 +2704,11 @@ namespace HaCreator.MapSimulator.Fields
             _lastRequestTab = (int)entry.Tab;
             _lastRequestIndex = entry.Index;
 
+            MonsterCarnivalTeam resolvedOwnerTeam = ownerTeam;
+            int guardianSlotIndex = -1;
+            MonsterCarnivalGuardianSpawnPoint guardianSpawnPoint = default;
+            bool guardianPlacementResolved = false;
+
             if (spendLocalCp)
             {
                 _personalCp = Math.Max(0, _personalCp - entry.Cost);
@@ -2726,14 +2731,34 @@ namespace HaCreator.MapSimulator.Fields
             }
             else if (entry.Tab == MonsterCarnivalTab.Guardian)
             {
-                _occupiedGuardianSlots.Add(entry.Index);
+                guardianPlacementResolved = TryResolveGuardianPlacement(
+                    entry,
+                    ownerTeam,
+                    out guardianSlotIndex,
+                    out guardianSpawnPoint,
+                    out resolvedOwnerTeam);
+
+                if (!guardianPlacementResolved)
+                {
+                    guardianSlotIndex = entry.Index;
+                    guardianSpawnPoint = ResolveGuardianSpawnPoint(entry.Index);
+                    resolvedOwnerTeam = guardianSpawnPoint.Team ?? ownerTeam;
+                }
+
+                if (!spendLocalCp && !ownerTeamKnown)
+                {
+                    MonsterCarnivalTeamState inferredTeamState = GetTeamState(resolvedOwnerTeam);
+                    inferredTeamState.CurrentCp = Math.Max(0, inferredTeamState.CurrentCp - entry.Cost);
+                }
+
+                _occupiedGuardianSlots.Add(guardianSlotIndex);
                 MonsterCarnivalGuardianPlacement placement = new MonsterCarnivalGuardianPlacement(
                     entry,
-                    ResolveGuardianSpawnPoint(entry.Index),
-                    ResolveGuardianReactorId(ownerTeam),
-                    ownerTeam);
-                placement.ReactorRequiredHits = ResolveGuardianRequiredHits(ownerTeam);
-                _guardianPlacements[entry.Index] = placement;
+                    guardianSpawnPoint,
+                    ResolveGuardianReactorId(resolvedOwnerTeam),
+                    resolvedOwnerTeam);
+                placement.ReactorRequiredHits = ResolveGuardianRequiredHits(resolvedOwnerTeam);
+                _guardianPlacements[guardianSlotIndex] = placement;
             }
         }
 
@@ -2767,6 +2792,108 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return positions[Math.Clamp(slotIndex, 0, positions.Count - 1)];
+        }
+
+        private bool CanPlaceGuardianEntry(MonsterCarnivalEntry entry, MonsterCarnivalTeam preferredTeam)
+        {
+            return TryResolveGuardianPlacement(
+                entry,
+                preferredTeam,
+                out _,
+                out _,
+                out _);
+        }
+
+        private bool TryResolveGuardianPlacement(
+            MonsterCarnivalEntry entry,
+            MonsterCarnivalTeam preferredTeam,
+            out int slotIndex,
+            out MonsterCarnivalGuardianSpawnPoint spawnPoint,
+            out MonsterCarnivalTeam resolvedTeam)
+        {
+            slotIndex = -1;
+            spawnPoint = default;
+            resolvedTeam = preferredTeam;
+
+            if (entry == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<MonsterCarnivalGuardianSpawnPoint> positions = _definition?.GuardianSpawnPositions;
+            if (positions == null || positions.Count == 0)
+            {
+                slotIndex = entry.Index;
+                spawnPoint = ResolveGuardianSpawnPoint(entry.Index);
+                resolvedTeam = spawnPoint.Team ?? preferredTeam;
+                return !_occupiedGuardianSlots.Contains(slotIndex);
+            }
+
+            foreach (MonsterCarnivalGuardianSpawnPoint candidate in EnumerateGuardianPlacementCandidates(positions, entry.Index))
+            {
+                if (_occupiedGuardianSlots.Contains(candidate.Index))
+                {
+                    continue;
+                }
+
+                if (candidate.Team.HasValue && candidate.Team.Value != preferredTeam)
+                {
+                    continue;
+                }
+
+                slotIndex = candidate.Index;
+                spawnPoint = candidate;
+                resolvedTeam = candidate.Team ?? preferredTeam;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<MonsterCarnivalGuardianSpawnPoint> EnumerateGuardianPlacementCandidates(
+            IReadOnlyList<MonsterCarnivalGuardianSpawnPoint> positions,
+            int preferredSlotIndex)
+        {
+            if (positions == null || positions.Count == 0)
+            {
+                yield break;
+            }
+
+            MonsterCarnivalGuardianSpawnPoint? exactMatch = null;
+            List<MonsterCarnivalGuardianSpawnPoint> ordered = positions
+                .OrderBy(position => position.Index)
+                .ToList();
+
+            foreach (MonsterCarnivalGuardianSpawnPoint position in ordered)
+            {
+                if (position.Index == preferredSlotIndex)
+                {
+                    exactMatch = position;
+                    break;
+                }
+            }
+
+            if (exactMatch.HasValue)
+            {
+                yield return exactMatch.Value;
+            }
+
+            int orderedStartIndex = ordered.FindIndex(position => position.Index >= preferredSlotIndex);
+            if (orderedStartIndex < 0)
+            {
+                orderedStartIndex = 0;
+            }
+
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                MonsterCarnivalGuardianSpawnPoint candidate = ordered[(orderedStartIndex + i) % ordered.Count];
+                if (exactMatch.HasValue && candidate.Index == exactMatch.Value.Index)
+                {
+                    continue;
+                }
+
+                yield return candidate;
+            }
         }
 
         private int ResolveGuardianReactorId(MonsterCarnivalTeam team)

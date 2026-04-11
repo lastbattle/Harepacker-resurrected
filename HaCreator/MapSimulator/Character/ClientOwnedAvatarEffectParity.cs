@@ -92,8 +92,19 @@ namespace HaCreator.MapSimulator.Character
             anchorY = screenY;
 
             if (positionCode != FaceOwnedPlanePositionCode
-                || assembledFrame?.MapPoints == null
-                || !assembledFrame.MapPoints.TryGetValue("brow", out Point anchorPoint))
+                || assembledFrame?.MapPoints == null)
+            {
+                return false;
+            }
+
+            if (assembledFrame.MapPoints.TryGetValue(AvatarActionLayerCoordinator.ClientFaceOriginMapPoint, out Point mountedFaceOrigin))
+            {
+                anchorX = screenX + mountedFaceOrigin.X;
+                anchorY = screenY - assembledFrame.FeetOffset + mountedFaceOrigin.Y;
+                return true;
+            }
+
+            if (!assembledFrame.MapPoints.TryGetValue("brow", out Point anchorPoint))
             {
                 return false;
             }

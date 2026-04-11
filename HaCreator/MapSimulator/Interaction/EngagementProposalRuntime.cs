@@ -236,6 +236,32 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryOpenOutgoingRequestFromPayload(
+            string proposerName,
+            string partnerName,
+            IReadOnlyList<byte> requestPayload,
+            out string message)
+        {
+            if (!TryDecodeOutgoingRequestPayload(
+                    requestPayload,
+                    out string requestMessage,
+                    out int ringItemId,
+                    out message))
+            {
+                return false;
+            }
+
+            message = OpenOutgoingRequest(
+                proposerName,
+                partnerName,
+                ringItemId,
+                requestMessage);
+            _lastRequestPayload = (requestPayload as byte[] ?? requestPayload.ToArray()).ToArray();
+            _statusMessage = $"{message} Decoded live client request payload [{FormatPayload(_lastRequestPayload)}] into note \"{requestMessage}\" and ring {_ringItemName} ({_ringItemId}).";
+            message = _statusMessage;
+            return true;
+        }
+
         internal bool TryInvokePrimaryAction(out EngagementProposalResponse response, out string message)
         {
             if (!_isOpen)
@@ -316,6 +342,105 @@ namespace HaCreator.MapSimulator.Interaction
             _lastResponsePayload = (byte[])response.Payload.Clone();
             _acceptedProposal = null;
             _statusMessage = $"Triggered requester-side SetRet and sent client packet {AcceptPacketType} [01] to withdraw the pending engagement request to {_partnerName}.";
+            message = _statusMessage;
+            return true;
+        }
+
+        internal bool TryApplyLocalWithdrawPayload(
+            IReadOnlyList<byte> payload,
+            out string message)
+        {
+            if (!_isOpen)
+            {
+                message = "No engagement proposal is active.";
+                return false;
+            }
+
+            if (_mode != EngagementProposalDialogMode.OutgoingRequest)
+            {
+                message = "Only the requester-owned engagement wait dialog can consume a local packet 161 [01] withdraw payload.";
+                return false;
+            }
+
+            if (!TryDecodePayloadSubtype(payload, out byte subtype, out message))
+            {
+                return false;
+            }
+
+            if (subtype != WithdrawPayloadValue)
+            {
+                message = $"Expected an engagement withdraw payload subtype {WithdrawPayloadValue:00}, but decoded {subtype:00}.";
+                return false;
+            }
+
+            _lastPrimaryActionSent = true;
+            _isOpen = false;
+            _lastResponsePacketType = AcceptPacketType;
+            _lastResponsePayload = (payload as byte[] ?? payload.ToArray()).ToArray();
+            _acceptedProposal = null;
+            _statusMessage = $"Applied local requester-side packet {AcceptPacketType} [01] and closed the pending engagement request to {_partnerName}.";
+            message = _statusMessage;
+            return true;
+        }
+
+        internal bool TryApplyLocalDecisionPayload(
+            IReadOnlyList<byte> payload,
+            out string message)
+        {
+            if (!_isOpen)
+            {
+                message = "No engagement proposal is active.";
+                return false;
+            }
+
+            if (_mode != EngagementProposalDialogMode.IncomingProposal)
+            {
+                message = $"Only the recipient-owned {ClientOwnerTypeName} prompt can consume a local packet {AcceptPacketType} [02 xx] decision payload.";
+                return false;
+            }
+
+            if (!TryDecodeIncomingDecisionPayload(
+                    payload,
+                    out bool accepted,
+                    out string requesterName,
+                    out int ringItemId,
+                    out message))
+            {
+                return false;
+            }
+
+            _proposerName = NormalizeName(requesterName, _proposerName);
+            _ringItemId = ringItemId > 0 ? ringItemId : _ringItemId;
+            _lastPrimaryActionSent = accepted;
+            _lastResponsePacketType = AcceptPacketType;
+            _lastResponsePayload = (payload as byte[] ?? payload.ToArray()).ToArray();
+            _isOpen = false;
+
+            ResolveItemMetadata();
+            if (accepted)
+            {
+                _acceptedProposal = new EngagementProposalAcceptedSnapshot
+                {
+                    LocalCharacterName = _localCharacterName,
+                    ProposerName = _proposerName,
+                    PartnerName = _partnerName,
+                    RingItemId = _ringItemId,
+                    RingItemName = _ringItemName,
+                    RingItemDescription = _ringItemDescription,
+                    SealItemId = _sealItemId,
+                    SealItemName = _sealItemName,
+                    SealItemDescription = _sealItemDescription,
+                    RequestMessage = _outgoingRequestMessage,
+                    CustomMessage = _customMessage
+                };
+                _statusMessage = $"Applied local recipient-side packet {AcceptPacketType} [02 01] for {_proposerName}. {EngagementProposalDialogText.GetAcceptedText()} The wedding handoff state is now primed from the live client payload.";
+            }
+            else
+            {
+                _acceptedProposal = null;
+                _statusMessage = $"Applied local recipient-side packet {AcceptPacketType} [02 00] for {_proposerName}. {EngagementProposalDialogText.GetDeclinedRequestText()}";
+            }
+
             message = _statusMessage;
             return true;
         }
@@ -750,6 +875,23 @@ namespace HaCreator.MapSimulator.Interaction
                 error = $"Failed to decode engagement request payload: {ex.Message}";
                 return false;
             }
+        }
+
+        internal static bool TryDecodePayloadSubtype(
+            IReadOnlyList<byte> payload,
+            out byte subtype,
+            out string error)
+        {
+            subtype = 0;
+            if (payload == null || payload.Count == 0)
+            {
+                error = "Engagement payload is empty.";
+                return false;
+            }
+
+            subtype = payload[0];
+            error = null;
+            return true;
         }
 
         internal static bool TryDecodeIncomingDecisionPayload(

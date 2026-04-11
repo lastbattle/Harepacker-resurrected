@@ -1271,6 +1271,49 @@ namespace HaCreator.MapSimulator
             MoveWhisperTargetPickerSelection(delta, WhisperTargetPickerNavigationMode.Step);
         }
 
+        internal void ScrollWhisperTargetPickerModalComboDropdown(int deltaRows)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen
+                || deltaRows == 0)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                _whisperTargetPickerFirstVisibleIndex + deltaRows,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
+        }
+
+        internal void PageWhisperTargetPickerModalComboDropdown(int deltaPages)
+        {
+            if (deltaPages == 0)
+            {
+                return;
+            }
+
+            ScrollWhisperTargetPickerModalComboDropdown(deltaPages * WhisperTargetPickerVisibleRowCount);
+        }
+
+        internal void SetWhisperTargetPickerModalComboDropdownFirstVisibleIndex(int firstVisibleIndex)
+        {
+            if (!_isWhisperTargetPickerActive
+                || _whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
+                || !_isWhisperTargetPickerComboDropdownOpen)
+            {
+                return;
+            }
+
+            _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
+            _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                firstVisibleIndex,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
+        }
+
         internal void HighlightWhisperTargetPickerModalComboDropdownCandidate(string whisperTarget)
         {
             if (!_isWhisperTargetPickerActive
@@ -2470,6 +2513,16 @@ namespace HaCreator.MapSimulator
             int clampedVisibleRowCount = Math.Max(1, visibleRowCount);
             int maxStartIndex = Math.Max(0, candidateCount - clampedVisibleRowCount);
             return Math.Clamp(firstVisibleIndex, 0, maxStartIndex);
+        }
+
+        internal static int ResolveWhisperTargetPickerMaxScrollOffset(
+            int candidateCount,
+            int visibleRowCount = WhisperTargetPickerVisibleRowCount)
+        {
+            return ClampWhisperTargetPickerFirstVisibleIndex(
+                int.MaxValue,
+                candidateCount,
+                visibleRowCount);
         }
 
         private string ResolveWhisperTargetPickerSelection()

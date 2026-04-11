@@ -901,12 +901,15 @@ namespace HaCreator.MapSimulator.Fields
 
             string statusMessageBeforePrompt = _statusMessageBeforePrompt;
             ClearPendingPrompt();
-            string promptText = string.IsNullOrWhiteSpace(prompt.Text) ? "Match Cards prompt" : prompt.Text;
-            _statusMessage = string.IsNullOrWhiteSpace(statusMessageBeforePrompt)
-                ? $"Canceled: {promptText}"
-                : statusMessageBeforePrompt;
+            if (!string.IsNullOrWhiteSpace(statusMessageBeforePrompt))
+            {
+                _statusMessage = statusMessageBeforePrompt;
+            }
+
             SyncMiniRoomRuntime();
-            message = $"Canceled Match Cards prompt: {promptText}";
+            message = string.IsNullOrWhiteSpace(prompt.Text)
+                ? "Dismissed Match Cards prompt."
+                : $"Dismissed Match Cards prompt: {prompt.Text}";
             return true;
         }
 
@@ -2830,8 +2833,6 @@ namespace HaCreator.MapSimulator.Fields
 
             _statusMessageBeforePrompt = _statusMessage;
             _pendingPrompt = new MemoryGamePromptState(type, stringPoolId, playerIndex, text);
-            _statusMessage = text;
-            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {text}");
             SyncMiniRoomRuntime();
             message = text;
             return true;
@@ -2912,12 +2913,9 @@ namespace HaCreator.MapSimulator.Fields
         private string BuildRoomStatusMessage()
         {
             string leaveStatus = BuildLeaveBookingSummary();
-            string promptStatus = _pendingPrompt.IsActive
-                ? $"Prompt: {_pendingPrompt.Text}"
-                : string.Empty;
             string combinedStatus = string.Join(
                 " ",
-                new[] { _statusMessage, leaveStatus, promptStatus }.Where(part => !string.IsNullOrWhiteSpace(part)));
+                new[] { _statusMessage, leaveStatus }.Where(part => !string.IsNullOrWhiteSpace(part)));
             return string.IsNullOrWhiteSpace(combinedStatus) ? _statusMessage : combinedStatus;
         }
 

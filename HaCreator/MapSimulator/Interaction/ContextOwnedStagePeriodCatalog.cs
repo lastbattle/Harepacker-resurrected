@@ -379,25 +379,33 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            string spineAnimation = InfoTool.GetString(property["spineAni"]);
+            bool animated = InfoTool.GetBool(property["ani"]);
+            BackgroundInfoType infoType = !string.IsNullOrWhiteSpace(spineAnimation)
+                ? BackgroundInfoType.Spine
+                : animated
+                    ? BackgroundInfoType.Animation
+                    : BackgroundInfoType.Background;
+            MapleBool flipValue = InfoTool.GetOptionalBool(property["f"]);
             entries.Add(new ContextOwnedStageBackImageEntry(
                 backgroundSet.Trim(),
                 number.ToString(CultureInfo.InvariantCulture),
-                BackgroundInfoType.Background,
+                infoType,
                 InfoTool.GetInt(property["x"]),
                 InfoTool.GetInt(property["y"]),
                 InfoTool.GetInt(property["absRX"], 1),
                 InfoTool.GetInt(property["absRY"], 1),
-                Cx: 0,
-                Cy: 0,
-                Alpha: 255,
-                BackgroundType.Regular,
-                front,
-                Flip: false,
-                Page: 0,
-                ScreenMode: 0,
+                InfoTool.GetInt(property["cx"]),
+                InfoTool.GetInt(property["cy"]),
+                Math.Clamp(InfoTool.GetInt(property["a"], 255), 0, 255),
+                (BackgroundType)InfoTool.GetInt(property["type"]),
+                property["front"] == null ? front : InfoTool.GetBool(property["front"]),
+                flipValue.HasValue && flipValue.Value,
+                InfoTool.GetInt(property["page"]),
+                InfoTool.GetInt(property["screenMode"], 0),
                 InfoTool.GetInt(property["z"]),
-                SpineAnimation: null,
-                SpineRandomStart: false));
+                spineAnimation,
+                InfoTool.GetBool(property["spineRandomStart"])));
             return true;
         }
 

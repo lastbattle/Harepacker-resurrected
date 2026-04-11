@@ -286,10 +286,16 @@ namespace HaCreator.MapSimulator
         {
             ApplyPersistedPacketOwnedFuncKeyConfig();
             SyncPacketOwnedUtilityWindowBindings(input);
-            PersistPacketOwnedFuncKeyConfig(input, persistSimulatorBindings: true);
+            PersistPacketOwnedFuncKeyConfig(
+                input,
+                persistSimulatorBindings: true,
+                persistFuncKeyFallback: true);
         }
 
-        private void PersistPacketOwnedFuncKeyConfig(PlayerInput input = null, bool persistSimulatorBindings = false)
+        private void PersistPacketOwnedFuncKeyConfig(
+            PlayerInput input = null,
+            bool persistSimulatorBindings = false,
+            bool persistFuncKeyFallback = false)
         {
             PacketOwnedFuncKeyConfigStore.Snapshot existingSnapshot = _packetOwnedFuncKeyConfigStore.Load();
             var snapshot = new PacketOwnedFuncKeyConfigStore.Snapshot
@@ -306,14 +312,10 @@ namespace HaCreator.MapSimulator
                         : new Dictionary<string, PacketOwnedFuncKeyConfigStore.BindingRecord>(StringComparer.Ordinal)
             };
 
-            for (int i = 0; i < _packetOwnedFuncKeyMapped.Length; i++)
-            {
-                snapshot.FuncKeyMapped.Add(new PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord
-                {
-                    Type = _packetOwnedFuncKeyMapped[i].Type,
-                    Id = _packetOwnedFuncKeyMapped[i].Id
-                });
-            }
+            snapshot.FuncKeyMapped.AddRange(ResolvePersistedPacketOwnedFallbackFuncKeyMappedRecords(
+                input ?? _playerManager?.Input,
+                existingSnapshot?.FuncKeyMapped,
+                persistFuncKeyFallback));
 
             _packetOwnedFuncKeyConfigStore.Save(snapshot);
         }
@@ -428,7 +430,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            InventoryType inventoryType = ResolvePacketOwnedPetConsumeInventoryType(
+            InventoryType inventoryType = ResolveFieldHazardClientPetConsumeInventoryType(
                 _packetOwnedPetConsumeItemId,
                 _packetOwnedPetConsumeItemInventoryType);
             if (inventoryType != InventoryType.NONE)
@@ -439,6 +441,25 @@ namespace HaCreator.MapSimulator
                     inventoryType,
                     FieldHazardSharedPetConsumeSource.PacketOwnedConfig);
             }
+        }
+
+        private InventoryType ResolveFieldHazardClientPetConsumeInventoryType(int itemId, InventoryType persistedInventoryType = InventoryType.NONE)
+        {
+            if (itemId <= 0)
+            {
+                return InventoryType.NONE;
+            }
+
+            IInventoryRuntime inventoryWindow = uiWindowManager?.InventoryWindow as IInventoryRuntime;
+            if (inventoryWindow?.GetItemCount(InventoryType.USE, itemId) > 0)
+            {
+                return InventoryType.USE;
+            }
+
+            InventoryType resolvedType = ResolvePacketOwnedPetConsumeInventoryType(itemId, persistedInventoryType);
+            return IsClientFieldHazardPetConsumeInventoryType(resolvedType)
+                ? resolvedType
+                : InventoryType.NONE;
         }
 
         private InventoryType ResolvePacketOwnedPetConsumeInventoryType(int itemId, InventoryType persistedInventoryType = InventoryType.NONE)
@@ -695,40 +716,28 @@ namespace HaCreator.MapSimulator
 
         private void LoadPacketOwnedFuncKeyMappedEntriesFromSimulatorBindings(PlayerInput input)
         {
-            Array.Clear(_packetOwnedFuncKeyMapped, 0, _packetOwnedFuncKeyMapped.Length);
-            if (input == null)
-            {
-                return;
-            }
-
-            for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
-            {
-                (int clientFunctionId, InputAction action) = PacketOwnedKnownFunctionBindings[i];
-                KeyBinding binding = input.GetBinding(action);
-                if (binding == null)
-                {
-                    continue;
-                }
-
-                if (TrySetPacketOwnedFuncKeyMappedEntryFromSimulatorBinding(binding.PrimaryKey, clientFunctionId))
-                {
-                    continue;
-                }
-
-                TrySetPacketOwnedFuncKeyMappedEntryFromSimulatorBinding(binding.SecondaryKey, clientFunctionId);
-            }
+            PopulatePacketOwnedFuncKeyMappedEntriesFromSimulatorBindings(input, _packetOwnedFuncKeyMapped);
         }
 
         private bool TrySetPacketOwnedFuncKeyMappedEntryFromSimulatorBinding(Keys key, int clientFunctionId)
         {
+            return TrySetPacketOwnedFuncKeyMappedEntryFromSimulatorBinding(_packetOwnedFuncKeyMapped, key, clientFunctionId);
+        }
+
+        private static bool TrySetPacketOwnedFuncKeyMappedEntryFromSimulatorBinding(
+            PacketOwnedFuncKeyMappedEntry[] destination,
+            Keys key,
+            int clientFunctionId)
+        {
             if (!TryResolvePacketOwnedKeyScanCode(key, out int scanCode)
+                || destination == null
                 || scanCode < 0
-                || scanCode >= _packetOwnedFuncKeyMapped.Length)
+                || scanCode >= destination.Length)
             {
                 return false;
             }
 
-            _packetOwnedFuncKeyMapped[scanCode] = new PacketOwnedFuncKeyMappedEntry(
+            destination[scanCode] = new PacketOwnedFuncKeyMappedEntry(
                 PacketOwnedFuncKeyFunctionType,
                 clientFunctionId);
             return true;
@@ -2028,6 +2037,111 @@ namespace HaCreator.MapSimulator
                 byte type = record.Id == 22 ? (byte)0 : record.Type;
                 _packetOwnedFuncKeyMapped[i] = new PacketOwnedFuncKeyMappedEntry(type, id);
             }
+        }
+
+        internal static List<PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord> ResolvePersistedPacketOwnedFallbackFuncKeyMappedRecords(
+            PlayerInput input,
+            IReadOnlyList<PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord> existingRecords,
+            bool persistSimulatorFallback)
+        {
+            if (persistSimulatorFallback)
+            {
+                return CreatePersistedPacketOwnedFallbackFuncKeyMappedRecords(input);
+            }
+
+            if (existingRecords?.Count > 0)
+            {
+                return ClonePacketOwnedFuncKeyMappedRecords(existingRecords);
+            }
+
+            return CreatePersistedPacketOwnedFallbackFuncKeyMappedRecords(input);
+        }
+
+        internal static List<PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord> CreatePersistedPacketOwnedFallbackFuncKeyMappedRecords(PlayerInput input)
+        {
+            PacketOwnedFuncKeyMappedEntry[] persistedMap = CreateEmptyPacketOwnedFuncKeyMap();
+            PopulatePacketOwnedFuncKeyMappedEntriesFromSimulatorBindings(input, persistedMap);
+            return CreatePacketOwnedFuncKeyMappedRecords(persistedMap);
+        }
+
+        private static void PopulatePacketOwnedFuncKeyMappedEntriesFromSimulatorBindings(
+            PlayerInput input,
+            PacketOwnedFuncKeyMappedEntry[] destination)
+        {
+            if (destination == null)
+            {
+                return;
+            }
+
+            Array.Clear(destination, 0, destination.Length);
+            if (input == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
+            {
+                (int clientFunctionId, InputAction action) = PacketOwnedKnownFunctionBindings[i];
+                KeyBinding binding = input.GetBinding(action);
+                if (binding == null)
+                {
+                    continue;
+                }
+
+                if (TrySetPacketOwnedFuncKeyMappedEntryFromSimulatorBinding(destination, binding.PrimaryKey, clientFunctionId))
+                {
+                    continue;
+                }
+
+                TrySetPacketOwnedFuncKeyMappedEntryFromSimulatorBinding(destination, binding.SecondaryKey, clientFunctionId);
+            }
+        }
+
+        private static List<PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord> CreatePacketOwnedFuncKeyMappedRecords(
+            IReadOnlyList<PacketOwnedFuncKeyMappedEntry> entries)
+        {
+            var records = new List<PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord>(PacketOwnedFuncKeyEntryCount);
+            for (int i = 0; i < PacketOwnedFuncKeyEntryCount; i++)
+            {
+                PacketOwnedFuncKeyMappedEntry entry = entries != null && i < entries.Count
+                    ? entries[i]
+                    : default;
+                records.Add(new PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord
+                {
+                    Type = entry.Type,
+                    Id = entry.Id
+                });
+            }
+
+            return records;
+        }
+
+        private static List<PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord> ClonePacketOwnedFuncKeyMappedRecords(
+            IReadOnlyList<PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord> records)
+        {
+            var clones = new List<PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord>(PacketOwnedFuncKeyEntryCount);
+            if (records == null)
+            {
+                return clones;
+            }
+
+            int count = Math.Min(records.Count, PacketOwnedFuncKeyEntryCount);
+            for (int i = 0; i < count; i++)
+            {
+                PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord record = records[i];
+                clones.Add(new PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord
+                {
+                    Type = record?.Type ?? 0,
+                    Id = record?.Id ?? 0
+                });
+            }
+
+            while (clones.Count < PacketOwnedFuncKeyEntryCount)
+            {
+                clones.Add(new PacketOwnedFuncKeyConfigStore.FuncKeyMappedRecord());
+            }
+
+            return clones;
         }
 
         private static int CountConfiguredPacketOwnedFuncKeyEntries(IReadOnlyList<PacketOwnedFuncKeyMappedEntry> entries)

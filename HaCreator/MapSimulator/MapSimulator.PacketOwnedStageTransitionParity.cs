@@ -56,7 +56,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            byte[] payload = Array.Empty<byte>();
+            byte[] payload = stagePacketType is 142 or 143 or 146
+                ? Array.Empty<byte>()
+                : null;
             if (stagePacketType is not 142 and not 143 and not 146)
             {
                 string payloadError = null;

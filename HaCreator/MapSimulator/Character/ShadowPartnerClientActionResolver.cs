@@ -895,7 +895,8 @@ namespace HaCreator.MapSimulator.Character
                 Loop = baseAnimation.Loop,
                 Origin = baseAnimation.Origin,
                 ZOrder = baseAnimation.ZOrder,
-                PositionCode = baseAnimation.PositionCode
+                PositionCode = baseAnimation.PositionCode,
+                ClientEventDelayMs = baseAnimation.ClientEventDelayMs
             };
             remappedAnimation.CalculateDuration();
             return remappedAnimation;
@@ -957,6 +958,38 @@ namespace HaCreator.MapSimulator.Character
                     && !string.IsNullOrWhiteSpace(canonicalActionName)
                     && supportedRawActionNames.Contains(canonicalActionName)
                     && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+        }
+
+        internal static IEnumerable<string> EnumerateMountedShadowPartnerActionCandidateNames(
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // CActionMan::Init seeds the mounted Shadow Partner helper table by walking
+            // raw action codes 0..272 against Character/00002000.img, skipping raw code 55.
+            foreach (string actionName in EnumerateClientInitializedShadowPartnerRawActionNames())
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            foreach (string actionName in GenericHelperSurfaceActionNames)
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+
+            foreach (string actionName in EnumerateCharacterOwnedMountedActionCandidateNames(supportedRawActionNames))
+            {
+                if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
                 {
                     yield return actionName;
                 }
@@ -1148,10 +1181,33 @@ namespace HaCreator.MapSimulator.Character
                 Loop = false,
                 Origin = firstPieceAnimation?.Origin ?? Point.Zero,
                 ZOrder = firstPieceAnimation?.ZOrder ?? 0,
-                PositionCode = firstPieceAnimation?.PositionCode
+                PositionCode = firstPieceAnimation?.PositionCode,
+                ClientEventDelayMs = ResolveClientActionManInitEventDelayMs(piecePlan)
             };
             piecedAnimation.CalculateDuration();
             return piecedAnimation;
+        }
+
+        internal static int ResolveClientActionManInitEventDelayMs(
+            IReadOnlyList<ShadowPartnerActionPiece> piecePlan)
+        {
+            if (piecePlan == null || piecePlan.Count == 0)
+            {
+                return 0;
+            }
+
+            int eventDelayMs = 0;
+            foreach (ShadowPartnerActionPiece piece in piecePlan)
+            {
+                if (!piece.DelayOverrideMs.HasValue || piece.DelayOverrideMs.Value >= 0)
+                {
+                    continue;
+                }
+
+                eventDelayMs += Math.Abs(piece.DelayOverrideMs.Value);
+            }
+
+            return eventDelayMs;
         }
 
         private static SkillFrame CloneSkillFrame(
@@ -1381,6 +1437,11 @@ namespace HaCreator.MapSimulator.Character
                 && animation?.Frames != null
                 && animation.Frames.Count > 0)
             {
+                if (animation.ClientEventDelayMs.GetValueOrDefault() > 0)
+                {
+                    return animation.ClientEventDelayMs.Value;
+                }
+
                 int frameDelay = ResolvePlaybackFrameDurationMs(animation.Frames[0]?.Delay ?? 0);
                 if (frameDelay > 0)
                 {

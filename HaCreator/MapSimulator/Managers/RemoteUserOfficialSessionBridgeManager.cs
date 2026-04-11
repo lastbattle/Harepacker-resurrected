@@ -75,22 +75,47 @@ namespace HaCreator.MapSimulator.Managers
 
         private sealed class LearnedOpcodeEntry
         {
-            public LearnedOpcodeEntry(int packetType, string evidence)
+            public LearnedOpcodeEntry(int packetType, string evidence, bool isManual, string source, byte[] payload)
             {
                 PacketType = packetType;
                 Evidence = evidence ?? string.Empty;
+                IsManual = isManual;
+                LastSource = string.IsNullOrWhiteSpace(source) ? "unknown-source" : source;
+                LastPayloadLength = payload?.Length ?? 0;
+                LastPayloadPreviewHex = FormatPayloadPreviewHex(payload);
                 Count = 1;
             }
 
             public int PacketType { get; private set; }
             public string Evidence { get; private set; }
+            public bool IsManual { get; }
+            public string LastSource { get; private set; }
+            public int LastPayloadLength { get; private set; }
+            public string LastPayloadPreviewHex { get; private set; }
             public int Count { get; private set; }
 
-            public void Update(int packetType, string evidence)
+            public void Update(int packetType, string evidence, string source, byte[] payload)
             {
                 PacketType = packetType;
                 Evidence = evidence ?? string.Empty;
+                LastSource = string.IsNullOrWhiteSpace(source) ? LastSource : source;
+                LastPayloadLength = payload?.Length ?? 0;
+                LastPayloadPreviewHex = FormatPayloadPreviewHex(payload);
                 Count++;
+            }
+
+            private static string FormatPayloadPreviewHex(byte[] payload)
+            {
+                if (payload == null || payload.Length == 0)
+                {
+                    return "empty";
+                }
+
+                int previewLength = Math.Min(payload.Length, 24);
+                string preview = BitConverter.ToString(payload, 0, previewLength);
+                return previewLength < payload.Length
+                    ? $"{preview}..."
+                    : preview;
             }
         }
 
@@ -188,7 +213,7 @@ namespace HaCreator.MapSimulator.Managers
                     _learnedPacketMap
                         .OrderBy(entry => entry.Key)
                         .Select(entry =>
-                            $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} ({entry.Value.Evidence}; count={entry.Value.Count})"));
+                            $"{entry.Key}->{RemoteUserPacketInboxManager.DescribePacketType(entry.Value.PacketType)} ({entry.Value.Evidence}; count={entry.Value.Count}; source={entry.Value.LastSource}; payloadBytes={entry.Value.LastPayloadLength}; sample={entry.Value.LastPayloadPreviewHex})"));
             }
         }
 
@@ -304,7 +329,7 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 _packetMap[opcode] = packetType;
-                RememberLearnedOpcodeNoLock(opcode, packetType, "manual");
+                RememberLearnedOpcodeNoLock(opcode, packetType, "manual", isManual: true, source: "manual", payload: null);
             }
 
             status = $"Mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)}.";
@@ -409,7 +434,7 @@ namespace HaCreator.MapSimulator.Managers
 
                     _packetMap[opcode] = packetType;
                     string learnedEvidence = $"auto:{inferenceReason}; {OfficialRemoteOwnerEvidence}";
-                    RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence);
+                    RememberLearnedOpcodeNoLock(opcode, packetType, learnedEvidence, isManual: false, source, inferencePayload);
                     LastStatus = $"Auto-mapped remote-user opcode {opcode} to {RemoteUserPacketInboxManager.DescribePacketType(packetType)} from tutor payload inference ({inferenceReason}); {OfficialRemoteOwnerEvidence}";
                 }
             }
@@ -481,15 +506,15 @@ namespace HaCreator.MapSimulator.Managers
             return false;
         }
 
-        private void RememberLearnedOpcodeNoLock(ushort opcode, int packetType, string evidence)
+        private void RememberLearnedOpcodeNoLock(ushort opcode, int packetType, string evidence, bool isManual, string source, byte[] payload)
         {
             if (_learnedPacketMap.TryGetValue(opcode, out LearnedOpcodeEntry existing))
             {
-                existing.Update(packetType, evidence);
+                existing.Update(packetType, evidence, source, payload);
                 return;
             }
 
-            _learnedPacketMap[opcode] = new LearnedOpcodeEntry(packetType, evidence);
+            _learnedPacketMap[opcode] = new LearnedOpcodeEntry(packetType, evidence, isManual, source, payload);
         }
 
         private async Task ListenLoopAsync(CancellationToken cancellationToken)
@@ -685,8 +710,33 @@ namespace HaCreator.MapSimulator.Managers
 
         private void ResetInboundState()
         {
-            ReceivedCount = 0;
-            ForwardedOutboundCount = 0;
+            lock (_sync)
+            {
+                ReceivedCount = 0;
+                ForwardedOutboundCount = 0;
+                ClearLearnedTutorMappingsNoLock();
+            }
+        }
+
+        private void ClearLearnedTutorMappingsNoLock()
+        {
+            ushort[] learnedTutorOpcodes = _learnedPacketMap
+                .Where(entry =>
+                    !entry.Value.IsManual
+                    && (entry.Value.PacketType == (int)Pools.RemoteUserPacketType.UserTutorHire
+                        || entry.Value.PacketType == (int)Pools.RemoteUserPacketType.UserTutorMessage))
+                .Select(entry => entry.Key)
+                .ToArray();
+
+            for (int i = 0; i < learnedTutorOpcodes.Length; i++)
+            {
+                ushort opcode = learnedTutorOpcodes[i];
+                _learnedPacketMap.Remove(opcode);
+                if (!DefaultPacketMap.ContainsKey(opcode))
+                {
+                    _packetMap.Remove(opcode);
+                }
+            }
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

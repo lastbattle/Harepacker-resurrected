@@ -14,6 +14,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 [32110000] = 32101002,
                 [32120001] = 32101003
             };
+        private static readonly IReadOnlyDictionary<int, int[]> ReverseClientCancelRequestSkillAliases =
+            ClientCancelRequestSkillAliases
+                .GroupBy(static pair => pair.Value)
+                .ToDictionary(
+                    static group => group.Key,
+                    static group => group.Select(static pair => pair.Key).Distinct().ToArray());
 
         internal static int NormalizeClientCancelRequestSkillId(int skillId)
         {
@@ -103,8 +109,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             Queue<int> pendingSkillIds = new();
-            pendingSkillIds.Enqueue(rootSkillId);
-            EnqueueSkillId(NormalizeClientCancelRequestSkillId(rootSkillId), pendingSkillIds, resolvedSkillIds);
+            EnqueueSkillId(rootSkillId, pendingSkillIds, resolvedSkillIds);
 
             while (pendingSkillIds.Count > 0)
             {
@@ -131,10 +136,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                         continue;
                     }
 
-                    if (candidate.LinksDummySkill(currentSkillId)
-                        || (UsesAffectedSkillCancelFamily(candidate) && candidate.LinksAffectedSkill(currentSkillId)))
+                    if (LinksDummySkillAliasEquivalent(candidate, currentSkillId)
+                        || (UsesAffectedSkillCancelFamily(candidate) && LinksAffectedSkillAliasEquivalent(candidate, currentSkillId)))
                     {
-                        pendingSkillIds.Enqueue(candidate.SkillId);
+                        EnqueueSkillId(candidate.SkillId, pendingSkillIds, resolvedSkillIds);
                     }
                 }
             }
@@ -166,10 +171,78 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static void EnqueueSkillId(int skillId, Queue<int> pendingSkillIds, HashSet<int> resolvedSkillIds)
         {
-            if (skillId > 0 && !resolvedSkillIds.Contains(skillId))
+            foreach (int candidateSkillId in EnumerateClientCancelAliasSkillIds(skillId))
             {
-                pendingSkillIds.Enqueue(skillId);
+                if (candidateSkillId > 0 && !resolvedSkillIds.Contains(candidateSkillId))
+                {
+                    pendingSkillIds.Enqueue(candidateSkillId);
+                }
             }
+        }
+
+        private static IEnumerable<int> EnumerateClientCancelAliasSkillIds(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                yield break;
+            }
+
+            yield return skillId;
+
+            int normalizedSkillId = NormalizeClientCancelRequestSkillId(skillId);
+            if (normalizedSkillId != skillId)
+            {
+                yield return normalizedSkillId;
+            }
+
+            if (!ReverseClientCancelRequestSkillAliases.TryGetValue(normalizedSkillId, out int[] reverseAliases))
+            {
+                yield break;
+            }
+
+            for (int i = 0; i < reverseAliases.Length; i++)
+            {
+                int aliasSkillId = reverseAliases[i];
+                if (aliasSkillId != skillId && aliasSkillId != normalizedSkillId)
+                {
+                    yield return aliasSkillId;
+                }
+            }
+        }
+
+        private static bool LinksDummySkillAliasEquivalent(SkillData skill, int currentSkillId)
+        {
+            int[] dummySkillIds = skill?.DummySkillParents ?? Array.Empty<int>();
+            for (int i = 0; i < dummySkillIds.Length; i++)
+            {
+                if (AreClientCancelAliasEquivalent(dummySkillIds[i], currentSkillId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool LinksAffectedSkillAliasEquivalent(SkillData skill, int currentSkillId)
+        {
+            int[] affectedSkillIds = skill?.GetAffectedSkillIds() ?? Array.Empty<int>();
+            for (int i = 0; i < affectedSkillIds.Length; i++)
+            {
+                if (AreClientCancelAliasEquivalent(affectedSkillIds[i], currentSkillId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool AreClientCancelAliasEquivalent(int leftSkillId, int rightSkillId)
+        {
+            return leftSkillId > 0
+                   && rightSkillId > 0
+                   && NormalizeClientCancelRequestSkillId(leftSkillId) == NormalizeClientCancelRequestSkillId(rightSkillId);
         }
     }
 }

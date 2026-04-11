@@ -207,6 +207,54 @@ namespace HaCreator.MapSimulator.UI
             return pageStart + visibleNumber - 1;
         }
 
+        internal static int ResolveAdjacentCandidateIndexFromKeyboard(
+            ImeCandidateListState state,
+            KeyboardState keyboard,
+            Func<KeyboardState, Keys, bool> wasPressed)
+        {
+            if (state == null || !state.HasCandidates || wasPressed == null)
+            {
+                return -1;
+            }
+
+            int candidateCount = state.Candidates.Count;
+            if (candidateCount <= 0)
+            {
+                return -1;
+            }
+
+            int pageStart = Math.Clamp(state.PageStart, 0, candidateCount);
+            int pageSize = state.PageSize > 0 ? state.PageSize : candidateCount;
+            int visibleCount = Math.Max(0, Math.Min(pageSize, candidateCount - pageStart));
+            if (visibleCount <= 0)
+            {
+                return -1;
+            }
+
+            int currentSelection = state.Selection >= 0
+                ? Math.Clamp(state.Selection, 0, candidateCount - 1)
+                : pageStart;
+
+            bool backwardPressed = state.Vertical
+                ? wasPressed(keyboard, Keys.Up)
+                : wasPressed(keyboard, Keys.Left);
+            bool forwardPressed = state.Vertical
+                ? wasPressed(keyboard, Keys.Down)
+                : wasPressed(keyboard, Keys.Right);
+
+            if (!backwardPressed && !forwardPressed)
+            {
+                return -1;
+            }
+
+            int nextSelection = forwardPressed
+                ? Math.Min(candidateCount - 1, currentSelection + 1)
+                : Math.Max(0, currentSelection - 1);
+            return nextSelection != currentSelection
+                ? nextSelection
+                : -1;
+        }
+
         private static int ResolvePressedCandidateNumber(
             KeyboardState keyboard,
             Func<KeyboardState, Keys, bool> wasPressed)

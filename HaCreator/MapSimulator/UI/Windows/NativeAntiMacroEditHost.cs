@@ -752,6 +752,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 case VkReturn:
                     SubmitRequested?.Invoke();
+                    if (ShouldForwardClientOwnedKeyDownToParent(virtualKey))
+                    {
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    }
+
                     return true;
                 case VkBack:
                     TryBackspace();
@@ -801,11 +806,19 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 case VkLeft:
                     MoveCaretHorizontally(moveRight: false);
-                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    if (ShouldForwardClientOwnedKeyDownToParent(virtualKey))
+                    {
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    }
+
                     return true;
                 case VkRight:
                     MoveCaretHorizontally(moveRight: true);
-                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    if (ShouldForwardClientOwnedKeyDownToParent(virtualKey))
+                    {
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    }
+
                     return true;
                 case VkHome:
                     if (controlHeld)
@@ -830,7 +843,11 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    if (ShouldForwardClientOwnedKeyDownToParent(virtualKey))
+                    {
+                        ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                    }
+
                     return true;
                 default:
                     return false;
@@ -875,6 +892,13 @@ namespace HaCreator.MapSimulator.UI
         {
             // `CCtrlEdit::OnKey` jumps straight to the parent path on every key-up.
             return true;
+        }
+
+        internal static bool ShouldForwardClientOwnedKeyDownToParent(int virtualKey)
+        {
+            // `CCtrlEdit::OnKey` falls through to the parent owner after handling
+            // Enter and the arrow-navigation branch itself.
+            return virtualKey is VkReturn or VkLeft or VkRight or VkUp or VkDown;
         }
 
         internal static bool ShouldDeferDownKeyToIme(int virtualKey, bool controlHeld, bool shiftHeld, bool imeCompositionActive)

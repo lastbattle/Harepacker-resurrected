@@ -407,14 +407,7 @@ namespace HaCreator.MapSimulator.UI
             npcId = 0;
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
-            if (TryResolveNpcValue(itemProperty?["spec"] as WzSubProperty, out int resolvedNpcId)
-                || TryResolveNpcValue(itemProperty?["info"] as WzSubProperty, out resolvedNpcId))
-            {
-                npcId = resolvedNpcId;
-                return true;
-            }
-
-            return false;
+            return TryResolveNpcReference(itemProperty, out npcId);
         }
 
         public static bool HasAuthoredNpcInteraction(int itemId)
@@ -923,6 +916,24 @@ namespace HaCreator.MapSimulator.UI
             return TryResolveNpcValue(property, out npcId);
         }
 
+        internal static bool TryResolveNpcReference(WzSubProperty itemProperty, out int npcId)
+        {
+            npcId = 0;
+            if (TryResolveNpcValue(itemProperty?["spec"] as WzSubProperty, out int resolvedNpcId)
+                || TryResolveNpcValue(itemProperty?["info"] as WzSubProperty, out resolvedNpcId))
+            {
+                npcId = resolvedNpcId;
+                return true;
+            }
+
+            return false;
+        }
+
+        public static bool TryResolveNpcReferenceForTests(WzSubProperty itemProperty, out int npcId)
+        {
+            return TryResolveNpcReference(itemProperty, out npcId);
+        }
+
         public static bool IsNotConsumedOnUseForTests(WzSubProperty infoProperty)
         {
             return IsNotConsumedOnUse(infoProperty);
@@ -991,8 +1002,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool HasAuthoredNpcInteraction(WzSubProperty itemProperty)
         {
-            return TryResolveNpcValue(itemProperty?["spec"] as WzSubProperty, out _)
-                   || TryResolveNpcValue(itemProperty?["info"] as WzSubProperty, out _)
+            return TryResolveNpcReference(itemProperty, out _)
                    || TryResolveSpecScripts(itemProperty?["spec"] as WzSubProperty, out _);
         }
 
@@ -1026,10 +1036,7 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            return ContainsPhrase(itemName, "wedding invitation")
-                   || ContainsPhrase(itemName, "wedding invitation card")
-                   || ContainsPhrase(itemName, "wedding invitation ticket")
-                   || ContainsPhrase(itemDescription, "wedding invitation");
+            return false;
         }
 
         internal static bool ShouldAutoRunOnPickupInteraction(WzSubProperty itemProperty)

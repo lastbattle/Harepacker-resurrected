@@ -370,44 +370,45 @@ namespace HaCreator.MapSimulator.Interaction
                         case 0:
                             if (TryParseClientAcceptInviteRequest(requestBody, out MessengerClientAcceptInviteRequestPacket acceptPacket, out _))
                             {
-                                summary = $"messenger request accept invite sequence={acceptPacket.InviteSequence}";
+                                summary = $"CUIMessenger::TryNew request inviteSequence={acceptPacket.InviteSequence}";
                                 return true;
                             }
 
-                            summary = "messenger request accept invite";
+                            summary = "CUIMessenger::TryNew request";
                             return true;
                         case 3:
                             if (TryParseClientInviteRequest(requestBody, out MessengerClientInviteRequestPacket invitePacket, out _))
                             {
-                                summary = $"messenger request invite {invitePacket.ContactName}";
+                                summary = $"CUIMessenger::SendInviteMsg request target={invitePacket.ContactName}";
                                 return true;
                             }
 
-                            summary = "messenger request invite";
+                            summary = "CUIMessenger::SendInviteMsg request";
                             return true;
                         case 2:
-                            summary = "messenger request leave";
+                            summary = "CUIMessenger::OnDestroy leave request";
                             return true;
                         case 5:
                             if (TryParseClientBlockedAutoRejectRequest(requestBody, out MessengerClientBlockedAutoRejectPacket blockedPacket, out _))
                             {
-                                summary = $"messenger request blocked-auto-reject inviter={blockedPacket.InviterName} local={blockedPacket.LocalCharacterName} blocked={blockedPacket.Blocked}";
+                                summary = $"CUIMessenger::OnInvite blacklist auto-reject inviter={blockedPacket.InviterName} local={blockedPacket.LocalCharacterName} blocked={blockedPacket.Blocked}";
                                 return true;
                             }
 
-                            summary = "messenger request blocked-auto-reject";
+                            summary = "CUIMessenger::OnInvite blacklist auto-reject request";
                             return true;
                         case 6:
                             if (TryParseClientChatRequest(requestBody, out MessengerChatPacket chatPacket, out _))
                             {
-                                summary = $"messenger request room-chat {chatPacket.ContactName}: {chatPacket.Message}";
+                                string speaker = string.IsNullOrWhiteSpace(chatPacket.ContactName) ? "local" : chatPacket.ContactName;
+                                summary = $"CUIMessenger::ProcessChat request speaker={speaker} message={chatPacket.Message}";
                                 return true;
                             }
 
-                            summary = "messenger request room-chat";
+                            summary = "CUIMessenger::ProcessChat request";
                             return true;
                         default:
-                            summary = $"messenger request type={requestType}";
+                            summary = $"CUIMessenger request subtype={requestType}";
                             return true;
                     }
 
@@ -415,15 +416,134 @@ namespace HaCreator.MapSimulator.Interaction
                     if (TryParseClientClaimRequest(payload, out MessengerClientClaimRequestPacket claimPacket, out _))
                     {
                         summary = claimPacket.IncludesChatLog
-                            ? $"claim request target={claimPacket.TargetCharacterName} type={claimPacket.ClaimType} context={claimPacket.Context} chatLog={claimPacket.ChatLog}"
-                            : $"claim request target={claimPacket.TargetCharacterName} type={claimPacket.ClaimType} context={claimPacket.Context}";
+                            ? $"CWvsContext::SendClaimRequest target={claimPacket.TargetCharacterName} type={claimPacket.ClaimType} context={claimPacket.Context} chatLog={claimPacket.ChatLog}"
+                            : $"CWvsContext::SendClaimRequest target={claimPacket.TargetCharacterName} type={claimPacket.ClaimType} context={claimPacket.Context}";
                         return true;
                     }
 
-                    summary = "claim request";
+                    summary = "CWvsContext::SendClaimRequest";
                     return true;
                 default:
                     return false;
+            }
+        }
+
+        public static bool TryDescribeClientResult(
+            int opcode,
+            ReadOnlySpan<byte> payload,
+            out string summary)
+        {
+            summary = null;
+            if (opcode != ClientMessengerResultOpcode)
+            {
+                return false;
+            }
+
+            if (!TryParseClientDispatch(payload, out byte packetSubtype, out byte[] body, out _))
+            {
+                summary = "CUIMessenger::OnPacket <empty>";
+                return true;
+            }
+
+            switch (packetSubtype)
+            {
+                case 0:
+                    if (TryParseEnter(body, out MessengerEnterPacket enterPacket, out _))
+                    {
+                        summary = $"CUIMessenger::OnEnter slot={enterPacket.SlotIndex} name={enterPacket.ContactName} channel={enterPacket.Channel} isNew={enterPacket.IsNew}";
+                        return true;
+                    }
+
+                    summary = "CUIMessenger::OnEnter";
+                    return true;
+                case 1:
+                    if (TryParseSelfEnterResult(body, out MessengerSelfEnterResultPacket selfEnterResultPacket, out _))
+                    {
+                        summary = selfEnterResultPacket.Succeeded
+                            ? $"CUIMessenger::OnSelfEnterResult slot={selfEnterResultPacket.SlotIndex}"
+                            : "CUIMessenger::OnSelfEnterResult failed";
+                        return true;
+                    }
+
+                    summary = "CUIMessenger::OnSelfEnterResult";
+                    return true;
+                case 2:
+                    if (TryParseLeaveSlot(body, out MessengerLeaveSlotPacket leavePacket, out _))
+                    {
+                        summary = $"CUIMessenger::OnLeave slot={leavePacket.SlotIndex}";
+                        return true;
+                    }
+
+                    summary = "CUIMessenger::OnLeave";
+                    return true;
+                case 3:
+                    if (TryParseInvite(body, out MessengerInvitePacket invitePacket, out _))
+                    {
+                        summary = $"CUIMessenger::OnInvite from={invitePacket.ContactName} type={invitePacket.InviteType} sequence={invitePacket.InviteSequence} skipBlacklistAutoReject={invitePacket.SkipBlacklistAutoReject}";
+                        return true;
+                    }
+
+                    summary = "CUIMessenger::OnInvite";
+                    return true;
+                case 4:
+                    if (TryParseInviteResult(body, out MessengerInviteResultPacket inviteResultPacket, out _))
+                    {
+                        summary = $"CUIMessenger::OnInviteResult target={inviteResultPacket.ContactName} inviteSent={inviteResultPacket.InviteSent}";
+                        return true;
+                    }
+
+                    summary = "CUIMessenger::OnInviteResult";
+                    return true;
+                case 5:
+                    if (TryParseBlocked(body, out MessengerBlockedPacket blockedPacket, out _))
+                    {
+                        summary = $"CUIMessenger::OnBlocked target={blockedPacket.ContactName} blocked={blockedPacket.Blocked}";
+                        return true;
+                    }
+
+                    summary = "CUIMessenger::OnBlocked";
+                    return true;
+                case 6:
+                    if (TryParseClientChat(body, out MessengerClientChatPacket chatPacket, out _))
+                    {
+                        string chatKind = chatPacket.IsWhisper ? "whisper" : "room-chat";
+                        string speaker = string.IsNullOrWhiteSpace(chatPacket.ContactName) ? "unknown" : chatPacket.ContactName;
+                        summary = $"CUIMessenger::OnChat {chatKind} speaker={speaker} message={chatPacket.Message}";
+                        return true;
+                    }
+
+                    summary = "CUIMessenger::OnChat";
+                    return true;
+                case 7:
+                    if (TryParseAvatar(body, out MessengerAvatarPacket avatarPacket, out _))
+                    {
+                        summary = $"CUIMessenger::OnAvatar slot={avatarPacket.SlotIndex}";
+                        return true;
+                    }
+
+                    summary = "CUIMessenger::OnAvatar";
+                    return true;
+                case 8:
+                    if (TryParseMigrated(body, out MessengerMigratedPacket migratedPacket, out _))
+                    {
+                        int presentCount = 0;
+                        for (int i = 0; i < migratedPacket.Participants.Length; i++)
+                        {
+                            if (migratedPacket.Participants[i].Present)
+                            {
+                                presentCount++;
+                            }
+                        }
+
+                        summary = $"CUIMessenger::OnMigrated participants={presentCount}";
+                        return true;
+                    }
+
+                    summary = "CUIMessenger::OnMigrated";
+                    return true;
+                default:
+                    summary = $"CUIMessenger::OnPacket subtype={packetSubtype}";
+                    return true;
             }
         }
 

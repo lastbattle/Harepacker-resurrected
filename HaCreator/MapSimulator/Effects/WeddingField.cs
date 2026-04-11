@@ -3884,10 +3884,10 @@ namespace HaCreator.MapSimulator.Effects
                     continue;
                 }
 
-                Point offset = RemoteUserActorPool.ResolveCarryItemEffectOrbitOffset(
-                    currentTime,
+                Point offset = RemoteUserActorPool.ResolveCarryItemEffectOffset(
                     index,
                     totalTokenCount,
+                    tensTokenCount,
                     participant.FacingRight,
                     out bool isFrontLayer);
                 if (isFrontLayer != drawFrontLayers)

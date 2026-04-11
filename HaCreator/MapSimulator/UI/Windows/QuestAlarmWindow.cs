@@ -425,7 +425,7 @@ namespace HaCreator.MapSimulator.UI
 
                 DrawInlineDelete(sprite, deleteRect, entry.QuestId);
 
-                if (rowRect.Bottom > titleRect.Bottom)
+                if (isSelected)
                 {
                     Rectangle detailRect = new Rectangle(Position.X + ClientDetailIndent, titleRect.Bottom, ClientDetailWidth, Math.Max(0, rowRect.Bottom - titleRect.Bottom));
                     DrawSelectedDetail(sprite, detailRect, entry);
@@ -1593,20 +1593,27 @@ namespace HaCreator.MapSimulator.UI
             _scrollOffset = Math.Clamp(_scrollOffset, 0, maxOffset);
         }
 
-        private int GetRowHeight(QuestAlarmEntrySnapshot entry, bool isSelected)
+        internal static int ResolveExpandedRowHeightForTesting(int requirementLineCount, int demandLineCount, int progressFrameHeight)
         {
-            int rowHeight = ClientTitleHeight;
-            if (entry == null)
-            {
-                return rowHeight;
-            }
-
-            rowHeight += ClientDetailPaddingTop;
-            rowHeight += Math.Max(ClientTitleHeight, _progressFrameTexture?.Height ?? 13) + ClientDetailRowGap;
-            rowHeight += (entry.RequirementLines?.Count ?? 0) * ClientTitleHeight;
-            rowHeight += BuildDemandTextLines(entry, ClientDetailWidth - 6, DetailScale).Count() * ClientTitleHeight;
+            int rowHeight = ClientTitleHeight + ClientDetailPaddingTop;
+            rowHeight += Math.Max(ClientTitleHeight, progressFrameHeight) + ClientDetailRowGap;
+            rowHeight += Math.Max(0, requirementLineCount) * ClientTitleHeight;
+            rowHeight += Math.Max(0, demandLineCount) * ClientTitleHeight;
             rowHeight += ClientDetailPaddingBottom;
             return rowHeight;
+        }
+
+        private int GetRowHeight(QuestAlarmEntrySnapshot entry, bool isSelected)
+        {
+            if (!isSelected || entry == null)
+            {
+                return ClientTitleHeight;
+            }
+
+            return ResolveExpandedRowHeightForTesting(
+                entry.RequirementLines?.Count ?? 0,
+                BuildDemandTextLines(entry, ClientDetailWidth - 6, DetailScale).Count(),
+                _progressFrameTexture?.Height ?? 13);
         }
 
         private Texture2D GetItemIcon(int itemId)

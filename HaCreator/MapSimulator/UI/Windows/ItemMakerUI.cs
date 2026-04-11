@@ -150,6 +150,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly HashSet<string> _unlockedHiddenRecipeKeys = new(StringComparer.Ordinal);
         private readonly HashSet<int> _discoveredRecipeIds = new();
         private readonly HashSet<int> _unlockedHiddenRecipeIds = new();
+        private readonly HashSet<(int BucketKey, int OutputItemId)> _packetOwnedAuthoritativeHiddenRecipeEntries = new();
         private readonly HashSet<string> _packetOwnedAuthoritativeHiddenRecipeKeys = new(StringComparer.Ordinal);
         private readonly HashSet<int> _packetOwnedAuthoritativeHiddenRecipeIds = new();
         private readonly Random _random = new();
@@ -1644,6 +1645,7 @@ namespace HaCreator.MapSimulator.UI
         private void ClearPacketOwnedSessionState()
         {
             _packetOwnedAuthoritativeDisassemblyTargets = Array.Empty<PacketOwnedItemMakerDisassemblyTargetEntry>();
+            _packetOwnedAuthoritativeHiddenRecipeEntries.Clear();
             _packetOwnedAuthoritativeHiddenRecipeKeys.Clear();
             _packetOwnedAuthoritativeHiddenRecipeIds.Clear();
             _packetOwnedHasAuthoritativeDisassemblyTargets = false;
@@ -1707,6 +1709,11 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryRegisterPacketOwnedHiddenRecipe(PacketOwnedItemMakerSessionHiddenEntry entry)
         {
+            if (entry.OutputItemId > 0)
+            {
+                _packetOwnedAuthoritativeHiddenRecipeEntries.Add((entry.BucketKey, entry.OutputItemId));
+            }
+
             ItemMakerRecipe recipe = ResolveHiddenRecipeForPacketUnlock(entry.BucketKey, entry.OutputItemId);
             if (recipe == null)
             {
@@ -3121,8 +3128,10 @@ namespace HaCreator.MapSimulator.UI
         {
             return IsVisibleInPacketOwnedHiddenSelector(
                 _packetOwnedHasAuthoritativeHiddenRecipeList,
+                _packetOwnedAuthoritativeHiddenRecipeEntries,
                 _packetOwnedAuthoritativeHiddenRecipeKeys,
                 _packetOwnedAuthoritativeHiddenRecipeIds,
+                recipe?.BucketKey ?? -1,
                 recipe?.RecipeKey,
                 recipe?.OutputItemId ?? 0,
                 IsHiddenRecipeUnlocked(recipe));
@@ -3130,13 +3139,22 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool IsVisibleInPacketOwnedHiddenSelector(
             bool hasAuthoritativeHiddenRecipeList,
+            IReadOnlySet<(int BucketKey, int OutputItemId)> authoritativeRecipeEntries,
             IReadOnlySet<string> authoritativeRecipeKeys,
             IReadOnlySet<int> authoritativeRecipeIds,
+            int bucketKey,
             string recipeKey,
             int outputItemId,
             bool isUnlocked)
         {
             if (!hasAuthoritativeHiddenRecipeList || isUnlocked)
+            {
+                return true;
+            }
+
+            if (bucketKey >= 0
+                && outputItemId > 0
+                && authoritativeRecipeEntries?.Contains((bucketKey, outputItemId)) == true)
             {
                 return true;
             }

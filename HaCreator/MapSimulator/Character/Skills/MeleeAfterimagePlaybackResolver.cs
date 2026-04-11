@@ -254,15 +254,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            if (action.FrameSets.Count != 1)
+            if (action.FrameSets.Count == 1)
             {
+                foreach (KeyValuePair<int, MeleeAfterImageFrameSet> entry in action.FrameSets)
+                {
+                    frameSet = entry.Value;
+                    return frameSet != null;
+                }
+
+                frameSet = null;
                 return false;
             }
 
+            int latestAuthoredFrameIndex = int.MinValue;
+            MeleeAfterImageFrameSet latestAuthoredFrameSet = null;
             foreach (KeyValuePair<int, MeleeAfterImageFrameSet> entry in action.FrameSets)
             {
-                frameSet = entry.Value;
-                return frameSet != null;
+                if (entry.Value == null
+                    || entry.Key > frameIndex
+                    || entry.Key < latestAuthoredFrameIndex)
+                {
+                    continue;
+                }
+
+                latestAuthoredFrameIndex = entry.Key;
+                latestAuthoredFrameSet = entry.Value;
+            }
+
+            if (latestAuthoredFrameSet != null)
+            {
+                frameSet = latestAuthoredFrameSet;
+                return true;
             }
 
             frameSet = null;

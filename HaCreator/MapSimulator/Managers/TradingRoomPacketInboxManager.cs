@@ -143,6 +143,18 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string head = tokens[index];
+            if (head.Equals("packetclientraw", StringComparison.OrdinalIgnoreCase) || head.Equals("clientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                index++;
+                if (tokens.Length <= index)
+                {
+                    error = "Trading-room packetclientraw lines require opcode-framed hex bytes.";
+                    return false;
+                }
+
+                return TryParseHexPayload(string.Join(string.Empty, tokens, index, tokens.Length - index), out payload, out error);
+            }
+
             if (head.Equals("packetraw", StringComparison.OrdinalIgnoreCase))
             {
                 index++;

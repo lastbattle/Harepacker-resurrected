@@ -66,6 +66,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedSkillLearnFailureNoticeStringPoolId = 0x0F32;
         private const int PacketOwnedSkillLearnMasterySuccessNoticeStringPoolId = 0x0F33;
         private const int PacketOwnedSkillLearnSkillSuccessNoticeStringPoolId = 0x0F34;
+        private const short QuestDemandItemQueryRequestOpcode = 221;
+        private const int QuestDemandItemQueryExclusiveRequestCooldownMs = 500;
         private const string PacketOwnedSkillLearnSuccessSoundFallback = "Sound/Game.img/EnchantSuccess";
         private const string PacketOwnedSkillLearnFailureSoundFallback = "Sound/Game.img/EnchantFailure";
         private const string PacketOwnedClassCompetitionServerHost = "gamerank.maplestory";
@@ -701,6 +703,108 @@ namespace HaCreator.MapSimulator
             return focusedItem
                 ? $"Opened a packet-shaped quest demand item query for {focusItemName}.{hiddenSuffix}{mapSuffix}".TrimEnd()
                 : $"Opened the world map, but the demand-item query for {focusItemName} could not be resolved.{hiddenSuffix}{mapSuffix}".TrimEnd();
+        }
+
+        private string LaunchQuestDemandItemQuery(QuestDemandItemQueryState queryState, int preferredVisibleItemId = 0)
+        {
+            if (!TryDispatchQuestDemandItemQueryRequest(queryState, out string dispatchMessage, out bool blockedByCooldown))
+            {
+                return blockedByCooldown
+                    ? dispatchMessage
+                    : ApplyQuestDemandItemQueryLaunch(queryState, preferredVisibleItemId);
+            }
+
+            string launchMessage = ApplyQuestDemandItemQueryLaunch(queryState, preferredVisibleItemId);
+            return string.IsNullOrWhiteSpace(dispatchMessage)
+                ? launchMessage
+                : $"{dispatchMessage} {launchMessage}".Trim();
+        }
+
+        private bool TryDispatchQuestDemandItemQueryRequest(
+            QuestDemandItemQueryState queryState,
+            out string message,
+            out bool blockedByCooldown)
+        {
+            blockedByCooldown = false;
+            int questId = Math.Max(0, queryState?.QuestId ?? 0);
+            IReadOnlyList<int> requestItemIds = queryState?.RequestItemIds ?? Array.Empty<int>();
+            if (questId <= 0 || requestItemIds.Count <= 0)
+            {
+                message = "Quest demand-item query stayed local because the loaded quest data did not expose a client-shaped item-query payload.";
+                return false;
+            }
+
+            int currentTick = Environment.TickCount;
+            if (_packetOwnedUtilityRequestTick != int.MinValue &&
+                unchecked(currentTick - _packetOwnedUtilityRequestTick) < QuestDemandItemQueryExclusiveRequestCooldownMs)
+            {
+                blockedByCooldown = true;
+                message = "Quest demand-item query stayed blocked by the client 500 ms exclusive-request cooldown.";
+                return false;
+            }
+
+            byte[] payload = BuildQuestDemandItemQueryRequestPayload(questId, requestItemIds);
+            StampPacketOwnedUtilityRequestState();
+            message = DispatchQuestDemandItemQueryRequestPayload(questId, requestItemIds.Count, payload);
+            return true;
+        }
+
+        internal static byte[] BuildQuestDemandItemQueryRequestPayload(int questId, IReadOnlyList<int> requestItemIds)
+        {
+            int itemCount = Math.Max(0, requestItemIds?.Count ?? 0);
+            byte[] payload = new byte[sizeof(byte) + sizeof(ushort) + sizeof(int) + (itemCount * sizeof(int))];
+            using var stream = new MemoryStream(payload, writable: true);
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: false);
+            writer.Write((byte)0);
+            writer.Write((ushort)Math.Clamp(questId, 0, ushort.MaxValue));
+            writer.Write(itemCount);
+            for (int i = 0; i < itemCount; i++)
+            {
+                writer.Write(Math.Max(0, requestItemIds[i]));
+            }
+
+            return payload;
+        }
+
+        private string DispatchQuestDemandItemQueryRequestPayload(int questId, int itemCount, byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+            string summary = $"Mirrored CUIQuestInfoDetail demand-item query opcode {QuestDemandItemQueryRequestOpcode} for quest #{questId} with {itemCount} client item row(s).";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                    QuestDemandItemQueryRequestOpcode,
+                    payload,
+                    out string dispatchStatus))
+            {
+                return $"{summary} Dispatched it through the live official-session bridge. {dispatchStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                    QuestDemandItemQueryRequestOpcode,
+                    payload,
+                    out string outboxStatus))
+            {
+                return $"{summary} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+            }
+
+            string deferredBridgeStatus = "Official-session bridge deferred delivery is disabled.";
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    QuestDemandItemQueryRequestOpcode,
+                    payload,
+                    out deferredBridgeStatus))
+            {
+                return $"{summary} Queued it for deferred official-session injection after the immediate bridge and outbox paths were unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                    QuestDemandItemQueryRequestOpcode,
+                    payload,
+                    out string queuedStatus))
+            {
+                return $"{summary} Queued it for deferred generic packet outbox delivery after the immediate bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus} Deferred outbox: {queuedStatus}";
+            }
+
+            return $"{summary} It remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {QuestDemandItemQueryRequestOpcode}. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {deferredBridgeStatus}";
         }
 
         private int ResolveQuestDemandQueryFocusItemId(int currentMapId)
@@ -2766,6 +2870,12 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.PassMateNameClientPacketType:
                     return TryApplyPacketOwnedPassMateNamePayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.RandomMorphResultClientPacketType:
+                    return TryApplyRandomMorphResultPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.RandomMorphRequestAckPacketType:
+                    return TryApplyRandomMorphRequestAckPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.QuestAlarmTitleTooltipPacketType:
                     return TryApplyPacketOwnedQuestAlarmTitleTooltipPayload(payload, out message);
 
@@ -4685,6 +4795,22 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryMirrorMessengerIncomingInviteRejectClientSeam(string contactName, out string message, bool queueOnly = false)
+        {
+            string runtimeStatus = _messengerRuntime.QueueSessionOwnedIncomingInviteReject(contactName);
+            if (runtimeStatus.StartsWith("No Messenger invite is waiting", StringComparison.Ordinal))
+            {
+                message = runtimeStatus;
+                return false;
+            }
+
+            string queueState = queueOnly
+                ? "The client reject seam does not emit a Messenger request packet, so nothing was queued on the bridge."
+                : "The client reject seam does not emit a Messenger request packet, so the bridge remains idle for this response.";
+            message = $"{runtimeStatus} {queueState}";
+            return true;
+        }
+
         private bool TryMirrorMessengerLeaveClientRequest(out string message, bool queueOnly = false)
         {
             if (!_messengerRuntime.TryBuildClientLeaveRequestPayload(out byte[] payload, out message))
@@ -4786,6 +4912,10 @@ namespace HaCreator.MapSimulator
                 case "yes":
                 case "join":
                     return TryMirrorMessengerIncomingInviteAcceptClientRequest(argument, out message);
+                case "reject":
+                case "decline":
+                case "no":
+                    return TryMirrorMessengerIncomingInviteRejectClientSeam(argument, out message);
                 default:
                     return false;
             }
@@ -5316,9 +5446,10 @@ namespace HaCreator.MapSimulator
                     _lastPacketOwnedRadioAvailableDurationMs);
                 _appliedPacketOwnedRadioVolume = 0f;
                 _utilityAudioMixLastTick = startTick;
-                _lastPacketOwnedRadioStatusMessage =
-                    $"Radio play active at {normalizedTimeValue}s from {scheduleSource} via " +
-                    $"{RadioOwnerStringPoolText.FormatNotice(PacketOwnedRadioStartStringPoolId, trackResolution.DisplayName, appendFallbackSuffix: true)}.";
+                _lastPacketOwnedRadioStatusMessage = FormatPacketOwnedRadioStartStatusMessage(
+                    normalizedTimeValue,
+                    scheduleSource,
+                    trackResolution.DisplayName);
                 NotifyEventAlarmOwnerActivity("packet-owned radio schedule");
 
                 _packetOwnedRadioAudio.Play();
@@ -5532,7 +5663,7 @@ namespace HaCreator.MapSimulator
             }
 
             _lastPacketOwnedRadioStatusMessage = completed
-                ? $"Radio completion notice: {RadioOwnerStringPoolText.FormatNotice(PacketOwnedRadioCompleteStringPoolId, displayName, appendFallbackSuffix: true)}."
+                ? FormatPacketOwnedRadioCompletionStatusMessage(displayName)
                 : $"Stopped packet-owned radio playback for {displayName}.";
             NotifyEventAlarmOwnerActivity("packet-owned radio schedule");
 
@@ -5676,6 +5807,23 @@ namespace HaCreator.MapSimulator
         private static string FormatPacketOwnedRadioChatMessage(int stringPoolId, string displayName)
         {
             return RadioOwnerStringPoolText.FormatNotice(stringPoolId, displayName, appendFallbackSuffix: true);
+        }
+
+        internal static string FormatPacketOwnedRadioStartStatusMessage(int timeValue, string scheduleSource, string displayName)
+        {
+            string normalizedSource = string.IsNullOrWhiteSpace(scheduleSource)
+                ? "simulator-local"
+                : scheduleSource.Trim();
+            return
+                $"Radio play active at {Math.Max(0, timeValue)}s from {normalizedSource} via " +
+                $"{RadioOwnerStringPoolText.FormatNotice(PacketOwnedRadioStartStringPoolId, displayName, appendFallbackSuffix: true)}";
+        }
+
+        internal static string FormatPacketOwnedRadioCompletionStatusMessage(string displayName)
+        {
+            return
+                $"Radio completion notice: " +
+                $"{RadioOwnerStringPoolText.FormatNotice(PacketOwnedRadioCompleteStringPoolId, displayName, appendFallbackSuffix: true)}";
         }
 
         internal static string ResolvePacketOwnedRadioScheduleSourceLabel(int packetType, string source)
@@ -11927,6 +12075,9 @@ namespace HaCreator.MapSimulator
             return new QuestDemandItemQueryState
             {
                 QuestId = questId,
+                RequestItemIds = records != null && records.Count > 0
+                    ? records.Select(record => Math.Max(0, record.PrimaryId)).ToArray()
+                    : runtimeFallbackQuery?.RequestItemIds ?? Array.Empty<int>(),
                 VisibleItemIds = visibleItemIds,
                 VisibleItemMapIds = visibleItemMapIds,
                 VisibleItemMapResults = visibleItemMapResults,
@@ -13737,15 +13888,9 @@ namespace HaCreator.MapSimulator
             int loadingStartTick = TryGetJsonInt32(element, "loadingStartTick", out int parsedLoadingStartTick)
                 ? parsedLoadingStartTick
                 : int.MinValue;
-            JsonElement requestElement = default;
-            bool hasRequestObject = element.TryGetProperty("request", out requestElement)
-                && requestElement.ValueKind == JsonValueKind.Object;
-            JsonElement landingElement = default;
-            bool hasLandingObject = element.TryGetProperty("landing", out landingElement)
-                && landingElement.ValueKind == JsonValueKind.Object;
-            JsonElement navigateElement = default;
-            bool hasNavigateObject = element.TryGetProperty("navigate", out navigateElement)
-                && navigateElement.ValueKind == JsonValueKind.Object;
+            bool hasRequestObject = TryGetJsonObjectProperty(element, out JsonElement requestElement, "request");
+            bool hasLandingObject = TryGetJsonObjectProperty(element, out JsonElement landingElement, "landing");
+            bool hasNavigateObject = TryGetJsonObjectProperty(element, out JsonElement navigateElement, "navigate");
 
             string serverHost = ResolvePacketOwnedRankingOwnerString(
                 element,
@@ -13990,7 +14135,7 @@ namespace HaCreator.MapSimulator
 
             foreach (string propertyName in propertyNames ?? Array.Empty<string>())
             {
-                if (element.TryGetProperty(propertyName, out JsonElement propertyValue)
+                if (TryGetJsonProperty(element, propertyName, out JsonElement propertyValue)
                     && propertyValue.ValueKind == JsonValueKind.Array)
                 {
                     value = propertyValue;
@@ -14011,7 +14156,7 @@ namespace HaCreator.MapSimulator
 
             foreach (string propertyName in propertyNames ?? Array.Empty<string>())
             {
-                if (element.TryGetProperty(propertyName, out JsonElement propertyValue)
+                if (TryGetJsonProperty(element, propertyName, out JsonElement propertyValue)
                     && propertyValue.ValueKind == JsonValueKind.Object)
                 {
                     value = propertyValue;
@@ -14164,7 +14309,7 @@ namespace HaCreator.MapSimulator
         private static bool TryGetJsonString(JsonElement element, string propertyName, out string value)
         {
             value = string.Empty;
-            if (!element.TryGetProperty(propertyName, out JsonElement property)
+            if (!TryGetJsonProperty(element, propertyName, out JsonElement property)
                 || property.ValueKind != JsonValueKind.String)
             {
                 return false;
@@ -14177,7 +14322,7 @@ namespace HaCreator.MapSimulator
         private static bool TryGetJsonText(JsonElement element, string propertyName, out string value)
         {
             value = string.Empty;
-            if (!element.TryGetProperty(propertyName, out JsonElement property))
+            if (!TryGetJsonProperty(element, propertyName, out JsonElement property))
             {
                 return false;
             }
@@ -14202,7 +14347,7 @@ namespace HaCreator.MapSimulator
         private static bool TryGetJsonBoolean(JsonElement element, string propertyName, out bool value)
         {
             value = false;
-            if (!element.TryGetProperty(propertyName, out JsonElement property))
+            if (!TryGetJsonProperty(element, propertyName, out JsonElement property))
             {
                 return false;
             }
@@ -14219,7 +14364,7 @@ namespace HaCreator.MapSimulator
         private static bool TryGetJsonInt32(JsonElement element, string propertyName, out int value)
         {
             value = 0;
-            if (!element.TryGetProperty(propertyName, out JsonElement property))
+            if (!TryGetJsonProperty(element, propertyName, out JsonElement property))
             {
                 return false;
             }
@@ -14250,7 +14395,7 @@ namespace HaCreator.MapSimulator
         private static bool TryGetJsonDate(JsonElement element, string propertyName, out DateTime value)
         {
             value = default;
-            if (!element.TryGetProperty(propertyName, out JsonElement property))
+            if (!TryGetJsonProperty(element, propertyName, out JsonElement property))
             {
                 return false;
             }
@@ -14275,6 +14420,32 @@ namespace HaCreator.MapSimulator
             if (property.ValueKind == JsonValueKind.Object)
             {
                 return TryBuildPacketOwnedEventDateFromFields(property, out value);
+            }
+
+            return false;
+        }
+
+        private static bool TryGetJsonProperty(JsonElement element, string propertyName, out JsonElement property)
+        {
+            property = default;
+            if (element.ValueKind != JsonValueKind.Object
+                || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            if (element.TryGetProperty(propertyName, out property))
+            {
+                return true;
+            }
+
+            foreach (JsonProperty candidate in element.EnumerateObject())
+            {
+                if (string.Equals(candidate.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    property = candidate.Value;
+                    return true;
+                }
             }
 
             return false;
@@ -14715,6 +14886,38 @@ namespace HaCreator.MapSimulator
 
             message = invitationMessage;
             return false;
+        }
+
+        private string DispatchWeddingWishListClientRequest(int opcode, IReadOnlyList<byte> payload, string source)
+        {
+            byte[] safePayload = payload?.ToArray() ?? Array.Empty<byte>();
+            string payloadHex = safePayload.Length > 0 ? Convert.ToHexString(safePayload) : "<empty>";
+            string dispatchStatus = "live bridge unavailable";
+            string outboxStatus = "packet outbox unavailable";
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(opcode, safePayload, out dispatchStatus))
+            {
+                return $"{source} Mirrored opcode {opcode} [{payloadHex}] through the live local-utility bridge. {dispatchStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(opcode, safePayload, out outboxStatus))
+            {
+                return $"{source} Mirrored opcode {opcode} [{payloadHex}] through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+            }
+
+            string bridgeDeferredStatus = "Official-session bridge deferred delivery is disabled.";
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(opcode, safePayload, out bridgeDeferredStatus))
+            {
+                return $"{source} Queued opcode {opcode} [{payloadHex}] for deferred official-session injection after immediate delivery was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {bridgeDeferredStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(opcode, safePayload, out string queuedStatus))
+            {
+                return $"{source} Queued opcode {opcode} [{payloadHex}] for deferred generic local-utility outbox delivery after immediate delivery was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
+            }
+
+            return $"{source} The wedding wish-list owner kept opcode {opcode} [{payloadHex}] simulator-local because neither the live bridge nor the generic outbox nor either deferred queue accepted it. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityOutboxCommand(string[] args)

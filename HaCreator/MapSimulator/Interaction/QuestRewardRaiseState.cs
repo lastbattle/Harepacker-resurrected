@@ -99,12 +99,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void SyncSelectionProgressFromPayload(QuestRewardRaisePacketPayload payload)
         {
-            if (payload?.SelectedItemsByGroup == null || payload.SelectedItemsByGroup.Count == 0)
+            if (payload == null)
             {
                 return;
             }
 
-            SyncSelectionProgress(payload.SelectedItemsByGroup);
+            ReplaceSelectionProgress(payload.SelectedItemsByGroup);
         }
 
         internal void SyncSelectionProgress(IReadOnlyDictionary<int, int> selectedItemsByGroup)
@@ -131,10 +131,38 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            GroupIndex = ResolveNextSelectionGroupIndex(Prompt, SelectedItemsByGroup);
+            GroupIndex = ResolveSelectionProgressGroupIndex(Prompt, SelectedItemsByGroup);
         }
 
-        private static int ResolveNextSelectionGroupIndex(
+        internal void ReplaceSelectionProgress(IReadOnlyDictionary<int, int> selectedItemsByGroup)
+        {
+            if (selectedItemsByGroup == null)
+            {
+                return;
+            }
+
+            SelectedItemsByGroup.Clear();
+            foreach (KeyValuePair<int, int> selectedItem in selectedItemsByGroup)
+            {
+                if (selectedItem.Key <= 0 || selectedItem.Value <= 0)
+                {
+                    continue;
+                }
+
+                SelectedItemsByGroup[selectedItem.Key] = selectedItem.Value;
+            }
+
+            if (DisplayMode == QuestRewardRaiseWindowMode.PiecePlacement
+                || Prompt?.Groups == null
+                || Prompt.Groups.Count == 0)
+            {
+                return;
+            }
+
+            GroupIndex = ResolveSelectionProgressGroupIndex(Prompt, SelectedItemsByGroup);
+        }
+
+        internal static int ResolveSelectionProgressGroupIndex(
             QuestRewardChoicePrompt prompt,
             IReadOnlyDictionary<int, int> selectedItemsByGroup)
         {

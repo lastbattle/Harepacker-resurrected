@@ -375,7 +375,6 @@ namespace HaCreator.MapSimulator
         private const int NpcQuestAlertVerticalGap = 4;
         private readonly Random _npcIdleSpeechRandom = new();
         private int _nextNpcIdleSpeechTick;
-        private readonly Random _petIdleSpeechRandom = new();
         private int _lastObservedPetSpeechLevel = -1;
         private int _nextPetPreLevelSpeechTick;
         private int _lastPetHpAlertTick = int.MinValue;
@@ -1584,11 +1583,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            MapleLib.WzLib.WzStructure.MapInfo targetMapInfo = ResolveMapTransferDestinationMapInfo(targetMapId);
-            string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationRestrictionMessage(
-                targetMapId,
-                targetMapInfo,
-                BuildFieldEntryRestrictionContext());
+            string registrationRestriction = FieldInteractionRestrictionEvaluator.GetMapTransferRegisterPreflightRestrictionMessage(targetMapId);
             if (!string.IsNullOrWhiteSpace(registrationRestriction))
             {
                 _chat.AddMessage(MapTransferClientParityText.ResolveCannotSaveDestinationNotice(), new Color(255, 228, 151), Environment.TickCount);
@@ -2853,7 +2848,10 @@ namespace HaCreator.MapSimulator
             }
 
 
-            _socialListRuntime.UpdateLocalContext(_playerManager?.Player?.Build, GetCurrentMapTransferDisplayName(), 1);
+            _socialListRuntime.UpdateLocalContext(
+                _playerManager?.Player?.Build,
+                GetCurrentMapTransferDisplayName(),
+                Math.Max(1, _simulatorChannelIndex + 1));
             _socialListRuntime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             socialListWindow.SetSnapshotProvider(_socialListRuntime.BuildSnapshot);
             socialListWindow.SetHandlers(
@@ -3072,7 +3070,10 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _socialListRuntime.UpdateLocalContext(_playerManager?.Player?.Build, GetCurrentMapTransferDisplayName(), 1);
+            _socialListRuntime.UpdateLocalContext(
+                _playerManager?.Player?.Build,
+                GetCurrentMapTransferDisplayName(),
+                Math.Max(1, _simulatorChannelIndex + 1));
             friendGroupWindow.SetSnapshotProvider(_socialListRuntime.BuildFriendGroupPopupSnapshot);
             friendGroupWindow.SetHandlers(
                 visibleIndex => _socialListRuntime.ToggleFriendGroupPopupEntry(visibleIndex),
@@ -3132,13 +3133,16 @@ namespace HaCreator.MapSimulator
             }
 
 
-            _socialListRuntime.UpdateLocalContext(_playerManager?.Player?.Build, GetCurrentMapTransferDisplayName(), 1);
+            _socialListRuntime.UpdateLocalContext(
+                _playerManager?.Player?.Build,
+                GetCurrentMapTransferDisplayName(),
+                Math.Max(1, _simulatorChannelIndex + 1));
             socialSearchWindow.SetSnapshotProvider(_socialListRuntime.BuildSearchSnapshot);
             socialSearchWindow.SetHandlers(
                 tab => _socialListRuntime.SelectSearchTab(tab),
                 visibleIndex => _socialListRuntime.SelectSearchEntry(visibleIndex),
                 similarOnly => _socialListRuntime.SetSearchSimilarLevelOnly(similarOnly),
-                actionKey => _socialListRuntime.ExecuteSearchAction(actionKey),
+                ExecuteSocialSearchActionWithParityBridge,
                 ShowUtilityFeedbackMessage);
             socialSearchWindow.SetFont(_fontChat);
         }
@@ -4010,6 +4014,8 @@ namespace HaCreator.MapSimulator
 
         private string HandleCharacterInfoPartyRequest(UserInfoUI.UserInfoActionContext context)
         {
+            WireSocialListWindowData();
+
             if (!context.IsRemoteTarget)
             {
                 _socialListRuntime.SelectTab(SocialListTab.Party);
@@ -4047,6 +4053,7 @@ namespace HaCreator.MapSimulator
         private string HandleCharacterInfoSearchRequest(UserInfoUI.UserInfoActionContext context)
         {
             context = NormalizeCharacterInfoActionContext(context);
+            WireSocialSearchWindowData();
             _socialListRuntime.OpenSearchWindowFromCharacterInfo(
                 context.CharacterName,
                 context.Build,
@@ -5592,6 +5599,7 @@ namespace HaCreator.MapSimulator
                 InventoryType.SETUP => TryUseSetupInventoryItem(itemId, currentTime),
                 InventoryType.USE => TryUseItemAuthoredNpcInteractionInventoryItem(itemId, inventoryType, currentTime)
                                      || TryUseConsumableInventoryItem(itemId, inventoryType, currentTime),
+                InventoryType.ETC => TryUseItemAuthoredNpcInteractionInventoryItem(itemId, inventoryType, currentTime),
                 InventoryType.CASH => TryUseItemAuthoredNpcInteractionInventoryItem(itemId, inventoryType, currentTime)
                                       || TryUseCashInventoryItem(itemId)
                                       || TryUseConsumableInventoryItem(itemId, inventoryType, currentTime),
@@ -5658,6 +5666,7 @@ namespace HaCreator.MapSimulator
                 InventoryType.SETUP => TryUseSetupInventoryItem(itemId, currentTime, slotIndex),
                 InventoryType.USE => TryUseItemAuthoredNpcInteractionInventoryItem(itemId, inventoryType, currentTime, slotIndex)
                                      || TryUseConsumableInventoryItem(itemId, inventoryType, currentTime, slotIndex),
+                InventoryType.ETC => TryUseItemAuthoredNpcInteractionInventoryItem(itemId, inventoryType, currentTime, slotIndex),
                 InventoryType.CASH => TryUseItemAuthoredNpcInteractionInventoryItem(itemId, inventoryType, currentTime, slotIndex)
                                       || TryUseCashInventoryItem(itemId)
                                       || TryUseConsumableInventoryItem(itemId, inventoryType, currentTime, slotIndex),
@@ -9860,7 +9869,8 @@ namespace HaCreator.MapSimulator
                             ResolveViewAllCharNoticeDialogBody(packetProfile, isWorldSelectFallback: true),
                             LoginUtilityDialogButtonLayout.Ok,
                             LoginUtilityDialogAction.DismissOnly,
-                            frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
+                            frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
+                            returnWindowName: ResolveViewAllCharDialogReturnWindowName(packetProfile, isWorldSelectFallback: true));
                         return true;
                     }
 
@@ -9907,7 +9917,8 @@ namespace HaCreator.MapSimulator
                         ResolveViewAllCharNoticeDialogBody(packetProfile, isWorldSelectFallback: true),
                         LoginUtilityDialogButtonLayout.Ok,
                         LoginUtilityDialogAction.DismissOnly,
-                        frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
+                        frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
+                        returnWindowName: ResolveViewAllCharDialogReturnWindowName(packetProfile, isWorldSelectFallback: true));
                     return true;
 
                 case LoginViewAllCharResultKind.Error:
@@ -9925,7 +9936,8 @@ namespace HaCreator.MapSimulator
                         ResolveViewAllCharNoticeDialogBody(packetProfile, isWorldSelectFallback: false),
                         LoginUtilityDialogButtonLayout.Ok,
                         LoginUtilityDialogAction.DismissOnly,
-                        frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
+                        frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
+                        returnWindowName: ResolveViewAllCharDialogReturnWindowName(packetProfile, isWorldSelectFallback: false));
                     return true;
             }
 
@@ -10732,7 +10744,8 @@ namespace HaCreator.MapSimulator
                     LoginUtilityDialogAction.WebsiteHandoffDecision,
                     noticeTextIndex: noticeTextIndex,
                     visualStyle: LoginUtilityDialogVisualStyle.SecurityYesNo,
-                    frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
+                    frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
+                    returnWindowName: ResolveSelectCharacterFailureReturnWindowName(packetProfile));
                 return;
             }
 
@@ -10742,7 +10755,8 @@ namespace HaCreator.MapSimulator
                 LoginUtilityDialogButtonLayout.Ok,
                 LoginUtilityDialogAction.DismissOnly,
                 noticeTextIndex: noticeTextIndex,
-                frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
+                frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
+                returnWindowName: ResolveSelectCharacterFailureReturnWindowName(packetProfile));
         }
         private void ShowSelectCharacterByVacFailureDialog(LoginSelectCharacterByVacResultProfile packetProfile, string message)
         {
@@ -10763,7 +10777,8 @@ namespace HaCreator.MapSimulator
                     LoginUtilityDialogAction.WebsiteHandoffDecision,
                     noticeTextIndex: noticeTextIndex,
                     visualStyle: LoginUtilityDialogVisualStyle.SecurityYesNo,
-                    frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
+                    frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
+                    returnWindowName: ResolveSelectCharacterByVacFailureReturnWindowName(packetProfile));
                 return;
             }
 
@@ -10774,9 +10789,38 @@ namespace HaCreator.MapSimulator
                 LoginUtilityDialogButtonLayout.Ok,
                 LoginUtilityDialogAction.DismissOnly,
                 noticeTextIndex: noticeTextIndex,
-                frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
+                frameVariant: LoginUtilityDialogFrameVariant.LoginNotice,
+                returnWindowName: ResolveSelectCharacterByVacFailureReturnWindowName(packetProfile));
         }
 
+
+        private static string ResolveViewAllCharDialogReturnWindowName(
+            LoginViewAllCharResultPacketProfile packetProfile,
+            bool isWorldSelectFallback)
+        {
+            if (isWorldSelectFallback)
+            {
+                return MapSimulatorWindowNames.WorldSelect;
+            }
+
+            return packetProfile?.ResultCode is 2 or 3 or 6 or 7
+                ? MapSimulatorWindowNames.LoginTitle
+                : MapSimulatorWindowNames.WorldSelect;
+        }
+
+        private static string ResolveSelectCharacterFailureReturnWindowName(LoginSelectCharacterResultProfile packetProfile)
+        {
+            return packetProfile?.ReturnsToTitle == true
+                ? MapSimulatorWindowNames.LoginTitle
+                : MapSimulatorWindowNames.CharacterSelect;
+        }
+
+        private static string ResolveSelectCharacterByVacFailureReturnWindowName(LoginSelectCharacterByVacResultProfile packetProfile)
+        {
+            return packetProfile?.ReturnsToTitle == true
+                ? MapSimulatorWindowNames.LoginTitle
+                : MapSimulatorWindowNames.CharacterSelect;
+        }
 
         private static int? ResolveSelectCharacterFailureNoticeTextIndex(LoginSelectCharacterResultProfile packetProfile)
         {
@@ -11756,7 +11800,8 @@ namespace HaCreator.MapSimulator
                 LoginUtilityDialogButtonLayout.Ok,
                 LoginUtilityDialogAction.DismissOnly,
                 noticeTextIndex: ResolveDeleteCharacterFailureNoticeTextIndex(packetProfile),
-                frameVariant: ResolveDeleteCharacterFailureFrameVariant(packetProfile));
+                frameVariant: ResolveDeleteCharacterFailureFrameVariant(packetProfile),
+                returnWindowName: MapSimulatorWindowNames.CharacterSelect);
         }
 
         private static LoginUtilityDialogFrameVariant ResolveDeleteCharacterFailureFrameVariant(LoginAccountDialogPacketProfile packetProfile)
@@ -11767,7 +11812,12 @@ namespace HaCreator.MapSimulator
                 return LoginUtilityDialogFrameVariant.LoginNoticeCog;
             }
 
-            if (resultCode == 26 || ResolveDeleteCharacterFailureNoticeTextIndex(packetProfile).HasValue)
+            if (resultCode == 26)
+            {
+                return LoginUtilityDialogFrameVariant.Default;
+            }
+
+            if (ResolveDeleteCharacterFailureNoticeTextIndex(packetProfile).HasValue)
             {
                 return LoginUtilityDialogFrameVariant.LoginNotice;
             }
@@ -16963,7 +17013,10 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.ChatLogMessageRegistered += HandleRemoteEffectChatLogMessage;
             _remoteUserPool.StatusBarEffectRegistered += HandleRemoteStatusBarEffect;
             _mapTransferDestinations = new MapTransferDestinationStore();
-            _mapTransferRuntime = new MapTransferRuntimeManager(_mapTransferDestinations);
+            _mapTransferRuntime = new MapTransferRuntimeManager(_mapTransferDestinations)
+            {
+                RegisterRestrictionResolver = ResolveMapTransferRegisterRuntimeRestrictionResultCode
+            };
 
             _skillMacroStore = new SkillMacroStore();
 
@@ -17191,6 +17244,11 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (ShouldCaptureInitialQuizOwnerTextInput())
+            {
+                HandleInitialQuizOwnerCommittedText(e.Character.ToString());
+                return;
+            }
 
             if (_npcInteractionOverlay?.CapturesKeyboardInput == true)
             {
@@ -20503,42 +20561,9 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private PetRuntime SelectPetForSpeechEvent(PetAutoSpeechEvent eventType)
-        {
-            IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
-            if (activePets == null || activePets.Count == 0)
-            {
-                return null;
-            }
-
-
-            var eligiblePets = new List<PetRuntime>();
-            for (int i = 0; i < activePets.Count; i++)
-            {
-                PetRuntime pet = activePets[i];
-                if (pet != null && pet.CanAutoSpeak && pet.HasAutoSpeechEvent(eventType))
-                {
-                    eligiblePets.Add(pet);
-                }
-            }
-
-
-            if (eligiblePets.Count == 0)
-            {
-                return null;
-            }
-
-
-            return eligiblePets[_petIdleSpeechRandom.Next(eligiblePets.Count)];
-
-        }
-
-
-
         private bool TryTriggerPetSpeechEvent(PetAutoSpeechEvent eventType, int currentTickCount)
         {
-            PetRuntime pet = SelectPetForSpeechEvent(eventType);
-            return pet != null && pet.TryTriggerAutoSpeechEvent(eventType, currentTickCount);
+            return _playerManager?.Pets?.TryPetAutoSpeaking(eventType, currentTickCount) == true;
         }
 
 
@@ -21605,10 +21630,7 @@ namespace HaCreator.MapSimulator
                     currentTime,
                     quantity: drop.MesoAmount);
 
-                if (!string.IsNullOrWhiteSpace(messages.ChatMessage))
-                {
-                    _chat?.AddMessage(messages.ChatMessage, new Color(255, 228, 151), currentTime);
-                }
+                AddPickupChatMessage(messages.ChatMessage, currentTime, messages.ChatLogType);
 
                 if (!string.IsNullOrWhiteSpace(messages.SecondaryScreenMessage))
                 {
@@ -21744,7 +21766,8 @@ namespace HaCreator.MapSimulator
                 pickedByPet,
                 sourceName,
                 result.RecentPickup,
-                recentActorName);
+                recentActorName,
+                ResolvePickupNoticeItemName);
 
 
             if (!ShouldSurfacePickupFailure(result.FailureReason))
@@ -22023,11 +22046,7 @@ namespace HaCreator.MapSimulator
             _pickupNoticeUI.AddCantPickupMessage(screenMessage, currentTime);
 
 
-
-            if (!string.IsNullOrWhiteSpace(chatMessage))
-            {
-                _chat?.AddMessage(chatMessage, new Color(255, 228, 151), currentTime);
-            }
+            AddPickupChatMessage(chatMessage, currentTime);
         }
 
 
@@ -22046,6 +22065,14 @@ namespace HaCreator.MapSimulator
             AddPickupFailureMessage(messagePair, currentTime, PickupMessageType.CantPickup);
         }
 
+        private void AddPickupChatMessage(string message, int currentTime, int chatLogType = -1)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _chat?.AddMessage(message, new Color(255, 228, 151), currentTime, chatLogType);
+            }
+        }
+
 
         private void AddPickupFailureMessage(
             PickupNoticeMessagePair messagePair,
@@ -22060,11 +22087,7 @@ namespace HaCreator.MapSimulator
                     currentTime);
             }
 
-
-            if (!string.IsNullOrWhiteSpace(messagePair.ChatMessage))
-            {
-                _chat?.AddMessage(messagePair.ChatMessage, new Color(255, 228, 151), currentTime);
-            }
+            AddPickupChatMessage(messagePair.ChatMessage, currentTime, messagePair.ChatLogType);
         }
 
 
@@ -26034,7 +26057,7 @@ namespace HaCreator.MapSimulator
 
             // Match CUserLocal::CheckReactor_Collision, which only refreshes
             // local touch-reactor overlap once per second.
-            if (unchecked(currentTick - _lastReactorCollisionCheckTick) < ReactorCollisionCheckIntervalMs)
+            if (!ShouldPollReactorCollision(currentTick, _lastReactorCollisionCheckTick))
                 return new List<ReactorItem>();
 
 
@@ -26051,6 +26074,11 @@ namespace HaCreator.MapSimulator
                 .Where(static reactor => reactor != null)
                 .ToList();
 
+        }
+
+        internal static bool ShouldPollReactorCollision(int currentTick, int lastCheckTick)
+        {
+            return unchecked(currentTick - lastCheckTick) >= ReactorCollisionCheckIntervalMs;
         }
 
         private void DispatchReactorTouchStateChanges(IReadOnlyList<ReactorTouchStateChange> touchStateChanges)
@@ -26145,11 +26173,6 @@ namespace HaCreator.MapSimulator
             SyncMonsterCarnivalGuardianReactors(currentTick);
             _reactorPool.RefreshQuestReactors(currentTick);
             _reactorPool.Update(currentTick, deltaSeconds);
-            if (_playerManager?.IsPlayerActive == true)
-            {
-                var playerPosition = _playerManager.GetPlayerPosition();
-                CheckReactorTouch(playerPosition.X, playerPosition.Y, currentTick: currentTick);
-            }
 
             if (_reactorsArray == null || _reactorsArray.Length == 0)
                 return;
@@ -26272,6 +26295,15 @@ namespace HaCreator.MapSimulator
                 _npcInteractionOverlay?.ClearCompositionText();
             }
 
+            if (ShouldCaptureInitialQuizOwnerTextInput())
+            {
+                HandleInitialQuizOwnerCompositionText(compositionText);
+            }
+            else
+            {
+                ClearInitialQuizOwnerCompositionText();
+            }
+
             activeKeyboardWindow?.HandleCompositionText(compositionText);
 
 
@@ -26297,6 +26329,15 @@ namespace HaCreator.MapSimulator
                         window.ClearCompositionText();
                     }
                 }
+            }
+
+            if (ShouldCaptureInitialQuizOwnerTextInput())
+            {
+                HandleInitialQuizOwnerCompositionState(compositionState ?? ImeCompositionState.Empty);
+            }
+            else
+            {
+                ClearInitialQuizOwnerCompositionText();
             }
 
             activeKeyboardWindow?.HandleCompositionState(compositionState ?? ImeCompositionState.Empty);
@@ -26328,8 +26369,18 @@ namespace HaCreator.MapSimulator
 
             if (candidateState == null || !candidateState.HasCandidates)
             {
+                ClearInitialQuizOwnerImeCandidateList();
                 activeKeyboardWindow?.ClearImeCandidateList();
                 return;
+            }
+
+            if (ShouldCaptureInitialQuizOwnerTextInput())
+            {
+                HandleInitialQuizOwnerImeCandidateList(candidateState);
+            }
+            else
+            {
+                ClearInitialQuizOwnerImeCandidateList();
             }
 
             activeKeyboardWindow?.HandleImeCandidateList(candidateState);
@@ -26796,6 +26847,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (ShouldHandleFreshUpKeyDownAsChairGetUp(_playerManager?.Player))
+            {
+                _playerManager?.Player?.ApplyPacketOwnedChairStandCorrection();
+                return;
+            }
+
             StopSkillMacroForHandleUpKeyDown();
 
 
@@ -26870,6 +26927,11 @@ namespace HaCreator.MapSimulator
                 hasPendingRequest,
                 input.IsPressed(InputAction.MoveLeft),
                 input.IsPressed(InputAction.MoveRight));
+        }
+
+        internal static bool ShouldHandleFreshUpKeyDownAsChairGetUp(PlayerCharacter player)
+        {
+            return player?.State == PlayerState.Sitting;
         }
 
         private PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision EvaluatePassiveTransferFieldQueuedRetryDecision(int currentTime)
@@ -30539,7 +30601,7 @@ namespace HaCreator.MapSimulator
                 return new QuestWindowActionResult
                 {
                     QuestId = _activeQuestDetailQuestId,
-                    Messages = new[] { ApplyQuestDemandItemQueryLaunch(itemQueryState, reference.TargetId) }
+                    Messages = new[] { LaunchQuestDemandItemQuery(itemQueryState, reference.TargetId) }
                 };
             }
 
@@ -30873,7 +30935,7 @@ namespace HaCreator.MapSimulator
                         return new QuestWindowActionResult
                         {
                             QuestId = questId,
-                            Messages = new[] { ApplyQuestDemandItemQueryLaunch(itemQueryState) }
+                            Messages = new[] { LaunchQuestDemandItemQuery(itemQueryState) }
                         };
                     }
 
@@ -31198,6 +31260,7 @@ namespace HaCreator.MapSimulator
         public void ClearRemoteAffectedAreas()
         {
             _affectedAreaPool?.Clear();
+            _remoteAffectedAreaMonsterCarnivalOwnerTeams.Clear();
         }
 
 
@@ -32569,6 +32632,7 @@ namespace HaCreator.MapSimulator
                 renderData.FamilyDisplayName = buffEntry.FamilyDisplayName;
                 renderData.TemporaryStatLabels = buffEntry.TemporaryStatLabels;
                 renderData.TemporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames;
+                renderData.IsAlerting = buffEntry.IsAlerting;
             }
 
 
@@ -36354,6 +36418,15 @@ namespace HaCreator.MapSimulator
 
                 case DojoPacketMessageKind.RawPacket:
                     return TryDispatchCurrentWrapperPacketIngress(message.PacketType, message.Payload, currentTickCount, out resultMessage);
+
+                case DojoPacketMessageKind.RawClientPacket:
+                    if (!_dojoOfficialSessionBridge.TryMapInboundPacket(message.Payload, message.Source, out DojoPacketInboxMessage decodedMessage))
+                    {
+                        resultMessage = "Dojo opcode-framed packet did not decode into a supported Mu Lung Dojo packet.";
+                        return false;
+                    }
+
+                    return TryApplyDojoInboxMessage(field, decodedMessage, currentTickCount, out resultMessage);
 
 
 

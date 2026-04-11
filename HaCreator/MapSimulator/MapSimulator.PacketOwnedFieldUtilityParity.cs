@@ -728,6 +728,7 @@ namespace HaCreator.MapSimulator
             int snapshotCount = Math.Max(runtimePlatformCount, authoredObjectCount);
             bool hasLiveRuntimePlatforms = runtimePlatformCount > 0;
             List<PacketFieldUtilityFootholdEntry> entries = new(snapshotCount);
+            HashSet<int> consumedCachedEntryIndices = hasLiveRuntimePlatforms ? null : new();
             for (int i = 0; i < snapshotCount; i++)
             {
                 if (TryBuildPacketOwnedLiveFootholdSnapshotEntry(i, out PacketFieldUtilityFootholdEntry liveEntry))
@@ -737,7 +738,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 if (!hasLiveRuntimePlatforms
-                    && TryBuildPacketOwnedCachedFootholdSnapshotEntry(i, out PacketFieldUtilityFootholdEntry cachedEntry))
+                    && TryBuildPacketOwnedCachedFootholdSnapshotEntry(i, consumedCachedEntryIndices, out PacketFieldUtilityFootholdEntry cachedEntry))
                 {
                     entries.Add(cachedEntry);
                     continue;
@@ -747,6 +748,14 @@ namespace HaCreator.MapSimulator
                 {
                     entries.Add(defaultEntry);
                 }
+            }
+
+            if (!hasLiveRuntimePlatforms && _packetFieldUtilityFootholdEntries.Count > 0)
+            {
+                entries = AppendFallbackOnlyCachedPacketOwnedFootholdEntries(
+                    entries,
+                    _packetFieldUtilityFootholdEntries,
+                    consumedCachedEntryIndices);
             }
 
             if (entries.Count > 0)
@@ -785,15 +794,19 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryBuildPacketOwnedCachedFootholdSnapshotEntry(int platformId, out PacketFieldUtilityFootholdEntry entry)
+        private bool TryBuildPacketOwnedCachedFootholdSnapshotEntry(
+            int platformId,
+            ISet<int> consumedCachedEntryIndices,
+            out PacketFieldUtilityFootholdEntry entry)
         {
             entry = null;
-            if (!TryFindPacketOwnedFootholdEntry(platformId, out PacketFieldUtilityFootholdEntry cachedEntry))
+            if (!TryFindPacketOwnedFootholdEntry(platformId, out PacketFieldUtilityFootholdEntry cachedEntry, out int cachedEntryIndex))
             {
                 return false;
             }
 
             string snapshotName = ResolvePacketOwnedDynamicPlatformSnapshotName(platformId);
+            consumedCachedEntryIndices?.Add(cachedEntryIndex);
             entry = new PacketFieldUtilityFootholdEntry(
                 string.IsNullOrWhiteSpace(snapshotName) ? cachedEntry.Name : snapshotName,
                 cachedEntry.State,
@@ -819,9 +832,10 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryFindPacketOwnedFootholdEntry(int platformId, out PacketFieldUtilityFootholdEntry entry)
+        private bool TryFindPacketOwnedFootholdEntry(int platformId, out PacketFieldUtilityFootholdEntry entry, out int entryIndex)
         {
             entry = null;
+            entryIndex = -1;
             for (int i = 0; i < _packetFieldUtilityFootholdEntries.Count; i++)
             {
                 PacketFieldUtilityFootholdEntry candidate = _packetFieldUtilityFootholdEntries[i];
@@ -833,6 +847,7 @@ namespace HaCreator.MapSimulator
                 if (candidate.FootholdSerialNumbers?.Contains(platformId) == true)
                 {
                     entry = candidate;
+                    entryIndex = i;
                     return true;
                 }
             }
@@ -850,7 +865,89 @@ namespace HaCreator.MapSimulator
                 }
 
                 entry = candidate;
+                entryIndex = i;
                 return true;
+            }
+
+            return false;
+        }
+
+        internal static List<PacketFieldUtilityFootholdEntry> AppendFallbackOnlyCachedPacketOwnedFootholdEntries(
+            IReadOnlyList<PacketFieldUtilityFootholdEntry> currentEntries,
+            IReadOnlyList<PacketFieldUtilityFootholdEntry> cachedEntries,
+            IReadOnlySet<int> consumedCachedEntryIndices)
+        {
+            List<PacketFieldUtilityFootholdEntry> mergedEntries = currentEntries == null
+                ? new List<PacketFieldUtilityFootholdEntry>()
+                : new List<PacketFieldUtilityFootholdEntry>(currentEntries.Where(static entry => entry != null));
+            if (cachedEntries == null || cachedEntries.Count == 0)
+            {
+                return mergedEntries;
+            }
+
+            for (int i = 0; i < cachedEntries.Count; i++)
+            {
+                if (consumedCachedEntryIndices?.Contains(i) == true)
+                {
+                    continue;
+                }
+
+                PacketFieldUtilityFootholdEntry candidate = CloneFallbackPacketOwnedFootholdEntry(cachedEntries[i]);
+                if (candidate == null || ContainsEquivalentPacketOwnedFootholdEntry(mergedEntries, candidate))
+                {
+                    continue;
+                }
+
+                mergedEntries.Add(candidate);
+            }
+
+            return mergedEntries;
+        }
+
+        private static PacketFieldUtilityFootholdEntry CloneFallbackPacketOwnedFootholdEntry(PacketFieldUtilityFootholdEntry entry)
+        {
+            if (entry == null || string.IsNullOrWhiteSpace(entry.Name))
+            {
+                return null;
+            }
+
+            int[] serialNumbers = entry.FootholdSerialNumbers?
+                .Where(static serialNumber => serialNumber >= 0)
+                .ToArray()
+                ?? Array.Empty<int>();
+            return new PacketFieldUtilityFootholdEntry(
+                entry.Name.Trim(),
+                entry.State,
+                serialNumbers,
+                entry.MovingState);
+        }
+
+        private static bool ContainsEquivalentPacketOwnedFootholdEntry(
+            IReadOnlyList<PacketFieldUtilityFootholdEntry> entries,
+            PacketFieldUtilityFootholdEntry candidate)
+        {
+            if (entries == null || candidate == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                PacketFieldUtilityFootholdEntry existing = entries[i];
+                if (existing == null)
+                {
+                    continue;
+                }
+
+                bool sameName = string.Equals(existing.Name?.Trim(), candidate.Name, StringComparison.Ordinal);
+                bool sameState = existing.State == candidate.State;
+                bool sameMovingState = Equals(existing.MovingState, candidate.MovingState);
+                bool sameSerialNumbers = (existing.FootholdSerialNumbers ?? Array.Empty<int>())
+                    .SequenceEqual(candidate.FootholdSerialNumbers ?? Array.Empty<int>());
+                if (sameName && sameState && sameMovingState && sameSerialNumbers)
+                {
+                    return true;
+                }
             }
 
             return false;

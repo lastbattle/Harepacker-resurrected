@@ -267,6 +267,11 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle? _whisperPickerComboBounds;
         private Rectangle? _whisperPickerComboToggleBounds;
         private Rectangle? _whisperPickerDropdownBounds;
+        private Rectangle? _whisperPickerDropdownScrollBarBounds;
+        private Rectangle? _whisperPickerDropdownScrollPrevBounds;
+        private Rectangle? _whisperPickerDropdownScrollNextBounds;
+        private Rectangle? _whisperPickerDropdownScrollTrackBounds;
+        private Rectangle? _whisperPickerDropdownScrollThumbBounds;
         private Texture2D _whisperPickerSelectedTexture;
         private Texture2D _whisperPickerRowTexture;
         private Point _whisperPickerSelectedOrigin;
@@ -283,7 +288,10 @@ namespace HaCreator.MapSimulator.UI
         private WhisperPickerButtonVisuals _whisperPickerNextButtonVisuals = new WhisperPickerButtonVisuals();
         private WhisperPickerButtonVisuals _whisperPickerOkButtonVisuals = new WhisperPickerButtonVisuals();
         private WhisperPickerButtonVisuals _whisperPickerCloseButtonVisuals = new WhisperPickerButtonVisuals();
+        private VerticalScrollbarSkin _whisperPickerDropdownScrollbarSkin;
         private readonly List<WhisperPickerButtonHitRegion> _whisperPickerButtonHitRegions = new List<WhisperPickerButtonHitRegion>();
+        private bool _isDraggingWhisperPickerDropdownScrollThumb;
+        private int _whisperPickerDropdownScrollThumbDragOffsetY;
 
         internal const float ClientChatTextFontPixelSize = 11f;
         internal const int ClientChatTextFontFaceStringPoolId = 0x1A25;
@@ -334,6 +342,9 @@ namespace HaCreator.MapSimulator.UI
         public Action<string> WhisperTargetPickerModalComboDropdownHoverRequested { get; set; }
         public Action<string> WhisperTargetPickerModalComboDropdownDeleteRequested { get; set; }
         public Action<int> WhisperTargetPickerModalComboDropdownDeleteIndexRequested { get; set; }
+        public Action<int> WhisperTargetPickerModalComboDropdownScrollRequested { get; set; }
+        public Action<int> WhisperTargetPickerModalComboDropdownPageRequested { get; set; }
+        public Action<int> WhisperTargetPickerModalComboDropdownScrollPositionRequested { get; set; }
 
         private enum WhisperPickerButtonAction
         {
@@ -595,6 +606,11 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        internal void SetWhisperPickerDropdownScrollbarSkin(VerticalScrollbarSkin scrollbarSkin)
+        {
+            _whisperPickerDropdownScrollbarSkin = scrollbarSkin;
+        }
+
         public void SetWhisperPickerDialogButtonOrigins(
             Point okButtonNormalOrigin,
             Point okButtonHoverOrigin,
@@ -830,6 +846,12 @@ namespace HaCreator.MapSimulator.UI
             _whisperPickerBounds = null;
             _whisperPickerComboBounds = null;
             _whisperPickerDropdownBounds = null;
+            _whisperPickerDropdownScrollBarBounds = null;
+            _whisperPickerDropdownScrollPrevBounds = null;
+            _whisperPickerDropdownScrollNextBounds = null;
+            _whisperPickerDropdownScrollTrackBounds = null;
+            _whisperPickerDropdownScrollThumbBounds = null;
+            _isDraggingWhisperPickerDropdownScrollThumb = false;
 
             if (!HasTextRenderer())
             {
@@ -1275,6 +1297,11 @@ namespace HaCreator.MapSimulator.UI
                 _whisperPickerDropdownBounds = listBounds;
                 _whisperPickerBounds = Rectangle.Union(_whisperPickerBounds.Value, listBounds);
                 MouseState mouseState = Mouse.GetState();
+                bool showScrollbar = candidates.Count > visibleCount;
+                Rectangle rowContentBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalDropdownRowContentBounds(
+                    listBounds,
+                    showScrollbar,
+                    ResolveWhisperPickerDropdownScrollbarWidth());
 
                 for (int i = 0; i < visibleCount; i++)
                 {
@@ -1284,7 +1311,7 @@ namespace HaCreator.MapSimulator.UI
                         : string.Empty;
 
                     Rectangle rowBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalVisibleRowBounds(
-                        listBounds,
+                        rowContentBounds,
                         rowHeight,
                         i,
                         visibleCount);
@@ -1296,6 +1323,17 @@ namespace HaCreator.MapSimulator.UI
                         isSelected: candidateIndex == chatState.WhisperTargetPickerSelectionIndex,
                         registerHitRegion: true,
                         mouseState: mouseState);
+                }
+
+                if (showScrollbar)
+                {
+                    DrawWhisperPickerDropdownScrollbar(
+                        sprite,
+                        listBounds,
+                        firstVisibleIndex,
+                        candidates.Count,
+                        visibleCount,
+                        mouseState);
                 }
             }
 
@@ -1468,6 +1506,155 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawWhisperPickerDropdownScrollbar(
+            SpriteBatch sprite,
+            Rectangle listBounds,
+            int firstVisibleIndex,
+            int candidateCount,
+            int visibleCount,
+            MouseState mouseState)
+        {
+            int scrollbarWidth = ResolveWhisperPickerDropdownScrollbarWidth();
+            int prevHeight = _whisperPickerDropdownScrollbarSkin?.PrevHeight ?? 12;
+            int nextHeight = _whisperPickerDropdownScrollbarSkin?.NextHeight ?? 12;
+            int thumbHeight = _whisperPickerDropdownScrollbarSkin?.ThumbHeight ?? 26;
+            int maxScrollOffset = MapSimulatorChat.ResolveWhisperTargetPickerMaxScrollOffset(candidateCount, visibleCount);
+            Rectangle scrollbarBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalDropdownScrollBarBounds(
+                listBounds,
+                scrollbarWidth);
+            Rectangle prevBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalDropdownScrollPrevBounds(scrollbarBounds, prevHeight);
+            Rectangle nextBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalDropdownScrollNextBounds(scrollbarBounds, nextHeight);
+            Rectangle trackBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalDropdownScrollTrackBounds(
+                scrollbarBounds,
+                prevHeight,
+                nextHeight);
+            Rectangle thumbBounds = StatusBarChatLayoutRules.ResolveWhisperPickerModalDropdownScrollThumbBounds(
+                trackBounds,
+                thumbHeight,
+                firstVisibleIndex,
+                maxScrollOffset);
+            _whisperPickerDropdownScrollBarBounds = scrollbarBounds;
+            _whisperPickerDropdownScrollPrevBounds = prevBounds;
+            _whisperPickerDropdownScrollNextBounds = nextBounds;
+            _whisperPickerDropdownScrollTrackBounds = trackBounds;
+            _whisperPickerDropdownScrollThumbBounds = thumbBounds;
+
+            DrawWhisperPickerDropdownScrollbarTrack(sprite, trackBounds);
+
+            bool prevEnabled = firstVisibleIndex > 0;
+            bool nextEnabled = firstVisibleIndex < maxScrollOffset;
+            DrawWhisperPickerDropdownScrollbarArrow(
+                sprite,
+                prevBounds,
+                _whisperPickerDropdownScrollbarSkin?.PrevStates,
+                _whisperPickerDropdownScrollbarSkin?.PrevDisabled,
+                prevEnabled,
+                mouseState,
+                pressed: false);
+            DrawWhisperPickerDropdownScrollbarArrow(
+                sprite,
+                nextBounds,
+                _whisperPickerDropdownScrollbarSkin?.NextStates,
+                _whisperPickerDropdownScrollbarSkin?.NextDisabled,
+                nextEnabled,
+                mouseState,
+                pressed: false);
+
+            Texture2D thumbTexture = ResolveWhisperPickerDropdownScrollbarStateTexture(
+                _whisperPickerDropdownScrollbarSkin?.ThumbStates,
+                enabled: true,
+                hovered: thumbBounds.Contains(mouseState.Position),
+                pressed: _isDraggingWhisperPickerDropdownScrollThumb,
+                disabledTexture: null);
+            if (thumbTexture != null)
+            {
+                sprite.Draw(thumbTexture, thumbBounds, Color.White);
+            }
+            else if (_pixelTexture != null)
+            {
+                sprite.Draw(_pixelTexture, thumbBounds, new Color(173, 173, 173, 255));
+            }
+        }
+
+        private void DrawWhisperPickerDropdownScrollbarTrack(SpriteBatch sprite, Rectangle trackBounds)
+        {
+            Texture2D baseTexture = _whisperPickerDropdownScrollbarSkin?.Base;
+            if (baseTexture == null)
+            {
+                if (_pixelTexture != null)
+                {
+                    sprite.Draw(_pixelTexture, trackBounds, new Color(221, 221, 221, 255));
+                }
+
+                return;
+            }
+
+            for (int tileY = trackBounds.Y; tileY < trackBounds.Bottom; tileY += baseTexture.Height)
+            {
+                int tileHeight = Math.Min(baseTexture.Height, trackBounds.Bottom - tileY);
+                Rectangle destination = new Rectangle(trackBounds.X, tileY, trackBounds.Width, tileHeight);
+                Rectangle? source = tileHeight == baseTexture.Height
+                    ? null
+                    : new Rectangle(0, 0, baseTexture.Width, tileHeight);
+                sprite.Draw(baseTexture, destination, source, Color.White);
+            }
+        }
+
+        private void DrawWhisperPickerDropdownScrollbarArrow(
+            SpriteBatch sprite,
+            Rectangle bounds,
+            Texture2D[] states,
+            Texture2D disabledTexture,
+            bool enabled,
+            MouseState mouseState,
+            bool pressed)
+        {
+            Texture2D texture = ResolveWhisperPickerDropdownScrollbarStateTexture(
+                states,
+                enabled,
+                bounds.Contains(mouseState.Position),
+                pressed,
+                disabledTexture);
+            if (texture != null)
+            {
+                sprite.Draw(texture, bounds, Color.White);
+            }
+            else if (_pixelTexture != null)
+            {
+                sprite.Draw(_pixelTexture, bounds, enabled ? new Color(201, 201, 201, 255) : new Color(160, 160, 160, 255));
+            }
+        }
+
+        private static Texture2D ResolveWhisperPickerDropdownScrollbarStateTexture(
+            Texture2D[] states,
+            bool enabled,
+            bool hovered,
+            bool pressed,
+            Texture2D disabledTexture)
+        {
+            if (!enabled)
+            {
+                return disabledTexture ?? states?[0];
+            }
+
+            if (states == null || states.Length == 0)
+            {
+                return null;
+            }
+
+            if (pressed && states.Length > 2 && states[2] != null)
+            {
+                return states[2];
+            }
+
+            if (hovered && states.Length > 1 && states[1] != null)
+            {
+                return states[1];
+            }
+
+            return states[0];
+        }
+
         private void DrawWhisperPickerRow(
             SpriteBatch sprite,
             int x,
@@ -1555,6 +1742,11 @@ namespace HaCreator.MapSimulator.UI
         private int ResolveWhisperPickerModalComboDropdownRowHeight()
         {
             return _whisperPickerComboDropdownVisuals.ResolveRowHeight();
+        }
+
+        private int ResolveWhisperPickerDropdownScrollbarWidth()
+        {
+            return _whisperPickerDropdownScrollbarSkin?.Width ?? 11;
         }
 
         private int ResolveWhisperPickerModalDividerWidth(int modalWidth)
@@ -2100,6 +2292,11 @@ namespace HaCreator.MapSimulator.UI
 
         private bool HandleWhisperTargetClick(MouseState mouseState)
         {
+            if (HandleWhisperPickerDropdownScrollbarInteraction(mouseState))
+            {
+                return true;
+            }
+
             WhisperTargetHitRegion hoveredRegion = FindWhisperTargetHitRegion(mouseState.X, mouseState.Y);
             WhisperPickerHitRegion hoveredPickerRegion = FindWhisperPickerHitRegion(mouseState.X, mouseState.Y);
             WhisperPickerButtonHitRegion hoveredButtonRegion = FindWhisperPickerButtonHitRegion(mouseState.X, mouseState.Y);
@@ -2300,6 +2497,86 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private bool HandleWhisperPickerDropdownScrollbarInteraction(MouseState mouseState)
+        {
+            bool isPressStarted = mouseState.LeftButton == ButtonState.Pressed
+                && _previousLeftButtonState == ButtonState.Released;
+            bool isRelease = mouseState.LeftButton == ButtonState.Released
+                && _previousLeftButtonState == ButtonState.Pressed;
+            if (_isDraggingWhisperPickerDropdownScrollThumb)
+            {
+                if (mouseState.LeftButton == ButtonState.Pressed)
+                {
+                    if (_whisperPickerDropdownScrollTrackBounds.HasValue && _whisperPickerDropdownScrollThumbBounds.HasValue)
+                    {
+                        WhisperTargetPickerModalComboFocusRequested?.Invoke();
+                        int maxScrollOffset = MapSimulatorChat.ResolveWhisperTargetPickerMaxScrollOffset(
+                            _chatStateProvider?.Invoke()?.WhisperCandidates?.Count ?? 0,
+                            WhisperPickerVisibleRows);
+                        int thumbTop = mouseState.Y - _whisperPickerDropdownScrollThumbDragOffsetY;
+                        int firstVisibleIndex = StatusBarChatLayoutRules.ResolveWhisperPickerModalDropdownScrollOffsetFromThumbTop(
+                            _whisperPickerDropdownScrollTrackBounds.Value,
+                            _whisperPickerDropdownScrollThumbBounds.Value.Height,
+                            thumbTop,
+                            maxScrollOffset);
+                        WhisperTargetPickerModalComboDropdownScrollPositionRequested?.Invoke(firstVisibleIndex);
+                    }
+
+                    return true;
+                }
+
+                _isDraggingWhisperPickerDropdownScrollThumb = false;
+                return true;
+            }
+
+            if (!isPressStarted || !_whisperPickerDropdownScrollBarBounds.HasValue)
+            {
+                return false;
+            }
+
+            Point mousePosition = mouseState.Position;
+            if (!_whisperPickerDropdownScrollBarBounds.Value.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            WhisperTargetPickerModalComboFocusRequested?.Invoke();
+            if (_whisperPickerDropdownScrollThumbBounds?.Contains(mousePosition) == true)
+            {
+                _isDraggingWhisperPickerDropdownScrollThumb = true;
+                _whisperPickerDropdownScrollThumbDragOffsetY = mouseState.Y - _whisperPickerDropdownScrollThumbBounds.Value.Y;
+                return true;
+            }
+
+            if (_whisperPickerDropdownScrollPrevBounds?.Contains(mousePosition) == true)
+            {
+                WhisperTargetPickerModalComboDropdownScrollRequested?.Invoke(-1);
+                return true;
+            }
+
+            if (_whisperPickerDropdownScrollNextBounds?.Contains(mousePosition) == true)
+            {
+                WhisperTargetPickerModalComboDropdownScrollRequested?.Invoke(1);
+                return true;
+            }
+
+            if (_whisperPickerDropdownScrollTrackBounds?.Contains(mousePosition) == true && _whisperPickerDropdownScrollThumbBounds.HasValue)
+            {
+                if (mouseState.Y < _whisperPickerDropdownScrollThumbBounds.Value.Y)
+                {
+                    WhisperTargetPickerModalComboDropdownPageRequested?.Invoke(-1);
+                }
+                else if (mouseState.Y >= _whisperPickerDropdownScrollThumbBounds.Value.Bottom)
+                {
+                    WhisperTargetPickerModalComboDropdownPageRequested?.Invoke(1);
+                }
+
+                return true;
+            }
+
+            return isRelease;
+        }
+
         private WhisperTargetHitRegion FindWhisperTargetHitRegion(int mouseX, int mouseY)
         {
             for (int i = 0; i < _whisperTargetHitRegions.Count; i++)
@@ -2384,7 +2661,15 @@ namespace HaCreator.MapSimulator.UI
                 WhisperTargetPickerModalComboFocusRequested?.Invoke();
                 if (dropdownHovered)
                 {
-                    WhisperTargetPickerSelectionDeltaRequested?.Invoke(scrollDelta > 0 ? -steps : steps);
+                    int candidateCount = _chatStateProvider?.Invoke()?.WhisperCandidates?.Count ?? 0;
+                    if (candidateCount > WhisperPickerVisibleRows)
+                    {
+                        WhisperTargetPickerModalComboDropdownScrollRequested?.Invoke(scrollDelta > 0 ? -steps : steps);
+                    }
+                    else
+                    {
+                        WhisperTargetPickerSelectionDeltaRequested?.Invoke(scrollDelta > 0 ? -steps : steps);
+                    }
                 }
                 return;
             }

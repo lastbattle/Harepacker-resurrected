@@ -21,6 +21,7 @@ namespace HaCreator.MapSimulator.UI
         private const int LineSpacing = 17;
 
         private readonly string _windowName;
+        private readonly Texture2D _frameTexture;
         private Texture2D _avatarTexture;
         private Point _avatarTextureOrigin;
         private SpriteFont _font;
@@ -35,11 +36,13 @@ namespace HaCreator.MapSimulator.UI
             : base(new DXObject(0, 0, frameTexture, 0))
         {
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
+            _frameTexture = frameTexture;
         }
 
         public override string WindowName => _windowName;
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => IsVisible;
+        public Point FrameSize => new(_frameTexture?.Width ?? 260, _frameTexture?.Height ?? 131);
 
         public event Action<int> CloseRequested;
 

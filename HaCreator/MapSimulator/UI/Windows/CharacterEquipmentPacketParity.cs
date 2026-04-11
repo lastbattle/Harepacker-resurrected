@@ -10,6 +10,8 @@ namespace HaCreator.MapSimulator.UI
     {
         private const int MaxAuthoritySlotStateCount = 64;
         private const byte AuthorityResultOwnerSessionContextMarker = 0xEC;
+        private const byte AuthorityResultInventoryStateContextMarker = 0xED;
+        private const int MaxAuthorityInventorySlotStateCount = 192;
 
         public static byte[] EncodeAuthorityRequestPayload(EquipmentChangeRequest request)
         {
@@ -63,6 +65,11 @@ namespace HaCreator.MapSimulator.UI
                     if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.AuthoritativeStateAccept)
                     {
                         WriteAuthoritySlotStates(writer, payload.AuthoritySlotStates);
+                        if (payload.AuthorityInventorySlotStates?.Count > 0)
+                        {
+                            writer.Write(AuthorityResultInventoryStateContextMarker);
+                            WriteAuthorityInventorySlotStates(writer, payload.AuthorityInventorySlotStates);
+                        }
                     }
 
                     if (payload.ResultKind == CharacterEquipmentAuthorityResultKind.Reject)
@@ -228,43 +235,59 @@ namespace HaCreator.MapSimulator.UI
                 rejectReason = reader.ReadString();
             }
 
+            CharacterEquipmentAuthorityInventorySlotState[] authorityInventorySlotStates = null;
             bool hasOwnerSessionContext = false;
             EquipmentChangeOwnerKind ownerKind = default;
             int ownerSessionId = 0;
             int expectedCharacterId = 0;
-            if (stream.Position != stream.Length)
+            while (stream.Position != stream.Length)
             {
-                const long ownerSessionContextLength = sizeof(byte) * 2 + sizeof(int) * 2;
-                if (stream.Length - stream.Position != ownerSessionContextLength)
-                {
-                    errorMessage = "Character equipment authority-result payload contained an invalid owner-session context trailer.";
-                    return false;
-                }
-
                 byte marker = reader.ReadByte();
-                if (marker != AuthorityResultOwnerSessionContextMarker)
+                switch (marker)
                 {
-                    errorMessage = "Character equipment authority-result payload contained an unsupported owner-session context marker.";
-                    return false;
+                    case AuthorityResultInventoryStateContextMarker:
+                        if (authorityInventorySlotStates != null)
+                        {
+                            errorMessage = "Character equipment authority-result payload contained duplicate inventory-state context.";
+                            return false;
+                        }
+
+                        if (!TryReadAuthorityInventorySlotStates(reader, out authorityInventorySlotStates, out errorMessage))
+                        {
+                            return false;
+                        }
+
+                        break;
+                    case AuthorityResultOwnerSessionContextMarker:
+                        if (hasOwnerSessionContext)
+                        {
+                            errorMessage = "Character equipment authority-result payload contained duplicate owner-session context.";
+                            return false;
+                        }
+
+                        const long ownerSessionContextLength = sizeof(byte) + sizeof(int) * 2;
+                        if (stream.Length - stream.Position != ownerSessionContextLength)
+                        {
+                            errorMessage = "Character equipment authority-result payload contained an invalid owner-session context trailer.";
+                            return false;
+                        }
+
+                        byte ownerKindValue = reader.ReadByte();
+                        if (!Enum.IsDefined(typeof(EquipmentChangeOwnerKind), (int)ownerKindValue))
+                        {
+                            errorMessage = "Character equipment authority-result owner kind is invalid.";
+                            return false;
+                        }
+
+                        ownerKind = (EquipmentChangeOwnerKind)ownerKindValue;
+                        ownerSessionId = reader.ReadInt32();
+                        expectedCharacterId = reader.ReadInt32();
+                        hasOwnerSessionContext = true;
+                        break;
+                    default:
+                        errorMessage = "Character equipment authority-result payload contained an unsupported context marker.";
+                        return false;
                 }
-
-                byte ownerKindValue = reader.ReadByte();
-                if (!Enum.IsDefined(typeof(EquipmentChangeOwnerKind), (int)ownerKindValue))
-                {
-                    errorMessage = "Character equipment authority-result owner kind is invalid.";
-                    return false;
-                }
-
-                ownerKind = (EquipmentChangeOwnerKind)ownerKindValue;
-                ownerSessionId = reader.ReadInt32();
-                expectedCharacterId = reader.ReadInt32();
-                hasOwnerSessionContext = true;
-            }
-
-            if (stream.Position != stream.Length)
-            {
-                errorMessage = "Character equipment authority-result payload should not contain extra bytes.";
-                return false;
             }
 
             decodedPayload = new CharacterEquipmentAuthorityPayload(
@@ -274,6 +297,7 @@ namespace HaCreator.MapSimulator.UI
                 ResultKind: resultKind,
                 ResolvedBuildStateToken: resolvedBuildStateToken,
                 AuthoritySlotStates: authoritySlotStates,
+                AuthorityInventorySlotStates: authorityInventorySlotStates,
                 RejectReason: rejectReason,
                 OwnerKind: ownerKind,
                 OwnerSessionId: ownerSessionId,
@@ -321,6 +345,54 @@ namespace HaCreator.MapSimulator.UI
 
                 slotStates[i] = new CharacterEquipmentAuthoritySlotState(
                     (HaCreator.MapSimulator.Character.EquipSlot)slotValue,
+                    reader.ReadInt32(),
+                    reader.ReadInt32());
+            }
+
+            return true;
+        }
+
+        private static void WriteAuthorityInventorySlotStates(
+            BinaryWriter writer,
+            IReadOnlyList<CharacterEquipmentAuthorityInventorySlotState> slotStates)
+        {
+            int count = slotStates?.Count ?? 0;
+            writer.Write(count);
+            for (int i = 0; i < count; i++)
+            {
+                CharacterEquipmentAuthorityInventorySlotState state = slotStates[i];
+                writer.Write((byte)state.InventoryType);
+                writer.Write(state.SlotIndex);
+                writer.Write(state.ItemId);
+            }
+        }
+
+        private static bool TryReadAuthorityInventorySlotStates(
+            BinaryReader reader,
+            out CharacterEquipmentAuthorityInventorySlotState[] slotStates,
+            out string errorMessage)
+        {
+            slotStates = null;
+            errorMessage = null;
+            int count = reader.ReadInt32();
+            if (count <= 0 || count > MaxAuthorityInventorySlotStateCount)
+            {
+                errorMessage = $"Character equipment authority-result inventory state must contain one to {MaxAuthorityInventorySlotStateCount} slot states.";
+                return false;
+            }
+
+            slotStates = new CharacterEquipmentAuthorityInventorySlotState[count];
+            for (int i = 0; i < count; i++)
+            {
+                byte inventoryTypeValue = reader.ReadByte();
+                if (!Enum.IsDefined(typeof(InventoryType), (int)inventoryTypeValue))
+                {
+                    errorMessage = $"Character equipment authority-result inventory type {inventoryTypeValue} is invalid.";
+                    return false;
+                }
+
+                slotStates[i] = new CharacterEquipmentAuthorityInventorySlotState(
+                    (InventoryType)inventoryTypeValue,
                     reader.ReadInt32(),
                     reader.ReadInt32());
             }

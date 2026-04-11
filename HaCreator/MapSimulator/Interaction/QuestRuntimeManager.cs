@@ -1669,6 +1669,9 @@ namespace HaCreator.MapSimulator.Interaction
             queryState = new QuestDemandItemQueryState
             {
                 QuestId = questId,
+                RequestItemIds = definition.EndItemRequirements
+                    .Select(requirement => requirement.IsSecret ? 0 : Math.Max(0, requirement.ItemId))
+                    .ToArray(),
                 VisibleItemIds = visibleItemIds,
                 VisibleItemMapIds = visibleItemMapIds,
                 VisibleItemMapResults = visibleItemMapResults,
@@ -3554,7 +3557,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool ShouldDisplayConversationPage(NpcInteractionPage page)
         {
             return page != null &&
-                   (!string.IsNullOrWhiteSpace(page.Text) || (page.Choices?.Count ?? 0) > 0);
+                   (!string.IsNullOrWhiteSpace(page.Text) ||
+                    (page.Choices?.Count ?? 0) > 0 ||
+                    page.InputRequest != null);
         }
 
         private IReadOnlyList<NpcInteractionPage> SelectIssueConversationPages(
@@ -7303,9 +7308,9 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            if (names.Count == 0
-                && ShouldTreatPropertyNameAsScriptAlias(property.Name)
-                && ChildrenContainOnlyScriptAliasMetadata(property.WzProperties))
+            if (ShouldTreatPropertyNameAsScriptAlias(property.Name)
+                && (ChildrenContainOnlyScriptAliasMetadata(property.WzProperties)
+                    || ChildrenContainOnlyNestedScriptAliasContainers(property.WzProperties)))
             {
                 names.Add(property.Name.Trim());
             }
@@ -7357,6 +7362,62 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < children.Count; i++)
             {
                 if (!IsScriptAliasMetadataPropertyName(children[i]?.Name))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool ChildrenContainOnlyNestedScriptAliasContainers(IReadOnlyList<WzImageProperty> children)
+        {
+            if (children == null || children.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < children.Count; i++)
+            {
+                WzImageProperty child = children[i];
+                if (IsScriptAliasMetadataPropertyName(child?.Name))
+                {
+                    continue;
+                }
+
+                if (!IsNestedScriptAliasContainer(child))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsNestedScriptAliasContainer(WzImageProperty property)
+        {
+            if (property == null
+                || !ShouldTreatPropertyNameAsScriptAlias(property.Name))
+            {
+                return false;
+            }
+
+            IReadOnlyList<WzImageProperty> children = property.WzProperties;
+            if (children == null || children.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < children.Count; i++)
+            {
+                WzImageProperty child = children[i];
+                if (IsScriptAliasMetadataPropertyName(child?.Name))
+                {
+                    continue;
+                }
+
+                if (!IsNestedScriptAliasContainer(child)
+                    && child is not WzStringProperty)
                 {
                     return false;
                 }

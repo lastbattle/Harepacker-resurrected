@@ -1746,7 +1746,18 @@ namespace HaCreator.MapSimulator.Interaction
         {
             public PacketScriptSpeaker WithOverrideTemplateId(int templateId)
             {
-                return this with { TemplateId = templateId };
+                string displayName = ResolveNpcNameFromCache(templateId);
+                if (string.IsNullOrWhiteSpace(displayName))
+                {
+                    displayName = templateId > 0 ? $"NPC #{templateId}" : "Script";
+                }
+
+                return this with
+                {
+                    TemplateId = templateId,
+                    NpcId = templateId > 0 ? templateId : NpcId,
+                    DisplayName = displayName
+                };
             }
         }
 

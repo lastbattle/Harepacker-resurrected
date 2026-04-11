@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         Dexterity,
         Intelligence,
         Luck,
+        Craft,
         Attack,
         AttackPercent,
         MagicAttack,
@@ -240,6 +241,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int SpeedPercent { get; set; }        // speedRate percentage speed boost
         public int SpeedMax { get; set; }            // speedMax max-speed cap boost
         public int AllStat { get; set; }             // Big Bang indie all-stat boost
+        public int Craft { get; set; }               // incCraft / hands boost
         public int AbnormalStatusResistance { get; set; } // asrR / indieAsrR
         public int ElementalResistance { get; set; } // terR / indieTerR
         public int ExperienceRate { get; set; }      // expR bonus rate
@@ -301,6 +303,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Point Origin { get; set; }           // Animation origin relative to caster
         public int ZOrder { get; set; } = 0;        // Draw order
         public int? PositionCode { get; set; }      // Optional WZ `pos` anchor selection
+        public int? ClientEventDelayMs { get; set; }
 
         public List<IDXObject> ToTextureFrames()
         {
@@ -1143,6 +1146,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation StopEffect { get; set; }       // Dedicated transient cleanup branch (e.g. stopEffect)
         public SkillAnimation StopSecondaryEffect { get; set; } // Secondary transient cleanup branch (e.g. stopEffect0)
         public SkillAnimation HitEffect { get; set; }        // Effect on target
+        public SkillAnimation MobAnimation { get; set; }     // Target-bound branch used by client-owned secondary managers (e.g. Monster Magnet hook/chain)
+        public string MobAnimationPath { get; set; }
         public List<SkillAnimation> TargetHitEffects { get; set; } = new(); // Indexed client hit UOL branches (hit/0, hit/1, ...)
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
         public SkillAnimation AffectedSecondaryEffect { get; set; } // Secondary buff/affected branch (e.g. affected0)
@@ -1249,6 +1254,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ClientDelayMs { get; set; }
         public bool CasterMove { get; set; }
         public bool AreaAttack { get; set; }
+        public bool PullTarget { get; set; }
         public bool RectBasedOnTarget { get; set; }
         public bool MultiTargeting { get; set; }
         public bool ChainAttack { get; set; }

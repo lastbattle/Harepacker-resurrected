@@ -1052,11 +1052,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public void Reset()
         {
-            _state = ShipState.Idle;
             _balrogState = BalrogState.Hidden;
-            _currentX = _shipKind == 0 ? _x0 : _x;
-            _currentY = _y;
-            _currentAlpha = _shipKind == 0 ? 255f : 0f;
             _deltaX = 0f;
             _deltaY = 0f;
             _balrogAlpha = 0f;
@@ -1065,6 +1061,14 @@ namespace HaCreator.MapSimulator.Fields
             _bgScrollX = 0;
             _announcements.Clear();
             _currentAnnouncement = null;
+
+            if (_shipKind == 1)
+            {
+                SetIdleHiddenState();
+                return;
+            }
+
+            SetIdleDockedState();
         }
 
         public string DescribeStatus()

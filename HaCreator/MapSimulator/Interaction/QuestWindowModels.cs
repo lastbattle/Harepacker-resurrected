@@ -220,6 +220,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class QuestDemandItemQueryState
     {
         public int QuestId { get; init; }
+        public IReadOnlyList<int> RequestItemIds { get; init; } = Array.Empty<int>();
         public IReadOnlyList<int> VisibleItemIds { get; init; } = Array.Empty<int>();
         public IReadOnlyDictionary<int, IReadOnlyList<int>> VisibleItemMapIds { get; init; } =
             new Dictionary<int, IReadOnlyList<int>>();

@@ -55,6 +55,14 @@ namespace HaCreator.MapSimulator.Interaction
             // pass an explicit sound name, the client resolves string-pool id 1272 before
             // playing the notice-owner UI sound.
             [0x04F8] = "Sound/UI.img/DlgNotice",
+            // Recovered from MapleStory.exe v95 `CUserLocal::OnQuestResult`. Keep the
+            // packet-owned quest-result wrapper strings explicit here so subtype 10/12
+            // notices stay on the client-confirmed StringPool seam even when the generated
+            // table drifts or preserves an unrelated line-broken variant.
+            [0x0CDC] = "%s item inventory is full.",
+            [0x0CDD] = " or",
+            [0x1015] = "The [%s] quest expired because the time limit ended",
+            [0x11C8] = "Either you don't have enough Mesos or %s",
             [0x1961] = "UI/UIWindow2.img/UtilDlgEx/BtClose",
             [0x1963] = "UI/UIWindow2.img/UtilDlgEx/BtOK",
             [0x1965] = "UI/UIWindow2.img/UtilDlgEx/line",

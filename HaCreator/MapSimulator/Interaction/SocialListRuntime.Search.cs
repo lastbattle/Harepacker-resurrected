@@ -169,6 +169,56 @@ namespace HaCreator.MapSimulator.Interaction
             return result;
         }
 
+        internal bool TryBuildExpeditionSearchOutboundRequest(
+            string actionKey,
+            out ExpeditionIntermediaryOutboundRequest request,
+            out string reason)
+        {
+            request = default;
+            reason = null;
+            if (string.IsNullOrWhiteSpace(actionKey))
+            {
+                reason = "Expedition search action is empty.";
+                return false;
+            }
+
+            SocialSearchEntryState selectedEntry = GetSelectedSearchEntry(SocialSearchTab.Expedition);
+            if (selectedEntry == null)
+            {
+                reason = "No expedition search entry is selected.";
+                return false;
+            }
+
+            switch (actionKey)
+            {
+                case "Search.Expedition.QuickJoin":
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        ExpeditionIntermediaryOutboundRequestKind.QuickJoin,
+                        selectedEntry.Title,
+                        selectedEntry.PrimaryText,
+                        selectedEntry.PrimaryText,
+                        PartyIndex: 0,
+                        NoticeKind: ExpeditionNoticeKind.Joined,
+                        RemovalKind: ExpeditionRemovalKind.Leave);
+                    return true;
+
+                case "Search.Expedition.Request":
+                    request = new ExpeditionIntermediaryOutboundRequest(
+                        ExpeditionIntermediaryOutboundRequestKind.Request,
+                        selectedEntry.Title,
+                        selectedEntry.PrimaryText,
+                        selectedEntry.PrimaryText,
+                        PartyIndex: 0,
+                        NoticeKind: ExpeditionNoticeKind.Joined,
+                        RemovalKind: ExpeditionRemovalKind.Leave);
+                    return true;
+
+                default:
+                    reason = $"Expedition search action '{actionKey}' has no recovered outbound request shape.";
+                    return false;
+            }
+        }
+
         internal GuildSearchSnapshot BuildGuildSearchSnapshot()
         {
             EnsureGuildSearchSeedData();

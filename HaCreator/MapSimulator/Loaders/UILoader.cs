@@ -32,6 +32,13 @@ namespace HaCreator.MapSimulator.Loaders
     /// </summary>
     public static class UILoader
     {
+        internal enum SharedSkillTooltipFamilySource
+        {
+            None,
+            BigBang,
+            Legacy
+        }
+
         // Constants
         private const string GLOBAL_FONT = "Arial";
         private const float MINIMAP_STREETNAME_TOOLTIP_FONTSIZE = 10f;
@@ -670,6 +677,34 @@ namespace HaCreator.MapSimulator.Loaders
                         LoadCanvasTexture(uiBasicImage?["ComboBox"]?["selected"]?["0"] as WzCanvasProperty, device),
                         LoadCanvasTexture(uiBasicImage?["ComboBox"]?["selected"]?["1"] as WzCanvasProperty, device),
                         LoadCanvasTexture(uiBasicImage?["ComboBox"]?["selected"]?["2"] as WzCanvasProperty, device));
+                    WzSubProperty whisperPickerScrollBarProperty = uiBasicImage?["VScr9"] as WzSubProperty;
+                    WzSubProperty whisperPickerScrollBarEnabledProperty = whisperPickerScrollBarProperty?["enabled"] as WzSubProperty;
+                    WzSubProperty whisperPickerScrollBarDisabledProperty = whisperPickerScrollBarProperty?["disabled"] as WzSubProperty;
+                    chatUI.SetWhisperPickerDropdownScrollbarSkin(new VerticalScrollbarSkin
+                    {
+                        PrevStates = new[]
+                        {
+                            LoadCanvasTexture(whisperPickerScrollBarEnabledProperty, "prev0", device),
+                            LoadCanvasTexture(whisperPickerScrollBarEnabledProperty, "prev1", device),
+                            LoadCanvasTexture(whisperPickerScrollBarEnabledProperty, "prev2", device)
+                        },
+                        NextStates = new[]
+                        {
+                            LoadCanvasTexture(whisperPickerScrollBarEnabledProperty, "next0", device),
+                            LoadCanvasTexture(whisperPickerScrollBarEnabledProperty, "next1", device),
+                            LoadCanvasTexture(whisperPickerScrollBarEnabledProperty, "next2", device)
+                        },
+                        ThumbStates = new[]
+                        {
+                            LoadCanvasTexture(whisperPickerScrollBarEnabledProperty, "thumb0", device),
+                            LoadCanvasTexture(whisperPickerScrollBarEnabledProperty, "thumb1", device),
+                            LoadCanvasTexture(whisperPickerScrollBarEnabledProperty, "thumb2", device)
+                        },
+                        PrevDisabled = LoadCanvasTexture(whisperPickerScrollBarDisabledProperty, "prev", device),
+                        NextDisabled = LoadCanvasTexture(whisperPickerScrollBarDisabledProperty, "next", device),
+                        Base = LoadCanvasTexture(whisperPickerScrollBarEnabledProperty, "base", device)
+                            ?? LoadCanvasTexture(whisperPickerScrollBarDisabledProperty, "base", device)
+                    });
                     chatUI.SetWhisperPickerDialogTextures(
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["t"] as WzCanvasProperty, device),
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["c"] as WzCanvasProperty, device),
@@ -1074,21 +1109,16 @@ namespace HaCreator.MapSimulator.Loaders
 
             Texture2D[] tooltipFrames = new Texture2D[3];
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
-            if (uiWindow2Image == null)
+            WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
+            WzSubProperty resolvedTooltipProperty = ResolveSharedSkillTooltipProperty(uiWindow2Image, uiWindowImage);
+            if (resolvedTooltipProperty == null)
             {
                 return tooltipFrames;
             }
 
-            WzSubProperty skillProperty = uiWindow2Image["Skill"] as WzSubProperty;
-            WzSubProperty mainProperty = skillProperty?["main"] as WzSubProperty;
-            if (mainProperty == null)
-            {
-                return tooltipFrames;
-            }
-
-            tooltipFrames[0] = LoadCanvasTexture(mainProperty["tip0"] as WzCanvasProperty, device);
-            tooltipFrames[1] = LoadCanvasTexture(mainProperty["tip1"] as WzCanvasProperty, device);
-            tooltipFrames[2] = LoadCanvasTexture(mainProperty["tip2"] as WzCanvasProperty, device);
+            tooltipFrames[0] = LoadCanvasTexture(resolvedTooltipProperty["tip0"] as WzCanvasProperty, device);
+            tooltipFrames[1] = LoadCanvasTexture(resolvedTooltipProperty["tip1"] as WzCanvasProperty, device);
+            tooltipFrames[2] = LoadCanvasTexture(resolvedTooltipProperty["tip2"] as WzCanvasProperty, device);
             _skillTooltipTextureCache[cacheKey] = tooltipFrames;
             return tooltipFrames;
         }
@@ -1097,16 +1127,96 @@ namespace HaCreator.MapSimulator.Loaders
         {
             Point[] tooltipOrigins = new Point[3];
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
-            WzSubProperty mainProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
-            if (mainProperty == null)
+            WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
+            WzSubProperty bigBangTooltipProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
+            WzSubProperty resolvedTooltipProperty = ResolveSharedSkillTooltipProperty(uiWindow2Image, uiWindowImage);
+            if (resolvedTooltipProperty == null)
             {
                 return tooltipOrigins;
             }
 
-            tooltipOrigins[0] = ResolveTooltipOrigin(mainProperty["tip0"] as WzCanvasProperty);
-            tooltipOrigins[1] = ResolveTooltipOrigin(mainProperty["tip1"] as WzCanvasProperty);
-            tooltipOrigins[2] = ResolveTooltipOrigin(mainProperty["tip2"] as WzCanvasProperty);
+            tooltipOrigins[0] = ResolveSkillTooltipOriginWithSameFamilyFallback(
+                resolvedTooltipProperty["tip0"] as WzCanvasProperty,
+                bigBangTooltipProperty?["tip0"] as WzCanvasProperty);
+            tooltipOrigins[1] = ResolveSkillTooltipOriginWithSameFamilyFallback(
+                resolvedTooltipProperty["tip1"] as WzCanvasProperty,
+                bigBangTooltipProperty?["tip1"] as WzCanvasProperty);
+            tooltipOrigins[2] = ResolveSkillTooltipOriginWithSameFamilyFallback(
+                resolvedTooltipProperty["tip2"] as WzCanvasProperty,
+                bigBangTooltipProperty?["tip2"] as WzCanvasProperty);
             return tooltipOrigins;
+        }
+
+        private static WzSubProperty ResolveSharedSkillTooltipProperty(WzImage uiWindow2Image, WzImage uiWindowImage)
+        {
+            WzSubProperty bigBangTooltipProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
+            WzSubProperty legacyTooltipProperty = uiWindowImage?["Skill"] as WzSubProperty;
+            return ResolveSharedSkillTooltipFamilySourceForClientParity(
+                hasBigBangTooltipProperty: bigBangTooltipProperty != null,
+                hasBigBangTooltipFamily: HasSkillTooltipFrameFamily(bigBangTooltipProperty),
+                hasLegacyTooltipProperty: legacyTooltipProperty != null,
+                hasLegacyTooltipFamily: HasSkillTooltipFrameFamily(legacyTooltipProperty)) switch
+            {
+                SharedSkillTooltipFamilySource.BigBang => bigBangTooltipProperty,
+                SharedSkillTooltipFamilySource.Legacy => legacyTooltipProperty,
+                _ => null
+            };
+        }
+
+        internal static SharedSkillTooltipFamilySource ResolveSharedSkillTooltipFamilySourceForClientParity(
+            bool hasBigBangTooltipProperty,
+            bool hasBigBangTooltipFamily,
+            bool hasLegacyTooltipProperty,
+            bool hasLegacyTooltipFamily)
+        {
+            if (hasBigBangTooltipFamily)
+            {
+                return SharedSkillTooltipFamilySource.BigBang;
+            }
+
+            if (hasLegacyTooltipFamily)
+            {
+                return SharedSkillTooltipFamilySource.Legacy;
+            }
+
+            if (hasBigBangTooltipProperty)
+            {
+                return SharedSkillTooltipFamilySource.BigBang;
+            }
+
+            if (hasLegacyTooltipProperty)
+            {
+                return SharedSkillTooltipFamilySource.Legacy;
+            }
+
+            return SharedSkillTooltipFamilySource.None;
+        }
+
+        private static bool HasSkillTooltipFrameFamily(WzSubProperty skillProperty)
+        {
+            return skillProperty?["tip0"] is WzCanvasProperty
+                && skillProperty?["tip1"] is WzCanvasProperty
+                && skillProperty?["tip2"] is WzCanvasProperty;
+        }
+
+        private static Point ResolveSkillTooltipOriginWithSameFamilyFallback(
+            WzCanvasProperty canvas,
+            WzCanvasProperty sameFamilyFallbackCanvas)
+        {
+            Point authoredOrigin = ResolveTooltipOrigin(canvas);
+            if (canvas == null || sameFamilyFallbackCanvas == null)
+            {
+                return authoredOrigin;
+            }
+
+            Point fallbackOrigin = ResolveTooltipOrigin(sameFamilyFallbackCanvas);
+            return SkillTooltipFrameLayout.ResolveSameFamilyOriginFallback(
+                authoredOrigin,
+                canvas.PngProperty?.Width ?? 0,
+                canvas.PngProperty?.Height ?? 0,
+                fallbackOrigin,
+                sameFamilyFallbackCanvas.PngProperty?.Width ?? 0,
+                sameFamilyFallbackCanvas.PngProperty?.Height ?? 0);
         }
 
         private static Point ResolveTooltipOrigin(WzCanvasProperty canvas)
@@ -1788,6 +1898,11 @@ namespace HaCreator.MapSimulator.Loaders
 
             var bitmap = LoadCanvasBitmap(canvas);
             return bitmap?.ToTexture2DAndDispose(device);
+        }
+
+        private static Texture2D LoadCanvasTexture(WzSubProperty parent, string childName, GraphicsDevice device)
+        {
+            return LoadCanvasTexture(parent?[childName] as WzCanvasProperty, device);
         }
 
         private static System.Drawing.Bitmap LoadCanvasBitmap(WzCanvasProperty canvas)

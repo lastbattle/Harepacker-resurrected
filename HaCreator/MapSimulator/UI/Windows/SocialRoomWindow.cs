@@ -2,6 +2,9 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Character;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -57,12 +60,14 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private readonly string _windowName;
+        private readonly GraphicsDevice _graphicsDevice;
         private readonly Texture2D _panelTexture;
         private readonly SocialRoomRuntime _runtime;
         private readonly List<LayerInfo> _layers = new List<LayerInfo>();
         private readonly Dictionary<int, CharacterAssembler> _miniRoomAvatarAssemblers = new Dictionary<int, CharacterAssembler>();
         private readonly Dictionary<int, string> _miniRoomAvatarKeys = new Dictionary<int, string>();
         private readonly Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual> _entrustedChildDialogVisuals = new Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual>();
+        private readonly Dictionary<int, Texture2D> _tradeItemIconCache = new Dictionary<int, Texture2D>();
         private SpriteFont _font;
         private UIObject _tradingRoomTradeButton;
         private UIObject _tradingRoomResetButton;
@@ -93,10 +98,11 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color TradeSlotColor = new Color(255, 250, 242, 175);
         private static readonly Color TradeSlotBorderColor = new Color(89, 66, 32, 150);
 
-        public SocialRoomWindow(IDXObject frame, string windowName, Texture2D panelTexture, SocialRoomRuntime runtime)
+        public SocialRoomWindow(IDXObject frame, string windowName, GraphicsDevice graphicsDevice, Texture2D panelTexture, SocialRoomRuntime runtime)
             : base(frame)
         {
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
+            _graphicsDevice = graphicsDevice;
             _panelTexture = panelTexture;
             _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
             _runtime.EntrustedBlacklistPromptRequested = ShowEntrustedBlacklistPrompt;
@@ -401,22 +407,15 @@ namespace HaCreator.MapSimulator.UI
             DrawText(sprite, "Room State", new Vector2(statePanel.X + 12, statePanel.Y + 10), HeaderColor, 0.68f);
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 36, "Capacity", $"{_runtime.Occupants.Count}/{_runtime.Capacity}");
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 58, "Turn", ResolveOmokTurnSummary());
-            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 80, "Clock", $"{_runtime.MiniRoomOmokTimeFloor}s");
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 80, "Clock", _runtime.MiniRoomOmokCountdownText);
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 102, "Winner", ResolveOmokWinnerSummary());
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 124, "Req", ResolveOmokRequestSummary());
+            float buttonStateY = statePanel.Y + 146;
+            DrawWrapped(sprite, _runtime.MiniRoomOmokButtonStateSummary, statePanel.X + 12, ref buttonStateY, statePanel.Width - 24, ValueColor, 0.48f);
 
-            DrawText(sprite, "Notes", new Vector2(notePanel.X + 12, notePanel.Y + 10), HeaderColor, 0.68f);
-            float noteY = notePanel.Y + 60;
-            foreach (string note in _runtime.Notes)
-            {
-                DrawWrapped(sprite, note, notePanel.X + 12, ref noteY, notePanel.Width - 24, MutedColor, 0.5f);
-                if (noteY > notePanel.Bottom - 12)
-                {
-                    break;
-                }
-            }
-
+            DrawText(sprite, "COmokDlg", new Vector2(notePanel.X + 12, notePanel.Y + 10), HeaderColor, 0.68f);
             DrawOmokDialogBanner(sprite, new Rectangle(notePanel.X + 10, notePanel.Y + 28, notePanel.Width - 20, 24));
+            DrawOmokDialogInfoPanels(sprite, notePanel);
 
             DrawText(sprite, "Chat", new Vector2(chatPanel.X + 12, chatPanel.Y + 10), HeaderColor, 0.68f);
             float chatY = chatPanel.Bottom - 22;
@@ -439,8 +438,6 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 }
             }
-
-            DrawMiniRoomAvatarStrip(sprite, skeletonMeshRenderer, tickCount, notePanel);
 
             float statusY = Position.Y + (CurrentFrame?.Height ?? 240) - 30;
             DrawWrapped(sprite, _runtime.StatusMessage, Position.X + 20, ref statusY, Math.Max(180, (CurrentFrame?.Width ?? 320) - 40), AccentColor, 0.55f);
@@ -529,7 +526,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawOmokDialogBanner(SpriteBatch sprite, Rectangle bannerRect)
         {
-            if (string.IsNullOrWhiteSpace(_runtime.MiniRoomOmokDialogStatus))
+            string bannerText = !string.IsNullOrWhiteSpace(_runtime.MiniRoomOmokPendingPromptText)
+                ? _runtime.MiniRoomOmokPendingPromptText.Replace("\r\n", " ").Trim()
+                : _runtime.MiniRoomOmokDialogStatus;
+            if (string.IsNullOrWhiteSpace(bannerText))
             {
                 return;
             }
@@ -537,7 +537,22 @@ namespace HaCreator.MapSimulator.UI
             Color bannerColor = ResolveOmokDialogBannerColor();
             sprite.Draw(_panelTexture, bannerRect, bannerColor);
             Vector2 textPosition = new Vector2(bannerRect.X + 6, bannerRect.Y + 5);
-            DrawText(sprite, Truncate(_runtime.MiniRoomOmokDialogStatus, 78), textPosition, HeaderColor, 0.46f);
+            DrawText(sprite, Truncate(bannerText, 78), textPosition, HeaderColor, 0.46f);
+        }
+
+        private void DrawOmokDialogInfoPanels(SpriteBatch sprite, Rectangle notePanel)
+        {
+            Rectangle info0Rect = new Rectangle(notePanel.X + 10, notePanel.Y + 56, (notePanel.Width / 2) - 15, 20);
+            Rectangle info1Rect = new Rectangle(info0Rect.Right + 10, info0Rect.Y, notePanel.Right - info0Rect.Right - 20, 20);
+            Rectangle buttonRect = new Rectangle(notePanel.X + 10, notePanel.Y + 76, notePanel.Width - 20, 18);
+
+            sprite.Draw(_panelTexture, info0Rect, new Color(248, 241, 220, 208));
+            sprite.Draw(_panelTexture, info1Rect, new Color(238, 233, 223, 208));
+            sprite.Draw(_panelTexture, buttonRect, new Color(225, 221, 210, 196));
+
+            DrawText(sprite, Truncate(_runtime.MiniRoomOmokInfo0Text, 42), new Vector2(info0Rect.X + 4, info0Rect.Y + 3), ValueColor, 0.42f);
+            DrawText(sprite, Truncate(_runtime.MiniRoomOmokInfo1Text, 42), new Vector2(info1Rect.X + 4, info1Rect.Y + 3), MutedColor, 0.42f);
+            DrawText(sprite, Truncate(_runtime.MiniRoomOmokButtonStateSummary, 92), new Vector2(buttonRect.X + 4, buttonRect.Y + 2), HeaderColor, 0.4f);
         }
 
         private Color ResolveOmokDialogBannerColor()
@@ -787,16 +802,87 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Rectangle innerRect = new Rectangle(slotRect.X + 3, slotRect.Y + 3, slotRect.Width - 6, slotRect.Height - 6);
-            sprite.Draw(_panelTexture, innerRect, ResolveTradeItemTint(item.ItemId));
-            string label = item.ItemId > 0
-                ? (item.ItemId % 10000).ToString("D4")
-                : Truncate(item.ItemName, 4);
-            DrawCenteredText(sprite, label, slotRect.Center.X, slotRect.Y + 8, Color.White, 0.34f);
+            Texture2D icon = ResolveTradingRoomItemIcon(item.ItemId);
+            if (icon != null)
+            {
+                Rectangle destination = CreateCenteredTradeIconBounds(slotRect, icon);
+                sprite.Draw(icon, destination, Color.White);
+            }
+            else
+            {
+                Rectangle innerRect = new Rectangle(slotRect.X + 3, slotRect.Y + 3, slotRect.Width - 6, slotRect.Height - 6);
+                sprite.Draw(_panelTexture, innerRect, ResolveTradeItemTint(item.ItemId));
+                string label = item.ItemId > 0
+                    ? (item.ItemId % 10000).ToString("D4")
+                    : Truncate(item.ItemName, 4);
+                DrawCenteredText(sprite, label, slotRect.Center.X, slotRect.Y + 8, Color.White, 0.34f);
+            }
+
             if (ShouldDrawTradeItemQuantity(item))
             {
-                DrawRightAlignedText(sprite, item.Quantity.ToString(), slotRect.Right - 1, slotRect.Y - 12, ValueColor, 0.42f);
+                string quantityText = item.Quantity.ToString();
+                DrawRightAlignedText(sprite, quantityText, slotRect.Right - 2, slotRect.Bottom - 11, Color.Black, 0.42f);
+                DrawRightAlignedText(sprite, quantityText, slotRect.Right - 3, slotRect.Bottom - 12, Color.White, 0.42f);
             }
+        }
+
+        private Texture2D ResolveTradingRoomItemIcon(int itemId)
+        {
+            if (itemId <= 0 || _graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (_tradeItemIconCache.TryGetValue(itemId, out Texture2D cachedIcon))
+            {
+                return cachedIcon;
+            }
+
+            Texture2D loadedIcon = LoadTradingRoomItemIcon(itemId);
+            _tradeItemIconCache[itemId] = loadedIcon;
+            return loadedIcon;
+        }
+
+        private Texture2D LoadTradingRoomItemIcon(int itemId)
+        {
+            if (!InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                return null;
+            }
+
+            WzImage itemImage = global::HaCreator.Program.FindImage(category, imagePath);
+            if (itemImage == null)
+            {
+                return null;
+            }
+
+            itemImage.ParseImage();
+            string itemNodeName = string.Equals(category, "Character", StringComparison.OrdinalIgnoreCase)
+                ? itemId.ToString("D8")
+                : itemId.ToString("D7");
+            if (itemImage[itemNodeName] is not WzSubProperty itemProperty
+                || itemProperty["info"] is not WzSubProperty infoProperty)
+            {
+                return null;
+            }
+
+            WzCanvasProperty iconCanvas = infoProperty["iconRaw"] as WzCanvasProperty
+                ?? infoProperty["icon"] as WzCanvasProperty;
+            return iconCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_graphicsDevice);
+        }
+
+        private static Rectangle CreateCenteredTradeIconBounds(Rectangle slotRect, Texture2D icon)
+        {
+            int availableWidth = Math.Max(1, slotRect.Width - 6);
+            int availableHeight = Math.Max(1, slotRect.Height - 6);
+            int sourceWidth = Math.Max(1, icon?.Width ?? 1);
+            int sourceHeight = Math.Max(1, icon?.Height ?? 1);
+            float scale = Math.Min(availableWidth / (float)sourceWidth, availableHeight / (float)sourceHeight);
+            int width = Math.Max(1, (int)Math.Round(sourceWidth * scale));
+            int height = Math.Max(1, (int)Math.Round(sourceHeight * scale));
+            int x = slotRect.X + ((slotRect.Width - width) / 2);
+            int y = slotRect.Y + ((slotRect.Height - height) / 2);
+            return new Rectangle(x, y, width, height);
         }
 
         private static bool ShouldDrawTradeItemQuantity(SocialRoomItemEntry item)

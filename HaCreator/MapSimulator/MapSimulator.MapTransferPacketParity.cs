@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
@@ -329,6 +330,19 @@ namespace HaCreator.MapSimulator
                 MapId = resolvedMapId,
                 SlotIndex = request.SlotIndex
             };
+        }
+
+        private MapTransferRuntimePacketResultCode? ResolveMapTransferRegisterRuntimeRestrictionResultCode(MapTransferRuntimeRequest request)
+        {
+            if (request?.Type != MapTransferRuntimeRequestType.Register || request.MapId <= 0)
+            {
+                return null;
+            }
+
+            return FieldInteractionRestrictionEvaluator.GetMapTransferRegistrationResultCode(
+                request.MapId,
+                ResolveMapTransferDestinationMapInfo(request.MapId),
+                BuildFieldEntryRestrictionContext());
         }
 
         private string DescribeMapTransferOfficialSessionBridgeStatus()

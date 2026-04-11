@@ -1308,7 +1308,7 @@ namespace HaCreator.MapSimulator
         {
             if (glyph.ItemIconId.HasValue)
             {
-                return PacketOwnedBalloonInlineIconSize + PacketOwnedBalloonInlineIconSpacing;
+                return ResolvePacketOwnedBalloonInlineItemIconWidth(glyph.ItemIconId.Value);
             }
 
             if (!string.IsNullOrWhiteSpace(glyph.UiCanvasPath))
@@ -1333,7 +1333,7 @@ namespace HaCreator.MapSimulator
         {
             if (run.ItemIconId.HasValue)
             {
-                return PacketOwnedBalloonInlineIconSize + PacketOwnedBalloonInlineIconSpacing;
+                return ResolvePacketOwnedBalloonInlineItemIconWidth(run.ItemIconId.Value);
             }
 
             if (!string.IsNullOrWhiteSpace(run.UiCanvasPath))
@@ -1385,6 +1385,7 @@ namespace HaCreator.MapSimulator
         private int ResolvePacketOwnedBalloonLineHeight(PacketOwnedBalloonWrappedLine[] lines)
         {
             float maxScale = 1f;
+            int maxInlineHeight = PacketOwnedBalloonInlineIconSize;
             if (lines != null)
             {
                 for (int i = 0; i < lines.Length; i++)
@@ -1392,13 +1393,15 @@ namespace HaCreator.MapSimulator
                     PacketOwnedBalloonWrappedLine line = lines[i];
                     for (int runIndex = 0; runIndex < line.Runs.Length; runIndex++)
                     {
-                        maxScale = Math.Max(maxScale, line.Runs[runIndex].Style.Scale);
+                        PacketOwnedBalloonTextRun run = line.Runs[runIndex];
+                        maxScale = Math.Max(maxScale, run.Style.Scale);
+                        maxInlineHeight = Math.Max(maxInlineHeight, ResolvePacketOwnedBalloonRunInlineHeight(run));
                     }
                 }
             }
 
             Vector2 lineMeasure = MeasurePacketOwnedBalloonText("Ay", maxScale);
-            return Math.Max(PacketOwnedBalloonInlineIconSize, (int)Math.Ceiling(lineMeasure.Y));
+            return Math.Max(maxInlineHeight, (int)Math.Ceiling(lineMeasure.Y));
         }
 
         private Vector2 MeasurePacketOwnedBalloonText(string text, float scale)
@@ -1448,8 +1451,7 @@ namespace HaCreator.MapSimulator
         private int ResolvePacketOwnedBalloonInlineVisualWidth(string uiCanvasPath)
         {
             Texture2D inlineTexture = ResolvePacketOwnedBalloonInlineUiCanvasTexture(uiCanvasPath);
-            Point size = ResolvePacketOwnedBalloonInlineVisualSize(inlineTexture);
-            return size.X + PacketOwnedBalloonInlineIconSpacing;
+            return ResolvePacketOwnedBalloonInlineAdvanceWidth(inlineTexture);
         }
 
         private void DrawPacketOwnedBalloonInlineVisual(SpriteBatch spriteBatch, Texture2D inlineTexture, Vector2 position, float alpha)
@@ -1472,21 +1474,68 @@ namespace HaCreator.MapSimulator
 
         private static Point ResolvePacketOwnedBalloonInlineVisualSize(Texture2D inlineTexture)
         {
-            if (inlineTexture == null || inlineTexture.IsDisposed || inlineTexture.Width <= 0 || inlineTexture.Height <= 0)
+            return PacketOwnedBalloonInlineLayout.ResolveDisplaySize(
+                inlineTexture?.Width ?? 0,
+                inlineTexture?.Height ?? 0,
+                PacketOwnedBalloonInlineIconSize,
+                PacketOwnedBalloonInlineIconSize);
+        }
+
+        private static int ResolvePacketOwnedBalloonInlineAdvanceWidth(Texture2D inlineTexture)
+        {
+            return PacketOwnedBalloonInlineLayout.ResolveAdvanceWidth(
+                inlineTexture?.Width ?? 0,
+                inlineTexture?.Height ?? 0,
+                PacketOwnedBalloonInlineIconSize,
+                PacketOwnedBalloonInlineIconSize,
+                PacketOwnedBalloonInlineIconSpacing);
+        }
+
+        private int ResolvePacketOwnedBalloonInlineItemIconWidth(int itemId)
+        {
+            return ResolvePacketOwnedBalloonInlineAdvanceWidth(LoadInventoryItemIcon(itemId));
+        }
+
+        private int ResolvePacketOwnedBalloonRunInlineHeight(in PacketOwnedBalloonTextRun run)
+        {
+            if (run.ItemIconId.HasValue)
             {
-                return new Point(PacketOwnedBalloonInlineIconSize, PacketOwnedBalloonInlineIconSize);
+                return ResolvePacketOwnedBalloonInlineVisualSize(LoadInventoryItemIcon(run.ItemIconId.Value)).Y;
             }
 
-            int maxDimension = Math.Max(inlineTexture.Width, inlineTexture.Height);
-            if (maxDimension <= PacketOwnedBalloonInlineIconSize)
+            if (!string.IsNullOrWhiteSpace(run.UiCanvasPath))
             {
-                return new Point(inlineTexture.Width, inlineTexture.Height);
+                return ResolvePacketOwnedBalloonInlineVisualSize(ResolvePacketOwnedBalloonInlineUiCanvasTexture(run.UiCanvasPath)).Y;
             }
 
-            float scale = PacketOwnedBalloonInlineIconSize / (float)maxDimension;
-            return new Point(
-                Math.Max(1, (int)Math.Round(inlineTexture.Width * scale)),
-                Math.Max(1, (int)Math.Round(inlineTexture.Height * scale)));
+            return 0;
+        }
+
+        private float ResolvePacketOwnedBalloonRunVerticalOffset(in PacketOwnedBalloonTextRun run, int lineHeight)
+        {
+            if (run.ItemIconId.HasValue)
+            {
+                Texture2D itemIcon = LoadInventoryItemIcon(run.ItemIconId.Value);
+                return PacketOwnedBalloonInlineLayout.ResolveVerticalOffset(
+                    itemIcon?.Width ?? 0,
+                    itemIcon?.Height ?? 0,
+                    lineHeight,
+                    PacketOwnedBalloonInlineIconSize,
+                    PacketOwnedBalloonInlineIconSize);
+            }
+
+            if (!string.IsNullOrWhiteSpace(run.UiCanvasPath))
+            {
+                Texture2D inlineTexture = ResolvePacketOwnedBalloonInlineUiCanvasTexture(run.UiCanvasPath);
+                return PacketOwnedBalloonInlineLayout.ResolveVerticalOffset(
+                    inlineTexture?.Width ?? 0,
+                    inlineTexture?.Height ?? 0,
+                    lineHeight,
+                    PacketOwnedBalloonInlineIconSize,
+                    PacketOwnedBalloonInlineIconSize);
+            }
+
+            return 0f;
         }
 
         private Texture2D ResolvePacketOwnedBalloonInlineUiCanvasTexture(string uiCanvasPath)
@@ -1635,7 +1684,11 @@ namespace HaCreator.MapSimulator
                     for (int runIndex = 0; runIndex < line.Runs.Length; runIndex++)
                     {
                         PacketOwnedBalloonTextRun run = line.Runs[runIndex];
-                        DrawPacketOwnedBalloonRun(spriteBatch, run, new Vector2(drawX, drawY), 1f);
+                        DrawPacketOwnedBalloonRun(
+                            spriteBatch,
+                            run,
+                            new Vector2(drawX, drawY + ResolvePacketOwnedBalloonRunVerticalOffset(run, lineHeight)),
+                            1f);
                         drawX += MeasurePacketOwnedBalloonRun(run);
                     }
 
@@ -1782,7 +1835,11 @@ namespace HaCreator.MapSimulator
                         for (int runIndex = 0; runIndex < line.Runs.Length; runIndex++)
                         {
                             PacketOwnedBalloonTextRun run = line.Runs[runIndex];
-                            DrawPacketOwnedBalloonRun(spriteBatch, run, new Vector2(drawX, drawY), 1f);
+                            DrawPacketOwnedBalloonRun(
+                                spriteBatch,
+                                run,
+                                new Vector2(drawX, drawY + ResolvePacketOwnedBalloonRunVerticalOffset(run, lineHeight)),
+                                1f);
                             drawX += MeasurePacketOwnedBalloonRun(run);
                         }
 
@@ -2691,6 +2748,12 @@ namespace HaCreator.MapSimulator
             if (_fieldHazardSharedPetConsumeItemId > 0
                 && _fieldHazardSharedPetConsumeInventoryType != InventoryType.NONE)
             {
+                if (IsPersistentFieldHazardSharedPetConsumeSource(_fieldHazardSharedPetConsumeSource)
+                    && !IsClientFieldHazardPetConsumeInventoryType(_fieldHazardSharedPetConsumeInventoryType))
+                {
+                    return false;
+                }
+
                 if (TryCreateFieldHazardHpPotionCandidate(
                         _fieldHazardSharedPetConsumeItemId,
                         _fieldHazardSharedPetConsumeInventoryType,
@@ -2742,6 +2805,10 @@ namespace HaCreator.MapSimulator
                     sharedSource = FieldHazardSharedPetConsumeSource.PetConfiguration;
                     return true;
                 }
+
+                return !IsClientFieldHazardPetConsumeInventoryType(pet.AutoConsumeHpInventoryType)
+                    ? false
+                    : false;
             }
 
             if (!TryResolveFieldHazardHpPotionCandidate(
@@ -3465,6 +3532,11 @@ namespace HaCreator.MapSimulator
             bool firstPetAutoConsumeHpEnabled)
         {
             return firstPetExists && firstPetAutoConsumeHpEnabled;
+        }
+
+        internal static bool IsClientFieldHazardPetConsumeInventoryType(InventoryType inventoryType)
+        {
+            return inventoryType == InventoryType.USE;
         }
 
         private static string DescribeFieldHazardSharedPetConsumeSource(FieldHazardSharedPetConsumeSource source)

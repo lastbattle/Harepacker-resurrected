@@ -92,6 +92,8 @@ namespace HaCreator.MapSimulator.Managers
             _store = store ?? throw new ArgumentNullException(nameof(store));
         }
 
+        public Func<MapTransferRuntimeRequest, MapTransferRuntimePacketResultCode?> RegisterRestrictionResolver { get; set; }
+
         public IReadOnlyList<MapTransferDestinationRecord> GetDestinations(CharacterBuild build, MapTransferDestinationBook book)
         {
             CharacterRuntimeBooks runtimeBooks = GetOrCreateBooks(build);
@@ -299,6 +301,19 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     PacketResultCode = MapTransferRuntimePacketResultCode.CannotSaveDestination,
                     FailureMessage = "This destination cannot be saved in a teleport slot."
+                };
+            }
+
+            MapTransferRuntimePacketResultCode? restrictionResultCode = RegisterRestrictionResolver?.Invoke(request);
+            if (restrictionResultCode.HasValue &&
+                restrictionResultCode.Value != MapTransferRuntimePacketResultCode.None)
+            {
+                return new MapTransferRuntimeResponse
+                {
+                    PacketResultCode = restrictionResultCode.Value,
+                    FailureMessage = ResolveFailureMessage(restrictionResultCode.Value),
+                    FocusMapId = request.MapId,
+                    FocusSlotIndex = request.SlotIndex
                 };
             }
 

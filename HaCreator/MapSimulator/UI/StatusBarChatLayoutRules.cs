@@ -283,6 +283,115 @@ namespace HaCreator.MapSimulator.UI
                 listHeight);
         }
 
+        public static Rectangle ResolveWhisperPickerModalDropdownRowContentBounds(
+            Rectangle listBounds,
+            bool showScrollbar,
+            int scrollbarWidth)
+        {
+            if (!showScrollbar)
+            {
+                return listBounds;
+            }
+
+            int safeScrollbarWidth = Math.Max(1, scrollbarWidth);
+            int contentWidth = Math.Max(1, listBounds.Width - safeScrollbarWidth - 1);
+            return new Rectangle(listBounds.X, listBounds.Y, contentWidth, listBounds.Height);
+        }
+
+        public static Rectangle ResolveWhisperPickerModalDropdownScrollBarBounds(
+            Rectangle listBounds,
+            int scrollbarWidth)
+        {
+            int safeScrollbarWidth = Math.Max(1, scrollbarWidth);
+            return new Rectangle(
+                listBounds.Right - safeScrollbarWidth - 1,
+                listBounds.Y,
+                safeScrollbarWidth,
+                listBounds.Height);
+        }
+
+        public static Rectangle ResolveWhisperPickerModalDropdownScrollPrevBounds(
+            Rectangle scrollbarBounds,
+            int prevHeight)
+        {
+            return new Rectangle(
+                scrollbarBounds.X,
+                scrollbarBounds.Y,
+                scrollbarBounds.Width,
+                Math.Min(scrollbarBounds.Height, Math.Max(1, prevHeight)));
+        }
+
+        public static Rectangle ResolveWhisperPickerModalDropdownScrollNextBounds(
+            Rectangle scrollbarBounds,
+            int nextHeight)
+        {
+            int safeHeight = Math.Min(scrollbarBounds.Height, Math.Max(1, nextHeight));
+            return new Rectangle(
+                scrollbarBounds.X,
+                scrollbarBounds.Bottom - safeHeight,
+                scrollbarBounds.Width,
+                safeHeight);
+        }
+
+        public static Rectangle ResolveWhisperPickerModalDropdownScrollTrackBounds(
+            Rectangle scrollbarBounds,
+            int prevHeight,
+            int nextHeight)
+        {
+            Rectangle prevBounds = ResolveWhisperPickerModalDropdownScrollPrevBounds(scrollbarBounds, prevHeight);
+            Rectangle nextBounds = ResolveWhisperPickerModalDropdownScrollNextBounds(scrollbarBounds, nextHeight);
+            int top = prevBounds.Bottom;
+            int bottom = Math.Max(top, nextBounds.Y);
+            return new Rectangle(
+                scrollbarBounds.X,
+                top,
+                scrollbarBounds.Width,
+                Math.Max(1, bottom - top));
+        }
+
+        public static Rectangle ResolveWhisperPickerModalDropdownScrollThumbBounds(
+            Rectangle trackBounds,
+            int thumbHeight,
+            int firstVisibleIndex,
+            int maxScrollOffset)
+        {
+            int safeThumbHeight = Math.Min(trackBounds.Height, Math.Max(1, thumbHeight));
+            int thumbTravel = Math.Max(0, trackBounds.Height - safeThumbHeight);
+            int safeMaxScrollOffset = Math.Max(0, maxScrollOffset);
+            int clampedFirstVisibleIndex = Math.Clamp(firstVisibleIndex, 0, safeMaxScrollOffset);
+            int thumbTop = trackBounds.Y;
+            if (thumbTravel > 0 && safeMaxScrollOffset > 0)
+            {
+                float ratio = clampedFirstVisibleIndex / (float)safeMaxScrollOffset;
+                thumbTop += (int)Math.Round(thumbTravel * ratio);
+            }
+
+            return new Rectangle(
+                trackBounds.X,
+                thumbTop,
+                trackBounds.Width,
+                safeThumbHeight);
+        }
+
+        public static int ResolveWhisperPickerModalDropdownScrollOffsetFromThumbTop(
+            Rectangle trackBounds,
+            int thumbHeight,
+            int thumbTop,
+            int maxScrollOffset)
+        {
+            int safeThumbHeight = Math.Min(trackBounds.Height, Math.Max(1, thumbHeight));
+            int thumbTravel = Math.Max(0, trackBounds.Height - safeThumbHeight);
+            int safeMaxScrollOffset = Math.Max(0, maxScrollOffset);
+            if (thumbTravel == 0 || safeMaxScrollOffset == 0)
+            {
+                return 0;
+            }
+
+            int clampedTop = Math.Clamp(thumbTop, trackBounds.Y, trackBounds.Bottom - safeThumbHeight);
+            float ratio = (clampedTop - trackBounds.Y) / (float)thumbTravel;
+            return (int)Math.Round(ratio * safeMaxScrollOffset);
+        }
+
         public static int ResolveWhisperPickerModalDropdownHeight(
             int rowHeight,
             int visibleRowCount,

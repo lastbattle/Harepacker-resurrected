@@ -1413,10 +1413,7 @@ namespace HaCreator.MapSimulator
                     officialChairPacket.CharacterId,
                     officialChairPacket.ChairItemId,
                     out string chairMessage,
-                    officialChairPacket.PairCharacterId,
-                    // CUser::SetActivePortableChair updates the couple-chair record
-                    // before loading the additional layer.
-                    syncPairRecordFromChairState: true);
+                    officialChairPacket.PairCharacterId);
                 result = chairApplied
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialChairPacket.CharacterId}."
                     : chairMessage;

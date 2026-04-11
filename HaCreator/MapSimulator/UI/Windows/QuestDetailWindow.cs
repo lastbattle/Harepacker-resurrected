@@ -5,6 +5,8 @@ using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Spine;
 using System;
@@ -58,7 +60,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_SECTION_GAP = 4;
         private const int TOOLTIP_FALLBACK_WIDTH = 220;
         private static readonly Regex RichTextTokenRegex = new(
-            @"(\{\{ITEMICON:\d+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\{\{QUESTSTYLE:[^}]+\}\}|\{\{QUESTREF:[^}]+\}\}|\r?\n|\s+)",
+            @"(\{\{ITEMICON:\d+\}\}|\{\{UICANVAS:[^}]+\}\}|\{\{QUESTSURFACE:[^}]+\}\}|\{\{QUESTSTYLE:[^}]+\}\}|\{\{QUESTREF:[^}]+\}\}|\r?\n|\s+)",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly string _windowName;
@@ -67,6 +69,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<QuestDetailNpcButtonStyle, ActionButtonBinding> _npcButtons = new();
         private readonly Dictionary<string, TimeLimitIndicatorStyle> _timeLimitIndicatorStyles = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Texture2D> _questSurfaceTextures = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Texture2D> _inlineUiCanvasTextures = new(StringComparer.OrdinalIgnoreCase);
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private readonly Point[] _tooltipFrameOrigins = new Point[3];
 
@@ -1220,6 +1223,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             const string itemPrefix = "{{ITEMICON:";
+            const string uiCanvasPrefix = "{{UICANVAS:";
             const string questSurfacePrefix = "{{QUESTSURFACE:";
             const string questReferencePrefix = "{{QUESTREF:";
             if (value.StartsWith(itemPrefix, StringComparison.OrdinalIgnoreCase) &&
@@ -1238,6 +1242,19 @@ namespace HaCreator.MapSimulator.UI
 
             return true;
         }
+
+            if (value.StartsWith(uiCanvasPrefix, StringComparison.OrdinalIgnoreCase) &&
+                value.EndsWith("}}", StringComparison.Ordinal))
+            {
+                string uiCanvasPath = value.Substring(uiCanvasPrefix.Length, value.Length - uiCanvasPrefix.Length - 2).Trim();
+                Texture2D uiCanvasTexture = ResolveInlineUiCanvasTexture(uiCanvasPath);
+                if (uiCanvasTexture != null)
+                {
+                    token = new RichTextToken(RichTextTokenKind.Surface, null, uiCanvasTexture, null, uiCanvasTexture.Width, uiCanvasTexture.Height);
+                }
+
+                return true;
+            }
 
             if (value.StartsWith(questSurfacePrefix, StringComparison.OrdinalIgnoreCase) &&
                 value.EndsWith("}}", StringComparison.Ordinal))
@@ -2216,6 +2233,68 @@ namespace HaCreator.MapSimulator.UI
 
             _questSurfaceTextures.TryGetValue(surfaceKey.Trim(), out Texture2D texture);
             return texture;
+        }
+
+        private Texture2D ResolveInlineUiCanvasTexture(string uiCanvasPath)
+        {
+            if (string.IsNullOrWhiteSpace(uiCanvasPath))
+            {
+                return null;
+            }
+
+            string normalizedPath = uiCanvasPath.Trim().Replace('\\', '/');
+            if (_inlineUiCanvasTextures.TryGetValue(normalizedPath, out Texture2D cachedTexture) &&
+                cachedTexture != null &&
+                !cachedTexture.IsDisposed)
+            {
+                return cachedTexture;
+            }
+
+            if (!TryResolveInlineUiCanvasProperty(normalizedPath, out WzCanvasProperty canvasProperty))
+            {
+                return null;
+            }
+
+            Texture2D texture = canvasProperty.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(GetTextGraphicsDevice());
+            if (texture == null)
+            {
+                return null;
+            }
+
+            _inlineUiCanvasTextures[normalizedPath] = texture;
+            return texture;
+        }
+
+        private static bool TryResolveInlineUiCanvasProperty(string uiCanvasPath, out WzCanvasProperty canvasProperty)
+        {
+            canvasProperty = null;
+            if (string.IsNullOrWhiteSpace(uiCanvasPath))
+            {
+                return false;
+            }
+
+            string[] pathSegments = uiCanvasPath
+                .Trim()
+                .Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (pathSegments.Length < 3)
+            {
+                return false;
+            }
+
+            WzObject current = Program.FindWzObject(pathSegments[0], pathSegments[1]);
+            if (current == null)
+            {
+                return false;
+            }
+
+            for (int i = 2; i < pathSegments.Length && current != null; i++)
+            {
+                current = current[pathSegments[i]];
+            }
+
+            canvasProperty = current as WzCanvasProperty;
+            return canvasProperty != null;
         }
 
         private HoveredQuestItemInfo CreateHoveredQuestItem(int itemId, string lineText, int? quantity)

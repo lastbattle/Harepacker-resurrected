@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -222,6 +224,75 @@ namespace HaCreator.MapSimulator.Interaction
                 FirstEntryPromptStringPoolId,
                 FirstEntryPromptFallback,
                 appendFallbackSuffix: true);
+        }
+
+        internal static IReadOnlyList<string> EnumerateFallbackCountryNameDataSourceDirectories(string currentDirectoryPath)
+        {
+            return EnumerateComparableFallbackDataSourceDirectories(
+                currentDirectoryPath,
+                directory => File.Exists(Path.Combine(directory.FullName, "Etc", "CountryName.img")));
+        }
+
+        internal static IReadOnlyList<string> EnumerateFallbackUiDataSourceDirectories(string currentDirectoryPath)
+        {
+            return EnumerateComparableFallbackDataSourceDirectories(
+                currentDirectoryPath,
+                directory => File.Exists(Path.Combine(directory.FullName, "UI", "UIWindow.img"))
+                    || File.Exists(Path.Combine(directory.FullName, "UI", "UIWindow2.img")));
+        }
+
+        private static IReadOnlyList<string> EnumerateComparableFallbackDataSourceDirectories(
+            string currentDirectoryPath,
+            Func<DirectoryInfo, bool> includeDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(currentDirectoryPath) || !Directory.Exists(currentDirectoryPath))
+            {
+                return Array.Empty<string>();
+            }
+
+            DirectoryInfo parentDirectory = Directory.GetParent(currentDirectoryPath);
+            if (parentDirectory == null || !parentDirectory.Exists)
+            {
+                return Array.Empty<string>();
+            }
+
+            string normalizedCurrentPath = Path.GetFullPath(currentDirectoryPath);
+            string preferredPrefix = ExtractComparableVersionPrefix(Path.GetFileName(normalizedCurrentPath));
+            return parentDirectory
+                .EnumerateDirectories()
+                .Where(directory => !string.Equals(
+                    Path.GetFullPath(directory.FullName),
+                    normalizedCurrentPath,
+                    StringComparison.OrdinalIgnoreCase))
+                .Where(directory => File.Exists(Path.Combine(directory.FullName, "manifest.json")))
+                .Where(directory => includeDirectory?.Invoke(directory) == true)
+                .OrderByDescending(directory => HasComparableVersionPrefix(directory.Name, preferredPrefix))
+                .ThenBy(directory => directory.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(directory => directory.FullName)
+                .ToArray();
+        }
+
+        private static string ExtractComparableVersionPrefix(string directoryName)
+        {
+            if (string.IsNullOrWhiteSpace(directoryName))
+            {
+                return string.Empty;
+            }
+
+            int separatorIndex = directoryName.IndexOfAny(new[] { '_', '-', ' ' });
+            return separatorIndex >= 0
+                ? directoryName.Substring(0, separatorIndex)
+                : directoryName;
+        }
+
+        private static bool HasComparableVersionPrefix(string directoryName, string preferredPrefix)
+        {
+            if (string.IsNullOrWhiteSpace(directoryName) || string.IsNullOrWhiteSpace(preferredPrefix))
+            {
+                return false;
+            }
+
+            return directoryName.StartsWith(preferredPrefix, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

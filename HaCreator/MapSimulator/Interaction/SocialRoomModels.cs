@@ -465,6 +465,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _miniRoomOmokRetreatRequested;
         private bool _miniRoomOmokRetreatRequestSent;
         private bool _miniRoomOmokRetreatRequestSentTurn;
+        private bool _miniRoomOmokRetreatRequestSentMatch;
         private DateTime? _miniRoomOmokLastTimedStateUtc;
         private string _miniRoomOmokPendingPromptText = string.Empty;
         private string _miniRoomOmokLastClientSoundPath = string.Empty;
@@ -628,6 +629,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool MiniRoomOmokDrawRequestSent => _miniRoomOmokDrawRequestSent;
         public bool MiniRoomOmokRetreatRequested => _miniRoomOmokRetreatRequested;
         public bool MiniRoomOmokRetreatRequestSent => _miniRoomOmokRetreatRequestSent;
+        public bool MiniRoomOmokRetreatRequestSentMatch => _miniRoomOmokRetreatRequestSentMatch;
         public int MiniRoomOmokStoneAnimationTimeLeftMs => _miniRoomOmokStoneAnimationTimeLeftMs;
         public int MiniRoomOmokDialogEffectTimeLeftMs => _miniRoomOmokDialogEffectTimeLeftMs;
         public string MiniRoomOmokDialogStatus => _miniRoomOmokDialogStatus;
@@ -635,6 +637,17 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokLastClientSoundStringPoolId => _miniRoomOmokLastClientSoundStringPoolId;
         public string MiniRoomOmokLastClientSoundPath => _miniRoomOmokLastClientSoundPath;
         public string MiniRoomOmokLastOutboundPacketSummary => _miniRoomOmokLastOutboundPacketSummary;
+        public bool IsMiniRoomOmokLocalTurn => IsMiniRoomOmokActive && _miniRoomOmokInProgress && _miniRoomOmokCurrentTurnIndex == _miniRoomLocalSeatIndex;
+        public bool MiniRoomOmokReadyButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex != 0;
+        public bool MiniRoomOmokBanButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex == 0;
+        public bool MiniRoomOmokStartButtonEnabled => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _miniRoomLocalSeatIndex == 0 && _occupants.Count > 1 && _occupants[1].IsReady;
+        public bool MiniRoomOmokGiveUpButtonEnabled => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
+        public bool MiniRoomOmokRetreatButtonEnabled => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
+        public bool MiniRoomOmokTieButtonEnabled => IsMiniRoomOmokActive && _miniRoomOmokInProgress;
+        public string MiniRoomOmokCountdownText => FormatOmokString(OmokTimerTextStringPoolId, "Time left : {0} sec.", _miniRoomOmokTimeFloor);
+        public string MiniRoomOmokInfo0Text => BuildOmokInfo0Text();
+        public string MiniRoomOmokInfo1Text => BuildOmokInfo1Text();
+        public string MiniRoomOmokButtonStateSummary => BuildOmokButtonStateSummary();
         public bool CanMiniRoomOmokReady => IsMiniRoomOmokActive && !_miniRoomOmokInProgress;
         public bool CanMiniRoomOmokStart => IsMiniRoomOmokActive && !_miniRoomOmokInProgress && _occupants.Count >= 2;
         public bool CanMiniRoomOmokRequestTie => IsMiniRoomOmokActive && _miniRoomOmokInProgress && !_miniRoomOmokDrawRequestSent && !_miniRoomOmokTieRequested;
@@ -700,6 +713,7 @@ namespace HaCreator.MapSimulator.Interaction
                 MiniRoomOmokRetreatRequested = _miniRoomOmokRetreatRequested,
                 MiniRoomOmokRetreatRequestSent = _miniRoomOmokRetreatRequestSent,
                 MiniRoomOmokRetreatRequestSentTurn = _miniRoomOmokRetreatRequestSentTurn,
+                MiniRoomOmokRetreatRequestSentMatch = _miniRoomOmokRetreatRequestSentMatch,
                 MiniRoomOmokTimeLeftMs = _miniRoomOmokTimeLeftMs,
                 MiniRoomOmokTimeFloor = _miniRoomOmokTimeFloor,
                 MiniRoomOmokStoneAnimationTimeLeftMs = _miniRoomOmokStoneAnimationTimeLeftMs,
@@ -864,6 +878,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _miniRoomOmokRetreatRequested = source?.MiniRoomOmokRetreatRequested ?? _defaultSnapshot.MiniRoomOmokRetreatRequested;
                 _miniRoomOmokRetreatRequestSent = source?.MiniRoomOmokRetreatRequestSent ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSent;
                 _miniRoomOmokRetreatRequestSentTurn = source?.MiniRoomOmokRetreatRequestSentTurn ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSentTurn;
+                _miniRoomOmokRetreatRequestSentMatch = source?.MiniRoomOmokRetreatRequestSentMatch ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSentMatch;
                 _miniRoomOmokTimeLeftMs = Math.Max(0, source?.MiniRoomOmokTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokTimeLeftMs);
                 _miniRoomOmokTimeFloor = Math.Max(0, source?.MiniRoomOmokTimeFloor ?? _defaultSnapshot.MiniRoomOmokTimeFloor);
                 _miniRoomOmokStoneAnimationTimeLeftMs = Math.Max(0, source?.MiniRoomOmokStoneAnimationTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokStoneAnimationTimeLeftMs);
@@ -1239,20 +1254,55 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
+            bool stateChanged = false;
+            int previousTimeFloor = _miniRoomOmokTimeFloor;
             _miniRoomOmokStoneAnimationTimeLeftMs = Math.Max(0, _miniRoomOmokStoneAnimationTimeLeftMs - elapsedMilliseconds);
             _miniRoomOmokDialogEffectTimeLeftMs = Math.Max(0, _miniRoomOmokDialogEffectTimeLeftMs - elapsedMilliseconds);
             if (_miniRoomOmokDialogEffectTimeLeftMs == 0 && !_miniRoomOmokInProgress && _miniRoomOmokWinnerIndex < 0)
             {
                 _miniRoomOmokDialogStatus = string.Empty;
+                stateChanged = true;
             }
 
             if (!_miniRoomOmokInProgress || _miniRoomOmokWinnerIndex >= 0)
             {
+                if (stateChanged)
+                {
+                    PersistState();
+                }
+
                 return;
             }
 
             _miniRoomOmokTimeLeftMs = Math.Max(0, _miniRoomOmokTimeLeftMs - elapsedMilliseconds);
             _miniRoomOmokTimeFloor = (_miniRoomOmokTimeLeftMs + 999) / 1000;
+            if (_miniRoomOmokTimeFloor != previousTimeFloor)
+            {
+                if (IsMiniRoomOmokLocalTurn
+                    && previousTimeFloor <= 9
+                    && previousTimeFloor > 0
+                    && _miniRoomOmokLastCountdownWarningFloor != previousTimeFloor)
+                {
+                    _miniRoomOmokLastCountdownWarningFloor = previousTimeFloor;
+                    RecordOmokSoundByStringPoolId(OmokSoundTimerStringPoolId);
+                    SetOmokDialogStatus(
+                        $"COmokDlg::Update crossed the {previousTimeFloor}s countdown warning on the active local turn.",
+                        900);
+                    stateChanged = true;
+                }
+
+                if (_miniRoomOmokTimeFloor <= 0 && IsMiniRoomOmokLocalTurn)
+                {
+                    _miniRoomOmokLastOutboundPacketSummary = "COmokDlg::Update would send mini-room packet 63 as soon as the local turn clock expired.";
+                    SetOmokDialogStatus("COmokDlg::Update exhausted the local Omok timer and is waiting on packet 63.", 1500);
+                    stateChanged = true;
+                }
+            }
+
+            if (stateChanged)
+            {
+                PersistState();
+            }
         }
 
         public SocialRoomFieldActorSnapshot GetFieldActorSnapshot(DateTime utcNow)
@@ -1757,7 +1807,8 @@ namespace HaCreator.MapSimulator.Interaction
                         OmokIncomingTiePromptStringPoolId,
                         "Your opponent requests a tie.\r\nWill you accept it?");
                     StatusMessage = _miniRoomOmokPendingPromptText;
-                    SetOmokDialogStatus("COmokDlg::OnTieRequest opened the client Yes/No dialog and is waiting to send packet 51.", 2200);
+                    SetOmokDialogStatus("COmokDlg::OnTieRequest opened the client Yes/No dialog and will send packet 51 after the modal closes.", 2200);
+                    _miniRoomOmokLastOutboundPacketSummary = "COmokDlg::OnTieRequest will send mini-room packet 51 with accept=1 or 0 after the Yes/No dialog closes.";
                     AddMiniRoomSystemMessage($"System : {ResolveRemoteTraderName()} requested an Omok draw.");
                     SyncMiniRoomOmokPresentation();
                     PersistState();
@@ -1785,7 +1836,8 @@ namespace HaCreator.MapSimulator.Interaction
                         OmokIncomingRetreatPromptStringPoolId,
                         "Your oppentent has requested to \r\nwithdraw his/her last move.\r\nDo you accept?");
                     StatusMessage = _miniRoomOmokPendingPromptText;
-                    SetOmokDialogStatus("COmokDlg::OnRetreatRequest opened the client Yes/No dialog and is waiting to send packet 55.", 2200);
+                    SetOmokDialogStatus("COmokDlg::OnRetreatRequest opened the client Yes/No dialog and will send packet 55 after the modal closes.", 2200);
+                    _miniRoomOmokLastOutboundPacketSummary = "COmokDlg::OnRetreatRequest will send mini-room packet 55 with accept=1 or 0 after the Yes/No dialog closes.";
                     AddMiniRoomSystemMessage($"System : {ResolveRemoteTraderName()} requested an Omok retreat.", isWarning: true);
                     SyncMiniRoomOmokPresentation();
                     PersistState();
@@ -4221,6 +4273,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _miniRoomOmokCurrentTurnIndex = Math.Clamp(nextTurnSeat, 0, 1);
             _miniRoomOmokWinnerIndex = -1;
+            _miniRoomOmokRetreatRequestSentMatch = _miniRoomOmokCurrentTurnIndex == _miniRoomLocalSeatIndex;
             ClearOmokDialogRequests();
             ResetOmokTurnClock();
             StartOmokStoneAnimation();
@@ -4246,6 +4299,7 @@ namespace HaCreator.MapSimulator.Interaction
                 StatusMessage = ResolveOmokString(OmokTieStringPoolId, "It's a tie.");
                 SetOmokDialogStatus("COmokDlg::OnGameResult closed the round as a draw.", 2200);
                 RecordOmokSoundByStringPoolId(OmokSoundDrawStringPoolId);
+                AddMiniRoomSystemMessage($"System : {StatusMessage}");
             }
             else
             {
@@ -4259,6 +4313,7 @@ namespace HaCreator.MapSimulator.Interaction
                     $"{ResolveMiniRoomSeatName(_miniRoomOmokWinnerIndex)} won the Omok round from packet state.",
                     2200);
                 RecordOmokSoundByStringPoolId(localWon ? OmokSoundWinStringPoolId : OmokSoundLoseStringPoolId);
+                AddMiniRoomSystemMessage($"System : {StatusMessage}");
             }
 
             SyncMiniRoomOmokPresentation();
@@ -5391,8 +5446,10 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = accept
                 ? "Accepted the incoming Omok tie request. Waiting for packet 62 to close the round."
                 : "Declined the incoming Omok tie request. The round stays live until packet 62 or the next turn packet arrives.";
-            SetOmokDialogStatus(StatusMessage, 2000);
-            _miniRoomOmokLastOutboundPacketSummary = $"COmokDlg::OnTieRequest would send mini-room packet 51 with accept={(accept ? 1 : 0)}.";
+            SetOmokDialogStatus(
+                $"COmokDlg::OnTieRequest closed the modal and sent packet 51 with accept={(accept ? 1 : 0)}.",
+                2000);
+            _miniRoomOmokLastOutboundPacketSummary = $"COmokDlg::OnTieRequest sent mini-room packet 51 with accept={(accept ? 1 : 0)}.";
             AddMiniRoomSystemMessage(
                 $"System : {(accept ? "Tie request accepted" : "Tie request declined")} and packet 51 would be sent.");
             SyncMiniRoomOmokPresentation();
@@ -5454,8 +5511,10 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = accept
                 ? "Accepted the incoming Omok retreat request. Waiting for packet 55 to remove the last stones."
                 : "Declined the incoming Omok retreat request. The round stays live until the next authoritative packet arrives.";
-            SetOmokDialogStatus(StatusMessage, 2000);
-            _miniRoomOmokLastOutboundPacketSummary = $"COmokDlg::OnRetreatRequest would send mini-room packet 55 with accept={(accept ? 1 : 0)}.";
+            SetOmokDialogStatus(
+                $"COmokDlg::OnRetreatRequest closed the modal and sent packet 55 with accept={(accept ? 1 : 0)}.",
+                2000);
+            _miniRoomOmokLastOutboundPacketSummary = $"COmokDlg::OnRetreatRequest sent mini-room packet 55 with accept={(accept ? 1 : 0)}.";
             AddMiniRoomSystemMessage(
                 $"System : {(accept ? "Retreat request accepted" : "Retreat request declined")} and packet 55 would be sent.",
                 isWarning: true);
@@ -7696,6 +7755,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _miniRoomOmokTimeLeftMs = Math.Max(0, timeLeftMs);
             _miniRoomOmokTimeFloor = (_miniRoomOmokTimeLeftMs + 999) / 1000;
+            _miniRoomOmokLastCountdownWarningFloor = int.MaxValue;
             _miniRoomOmokLastTimedStateUtc = null;
         }
 
@@ -7717,6 +7777,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void RecordOmokSoundByStringPoolId(int stringPoolId)
         {
+            _miniRoomOmokLastClientSoundStringPoolId = stringPoolId;
             _miniRoomOmokLastClientSoundPath = ResolveOmokSoundLabel(stringPoolId);
         }
 
@@ -7728,6 +7789,7 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokRetreatRequested = false;
             _miniRoomOmokRetreatRequestSent = false;
             _miniRoomOmokRetreatRequestSentTurn = false;
+            _miniRoomOmokRetreatRequestSentMatch = false;
             _miniRoomOmokLastOutboundPacketSummary = string.Empty;
         }
 
@@ -7800,6 +7862,68 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "COmokDlg owner status: waiting for ready/start flow.";
+        }
+
+        private string BuildOmokInfo0Text()
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_miniRoomOmokPendingPromptText))
+            {
+                return _miniRoomOmokPendingPromptText.Replace("\r\n", " ").Trim();
+            }
+
+            if (_miniRoomOmokInProgress)
+            {
+                return $"{MiniRoomOmokCountdownText} {FormatOmokTurnStatus(_miniRoomOmokCurrentTurnIndex)}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(StatusMessage))
+            {
+                return StatusMessage;
+            }
+
+            return RoomState;
+        }
+
+        private string BuildOmokInfo1Text()
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return string.Empty;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_miniRoomOmokLastOutboundPacketSummary))
+            {
+                return _miniRoomOmokLastOutboundPacketSummary;
+            }
+
+            if (_miniRoomOmokLastClientSoundStringPoolId >= 0)
+            {
+                return $"Client sound: {_miniRoomOmokLastClientSoundPath} (StringPool 0x{_miniRoomOmokLastClientSoundStringPoolId:X3}).";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_miniRoomOmokDialogStatus))
+            {
+                return _miniRoomOmokDialogStatus;
+            }
+
+            return "COmokDlg owner idle.";
+        }
+
+        private string BuildOmokButtonStateSummary()
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return string.Empty;
+            }
+
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"Ready {(MiniRoomOmokReadyButtonEnabled ? "on" : "off")}  Start {(MiniRoomOmokStartButtonEnabled ? "on" : "off")}  Tie {(MiniRoomOmokTieButtonEnabled ? "on" : "off")}  Retreat {(MiniRoomOmokRetreatButtonEnabled ? "on" : "off")}  GiveUp {(MiniRoomOmokGiveUpButtonEnabled ? "on" : "off")}");
         }
 
         private string BuildOmokSeatDetail(int playerIndex, string seatLabel)

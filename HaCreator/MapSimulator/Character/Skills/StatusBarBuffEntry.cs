@@ -23,5 +23,6 @@ namespace HaCreator.MapSimulator.Character.Skills
         public string FamilyDisplayName { get; set; }
         public IReadOnlyList<string> TemporaryStatLabels { get; set; } = Array.Empty<string>();
         public IReadOnlyList<string> TemporaryStatDisplayNames { get; set; } = Array.Empty<string>();
+        public bool IsAlerting { get; set; }
     }
 }

@@ -971,7 +971,6 @@ namespace HaCreator.MapSimulator.Interaction
             internal short Socket2 { get; init; }
             internal long? NonCashSerialNumber { get; init; }
             internal short Hands { get; init; }
-            internal long ExpirationTime { get; init; }
             internal long EquippedTime { get; init; }
             internal int PreviousBonusExpRate { get; init; }
         }
@@ -2726,6 +2725,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            title = NormalizeStoreBankFixedString(title, maxClientBytesIncludingTerminator: 13);
+
             const int tailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
             int requiredTailLength = tailLength + (hasCashSerialNumber ? 0 : sizeof(long)) + sizeof(long) + sizeof(int);
             if (stream.Length - stream.Position < requiredTailLength)
@@ -2824,7 +2825,6 @@ namespace HaCreator.MapSimulator.Interaction
                 Socket1 = socket1,
                 Socket2 = socket2,
                 NonCashSerialNumber = nonCashSerialNumber,
-                ExpirationTime = equippedTime,
                 EquippedTime = equippedTime,
                 PreviousBonusExpRate = previousBonusExpRate
             };
@@ -2848,6 +2848,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return false;
             }
+
+            title = NormalizeStoreBankFixedString(title, maxClientBytesIncludingTerminator: 13);
 
             if (stream.Length - stream.Position < sizeof(short))
             {
@@ -2895,7 +2897,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             byte[] petNameBytes = reader.ReadBytes(petNameLength);
-            title = Encoding.ASCII.GetString(petNameBytes).TrimEnd('\0', ' ');
+            title = NormalizeStoreBankFixedString(
+                Encoding.ASCII.GetString(petNameBytes),
+                maxClientBytesIncludingTerminator: petNameLength);
             byte level = reader.ReadByte();
             short closeness = reader.ReadInt16();
             byte fullness = reader.ReadByte();
@@ -3109,6 +3113,29 @@ namespace HaCreator.MapSimulator.Interaction
             value = Encoding.ASCII.GetString(reader.ReadBytes(length)).Trim();
             return true;
         }
+
+        private static string NormalizeStoreBankFixedString(string value, int maxClientBytesIncludingTerminator)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = value.TrimEnd('\0', ' ');
+            int maxVisibleBytes = Math.Max(0, maxClientBytesIncludingTerminator - 1);
+            if (maxVisibleBytes == 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] bytes = Encoding.ASCII.GetBytes(trimmed);
+            if (bytes.Length <= maxVisibleBytes)
+            {
+                return trimmed;
+            }
+
+            return Encoding.ASCII.GetString(bytes, 0, maxVisibleBytes).TrimEnd('\0', ' ');
+        }
     }
 
     internal sealed class PacketOwnedBattleRecordRuntime
@@ -3125,6 +3152,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int? _lastDecodedAttrRate;
         private int _timerSetSeconds;
         private int _timerStopRemainSeconds;
+        private int _timerExpiryTick;
 
         internal bool IsOpen { get; private set; }
         internal int CurrentPageIndex => _pageIndex;
@@ -3184,7 +3212,27 @@ namespace HaCreator.MapSimulator.Interaction
             return StatusMessage;
         }
 
+        internal bool TryBuildOwnerOpenOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            if (IsOpen)
+            {
+                request = default;
+                message = "CUIBattleRecord owner is already open; the constructor RequestOnCalc(1) path was not mirrored again.";
+                StatusMessage = message;
+                AppendNote(StatusMessage);
+                return false;
+            }
+
+            IsOpen = true;
+            return TryBuildRequestOnCalcOutboundRequest(enabled: true, out request, out message, fromOwnerOpen: true);
+        }
+
         internal bool TryBuildRequestOnCalcOutboundRequest(bool enabled, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            return TryBuildRequestOnCalcOutboundRequest(enabled, out request, out message, fromOwnerOpen: false);
+        }
+
+        private bool TryBuildRequestOnCalcOutboundRequest(bool enabled, out PacketOwnedNpcUtilityOutboundRequest request, out string message, bool fromOwnerOpen)
         {
             request = new PacketOwnedNpcUtilityOutboundRequest(
                 299,
@@ -3193,16 +3241,22 @@ namespace HaCreator.MapSimulator.Interaction
 
             IsOpen = enabled || IsOpen;
             OnCalc = enabled;
+            if (!enabled)
+            {
+                _timerExpiryTick = 0;
+            }
 
             StatusMessage = enabled
-                ? "CUIBattleRecord armed CBattleRecordMan::RequestOnCalc(1); packet 421 still waits for the server-on-calc ack and DOT include flag before mutating damage."
+                ? fromOwnerOpen
+                    ? "CUIBattleRecord constructor/open path mirrored CBattleRecordMan::RequestOnCalc(1); packet 421 still waits for the server-on-calc ack and DOT include flag before mutating damage."
+                    : "CUIBattleRecord armed CBattleRecordMan::RequestOnCalc(1); packet 421 still waits for the server-on-calc ack and DOT include flag before mutating damage."
                 : "CUIBattleRecord disarmed CBattleRecordMan::RequestOnCalc(0); IDA shows this path only flips m_bOnCalc and sends opcode 299, leaving the DOT and summon include flags untouched.";
             AppendNote(StatusMessage);
             message = StatusMessage;
             return true;
         }
 
-        internal bool TryBuildTimerSetOutboundRequest(int seconds, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        internal bool TryBuildTimerSetOutboundRequest(int seconds, int currentTickCount, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
         {
             if (seconds <= 0)
             {
@@ -3213,6 +3267,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _timerSetSeconds = seconds;
             _timerStopRemainSeconds = 0;
+            _timerExpiryTick = unchecked(currentTickCount + (seconds * 1000));
             bool hasRequest = TryBuildRequestOnCalcOutboundRequest(enabled: true, out request, out message);
             StatusMessage = $"CUIBattleRecord button 2003 staged timer auto-calc for {seconds.ToString(CultureInfo.InvariantCulture)} second(s) and mirrored RequestOnCalc(1).";
             AppendNote(StatusMessage);
@@ -3220,13 +3275,14 @@ namespace HaCreator.MapSimulator.Interaction
             return hasRequest;
         }
 
-        internal bool TryBuildTimerStopResumeOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        internal bool TryBuildTimerStopResumeOutboundRequest(int currentTickCount, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
         {
             if (_timerStopRemainSeconds > 0)
             {
                 int resumedSeconds = _timerStopRemainSeconds;
                 _timerSetSeconds = resumedSeconds;
                 _timerStopRemainSeconds = 0;
+                _timerExpiryTick = unchecked(currentTickCount + (resumedSeconds * 1000));
                 bool hasResumeRequest = TryBuildRequestOnCalcOutboundRequest(enabled: true, out request, out message);
                 StatusMessage = $"CUIBattleRecord button 2008 resumed the staged timer with {resumedSeconds.ToString(CultureInfo.InvariantCulture)} second(s) retained and mirrored RequestOnCalc(1).";
                 AppendNote(StatusMessage);
@@ -3243,13 +3299,36 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            _timerStopRemainSeconds = _timerSetSeconds;
+            int remainingMilliseconds = _timerExpiryTick > 0
+                ? Math.Max(0, unchecked(_timerExpiryTick - currentTickCount))
+                : _timerSetSeconds * 1000;
+            _timerStopRemainSeconds = Math.Max(1, (int)Math.Ceiling(remainingMilliseconds / 1000d));
             _timerSetSeconds = 0;
+            _timerExpiryTick = 0;
             bool hasStopRequest = TryBuildRequestOnCalcOutboundRequest(enabled: false, out request, out message);
             StatusMessage = $"CUIBattleRecord button 2008 paused the staged timer with {_timerStopRemainSeconds.ToString(CultureInfo.InvariantCulture)} second(s) retained and mirrored RequestOnCalc(0).";
             AppendNote(StatusMessage);
             message = StatusMessage;
             return hasStopRequest;
+        }
+
+        internal bool TryBuildTimerExpiryOutboundRequest(int currentTickCount, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            request = default;
+            message = null;
+            if (_timerExpiryTick <= 0 || unchecked(currentTickCount - _timerExpiryTick) < 0)
+            {
+                return false;
+            }
+
+            _timerExpiryTick = 0;
+            _timerSetSeconds = 0;
+            _timerStopRemainSeconds = 0;
+            bool hasRequest = TryBuildRequestOnCalcOutboundRequest(enabled: false, out request, out message);
+            StatusMessage = "CUIBattleRecord::Update expired the staged timer and mirrored CBattleRecordMan::RequestOnCalc(0).";
+            AppendNote(StatusMessage);
+            message = StatusMessage;
+            return hasRequest;
         }
 
         internal string ToggleExtended()
@@ -3339,6 +3418,9 @@ namespace HaCreator.MapSimulator.Interaction
                     {
                         IsOpen = false;
                         OnCalc = false;
+                        _timerExpiryTick = 0;
+                        _timerSetSeconds = 0;
+                        _timerStopRemainSeconds = 0;
                         StatusMessage = "CBattleRecordMan rejected the server-on-calc request result and followed the client UI_Close(35) branch.";
                     }
                     else
@@ -3484,6 +3566,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastDecodedAttrRate = null;
             _timerSetSeconds = 0;
             _timerStopRemainSeconds = 0;
+            _timerExpiryTick = 0;
             if (clearNotes)
             {
                 _recentNotes.Clear();

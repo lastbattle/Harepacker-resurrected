@@ -278,7 +278,7 @@ namespace HaCreator.MapSimulator
                         ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
                         : string.Empty;
                     string preservedTrailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                        ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client 16-byte logout-gift cache."
+                        ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
                         : string.Empty;
                     string unavailableMessage = BuildPacketOwnedLogoutGiftOwnerUnavailableMessage(
                         ResolveCurrentPacketOwnedLogoutGiftOwnerAvailability(),
@@ -295,7 +295,7 @@ namespace HaCreator.MapSimulator
                         ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
                         : string.Empty;
                     string hiddenTrailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                        ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client 16-byte logout-gift cache."
+                        ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
                         : string.Empty;
                     message =
                         $"CWvsContext::OnLogoutGift refreshed the instantiated logout-gift singleton using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()} while the visible chooser remained closed behind the StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)} completion dialog.{hiddenTrailingSuffix}{hiddenPayloadSuffix}";
@@ -311,7 +311,7 @@ namespace HaCreator.MapSimulator
                 ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
                 : string.Empty;
             string trailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client 16-byte logout-gift cache."
+                ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
                 : string.Empty;
             message =
                 $"CWvsContext::OnLogoutGift refreshed the active logout-gift owner using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()} after `CUILogoutGift::TryShowLogoutGiftDialog` had already surfaced it.{trailingSuffix}{payloadSuffix}";

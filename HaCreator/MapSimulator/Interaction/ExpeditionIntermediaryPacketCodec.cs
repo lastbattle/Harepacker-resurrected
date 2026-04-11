@@ -91,6 +91,60 @@ namespace HaCreator.MapSimulator.Interaction
 
         public const int AcceptedInviteResponseValue = 8;
         public const int DeclinedInviteResponseValue = 9;
+
+        public static string DescribeRequestCode(byte requestCode)
+        {
+            return requestCode switch
+            {
+                OutboundCreateRequest => "create/register",
+                OutboundInviteRequest => "admission/invite",
+                OutboundResponseInviteRequest => "invite-response",
+                OutboundWithdrawRequest => "withdraw/disband",
+                OutboundKickRequest => "kick/remove",
+                OutboundChangeMasterRequest => "change-master",
+                OutboundChangePartyBossRequest => "change-party-boss",
+                OutboundRelocatePartyRequest => "relocate-party",
+                _ => $"unknown-request-{requestCode}"
+            };
+        }
+
+        public static string DescribeResultCode(byte resultCode)
+        {
+            return resultCode switch
+            {
+                ResultFullSnapshotDraft => "full-snapshot-draft",
+                ResultFullSnapshot => "full-snapshot",
+                ResultNoticeJoined => "notice-joined",
+                ResultFullSnapshotAccepted => "full-snapshot-accepted",
+                ResultIgnoredAlreadyChanged => "ignored-already-changed",
+                ResultIgnoredRequestFailed => "ignored-request-failed",
+                ResultNoticeLeft => "notice-left",
+                ResultRemovedLeave => "removed-leave",
+                ResultNoticeRemoved => "notice-removed",
+                ResultRemovedDisband => "removed-disband",
+                ResultRemovedKicked => "removed-kicked",
+                ResultMasterChanged => "master-changed",
+                ResultModified => "modified",
+                ResultIgnoredModifiedFailure => "ignored-modified-failure",
+                ResultInvite => "invite",
+                ResultResponseInvite => "response-invite",
+                ResultRemovedLeaveEarly => "removed-leave-early",
+                _ => $"unknown-result-{resultCode}"
+            };
+        }
+
+        public static string DescribeOpcodeMap()
+        {
+            return
+                $"Expedition opcode map: inbound result opcode {InboundResultOpcode}; outbound request opcode {OutboundRequestOpcode}. " +
+                $"Client request codes: {OutboundCreateRequest}=create/register, {OutboundInviteRequest}=admission/invite, {OutboundResponseInviteRequest}=invite-response, " +
+                $"{OutboundWithdrawRequest}=withdraw/disband, {OutboundKickRequest}=kick/remove, {OutboundChangeMasterRequest}=change-master, " +
+                $"{OutboundChangePartyBossRequest}=change-party-boss, {OutboundRelocatePartyRequest}=relocate-party. " +
+                $"Recovered result codes: {ResultFullSnapshotDraft}/{ResultFullSnapshot}/{ResultFullSnapshotAccepted}=full snapshots, {ResultModified}=party modified, " +
+                $"{ResultInvite}=invite, {ResultResponseInvite}=invite response, {ResultNoticeJoined}/{ResultNoticeLeft}/{ResultNoticeRemoved}=notices, " +
+                $"{ResultMasterChanged}=master changed, {ResultRemovedLeaveEarly}/{ResultRemovedLeave}/{ResultRemovedDisband}/{ResultRemovedKicked}=removals, " +
+                $"{ResultIgnoredAlreadyChanged}/{ResultIgnoredRequestFailed}/{ResultIgnoredModifiedFailure}=non-mutating returns.";
+        }
     }
 
     internal static class ExpeditionIntermediaryPacketCodec
@@ -128,8 +182,11 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case ExpeditionIntermediaryOutboundRequestKind.QuickJoin:
                 case ExpeditionIntermediaryOutboundRequestKind.Request:
-                case ExpeditionIntermediaryOutboundRequestKind.Notice:
                     return TryEncodeInviteRequest(request, out packet, out error);
+
+                case ExpeditionIntermediaryOutboundRequestKind.Notice:
+                    error = "The v95 expedition send-family recovered so far does not expose a dedicated outbound notice request code; notice send parity remains unconfirmed.";
+                    return false;
 
                 case ExpeditionIntermediaryOutboundRequestKind.Response:
                     return TryEncodeResponseInviteRequest(request, out packet, out error);
@@ -776,7 +833,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ExpeditionIntermediaryPacketTable.OutboundRequestOpcode,
                 requestCode,
                 rawPacket,
-                $"{detail} opcode={ExpeditionIntermediaryPacketTable.OutboundRequestOpcode}; request={requestCode}; raw={Convert.ToHexString(rawPacket)}");
+                $"{detail} opcode={ExpeditionIntermediaryPacketTable.OutboundRequestOpcode}; request={requestCode} ({ExpeditionIntermediaryPacketTable.DescribeRequestCode(requestCode)}); raw={Convert.ToHexString(rawPacket)}");
         }
 
         private static void WriteMapleString(BinaryWriter writer, string value)

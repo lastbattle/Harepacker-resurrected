@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Character;
@@ -12,6 +13,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private const int RemoteAffectedAreaFallbackTickMs = 1000;
+        private readonly Dictionary<int, Fields.MonsterCarnivalTeam> _remoteAffectedAreaMonsterCarnivalOwnerTeams = new();
 
         private readonly record struct RemoteAffectedAreaSkillRuntime(
             SkillData Skill,
@@ -91,6 +93,42 @@ namespace HaCreator.MapSimulator
         private void BindRemoteAffectedAreaPacketField()
         {
             _remoteAffectedAreaPacketRuntime.BindField(_mapBoard?.MapInfo?.id ?? -1, ClearRemoteAffectedAreas);
+        }
+
+        internal static bool TryResolveMonsterCarnivalAffectedAreaOwnerTeam(
+            int ownerId,
+            IReadOnlyDictionary<int, Fields.MonsterCarnivalTeam> cachedOwnerTeams,
+            Func<int, string> resolveOwnerName,
+            Func<string, Fields.MonsterCarnivalTeam?> resolveCharacterTeam,
+            out Fields.MonsterCarnivalTeam team)
+        {
+            team = default;
+            if (ownerId <= 0)
+            {
+                return false;
+            }
+
+            if (cachedOwnerTeams != null
+                && cachedOwnerTeams.TryGetValue(ownerId, out Fields.MonsterCarnivalTeam cachedTeam))
+            {
+                team = cachedTeam;
+                return true;
+            }
+
+            string ownerName = resolveOwnerName?.Invoke(ownerId);
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return false;
+            }
+
+            Fields.MonsterCarnivalTeam? resolvedTeam = resolveCharacterTeam?.Invoke(ownerName);
+            if (!resolvedTeam.HasValue)
+            {
+                return false;
+            }
+
+            team = resolvedTeam.Value;
+            return true;
         }
 
         private void UpdateRemoteAffectedAreaGameplay(int currentTime)
@@ -709,7 +747,7 @@ namespace HaCreator.MapSimulator
 
         private bool IsAffectedAreaOwnerSameTeamMember(int ownerId)
         {
-            if (ownerId <= 0 || !_remoteUserPool.TryGetActor(ownerId, out RemoteUserActor actor))
+            if (ownerId <= 0)
             {
                 return false;
             }
@@ -723,9 +761,7 @@ namespace HaCreator.MapSimulator
             }
 
             Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
-            if (carnival?.IsVisible == true
-                && !string.IsNullOrWhiteSpace(actor?.Name)
-                && carnival.TryResolveCharacterTeam(actor.Name, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
+            if (TryResolveMonsterCarnivalAffectedAreaOwnerTeam(ownerId, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
             {
                 return ownerCarnivalTeam == carnival.LocalTeam;
             }
@@ -757,15 +793,51 @@ namespace HaCreator.MapSimulator
             }
 
             Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
-            if (carnival?.IsVisible == true
-                && _remoteUserPool.TryGetActor(ownerId, out RemoteUserActor actor)
-                && !string.IsNullOrWhiteSpace(actor?.Name)
-                && carnival.TryResolveCharacterTeam(actor.Name, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
+            if (TryResolveMonsterCarnivalAffectedAreaOwnerTeam(ownerId, out Fields.MonsterCarnivalTeam ownerCarnivalTeam))
             {
                 return ownerCarnivalTeam != carnival.LocalTeam;
             }
 
             return false;
+        }
+
+        private bool TryResolveMonsterCarnivalAffectedAreaOwnerTeam(int ownerId, out Fields.MonsterCarnivalTeam team)
+        {
+            team = default;
+            Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            if (carnival?.IsVisible != true)
+            {
+                return false;
+            }
+
+            bool resolved = TryResolveMonsterCarnivalAffectedAreaOwnerTeam(
+                ownerId,
+                _remoteAffectedAreaMonsterCarnivalOwnerTeams,
+                ResolveRemoteAffectedAreaOwnerName,
+                ResolveMonsterCarnivalAffectedAreaOwnerTeamByName,
+                out team);
+            if (resolved)
+            {
+                _remoteAffectedAreaMonsterCarnivalOwnerTeams[ownerId] = team;
+            }
+
+            return resolved;
+        }
+
+        private string ResolveRemoteAffectedAreaOwnerName(int ownerId)
+        {
+            return ownerId > 0 && _remoteUserPool.TryGetActor(ownerId, out RemoteUserActor actor)
+                ? actor?.Name
+                : null;
+        }
+
+        private Fields.MonsterCarnivalTeam? ResolveMonsterCarnivalAffectedAreaOwnerTeamByName(string characterName)
+        {
+            Fields.MonsterCarnivalField carnival = _specialFieldRuntime?.Minigames?.MonsterCarnival;
+            return carnival?.IsVisible == true
+                   && carnival.TryResolveCharacterTeam(characterName, out Fields.MonsterCarnivalTeam team)
+                ? team
+                : null;
         }
     }
 }

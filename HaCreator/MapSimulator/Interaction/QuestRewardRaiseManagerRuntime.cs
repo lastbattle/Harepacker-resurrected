@@ -115,6 +115,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return 0;
             }
 
+            if (restoredState?.SelectedItemsByGroup?.Count > 0)
+            {
+                return Math.Clamp(
+                    QuestRewardRaiseState.ResolveSelectionProgressGroupIndex(prompt, restoredState.SelectedItemsByGroup),
+                    0,
+                    groupCount);
+            }
+
             return Math.Clamp(restoredState?.GroupIndex ?? 0, 0, Math.Max(0, groupCount - 1));
         }
 
@@ -316,9 +324,10 @@ namespace HaCreator.MapSimulator.Interaction
                 retainedState.RequestId = Math.Max(0, payload.OwnerRequestId);
                 retainedState.OwnerItemId = Math.Max(0, payload.OwnerItemId);
                 retainedState.QrData = payload.QrData;
-                retainedState.MaxDropCount = Math.Max(1, Math.Max(retainedState.MaxDropCount, payload.PlacedPieceCount));
+                retainedState.MaxDropCount = ResolveObservedMaxDropCount(retainedState, snapshot, payload);
                 retainedState.WindowMode = payload.WindowMode;
                 retainedState.DisplayMode = payload.DisplayMode;
+                retainedState.SyncSelectionProgressFromPayload(payload);
                 retainedState.AwaitingConfirmAck = packet.Kind == QuestRewardRaiseInboundPacketKind.PutItemConfirmResult
                     ? false
                     : retainedState.AwaitingConfirmAck;
@@ -330,7 +339,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Math.Max(0, payload.OwnerRequestId),
                 Math.Max(0, payload.OwnerItemId),
                 payload.QrData,
-                Math.Max(1, Math.Max(snapshot?.MaxDropCount ?? 1, payload.PlacedPieceCount)),
+                ResolveObservedMaxDropCount(isActiveQuest ? ActiveRaise : retainedState, snapshot, payload),
                 payload.WindowMode,
                 payload.DisplayMode,
                 packet.Kind == QuestRewardRaiseInboundPacketKind.PutItemConfirmResult
@@ -378,7 +387,19 @@ namespace HaCreator.MapSimulator.Interaction
                 && snapshot.OwnerRequestId > 0
                 && (snapshot.AwaitingConfirmAck
                     || snapshot.AwaitingOwnerDestroyAck
-                    || !string.IsNullOrWhiteSpace(snapshot.LastInboundSummary));
+                || !string.IsNullOrWhiteSpace(snapshot.LastInboundSummary));
+        }
+
+        private static int ResolveObservedMaxDropCount(
+            QuestRewardRaiseState observedState,
+            QuestRewardRaiseOwnerSnapshot snapshot,
+            QuestRewardRaisePacketPayload payload)
+        {
+            return Math.Max(
+                1,
+                Math.Max(
+                    Math.Max(observedState?.MaxDropCount ?? 1, snapshot?.MaxDropCount ?? 1),
+                    Math.Max(payload?.PlacedPieceCount ?? 0, payload?.MaxDropCount ?? 0)));
         }
 
         private static bool ShouldReuseRetainedClosedRaise(QuestRewardRaiseState retainedState, QuestRewardChoicePrompt prompt)

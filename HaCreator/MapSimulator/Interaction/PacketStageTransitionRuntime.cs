@@ -65,8 +65,6 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _stageStatus = "Packet-owned stage transition cleared.";
             _mapLoadStatus = "Packet-owned map-load presentation cleared.";
-            _lastAuthoritativeFieldId = -1;
-            _lastAuthoritativeFieldKey = 0;
         }
 
         internal string DescribeStatus()

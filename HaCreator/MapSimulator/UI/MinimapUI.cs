@@ -1754,13 +1754,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 string line = lines[i];
                 _hoverTooltipLines.Add(line);
-                if (string.IsNullOrWhiteSpace(line))
+                if (!string.IsNullOrWhiteSpace(line))
                 {
-                    continue;
+                    _hoverTooltipVisibleLineCount++;
                 }
-
-                _hoverTooltipMaxWidth = Math.Max(_hoverTooltipMaxWidth, _tooltipFont.MeasureString(line).X);
-                _hoverTooltipVisibleLineCount++;
             }
         }
 
@@ -1776,7 +1773,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Point tooltipAnchorPoint = _hoverTooltipAnchorPoint.Value;
-            int lineHeight = _tooltipFont.LineSpacing;
+            int lineHeight = ResolveTooltipLineHeight(sprite?.GraphicsDevice);
+            _hoverTooltipMaxWidth = ResolveTooltipMaxWidth(sprite?.GraphicsDevice);
             int tooltipWidth = (int)Math.Ceiling(_hoverTooltipMaxWidth) + (TOOLTIP_PADDING * 2);
             int tooltipHeight = (_hoverTooltipVisibleLineCount * lineHeight) + ((_hoverTooltipVisibleLineCount - 1) * TOOLTIP_LINE_GAP) + (TOOLTIP_PADDING * 2);
             int tooltipX = tooltipAnchorPoint.X;
@@ -1808,10 +1806,35 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 Vector2 textPosition = new Vector2(tooltipRect.X + TOOLTIP_PADDING, drawY);
-                sprite.DrawString(_tooltipFont, line, textPosition + Vector2.One, Color.Black);
-                sprite.DrawString(_tooltipFont, line, textPosition, Color.White);
+                ClientTextDrawing.DrawShadowed(sprite, line, textPosition, Color.White, _tooltipFont);
                 drawY += lineHeight + TOOLTIP_LINE_GAP;
             }
+        }
+
+        private int ResolveTooltipLineHeight(GraphicsDevice graphicsDevice)
+        {
+            Vector2 measured = ClientTextDrawing.Measure(graphicsDevice, "Ag", fallbackFont: _tooltipFont);
+            int measuredHeight = (int)Math.Ceiling(measured.Y);
+            return Math.Max(1, measuredHeight > 0 ? measuredHeight : _tooltipFont.LineSpacing);
+        }
+
+        private float ResolveTooltipMaxWidth(GraphicsDevice graphicsDevice)
+        {
+            float maxWidth = 0f;
+            for (int i = 0; i < _hoverTooltipLines.Count; i++)
+            {
+                string line = _hoverTooltipLines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    continue;
+                }
+
+                maxWidth = Math.Max(
+                    maxWidth,
+                    ClientTextDrawing.Measure(graphicsDevice, line, fallbackFont: _tooltipFont).X);
+            }
+
+            return maxWidth;
         }
 
         private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)

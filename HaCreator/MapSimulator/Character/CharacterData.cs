@@ -2486,6 +2486,11 @@ namespace HaCreator.MapSimulator.Character
                 : GetWeapon();
         }
 
+        public WeaponPart GetWeaponAfterImageOwner()
+        {
+            return GetWeapon();
+        }
+
         public CharacterAction ResolveClientWalkAction()
         {
             return GetWeapon()?.ResolveClientWalkAction() ?? CharacterAction.Walk1;

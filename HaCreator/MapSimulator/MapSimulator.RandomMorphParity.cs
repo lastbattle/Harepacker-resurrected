@@ -4,6 +4,7 @@ using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 
 namespace HaCreator.MapSimulator
@@ -18,6 +19,13 @@ namespace HaCreator.MapSimulator
         private int _lastRandomMorphOutboundOpcode = -1;
         private byte[] _lastRandomMorphOutboundPayload = Array.Empty<byte>();
         private string _lastRandomMorphOutboundSummary = "Random morph outbound idle.";
+
+        internal readonly record struct RandomMorphInboundResultResolutionForTesting(
+            bool RequestSent,
+            int RequestSentTick,
+            byte ResultCode,
+            byte DetailCode,
+            string ClientNotice);
 
         private void WireRandomMorphWindow()
         {
@@ -174,12 +182,93 @@ namespace HaCreator.MapSimulator
             _randomMorphRequestSentTick = currentTick;
         }
 
-        private bool TryApplyRandomMorphRequestAckPayload(byte[] payload, out string message)
+        private void ClearRandomMorphRequestLatch(int currentTick)
         {
             _randomMorphRequestSent = false;
+            _randomMorphRequestSentTick = currentTick;
+        }
+
+        private bool TryApplyRandomMorphResultPayload(byte[] payload, out string message)
+        {
+            RandomMorphInboundResultResolutionForTesting resolution =
+                ResolveRandomMorphInboundResultForTesting(Environment.TickCount, payload);
+            ClearRandomMorphRequestLatch(resolution.RequestSentTick);
+
+            string summary =
+                $"CWvsContext::OnRandomMorphRes(123) cleared the recovered exclusive-request latch and refreshed the throttle timestamp from inbound result code {resolution.ResultCode}.";
+            message = string.IsNullOrWhiteSpace(resolution.ClientNotice)
+                ? summary
+                : $"{summary} {resolution.ClientNotice}";
+            return true;
+        }
+
+        private bool TryApplyRandomMorphRequestAckPayload(byte[] payload, out string message)
+        {
+            int currentTick = Environment.TickCount;
+            ClearRandomMorphRequestLatch(currentTick);
             message = payload == null || payload.Length == 0
-                ? "Random morph request ack cleared the recovered CWvsContext request latch; the 500 ms send throttle still applies until the client timestamp gate expires."
-                : $"Random morph request ack cleared the recovered CWvsContext request latch with {payload.Length} byte(s) of simulator-local result context; the 500 ms send throttle still applies until the client timestamp gate expires.";
+                ? "Random morph request ack cleared the recovered exclusive-request latch and refreshed the 500 ms throttle timestamp through the simulator packet seam."
+                : $"Random morph request ack cleared the recovered exclusive-request latch and refreshed the 500 ms throttle timestamp with {payload.Length} byte(s) of simulator-local result context.";
+            return true;
+        }
+
+        internal static RandomMorphInboundResultResolutionForTesting ResolveRandomMorphInboundResultForTesting(int currentTick, byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+            byte resultCode = payload.Length > 0 ? payload[0] : (byte)0;
+            byte detailCode = payload.Length > 1 ? payload[1] : (byte)0;
+            string clientNotice = ResolveRandomMorphClientNotice(payload, resultCode, detailCode);
+            return new RandomMorphInboundResultResolutionForTesting(
+                RequestSent: false,
+                RequestSentTick: currentTick,
+                ResultCode: resultCode,
+                DetailCode: detailCode,
+                ClientNotice: clientNotice);
+        }
+
+        internal static string ResolveRandomMorphClientNoticeForTesting(byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+            byte resultCode = payload.Length > 0 ? payload[0] : (byte)0;
+            byte detailCode = payload.Length > 1 ? payload[1] : (byte)0;
+            return ResolveRandomMorphClientNotice(payload, resultCode, detailCode);
+        }
+
+        private static string ResolveRandomMorphClientNotice(byte[] payload, byte resultCode, byte detailCode)
+        {
+            if (resultCode != 1)
+            {
+                return null;
+            }
+
+            return detailCode switch
+            {
+                2 => TryDecodeRandomMorphTargetName(payload, out string targetName)
+                    ? RandomMorphDialogText.FormatTargetNotFoundNotice(targetName)
+                    : RandomMorphDialogText.FormatTargetNotFoundNotice(string.Empty),
+                3 => RandomMorphDialogText.GetTownOnlyNotice(appendFallbackSuffix: false),
+                _ => null
+            };
+        }
+
+        private static bool TryDecodeRandomMorphTargetName(byte[] payload, out string targetName)
+        {
+            targetName = string.Empty;
+            payload ??= Array.Empty<byte>();
+            const int stringOffset = sizeof(byte) + sizeof(byte);
+            if (payload.Length < stringOffset + sizeof(ushort))
+            {
+                return false;
+            }
+
+            ushort byteLength = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(stringOffset, sizeof(ushort)));
+            int contentOffset = stringOffset + sizeof(ushort);
+            if (payload.Length < contentOffset + byteLength)
+            {
+                return false;
+            }
+
+            targetName = Encoding.Default.GetString(payload, contentOffset, byteLength);
             return true;
         }
 

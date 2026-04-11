@@ -132,18 +132,51 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int? level = build.HasAuthoritativeProfileLevel ? Math.Max(1, build.Level) : null;
-            int? jobId = build.HasAuthoritativeProfileJob ? Math.Max(0, build.Job) : null;
-            string guildName = build.HasAuthoritativeProfileGuild
-                ? (build.GuildName ?? string.Empty)
-                : null;
-            if (!level.HasValue && !jobId.HasValue && guildName == null)
+            RemoteUserProfilePacket profilePacket = new(
+                characterId,
+                build.HasAuthoritativeProfileLevel ? Math.Max(1, build.Level) : null,
+                build.HasAuthoritativeProfileJob ? Math.Max(0, build.Job) : null,
+                build.HasAuthoritativeProfileGuild ? (build.GuildName ?? string.Empty) : null,
+                build.HasAuthoritativeProfileAlliance ? (build.AllianceName ?? string.Empty) : null,
+                build.HasAuthoritativeProfileFame ? Math.Max(0, build.Fame) : null,
+                build.HasAuthoritativeProfileWorldRank ? Math.Max(0, build.WorldRank) : null,
+                build.HasAuthoritativeProfileJobRank ? Math.Max(0, build.JobRank) : null,
+                build.HasAuthoritativeProfileRide ? build.HasMonsterRiding : null,
+                build.HasAuthoritativeProfilePendantSlot ? build.HasPendantSlotExtension : null,
+                build.HasAuthoritativeProfilePocketSlot ? build.HasPocketSlot : null,
+                build.HasAuthoritativeProfileTraits ? Math.Max(0, build.TraitCharisma) : null,
+                build.HasAuthoritativeProfileTraits ? Math.Max(0, build.TraitInsight) : null,
+                build.HasAuthoritativeProfileTraits ? Math.Max(0, build.TraitWill) : null,
+                build.HasAuthoritativeProfileTraits ? Math.Max(0, build.TraitCraft) : null,
+                build.HasAuthoritativeProfileTraits ? Math.Max(0, build.TraitSense) : null,
+                build.HasAuthoritativeProfileTraits ? Math.Max(0, build.TraitCharm) : null,
+                build.HasAuthoritativeProfileMedal ? true : null,
+                build.HasAuthoritativeProfileCollection ? true : null);
+
+            if (profilePacket.Level == null
+                && profilePacket.JobId == null
+                && profilePacket.GuildName == null
+                && profilePacket.AllianceName == null
+                && profilePacket.Fame == null
+                && profilePacket.WorldRank == null
+                && profilePacket.JobRank == null
+                && profilePacket.HasRide == null
+                && profilePacket.HasPendantSlot == null
+                && profilePacket.HasPocketSlot == null
+                && profilePacket.TraitCharisma == null
+                && profilePacket.TraitInsight == null
+                && profilePacket.TraitWill == null
+                && profilePacket.TraitCraft == null
+                && profilePacket.TraitSense == null
+                && profilePacket.TraitCharm == null
+                && profilePacket.HasMedal == null
+                && profilePacket.HasCollection == null)
             {
                 message = $"Wedding remote user {characterId} does not carry authoritative profile metadata.";
                 return false;
             }
 
-            return remoteUserPool.TryApplyProfileMetadata(characterId, level, guildName, jobId, out message);
+            return remoteUserPool.TryApplyProfileMetadata(profilePacket, out message);
         }
 
         internal static bool TryApplyWeddingRemoteGuildMarkMetadata(

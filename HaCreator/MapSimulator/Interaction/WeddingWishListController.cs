@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -13,6 +14,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             get => _runtime.SocialChatObserved;
             set => _runtime.SocialChatObserved = value;
+        }
+
+        internal Func<int, IReadOnlyList<byte>, string, string> ClientPacketDispatcher
+        {
+            get => _runtime.ClientPacketDispatcher;
+            set => _runtime.ClientPacketDispatcher = value;
         }
 
         internal void UpdateLocalContext(CharacterBuild build)

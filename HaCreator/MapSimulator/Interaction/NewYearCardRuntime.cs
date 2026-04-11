@@ -13,6 +13,14 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int DefaultItemId = 4300000;
         internal const int DefaultInventoryPosition = 1;
         internal const int MemoWrapWidth = 150;
+        internal const int SenderWindowX = 221;
+        internal const int SenderWindowY = 206;
+        internal const int SenderWindowWidth = 518;
+        internal const int SenderWindowHeight = 188;
+        internal const int ReadWindowX = 286;
+        internal const int ReadWindowY = 168;
+        internal const int ReadWindowWidth = 227;
+        internal const int ReadWindowHeight = 263;
 
         private readonly List<string> _searchResults = new();
         private string _senderName = "Player";
@@ -79,6 +87,15 @@ namespace HaCreator.MapSimulator.Interaction
             return _lastStatus;
         }
 
+        internal string ConfigureReadView(string senderName, string targetName, string memo)
+        {
+            UpdateLocalSender(senderName);
+            _targetName = NormalizeName(targetName, "Recipient");
+            _memo = NormalizeMemo(memo);
+            _lastStatus = $"CUINewYearCardDlg configured the read owner for sender '{_senderName}' and receiver '{DisplayTargetName}'.";
+            return _lastStatus;
+        }
+
         internal string Search(string query)
         {
             string normalizedQuery = NormalizeName(query, string.Empty);
@@ -118,6 +135,29 @@ namespace HaCreator.MapSimulator.Interaction
         {
             byte[] payload = EncodeSendPayload(_inventoryPosition, _itemId, _targetName, _memo);
             return new NewYearCardSendRequest(SendCardOpcode, payload, _inventoryPosition, _itemId, _targetName, _memo);
+        }
+
+        internal bool TryBuildSendRequest(out NewYearCardSendRequest request, out string message)
+        {
+            request = null;
+            if (string.IsNullOrWhiteSpace(_targetName))
+            {
+                message = "Cannot find such character !";
+                _lastStatus = message;
+                return false;
+            }
+
+            if (string.Equals(_senderName, _targetName, StringComparison.OrdinalIgnoreCase))
+            {
+                message = "You cannot send a card to yourself !";
+                _lastStatus = message;
+                return false;
+            }
+
+            request = BuildSendRequest();
+            message = $"CUINewYearCardSenderDlg::_SendNewYearCard prepared opcode {SendCardOpcode} for '{DisplayTargetName}'.";
+            _lastStatus = message;
+            return true;
         }
 
         internal void MarkSendDispatched(string dispatchStatus)

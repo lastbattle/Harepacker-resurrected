@@ -1489,17 +1489,30 @@ namespace HaCreator.MapSimulator
 
         private static string NormalizeVegaResultLoopSoundDescriptor(string descriptor, string fallbackDescriptor)
         {
-            string fallback = string.IsNullOrWhiteSpace(fallbackDescriptor)
-                ? VegaResultPreludeLoopSoundFallback
-                : fallbackDescriptor.Trim();
-            if (string.IsNullOrWhiteSpace(descriptor))
+            string fallback = NormalizePacketOwnedClientSoundDescriptor(
+                string.IsNullOrWhiteSpace(fallbackDescriptor)
+                    ? VegaResultPreludeLoopSoundFallback
+                    : fallbackDescriptor);
+            if (string.IsNullOrWhiteSpace(fallback))
+            {
+                fallback = NormalizePacketOwnedClientSoundDescriptor(VegaResultPreludeLoopSoundFallback);
+            }
+
+            string normalized = NormalizePacketOwnedClientSoundDescriptor(descriptor);
+            if (string.IsNullOrWhiteSpace(normalized))
             {
                 return fallback;
             }
 
-            string normalized = descriptor.Trim();
-            if (normalized.StartsWith("UI/", StringComparison.OrdinalIgnoreCase)
-                || normalized.StartsWith("Etc/", StringComparison.OrdinalIgnoreCase))
+            if (!normalized.Contains('/', StringComparison.Ordinal))
+            {
+                return normalized;
+            }
+
+            if (!TrySplitPacketOwnedClientSoundDescriptor(normalized, out _, out string propertyPath)
+                || string.IsNullOrWhiteSpace(propertyPath)
+                || propertyPath.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
+                || propertyPath.Contains(".img/", StringComparison.OrdinalIgnoreCase))
             {
                 return fallback;
             }

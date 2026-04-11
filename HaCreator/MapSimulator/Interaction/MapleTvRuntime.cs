@@ -62,6 +62,8 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _awaitingQueueReuseConfirmation;
         private MapleTvItemProfile _itemProfile;
         private MapleTvSendResultFeedback _pendingSendResultFeedback;
+        private MapleTvClientRequestState _lastClientRequestState;
+        private MapleTvOfficialPacketState _lastOfficialPacketState;
 
         internal MapleTvRuntime()
         {
@@ -183,7 +185,25 @@ namespace HaCreator.MapSimulator.Interaction
                 CanPublish = _draftLines.Any(line => !string.IsNullOrWhiteSpace(line)),
                 CanClear = _showMessage || _queueExists,
                 CanToggleReceiver = GetCurrentAudienceMode() == MapleTvAudienceMode.Flexible,
-                MirrorsToChat = _itemProfile?.MirrorsToChat ?? false
+                MirrorsToChat = _itemProfile?.MirrorsToChat ?? false,
+                LastClientRequest = _lastClientRequestState == null ? null : new MapleTvClientRequestSnapshot(
+                    _lastClientRequestState.InventoryPosition,
+                    _lastClientRequestState.ItemId,
+                    _lastClientRequestState.ReceiverName,
+                    Array.AsReadOnly((string[])_lastClientRequestState.Lines.Clone()),
+                    _lastClientRequestState.Source,
+                    _lastClientRequestState.Stage,
+                    _lastClientRequestState.RequestTick,
+                    _lastClientRequestState.LastUpdatedTick,
+                    _lastClientRequestState.ResultCode,
+                    _lastClientRequestState.ResultStringPoolId),
+                LastOfficialPacket = _lastOfficialPacketState == null ? null : new MapleTvOfficialPacketSnapshot(
+                    _lastOfficialPacketState.PacketType,
+                    _lastOfficialPacketState.PacketLabel,
+                    _lastOfficialPacketState.Source,
+                    _lastOfficialPacketState.Tick,
+                    _lastOfficialPacketState.ResultCode,
+                    _lastOfficialPacketState.ResultStringPoolId)
             };
         }
 
@@ -206,7 +226,13 @@ namespace HaCreator.MapSimulator.Interaction
             string queueConfirmationSuffix = snapshot.AwaitingQueueReuseConfirmation
                 ? " Queue reuse confirmation is pending."
                 : string.Empty;
-            return $"MapleTV {mode}: {snapshot.SenderName} -> {receiver}, item {itemLabel}, {timer}.{initMedia} {snapshot.StatusMessage}{queueConfirmationSuffix}";
+            string requestSuffix = snapshot.LastClientRequest == null
+                ? string.Empty
+                : $" Client request {DescribeClientRequest(snapshot.LastClientRequest)}.";
+            string packetSuffix = snapshot.LastOfficialPacket == null
+                ? string.Empty
+                : $" Last official packet {DescribeOfficialPacket(snapshot.LastOfficialPacket)}.";
+            return $"MapleTV {mode}: {snapshot.SenderName} -> {receiver}, item {itemLabel}, {timer}.{initMedia} {snapshot.StatusMessage}{queueConfirmationSuffix}{requestSuffix}{packetSuffix}";
         }
 
         internal string ToggleReceiverMode()
@@ -454,24 +480,49 @@ namespace HaCreator.MapSimulator.Interaction
             return feedback;
         }
 
+        internal void RecordClientRequest(
+            MapleTvConsumeCashItemUseRequest request,
+            int currentTick,
+            string source,
+            MapleTvClientRequestStage stage)
+        {
+            if (request == null)
+            {
+                return;
+            }
+
+            _lastClientRequestState = new MapleTvClientRequestState(
+                request.InventoryPosition,
+                request.ItemId,
+                string.IsNullOrWhiteSpace(request.ReceiverName) ? string.Empty : request.ReceiverName.Trim(),
+                request.Lines?.ToArray() ?? Array.Empty<string>(),
+                string.IsNullOrWhiteSpace(source) ? "MapleTV client request" : source.Trim(),
+                stage,
+                currentTick,
+                currentTick,
+                -1,
+                -1);
+        }
+
         internal bool TryApplyPacket(
             int packetType,
             byte[] payload,
             int currentTick,
             Func<LoginAvatarLook, CharacterBuild> buildResolver,
-            out string message)
+            out string message,
+            string source = null)
         {
             switch (packetType)
             {
                 case PacketTypeSetMessage:
-                    return TryApplySetMessagePacket(payload, currentTick, buildResolver, out message);
+                    return TryApplySetMessagePacket(payload, currentTick, buildResolver, out message, source);
 
                 case PacketTypeClearMessage:
-                    message = ApplyClearMessagePacket();
+                    message = ApplyClearMessagePacket(currentTick, source);
                     return true;
 
                 case PacketTypeSendMessageResult:
-                    return TryApplySendMessageResultPacket(payload, out message);
+                    return TryApplySendMessageResultPacket(payload, currentTick, out message, source);
 
                 default:
                     message = $"Unsupported MapleTV packet type {packetType}.";
@@ -559,6 +610,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             (string itemName, string itemDescription) = itemMetadataResolver?.Invoke(request.ItemId) ?? (null, null);
+            RecordClientRequest(request, currentTick, "packet-owned MapleTV consume request", MapleTvClientRequestStage.AppliedLocally);
             SetItem(request.ItemId, itemName, itemDescription);
             SetReceiver(request.ReceiverName);
             for (int i = 0; i < DisplayLineCount; i++)
@@ -569,6 +621,7 @@ namespace HaCreator.MapSimulator.Interaction
             string publishStatus = OnSetMessage(currentTick);
             if (publishStatus.StartsWith("MapleTV message set", StringComparison.Ordinal))
             {
+                AdvanceClientRequestStage(MapleTvClientRequestStage.BroadcastStarted, currentTick);
                 MapleTvSendResultDefinition successDefinition = ResolveSendResultDefinition(1);
                 QueueSendResultFeedback(successDefinition);
                 _statusMessage = $"{publishStatus} Queued CMapleTVMan::OnSendMessageResult success feedback (StringPool 0x{successDefinition.StringPoolId:X}).";
@@ -651,7 +704,8 @@ namespace HaCreator.MapSimulator.Interaction
             byte[] payload,
             int currentTick,
             Func<LoginAvatarLook, CharacterBuild> buildResolver,
-            out string message)
+            out string message,
+            string source = null)
         {
             message = string.Empty;
             if (payload == null || payload.Length == 0)
@@ -717,6 +771,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 _statusMessage = $"Applied MapleTV set-message packet ({(_useReceiver ? "dedication" : "self")} type {_messageType}).";
+                RecordOfficialPacket(PacketTypeSetMessage, currentTick, -1, -1, source);
                 message = _statusMessage;
                 return true;
             }
@@ -732,12 +787,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        internal string ApplyClearMessagePacket()
+        internal string ApplyClearMessagePacket(int currentTick, string source = null)
         {
-            return OnClearMessage(preserveQueue: true);
+            string cleared = OnClearMessage(preserveQueue: true);
+            RecordOfficialPacket(PacketTypeClearMessage, currentTick, -1, -1, source);
+            return cleared;
         }
 
-        internal bool TryApplySendMessageResultPacket(byte[] payload, out string message)
+        internal bool TryApplySendMessageResultPacket(byte[] payload, int currentTick, out string message, string source = null)
         {
             message = string.Empty;
             if (payload == null || payload.Length == 0)
@@ -752,6 +809,7 @@ namespace HaCreator.MapSimulator.Interaction
                 bool shouldShowFeedback = reader.ReadByte() != 0;
                 if (!shouldShowFeedback)
                 {
+                    RecordOfficialPacket(PacketTypeSendMessageResult, currentTick, 0, -1, source);
                     message = "MapleTV send-result packet contained no client chat feedback.";
                     return true;
                 }
@@ -765,6 +823,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 QueueSendResultFeedback(definition);
+                RecordOfficialPacket(PacketTypeSendMessageResult, currentTick, definition.ResultCode, definition.StringPoolId, source);
                 _statusMessage = $"MapleTV send-result packet queued client chat feedback for code {resultCode} (StringPool 0x{definition.StringPoolId:X}).";
                 message = _statusMessage;
                 return true;
@@ -956,6 +1015,86 @@ namespace HaCreator.MapSimulator.Interaction
                 ? $"MapleTV send result ({definition.StatusLabel}, code {definition.ResultCode}, StringPool 0x{definition.StringPoolId:X}; localized client text unresolved)."
                 : $"MapleTV send result failed (code {definition.ResultCode}).";
         }
+
+        private void AdvanceClientRequestStage(
+            MapleTvClientRequestStage stage,
+            int currentTick,
+            int resultCode = -1,
+            int stringPoolId = -1)
+        {
+            if (_lastClientRequestState == null)
+            {
+                return;
+            }
+
+            _lastClientRequestState = _lastClientRequestState with
+            {
+                Stage = stage,
+                LastUpdatedTick = currentTick,
+                ResultCode = resultCode,
+                ResultStringPoolId = stringPoolId
+            };
+        }
+
+        private void RecordOfficialPacket(
+            int packetType,
+            int currentTick,
+            int resultCode,
+            int stringPoolId,
+            string source)
+        {
+            _lastOfficialPacketState = new MapleTvOfficialPacketState(
+                packetType,
+                DescribePacketType(packetType),
+                string.IsNullOrWhiteSpace(source) ? "packet-owned MapleTV dispatcher" : source.Trim(),
+                currentTick,
+                resultCode,
+                stringPoolId);
+            switch (packetType)
+            {
+                case PacketTypeSetMessage:
+                    AdvanceClientRequestStage(MapleTvClientRequestStage.BroadcastStarted, currentTick, resultCode, stringPoolId);
+                    break;
+
+                case PacketTypeClearMessage:
+                    AdvanceClientRequestStage(MapleTvClientRequestStage.Cleared, currentTick, resultCode, stringPoolId);
+                    break;
+
+                case PacketTypeSendMessageResult:
+                    AdvanceClientRequestStage(MapleTvClientRequestStage.SendResultReceived, currentTick, resultCode, stringPoolId);
+                    break;
+            }
+        }
+
+        private static string DescribePacketType(int packetType)
+        {
+            return packetType switch
+            {
+                PacketTypeSetMessage => "405 (OnSetMessage)",
+                PacketTypeClearMessage => "406 (OnClearMessage)",
+                PacketTypeSendMessageResult => "407 (OnSendMessageResult)",
+                _ => packetType.ToString()
+            };
+        }
+
+        private static string DescribeClientRequest(MapleTvClientRequestSnapshot request)
+        {
+            string receiver = string.IsNullOrWhiteSpace(request.ReceiverName)
+                ? "self"
+                : request.ReceiverName;
+            string result = request.ResultCode > 0
+                ? $", result {request.ResultCode}"
+                : string.Empty;
+            return $"{request.Stage} via {request.Source} (slot {request.InventoryPosition}, item {request.ItemId}, receiver {receiver}{result})";
+        }
+
+        private static string DescribeOfficialPacket(MapleTvOfficialPacketSnapshot packet)
+        {
+            string result = packet.ResultCode > 0
+                ? $", result {packet.ResultCode}"
+                : string.Empty;
+            return $"{packet.PacketLabel} via {packet.Source}{result}";
+        }
     }
 
     internal static class MapleTvSendResultText
@@ -1008,9 +1147,61 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanClear { get; init; }
         public bool CanToggleReceiver { get; init; }
         public bool MirrorsToChat { get; init; }
+        public MapleTvClientRequestSnapshot LastClientRequest { get; init; }
+        public MapleTvOfficialPacketSnapshot LastOfficialPacket { get; init; }
     }
 
     internal sealed record MapleTvSendResultFeedback(string ChatMessage, int ChatLogType, int ResultCode, int StringPoolId);
+
+    internal enum MapleTvClientRequestStage
+    {
+        Queued,
+        Dispatched,
+        AppliedLocally,
+        BroadcastStarted,
+        SendResultReceived,
+        Cleared
+    }
+
+    internal sealed record MapleTvClientRequestSnapshot(
+        short InventoryPosition,
+        int ItemId,
+        string ReceiverName,
+        IReadOnlyList<string> Lines,
+        string Source,
+        MapleTvClientRequestStage Stage,
+        int RequestTick,
+        int LastUpdatedTick,
+        int ResultCode,
+        int ResultStringPoolId);
+
+    internal sealed record MapleTvOfficialPacketSnapshot(
+        int PacketType,
+        string PacketLabel,
+        string Source,
+        int Tick,
+        int ResultCode,
+        int ResultStringPoolId);
+
+    internal sealed record MapleTvClientRequestState(
+        short InventoryPosition,
+        int ItemId,
+        string ReceiverName,
+        string[] Lines,
+        string Source,
+        MapleTvClientRequestStage Stage,
+        int RequestTick,
+        int LastUpdatedTick,
+        int ResultCode,
+        int ResultStringPoolId);
+
+    internal sealed record MapleTvOfficialPacketState(
+        int PacketType,
+        string PacketLabel,
+        string Source,
+        int Tick,
+        int ResultCode,
+        int ResultStringPoolId);
 
     internal enum MapleTvAudienceMode
     {

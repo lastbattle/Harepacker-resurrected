@@ -306,6 +306,13 @@ namespace HaCreator.MapSimulator.Interaction
                 minimumHexWidth: 0);
         }
 
+        internal static string FilterTextForClientDisplay(string text)
+        {
+            return ContainsBlockedContent(text)
+                ? GetInappropriateContentNotice()
+                : text ?? string.Empty;
+        }
+
         private static bool ContainsBlockedContent(string text)
         {
             string normalized = Normalize(text);

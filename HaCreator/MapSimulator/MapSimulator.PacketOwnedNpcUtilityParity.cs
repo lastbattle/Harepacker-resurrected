@@ -948,6 +948,7 @@ namespace HaCreator.MapSimulator
 
                     bool hasTimerOutbound = _packetOwnedBattleRecordRuntime.TryBuildTimerSetOutboundRequest(
                         timerSeconds,
+                        currTickCount,
                         out PacketOwnedNpcUtilityOutboundRequest timerRequest,
                         out string timerMessage);
                     return ChatCommandHandler.CommandResult.Ok(
@@ -962,6 +963,7 @@ namespace HaCreator.MapSimulator
                 case "timerresume":
                 case "timerstopresume":
                     bool hasTimerStopResumeOutbound = _packetOwnedBattleRecordRuntime.TryBuildTimerStopResumeOutboundRequest(
+                        currTickCount,
                         out PacketOwnedNpcUtilityOutboundRequest timerStopResumeRequest,
                         out string timerStopResumeMessage);
                     return ChatCommandHandler.CommandResult.Ok(

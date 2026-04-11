@@ -124,11 +124,18 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] payload = Array.Empty<byte>();
-            if (packetType is not 142 and not 143 and not 146
-                && !string.IsNullOrWhiteSpace(payloadToken)
-                && !TryParsePayload(payloadToken, out payload, out error))
+            if (packetType is not 142 and not 143 and not 146)
             {
-                return false;
+                if (string.IsNullOrWhiteSpace(payloadToken))
+                {
+                    error = $"{DescribePacketType(packetType)} requires payload bytes.";
+                    return false;
+                }
+
+                if (!TryParsePayload(payloadToken, out payload, out error))
+                {
+                    return false;
+                }
             }
 
             message = new StageTransitionPacketInboxMessage(packetType, payload, "stagepacket-inbox", text);

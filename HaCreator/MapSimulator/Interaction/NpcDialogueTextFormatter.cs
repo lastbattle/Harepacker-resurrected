@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex CurrentQuestRecordRegex = new(@"#R#", RegexOptions.Compiled);
         private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+:?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex UiCanvasRegex = new(@"#(?:f|F)(?<path>[^#]+)#", RegexOptions.Compiled);
         private static readonly Regex QuestDetailNpcReferenceRegex = new(@"#p(?<id>\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestDetailMapReferenceRegex = new(@"#m(?<id>\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -139,6 +140,9 @@ namespace HaCreator.MapSimulator.Interaction
             string preservedMarkers = RewardCategoryRegex.Replace(
                 text,
                 match => BuildQuestSurfaceMarker(match.Value.TrimStart('#', 'W', 'w').TrimEnd('#')));
+            preservedMarkers = UiCanvasRegex.Replace(
+                preservedMarkers,
+                match => BuildUiCanvasMarker(match.Groups["path"].Value));
             preservedMarkers = ItemIconRegex.Replace(
                 preservedMarkers,
                 match => int.TryParse(match.Value.TrimStart('#', 'i', 'I', 'v', 'V').TrimEnd('#', ':'), out int itemId) && itemId > 0
@@ -242,6 +246,14 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(normalizedKey)
                 ? string.Empty
                 : $"{{{{QUESTSURFACE:{normalizedKey}}}}}";
+        }
+
+        public static string BuildUiCanvasMarker(string canvasPath)
+        {
+            string normalizedPath = canvasPath?.Trim().Replace('\\', '/');
+            return string.IsNullOrWhiteSpace(normalizedPath)
+                ? string.Empty
+                : $"{{{{UICANVAS:{normalizedPath}}}}}";
         }
 
         public static string BuildQuestStyleMarker(string styleTag)

@@ -1,7 +1,9 @@
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Loaders;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
@@ -25,8 +27,13 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerGenericUserStateSingleEffectUol = "Effect/OnUserEff.img/character/0";
         private const string AnimationDisplayerItemMakeSuccessEffectUol = "Effect/BasicEff.img/ItemMake/Success";
         private const string AnimationDisplayerItemMakeFailureEffectUol = "Effect/BasicEff.img/ItemMake/Failure";
+        private const string AnimationDisplayerMonsterBookCardGetEffectUol = "Effect/BasicEff.img/MonsterBook/cardGet";
         private const string AnimationDisplayerBuffItemUseFallbackEffectUol = "Effect/BasicEff.img/Buff";
         private const string AnimationDisplayerItemUnreleaseBaseEffectUol = "Effect/BasicEff.img/Enchant/Success";
+        private const string AnimationDisplayerRedCombatFeedbackEffectBaseUol = "Effect/BasicEff.img/NoRed0";
+        private const string AnimationDisplayerVioletCombatFeedbackEffectBaseUol = "Effect/BasicEff.img/NoViolet0";
+        private const string AnimationDisplayerCatchEffectBaseUol = "Effect/BasicEff.img/Catch";
+        private const string AnimationDisplayerCoolEffectUol = "Effect/BasicEff.img/CoolHit/cool";
         private const int AnimationDisplayerFallingFallbackDurationMs = 1000;
         private const int AnimationDisplayerExplosionFallbackIntervalMs = 100;
         private const int AnimationDisplayerExplosionFallbackCount = 1;
@@ -160,7 +167,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "socialanim",
                 "Exercise the shared social or event animation-displayer runtime",
-                "/socialanim <status|clear|newyear|firecracker|buffitem|itemunrelease|falling|explosion|userstate|follow|questdelivery> [...]",
+                "/socialanim <status|clear|newyear|firecracker|guard|miss|catch|cool|buffitem|itemunrelease|falling|explosion|userstate|follow|questdelivery> [...]",
                 HandleAnimationDisplayerChatCommand);
         }
 
@@ -190,6 +197,99 @@ namespace HaCreator.MapSimulator
                 Rectangle area = ResolveAnimationDisplayerArea(args, startIndex: 1);
                 return TryRegisterAnimationDisplayerFireCrackerAnimation(area, out string message)
                     ? ChatCommandHandler.CommandResult.Ok(message)
+                    : ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            if (string.Equals(args[0], "guard", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "miss", StringComparison.OrdinalIgnoreCase))
+            {
+                string specialTextName = string.Equals(args[0], "guard", StringComparison.OrdinalIgnoreCase)
+                    ? "guard"
+                    : "Miss";
+                if (!TryResolveAnimationDisplayerOwner(
+                        args.Length > 1 ? args[1] : "local",
+                        out int ownerCharacterId,
+                        out Func<Vector2> getPosition,
+                        out string ownerName))
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Could not resolve {specialTextName} animation owner.");
+                }
+
+                if (!TryResolveAnimationDisplayerCombatFeedbackColor(
+                        args.Length > 2 ? args[2] : null,
+                        out DamageColorType colorType))
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Usage: /socialanim {args[0]} [local|characterId] [red|violet]");
+                }
+
+                return TryRegisterAnimationDisplayerCombatFeedback(
+                    specialTextName,
+                    ownerCharacterId,
+                    getPosition,
+                    currTickCount,
+                    colorType,
+                    out string message)
+                    ? ChatCommandHandler.CommandResult.Ok($"{message} Owner={ownerName}.")
+                    : ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            if (string.Equals(args[0], "catch", StringComparison.OrdinalIgnoreCase))
+            {
+                bool success = true;
+                if (args.Length > 1)
+                {
+                    if (string.Equals(args[1], "success", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(args[1], "ok", StringComparison.OrdinalIgnoreCase))
+                    {
+                        success = true;
+                    }
+                    else if (string.Equals(args[1], "fail", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(args[1], "failure", StringComparison.OrdinalIgnoreCase))
+                    {
+                        success = false;
+                    }
+                    else
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /socialanim catch <success|fail> [local|characterId]");
+                    }
+                }
+
+                if (!TryResolveAnimationDisplayerOwner(
+                        args.Length > 2 ? args[2] : "local",
+                        out int ownerCharacterId,
+                        out Func<Vector2> getPosition,
+                        out string ownerName))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Could not resolve catch animation owner.");
+                }
+
+                return TryRegisterAnimationDisplayerCatch(
+                    success,
+                    ownerCharacterId,
+                    getPosition,
+                    currTickCount,
+                    out string message)
+                    ? ChatCommandHandler.CommandResult.Ok($"{message} Owner={ownerName}.")
+                    : ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            if (string.Equals(args[0], "cool", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryResolveAnimationDisplayerOwner(
+                        args.Length > 1 ? args[1] : "local",
+                        out int ownerCharacterId,
+                        out Func<Vector2> getPosition,
+                        out string ownerName))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Could not resolve cooldown animation owner.");
+                }
+
+                return TryRegisterAnimationDisplayerCool(
+                    ownerCharacterId,
+                    getPosition,
+                    currTickCount,
+                    out string message)
+                    ? ChatCommandHandler.CommandResult.Ok($"{message} Owner={ownerName}.")
                     : ChatCommandHandler.CommandResult.Error(message);
             }
 
@@ -346,7 +446,7 @@ namespace HaCreator.MapSimulator
                     : ChatCommandHandler.CommandResult.Error($"Quest-delivery animation frames could not be loaded for item {itemId}.");
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /socialanim <status|clear|newyear|firecracker|buffitem|itemunrelease|falling|explosion|userstate|follow|questdelivery> [...]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /socialanim <status|clear|newyear|firecracker|guard|miss|catch|cool|buffitem|itemunrelease|falling|explosion|userstate|follow|questdelivery> [...]");
         }
 
         private string DescribeAnimationDisplayerStatus()
@@ -464,6 +564,40 @@ namespace HaCreator.MapSimulator
                 fallbackFlip: false,
                 currTickCount);
             message = $"Registered buff-item-use animation-displayer layer from {resolvedEffectUol}.";
+            return true;
+        }
+
+        private bool TryRegisterAnimationDisplayerMonsterBookCardPickup(
+            int ownerCharacterId,
+            Func<Vector2> getPosition,
+            out string message)
+        {
+            message = null;
+            if (ownerCharacterId <= 0 || getPosition == null)
+            {
+                message = "Monster Book card-get animation owner is missing.";
+                return false;
+            }
+
+            if (!TryGetAnimationDisplayerFrames(
+                    "monsterbook:cardget",
+                    AnimationDisplayerMonsterBookCardGetEffectUol,
+                    out List<IDXObject> frames))
+            {
+                message = $"Monster Book card-get animation frames could not be loaded from {AnimationDisplayerMonsterBookCardGetEffectUol}.";
+                return false;
+            }
+
+            Vector2 fallbackPosition = getPosition();
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                getPosition,
+                getFlip: null,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFlip: false,
+                currTickCount);
+            message = $"Registered Monster Book card-get animation-displayer layer from {AnimationDisplayerMonsterBookCardGetEffectUol}.";
             return true;
         }
 
@@ -591,6 +725,139 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private void HandleAnimationDisplayerCombatFeedbackRequested(
+            string specialTextName,
+            float x,
+            float y,
+            int currentTime,
+            DamageColorType colorType)
+        {
+            if (_animationEffects == null)
+            {
+                return;
+            }
+
+            string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
+            if (!string.Equals(resolvedSpecialTextName, "Miss", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(resolvedSpecialTextName, "guard", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            TryRegisterAnimationDisplayerCombatFeedback(
+                resolvedSpecialTextName,
+                ownerCharacterId: 1,
+                () => new Vector2(x, y),
+                currentTime,
+                colorType,
+                out _);
+        }
+
+        private bool TryRegisterAnimationDisplayerCombatFeedback(
+            string specialTextName,
+            int ownerCharacterId,
+            Func<Vector2> getPosition,
+            int currentTime,
+            DamageColorType colorType,
+            out string message)
+        {
+            message = null;
+            if (ownerCharacterId <= 0 || getPosition == null)
+            {
+                message = "Combat-feedback animation owner is missing.";
+                return false;
+            }
+
+            string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
+            string effectUol = ResolveAnimationDisplayerCombatFeedbackEffectUol(resolvedSpecialTextName, colorType);
+            if (!TryGetAnimationDisplayerFrames(
+                    $"combatfeedback:{colorType}:{resolvedSpecialTextName}",
+                    effectUol,
+                    out List<IDXObject> frames))
+            {
+                message = $"Combat-feedback animation frames could not be loaded from {effectUol}.";
+                return false;
+            }
+
+            Vector2 fallbackPosition = getPosition();
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                getPosition,
+                getFlip: null,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFlip: false,
+                currentTime);
+            message = $"Registered combat-feedback animation-displayer layer from {effectUol}.";
+            return true;
+        }
+
+        private bool TryRegisterAnimationDisplayerCatch(
+            bool success,
+            int ownerCharacterId,
+            Func<Vector2> getPosition,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (ownerCharacterId <= 0 || getPosition == null)
+            {
+                message = "Catch animation owner is missing.";
+                return false;
+            }
+
+            string effectUol = ResolveAnimationDisplayerCatchEffectUol(success);
+            if (!TryGetAnimationDisplayerFrames($"catch:{effectUol}", effectUol, out List<IDXObject> frames))
+            {
+                message = $"Catch animation frames could not be loaded from {effectUol}.";
+                return false;
+            }
+
+            Vector2 fallbackPosition = getPosition();
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                getPosition,
+                getFlip: null,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFlip: false,
+                currentTime);
+            message = $"Registered catch animation-displayer layer from {effectUol}.";
+            return true;
+        }
+
+        private bool TryRegisterAnimationDisplayerCool(
+            int ownerCharacterId,
+            Func<Vector2> getPosition,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (ownerCharacterId <= 0 || getPosition == null)
+            {
+                message = "Cooldown animation owner is missing.";
+                return false;
+            }
+
+            if (!TryGetAnimationDisplayerFrames($"cool:{AnimationDisplayerCoolEffectUol}", AnimationDisplayerCoolEffectUol, out List<IDXObject> frames))
+            {
+                message = $"Cooldown animation frames could not be loaded from {AnimationDisplayerCoolEffectUol}.";
+                return false;
+            }
+
+            Vector2 fallbackPosition = getPosition();
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                getPosition,
+                getFlip: null,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFlip: false,
+                currentTime);
+            message = $"Registered cooldown animation-displayer layer from {AnimationDisplayerCoolEffectUol}.";
+            return true;
+        }
+
         internal static string ResolveAnimationDisplayerBuffItemUseEffectUol(
             string requestedEffectUol,
             Func<string, bool> effectExists)
@@ -615,6 +882,48 @@ namespace HaCreator.MapSimulator
                 CombineAnimationDisplayerEffectUol(normalizedBase, "0"),
                 normalizedBase
             };
+        }
+
+        internal static string ResolveAnimationDisplayerCombatFeedbackEffectUol(string specialTextName, DamageColorType colorType)
+        {
+            string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
+            string baseEffectUol = colorType == DamageColorType.Violet
+                ? AnimationDisplayerVioletCombatFeedbackEffectBaseUol
+                : AnimationDisplayerRedCombatFeedbackEffectBaseUol;
+            return CombineAnimationDisplayerEffectUol(baseEffectUol, resolvedSpecialTextName);
+        }
+
+        internal static string ResolveAnimationDisplayerCatchEffectUol(bool success)
+        {
+            return CombineAnimationDisplayerEffectUol(
+                AnimationDisplayerCatchEffectBaseUol,
+                success ? "Success" : "Fail");
+        }
+
+        internal static bool TryResolveAnimationDisplayerCombatFeedbackColor(
+            string token,
+            out DamageColorType colorType)
+        {
+            colorType = DamageColorType.Red;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return true;
+            }
+
+            if (string.Equals(token, "red", StringComparison.OrdinalIgnoreCase))
+            {
+                colorType = DamageColorType.Red;
+                return true;
+            }
+
+            if (string.Equals(token, "violet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(token, "purple", StringComparison.OrdinalIgnoreCase))
+            {
+                colorType = DamageColorType.Violet;
+                return true;
+            }
+
+            return false;
         }
 
         internal static AnimationDisplayerFallingRegistrationProfile BuildAnimationDisplayerFallingRegistrationProfile(
@@ -1575,9 +1884,10 @@ namespace HaCreator.MapSimulator
                 currTickCount,
                 prepared.SkillData.KeydownEndEffect,
                 prepared.SkillData.KeydownEndSecondaryEffect);
-            if (prepared.SkillId > 0)
+            int prepareOwnerId = ResolveAnimationDisplayerPrepareOwnerId();
+            if (prepareOwnerId > 0)
             {
-                _animationEffects?.RemovePrepareAnimation(prepared.SkillId);
+                _animationEffects?.RemovePrepareAnimation(prepareOwnerId);
             }
             TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
@@ -1599,7 +1909,7 @@ namespace HaCreator.MapSimulator
             }
 
             PlayerCharacter localPlayer = _playerManager?.Player;
-            int ownerCharacterId = localPlayer?.Build?.Id ?? 0;
+            int ownerCharacterId = ResolveAnimationDisplayerPrepareOwnerId();
             if (ownerCharacterId <= 0)
             {
                 return false;
@@ -1616,7 +1926,7 @@ namespace HaCreator.MapSimulator
                 ? Math.Max(prepared.HudGaugeDurationMs, prepared.Duration)
                 : prepared.Duration;
             return _animationEffects.RegisterPrepareAnimation(
-                prepared.SkillId,
+                ownerCharacterId,
                 effectAnimation?.ToTextureFrames(),
                 secondaryEffectAnimation?.ToTextureFrames(),
                 getOwnerPosition,
@@ -1625,6 +1935,11 @@ namespace HaCreator.MapSimulator
                 fallbackFlip,
                 prepared.StartTime,
                 durationMs) >= 0;
+        }
+
+        private int ResolveAnimationDisplayerPrepareOwnerId()
+        {
+            return _playerManager?.Player?.Build?.Id ?? 0;
         }
 
         private bool TryRegisterAnimationDisplayerLocalSkillUseRequest(SkillUseEffectRequest request)
@@ -3189,6 +3504,36 @@ namespace HaCreator.MapSimulator
             return clientEquipIndex is 0 or 1 or 2 or 3 or 4 or 9 or 12 or 13 or 15 or 16;
         }
 
+        internal static Point? ResolveAnimationDisplayerOwnerBodyOrigin(Vector2 ownerPosition, AssembledFrame frame)
+        {
+            if (frame == null)
+            {
+                return null;
+            }
+
+            return new Point(
+                (int)Math.Round(ownerPosition.X),
+                (int)Math.Round(ownerPosition.Y) - frame.FeetOffset);
+        }
+
+        internal static Point? ResolveAnimationDisplayerOwnerMapPoint(
+            Vector2 ownerPosition,
+            bool facingRight,
+            AssembledFrame frame,
+            string mapPointName)
+        {
+            if (frame?.MapPoints == null
+                || string.IsNullOrWhiteSpace(mapPointName)
+                || !frame.MapPoints.TryGetValue(mapPointName, out Point localPoint))
+            {
+                return null;
+            }
+
+            int worldX = (int)Math.Round(ownerPosition.X) + (facingRight ? localPoint.X : -localPoint.X);
+            int worldY = (int)Math.Round(ownerPosition.Y) - frame.FeetOffset + localPoint.Y;
+            return new Point(worldX, worldY);
+        }
+
         private Func<Vector2> ResolveAnimationDisplayerFollowTargetPosition(
             int ownerCharacterId,
             Func<Vector2> fallbackPosition,
@@ -3199,36 +3544,29 @@ namespace HaCreator.MapSimulator
                 return fallbackPosition;
             }
 
-            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
-            if (ownerCharacterId <= 0 || ownerCharacterId != localCharacterId)
+            if (ownerCharacterId <= 0)
             {
                 return () => ResolveAnimationDisplayerFollowFallbackOrigin(fallbackPosition);
             }
 
             return () =>
             {
-                PlayerCharacter player = _playerManager?.Player;
-                if (player == null)
-                {
-                    return ResolveAnimationDisplayerFollowFallbackOrigin(fallbackPosition);
-                }
-
                 bool useFaceOrigin = ResolveAnimationDisplayerFollowOriginUsesFace(
                     followDefinition.SourceEquipSlot,
                     followDefinition.UsesRelativeEmission);
                 if (useFaceOrigin)
                 {
-                    Point? faceOrigin = player.TryGetCurrentBodyMapPoint(
-                        AvatarActionLayerCoordinator.ClientFaceOriginMapPoint,
-                        currTickCount)
-                        ?? player.TryGetCurrentBodyMapPoint("brow", currTickCount);
+                    Point? faceOrigin = TryResolveAnimationDisplayerOwnerMapPoint(
+                        ownerCharacterId,
+                        AvatarActionLayerCoordinator.ClientFaceOriginMapPoint)
+                        ?? TryResolveAnimationDisplayerOwnerMapPoint(ownerCharacterId, "brow");
                     if (faceOrigin.HasValue)
                     {
                         return new Vector2(faceOrigin.Value.X, faceOrigin.Value.Y);
                     }
                 }
 
-                Point? bodyOrigin = player.TryGetCurrentBodyOrigin(currTickCount);
+                Point? bodyOrigin = TryResolveAnimationDisplayerOwnerBodyOrigin(ownerCharacterId);
                 return bodyOrigin.HasValue
                     ? new Vector2(bodyOrigin.Value.X, bodyOrigin.Value.Y)
                     : ResolveAnimationDisplayerFollowFallbackOrigin(fallbackPosition);
@@ -3239,6 +3577,42 @@ namespace HaCreator.MapSimulator
         {
             Vector2 fallback = fallbackPosition();
             return new Vector2(fallback.X, fallback.Y + AnimationDisplayerUserStateOffsetY);
+        }
+
+        private Point? TryResolveAnimationDisplayerOwnerBodyOrigin(int ownerCharacterId)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Build?.Id == ownerCharacterId)
+            {
+                return player.TryGetCurrentBodyOrigin(currTickCount);
+            }
+
+            if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor actor) != true || actor == null)
+            {
+                return null;
+            }
+
+            AssembledFrame frame = actor.Assembler?.GetFrameAtTime(actor.ActionName, currTickCount)
+                ?? actor.Assembler?.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currTickCount);
+            return ResolveAnimationDisplayerOwnerBodyOrigin(actor.Position, frame);
+        }
+
+        private Point? TryResolveAnimationDisplayerOwnerMapPoint(int ownerCharacterId, string mapPointName)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Build?.Id == ownerCharacterId)
+            {
+                return player.TryGetCurrentBodyMapPoint(mapPointName, currTickCount);
+            }
+
+            if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor actor) != true || actor == null)
+            {
+                return null;
+            }
+
+            AssembledFrame frame = actor.Assembler?.GetFrameAtTime(actor.ActionName, currTickCount)
+                ?? actor.Assembler?.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currTickCount);
+            return ResolveAnimationDisplayerOwnerMapPoint(actor.Position, actor.FacingRight, frame, mapPointName);
         }
 
         private static Rectangle BuildAnimationDisplayerFollowEquipmentEmissionArea(WzImageProperty effectProperty)

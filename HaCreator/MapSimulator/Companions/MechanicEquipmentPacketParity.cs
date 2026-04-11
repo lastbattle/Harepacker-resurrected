@@ -117,6 +117,82 @@ namespace HaCreator.MapSimulator.Companions
             return unchecked((ushort)-bodyPart);
         }
 
+        internal static bool TryRecognizeObservedLiveBridgeEquipInCompletion(
+            EquipmentChangeRequest request,
+            IReadOnlyDictionary<MechanicEquipSlot, int> beforeState,
+            IReadOnlyDictionary<MechanicEquipSlot, int> currentState,
+            IReadOnlyList<InventorySlotData> currentEquipInventory,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null)
+            {
+                rejectReason = "Mechanic equipment request is missing.";
+                return false;
+            }
+
+            if (request.Kind != EquipmentChangeRequestKind.InventoryToCompanion
+                || request.TargetCompanionKind != EquipmentChangeCompanionKind.Mechanic
+                || !request.TargetMechanicSlot.HasValue)
+            {
+                rejectReason = "Only mechanic equip-in requests can be recognized from live bridge state.";
+                return false;
+            }
+
+            if (currentEquipInventory == null)
+            {
+                rejectReason = "Live equip inventory state is unavailable.";
+                return false;
+            }
+
+            int resolvedTargetItemId = TryGetSnapshotItem(currentState, request.TargetMechanicSlot.Value);
+            if (resolvedTargetItemId != request.ItemId)
+            {
+                rejectReason = "The live mechanic target slot does not yet contain the requested machine part.";
+                return false;
+            }
+
+            if (beforeState != null)
+            {
+                foreach (MechanicEquipSlot slot in Enum.GetValues<MechanicEquipSlot>())
+                {
+                    if (slot == request.TargetMechanicSlot.Value)
+                    {
+                        continue;
+                    }
+
+                    int beforeItemId = TryGetSnapshotItem(beforeState, slot);
+                    int currentItemId = TryGetSnapshotItem(currentState, slot);
+                    if (beforeItemId != currentItemId)
+                    {
+                        rejectReason = "The live mechanic state changed outside the requested target slot.";
+                        return false;
+                    }
+                }
+            }
+
+            if (request.SourceInventoryType != InventoryType.EQUIP
+                || request.SourceInventoryIndex < 0)
+            {
+                rejectReason = "The live equip inventory no longer exposes the requested source slot.";
+                return false;
+            }
+
+            if (request.SourceInventoryIndex >= currentEquipInventory.Count)
+            {
+                return true;
+            }
+
+            InventorySlotData liveSourceSlot = currentEquipInventory[request.SourceInventoryIndex];
+            if (liveSourceSlot?.ItemId == request.ItemId)
+            {
+                rejectReason = "The requested machine part is still sitting in the source equip inventory slot.";
+                return false;
+            }
+
+            return true;
+        }
+
         internal static byte[] EncodeAuthorityRequestPayload(EquipmentChangeRequest request)
         {
             if (request == null)

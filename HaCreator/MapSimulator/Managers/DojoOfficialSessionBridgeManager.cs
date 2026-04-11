@@ -596,6 +596,11 @@ namespace HaCreator.MapSimulator.Managers
 
             int opcode = BitConverter.ToUInt16(rawPacket, 0);
             byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
+            if (TryMapSharedDispatchPacket(rawPacket, source, opcode, payload, out message))
+            {
+                return true;
+            }
+
             string mappingReason = "configured";
             if (!_opcodeMappings.TryGetValue(opcode, out int packetType))
             {
@@ -614,6 +619,48 @@ namespace HaCreator.MapSimulator.Managers
                 packetType: packetType,
                 payload: payload);
             RecordRecentPacket(opcode, rawPacket, packetType, mappingReason);
+            return true;
+        }
+
+        private bool TryMapSharedDispatchPacket(
+            byte[] rawPacket,
+            string source,
+            int opcode,
+            byte[] payload,
+            out DojoPacketInboxMessage message)
+        {
+            message = null;
+            if (opcode != CurrentWrapperRelayOpcode)
+            {
+                return false;
+            }
+
+            if (!Fields.SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                    payload,
+                    out int wrapperPacketType,
+                    out byte[] wrapperPayload,
+                    out _))
+            {
+                return false;
+            }
+
+            if (wrapperPacketType < DojoField.PacketTypeClock || wrapperPacketType > DojoField.PacketTypeTimeOver)
+            {
+                return false;
+            }
+
+            message = new DojoPacketInboxMessage(
+                DojoPacketMessageKind.RawPacket,
+                value: 0,
+                option: string.Empty,
+                source: source,
+                rawText: $"packetraw {Convert.ToHexString(rawPacket)}",
+                packetType: wrapperPacketType,
+                payload: wrapperPayload);
+            RecordRecentPacket(opcode, rawPacket, wrapperPacketType, $"shared-relay:{DescribePacketType(wrapperPacketType)}");
+            LastStatus =
+                $"Decoded shared Dojo dispatch opcode {opcode} through the current-wrapper relay as {DescribePacketType(wrapperPacketType)} " +
+                $"using the wrapper packet id prefix instead of payload-only inference.";
             return true;
         }
 
