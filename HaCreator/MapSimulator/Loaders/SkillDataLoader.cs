@@ -1258,6 +1258,10 @@ namespace HaCreator.MapSimulator.Loaders
                 "Damage" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "MP Cost" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "HP Cost" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Mastery" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Critical Damage (Min)" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Critical Damage (Max)" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
+                "Bullet Count" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Speed" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 "Elemental Resistance" => !string.Equals(authoredLabel, currentLabel, StringComparison.OrdinalIgnoreCase),
                 _ => false
@@ -1472,6 +1476,13 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 label = "Full Strength Chance";
             }
+            else if (normalizedClause.Contains("combo orbs are used", StringComparison.Ordinal)
+                     || normalizedClause.Contains("combo orb is used", StringComparison.Ordinal)
+                     || normalizedClause.Contains("combo orbs used", StringComparison.Ordinal)
+                     || normalizedClause.Contains("combo orb used", StringComparison.Ordinal))
+            {
+                label = "Combo Orb Cost";
+            }
             else if (normalizedClause.Contains("chance", StringComparison.Ordinal))
             {
                 label = "Chance";
@@ -1497,6 +1508,11 @@ namespace HaCreator.MapSimulator.Loaders
                      && normalizedClause.Contains("summoned", StringComparison.Ordinal))
             {
                 label = "Toy Robot Count";
+            }
+            else if (normalizedClause.Contains("number of bullets", StringComparison.Ordinal)
+                     || normalizedClause.Contains("bullet count", StringComparison.Ordinal))
+            {
+                label = "Bullet Count";
             }
             else if (normalizedClause.Contains("number of attacks", StringComparison.Ordinal)
                      || normalizedClause.Contains("attack count", StringComparison.Ordinal)
@@ -1690,6 +1706,8 @@ namespace HaCreator.MapSimulator.Loaders
                 "Max MP" => FormatSignedValue,
                 "All Skill Levels" => FormatSignedValue,
                 "Teleport Distance" => FormatSignedValue,
+                "Bullet Count" => FormatSignedValue,
+                "Number of Bullets" => FormatSignedValue,
                 "Robot Factory Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 "Summon Interval" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",
                 "Duration" => static value => $"{value.ToString(CultureInfo.InvariantCulture)} sec",

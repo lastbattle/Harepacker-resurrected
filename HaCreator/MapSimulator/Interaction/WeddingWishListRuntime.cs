@@ -624,7 +624,7 @@ namespace HaCreator.MapSimulator.Interaction
             _isOpen = false;
             _inputConfirmationArmed = false;
             StageWishListInputPacket();
-            _statusMessage = $"Confirmed {_wishListEntries.Count} wedding wish-list item(s) through the dedicated OK/SetRet owner path. Downstream packet or script handoff is still not modeled.";
+            _statusMessage = $"Confirmed {_wishListEntries.Count} wedding wish-list item(s) through the dedicated OK/SetRet owner path and staged the client-owned SendWishListInput request.";
             NotifySocialChatObserved(_wishListEntries.Select(ResolveItemLabel));
             return _statusMessage;
         }
@@ -1433,11 +1433,10 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write((byte)_wishListEntries.Count);
             foreach (InventorySlotData entry in _wishListEntries)
             {
-                writer.Write(entry?.ItemId ?? 0);
                 WritePacketString(writer, ResolveItemLabel(entry));
             }
 
-            StageOutboundPacket(WishListTransferPacketOpcode, stream.ToArray(), $"SendWishListInput staged {_wishListEntries.Count} item(s).");
+            StageOutboundPacket(EngagementPacketOpcode, stream.ToArray(), $"SendWishListInput staged {_wishListEntries.Count} item(s).");
         }
 
         private void StageGetItemRequestPacket(InventorySlotData item, InventoryType type, int sourceSlotIndex)
@@ -1445,10 +1444,8 @@ namespace HaCreator.MapSimulator.Interaction
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
             writer.Write(SendGetItemRequestSubtype);
-            writer.Write((byte)type);
-            writer.Write((short)Math.Max(1, sourceSlotIndex));
-            writer.Write(item?.ItemId ?? 0);
-            writer.Write((short)1);
+            writer.Write((byte)ResolveClientItemCategory(item, type));
+            writer.Write((byte)Math.Clamp(sourceSlotIndex, 1, byte.MaxValue));
             StageOutboundPacket(WishListTransferPacketOpcode, stream.ToArray(), $"SendGetItemRequest staged {ResolveItemLabel(item)} from slot {sourceSlotIndex}.");
         }
 
@@ -1457,12 +1454,28 @@ namespace HaCreator.MapSimulator.Interaction
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
             writer.Write(SendPutItemRequestSubtype);
-            writer.Write((byte)type);
             writer.Write((short)Math.Max(1, sourceSlotIndex));
-            writer.Write(wish?.ItemId ?? 0);
             writer.Write(item?.ItemId ?? 0);
             writer.Write((short)Math.Max(1, item?.Quantity ?? 1));
             StageOutboundPacket(WishListTransferPacketOpcode, stream.ToArray(), $"SendPutItemRequest staged {ResolveItemLabel(item)} for {ResolveItemLabel(wish)} from slot {sourceSlotIndex}.");
+        }
+
+        private static int ResolveClientItemCategory(InventorySlotData item, InventoryType fallbackType)
+        {
+            if (item?.ItemId > 0)
+            {
+                return Math.Clamp(item.ItemId / 1000000, 0, byte.MaxValue);
+            }
+
+            return fallbackType switch
+            {
+                InventoryType.EQUIP => 1,
+                InventoryType.USE => 2,
+                InventoryType.SETUP => 3,
+                InventoryType.ETC => 4,
+                InventoryType.CASH => 5,
+                _ => 0
+            };
         }
 
         private void StageOutboundPacket(int opcode, byte[] payload, string summary)

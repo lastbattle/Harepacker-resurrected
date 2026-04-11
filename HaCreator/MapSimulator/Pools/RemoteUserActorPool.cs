@@ -74,6 +74,17 @@ namespace HaCreator.MapSimulator.Pools
             bool FacingRight,
             int CurrentTime,
             bool UsesAuthoredWzHitNode = false);
+        public readonly record struct RemoteMobDamageInfoPresentation(
+            int CharacterId,
+            int MobId,
+            int MobTemplateId,
+            byte HitAction,
+            Point HitPosition,
+            int Damage,
+            byte DamagePercent,
+            bool PowerGuard,
+            bool CappedByMobMaxHp,
+            int CurrentTime);
         public readonly record struct RemoteFieldSoundPresentation(
             int CharacterId,
             string SoundPath,
@@ -388,6 +399,7 @@ namespace HaCreator.MapSimulator.Pools
         public event Action<RemoteItemMakePresentation> ItemMakeRegistered;
         public event Action<RemoteHitFeedbackPresentation> HitFeedbackRegistered;
         public event Action<RemoteMobAttackHitPresentation> MobAttackHitEffectRegistered;
+        public event Action<RemoteMobDamageInfoPresentation> MobDamageInfoRegistered;
         public event Action<RemoteFieldSoundPresentation> FieldSoundRegistered;
         public event Action<RemoteStringEffectPresentation> StringEffectRegistered;
         public event Action<RemoteChatLogMessagePresentation> ChatLogMessageRegistered;
@@ -666,6 +678,129 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             CharacterBuild build = actor.Build;
+            ApplyBasicProfileMetadata(build, level, guildName, jobId);
+
+            message = $"Remote user {characterId} profile metadata applied.";
+            return true;
+        }
+
+        public bool TryApplyProfileMetadata(RemoteUserProfilePacket packet, out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor) || actor?.Build == null)
+            {
+                message = $"Remote user {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            CharacterBuild build = actor.Build;
+            ApplyBasicProfileMetadata(build, packet.Level, packet.GuildName, packet.JobId);
+
+            if (packet.AllianceName != null)
+            {
+                build.AllianceName = string.IsNullOrWhiteSpace(packet.AllianceName) ? string.Empty : packet.AllianceName.Trim();
+                build.HasAuthoritativeProfileAlliance = true;
+            }
+
+            if (packet.Fame.HasValue)
+            {
+                build.Fame = Math.Max(0, packet.Fame.Value);
+                build.HasAuthoritativeProfileFame = true;
+            }
+
+            if (packet.WorldRank.HasValue)
+            {
+                build.WorldRank = Math.Max(0, packet.WorldRank.Value);
+                build.HasAuthoritativeProfileWorldRank = true;
+            }
+
+            if (packet.JobRank.HasValue)
+            {
+                build.JobRank = Math.Max(0, packet.JobRank.Value);
+                build.HasAuthoritativeProfileJobRank = true;
+            }
+
+            if (packet.HasRide.HasValue)
+            {
+                build.HasMonsterRiding = packet.HasRide.Value;
+                build.HasAuthoritativeProfileRide = true;
+            }
+
+            if (packet.HasPendantSlot.HasValue)
+            {
+                build.HasPendantSlotExtension = packet.HasPendantSlot.Value;
+                build.HasAuthoritativeProfilePendantSlot = true;
+            }
+
+            if (packet.HasPocketSlot.HasValue)
+            {
+                build.HasPocketSlot = packet.HasPocketSlot.Value;
+                build.HasAuthoritativeProfilePocketSlot = true;
+            }
+
+            bool hasTraitUpdate = false;
+            if (packet.TraitCharisma.HasValue)
+            {
+                build.TraitCharisma = Math.Max(0, packet.TraitCharisma.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitInsight.HasValue)
+            {
+                build.TraitInsight = Math.Max(0, packet.TraitInsight.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitWill.HasValue)
+            {
+                build.TraitWill = Math.Max(0, packet.TraitWill.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitCraft.HasValue)
+            {
+                build.TraitCraft = Math.Max(0, packet.TraitCraft.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitSense.HasValue)
+            {
+                build.TraitSense = Math.Max(0, packet.TraitSense.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (packet.TraitCharm.HasValue)
+            {
+                build.TraitCharm = Math.Max(0, packet.TraitCharm.Value);
+                hasTraitUpdate = true;
+            }
+
+            if (hasTraitUpdate)
+            {
+                build.HasAuthoritativeProfileTraits = true;
+            }
+
+            if (packet.HasMedal.HasValue)
+            {
+                build.HasAuthoritativeProfileMedal = true;
+            }
+
+            if (packet.HasCollection.HasValue)
+            {
+                build.HasAuthoritativeProfileCollection = true;
+            }
+
+            message = $"Remote user {packet.CharacterId} profile metadata applied.";
+            return true;
+        }
+
+        private static void ApplyBasicProfileMetadata(CharacterBuild build, int? level, string guildName, int? jobId)
+        {
+            if (build == null)
+            {
+                return;
+            }
+
             if (level.HasValue && level.Value > 0)
             {
                 build.Level = Math.Max(1, level.Value);
@@ -684,9 +819,6 @@ namespace HaCreator.MapSimulator.Pools
                 build.GuildName = string.IsNullOrWhiteSpace(guildName) ? string.Empty : guildName.Trim();
                 build.HasAuthoritativeProfileGuild = true;
             }
-
-            message = $"Remote user {characterId} profile metadata applied.";
-            return true;
         }
 
         public bool TryApplyGuildMark(
@@ -742,6 +874,22 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        public bool TryGetRelationshipRecord(
+            RemoteRelationshipOverlayType relationshipType,
+            int ownerCharacterId,
+            out RemoteUserRelationshipRecord relationshipRecord)
+        {
+            relationshipRecord = default;
+            if (ownerCharacterId <= 0 || relationshipType == RemoteRelationshipOverlayType.Generic)
+            {
+                return false;
+            }
+
+            EnsureRelationshipRecordTablesInitialized();
+            return GetRelationshipRecordTable(relationshipType).TryGetValue(ownerCharacterId, out relationshipRecord)
+                && relationshipRecord.IsActive;
         }
 
         public bool TryMove(int characterId, Vector2 position, bool? facingRight, string actionName, out string message)
@@ -1690,7 +1838,7 @@ namespace HaCreator.MapSimulator.Pools
             };
             RemoveRelationshipRecordDispatchKeysForOwner(packet.RelationshipType, ownerCharacterId.Value);
             recordTable[ownerCharacterId.Value] = normalizedRecord;
-            RegisterRelationshipRecordDispatchKey(packet.RelationshipType, packet.DispatchKey, ownerCharacterId.Value);
+            RegisterRelationshipRecordDispatchKeys(packet.RelationshipType, packet.DispatchKey, normalizedRecord, ownerCharacterId.Value);
             RefreshRelationshipOverlays(packet.RelationshipType, currentTime);
 
             message = _actorsById.ContainsKey(ownerCharacterId.Value)
@@ -2089,12 +2237,16 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int damageReactiveSkillId = 0;
+            int packetSpecialSkillId = 0;
             bool registeredDamageReactiveSkillEffect = false;
             bool registeredPacketSkillEffect = false;
             if (packet.SkillId is > 0)
             {
-                registeredPacketSkillEffect = true;
-                RegisterRemoteHitSpecialSkillUseEffect(actor, packet.SkillId.Value, currentTime);
+                registeredPacketSkillEffect = TryRegisterRemoteHitPacketSpecialSkillUseEffect(
+                    packet.SkillId,
+                    HasRemoteAnimationDisplayerSpecialBranch,
+                    skillId => RegisterRemoteHitSpecialSkillUseEffect(actor, skillId, currentTime),
+                    out packetSpecialSkillId);
             }
             else
             {
@@ -2122,6 +2274,11 @@ namespace HaCreator.MapSimulator.Pools
                     usesAuthoredHitNode));
             }
 
+            if (TryBuildRemoteMobDamageInfoPresentation(packet, currentTime, out RemoteMobDamageInfoPresentation mobDamageInfo))
+            {
+                MobDamageInfoRegistered?.Invoke(mobDamageInfo);
+            }
+
             if (packet.HpDelta > 0)
             {
                 if (actor.PacketOwnedEmotion?.ByItemOption != true
@@ -2144,7 +2301,7 @@ namespace HaCreator.MapSimulator.Pools
                     -packet.HpDelta,
                     currentTime));
                 message = registeredPacketSkillEffect
-                    ? $"Remote user {packet.CharacterId} hit packet applied for {packet.HpDelta} damage and registered special skill effect {packet.SkillId.Value}."
+                    ? $"Remote user {packet.CharacterId} hit packet applied for {packet.HpDelta} damage and registered special skill effect {packetSpecialSkillId}."
                     : registeredDamageReactiveSkillEffect
                         ? $"Remote user {packet.CharacterId} hit packet applied for {packet.HpDelta} damage and registered damage-reactive special skill effect {damageReactiveSkillId}."
                         : $"Remote user {packet.CharacterId} hit packet applied for {packet.HpDelta} damage.";
@@ -2163,7 +2320,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (registeredPacketSkillEffect)
             {
-                message = $"Remote user {packet.CharacterId} hit packet stored and registered special skill effect {packet.SkillId.Value}.";
+                message = $"Remote user {packet.CharacterId} hit packet stored and registered special skill effect {packetSpecialSkillId}.";
             }
             else if (registeredDamageReactiveSkillEffect)
             {
@@ -2173,6 +2330,76 @@ namespace HaCreator.MapSimulator.Pools
             {
                 message = $"Remote user {packet.CharacterId} hit packet stored.";
             }
+            return true;
+        }
+
+        internal static bool TryBuildRemoteMobDamageInfoPresentation(
+            RemoteUserHitPacket packet,
+            int currentTime,
+            out RemoteMobDamageInfoPresentation presentation)
+        {
+            presentation = default;
+            if (!packet.HasMobHit
+                || packet.MobId.GetValueOrDefault() <= 0
+                || packet.MobTemplateId.GetValueOrDefault() <= 0
+                || !packet.MobHitAction.HasValue
+                || !packet.MobHitX.HasValue
+                || !packet.MobHitY.HasValue)
+            {
+                return false;
+            }
+
+            int uncappedDamage = Math.Max(0, packet.Damage) * packet.MobHitDamagePercent / 100;
+            int damage = uncappedDamage;
+            bool cappedByMobMaxHp = false;
+            if (packet.PowerGuard
+                && TryResolveMobMaxHp(packet.MobTemplateId.Value, out int maxHp)
+                && maxHp > 0)
+            {
+                int cap = maxHp / 2;
+                if (damage > cap)
+                {
+                    damage = cap;
+                    cappedByMobMaxHp = true;
+                }
+            }
+
+            presentation = new RemoteMobDamageInfoPresentation(
+                packet.CharacterId,
+                packet.MobId.Value,
+                packet.MobTemplateId.Value,
+                packet.MobHitAction.Value,
+                new Point(packet.MobHitX.Value, packet.MobHitY.Value),
+                damage,
+                packet.MobHitDamagePercent,
+                packet.PowerGuard,
+                cappedByMobMaxHp,
+                currentTime);
+            return true;
+        }
+
+        internal static bool TryRegisterRemoteHitPacketSpecialSkillUseEffect(
+            int? packetSkillId,
+            Func<int, bool> hasSpecialBranch,
+            Action<int> registerSkillUseEffect,
+            out int skillId)
+        {
+            skillId = packetSkillId.GetValueOrDefault();
+            if (skillId <= 0 || hasSpecialBranch == null || registerSkillUseEffect == null)
+            {
+                skillId = 0;
+                return false;
+            }
+
+            // Client `CUserRemote::OnHit` decodes an explicit skill id for the `-1` tail,
+            // but `CUser::ShowSkillSpecialEffect` still exits if `SKILLENTRY::GetSpecialUOL` is empty.
+            if (!hasSpecialBranch(skillId))
+            {
+                skillId = 0;
+                return false;
+            }
+
+            registerSkillUseEffect(skillId);
             return true;
         }
 
@@ -2266,6 +2493,25 @@ namespace HaCreator.MapSimulator.Pools
                 System.Globalization.CultureInfo.InvariantCulture,
                 out linkedMobTemplateId)
                 && linkedMobTemplateId > 0;
+        }
+
+        private static bool TryResolveMobMaxHp(int mobTemplateId, out int maxHp)
+        {
+            maxHp = 0;
+            WzImage mobImage = TryFindMobImage(mobTemplateId);
+            if (mobImage == null)
+            {
+                return false;
+            }
+
+            int? value = GetWzIntValue(WzInfoTools.GetRealProperty(mobImage["info"]?["maxHP"]));
+            if (value.GetValueOrDefault() <= 0)
+            {
+                return false;
+            }
+
+            maxHp = value.Value;
+            return true;
         }
 
         private static WzImage TryFindMobImage(int mobTemplateId)
@@ -2545,13 +2791,36 @@ namespace HaCreator.MapSimulator.Pools
                         return false;
                     }
 
+                    SkillData skill = _skillLoader?.LoadSkill(skillId);
+                    string appointedActionName = ResolveRemoteSkillUseAppointedActionNameForParity(
+                        skill,
+                        packet.CharacterLevel,
+                        packet.SkillLevel,
+                        currentTime);
+                    if (!string.IsNullOrWhiteSpace(appointedActionName))
+                    {
+                        actor.BeginMeleeAfterImageFade(currentTime);
+                        SetActorAction(
+                            actor,
+                            appointedActionName,
+                            actor.Build?.ActivePortableChair != null,
+                            currentTime,
+                            forceReplay: true,
+                            rawActionCode: CharacterPart.TryGetClientRawActionCode(appointedActionName, out int rawActionCode)
+                                ? rawActionCode
+                                : null);
+                        RegisterMeleeAfterImage(actor, skillId, actor.ActionName, currentTime, 10, 0);
+                    }
+
                     SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
                         packet.CharacterId,
                         skillId,
                         null,
                         actor.FacingRight,
                         currentTime));
-                    message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered skill-use presentation for skill {skillId}.";
+                    message = string.IsNullOrWhiteSpace(appointedActionName)
+                        ? $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered skill-use presentation for skill {skillId}."
+                        : $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered skill-use presentation for skill {skillId} and appointed action {appointedActionName}.";
                     return true;
 
                 case RemoteUserEffectSubtype.ItemMake:
@@ -2710,6 +2979,51 @@ namespace HaCreator.MapSimulator.Pools
             {
                 return $"{format} ({value.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
             }
+        }
+
+        internal static string ResolveRemoteSkillUseAppointedActionNameForParity(
+            SkillData skill,
+            byte? characterLevel,
+            byte? skillLevel,
+            int currentTime)
+        {
+            if (skill?.ActionNames == null || skill.ActionNames.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> actionNames = null;
+            for (int i = 0; i < skill.ActionNames.Count; i++)
+            {
+                string actionName = skill.ActionNames[i];
+                if (string.IsNullOrWhiteSpace(actionName))
+                {
+                    continue;
+                }
+
+                actionNames ??= new List<string>(skill.ActionNames.Count);
+                actionNames.Add(actionName.Trim());
+            }
+
+            if (actionNames == null || actionNames.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            if (actionNames.Count == 1)
+            {
+                return actionNames[0];
+            }
+
+            // The client calls rand() for SKILLENTRY::GetRandomAppointedAction without a packet seed.
+            // Mix the packet-owned fields with the current frame time so repeated remote skill-use packets
+            // still fan out across the authored action table instead of pinning the first row forever.
+            int selectionSeed = currentTime
+                ^ (skill.SkillId * 397)
+                ^ (characterLevel.GetValueOrDefault() << 8)
+                ^ skillLevel.GetValueOrDefault();
+            int selectedIndex = ((selectionSeed % actionNames.Count) + actionNames.Count) % actionNames.Count;
+            return actionNames[selectedIndex];
         }
 
         public bool TryApplyUpgradeTombEffect(RemoteUserUpgradeTombPacket packet, int currentTime, out string message)
@@ -3190,11 +3504,12 @@ namespace HaCreator.MapSimulator.Pools
             float ownerBodyOriginY = ownerFrame != null
                 ? actor.Position.Y - ownerFrame.FeetOffset
                 : actor.Position.Y;
+            string ownerPacketActionName = ResolveRemoteDragonOwnerPacketActionName(actor);
 
             ResolveRemoteDragonActionSelection(
                 prepared,
                 isHolding,
-                actor.ActionName,
+                ownerPacketActionName,
                 actor.BaseActionRawCode,
                 metadata,
                 out string dragonActionName,
@@ -3210,7 +3525,7 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 dragonAnchor = ResolveRemoteDragonAnchor(
                 actor,
                 ownerFrame,
-                actor.ActionName,
+                ownerPacketActionName,
                 actor.BaseActionRawCode,
                 ownerBodyOriginY,
                 dragonActionName,
@@ -3220,6 +3535,23 @@ namespace HaCreator.MapSimulator.Pools
                 dragonAnchor.X - RemoteDragonKeyDownBarHalfWidth,
                 dragonAnchor.Y - dragonFrameHeight - RemoteDragonKeyDownBarVerticalGap);
             return true;
+        }
+
+        internal static string ResolveRemoteDragonOwnerPacketActionNameForTesting(string baseActionName, string visibleActionName)
+        {
+            return ResolveRemoteDragonOwnerPacketActionName(baseActionName, visibleActionName);
+        }
+
+        private static string ResolveRemoteDragonOwnerPacketActionName(RemoteUserActor actor)
+        {
+            return ResolveRemoteDragonOwnerPacketActionName(actor?.BaseActionName, actor?.ActionName);
+        }
+
+        private static string ResolveRemoteDragonOwnerPacketActionName(string baseActionName, string visibleActionName)
+        {
+            return string.IsNullOrWhiteSpace(baseActionName)
+                ? visibleActionName
+                : baseActionName;
         }
 
         private static Vector2 ResolveRemoteDragonAnchor(
@@ -3712,14 +4044,14 @@ namespace HaCreator.MapSimulator.Pools
             bool hasMarriageOverlay,
             int? battlefieldTeamId)
         {
-            if (explicitHelperMarkerType.HasValue)
-            {
-                return explicitHelperMarkerType.Value;
-            }
-
             if (battlefieldTeamId.HasValue)
             {
                 return MinimapUI.HelperMarkerType.Match;
+            }
+
+            if (explicitHelperMarkerType.HasValue)
+            {
+                return explicitHelperMarkerType.Value;
             }
 
             return hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay
@@ -5363,6 +5695,57 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             GetRelationshipRecordDispatchOwnerTable(relationshipType)[dispatchKey] = ownerCharacterId;
+        }
+
+        private void RegisterRelationshipRecordDispatchKeys(
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteRelationshipRecordDispatchKey primaryDispatchKey,
+            RemoteUserRelationshipRecord relationshipRecord,
+            int ownerCharacterId)
+        {
+            RegisterRelationshipRecordDispatchKey(relationshipType, primaryDispatchKey, ownerCharacterId);
+
+            if (relationshipType is RemoteRelationshipOverlayType.Couple or RemoteRelationshipOverlayType.Friendship)
+            {
+                RegisterRelationshipRecordDispatchKey(
+                    relationshipType,
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                        relationshipRecord.ItemSerial,
+                        CharacterId: null),
+                    ownerCharacterId);
+                RegisterRelationshipRecordDispatchKey(
+                    relationshipType,
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                        relationshipRecord.PairItemSerial,
+                        CharacterId: null),
+                    ownerCharacterId);
+                return;
+            }
+
+            if (relationshipType == RemoteRelationshipOverlayType.NewYearCard)
+            {
+                RegisterRelationshipRecordDispatchKey(
+                    relationshipType,
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.NewYearCardSerial,
+                        relationshipRecord.ItemSerial,
+                        CharacterId: null),
+                    ownerCharacterId);
+                return;
+            }
+
+            if (relationshipType == RemoteRelationshipOverlayType.Marriage)
+            {
+                RegisterRelationshipRecordDispatchKey(
+                    relationshipType,
+                    new RemoteRelationshipRecordDispatchKey(
+                        RemoteRelationshipRecordDispatchKeyKind.CharacterId,
+                        Serial: null,
+                        ownerCharacterId),
+                    ownerCharacterId);
+            }
         }
 
         private void RemoveRelationshipRecordDispatchKeysForOwner(RemoteRelationshipOverlayType relationshipType, int ownerCharacterId)
@@ -8733,7 +9116,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             bool activeAction = state.FadeStartTime < 0
-                && string.Equals(actor.ActionName, state.ActionName, StringComparison.OrdinalIgnoreCase);
+                && !MeleeAfterimagePlaybackResolver.ShouldBeginFadeForActionBoundary(
+                    currentTime,
+                    state.AnimationStartTime,
+                    state.ActionDuration,
+                    actor.ActionName,
+                    state.ActionName);
             int frameIndex = state.LastFrameIndex;
             IReadOnlyList<AfterimageRenderableLayer> layers = state.LastResolvedLayers;
 
@@ -8757,7 +9145,14 @@ namespace HaCreator.MapSimulator.Pools
                 frameIndex = state.LastFrameIndex;
                 layers = state.LastResolvedLayers;
             }
-            else if (state.FadeStartTime >= 0)
+            else if (state.FadeStartTime < 0)
+            {
+                actor.BeginMeleeAfterImageFade(currentTime);
+                frameIndex = state.LastFrameIndex;
+                layers = state.LastResolvedLayers;
+            }
+
+            if (!activeAction && state.FadeStartTime >= 0)
             {
                 int fadeElapsed = Math.Max(0, currentTime - state.FadeStartTime);
                 layers = MeleeAfterimagePlaybackResolver.ResolveFadingRenderableLayers(
@@ -9211,14 +9606,12 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            if (!string.Equals(ActionName, MeleeAfterImage.ActionName, StringComparison.OrdinalIgnoreCase))
-            {
-                BeginMeleeAfterImageFade(currentTime);
-                return;
-            }
-
-            if (MeleeAfterImage.ActionDuration > 0
-                && currentTime - MeleeAfterImage.AnimationStartTime >= MeleeAfterImage.ActionDuration)
+            if (MeleeAfterimagePlaybackResolver.ShouldBeginFadeForActionBoundary(
+                    currentTime,
+                    MeleeAfterImage.AnimationStartTime,
+                    MeleeAfterImage.ActionDuration,
+                    ActionName,
+                    MeleeAfterImage.ActionName))
             {
                 BeginMeleeAfterImageFade(currentTime);
             }

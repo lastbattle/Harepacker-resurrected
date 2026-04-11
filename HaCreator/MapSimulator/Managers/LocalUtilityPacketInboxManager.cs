@@ -129,6 +129,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestRewardRaiseQuestRecordMessagePacketType = 1041;
         public const int RandomMorphRequestAckPacketType = 1042;
         public const int QuestAlarmTitleTooltipPacketType = 1043;
+        public const int ClassCompetitionRemotePagePacketType = 1044;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
@@ -852,6 +853,16 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("classcompetitionpage", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classcompetitionweb", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classcompetitionremote", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classcompetitionladder", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("classpagepayload", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ClassCompetitionRemotePagePacketType;
+                return true;
+            }
+
             if (token.Equals("questguide", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("questguideresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onquestguideresult", StringComparison.OrdinalIgnoreCase))
@@ -1162,7 +1173,8 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == QuestRewardRaiseOwnerDestroyResultPacketType
                 || packetType == QuestRewardRaiseQuestRecordMessagePacketType
                 || packetType == RandomMorphRequestAckPacketType
-                || packetType == QuestAlarmTitleTooltipPacketType;
+                || packetType == QuestAlarmTitleTooltipPacketType
+                || packetType == ClassCompetitionRemotePagePacketType;
         }
 
         public static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
@@ -1368,6 +1380,7 @@ namespace HaCreator.MapSimulator.Managers
                 QuestRewardRaiseQuestRecordMessagePacketType => "RaiseQuestRecordMessage(1041)",
                 RandomMorphRequestAckPacketType => "RandomMorphRequestAck(1042)",
                 QuestAlarmTitleTooltipPacketType => "QuestAlarmTitleTooltip(1043)",
+                ClassCompetitionRemotePagePacketType => "ClassCompetitionRemotePage(1044)",
                 _ => $"packet {packetType}"
             };
         }

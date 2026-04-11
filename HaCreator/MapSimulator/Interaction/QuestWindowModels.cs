@@ -223,10 +223,27 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<int> VisibleItemIds { get; init; } = Array.Empty<int>();
         public IReadOnlyDictionary<int, IReadOnlyList<int>> VisibleItemMapIds { get; init; } =
             new Dictionary<int, IReadOnlyList<int>>();
+        public IReadOnlyDictionary<int, QuestDemandItemMapResultSet> VisibleItemMapResults { get; init; } =
+            new Dictionary<int, QuestDemandItemMapResultSet>();
         public int PreferredItemId { get; init; }
         public int HiddenItemCount { get; init; }
         public string FallbackNpcName { get; init; } = string.Empty;
         public bool HasPacketOwnedMapResults { get; init; }
+    }
+
+    internal enum QuestDemandItemMapResultSource
+    {
+        None,
+        PacketOwnedMob,
+        WzMobDemand,
+        WzNpcFallback,
+        CurrentFieldFallback
+    }
+
+    internal sealed class QuestDemandItemMapResultSet
+    {
+        public IReadOnlyList<int> MapIds { get; init; } = Array.Empty<int>();
+        public QuestDemandItemMapResultSource Source { get; init; }
     }
 
     internal sealed class QuestDeliveryEntrySnapshot

@@ -140,9 +140,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             // WZ publishes these exact roots on Character/TamingMob/01932016, and the client
             // taming-mob action gates key the extra coverage by vehicle id rather than prefix.
-            // CActionMan::LoadTamingMobAction / IsAbleTamingMobOneTimeAction admit the later
-            // Mechanic one-time raw codes for gatlingshot2, drillrush, mbooster, earthslug, and
-            // rpunch, but not the WZ-only gatlingshot raw action.
+            // IsAbleTamingMobOneTimeAction still admits raw action 241 (gatlingshot2)
+            // for vehicle 1932016. The neighboring standalone one-shot skill names
+            // gatlingshot, drillrush, earthslug, mbooster, and rpunch remain WZ-only
+            // vehicle surfaces here until client transform-owner evidence promotes them.
             "tank_pre",
             "tank",
             "tank_walk",
@@ -167,10 +168,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             "rbooster",
             "rbooster_after",
             "gatlingshot2",
-            "drillrush",
-            "mbooster",
-            "earthslug",
-            "rpunch",
             "msummon",
             "msummon2",
             "ride2",
@@ -330,22 +327,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            return actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("flamethrower", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("rbooster", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "gatlingshot2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "drillrush", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "earthslug", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "rpunch", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "mbooster", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("msummon", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("mRush", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "alert3", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "herbalism_mechanic", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase);
+            if (!includeTransformStates
+                && (string.Equals(actionName, "tank", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(actionName, "siege", StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            return ContainsActionName(ClientConfirmedMechanicVehicleCurrentActionNames, actionName);
         }
 
         internal static bool IsExplicitMechanicVehiclePresentationActionName(string actionName)
@@ -355,7 +344,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool IsWzOnlyMechanicVehicleOneTimeActionName(string actionName)
         {
-            return string.Equals(actionName, "gatlingshot", StringComparison.OrdinalIgnoreCase);
+            return string.Equals(actionName, "gatlingshot", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "drillrush", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "earthslug", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "mbooster", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rpunch", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsMechanicSkill(int skillId)

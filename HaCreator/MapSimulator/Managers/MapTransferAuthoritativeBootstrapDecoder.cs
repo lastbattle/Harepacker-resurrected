@@ -21,7 +21,6 @@ namespace HaCreator.MapSimulator.Managers
         private const int LogoutGiftConfigByteLength =
             sizeof(int) + (PacketStageTransitionRuntime.LogoutGiftEntryCount * sizeof(int));
         private const int SkillRecordBaseByteLength = sizeof(int) + sizeof(int);
-        private const int SkillRecordOptionalMasterLevelByteLength = sizeof(int);
         private const int SkillExpirationRecordByteLength = sizeof(int) + sizeof(long);
         private const int Int16ValueRecordByteLength = sizeof(int) + sizeof(ushort);
         private const int TwoIntValueRecordByteLength = sizeof(int) + sizeof(int);
@@ -630,13 +629,23 @@ namespace HaCreator.MapSimulator.Managers
                 return offsets;
             }
 
-            int minimumNextOffset = offset + minimumSectionByteLength;
-            int maximumNextOffset = minimumNextOffset + (count * SkillRecordOptionalMasterLevelByteLength);
-            for (int nextOffset = minimumNextOffset; nextOffset <= maximumNextOffset && nextOffset <= payload.Length; nextOffset += SkillRecordOptionalMasterLevelByteLength)
+            int nextOffset = offset + sizeof(ushort);
+            for (int i = 0; i < count; i++)
             {
-                offsets.Add(nextOffset);
+                int skillId = BitConverter.ToInt32(payload.Slice(nextOffset, sizeof(int)));
+                nextOffset += SkillRecordBaseByteLength;
+                if (PacketStageTransitionRuntime.IsSkillNeedMasterLevel(skillId))
+                {
+                    if (payload.Length - nextOffset < sizeof(int))
+                    {
+                        return offsets;
+                    }
+
+                    nextOffset += sizeof(int);
+                }
             }
 
+            offsets.Add(nextOffset);
             return offsets;
         }
 

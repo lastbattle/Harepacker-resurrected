@@ -366,7 +366,7 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.BossDamageRate > 0
                    || levelData.IgnoreDefenseRate > 0
                    || levelData.X > 0
-                   || levelData.Y > 0
+                   || levelData.Y != 0
                    || levelData.Z > 0;
         }
 

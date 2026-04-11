@@ -391,8 +391,10 @@ namespace HaCreator.MapSimulator
 
                 bool preferOfficialSessionBridge = ShouldPreferRockPaperScissorsOfficialSessionBridge(
                     _rockPaperScissorsOfficialSessionBridgeEnabled,
+                    _rockPaperScissorsOfficialSessionBridge.IsRunning,
                     _rockPaperScissorsOfficialSessionBridge.HasConnectedSession,
-                    _rockPaperScissorsOfficialSessionBridge.HasAttachedClient);
+                    _rockPaperScissorsOfficialSessionBridge.HasAttachedClient,
+                    _rockPaperScissorsOfficialSessionBridge.HasPassiveEstablishedSocketPair);
                 if (preferOfficialSessionBridge
                     && _rockPaperScissorsOfficialSessionBridge.TrySendOrQueueClientPacket(packet, out _, out _))
                 {
@@ -634,10 +636,12 @@ namespace HaCreator.MapSimulator
 
         internal static bool ShouldPreferRockPaperScissorsOfficialSessionBridge(
             bool bridgeEnabled,
+            bool isRunning,
             bool hasConnectedSession,
-            bool hasAttachedClient)
+            bool hasAttachedClient,
+            bool hasPassiveEstablishedSocketPair)
         {
-            return bridgeEnabled && (hasConnectedSession || hasAttachedClient);
+            return bridgeEnabled && (isRunning || hasConnectedSession || hasAttachedClient || hasPassiveEstablishedSocketPair);
         }
     }
 }

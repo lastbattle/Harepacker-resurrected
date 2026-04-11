@@ -354,6 +354,32 @@ namespace HaCreator.MapSimulator.Managers
             return TryAttachEstablishedSession(candidate, out status);
         }
 
+        public bool TryAttachEstablishedSessionAndStartProxy(
+            int listenPort,
+            int remotePort,
+            string processSelector,
+            int? localPort,
+            out string status)
+        {
+            int? owningProcessId = null;
+            string owningProcessName = null;
+            if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
+            {
+                status = selectorError;
+                LastStatus = status;
+                return false;
+            }
+
+            IReadOnlyList<SessionDiscoveryCandidate> candidates = DiscoverEstablishedSessions(remotePort, owningProcessId, owningProcessName);
+            if (!TryResolveDiscoveryCandidate(candidates, remotePort, owningProcessId, owningProcessName, localPort, out SessionDiscoveryCandidate candidate, out status))
+            {
+                LastStatus = status;
+                return false;
+            }
+
+            return TryAttachEstablishedSessionAndStartProxy(listenPort, candidate, out status);
+        }
+
         public bool TryAttachEstablishedSession(SessionDiscoveryCandidate candidate, out string status)
         {
             if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
@@ -377,6 +403,50 @@ namespace HaCreator.MapSimulator.Managers
                 RemoteHost = candidate.RemoteEndpoint.Address.ToString();
                 RemotePort = candidate.RemoteEndpoint.Port;
                 LastStatus = $"Observed already-established Memory Game Maple socket pair {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}. This passive attach can keep the Match Cards session target visible, but it cannot decrypt inbound opcode {InboundMiniRoomOpcode} traffic or inject outbound opcode {OutboundMiniRoomOpcode} after the Maple handshake; reconnect through the localhost proxy for live Match Cards packet ownership.";
+                status = LastStatus;
+                return true;
+            }
+        }
+
+        public bool TryAttachEstablishedSessionAndStartProxy(int listenPort, SessionDiscoveryCandidate candidate, out string status)
+        {
+            if (candidate.LocalEndpoint == null || candidate.RemoteEndpoint == null || candidate.RemoteEndpoint.Port <= 0)
+            {
+                status = "Memory Game official-session proxy attach requires an established Maple client socket pair.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (listenPort < 0 || listenPort > ushort.MaxValue)
+            {
+                status = "Memory Game official-session proxy attach listen port must be 0 or a valid TCP port.";
+                LastStatus = status;
+                return false;
+            }
+
+            lock (_sync)
+            {
+                if (_activePair != null)
+                {
+                    status = $"Memory Game official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before preparing an already-established socket pair for reconnect.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                StopInternal(clearPending: true);
+                _passiveEstablishedSession = candidate;
+
+                if (!TryStartProxyListener(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
+                {
+                    LastStatus = $"Observed already-established Memory Game Maple socket pair {DescribeEstablishedSession(candidate)}, but reconnect proxy startup failed. {startStatus}";
+                    status = LastStatus;
+                    return false;
+                }
+
+                LastStatus =
+                    $"Observed already-established Memory Game Maple socket pair {DescribeEstablishedSession(candidate)}. " +
+                    $"Armed localhost proxy on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}; reconnect Maple through this proxy to recover MiniRoom opcode {InboundMiniRoomOpcode}/{OutboundMiniRoomOpcode} decrypt/inject ownership. " +
+                    $"Opcode {OutboundMiniRoomOpcode} Match Cards requests will queue until the proxied handshake initializes.";
                 status = LastStatus;
                 return true;
             }
@@ -993,6 +1063,16 @@ namespace HaCreator.MapSimulator.Managers
         private static string DescribePassiveEstablishedSession(SessionDiscoveryCandidate candidate)
         {
             return $"passive established session {candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
+        }
+
+        private bool TryStartProxyListener(int listenPort, string remoteHost, int remotePort, out string status)
+        {
+            return TryStart(listenPort, remoteHost, remotePort, out status);
+        }
+
+        private static string DescribeEstablishedSession(SessionDiscoveryCandidate candidate)
+        {
+            return $"{candidate.ProcessName} ({candidate.ProcessId}) local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port} -> remote {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port}";
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)

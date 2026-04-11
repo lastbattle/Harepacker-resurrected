@@ -668,6 +668,12 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
+            if (ShouldHandleClientOwnedEditCommand(msg))
+            {
+                HandleClientOwnedEditCommand(msg);
+                return IntPtr.Zero;
+            }
+
             if ((msg == WmKeyDown || msg == WmKeyUp) && IsStagePassthroughVirtualKey(virtualKey))
             {
                 ForwardKeyToParent(msg, wParam, lParam);
@@ -813,10 +819,31 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 case VkUp:
                 case VkDown:
+                    if (controlHeld || shiftHeld)
+                    {
+                        return false;
+                    }
+
                     ForwardKeyToParent(WmKeyDown, wParam, lParam);
                     return true;
                 default:
                     return false;
+            }
+        }
+
+        private void HandleClientOwnedEditCommand(uint msg)
+        {
+            switch (msg)
+            {
+                case WmPaste:
+                    PasteClipboardText();
+                    break;
+                case WmCut:
+                    CutSelectionToClipboard();
+                    break;
+                case WmClear:
+                    ClearSelectionText();
+                    break;
             }
         }
 
@@ -846,7 +873,7 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldDeferDownKeyToIme(int virtualKey, bool controlHeld, bool shiftHeld, bool imeCompositionActive)
         {
-            return virtualKey == VkDown && imeCompositionActive;
+            return virtualKey == VkDown && !controlHeld && !shiftHeld && imeCompositionActive;
         }
 
         internal static bool ShouldDeferDownKeyToIme(bool controlHeld, bool shiftHeld, bool imeCompositionActive)
@@ -907,6 +934,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        internal static bool ShouldHandleClientOwnedEditCommand(uint msg)
+        {
+            return msg is WmPaste or WmCut or WmClear;
         }
 
         private static bool IsControlKeyDown()
@@ -1103,6 +1135,24 @@ namespace HaCreator.MapSimulator.UI
             }
 
             CopySelectionToClipboard();
+            SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
+            ReplaceSelection(string.Empty);
+            UpdateImePlacement();
+        }
+
+        private void ClearSelectionText()
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            GetSelection(out int selectionStart, out int selectionEnd);
+            if (selectionEnd <= selectionStart)
+            {
+                return;
+            }
+
             SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
             ReplaceSelection(string.Empty);
             UpdateImePlacement();

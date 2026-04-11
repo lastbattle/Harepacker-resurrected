@@ -602,6 +602,23 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryBuildClientLeaveRequestPayload(out byte[] payload, out string status)
+        {
+            payload = null;
+            status = null;
+
+            MessengerParticipantState localPlayer = GetLocalParticipant();
+            if (localPlayer == null)
+            {
+                status = "Messenger leave request needs a local Messenger participant.";
+                return false;
+            }
+
+            payload = MessengerPacketCodec.BuildLeaveRequestPayload();
+            status = $"Built CUIMessenger::OnDestroy leave request payload for {localPlayer.Name}.";
+            return true;
+        }
+
         internal string QueueSessionOwnedInviteRequest(string contactName)
         {
             if (!TryResolveInviteRequestContact(contactName, allowNextContact: false, out MessengerContactState contact, out string message))
@@ -634,6 +651,53 @@ namespace HaCreator.MapSimulator.Interaction
             AddSystemLog($"Live Messenger join requested for {incomingInvite.ContactName}.");
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Mirrored CUIMessenger::TryNew request (opcode 0x8F/0) for {incomingInvite.ContactName} with join serial {incomingInvite.InviteSequence}.");
+            return _lastActionSummary;
+        }
+
+        internal string QueueSessionOwnedIncomingInviteReject(string contactName)
+        {
+            if (_incomingInvite == null)
+            {
+                return "No Messenger invite is waiting for CUIFadeYesNo rejection.";
+            }
+
+            string expectedName = NormalizeParticipantName(contactName);
+            if (expectedName != null
+                && !string.Equals(_incomingInvite.ContactName, expectedName, StringComparison.OrdinalIgnoreCase))
+            {
+                return $"Incoming Messenger invite targets {_incomingInvite.ContactName}, not {expectedName}.";
+            }
+
+            PendingMessengerInviteState incomingInvite = _incomingInvite;
+            _incomingInvite = null;
+            NotifyIncomingInvitePromptChanged();
+
+            _lastActionSummary = $"Rejected Messenger invite from {incomingInvite.ContactName}.";
+            AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary("Mirrored CUIFadeYesNo::OnButtonClicked No for a Messenger invite; IDA shows this closes the fade window without emitting a Messenger request packet.");
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the invite response cleared.");
+            return _lastActionSummary;
+        }
+
+        internal string QueueSessionOwnedLeaveRequest()
+        {
+            MessengerParticipantState localPlayer = GetLocalParticipant();
+            string localPlayerName = localPlayer?.Name ?? "Player";
+            int currentTick = Environment.TickCount;
+            if (!CanDestroyMessengerWindow())
+            {
+                ArmDeleteRequest(
+                    currentTick,
+                    $"Queued live Messenger leave for {localPlayerName} and waiting for packet-owned room state to clear.",
+                    "Mirrored CUIMessenger::OnDestroy leave request (opcode 0x8F/2); waiting for the room-owned state to clear before the destroy gate completes.");
+                return _lastActionSummary;
+            }
+
+            CompleteDeleteRequest(
+                currentTick,
+                $"Queued live Messenger leave for {localPlayerName}; close gate passed with only the local profile present.",
+                "Mirrored CUIMessenger::OnDestroy leave request (opcode 0x8F/2) after the local-only destroy gate passed.");
             return _lastActionSummary;
         }
 

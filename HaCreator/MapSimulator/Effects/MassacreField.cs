@@ -41,8 +41,9 @@ namespace HaCreator.MapSimulator.Effects
     /// Client evidence:
     /// - CField_Massacre::OnClock (0x556af0) only reacts to clock type 2, replaces the previous
     ///   clock window, creates a dedicated 258x61 timerboard at (-96, 5), then starts it.
-    /// - CTimerboard_Massacre::Draw (0x557100) renders a dedicated source canvas and draws zero-
-    ///   padded minutes and seconds at fixed positions: (20, 13) and (105, 13).
+    /// - CTimerboard_Massacre::OnCreate (0x5575e0) loads StringPool 0x14EE, which resolves to the
+    ///   192x61 WZ source canvas, and Draw (0x557100) draws zero-padded minutes and seconds at
+    ///   fixed positions: (20, 13) and (105, 13).
     /// - CField_Massacre::Update (0x557530) recalculates the decay gauge from timer elapsed time,
     ///   advances UpdateKeyAnimation every frame, and shows the clear effect once when the board
     ///   reaches one second remaining.
@@ -80,7 +81,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int ResultRankDStringPoolId = 0x1523;
         private const int ResultRankSStringPoolId = 0x1524;
         private const int ComboTimeoutMs = 3000;
-        private const int TimerboardWidth = 258;
+        private const int TimerboardWidth = 192;
         private const int TimerboardHeight = 61;
         private const int TimerboardOffsetX = -96;
         private const int TimerboardY = 5;
@@ -1920,7 +1921,7 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
-            // v115 WZ still keeps the legacy MonsterKilling stage family in 910320xxx even when
+            // The wz keeps the legacy MonsterKilling stage family in 910320xxx even when
             // the field type does not identify the wrapper. Keep that narrow id fallback only for
             // the recovered stage block instead of the old broad 910000000-910000099 sweep.
             return mapInfo.id >= 910320000 && mapInfo.id <= 910320099;

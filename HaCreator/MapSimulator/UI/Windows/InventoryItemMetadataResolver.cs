@@ -1905,6 +1905,7 @@ namespace HaCreator.MapSimulator.UI
             AppendRandomChairEffectMetadataLines(metadataLines, infoProperty);
             AppendAdditionalExperienceMetadataLines(metadataLines, infoProperty);
             AppendGrowthItemMetadataLines(metadataLines, infoProperty);
+            AppendAuthoredLevelRangeMetadataLines(metadataLines, infoProperty);
             AppendLevelBandMetadataLines(metadataLines, infoProperty);
             AppendBundleLimitMetadataLines(metadataLines, infoProperty);
             AppendLevelUpWarningMetadataLines(metadataLines, infoProperty);
@@ -2302,6 +2303,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 metadataLines.Add($"Capture Chance Growth: x{captureChanceGrowth.Value.ToString("0.##", CultureInfo.InvariantCulture)}");
             }
+
+            int messageType = GetIntOrStringValue(infoProperty?["bridleMsgType"]);
+            if (messageType > 0)
+            {
+                metadataLines.Add($"Capture Message Type: {messageType.ToString(CultureInfo.InvariantCulture)}");
+            }
         }
 
         private static void AppendQuestRequirementMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
@@ -2421,6 +2428,12 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["reset"]) == 1)
             {
                 metadataLines.Add("Resets upgrade state");
+            }
+
+            int requiredCurrentUpgradeCount = GetIntOrStringValue(infoProperty["reqCUC"]);
+            if (requiredCurrentUpgradeCount > 0)
+            {
+                metadataLines.Add($"Required Upgrade Count: {requiredCurrentUpgradeCount.ToString(CultureInfo.InvariantCulture)}");
             }
         }
 
@@ -2565,6 +2578,33 @@ namespace HaCreator.MapSimulator.UI
                 {
                     metadataLines.Add(tooltip);
                 }
+            }
+        }
+
+        private static void AppendAuthoredLevelRangeMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int minimumLevel = GetIntOrStringValue(infoProperty["lvMin"]);
+            int maximumLevel = GetIntOrStringValue(infoProperty["lvMax"]);
+            if (minimumLevel > 0 && maximumLevel > 0)
+            {
+                metadataLines.Add($"Level Range: Lv. {minimumLevel.ToString(CultureInfo.InvariantCulture)}-{maximumLevel.ToString(CultureInfo.InvariantCulture)}");
+                return;
+            }
+
+            if (minimumLevel > 0)
+            {
+                metadataLines.Add($"Minimum Level: {minimumLevel.ToString(CultureInfo.InvariantCulture)}");
+                return;
+            }
+
+            if (maximumLevel > 0)
+            {
+                metadataLines.Add($"Maximum Level: {maximumLevel.ToString(CultureInfo.InvariantCulture)}");
             }
         }
 
@@ -2936,6 +2976,11 @@ namespace HaCreator.MapSimulator.UI
             if (GetIntValue(infoProperty["buffchair"]) == 1)
             {
                 metadataLines.Add("Buff Chair");
+            }
+
+            if (GetIntValue(infoProperty["pachinko"]) == 1)
+            {
+                metadataLines.Add("Pachinko item");
             }
 
             int cooltimeSeconds = GetIntOrStringValue(infoProperty["cooltime"]);

@@ -220,6 +220,15 @@ namespace HaCreator.MapSimulator.Pools
                 : (byte)0;
         }
 
+        internal static byte ResolvePacketOwnedTeslaRuntimeStateAfterOneTimeAction(
+            byte currentRuntimeState,
+            bool hasActiveOneTimeActionPlayback)
+        {
+            return SummonRuntimeRules.ResolveTeslaCoilIdleRuntimeState(
+                currentRuntimeState,
+                hasActiveOneTimeActionPlayback);
+        }
+
         internal static int ResolveClientOwnedPostAttackEffectDelayMs(ActiveSummon summon)
         {
             return SummonClientPostEffectRules.ResolvePostAttackEffectDelayMs(

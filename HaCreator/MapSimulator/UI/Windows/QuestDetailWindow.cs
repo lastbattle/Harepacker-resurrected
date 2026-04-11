@@ -840,7 +840,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawTextLineClipped(sprite, fallbackText, new Vector2(x, y), new Color(255, 232, 166), clipRect, scale, lane: QuestDetailTextLane.Header);
-            y += GetLineHeight(scale);
+            y += GetLineHeight(scale, QuestDetailTextLane.Header);
         }
 
         private void DrawProgressClipped(SpriteBatch sprite, Rectangle clipRect, float x, ref float y)
@@ -1060,7 +1060,7 @@ namespace HaCreator.MapSimulator.UI
             Action<RichTextToken, Vector2, RichTextStyleState> drawToken,
             Color defaultColor)
         {
-            float baselineHeight = Math.Max(1f, GetLineHeight(scale));
+            float baselineHeight = Math.Max(1f, GetLineHeight(scale, lane));
             float currentX = position.X;
             float currentY = position.Y;
             float lineStartX = position.X;
@@ -1175,7 +1175,7 @@ namespace HaCreator.MapSimulator.UI
                             null,
                             null,
                             (int)Math.Ceiling(width),
-                            (int)Math.Ceiling(GetLineHeight(scale)));
+                            (int)Math.Ceiling(GetLineHeight(scale, QuestDetailTextLane.Detail)));
                     }
                 }
 
@@ -1207,7 +1207,7 @@ namespace HaCreator.MapSimulator.UI
                     null,
                     null,
                     (int)Math.Ceiling(width),
-                    (int)Math.Ceiling(GetLineHeight(scale)));
+                    (int)Math.Ceiling(GetLineHeight(scale, QuestDetailTextLane.Detail)));
             }
         }
 
@@ -1262,7 +1262,7 @@ namespace HaCreator.MapSimulator.UI
                         ? $"{reference.Kind} #{reference.TargetId}"
                         : reference.Label;
                     int width = (int)Math.Ceiling(MeasureText(label, ClientDetailScale, false, QuestDetailTextLane.Detail).X);
-                    int height = (int)Math.Ceiling(GetLineHeight(ClientDetailScale));
+                    int height = (int)Math.Ceiling(GetLineHeight(ClientDetailScale, QuestDetailTextLane.Detail));
                     token = RichTextToken.ReferenceToken(reference, label, width, height);
                 }
 
@@ -2140,9 +2140,11 @@ namespace HaCreator.MapSimulator.UI
             return ClientTextDrawing.Measure(GetTextGraphicsDevice(), text, scale, _font);
         }
 
-        private float GetLineHeight(float scale)
+        private float GetLineHeight(float scale, QuestDetailTextLane lane = QuestDetailTextLane.Detail)
         {
-            Vector2 measured = ClientTextDrawing.Measure(GetTextGraphicsDevice(), "Ag", scale, _font);
+            ClientTextRasterizer rasterizer = ResolveQuestDetailTextRasterizer(lane, emphasized: false);
+            Vector2 measured = rasterizer?.MeasureString("Ag", scale)
+                ?? ClientTextDrawing.Measure(GetTextGraphicsDevice(), "Ag", scale, _font);
             if (measured.Y > 0f)
             {
                 return measured.Y;

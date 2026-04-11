@@ -140,6 +140,43 @@ namespace HaCreator.MapSimulator
             Expedition = 7,
         }
 
+        internal readonly struct PacketOwnedRawFunctionOwnerWindowRoute
+        {
+            public PacketOwnedRawFunctionOwnerWindowRoute(
+                PacketOwnedRawFunctionOwner owner,
+                string windowName,
+                string uiWindow2SourcePropertyName)
+            {
+                Owner = owner;
+                WindowName = windowName ?? string.Empty;
+                UIWindow2SourcePropertyName = uiWindow2SourcePropertyName ?? string.Empty;
+            }
+
+            public PacketOwnedRawFunctionOwner Owner { get; }
+            public string WindowName { get; }
+            public string UIWindow2SourcePropertyName { get; }
+            public bool HasUIWindow2Source => !string.IsNullOrWhiteSpace(UIWindow2SourcePropertyName);
+        }
+
+        private static readonly PacketOwnedRawFunctionOwnerWindowRoute[] PacketOwnedRawFunctionOwnerWindowRoutes =
+        {
+            // CUIMedalQuestInfo::OnCreate is confirmed, but the mounted UI set does not expose an obvious
+            // Medal-named UIWindow branch, so keep this as the routed client owner with a generic shell.
+            new(
+                PacketOwnedRawFunctionOwner.Medal,
+                MapSimulatorWindowNames.MedalQuestInfo,
+                string.Empty),
+            // Active WZ data exposes these packet-owned raw palette owners under UIWindow2.img.
+            new(
+                PacketOwnedRawFunctionOwner.ItemPot,
+                MapSimulatorWindowNames.ItemPot,
+                "itemPot"),
+            new(
+                PacketOwnedRawFunctionOwner.MagicWheel,
+                MapSimulatorWindowNames.MagicWheel,
+                "RollingGachaphone"),
+        };
+
         [DllImport("user32.dll", EntryPoint = "MapVirtualKeyW", ExactSpelling = true)]
         private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
@@ -1593,15 +1630,31 @@ namespace HaCreator.MapSimulator
 
         internal static bool TryResolvePacketOwnedRawFunctionOwnerWindowName(PacketOwnedRawFunctionOwner owner, out string windowName)
         {
-            windowName = owner switch
+            if (TryResolvePacketOwnedRawFunctionOwnerWindowRoute(owner, out PacketOwnedRawFunctionOwnerWindowRoute route))
             {
-                PacketOwnedRawFunctionOwner.Medal => MapSimulatorWindowNames.MedalQuestInfo,
-                PacketOwnedRawFunctionOwner.ItemPot => MapSimulatorWindowNames.ItemPot,
-                PacketOwnedRawFunctionOwner.MagicWheel => MapSimulatorWindowNames.MagicWheel,
-                _ => null,
-            };
+                windowName = route.WindowName;
+                return !string.IsNullOrEmpty(windowName);
+            }
 
-            return !string.IsNullOrEmpty(windowName);
+            windowName = null;
+            return false;
+        }
+
+        internal static bool TryResolvePacketOwnedRawFunctionOwnerWindowRoute(
+            PacketOwnedRawFunctionOwner owner,
+            out PacketOwnedRawFunctionOwnerWindowRoute route)
+        {
+            for (int i = 0; i < PacketOwnedRawFunctionOwnerWindowRoutes.Length; i++)
+            {
+                if (PacketOwnedRawFunctionOwnerWindowRoutes[i].Owner == owner)
+                {
+                    route = PacketOwnedRawFunctionOwnerWindowRoutes[i];
+                    return true;
+                }
+            }
+
+            route = default;
+            return false;
         }
 
         internal static PacketOwnedRawChatOwner ResolvePacketOwnedRawChatOwner(int clientFunctionId)

@@ -417,17 +417,25 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            SkillLevelData projectedLevelData =
+            SkillLevelData primaryProjectedLevelData =
                 RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(
                     primarySkill,
                     primaryLevelData,
-                    supportSkills) ?? primaryLevelData;
-            if (projectedLevelData == null)
+                    supportSkills);
+            var projectedLevelDataEntries = new System.Collections.Generic.List<SkillLevelData>();
+            if (primaryProjectedLevelData != null)
             {
-                return null;
+                projectedLevelDataEntries.Add(primaryProjectedLevelData);
+            }
+            else if (primaryLevelData != null)
+            {
+                projectedLevelDataEntries.Add(primaryLevelData);
             }
 
-            int derivedDamageReductionRate = projectedLevelData.DamageReductionRate;
+            int derivedDamageReductionRate = primaryProjectedLevelData?.DamageReductionRate
+                                             ?? primaryLevelData?.DamageReductionRate
+                                             ?? 0;
+            int primarySkillId = primarySkill?.SkillId ?? 0;
             for (int i = 0; i < supportSkills.Length; i++)
             {
                 SkillData supportSkill = supportSkills[i];
@@ -443,6 +451,30 @@ namespace HaCreator.MapSimulator
                 derivedDamageReductionRate = Math.Max(
                     derivedDamageReductionRate,
                     RemoteAffectedAreaSupportResolver.ResolveDerivedProjectedDamageReductionRate(supportSkill, supportLevelData));
+
+                if (supportSkill.SkillId > 0 && supportSkill.SkillId == primarySkillId)
+                {
+                    continue;
+                }
+
+                SkillLevelData supportProjectedLevelData =
+                    RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(
+                        supportSkill,
+                        supportLevelData,
+                        supportSkills);
+                if (supportProjectedLevelData != null)
+                {
+                    projectedLevelDataEntries.Add(supportProjectedLevelData);
+                }
+            }
+
+            SkillLevelData projectedLevelData =
+                RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(projectedLevelDataEntries.ToArray())
+                ?? primaryProjectedLevelData
+                ?? primaryLevelData;
+            if (projectedLevelData == null)
+            {
+                return null;
             }
 
             if (derivedDamageReductionRate <= projectedLevelData.DamageReductionRate)

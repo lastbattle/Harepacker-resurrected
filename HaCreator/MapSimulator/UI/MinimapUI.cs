@@ -1664,10 +1664,17 @@ namespace HaCreator.MapSimulator.UI
             MapleBool hideTooltip,
             int targetMapId)
         {
-            return (portalType == PortalType.Visible || portalType == PortalType.TownPortalPoint)
+            return IsClientMinimapTooltipPortalType(portalType)
                 && hideTooltip != MapleBool.True
                 && targetMapId > 0
                 && targetMapId != MapConstants.MaxMap;
+        }
+
+        internal static bool IsClientMinimapTooltipPortalType(PortalType portalType)
+        {
+            return portalType == PortalType.Visible
+                || portalType == PortalType.Default
+                || portalType == PortalType.Script;
         }
 
         internal static Point ResolveTooltipAnchorPointForTesting(int mouseX, int mouseY)

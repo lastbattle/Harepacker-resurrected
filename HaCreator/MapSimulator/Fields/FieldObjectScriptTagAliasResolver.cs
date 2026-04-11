@@ -10,6 +10,10 @@ namespace HaCreator.MapSimulator.Fields
             IReadOnlyList<string> TagsToEnable,
             IReadOnlyList<string> TagsToDisable);
 
+        internal readonly record struct ScriptAliasPublication(
+            string ScriptName,
+            int DelayMs);
+
         public static IReadOnlyList<string> ResolvePublishedTags(string scriptName, IEnumerable<string> availableTags)
         {
             return ResolvePublishedTagMutation(scriptName, availableTags).TagsToEnable;
@@ -97,6 +101,21 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return foundDelay;
+        }
+
+        internal static IReadOnlyList<ScriptAliasPublication> ResolveTimerCallbackPublications(string scriptName)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                return Array.Empty<ScriptAliasPublication>();
+            }
+
+            var publications = new List<ScriptAliasPublication>();
+            var seen = new HashSet<(string ScriptName, int DelayMs)>();
+            CollectTimerCallbackPublications(scriptName, inheritedDelayMs: 0, publications, seen);
+            return publications.Count == 0
+                ? Array.Empty<ScriptAliasPublication>()
+                : publications;
         }
 
         private static void AddIfAvailable(string candidateTag, ISet<string> availableTags, ISet<string> resolvedTags)
@@ -382,7 +401,9 @@ namespace HaCreator.MapSimulator.Fields
             yield return value[tokenStart..];
         }
 
-        private static IEnumerable<(string FunctionName, IReadOnlyList<string> Arguments)> EnumerateFunctionCalls(string value)
+        private static IEnumerable<(string FunctionName, IReadOnlyList<string> Arguments)> EnumerateFunctionCalls(
+            string value,
+            bool includeNested = true)
         {
             if (string.IsNullOrWhiteSpace(value))
             {
@@ -407,6 +428,12 @@ namespace HaCreator.MapSimulator.Fields
                     yield return (functionName, arguments);
                 }
 
+                if (!includeNested)
+                {
+                    openIndex = value.IndexOf('(', openIndex + 1);
+                    continue;
+                }
+
                 foreach ((string FunctionName, IReadOnlyList<string> Arguments) nestedCall in EnumerateFunctionCalls(argumentText))
                 {
                     yield return nestedCall;
@@ -414,6 +441,179 @@ namespace HaCreator.MapSimulator.Fields
 
                 openIndex = value.IndexOf('(', openIndex + 1);
             }
+        }
+
+        private static void CollectTimerCallbackPublications(
+            string value,
+            int inheritedDelayMs,
+            ICollection<ScriptAliasPublication> publications,
+            ISet<(string ScriptName, int DelayMs)> seen)
+        {
+            if (string.IsNullOrWhiteSpace(value) || publications == null || seen == null)
+            {
+                return;
+            }
+
+            foreach ((string FunctionName, IReadOnlyList<string> Arguments) call in EnumerateFunctionCalls(value, includeNested: false))
+            {
+                if (!IsTimerCallbackFunctionName(call.FunctionName)
+                    || call.Arguments.Count == 0
+                    || !TryResolveTimerCallDelayMs(call.Arguments, out int callbackDelayMs))
+                {
+                    continue;
+                }
+
+                int dueDelayMs = inheritedDelayMs >= int.MaxValue - callbackDelayMs
+                    ? int.MaxValue
+                    : inheritedDelayMs + callbackDelayMs;
+                int firstDelayCandidateIndex = call.Arguments.Count > 1 ? 1 : 0;
+                for (int i = 0; i < call.Arguments.Count; i++)
+                {
+                    string argument = NormalizeFunctionAliasArgument(call.Arguments[i]);
+                    if (string.IsNullOrWhiteSpace(argument)
+                        || (i >= firstDelayCandidateIndex && TryParsePositiveInt(argument, out _)))
+                    {
+                        continue;
+                    }
+
+                    string untimedArgument = RemoveNestedTimerCallbackCalls(argument);
+                    if (!string.IsNullOrWhiteSpace(untimedArgument))
+                    {
+                        AddPublication(untimedArgument, dueDelayMs, publications, seen);
+                    }
+
+                    CollectTimerCallbackPublications(argument, dueDelayMs, publications, seen);
+                }
+            }
+        }
+
+        private static bool TryResolveTimerCallDelayMs(IReadOnlyList<string> arguments, out int delayMs)
+        {
+            delayMs = 0;
+            if (arguments == null || arguments.Count == 0)
+            {
+                return false;
+            }
+
+            bool foundDelay = false;
+            int firstDelayCandidateIndex = arguments.Count > 1 ? 1 : 0;
+            for (int i = firstDelayCandidateIndex; i < arguments.Count; i++)
+            {
+                string argument = NormalizeFunctionAliasArgument(arguments[i]);
+                if (!TryParsePositiveInt(argument, out int parsedDelayMs))
+                {
+                    continue;
+                }
+
+                delayMs = Math.Max(delayMs, parsedDelayMs);
+                foundDelay = true;
+            }
+
+            return foundDelay;
+        }
+
+        private static bool TryParsePositiveInt(string value, out int parsedInt)
+        {
+            return int.TryParse(value, out parsedInt) && parsedInt > 0;
+        }
+
+        private static void AddPublication(
+            string scriptName,
+            int delayMs,
+            ICollection<ScriptAliasPublication> publications,
+            ISet<(string ScriptName, int DelayMs)> seen)
+        {
+            string normalizedScriptName = scriptName?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedScriptName))
+            {
+                return;
+            }
+
+            int normalizedDelayMs = Math.Max(0, delayMs);
+            var key = (normalizedScriptName, normalizedDelayMs);
+            if (!seen.Add(key))
+            {
+                return;
+            }
+
+            publications.Add(new ScriptAliasPublication(normalizedScriptName, normalizedDelayMs));
+        }
+
+        private static string RemoveNestedTimerCallbackCalls(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder(value);
+            foreach ((int StartIndex, int EndIndex) range in EnumerateTimerCallbackCallRanges(value))
+            {
+                for (int i = range.StartIndex; i <= range.EndIndex && i < builder.Length; i++)
+                {
+                    builder[i] = ' ';
+                }
+            }
+
+            return builder.ToString().Trim();
+        }
+
+        private static IEnumerable<(int StartIndex, int EndIndex)> EnumerateTimerCallbackCallRanges(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                yield break;
+            }
+
+            int openIndex = value.IndexOf('(');
+            while (openIndex >= 0)
+            {
+                int closeIndex = FindMatchingCloseParenthesis(value, openIndex);
+                if (closeIndex <= openIndex)
+                {
+                    openIndex = value.IndexOf('(', openIndex + 1);
+                    continue;
+                }
+
+                int functionStartIndex = FindFunctionNameStart(value, openIndex);
+                string functionName = functionStartIndex >= 0
+                    ? value[functionStartIndex..openIndex].Trim()
+                    : string.Empty;
+                if (IsTimerCallbackFunctionName(functionName))
+                {
+                    yield return (functionStartIndex, closeIndex);
+                }
+
+                openIndex = value.IndexOf('(', openIndex + 1);
+            }
+        }
+
+        private static int FindFunctionNameStart(string value, int openIndex)
+        {
+            if (string.IsNullOrWhiteSpace(value) || openIndex <= 0)
+            {
+                return -1;
+            }
+
+            int endIndex = openIndex - 1;
+            while (endIndex >= 0 && char.IsWhiteSpace(value[endIndex]))
+            {
+                endIndex--;
+            }
+
+            int startIndex = endIndex;
+            while (startIndex >= 0)
+            {
+                char current = value[startIndex];
+                if (!char.IsLetterOrDigit(current) && current is not ('_' or '.'))
+                {
+                    break;
+                }
+
+                startIndex--;
+            }
+
+            return startIndex < endIndex ? startIndex + 1 : -1;
         }
 
         private static string ReadFunctionName(string value, int openIndex)

@@ -60,7 +60,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled);
         private static readonly Regex NumericPrefixedStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        private static readonly Regex SelectionRegex = new(@"#L\d+#", RegexOptions.Compiled);
+        private static readonly Regex SelectionRegex = new(@"#L-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlaceholderRegex = new(@"#(?<token>[A-Za-z][A-Za-z0-9_]*)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 

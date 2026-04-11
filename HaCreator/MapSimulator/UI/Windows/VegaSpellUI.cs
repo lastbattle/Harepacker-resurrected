@@ -17,17 +17,17 @@ namespace HaCreator.MapSimulator.UI
         private const int CancelButtonX = 159;
         private const int CancelButtonY = 5;
         private const int StartButtonX = 67;
-        private const int StartButtonY = 182;
+        private const int StartButtonY = 200;
         private const int OkButtonX = 67;
-        private const int OkButtonY = 182;
+        private const int OkButtonY = 200;
         private const int PrevButtonX = 7;
         private const int PrevButtonY = 100;
         private const int NextButtonX = 63;
         private const int NextButtonY = 100;
-        private const int LeftIconX = 29;
-        private const int LeftIconY = 94;
-        private const int RightIconX = 117;
-        private const int RightIconY = 94;
+        private const int LeftIconX = 23;
+        private const int LeftIconY = 148;
+        private const int RightIconX = 118;
+        private const int RightIconY = 148;
         private const int ResultWindowX = 13;
         private const int ResultWindowY = 40;
         private const int ResultIconX = 60;
@@ -35,13 +35,21 @@ namespace HaCreator.MapSimulator.UI
         private const int EffectCenterX = 89;
         private const int EffectCenterY = 111;
         private const int StatusTextX = 13;
-        private const int StatusTextY = 205;
+        private const int StatusTextY = 218;
+        private const int CountY = 37;
+        private const int BaseRateCountX = 31;
+        private const int ModifiedRateCountX = 123;
+        private const int GaugeX = 19;
+        private const int GaugeY = 182;
+        private const int GaugeWidth = 140;
+        private const int GaugeSpeedPerSecond = 63;
 
         private readonly GraphicsDevice _device;
         private IDXObject _frame10;
         private IDXObject _frame60;
         private Texture2D _successWindow;
         private Texture2D _failWindow;
+        private Texture2D _gaugeTexture;
         private Texture2D[] _digitTextures = Array.Empty<Texture2D>();
         private readonly Dictionary<int, Texture2D> _itemIconCache = new Dictionary<int, Texture2D>();
         private IReadOnlyList<VegaAnimationFrame> _twinklingFrames = Array.Empty<VegaAnimationFrame>();
@@ -134,6 +142,11 @@ namespace HaCreator.MapSimulator.UI
         public void SetDigitTextures(Texture2D[] digitTextures)
         {
             _digitTextures = digitTextures ?? Array.Empty<Texture2D>();
+        }
+
+        public void SetGaugeTexture(Texture2D gaugeTexture)
+        {
+            _gaugeTexture = gaugeTexture;
         }
 
         public void SetEffectFrames(
@@ -357,14 +370,15 @@ namespace HaCreator.MapSimulator.UI
                 _itemUpgradeBackend.TryGetModifierPreview(selection.Key, _modifierItemId.Value, out ItemUpgradeUI.ModifierPreview preview))
             {
                 DrawModifierPreview(sprite, windowX, windowY, preview);
+                DrawGaugeBar(sprite, windowX, windowY);
             }
             else
             {
-                DrawShadowedText(sprite, "No compatible scroll", new Vector2(windowX + 95, windowY + 106), new Color(255, 190, 190));
+                DrawShadowedText(sprite, "No compatible scroll", new Vector2(windowX + 82, windowY + 185), new Color(255, 190, 190));
             }
 
-            DrawShadowedText(sprite, ResolveItemName(selectedPart), new Vector2(windowX + 14, windowY + 151), new Color(255, 232, 150));
-            DrawShadowedText(sprite, $"{selection.Key} [{_selectedIndex + 1}/{candidates.Count}]", new Vector2(windowX + 14, windowY + 166), Color.White);
+            DrawShadowedText(sprite, ResolveItemName(selectedPart), new Vector2(windowX + 14, windowY + 132), new Color(255, 232, 150));
+            DrawShadowedText(sprite, $"{selection.Key} [{_selectedIndex + 1}/{candidates.Count}]", new Vector2(windowX + 14, windowY + 185), Color.White);
 
             if (_state == VegaAnimationState.Casting)
             {
@@ -389,8 +403,8 @@ namespace HaCreator.MapSimulator.UI
         private void DrawRates(SpriteBatch sprite, int windowX, int windowY)
         {
             (int baseRate, int modifiedRate) = ResolveDisplayedRates();
-            DrawNumber(sprite, windowX + 34, windowY + 32, baseRate);
-            DrawNumber(sprite, windowX + 124, windowY + 32, modifiedRate);
+            DrawNumber(sprite, windowX + BaseRateCountX, windowY + CountY, baseRate);
+            DrawNumber(sprite, windowX + ModifiedRateCountX, windowY + CountY, modifiedRate);
         }
 
         private void DrawModifierPreview(SpriteBatch sprite, int windowX, int windowY, ItemUpgradeUI.ModifierPreview preview)
@@ -399,12 +413,32 @@ namespace HaCreator.MapSimulator.UI
             DrawItemIcon(sprite, scrollIcon, windowX + RightIconX, windowY + RightIconY);
 
             string countText = $"x{preview.ConsumableCount}";
-            DrawShadowedText(sprite, countText, new Vector2(windowX + 128, windowY + 128), new Color(255, 243, 190));
+            DrawShadowedText(sprite, countText, new Vector2(windowX + 130, windowY + 172), new Color(255, 243, 190));
 
             string scrollName = preview.ConsumableName.Length > 15
                 ? preview.ConsumableName.Substring(0, 15)
                 : preview.ConsumableName;
-            DrawShadowedText(sprite, scrollName, new Vector2(windowX + 82, windowY + 151), new Color(205, 225, 255));
+            DrawShadowedText(sprite, scrollName, new Vector2(windowX + 82, windowY + 132), new Color(205, 225, 255));
+        }
+
+        private void DrawGaugeBar(SpriteBatch sprite, int windowX, int windowY)
+        {
+            if (_gaugeTexture == null)
+            {
+                return;
+            }
+
+            int width = _state switch
+            {
+                VegaAnimationState.Casting => Math.Clamp((_stateElapsedMs * GaugeSpeedPerSecond / 1000) - 7, 0, GaugeWidth),
+                VegaAnimationState.ResultPrelude or VegaAnimationState.Result => GaugeWidth,
+                _ => 0
+            };
+
+            for (int offset = 0; offset < width; offset++)
+            {
+                sprite.Draw(_gaugeTexture, new Vector2(windowX + GaugeX + offset, windowY + GaugeY), Color.White);
+            }
         }
 
         private void DrawCastingEffects(SpriteBatch sprite, int windowX, int windowY)

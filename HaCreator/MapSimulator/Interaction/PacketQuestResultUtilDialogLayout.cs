@@ -46,8 +46,14 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int SpeakerNameBarBottomMargin = 10;
         internal const int CloseButtonRightMargin = 10;
         internal const int CloseButtonTopMargin = 8;
+        internal const int TextNavigationExtraHeight = 18;
         internal const int DefaultWindowHeight =
             DefaultTopHeight + (DefaultCenterHeight * DefaultCenterRepeatCount) + DefaultBottomHeight;
+
+        internal static int ResolveWindowHeight(int baseHeight, bool hasPrevPage, bool hasNextPage)
+        {
+            return Math.Max(0, baseHeight) + (hasPrevPage || hasNextPage ? TextNavigationExtraHeight : 0);
+        }
 
         internal static Rectangle GetBodyTextRectangle(Rectangle windowRect, bool hasSpeakerPortrait, bool flipSpeaker = false)
         {

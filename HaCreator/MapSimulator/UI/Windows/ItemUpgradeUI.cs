@@ -4303,9 +4303,10 @@ namespace HaCreator.MapSimulator.UI
             string[] weaponKeywords =
             {
                 "weapon", "sword", "axe", "blunt", "dagger", "spear", "pole arm", "bow",
-                "crossbow", "staff", "wand", "claw", "knuckle", "gun"
+                "crossbow", "staff", "wand", "claw", "knuckle", "gun", "blade", "katara",
+                "cannon", "cane"
             };
-            if (weaponKeywords.Any(keyword => normalized.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0))
+            if (weaponKeywords.Any(keyword => ContainsWeaponKeyword(normalized, keyword)))
             {
                 targetSlots.Add(EquipSlot.Weapon);
             }
@@ -4455,9 +4456,10 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (ContainsAny(normalized,
+            if (ContainsWeaponKeyword(normalized,
                     "weapon", "sword", "axe", "blunt", "dagger", "spear", "pole arm",
-                    "bow", "crossbow", "staff", "wand", "claw", "knuckle", "gun"))
+                    "bow", "crossbow", "staff", "wand", "claw", "knuckle", "gun",
+                    "blade", "katara", "cannon", "cane"))
             {
                 label = "weapons";
                 return true;
@@ -4518,6 +4520,40 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (!string.IsNullOrWhiteSpace(patterns[i]) &&
                     text.IndexOf(patterns[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ContainsWeaponKeyword(string text, params string[] keywords)
+        {
+            if (string.IsNullOrWhiteSpace(text) || keywords == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < keywords.Length; i++)
+            {
+                string keyword = keywords[i];
+                if (string.IsNullOrWhiteSpace(keyword))
+                {
+                    continue;
+                }
+
+                if (keyword == "cane")
+                {
+                    if (ContainsWholeWord(text, keyword) || ContainsWholeWord(text, "canes"))
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                if (text.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
                     return true;
                 }

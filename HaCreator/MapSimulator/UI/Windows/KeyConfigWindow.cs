@@ -89,7 +89,8 @@ namespace HaCreator.MapSimulator.UI
                 None = 0,
                 Skill = 1,
                 ItemStack = 2,
-                ItemUnavailable = 3,
+                ItemAvailability = 3,
+                ItemUnavailable = 4,
                 CashItem = 7,
                 Macro = 8,
             }
@@ -1114,6 +1115,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return drawLayer is ShortcutVisualState.ClientDrawLayer.ItemStack
+                or ShortcutVisualState.ClientDrawLayer.ItemAvailability
                 or ShortcutVisualState.ClientDrawLayer.ItemUnavailable
                 or ShortcutVisualState.ClientDrawLayer.CashItem
                     ? Math.Min(scale, 1f)
@@ -1281,6 +1283,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (drawLayer is ShortcutVisualState.ClientDrawLayer.ItemStack
+                or ShortcutVisualState.ClientDrawLayer.ItemAvailability
                 or ShortcutVisualState.ClientDrawLayer.ItemUnavailable
                 or ShortcutVisualState.ClientDrawLayer.CashItem)
             {

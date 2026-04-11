@@ -157,6 +157,10 @@ namespace HaCreator.MapSimulator.UI
             string inputPlaceholder = null,
             bool inputActive = false,
             int inputMaxLength = 32,
+            int inputClientX = 0,
+            int inputClientY = 0,
+            int inputClientWidth = 0,
+            int inputClientHeight = 0,
             IEnumerable<string> giftRows = null,
             int selectedGiftIndex = 0,
             bool giftRowsSelectable = false,
@@ -203,6 +207,7 @@ namespace HaCreator.MapSimulator.UI
             _inputPlaceholder = inputPlaceholder ?? string.Empty;
             _inputActive = inputActive;
             _inputMaxLength = Math.Max(0, inputMaxLength);
+            _inputBounds = ResolveInputBounds(inputClientX, inputClientY, inputClientWidth, inputClientHeight);
             _selectedGiftIndex = ResolveSelectedGiftIndex(selectedGiftIndex, _giftRows.Count);
             _showGiftRows = _giftRows.Count > 0;
             _giftRowsSelectable = _showGiftRows && giftRowsSelectable;
@@ -687,11 +692,32 @@ namespace HaCreator.MapSimulator.UI
                 _buttonBounds[i] = new Rectangle(startX + (i * (ButtonWidth + ButtonGap)), buttonY, ButtonWidth, ButtonHeight);
             }
 
-            _inputBounds = new Rectangle(
-                Position.X + BodyOffsetX,
-                Position.Y + frameHeight - FooterPadding - ButtonHeight - InputHeight - 8,
-                Math.Max(120, frameWidth - (BodyOffsetX * 2)),
-                InputHeight);
+            if (_inputBounds.Width <= 0 || _inputBounds.Height <= 0)
+            {
+                _inputBounds = new Rectangle(
+                    Position.X + BodyOffsetX,
+                    Position.Y + frameHeight - FooterPadding - ButtonHeight - InputHeight - 8,
+                    Math.Max(120, frameWidth - (BodyOffsetX * 2)),
+                    InputHeight);
+            }
+            else
+            {
+                _inputBounds = new Rectangle(
+                    Position.X + (_inputBounds.X - Position.X),
+                    Position.Y + (_inputBounds.Y - Position.Y),
+                    _inputBounds.Width,
+                    _inputBounds.Height);
+            }
+        }
+
+        private Rectangle ResolveInputBounds(int clientX, int clientY, int clientWidth, int clientHeight)
+        {
+            if (clientWidth <= 0 || clientHeight <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(Position.X + clientX, Position.Y + clientY, clientWidth, clientHeight);
         }
 
         private void CenterOnScreen()

@@ -5709,17 +5709,8 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             UIObject repairAllButton = LoadButton(repairProperty, "BtAllRepair", btClickSound, btOverSound, device);
             UIObject repairButton = LoadButton(repairProperty, "BtRepair", btClickSound, btOverSound, device);
-            if (repairAllButton != null)
-            {
-                repairAllButton.X = 114;
-                repairAllButton.Y = 28;
-            }
-
-            if (repairButton != null)
-            {
-                repairButton.X = 114;
-                repairButton.Y = 46;
-            }
+            ApplyRepairButtonOriginPosition(repairAllButton, repairProperty, "BtAllRepair");
+            ApplyRepairButtonOriginPosition(repairButton, repairProperty, "BtRepair");
 
             UIObject closeButton = null;
             WzSubProperty basicCloseButton = basicImage?["BtClose"] as WzSubProperty;
@@ -5741,6 +5732,23 @@ namespace HaCreator.MapSimulator.Loaders
 
             window.InitializeButtons(repairAllButton, repairButton, closeButton);
             return window;
+        }
+
+        private static void ApplyRepairButtonOriginPosition(UIObject button, WzSubProperty repairProperty, string buttonName)
+        {
+            if (button == null || repairProperty?[buttonName] is not WzSubProperty buttonProperty)
+            {
+                return;
+            }
+
+            if (buttonProperty["normal"]?["0"] is not WzCanvasProperty normalCanvas)
+            {
+                return;
+            }
+
+            System.Drawing.PointF origin = normalCanvas.GetCanvasOriginPosition();
+            button.X = -(int)origin.X;
+            button.Y = -(int)origin.Y;
         }
 
 
@@ -8972,10 +8980,10 @@ namespace HaCreator.MapSimulator.Loaders
             int clientOwnerWidth,
             int clientOwnerHeight)
         {
-            foreach (string backgroundPath in AccountMoreInfoOwnerStringPoolText.EnumerateBackgroundResourcePaths())
+            foreach (AccountMoreInfoBackgroundResourceCandidate backgroundCandidate in AccountMoreInfoOwnerStringPoolText.EnumerateBackgroundResourceCandidates())
             {
                 IDXObject candidateFrame = LoadWindowCanvasLayerFromClientUiPath(
-                    backgroundPath,
+                    backgroundCandidate.Path,
                     uiWindow1Image,
                     uiWindow2Image,
                     device,
@@ -8984,6 +8992,11 @@ namespace HaCreator.MapSimulator.Loaders
                 if (candidateTexture == null)
                 {
                     continue;
+                }
+
+                if (backgroundCandidate.MirrorsClientSetBackgrnd)
+                {
+                    return candidateFrame;
                 }
 
                 Texture2D clientSizedTexture = CreateAccountMoreInfoClientSizedBackgroundTexture(

@@ -90,6 +90,7 @@ namespace HaCreator.MapSimulator.Interaction
             RadioCreateLayerLastMutationTick = int.MinValue;
             RadioCreateLayerLastMutationSource = "fallback";
             _recentRadioCreateLayerMutations.Clear();
+            ResetRadioScheduleState(0);
             ClearChairContext();
         }
 

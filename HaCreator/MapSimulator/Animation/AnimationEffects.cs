@@ -1151,6 +1151,17 @@ namespace HaCreator.MapSimulator.Animation
             return relativeToTarget ? targetPosition : capturedTargetPosition;
         }
 
+        internal static byte ResolveFollowParticleAlpha(int elapsedMs, int durationMs)
+        {
+            if (durationMs <= 0)
+            {
+                return byte.MinValue;
+            }
+
+            float progress = MathHelper.Clamp((float)elapsedMs / durationMs, 0f, 1f);
+            return (byte)Math.Clamp((int)MathF.Round(byte.MaxValue * (1f - progress)), byte.MinValue, byte.MaxValue);
+        }
+
         public int UserStateCount => _userStateAnimations.Count;
         public int AreaAnimationCount => _areaAnimations.Count;
         public int FollowAnimationCount => _followAnimations.Count;
@@ -1659,7 +1670,7 @@ namespace HaCreator.MapSimulator.Animation
                     default,
                     new CanvasLayerRecoveredPositionSettings(
                         registrationTrace.Position.Left,
-                        registrationTrace.Position.Top + overlayOffset.Y),
+                        registrationTrace.Position.Top - 30),
                     0));
             }
 
@@ -1826,6 +1837,7 @@ namespace HaCreator.MapSimulator.Animation
         public string SourceUol { get; private set; }
         public bool UsesOverlayParent { get; private set; }
         public OneTimeAnimationRecoveredRegistrationTrace? RecoveredRegistrationTrace { get; private set; }
+        internal int CurrentFrameIndex => _currentFrame;
 
         public void Initialize(List<IDXObject> frames, float x, float y, bool flip, int currentTimeMs, int zOrder)
         {
@@ -1898,6 +1910,11 @@ namespace HaCreator.MapSimulator.Animation
         {
             if (_finished) return false;
 
+            if (PlaybackMode == AnimationOneTimePlaybackMode.GA_STOP)
+            {
+                return UpdateStoppedPlayback(currentTimeMs);
+            }
+
             IDXObject frame = _frames[_currentFrame];
             if (currentTimeMs - _lastFrameTime > frame.Delay)
             {
@@ -1919,6 +1936,37 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return true;
+        }
+
+        private bool UpdateStoppedPlayback(int currentTimeMs)
+        {
+            if (_frames == null || _frames.Count == 0)
+            {
+                _finished = true;
+                return false;
+            }
+
+            int elapsed = Math.Max(0, unchecked(currentTimeMs - _startTime));
+            int cursor = 0;
+            for (int i = 0; i < _frames.Count; i++)
+            {
+                cursor += ResolveFrameDelay(_frames[i]);
+                if (elapsed < cursor)
+                {
+                    _currentFrame = i;
+                    _lastFrameTime = currentTimeMs;
+                    return true;
+                }
+            }
+
+            _finished = true;
+            _currentFrame = _frames.Count;
+            return false;
+        }
+
+        private static int ResolveFrameDelay(IDXObject frame)
+        {
+            return Math.Max(10, frame?.Delay ?? 100);
         }
 
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
@@ -2546,7 +2594,22 @@ namespace HaCreator.MapSimulator.Animation
             float drawY = anchorPosition.Y + _offsetY + animatedOffset.Y;
             int drawShiftX = -(int)drawX - mapShiftX;
             int drawShiftY = -(int)drawY - mapShiftY;
-            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
+            byte alpha = AnimationEffects.ResolveFollowParticleAlpha(currentTimeMs - _startTime, _duration);
+            if (alpha == byte.MaxValue)
+            {
+                frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
+                return;
+            }
+
+            frame.DrawBackground(
+                spriteBatch,
+                skeletonRenderer,
+                gameTime,
+                frame.X - drawShiftX,
+                frame.Y - drawShiftY,
+                new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, alpha),
+                flip,
+                null);
         }
     }
 

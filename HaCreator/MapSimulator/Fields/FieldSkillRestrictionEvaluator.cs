@@ -73,6 +73,11 @@ namespace HaCreator.MapSimulator.Fields
             3001
         };
 
+        private static readonly HashSet<int> ClientFacingNoSkillClassExcludedRoots = new HashSet<int>
+        {
+            3000
+        };
+
         private static readonly HashSet<int> ClientDojoOrBalrogOnlySkillIds = new HashSet<int>
         {
             1009,
@@ -652,6 +657,11 @@ namespace HaCreator.MapSimulator.Fields
                 return 1;
             }
 
+            if (ClientFacingNoSkillClassExcludedRoots.Contains(jobId))
+            {
+                return 0;
+            }
+
             if (ClientFacingIrregularFirstJobRoots.Contains(jobId))
             {
                 return 1;
@@ -680,18 +690,13 @@ namespace HaCreator.MapSimulator.Fields
                 return Math.Min(10, (jobId - 2210) + 2);
             }
 
-            int branchDigit = jobId % 10;
-            if (branchDigit == 1)
+            if (jobId % 100 == 0)
             {
-                return 3;
+                return 1;
             }
 
-            if (branchDigit == 2)
-            {
-                return 4;
-            }
-
-            return jobId % 100 == 0 ? 1 : 2;
+            int branchGrade = (jobId % 10) + 2;
+            return branchGrade >= 2 && branchGrade <= 4 ? branchGrade : 0;
         }
 
         private static bool IsMysticDoorSkill(SkillData skill)

@@ -107,7 +107,7 @@ namespace HaCreator.MapSimulator.Managers
             string lastQueued = LastQueuedOpcode >= 0
                 ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,234,250,253,254,255,256,261,269,270,274,275,291,366,367,405,406,407,1011,1023,1025; outbound opcodes=45,74,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=58,133,193,234,250,253,254,255,256,261,269,270,274,275,291,366,367,405,406,407,1011,1023,1025; outbound opcodes=45,74,77,113,117,130,131,134,135,191,193,1023.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)

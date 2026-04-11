@@ -159,15 +159,6 @@ namespace HaCreator.MapSimulator
 
         private bool IsRandomMorphRequestBlocked(int currentTick)
         {
-            // The client latch clears on the remote result path; the simulator narrows that to the recovered 500 ms gate
-            // until the matching inbound acknowledgement owner is implemented.
-            if (_randomMorphRequestSent
-                && _randomMorphRequestSentTick != int.MinValue
-                && unchecked(currentTick - _randomMorphRequestSentTick) >= RandomMorphBlockedThrottleMs)
-            {
-                _randomMorphRequestSent = false;
-            }
-
             if (_randomMorphRequestSent)
             {
                 return true;
@@ -181,6 +172,15 @@ namespace HaCreator.MapSimulator
         {
             _randomMorphRequestSent = true;
             _randomMorphRequestSentTick = currentTick;
+        }
+
+        private bool TryApplyRandomMorphRequestAckPayload(byte[] payload, out string message)
+        {
+            _randomMorphRequestSent = false;
+            message = payload == null || payload.Length == 0
+                ? "Random morph request ack cleared the recovered CWvsContext request latch; the 500 ms send throttle still applies until the client timestamp gate expires."
+                : $"Random morph request ack cleared the recovered CWvsContext request latch with {payload.Length} byte(s) of simulator-local result context; the 500 ms send throttle still applies until the client timestamp gate expires.";
+            return true;
         }
 
         internal static byte[] BuildRandomMorphRequestPayload(int currentTick, int inventoryPosition, int itemId, string targetName)

@@ -31,6 +31,15 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int ParticipantNameY = 105;
         internal const int AcceptButtonX = 87;
         internal const int AcceptButtonY = 206;
+        internal const int ClientCreateDialogAutoSeparated = 1;
+        internal const int ClientCreateDialogX = 0;
+        internal const int ClientCreateDialogY = 0;
+        internal const int InvitationAssetWidth = 234;
+        internal const int InvitationAssetHeight = 250;
+        internal const int PrimaryAcceptButtonWzOriginX = -89;
+        internal const int PrimaryAcceptButtonWzOriginY = -213;
+        internal const int PrimaryAcceptButtonWidth = 57;
+        internal const int PrimaryAcceptButtonHeight = 23;
         internal const string PriorOwnerTypeName = EngagementProposalRuntime.ClientOwnerTypeName;
         internal const int PriorOwnerCloseRetValue = 1;
         internal const int AcceptButtonControlId = 1;
@@ -88,7 +97,7 @@ namespace HaCreator.MapSimulator.Interaction
                 ? DefaultSourceDescription
                 : sourceDescription.Trim();
             SetObservedSocialMessages(_groomName, _brideName);
-            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} with SetRet({PriorOwnerCloseRetValue}) before opening; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText}; accept control id {AcceptButtonControlId} UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}.";
+            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; closes active {PriorOwnerTypeName} with SetRet({PriorOwnerCloseRetValue}) before opening; CreateDlg StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X} => {_dialogUolText} with args ({ClientCreateDialogAutoSeparated},{ClientCreateDialogX},{ClientCreateDialogY}); accept control id {AcceptButtonControlId} UOL 0x{AcceptButtonUolStringPoolId:X} => {_acceptButtonUolText}; WZ primary button normal origin=({PrimaryAcceptButtonWzOriginX},{PrimaryAcceptButtonWzOriginY}) size={PrimaryAcceptButtonWidth}x{PrimaryAcceptButtonHeight}, while client control anchor stays ({AcceptButtonX},{AcceptButtonY}); name font {NameFontToken} StringPool 0x{BasicBlackFontFaceStringPoolId:X} => {_basicBlackFontFaceName}.";
             return _statusMessage;
         }
 
@@ -214,6 +223,11 @@ namespace HaCreator.MapSimulator.Interaction
                 DialogUolText = _dialogUolText,
                 AcceptButtonUolText = _acceptButtonUolText,
                 NameFontFaceName = _basicBlackFontFaceName,
+                ClientCreateDialogAutoSeparated = ClientCreateDialogAutoSeparated,
+                ClientCreateDialogPosition = (ClientCreateDialogX, ClientCreateDialogY),
+                InvitationAssetSize = (InvitationAssetWidth, InvitationAssetHeight),
+                PrimaryAcceptButtonWzOrigin = (PrimaryAcceptButtonWzOriginX, PrimaryAcceptButtonWzOriginY),
+                PrimaryAcceptButtonSize = (PrimaryAcceptButtonWidth, PrimaryAcceptButtonHeight),
                 ClosesPriorOwnerOnOpen = true,
                 PriorOwnerTypeName = PriorOwnerTypeName,
                 PriorOwnerCloseRetValue = PriorOwnerCloseRetValue,
@@ -438,6 +452,11 @@ namespace HaCreator.MapSimulator.Interaction
         public bool ModalReturnIgnored { get; init; }
         public bool OwnsDownstreamHandoff { get; init; }
         public WeddingInvitationStyle Style { get; init; }
+        public int ClientCreateDialogAutoSeparated { get; init; }
+        public (int X, int Y) ClientCreateDialogPosition { get; init; }
+        public (int Width, int Height) InvitationAssetSize { get; init; }
+        public (int X, int Y) PrimaryAcceptButtonWzOrigin { get; init; }
+        public (int Width, int Height) PrimaryAcceptButtonSize { get; init; }
         public (int X, int Y) GroomNamePosition { get; init; }
         public (int X, int Y) BrideNamePosition { get; init; }
         public (int X, int Y) AcceptButtonPosition { get; init; }

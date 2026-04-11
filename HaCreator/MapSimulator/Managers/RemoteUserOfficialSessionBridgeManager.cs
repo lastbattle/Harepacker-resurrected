@@ -37,7 +37,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int DefaultListenPort = 18492;
         private const string DefaultProcessName = "MapleStory";
 
-        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, and remote-user opcodes 210-230; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; tutor remains local under CUserLocal::OnPacket 255/256.";
+        private const string OfficialRemoteOwnerEvidence = "v95 CUserPool::OnPacket (0x94ddf0) routes 179 enter, 180 leave, common opcodes 181-209, remote-user opcodes 210-230, and local-user opcodes 231-276; CUserRemote::OnAvatarModified (0x954110) is the live relationship-record route for couple/friend/marriage add and remove before CUserPool::Update consumes the tables; tutor remains local under CUserLocal::OnPacket 255/256.";
 
         private static readonly IReadOnlyDictionary<ushort, int> DefaultPacketMap = new Dictionary<ushort, int>
         {
@@ -394,9 +394,16 @@ namespace HaCreator.MapSimulator.Managers
                         return false;
                     }
 
-                    byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
-                    if (!TryInferInboundRemoteTutorPacketTypeNoLock(inferencePayload, out packetType, out string inferenceReason))
+                    if (!IsOfficialLocalUserOpcodeCoveredByV95OwnerTable(opcode))
                     {
+                        LastStatus = $"Ignored unmapped remote-user opcode {opcode}: it is outside the recovered CUserPool::OnPacket local-user tutor owner range. {OfficialRemoteOwnerEvidence}";
+                        return false;
+                    }
+
+                    byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
+                    if (!TryInferInboundRemoteTutorPacketTypeNoLock(opcode, inferencePayload, out packetType, out string inferenceReason))
+                    {
+                        LastStatus = $"Ignored CUserPool local-user opcode {opcode}: payload did not match the exact remote tutor wrapper. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
 
@@ -425,7 +432,13 @@ namespace HaCreator.MapSimulator.Managers
                 || (opcode >= 210 && opcode <= 230);
         }
 
+        internal static bool IsOfficialLocalUserOpcodeCoveredByV95OwnerTable(ushort opcode)
+        {
+            return opcode >= 231 && opcode <= 276;
+        }
+
         private static bool TryInferInboundRemoteTutorPacketTypeNoLock(
+            ushort opcode,
             byte[] payload,
             out int packetType,
             out string reason)
@@ -444,7 +457,7 @@ namespace HaCreator.MapSimulator.Managers
                     out _))
             {
                 packetType = (int)Pools.RemoteUserPacketType.UserTutorHire;
-                reason = $"exact remote tutor-hire wrapper for character {hireCharacterId}, enabled={enabled}";
+                reason = $"CUserPool local-user opcode {opcode} exact remote tutor-hire wrapper for character {hireCharacterId}, enabled={enabled}";
                 return true;
             }
 
@@ -460,8 +473,8 @@ namespace HaCreator.MapSimulator.Managers
             {
                 packetType = (int)Pools.RemoteUserPacketType.UserTutorMessage;
                 reason = indexedPayload
-                    ? $"exact remote tutor-indexed-message wrapper for character {messageCharacterId}, index={messageIndex}, duration={durationMs}"
-                    : $"exact remote tutor-text-message wrapper for character {messageCharacterId}, width={width}, duration={durationMs}, textLength={text?.Length ?? 0}";
+                    ? $"CUserPool local-user opcode {opcode} exact remote tutor-indexed-message wrapper for character {messageCharacterId}, index={messageIndex}, duration={durationMs}"
+                    : $"CUserPool local-user opcode {opcode} exact remote tutor-text-message wrapper for character {messageCharacterId}, width={width}, duration={durationMs}, textLength={text?.Length ?? 0}";
                 return true;
             }
 

@@ -1819,6 +1819,12 @@ namespace HaCreator.MapSimulator.Pools
                 x,
                 y,
                 data.PacketStateEndTime);
+            if (index < _spawnPoints.Count)
+            {
+                _spawnPoints[index].X = x;
+                _spawnPoints[index].Y = y;
+            }
+
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             SyncPacketScriptPublication(reactor, data, currentTick);
@@ -2439,6 +2445,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            reactor.SetLogicalWorldPosition(targetX, targetY);
             data.PacketMoveEndTime = moveEndTime;
         }
 
@@ -2652,8 +2659,8 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int x = reactor.CurrentWorldX;
-            int y = reactor.CurrentWorldY;
+            int x = reactor.ReactorInstance.X;
+            int y = reactor.ReactorInstance.Y;
             ReactorFootholdPlacement placement = _reactorFootholdPlacementResolver?.Invoke(x, y)
                 ?? new ReactorFootholdPlacement(0, 0);
             reactor.RenderSortKey = ResolveReactorRenderSortKey(
@@ -2779,22 +2786,6 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            List<PacketEnterAuthoredReactorCandidate> exactNameCandidates = candidates
-                .Where(static candidate => candidate.HasExactNameMatch)
-                .ToList();
-            List<PacketEnterAuthoredReactorCandidate> packetNameMatches = candidates
-                .Where(static candidate => candidate.MatchesPacketName)
-                .ToList();
-            List<PacketEnterAuthoredReactorCandidate> immediatePositionCandidates = candidates
-                .Where(static candidate => candidate.ContainsCurrentLocalUserPosition)
-                .ToList();
-            List<PacketEnterAuthoredReactorCandidate> touchedCandidates = candidates
-                .Where(static candidate => candidate.IsLocallyTouched)
-                .ToList();
-            List<PacketEnterAuthoredReactorCandidate> stateMatches = candidates
-                .Where(candidate => candidate.VisualState == initialState)
-                .ToList();
-
             static bool TrySelectUniqueCandidate(
                 IReadOnlyList<PacketEnterAuthoredReactorCandidate> scope,
                 out int selectedIndex)
@@ -2866,12 +2857,7 @@ namespace HaCreator.MapSimulator.Pools
                 IntersectCandidates(candidates, requireImmediatePosition: true, requireLocallyTouched: true),
                 IntersectCandidates(candidates, requireExactName: true, requiredVisualState: initialState),
                 IntersectCandidates(candidates, requireImmediatePosition: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requireLocallyTouched: true, requiredVisualState: initialState),
-                packetNameMatches,
-                exactNameCandidates,
-                immediatePositionCandidates,
-                touchedCandidates,
-                stateMatches
+                IntersectCandidates(candidates, requireLocallyTouched: true, requiredVisualState: initialState)
             };
 
             foreach (IReadOnlyList<PacketEnterAuthoredReactorCandidate> scope in prioritizedScopes)

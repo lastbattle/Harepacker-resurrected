@@ -528,7 +528,8 @@ namespace HaCreator.MapSimulator.Pools
         RemoteUserRelationshipRecord FriendshipRecord,
         RemoteUserRelationshipRecord MarriageRecord,
         RemoteUserRelationshipRecord NewYearCardRecord,
-        int CompletedSetItemId);
+        int CompletedSetItemId,
+        bool AvatarLookModified = false);
     public readonly record struct RemoteUserHelperPacket(int CharacterId, MinimapUI.HelperMarkerType? MarkerType, bool ShowDirectionOverlay);
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
     public static class RemoteUserPacketCodec
@@ -1958,7 +1959,8 @@ namespace HaCreator.MapSimulator.Pools
                     hasFriendshipRecord ? friendshipRecord : default,
                     hasMarriageRecord ? marriageRecord : default,
                     hasNewYearCardRecord ? newYearCardRecord : default,
-                    completedSetItemId);
+                    completedSetItemId,
+                    AvatarLookModified: (flags & 0x01) != 0);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -3554,7 +3556,7 @@ namespace HaCreator.MapSimulator.Pools
                 int elementY = currentY;
                 short elementVelocityX = currentVelocityX;
                 short elementVelocityY = currentVelocityY;
-                short elementFoothold = currentFoothold;
+                short elementFoothold = 0;
                 bool readsCommonMoveSuffix = true;
 
                 switch (attr)

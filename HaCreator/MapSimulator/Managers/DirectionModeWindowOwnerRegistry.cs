@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.CashNameChangeLicenseDialog,
             MapSimulatorWindowNames.CashTransferWorldLicenseDialog,
             MapSimulatorWindowNames.MtsStatus,
+            MapSimulatorWindowNames.ConnectionNotice,
             MapSimulatorWindowNames.LoginUtilityDialog,
             MapSimulatorWindowNames.InGameConfirmDialog,
             MapSimulatorWindowNames.ItcCharacter,

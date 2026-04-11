@@ -102,6 +102,8 @@ namespace HaCreator.MapSimulator.UI
         private const int JoypadClientNameTop = 34;
         private const int JoypadClientNameClipWidth = 80;
         private const int JoypadClientComboLeft = 72;
+        private const int JoypadClientComboWidth = 96;
+        private const int JoypadClientComboHeight = 17;
         private const int JoypadClientComboFirstId = 1000;
         private const int JoypadClientDefaultButtonId = 1009;
         private const int JoypadClientDefaultButtonLeft = 8;
@@ -116,6 +118,7 @@ namespace HaCreator.MapSimulator.UI
         private const int JoypadClientDefaultButtonUolStringPoolId = 0x1810;
         private const int JoypadClientDuplicateButtonNoticeStringPoolId = 0x180A;
         private const int JoypadRowsTop = 136;
+        private const int JoypadExtensionRowsTop = 326;
         private const int JoypadRowPitch = 20;
         private const int JoypadFooterReserve = 52;
         private const int JoypadScrollTrackWidth = 12;
@@ -513,12 +516,14 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
 
-                int firstVisibleRow = _joypadScrollOffset;
-                int visibleRowCount = GetJoypadVisibleRowCount();
-                int lastVisibleExclusive = Math.Min(_joypadRows.Count, firstVisibleRow + visibleRowCount);
-                for (int i = firstVisibleRow; i < lastVisibleExclusive; i++)
+                for (int i = 0; i < _joypadRows.Count; i++)
                 {
                     Rectangle rowBounds = GetJoypadRowBounds(i);
+                    if (rowBounds == Rectangle.Empty)
+                    {
+                        continue;
+                    }
+
                     if (!rowBounds.Contains(mouseState.X, mouseState.Y))
                     {
                         continue;
@@ -972,7 +977,27 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetJoypadRowBounds(int index)
         {
-            int visibleIndex = index - _joypadScrollOffset;
+            if (index < 0 || index >= _joypadRows.Count)
+            {
+                return Rectangle.Empty;
+            }
+
+            JoypadRow row = _joypadRows[index];
+            if (row.IsClientCombo)
+            {
+                return new Rectangle(
+                    Position.X + JoypadClientComboLeft,
+                    Position.Y + row.ClientY,
+                    JoypadClientComboWidth,
+                    JoypadClientComboHeight);
+            }
+
+            if (row.ClientControlId == JoypadClientDefaultButtonId)
+            {
+                return GetJoypadActionButtonBounds(JoypadActionButtonKind.Default);
+            }
+
+            int visibleIndex = GetJoypadExtensionRowIndex(index) - _joypadScrollOffset;
             if (visibleIndex < 0 || visibleIndex >= GetJoypadVisibleRowCount())
             {
                 return Rectangle.Empty;
@@ -984,7 +1009,7 @@ namespace HaCreator.MapSimulator.UI
                 width -= JoypadScrollTrackWidth + JoypadScrollTrackMargin + 2;
             }
 
-            return new Rectangle(Position.X + 12, Position.Y + JoypadRowsTop + (visibleIndex * JoypadRowPitch), width, 18);
+            return new Rectangle(Position.X + 12, Position.Y + JoypadExtensionRowsTop + (visibleIndex * JoypadRowPitch), width, 18);
         }
 
         private void DrawJoypadRows(SpriteBatch sprite)
@@ -997,15 +1022,18 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            DrawJoypadClientName(sprite, input, session);
             DrawJoypadSummary(sprite, input, session);
             DrawJoypadClientBindingSummary(sprite, session);
 
-            int firstVisibleRow = _joypadScrollOffset;
-            int visibleRowCount = GetJoypadVisibleRowCount();
-            int lastVisibleExclusive = Math.Min(_joypadRows.Count, firstVisibleRow + visibleRowCount);
-            for (int i = firstVisibleRow; i < lastVisibleExclusive; i++)
+            for (int i = 0; i < _joypadRows.Count; i++)
             {
                 Rectangle bounds = GetJoypadRowBounds(i);
+                if (bounds == Rectangle.Empty)
+                {
+                    continue;
+                }
+
                 bool selected = _selectedJoypadRowIndex == i;
                 bool captureArmed = _armedJoypadBindingAction == _joypadRows[i].Action && _joypadRows[i].Action.HasValue;
                 Color rowTint = captureArmed
@@ -1437,11 +1465,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawJoypadSummary(SpriteBatch sprite, PlayerInput input, JoypadSessionSnapshot session)
         {
-            Rectangle bounds = new Rectangle(Position.X + 12, Position.Y + 72, Math.Max(220, (CurrentFrame?.Width ?? 283) - 30), JoypadSummaryHeight);
+            Rectangle bounds = new Rectangle(Position.X + 12, Position.Y + JoypadExtensionRowsTop - JoypadSummaryHeight - 24, Math.Max(220, (CurrentFrame?.Width ?? 283) - 30), JoypadSummaryHeight);
             sprite.Draw(_highlightTexture, bounds, new Color(30, 38, 52, 225));
 
             GamePadState state = GamePad.GetState(session.GamepadIndex);
-            string joystickName = ResolveClientJoypadName(input, session);
             string connectionText = state.IsConnected
                 ? $"P{(int)session.GamepadIndex + 1} connected"
                 : $"P{(int)session.GamepadIndex + 1} disconnected";
@@ -1455,11 +1482,6 @@ namespace HaCreator.MapSimulator.UI
                 : $"{JoypadDetectionFailedText} Cycle the slot until a live controller is found; movement directions stay reserved while this owner is open.";
             string thresholdText = $"DX {session.LeftStickDeadZoneX:0.00} DY {session.LeftStickDeadZoneY:0.00}  LT/RT {session.LeftTriggerThreshold:0.00}/{session.RightTriggerThreshold:0.00}  {FormatResponseCurve(session.ResponseCurve)}";
 
-            DrawWindowText(
-                sprite,
-                joystickName,
-                new Vector2(Position.X + JoypadClientNameLeft, Position.Y + JoypadClientNameTop),
-                Color.White);
             DrawWindowText(sprite, connectionText, new Vector2(bounds.X + 8, bounds.Y + 3), Color.White);
             DrawWindowText(sprite, calibrationText, new Vector2(bounds.X + 8, bounds.Y + 17), new Color(210, 210, 210));
             DrawJoypadMeter(sprite, new Rectangle(bounds.X + 8, bounds.Y + 28, 60, 8), "LX", NormalizeSignedAxis(state.ThumbSticks.Left.X), session.LeftStickDeadZoneX, session.LeftStickInvertX);
@@ -1469,6 +1491,16 @@ namespace HaCreator.MapSimulator.UI
             DrawWindowText(sprite, thresholdText, new Vector2(bounds.X + 8, bounds.Y + 40), new Color(255, 228, 151), 0.42f);
         }
 
+        private void DrawJoypadClientName(SpriteBatch sprite, PlayerInput input, JoypadSessionSnapshot session)
+        {
+            string joystickName = ResolveClientJoypadName(input, session);
+            DrawWindowText(
+                sprite,
+                joystickName,
+                new Vector2(Position.X + JoypadClientNameLeft, Position.Y + JoypadClientNameTop),
+                Color.White);
+        }
+
         private void DrawJoypadClientBindingSummary(SpriteBatch sprite, JoypadSessionSnapshot session)
         {
             if (session == null)
@@ -1476,7 +1508,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Rectangle bounds = new Rectangle(Position.X + 12, Position.Y + 112, Math.Max(220, (CurrentFrame?.Width ?? 283) - 30), 20);
+            Rectangle bounds = new Rectangle(Position.X + 12, Position.Y + JoypadExtensionRowsTop - 22, Math.Max(220, (CurrentFrame?.Width ?? 283) - 30), 20);
             sprite.Draw(_highlightTexture, bounds, new Color(18, 26, 42, 210));
 
             string coreText = BuildJoypadClientCoreSummary(session);
@@ -2700,6 +2732,33 @@ namespace HaCreator.MapSimulator.UI
             int frameHeight = CurrentFrame?.Height ?? 468;
             int availableHeight = Math.Max(JoypadRowPitch, frameHeight - JoypadRowsTop - JoypadFooterReserve);
             return Math.Max(1, availableHeight / JoypadRowPitch);
+        }
+
+        private int GetJoypadExtensionRowIndex(int rowIndex)
+        {
+            if (rowIndex < 0 || rowIndex >= _joypadRows.Count)
+            {
+                return -1;
+            }
+
+            int extensionIndex = 0;
+            for (int i = 0; i <= rowIndex; i++)
+            {
+                JoypadRow row = _joypadRows[i];
+                if (row.IsClientCombo || row.ClientControlId == JoypadClientDefaultButtonId)
+                {
+                    continue;
+                }
+
+                if (i == rowIndex)
+                {
+                    return extensionIndex;
+                }
+
+                extensionIndex++;
+            }
+
+            return -1;
         }
 
         private int GetMaxJoypadScrollOffset()

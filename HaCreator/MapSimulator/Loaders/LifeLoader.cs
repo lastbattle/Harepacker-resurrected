@@ -857,7 +857,6 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             WzImageProperty infoHitNode = WzInfoTools.GetRealProperty(infoNode["hit"]);
-            WzImageProperty[] infoHitMetadataNodes = EnumerateNestedInfoHitMetadataNodes(infoHitNode).ToArray();
             int explicitInfoHitAttach = ReadOptionalInt(infoHitNode, int.MinValue, "attach", "bHitAttach", "hitAttach");
             int explicitInfoFacingAttach = ReadOptionalInt(
                 infoHitNode,
@@ -874,29 +873,17 @@ namespace HaCreator.MapSimulator.Loaders
                 "bFacingAttach",
                 "bFacingAttatch",
                 "facingAttach");
-            int nestedInfoHitAttach = ReadOptionalInt(infoHitMetadataNodes, int.MinValue, "attach", "bHitAttach", "hitAttach");
-            int nestedInfoFacingAttach = ReadOptionalInt(
-                infoHitMetadataNodes,
-                int.MinValue,
-                "attachfacing",
-                "bFacingAttach",
-                "bFacingAttatch",
-                "facingAttach");
             int resolvedFacingAttach = explicitInfoFacingAttach != int.MinValue
                 ? explicitInfoFacingAttach
                 : infoAliasFacingAttach != int.MinValue
                     ? infoAliasFacingAttach
-                    : nestedInfoFacingAttach != int.MinValue
-                        ? nestedInfoFacingAttach
-                        : int.MinValue;
+                    : int.MinValue;
             bool facingAttach = resolvedFacingAttach > 0;
             int resolvedHitAttach = explicitInfoHitAttach != int.MinValue
                 ? explicitInfoHitAttach
                 : infoAliasHitAttach != int.MinValue
                     ? infoAliasHitAttach
-                    : nestedInfoHitAttach != int.MinValue
-                        ? nestedInfoHitAttach
-                        : int.MinValue;
+                    : int.MinValue;
             bool hitAttach = resolvedHitAttach != int.MinValue
                 ? resolvedHitAttach > 0
                 : facingAttach;
@@ -915,6 +902,7 @@ namespace HaCreator.MapSimulator.Loaders
                 HitAttach = hitAttach,
                 FacingAttach = facingAttach,
                 HitAfterMs = Math.Max(0, ReadOptionalInt(infoHitNode, 0, "hitAfter")),
+                HasHitAfterMetadata = WzInfoTools.GetRealProperty(infoHitNode?["hitAfter"]) != null,
                 EffectFacingAttach = effectFacingAttach,
                 EffectAfter = InfoTool.GetInt(infoNode["effectAfter"], 0),
                 AttackAfter = InfoTool.GetInt(infoNode["attackAfter"], 0),
@@ -1066,25 +1054,6 @@ namespace HaCreator.MapSimulator.Loaders
                 if (property != null)
                 {
                     return InfoTool.GetInt(property, defaultValue);
-                }
-            }
-
-            return defaultValue;
-        }
-
-        private static int ReadOptionalInt(IEnumerable<WzImageProperty> parents, int defaultValue, params string[] propertyNames)
-        {
-            if (parents == null)
-            {
-                return defaultValue;
-            }
-
-            foreach (WzImageProperty parent in parents)
-            {
-                int value = ReadOptionalInt(parent, int.MinValue, propertyNames);
-                if (value != int.MinValue)
-                {
-                    return value;
                 }
             }
 
@@ -1547,29 +1516,6 @@ namespace HaCreator.MapSimulator.Loaders
                 {
                     yield return (frameHitNode, int.Parse(frameProperty.Name));
                 }
-            }
-        }
-
-        private static IEnumerable<WzImageProperty> EnumerateNestedInfoHitMetadataNodes(WzImageProperty infoHitNode)
-        {
-            WzImageProperty resolvedInfoHitNode = WzInfoTools.GetRealProperty(infoHitNode);
-            if (resolvedInfoHitNode == null)
-            {
-                yield break;
-            }
-
-            foreach (WzImageProperty frameProperty in resolvedInfoHitNode.WzProperties
-                         .Where(property => int.TryParse(property?.Name, out _))
-                         .OrderBy(property => int.Parse(property.Name)))
-            {
-                WzImageProperty resolvedFrameProperty = WzInfoTools.GetRealProperty(frameProperty);
-                if (resolvedFrameProperty == null)
-                {
-                    continue;
-                }
-
-                WzImageProperty nestedHitNode = WzInfoTools.GetRealProperty(resolvedFrameProperty["hit"]);
-                yield return nestedHitNode ?? resolvedFrameProperty;
             }
         }
 

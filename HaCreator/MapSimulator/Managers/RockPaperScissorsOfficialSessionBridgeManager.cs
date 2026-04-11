@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasAttachedClient => _activePair != null;
         public bool HasPassiveEstablishedSocketPair => _passiveEstablishedSession.HasValue && _activePair == null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
+        public bool HoldsLiveSessionOwnership => IsRunning || HasAttachedClient || HasPassiveEstablishedSocketPair;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public int QueuedCount { get; private set; }

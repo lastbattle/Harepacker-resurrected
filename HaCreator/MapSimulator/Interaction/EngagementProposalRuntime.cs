@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _sealItemId = DefaultSealItemId;
         private int _lastRequestPacketType = -1;
         private int _lastResponsePacketType = -1;
+        private int _lastMarriageResultSubtype = -1;
         private bool _isOpen;
         private bool _lastPrimaryActionSent;
         private EngagementProposalDialogMode _mode;
@@ -118,6 +119,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastRequestPayload = BuildOutgoingRequestPayload(_outgoingRequestMessage, _ringItemId);
             _lastResponsePacketType = -1;
             _lastResponsePayload = Array.Empty<byte>();
+            _lastMarriageResultSubtype = -1;
             _isOpen = true;
 
             ResolveItemMetadata();
@@ -145,6 +147,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastRequestPayload = Array.Empty<byte>();
             _lastResponsePacketType = -1;
             _lastResponsePayload = Array.Empty<byte>();
+            _lastMarriageResultSubtype = -1;
             _isOpen = true;
 
             ResolveItemMetadata();
@@ -400,9 +403,72 @@ namespace HaCreator.MapSimulator.Interaction
             _lastRequestPayload = Array.Empty<byte>();
             _lastResponsePacketType = -1;
             _lastResponsePayload = Array.Empty<byte>();
+            _lastMarriageResultSubtype = -1;
             _acceptedProposal = null;
             _statusMessage = "Cleared engagement proposal state.";
             return _statusMessage;
+        }
+
+        internal bool TryApplyMarriageResultSubtype(
+            byte subtype,
+            string serverText,
+            out string message)
+        {
+            if (!EngagementProposalDialogText.TryGetMarriageResultNotice(subtype, serverText, out string notice))
+            {
+                message = $"Marriage-result subtype {subtype} is not owned by the engagement proposal seam.";
+                return false;
+            }
+
+            bool closedDialog = _isOpen;
+            _isOpen = false;
+            _lastMarriageResultSubtype = subtype;
+            _lastResponsePacketType = -1;
+            _lastResponsePayload = Array.Empty<byte>();
+
+            if (subtype == EngagementProposalDialogText.ResultSubtypeEngaged)
+            {
+                _lastPrimaryActionSent = true;
+                ResolveItemMetadata();
+                _acceptedProposal = new EngagementProposalAcceptedSnapshot
+                {
+                    LocalCharacterName = _localCharacterName,
+                    ProposerName = _proposerName,
+                    PartnerName = _partnerName,
+                    RingItemId = _ringItemId,
+                    RingItemName = _ringItemName,
+                    RingItemDescription = _ringItemDescription,
+                    SealItemId = _sealItemId,
+                    SealItemName = _sealItemName,
+                    SealItemDescription = _sealItemDescription,
+                    RequestMessage = _outgoingRequestMessage,
+                    CustomMessage = _customMessage
+                };
+            }
+            else if (subtype == EngagementProposalDialogText.ResultSubtypeDeclined
+                || subtype == EngagementProposalDialogText.ResultSubtypeWithdrawnRequest
+                || subtype == EngagementProposalDialogText.ResultSubtypeRequesterBusy
+                || subtype == EngagementProposalDialogText.ResultSubtypePartnerBusy
+                || subtype == EngagementProposalDialogText.ResultSubtypeWrongCharacterName
+                || subtype == EngagementProposalDialogText.ResultSubtypePartnerSameMap
+                || subtype == EngagementProposalDialogText.ResultSubtypeRequesterEtcSlotFull
+                || subtype == EngagementProposalDialogText.ResultSubtypePartnerEtcSlotFull
+                || subtype == EngagementProposalDialogText.ResultSubtypeSameGender
+                || subtype == EngagementProposalDialogText.ResultSubtypeAlreadyEngaged
+                || subtype == EngagementProposalDialogText.ResultSubtypePartnerAlreadyEngaged
+                || subtype == EngagementProposalDialogText.ResultSubtypeAlreadyMarried
+                || subtype == EngagementProposalDialogText.ResultSubtypePartnerAlreadyMarried)
+            {
+                _lastPrimaryActionSent = false;
+                _acceptedProposal = null;
+            }
+
+            string closeState = closedDialog
+                ? "closed the live CEngageDlg first"
+                : "no live CEngageDlg was open";
+            _statusMessage = $"Applied CWvsContext::OnMarriageResult subtype {subtype}: {notice} The client {closeState} before showing the result notice.";
+            message = _statusMessage;
+            return true;
         }
 
         internal string OpenProposal(
@@ -444,6 +510,7 @@ namespace HaCreator.MapSimulator.Interaction
                 LastRequestPayload = Array.AsReadOnly((byte[])_lastRequestPayload.Clone()),
                 LastResponsePacketType = _lastResponsePacketType,
                 LastResponsePayload = Array.AsReadOnly((byte[])_lastResponsePayload.Clone()),
+                LastMarriageResultSubtype = _lastMarriageResultSubtype,
                 AcceptedProposal = _acceptedProposal,
                 ClientOwnerTypeName = ClientOwnerTypeName,
                 PrimaryDialogAssetPath = PrimaryDialogAssetPath,
@@ -468,6 +535,9 @@ namespace HaCreator.MapSimulator.Interaction
             string packetState = snapshot.LastResponsePacketType >= 0
                 ? $" Last response packet {snapshot.LastResponsePacketType} [{FormatPayload(snapshot.LastResponsePayload)}]."
                 : string.Empty;
+            string marriageResultState = snapshot.LastMarriageResultSubtype >= 0
+                ? $" Last marriage-result subtype {snapshot.LastMarriageResultSubtype}."
+                : string.Empty;
             string handoffState = snapshot.AcceptedProposal == null
                 ? string.Empty
                 : $" Wedding handoff: {snapshot.AcceptedProposal.ProposerName} + {snapshot.AcceptedProposal.PartnerName} via {snapshot.AcceptedProposal.RingItemName} ({snapshot.AcceptedProposal.RingItemId}) and {snapshot.AcceptedProposal.SealItemName} ({snapshot.AcceptedProposal.SealItemId}).";
@@ -476,7 +546,7 @@ namespace HaCreator.MapSimulator.Interaction
                 $"StringPool top/center/textbox/bottom/text ids 0x{snapshot.TopBandStringPoolId:X}/0x{snapshot.CenterBandStringPoolId:X}/0x{snapshot.TextBoxStringPoolId:X}/0x{snapshot.BottomBandStringPoolId:X}/0x{snapshot.TextCanvasStringPoolId:X}, " +
                 $"{snapshot.AcceptButtonAssetName} UOL id 0x{snapshot.AcceptButtonUolStringPoolId:X}. " +
                 $"Recovered engagement text: wait=\"{EngagementProposalDialogText.GetWaitForResponseText()}\", prompt=\"{EngagementProposalDialogText.FormatIncomingRequestPrompt(snapshot.ProposerName)}\", accept=\"{EngagementProposalDialogText.GetAcceptedText()}\", declined=\"{EngagementProposalDialogText.GetDeclinedRequestText()}\", wrongName=\"{EngagementProposalDialogText.GetWrongCharacterNameText()}\", sameMap=\"{EngagementProposalDialogText.GetPartnerSameMapText()}\", partnerEtcFull=\"{EngagementProposalDialogText.GetPartnerEtcSlotFullText()}\", sameGender=\"{EngagementProposalDialogText.GetSameGenderText()}\", alreadyEngaged=\"{EngagementProposalDialogText.GetAlreadyEngagedText()}\", alreadyMarried=\"{EngagementProposalDialogText.GetAlreadyMarriedText()}\", partnerAlreadyEngaged=\"{EngagementProposalDialogText.GetPartnerAlreadyEngagedText()}\", partnerAlreadyMarried=\"{EngagementProposalDialogText.GetPartnerAlreadyMarriedText()}\", requesterBusy=\"{EngagementProposalDialogText.GetRequesterBusyText()}\", partnerBusy=\"{EngagementProposalDialogText.GetPartnerBusyText()}\", withdrawn=\"{EngagementProposalDialogText.GetWithdrawnRequestText()}\", reservationLocked=\"{EngagementProposalDialogText.GetReservationLockedBreakText()}\", reservationCanceled=\"{EngagementProposalDialogText.GetReservationCanceledText()}\", invitationInvalid=\"{EngagementProposalDialogText.GetInvitationInvalidText()}\", reservationSuccess=\"{EngagementProposalDialogText.GetReservationSuccessText()}\", etcFull=\"{EngagementProposalDialogText.GetEtcSlotFullText()}\", enterPartner=\"{EngagementProposalDialogText.GetEnterPartnerNameText()}\".";
-            return $"Engagement proposal {state} ({snapshot.Mode}): {snapshot.ProposerName} -> {snapshot.PartnerName}. {snapshot.StatusMessage}{requestState}{packetState}{handoffState}{clientEvidence}";
+            return $"Engagement proposal {state} ({snapshot.Mode}): {snapshot.ProposerName} -> {snapshot.PartnerName}. {snapshot.StatusMessage}{requestState}{packetState}{marriageResultState}{handoffState}{clientEvidence}";
         }
 
         private void ResolveItemMetadata()
@@ -857,6 +927,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int SealItemId { get; init; }
         public int LastRequestPacketType { get; init; } = -1;
         public int LastResponsePacketType { get; init; } = -1;
+        public int LastMarriageResultSubtype { get; init; } = -1;
         public EngagementProposalDialogMode Mode { get; init; }
         public string ProposerName { get; init; } = string.Empty;
         public string PartnerName { get; init; } = string.Empty;

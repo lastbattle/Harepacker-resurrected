@@ -305,12 +305,25 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            byte[] payload = BuildMechanicEquipmentAuthorityRequestPayload(request);
-            const int opcode = LocalUtilityPacketInboxManager.MechanicEquipStatePacketType;
+            byte[] simulatorPayload = BuildMechanicEquipmentAuthorityRequestPayload(request);
+            const int simulatorOpcode = LocalUtilityPacketInboxManager.MechanicEquipStatePacketType;
+            int bridgeOpcode = simulatorOpcode;
+            byte[] bridgePayload = simulatorPayload;
+            if (MechanicEquipmentPacketParity.TryEncodeClientChangeSlotPositionRequest(
+                    request,
+                    out byte[] clientPayload,
+                    out _))
+            {
+                bridgeOpcode = MechanicEquipmentPacketParity.ClientChangeSlotPositionRequestOpcode;
+                bridgePayload = clientPayload;
+            }
+
             MechanicAuthorityTransportOutcome outcome = MechanicAuthorityTransportPlanner.DispatchRequest(
                 request.RequestId,
-                opcode,
-                payload,
+                bridgeOpcode,
+                bridgePayload,
+                simulatorOpcode,
+                simulatorPayload,
                 _localUtilityOfficialSessionBridgeEnabled,
                 _localUtilityOfficialSessionBridge.TrySendOutboundPacket,
                 _localUtilityPacketOutbox.TrySendOutboundPacket,

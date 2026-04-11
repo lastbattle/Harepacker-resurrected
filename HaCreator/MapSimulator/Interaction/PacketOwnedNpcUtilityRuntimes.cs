@@ -52,7 +52,8 @@ namespace HaCreator.MapSimulator.Interaction
         bool IsCashItem,
         bool HasCashSerialNumber,
         bool IsRechargeBundle,
-        bool WasRetainedFromPreviousSnapshot);
+        bool WasRetainedFromPreviousSnapshot,
+        bool DrawsClientSlotBackground);
 
     internal readonly record struct StoreBankOwnerSelectionAnchor(
         InventoryType PacketGroupInventoryType,
@@ -1294,7 +1295,8 @@ namespace HaCreator.MapSimulator.Interaction
                     IsCashItem(item),
                     item.HasCashSerialNumber,
                     item.IsRechargeBundle,
-                    item.WasRetainedFromPreviousSnapshot);
+                    item.WasRetainedFromPreviousSnapshot,
+                    i < _slotCount);
             }
 
             return rows;
@@ -2302,7 +2304,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool IsCashItem(StoreBankItemEntry item)
         {
-            return item != null && item.HasCashSerialNumber;
+            if (item == null)
+            {
+                return false;
+            }
+
+            return InventoryItemMetadataResolver.TryResolveTradeRestrictionFlags(
+                    item.ItemId,
+                    out bool isCashItem,
+                    out _,
+                    out _)
+                ? isCashItem
+                : item.HasCashSerialNumber;
         }
 
         private static string FormatHexPreview(byte[] bytes, int maxBytes)
@@ -3073,9 +3086,14 @@ namespace HaCreator.MapSimulator.Interaction
         private int _lastDecodedDotDamage;
         private int _lastDecodedDotHitCount;
         private int? _lastDecodedAttrRate;
+        private int _timerSetSeconds;
+        private int _timerStopRemainSeconds;
 
         internal bool IsOpen { get; private set; }
         internal int CurrentPageIndex => _pageIndex;
+        internal bool IsExtended { get; private set; } = true;
+        internal bool HasActiveTimer => _timerSetSeconds > 0 && _timerStopRemainSeconds <= 0;
+        internal bool HasPausedTimer => _timerStopRemainSeconds > 0;
         internal bool OnCalc { get; private set; }
         internal bool ServerOnCalc { get; private set; }
         internal bool DotTrackingEnabled { get; private set; } = true;
@@ -3145,6 +3163,66 @@ namespace HaCreator.MapSimulator.Interaction
             AppendNote(StatusMessage);
             message = StatusMessage;
             return true;
+        }
+
+        internal bool TryBuildTimerSetOutboundRequest(int seconds, out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            if (seconds <= 0)
+            {
+                request = default;
+                message = "CUIBattleRecord timer setup requires a positive second count.";
+                return false;
+            }
+
+            _timerSetSeconds = seconds;
+            _timerStopRemainSeconds = 0;
+            bool hasRequest = TryBuildRequestOnCalcOutboundRequest(enabled: true, out request, out message);
+            StatusMessage = $"CUIBattleRecord button 2003 staged timer auto-calc for {seconds.ToString(CultureInfo.InvariantCulture)} second(s) and mirrored RequestOnCalc(1).";
+            AppendNote(StatusMessage);
+            message = StatusMessage;
+            return hasRequest;
+        }
+
+        internal bool TryBuildTimerStopResumeOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
+        {
+            if (_timerStopRemainSeconds > 0)
+            {
+                int resumedSeconds = _timerStopRemainSeconds;
+                _timerSetSeconds = resumedSeconds;
+                _timerStopRemainSeconds = 0;
+                bool hasResumeRequest = TryBuildRequestOnCalcOutboundRequest(enabled: true, out request, out message);
+                StatusMessage = $"CUIBattleRecord button 2008 resumed the staged timer with {resumedSeconds.ToString(CultureInfo.InvariantCulture)} second(s) retained and mirrored RequestOnCalc(1).";
+                AppendNote(StatusMessage);
+                message = StatusMessage;
+                return hasResumeRequest;
+            }
+
+            if (_timerSetSeconds <= 0)
+            {
+                request = default;
+                message = "CUIBattleRecord button 2008 ignored timer stop because no timer is staged.";
+                StatusMessage = message;
+                AppendNote(StatusMessage);
+                return false;
+            }
+
+            _timerStopRemainSeconds = _timerSetSeconds;
+            _timerSetSeconds = 0;
+            bool hasStopRequest = TryBuildRequestOnCalcOutboundRequest(enabled: false, out request, out message);
+            StatusMessage = $"CUIBattleRecord button 2008 paused the staged timer with {_timerStopRemainSeconds.ToString(CultureInfo.InvariantCulture)} second(s) retained and mirrored RequestOnCalc(0).";
+            AppendNote(StatusMessage);
+            message = StatusMessage;
+            return hasStopRequest;
+        }
+
+        internal string ToggleExtended()
+        {
+            IsExtended = !IsExtended;
+            StatusMessage = IsExtended
+                ? "CUIBattleRecord button 2006 restored the extended 450x250 WZ shell and preserved checkbox/timer state."
+                : "CUIBattleRecord button 2006 folded to the compact 200x250 WZ shell and preserved checkbox/timer state.";
+            AppendNote(StatusMessage);
+            return StatusMessage;
         }
 
         internal bool TryBuildToggleOnCalcOutboundRequest(out PacketOwnedNpcUtilityOutboundRequest request, out string message)
@@ -3253,6 +3331,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 "Packet-owned owner: CBattleRecordMan::OnPacket (420-423).",
                 $"Page: {ResolvePageName()} | Window: {(IsOpen ? "open" : "closed")}",
+                $"CUIBattleRecord shell: {(IsExtended ? "extended 450x250" : "compact 200x250")} | Timer: {DescribeTimerState()}",
                 $"Calc flags: onCalc={OnCalc}, serverOnCalc={ServerOnCalc}, dot={DotTrackingEnabled}, summon={SummonTrackingEnabled}, decode421={IsDotDamageDecodeReady}, mutate421={IsDotDamageMutationReady}",
                 $"Packets: 420={_packetCount420.ToString(CultureInfo.InvariantCulture)}, 421={_packetCount421.ToString(CultureInfo.InvariantCulture)}, 422={_packetCount422.ToString(CultureInfo.InvariantCulture)}, 423={_packetCount423.ToString(CultureInfo.InvariantCulture)}"
             };
@@ -3366,6 +3445,8 @@ namespace HaCreator.MapSimulator.Interaction
             _lastDecodedDotDamage = 0;
             _lastDecodedDotHitCount = 0;
             _lastDecodedAttrRate = null;
+            _timerSetSeconds = 0;
+            _timerStopRemainSeconds = 0;
             if (clearNotes)
             {
                 _recentNotes.Clear();
@@ -3399,6 +3480,21 @@ namespace HaCreator.MapSimulator.Interaction
         private static string FormatDamage(int value)
         {
             return value > 0 ? value.ToString(CultureInfo.InvariantCulture) : "n/a";
+        }
+
+        private string DescribeTimerState()
+        {
+            if (_timerStopRemainSeconds > 0)
+            {
+                return $"paused {_timerStopRemainSeconds.ToString(CultureInfo.InvariantCulture)}s";
+            }
+
+            if (_timerSetSeconds > 0)
+            {
+                return $"armed {_timerSetSeconds.ToString(CultureInfo.InvariantCulture)}s";
+            }
+
+            return "idle";
         }
 
         private void AppendNote(string note)

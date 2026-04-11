@@ -230,6 +230,11 @@ namespace HaCreator.MapSimulator.Interaction
                 resolution.ClientPremiumFlag);
         }
 
+        public static bool ShouldConsumeCashItemForLocalResolution(ReviveOwnerTransferRequest request)
+        {
+            return request.Premium && GetConsumableCashItemId(request.Variant) > 0;
+        }
+
         public static ReviveOwnerVariant ResolveClientVariant(
             bool hasSoulStone,
             bool hasUpgradeTombChoice,

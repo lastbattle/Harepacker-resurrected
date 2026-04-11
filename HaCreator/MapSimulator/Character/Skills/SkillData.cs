@@ -1145,6 +1145,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Dictionary<string, List<SummonImpactPresentation>> SummonTargetHitPresentationsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> SummonAttackAfterMsByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> SummonMobCountOverridesByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, int> SummonAttackCountOverridesByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, int> SummonAttackProjectileSpeedByBranch { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string SummonSpawnBranchName { get; set; }
         public string SummonIdleBranchName { get; set; }
@@ -1594,6 +1595,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return SummonAttackProjectileSpeed;
+        }
+
+        public int ResolveSummonAttackCountOverride(string branchName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && SummonAttackCountOverridesByBranch != null
+                && SummonAttackCountOverridesByBranch.TryGetValue(branchName, out int branchAttackCount)
+                && branchAttackCount > 0)
+            {
+                return branchAttackCount;
+            }
+
+            return SummonAttackCountOverride;
         }
 
         public IReadOnlyList<SkillAnimation> GetSummonProjectileAnimations(string branchName = null)
@@ -2077,6 +2091,9 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public SkillFrame Frame { get; init; }
         public Vector2 Position { get; init; }
+        public Rectangle WorldBounds { get; init; }
+        public Point LayerOrigin { get; init; }
+        public bool ClockwiseBounds { get; init; }
         public bool Flip { get; init; }
         public int StartTime { get; init; }
         public int Duration { get; init; }

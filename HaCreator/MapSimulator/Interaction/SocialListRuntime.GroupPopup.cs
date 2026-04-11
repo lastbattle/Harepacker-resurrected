@@ -302,6 +302,11 @@ namespace HaCreator.MapSimulator.Interaction
                 FriendGroupPopupMode.DeleteGroup => ConfirmFriendGroupDeletion(checkedNames),
                 _ => null
             };
+            if (_friendGroupPopupMode == FriendGroupPopupMode.NeedMessage)
+            {
+                return message;
+            }
+
             CloseFriendGroupPopup();
             return message;
         }
@@ -344,7 +349,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _friendGroupPopupTargetGroupName = groupName;
-            return $"{checkedNames.Count} friend entr{(checkedNames.Count == 1 ? "y now belongs" : "ies now belong")} to the local friend group \"{groupName}\".";
+            return NotifySocialListTextObserved($"{checkedNames.Count} friend entr{(checkedNames.Count == 1 ? "y now belongs" : "ies now belong")} to the local friend group \"{groupName}\".");
         }
 
         private string ConfirmFriendGroupWhisper(IReadOnlyList<string> checkedNames)
@@ -370,7 +375,7 @@ namespace HaCreator.MapSimulator.Interaction
             string targetGroupName = _friendGroupPopupTargetGroupName;
             if (string.IsNullOrWhiteSpace(targetGroupName))
             {
-                return "There is no local friend group to delete.";
+                return NotifySocialListTextObserved("There is no local friend group to delete.");
             }
 
             int removedAssignments = 0;
@@ -396,11 +401,12 @@ namespace HaCreator.MapSimulator.Interaction
                 _friendGroups.RemoveAll(groupName => string.Equals(groupName, targetGroupName, StringComparison.OrdinalIgnoreCase));
             }
 
-            return removedAssignments <= 0
+            string message = removedAssignments <= 0
                 ? $"No members from \"{targetGroupName}\" were selected for deletion."
                 : hasRemainingMembers
                     ? $"Removed {removedAssignments} entr{(removedAssignments == 1 ? "y" : "ies")} from the local friend group \"{targetGroupName}\"."
                     : $"Deleted the local friend group \"{targetGroupName}\".";
+            return NotifySocialListTextObserved(message);
         }
 
         private string ResolveFriendGroupWhisperLabel(IReadOnlyList<string> checkedNames)

@@ -344,6 +344,11 @@ namespace HaCreator.MapSimulator.UI
             return isDropdownOpen && !hoveredInteractiveElement;
         }
 
+        internal static bool ShouldToggleWhisperPickerComboDropdownOnPress(bool comboToggleHovered)
+        {
+            return comboToggleHovered;
+        }
+
         internal static bool ShouldCommitHoveredWhisperPickerCandidateOnRelease(
             bool pressedWhisperPickerCandidate,
             string hoveredWhisperTarget)
@@ -2127,7 +2132,12 @@ namespace HaCreator.MapSimulator.UI
                 _pressedWhisperPickerCandidate = hoveredPickerRegion != null;
                 _pressedWhisperPickerButtonAction = hoveredButtonRegion?.Action;
                 _pressedWhisperPickerComboToggle = comboToggleHovered;
-                if (hoveredButtonRegion != null)
+                if (ShouldToggleWhisperPickerComboDropdownOnPress(comboToggleHovered))
+                {
+                    WhisperTargetPickerModalComboFocusRequested?.Invoke();
+                    WhisperTargetPickerModalComboDropdownToggleRequested?.Invoke();
+                }
+                else if (hoveredButtonRegion != null)
                 {
                     WhisperTargetPickerModalButtonFocusRequested?.Invoke();
                 }
@@ -2167,7 +2177,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 _pressedWhisperPickerButtonAction = null;
                 _pressedWhisperPickerComboToggle = false;
-                WhisperTargetPickerModalComboDropdownToggleRequested?.Invoke();
                 return true;
             }
 

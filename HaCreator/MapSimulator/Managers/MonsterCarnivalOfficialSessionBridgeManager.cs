@@ -784,7 +784,8 @@ namespace HaCreator.MapSimulator.Managers
                     opcode,
                     payload,
                     source,
-                    $"packetraw {Convert.ToHexString(rawPacket)}");
+                    $"packetraw {Convert.ToHexString(rawPacket)}",
+                    relayedPacketType);
                 RecordRecentPacket(opcode, rawPacket, relayedPacketType, "current-wrapper");
                 return true;
             }
@@ -797,7 +798,8 @@ namespace HaCreator.MapSimulator.Managers
                     relayedPacketType,
                     payload,
                     source,
-                    $"packetraw {Convert.ToHexString(rawPacket)}");
+                    $"packetraw {Convert.ToHexString(rawPacket)}",
+                    opcode);
                 RecordRecentPacket(opcode, rawPacket, opcode, "native-relay");
                 return true;
             }
@@ -815,7 +817,8 @@ namespace HaCreator.MapSimulator.Managers
                 relayOpcode,
                 payload,
                 source,
-                $"packetraw {Convert.ToHexString(rawPacket)}");
+                $"packetraw {Convert.ToHexString(rawPacket)}",
+                mappedPacketType);
             RecordRecentPacket(opcode, rawPacket, mappedPacketType, "configured-relay");
             return true;
         }
@@ -963,7 +966,8 @@ namespace HaCreator.MapSimulator.Managers
                     opcode,
                     payload,
                     source,
-                    $"packetraw {Convert.ToHexString(rawPacket)}");
+                    $"packetraw {Convert.ToHexString(rawPacket)}",
+                    relayedPacketType);
                 return true;
             }
 
@@ -977,7 +981,8 @@ namespace HaCreator.MapSimulator.Managers
                 SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode,
                 relayPayload,
                 source,
-                $"packetraw {Convert.ToHexString(rawPacket)}");
+                $"packetraw {Convert.ToHexString(rawPacket)}",
+                opcode);
             return true;
         }
 

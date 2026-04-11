@@ -262,13 +262,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return "This movement skill must start from the ground.";
                 }
 
-                if (skill.SkillId == WildHunterJaguarJumpSkillId
-                    && (player.Physics.IsSwimming() || player.Physics.IsUserFlying()))
-                {
-                    return "This movement skill cannot be used while swimming or flying.";
-                }
-
                 return null;
+            }
+
+            if (skill.SkillId == WildHunterJaguarJumpSkillId
+                && (player.Physics.IsSwimming() || player.Physics.IsUserFlying()))
+            {
+                return "This movement skill cannot be used while swimming or flying.";
             }
 
             if (!player.Physics.IsAirborne())
@@ -462,7 +462,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return skill.SkillId == WindWalkSkillId
-                   || skill.SkillId == WildHunterJaguarJumpSkillId
                    || skill.SkillId == RocketBoosterSkillId;
         }
 

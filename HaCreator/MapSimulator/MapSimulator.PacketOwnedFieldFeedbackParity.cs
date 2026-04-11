@@ -41,6 +41,7 @@ namespace HaCreator.MapSimulator
         private int _remoteEvolRingFloatNoticeExpireTime = int.MinValue;
         private bool _packetFieldBossTimerAssetsLoaded;
         private const int PacketOwnedSummonEffectStringPoolId = 0x663;
+        private const int PacketOwnedSummonSoundStringPoolId = 0x8BE;
         private const int PacketOwnedScreenEffectStringPoolId = 0x9ED;
         private const int PacketOwnedRewardRoulettePathJoinStringPoolId = 0x3DA;
         private const int PacketOwnedUiReferenceWidth = 800;
@@ -189,7 +190,7 @@ namespace HaCreator.MapSimulator
                 RememberWhisperTarget = target => _chat?.RememberWhisperTarget(target),
                 TriggerTremble = (force, durationMs) => _screenEffects.TriggerTremble(Math.Max(1, force), false, 0, Math.Max(0, durationMs), true, currTickCount),
                 ClearFieldFade = () => ClearPacketOwnedLocalOverlayState("fade"),
-                RequestBgm = RequestSpecialFieldBgmOverride,
+                RequestBgm = descriptor => RequestSpecialFieldBgmOverride(ResolvePacketOwnedFieldBgmOverrideName(descriptor)),
                 PlayFieldSound = descriptor => TryPlayPacketOwnedFieldFeedbackSound(descriptor),
                 PlaySummonEffectSound = TryPlayPacketOwnedSummonEffectSound,
                 SetObjectTagState = (tag, state, transition, currentTime) => SetDynamicObjectTagState(tag, state, transition, currentTime),
@@ -304,11 +305,55 @@ namespace HaCreator.MapSimulator
 
         private bool TryPlayPacketOwnedSummonEffectSound(byte effectId)
         {
-            return TryPlayPacketOwnedWzSound(
-                effectId.ToString(CultureInfo.InvariantCulture),
+            string descriptor = ResolvePacketOwnedSummonSoundDescriptor(effectId);
+            bool played = TryPlayPacketOwnedWzSound(
+                descriptor,
                 "Summon.img",
                 out _,
                 out _);
+            return played || ShouldBypassPacketOwnedSummonSoundResourceProbe(effectId);
+        }
+
+        private static string ResolvePacketOwnedFieldBgmOverrideName(string descriptor)
+        {
+            string normalized = NormalizePacketOwnedClientSoundDescriptor(descriptor);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return string.Empty;
+            }
+
+            if (!TrySplitPacketOwnedClientSoundDescriptor(normalized, out string imageName, out string propertyPath))
+            {
+                return normalized;
+            }
+
+            string normalizedImageName = imageName.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
+                ? imageName[..^4]
+                : imageName;
+            return string.IsNullOrWhiteSpace(propertyPath)
+                ? normalizedImageName
+                : $"{normalizedImageName}/{propertyPath}";
+        }
+
+        private static string ResolvePacketOwnedSummonSoundDescriptor(byte effectId)
+        {
+            return FormatPacketOwnedEffectUol(
+                PacketOwnedSummonSoundStringPoolId,
+                "Sound/Summon.img/{0}",
+                effectId.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static bool ShouldBypassPacketOwnedSummonSoundResourceProbe(byte effectId)
+        {
+            for (int i = 0; i < PacketOwnedNpcSummonFallbackEffectIds.Length; i++)
+            {
+                if (PacketOwnedNpcSummonFallbackEffectIds[i] == effectId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string ResolvePacketFieldFeedbackMobName(int mobId)
@@ -1612,6 +1657,21 @@ namespace HaCreator.MapSimulator
                 PacketOwnedSummonEffectStringPoolId,
                 "Effect/Summon.img/{0}",
                 effectId.ToString(CultureInfo.InvariantCulture));
+        }
+
+        internal static string ResolvePacketOwnedSummonSoundDescriptorForTest(byte effectId)
+        {
+            return ResolvePacketOwnedSummonSoundDescriptor(effectId);
+        }
+
+        internal static bool ShouldBypassPacketOwnedSummonSoundResourceProbeForTest(byte effectId)
+        {
+            return ShouldBypassPacketOwnedSummonSoundResourceProbe(effectId);
+        }
+
+        internal static string ResolvePacketOwnedFieldBgmOverrideNameForTest(string descriptor)
+        {
+            return ResolvePacketOwnedFieldBgmOverrideName(descriptor);
         }
 
         internal static string GetPacketOwnedScreenEffectUolForTest(string descriptor)

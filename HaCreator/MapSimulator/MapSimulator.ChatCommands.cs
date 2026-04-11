@@ -2917,7 +2917,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "engage",
                 "Inspect or drive the dedicated engagement proposal dialog seam",
-                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
+                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|result <subtype> [serverText...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
                 args =>
                 {
                     _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -3024,6 +3024,23 @@ namespace HaCreator.MapSimulator
                             }
 
                             return ChatCommandHandler.CommandResult.Ok(decisionMessage);
+
+                        case "result":
+                            if (args.Length < 2 || !byte.TryParse(args[1], out byte marriageResultSubtype))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage result <subtype> [serverText...]");
+                            }
+
+                            if (!_engagementProposalController.TryApplyMarriageResultSubtype(
+                                    marriageResultSubtype,
+                                    args.Length > 2 ? string.Join(" ", args, 2, args.Length - 2) : null,
+                                    uiWindowManager,
+                                    out string marriageResultMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(marriageResultMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(marriageResultMessage);
 
                         case "inbox":
                             return HandleEngagementProposalInboxCommand(args.Skip(1).ToArray());
@@ -3136,7 +3153,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Clear(uiWindowManager));
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|decision <payloadhex=..|payloadb64=..>|result <subtype> [serverText...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
                     }
                 });
 

@@ -201,6 +201,22 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryApplyMarriageResultSubtype(
+            byte subtype,
+            string serverText,
+            UIWindowManager windowManager,
+            out string message)
+        {
+            if (!_runtime.TryApplyMarriageResultSubtype(subtype, serverText, out message))
+            {
+                return false;
+            }
+
+            PublishObservedSocialMessages();
+            windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
+            return true;
+        }
+
         internal string Dismiss(UIWindowManager windowManager)
         {
             string message = _runtime.Dismiss();

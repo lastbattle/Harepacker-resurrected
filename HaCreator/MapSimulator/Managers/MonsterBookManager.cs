@@ -269,10 +269,21 @@ namespace HaCreator.MapSimulator.Managers
                     0);
             }
 
+            int pickupCount = ResolveCardPickupCopyCount(count, definition.ConsumeOnPickup);
+            if (pickupCount <= 0)
+            {
+                return new CardPickupResult(
+                    CardPickupOutcome.None,
+                    GetSnapshot(build),
+                    definition.Name,
+                    0,
+                    0);
+            }
+
             MonsterBookRecord record = GetRecord(build, createIfMissing: true);
             record.CardCountsByMob.TryGetValue(definition.MobId, out int previousCopies);
-            MonsterBookSnapshot snapshot = RecordMobKill(build, definition.MobId, count);
-            int currentCopies = Math.Clamp(previousCopies + count, 0, 5);
+            MonsterBookSnapshot snapshot = RecordMobKill(build, definition.MobId, pickupCount);
+            int currentCopies = Math.Clamp(previousCopies + pickupCount, 0, 5);
             if (currentCopies == previousCopies)
             {
                 currentCopies = previousCopies;
@@ -290,6 +301,19 @@ namespace HaCreator.MapSimulator.Managers
                 definition.Name,
                 previousCopies,
                 currentCopies);
+        }
+
+        internal static int ResolveCardPickupCopyCount(int requestedCount, bool consumeOnPickup)
+        {
+            int normalizedCount = Math.Max(0, requestedCount);
+            if (normalizedCount <= 0)
+            {
+                return 0;
+            }
+
+            // WZ `Item/Consume/0238.img/*/info/only = 1` and
+            // `spec/consumeOnPickup = 1` make Monster Cards single-copy intake.
+            return consumeOnPickup ? 1 : normalizedCount;
         }
 
         public bool TryResolveCardItemId(int mobId, out int cardItemId)

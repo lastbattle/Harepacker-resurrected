@@ -2450,7 +2450,7 @@ namespace HaCreator.MapSimulator.Pools
 
             ApplyPacketDropPresentation(drop, packet);
 
-            drop.DrawOnElevatedLayer = packet.ElevateLayer;
+            drop.DrawOnElevatedLayer = ShouldDrawPacketDropOnElevatedLayer(packet);
             drop.PacketEnterAlphaRampDurationMs = packet.EnterType == 3
                 ? DropItem.PACKET_ENTER_TYPE3_ALPHA_RAMP_DURATION
                 : 0;
@@ -2494,7 +2494,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.OwnershipType = packet.OwnershipType;
             drop.SourceId = packet.SourceId;
             drop.AllowPetPickup = packet.AllowPetPickup;
-            drop.DrawOnElevatedLayer = packet.ElevateLayer;
+            drop.DrawOnElevatedLayer = ShouldDrawPacketDropOnElevatedLayer(packet);
             drop.OwnerExpireTime = packet.OwnerId > 0 ? currentTime + OWNER_PRIORITY_DURATION : 0;
             drop.ExpireTime = ResolvePacketExpireTime(
                 currentTime,
@@ -2555,6 +2555,11 @@ namespace HaCreator.MapSimulator.Pools
             {
                 drop.Icon = icon;
             }
+        }
+
+        internal static bool ShouldDrawPacketDropOnElevatedLayer(RemoteDropEnterPacket packet)
+        {
+            return packet.ElevateLayer || packet.EnterType == 4;
         }
 
         private static bool ShouldRetireExpiredPacketEnter(DropItem drop, RemoteDropEnterPacket packet, int currentTime)

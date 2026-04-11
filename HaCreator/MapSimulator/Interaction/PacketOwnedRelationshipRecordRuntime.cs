@@ -87,22 +87,7 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                     }
 
-                    bool addApplied = remoteUserPool.TryApplyRelationshipRecordAdd(addPacket, currentTime, out string addDetail);
-                    if (addApplied)
-                    {
-                        GetState(addPacket.RelationshipType).AddCount++;
-                        TotalAddCount++;
-                    }
-
-                    message = addDetail;
-                    LastDispatchSummary = BuildDispatchSummary(
-                        normalizedSource,
-                        addPacket.RelationshipType,
-                        addPacket.DispatchKey,
-                        operation: "add",
-                        addApplied,
-                        addDetail);
-                    return addApplied;
+                    return TryApplyDecodedAdd(addPacket, remoteUserPool, currentTime, normalizedSource, out message);
 
                 case RemoteUserPacketType.UserCoupleRecordRemove:
                 case RemoteUserPacketType.UserFriendRecordRemove:
@@ -119,28 +104,80 @@ namespace HaCreator.MapSimulator.Interaction
                         return false;
                     }
 
-                    bool removeApplied = remoteUserPool.TryApplyRelationshipRecordRemove(removePacket, out string removeDetail);
-                    if (removeApplied)
-                    {
-                        GetState(removePacket.RelationshipType).RemoveCount++;
-                        TotalRemoveCount++;
-                    }
-
-                    message = removeDetail;
-                    LastDispatchSummary = BuildDispatchSummary(
-                        normalizedSource,
-                        removePacket.RelationshipType,
-                        removePacket.DispatchKey,
-                        operation: "remove",
-                        removeApplied,
-                        removeDetail);
-                    return removeApplied;
+                    return TryApplyDecodedRemove(removePacket, remoteUserPool, normalizedSource, out message);
 
                 default:
                     message = $"Remote user packet type {packetType} is not a relationship-record dispatch.";
                     LastDispatchSummary = message;
                     return false;
             }
+        }
+
+        public bool TryApplyDecodedAdd(
+            RemoteUserRelationshipRecordPacket addPacket,
+            RemoteUserActorPool remoteUserPool,
+            int currentTime,
+            string source,
+            out string message)
+        {
+            message = null;
+            if (remoteUserPool == null)
+            {
+                message = "Packet-owned relationship-record runtime requires a remote-user pool.";
+                LastDispatchSummary = message;
+                return false;
+            }
+
+            string normalizedSource = string.IsNullOrWhiteSpace(source) ? "remote-user-packet" : source.Trim();
+            bool addApplied = remoteUserPool.TryApplyRelationshipRecordAdd(addPacket, currentTime, out string addDetail);
+            if (addApplied)
+            {
+                GetState(addPacket.RelationshipType).AddCount++;
+                TotalAddCount++;
+            }
+
+            message = addDetail;
+            LastDispatchSummary = BuildDispatchSummary(
+                normalizedSource,
+                addPacket.RelationshipType,
+                addPacket.DispatchKey,
+                operation: "add",
+                addApplied,
+                addDetail);
+            return addApplied;
+        }
+
+        public bool TryApplyDecodedRemove(
+            RemoteUserRelationshipRecordRemovePacket removePacket,
+            RemoteUserActorPool remoteUserPool,
+            string source,
+            out string message)
+        {
+            message = null;
+            if (remoteUserPool == null)
+            {
+                message = "Packet-owned relationship-record runtime requires a remote-user pool.";
+                LastDispatchSummary = message;
+                return false;
+            }
+
+            string normalizedSource = string.IsNullOrWhiteSpace(source) ? "remote-user-packet" : source.Trim();
+            bool removeApplied = remoteUserPool.TryApplyRelationshipRecordRemove(removePacket, out string removeDetail);
+            if (removeApplied)
+            {
+                GetState(removePacket.RelationshipType).RemoveCount++;
+                TotalRemoveCount++;
+            }
+
+            message = removeDetail;
+            LastDispatchSummary = BuildDispatchSummary(
+                normalizedSource,
+                removePacket.RelationshipType,
+                removePacket.DispatchKey,
+                operation: "remove",
+                removeApplied,
+                removeDetail);
+            return removeApplied;
         }
 
         public string DescribeStatus()

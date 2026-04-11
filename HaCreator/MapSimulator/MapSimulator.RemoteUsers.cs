@@ -1202,6 +1202,21 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (packetType == (int)RemoteUserPacketType.UserProfile)
+            {
+                if (!RemoteUserPacketCodec.TryParseProfile(payload, out RemoteUserProfilePacket profilePacket, out string profileError))
+                {
+                    result = profileError;
+                    return false;
+                }
+
+                bool profileApplied = _remoteUserPool.TryApplyProfileMetadata(profilePacket, out string profileMessage);
+                result = profileApplied
+                    ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {profilePacket.CharacterId}."
+                    : profileMessage;
+                return profileApplied;
+            }
+
             if (packetType == (int)RemoteUserPacketType.UserTutorHire)
             {
                 if (!TryDecodeRemotePacketOwnedTutorHirePayload(payload, out int characterId, out bool enabled, out string tutorHireError))
@@ -1327,9 +1342,9 @@ namespace HaCreator.MapSimulator
                     officialChairPacket.ChairItemId,
                     out string chairMessage,
                     officialChairPacket.PairCharacterId,
-                    // CUserPool keeps couple-chair record ownership separate from
-                    // packet 222 seat state; record add/remove packets own admission.
-                    syncPairRecordFromChairState: false);
+                    // CUser::SetActivePortableChair updates the couple-chair record
+                    // before loading the additional layer.
+                    syncPairRecordFromChairState: true);
                 result = chairApplied
                     ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {officialChairPacket.CharacterId}."
                     : chairMessage;
@@ -2144,6 +2159,7 @@ namespace HaCreator.MapSimulator
                 "newyearcardrecordremove" or "newyearremove" => (int)RemoteUserPacketType.UserNewYearCardRecordRemove,
                 "couplechairrecordadd" or "couplechairadd" => (int)RemoteUserPacketType.UserCoupleChairRecordAdd,
                 "couplechairrecordremove" or "couplechairremove" => (int)RemoteUserPacketType.UserCoupleChairRecordRemove,
+                "profile" or "userprofile" => (int)RemoteUserPacketType.UserProfile,
                 "commonchat" or "userchat" => (int)RemoteUserPacketType.UserChat,
                 "commonoutsidechat" or "useroutsidechat" => (int)RemoteUserPacketType.UserChatFromOutsideMap,
                 "tutorhire" or "hiretutor" or "onhiretutor" => (int)RemoteUserPacketType.UserTutorHire,
@@ -2190,6 +2206,7 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserMarriageRecordRemove => "remote user marriage-record remove packet",
                 (int)RemoteUserPacketType.UserNewYearCardRecordAdd => "remote user New Year card-record add packet",
                 (int)RemoteUserPacketType.UserNewYearCardRecordRemove => "remote user New Year card-record remove packet",
+                (int)RemoteUserPacketType.UserProfile => "remote user profile packet",
                 (int)RemoteUserPacketType.UserEnterField => "remote user enter packet",
                 (int)RemoteUserPacketType.UserLeaveField => "remote user leave packet",
                 (int)RemoteUserPacketType.UserMove => "remote user common move packet",

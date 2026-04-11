@@ -63,7 +63,7 @@ namespace HaCreator.MapSimulator
             }
 
             ApplyQuestRewardRaiseQuestRecordContext(activeRaise);
-            activeRaise.OpenDispatchSummary = BuildQuestRewardRaiseOpenSummary(activeRaise);
+            activeRaise.OpenDispatchSummary = DispatchQuestRewardRaiseOpenRequest(activeRaise);
 
             if (windowMode != QuestRewardRaiseWindowMode.PiecePlacement && hasSelectionGroups)
             {
@@ -449,6 +449,17 @@ namespace HaCreator.MapSimulator
             return $"Opened raise owner session #{Math.Max(0, activeRaise.ManagerSessionId)} request #{Math.Max(0, activeRaise.RequestId)} for quest #{Math.Max(0, activeRaise.Prompt?.QuestId ?? 0)} owner #{Math.Max(0, activeRaise.OwnerItemId)} in {activeRaise.WindowMode} mode.";
         }
 
+        private string DispatchQuestRewardRaiseOpenRequest(QuestRewardRaiseState activeRaise)
+        {
+            if (activeRaise == null)
+            {
+                return BuildQuestRewardRaiseOpenSummary(activeRaise);
+            }
+
+            string openDispatchSummary = DescribeQuestRewardRaiseOutboundDispatch(QuestRewardRaiseOutboundRequest.CreateOpenOwner(activeRaise));
+            return $"{BuildQuestRewardRaiseOpenSummary(activeRaise)} {openDispatchSummary}";
+        }
+
         private void DispatchQuestRewardRaisePieceRequest(
             QuestRewardRaiseState activeRaise,
             QuestRewardRaisePlacedPiece placedPiece,
@@ -523,10 +534,13 @@ namespace HaCreator.MapSimulator
             }
 
             string payloadHex = Convert.ToHexString(request.Payload?.ToArray() ?? Array.Empty<byte>());
+            int officialOpcode = ResolveQuestRewardRaiseOfficialOutboundOpcode(request);
+            IReadOnlyList<byte> officialPayload = ResolveQuestRewardRaiseOfficialOutboundPayload(request);
+            string officialPayloadHex = Convert.ToHexString(officialPayload?.ToArray() ?? Array.Empty<byte>());
             string bridgeStatus;
-            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(request.Opcode, request.Payload, out bridgeStatus))
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(officialOpcode, officialPayload, out bridgeStatus))
             {
-                return $"{request.Summary} [{payloadHex}] dispatched through the live local-utility bridge. {bridgeStatus}";
+                return $"{request.Summary} [{officialPayloadHex}] dispatched through the live local-utility bridge as client opcode {officialOpcode}. {bridgeStatus}";
             }
 
             string outboxStatus;
@@ -537,9 +551,9 @@ namespace HaCreator.MapSimulator
 
             string bridgeDeferredStatus = "Official-session bridge deferred delivery is disabled.";
             if (_localUtilityOfficialSessionBridgeEnabled
-                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(request.Opcode, request.Payload, out bridgeDeferredStatus))
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(officialOpcode, officialPayload, out bridgeDeferredStatus))
             {
-                return $"{request.Summary} [{payloadHex}] queued for deferred live official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus}";
+                return $"{request.Summary} [{officialPayloadHex}] queued for deferred live official-session injection as client opcode {officialOpcode} after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus}";
             }
 
             string queuedStatus;
@@ -549,6 +563,20 @@ namespace HaCreator.MapSimulator
             }
 
             return $"{request.Summary} [{payloadHex}] remained simulator-owned because neither the live local-utility bridge nor the deferred official-session bridge queue nor the generic outbox transport or deferred outbox queue accepted it. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
+        }
+
+        private static int ResolveQuestRewardRaiseOfficialOutboundOpcode(QuestRewardRaiseOutboundRequest request)
+        {
+            return request?.ClientOpcode >= 0
+                ? request.ClientOpcode
+                : request?.Opcode ?? -1;
+        }
+
+        private static IReadOnlyList<byte> ResolveQuestRewardRaiseOfficialOutboundPayload(QuestRewardRaiseOutboundRequest request)
+        {
+            return request?.ClientOpcode >= 0
+                ? request.ClientPayload ?? Array.Empty<byte>()
+                : request?.Payload ?? Array.Empty<byte>();
         }
 
         private bool TryApplyPacketOwnedQuestRewardRaisePayload(

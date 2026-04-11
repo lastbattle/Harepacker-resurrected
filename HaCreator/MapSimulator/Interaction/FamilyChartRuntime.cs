@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Interaction
         private FamilyInfoPacketSnapshot _lastInfoPacketSnapshot;
         private int? _packetChartJuniorLimit;
         private int? _packetChartLocalMemberId;
+        private int? _packetChartHeaderMemberId;
         private bool? _packetChartIsMine;
         private bool _packetChartSuppressRootSlot;
 
@@ -541,6 +542,9 @@ namespace HaCreator.MapSimulator.Interaction
             _entitlementUseCounts.Clear();
             _packetChartLocalMemberId = snapshot.FocusMemberId > 0 ? snapshot.FocusMemberId : null;
             _packetChartJuniorLimit = Math.Max(0, snapshot.JuniorLimit);
+            _packetChartHeaderMemberId = snapshot.Members.Count > 0 && snapshot.Members[0].CharacterId > 0
+                ? snapshot.Members[0].CharacterId
+                : null;
             _packetChartIsMine = _packetChartLocalMemberId == LocalPlayerId;
             // CUIFamilyChart::DecodeLocalChart clears m_apItem[0] after decode when the packet has two or fewer entries.
             _packetChartSuppressRootSlot = snapshot.Members.Count <= 2;
@@ -992,6 +996,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastInfoPacketSnapshot = null;
             _packetChartJuniorLimit = null;
             _packetChartLocalMemberId = null;
+            _packetChartHeaderMemberId = null;
             _packetChartIsMine = null;
             _packetChartSuppressRootSlot = false;
         }
@@ -1088,9 +1093,15 @@ namespace HaCreator.MapSimulator.Interaction
         {
             Dictionary<int, int> layout = new();
             FamilyMemberState head = GetMember(_familyHeadId);
-            if (head != null && !_packetChartSuppressRootSlot)
+            if (!_packetChartSuppressRootSlot)
             {
-                layout[0] = head.Id;
+                FamilyMemberState headerMember = _packetChartHeaderMemberId.HasValue
+                    ? GetMember(_packetChartHeaderMemberId.Value)
+                    : head;
+                if (headerMember != null)
+                {
+                    layout[0] = headerMember.Id;
+                }
             }
 
             if (focus == null)
@@ -1810,6 +1821,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _packetChartStatistics.Clear();
                 _packetChartJuniorLimit = null;
                 _packetChartLocalMemberId = null;
+                _packetChartHeaderMemberId = null;
                 _packetChartIsMine = null;
                 return;
             }

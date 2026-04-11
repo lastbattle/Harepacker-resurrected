@@ -770,6 +770,9 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopSession.HasObservableState
             && _packetOwnedAdminShopSession.OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible;
 
+        internal bool ShouldAcceptPacketOwnedAdminShopResultAtOwnerGate =>
+            _packetOwnedAdminShopSession.ShouldAcceptResultPacketAtOwnerGate(IsVisible);
+
         internal string ApplyPacketOwnedAdminShopBlockedByUniqueModelessOwner(string blockingOwner, AdminShopPacketOwnedOpenPayloadSnapshot snapshot)
         {
             _packetOwnedAdminShopSession.RecordBlockedByOwner(snapshot, blockingOwner);
@@ -3893,7 +3896,7 @@ namespace HaCreator.MapSimulator.UI
             return score;
         }
 
-        private static string BuildClientWishlistSearchQuery(string query)
+        internal static string BuildClientWishlistSearchQuery(string query)
         {
             return string.IsNullOrEmpty(query)
                 ? string.Empty

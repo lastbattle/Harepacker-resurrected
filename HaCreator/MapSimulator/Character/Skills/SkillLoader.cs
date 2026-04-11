@@ -4022,9 +4022,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int attackCount = GetInt(infoNode, "attackCount");
-            if (attackCount > 0 && skill.SummonAttackCountOverride <= 0)
+            if (attackCount > 0)
             {
-                skill.SummonAttackCountOverride = attackCount;
+                if (!string.IsNullOrWhiteSpace(branchName))
+                {
+                    skill.SummonAttackCountOverridesByBranch[branchName] = attackCount;
+                }
+
+                if (skill.SummonAttackCountOverride <= 0)
+                {
+                    skill.SummonAttackCountOverride = attackCount;
+                }
             }
 
             int mobCount = GetInt(infoNode, "mobCount");
@@ -6677,14 +6685,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 requirePercentSuffix: false,
                 placeholders,
                 "weapon att",
-                "weapon attack");
+                "weapon attack",
+                "weapon and magic att",
+                "weapon and magic attack",
+                "weapon/magic att",
+                "weapon/magic attack");
             levelData.MAD = ApplyDescriptionBackedLabelAliases(
                 levelData.MAD,
                 normalizedSurface,
                 requirePercentSuffix: false,
                 placeholders,
                 "magic att",
-                "magic attack");
+                "magic attack",
+                "weapon and magic att",
+                "weapon and magic attack",
+                "weapon/magic att",
+                "weapon/magic attack");
             levelData.PAD = ApplyDescriptionBackedAliasValue(
                 levelData.PAD,
                 yValue,
@@ -7069,13 +7085,31 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ResolveDescriptionBackedGenericAttackPercentAlias(normalizedSurface, "#x", GetInt(node, "x", 0, level)));
             attackPercent = PreferPrimaryStat(
                 attackPercent,
+                ResolveDescriptionBackedSharedWeaponMagicAttackPercentAlias(normalizedSurface, "#x", GetInt(node, "x", 0, level)));
+            attackPercent = PreferPrimaryStat(
+                attackPercent,
                 ResolveDescriptionBackedGenericAttackPercentAlias(normalizedSurface, "#y", GetInt(node, "y", 0, level)));
+            attackPercent = PreferPrimaryStat(
+                attackPercent,
+                ResolveDescriptionBackedSharedWeaponMagicAttackPercentAlias(normalizedSurface, "#y", GetInt(node, "y", 0, level)));
             attackPercent = PreferPrimaryStat(
                 attackPercent,
                 ResolveDescriptionBackedGenericAttackPercentAlias(normalizedSurface, "#z", GetInt(node, "z", 0, level)));
             attackPercent = PreferPrimaryStat(
                 attackPercent,
+                ResolveDescriptionBackedSharedWeaponMagicAttackPercentAlias(normalizedSurface, "#z", GetInt(node, "z", 0, level)));
+            attackPercent = PreferPrimaryStat(
+                attackPercent,
+                ResolveDescriptionBackedSharedWeaponMagicAttackPercentAlias(normalizedSurface, "#u", GetInt(node, "u", 0, level)));
+            attackPercent = PreferPrimaryStat(
+                attackPercent,
+                ResolveDescriptionBackedSharedWeaponMagicAttackPercentAlias(normalizedSurface, "#v", GetInt(node, "v", 0, level)));
+            attackPercent = PreferPrimaryStat(
+                attackPercent,
                 ResolveDescriptionBackedGenericAttackPercentAlias(normalizedSurface, "#w", GetInt(node, "w", 0, level)));
+            attackPercent = PreferPrimaryStat(
+                attackPercent,
+                ResolveDescriptionBackedSharedWeaponMagicAttackPercentAlias(normalizedSurface, "#w", GetInt(node, "w", 0, level)));
             return attackPercent;
         }
 
@@ -7113,6 +7147,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             int aliasValue)
         {
             return PlaceholderMatchesGenericAttackHint(normalizedSurface, placeholderToken, requirePercentSuffix: true)
+                ? Math.Max(0, aliasValue)
+                : 0;
+        }
+
+        private static int ResolveDescriptionBackedSharedWeaponMagicAttackPercentAlias(
+            string normalizedSurface,
+            string placeholderToken,
+            int aliasValue)
+        {
+            return PlaceholderMatchesHintLabel(
+                    normalizedSurface,
+                    placeholderToken,
+                    requirePercentSuffix: true,
+                    "weapon and magic att",
+                    "weapon and magic attack",
+                    "weapon/magic att",
+                    "weapon/magic attack")
                 ? Math.Max(0, aliasValue)
                 : 0;
         }

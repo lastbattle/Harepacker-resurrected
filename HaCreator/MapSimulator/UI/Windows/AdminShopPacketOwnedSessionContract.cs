@@ -224,6 +224,16 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public bool ShouldAcceptResultPacketAtOwnerGate(bool ownerSurfaceCurrentlyVisible)
+        {
+            if (ownerSurfaceCurrentlyVisible)
+            {
+                return true;
+            }
+
+            return OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.Visible;
+        }
+
         public void SetLastOwnerState(string ownerState)
         {
             LastOwnerState = ownerState ?? string.Empty;

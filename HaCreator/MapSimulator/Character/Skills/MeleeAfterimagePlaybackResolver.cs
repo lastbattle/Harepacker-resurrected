@@ -104,6 +104,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
+        internal static bool ShouldBeginFadeForActionBoundary(
+            int currentTime,
+            int animationStartTime,
+            int actionDuration,
+            string currentActionName,
+            string afterImageActionName)
+        {
+            if (!string.Equals(currentActionName, afterImageActionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return actionDuration > 0
+                   && currentTime - animationStartTime >= actionDuration;
+        }
+
         internal static bool TryResolveSnapshot(
             CharacterAssembler assembler,
             string actionName,

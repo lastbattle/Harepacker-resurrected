@@ -1680,16 +1680,9 @@ namespace HaCreator.MapSimulator.Fields
             {
                 fallbackPortal ??= portal;
                 int? portalTypeId = InfoTool.GetOptionalInt(portal["pt"]);
-                PortalType? portalType = null;
-                if (portalTypeId.HasValue
-                    && Program.InfoManager?.PortalEditor_TypeById != null
-                    && portalTypeId.Value >= 0
-                    && portalTypeId.Value < Program.InfoManager.PortalEditor_TypeById.Count)
-                {
-                    portalType = Program.InfoManager.PortalEditor_TypeById[portalTypeId.Value];
-                }
+                string portalName = InfoTool.GetOptionalString(portal["pn"]);
 
-                if (portalType != PortalType.StartPoint)
+                if (!IsRemoteTownPortalSourceFallbackStartPortal(portalTypeId, portalName))
                 {
                     continue;
                 }
@@ -1707,6 +1700,27 @@ namespace HaCreator.MapSimulator.Fields
             sourceX = InfoTool.GetInt(fallbackPortal["x"]);
             sourceY = InfoTool.GetInt(fallbackPortal["y"]);
             return true;
+        }
+
+        private static bool IsRemoteTownPortalSourceFallbackStartPortal(int? portalTypeId, string portalName)
+        {
+            if (portalTypeId.HasValue)
+            {
+                if (portalTypeId.Value == (int)PortalType.StartPoint)
+                {
+                    return true;
+                }
+
+                if (Program.InfoManager?.PortalEditor_TypeById != null
+                    && portalTypeId.Value >= 0
+                    && portalTypeId.Value < Program.InfoManager.PortalEditor_TypeById.Count
+                    && Program.InfoManager.PortalEditor_TypeById[portalTypeId.Value] == PortalType.StartPoint)
+                {
+                    return true;
+                }
+            }
+
+            return string.Equals(portalName, PortalType.StartPoint.ToCode(), StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryResolveRemoteTownPortalTownMapForSourceMap(int sourceMapId, out int townMapId)
@@ -3285,6 +3299,11 @@ namespace HaCreator.MapSimulator.Fields
                 selected.Value.SourceMapId,
                 selected.Value.SourceX,
                 selected.Value.SourceY);
+        }
+
+        internal static bool IsRemoteTownPortalSourceFallbackStartPortalForTesting(int? portalTypeId, string portalName)
+        {
+            return IsRemoteTownPortalSourceFallbackStartPortal(portalTypeId, portalName);
         }
 
         internal static bool ShouldReplaceRemoteTownPortalOwnerObservationForTesting(

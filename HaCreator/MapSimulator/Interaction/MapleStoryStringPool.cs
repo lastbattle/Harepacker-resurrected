@@ -7,6 +7,11 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private static readonly IReadOnlyDictionary<int, string> OverrideEntries = new Dictionary<int, string>
         {
+            // Recovered from MapleStory.exe v95 `CField_Coconut::DrawBoard`.
+            // The Coconut board formats score and finish-timestamp time through
+            // these StringPool ids before drawing the WZ bitmap glyphs.
+            [0x0B02] = "%d",
+            [0x0B0C] = "%d:%02d",
             [0x1A15] = "%d",
             // Recovered from MapleStory.exe v95 `CWvsContext::OnDropPickUpMessage`.
             // The generated table drifts for several pickup-notice ids, so pin the
@@ -189,10 +194,12 @@ namespace HaCreator.MapSimulator.Interaction
             [0x0D16] = "Pattern",
             [0x0D17] = "Letter",
             [0x0D18] = "Etc",
-            // Recovered from MapleStory.exe v95 `CWvsContext::OnGuildResult(79)`.
+            // Recovered from MapleStory.exe v95 `CWvsContext::OnGuildResult(77..79)`.
             // The generated table stores URL-escaped punctuation in this block, but the client
             // emits these strings directly through StringPool before formatting guild-quest
             // queue notices into the status-bar chat log.
+            [0x0DFD] = "There are less than 6 members remaining, so the quest cannot continue. Your Guild Quest will end in 5 seconds.",
+            [0x0DFE] = "The user that registered has disconnected, so the quest cannot continue. Your Guild Quest will end in 5 seconds.",
             [0x0DFF] = "Please go see the Guild Quest NPC at Channel %s immediately to enter.",
             [0x0E00] = "Your guild is up next. Please head to the Guild Quest map at Channel %s and wait.",
             [0x0E01] = "There's currently 1 guild participating in the Guild Quest, and your guild is number %d on the waitlist.",

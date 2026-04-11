@@ -121,7 +121,7 @@ namespace HaCreator.MapSimulator.Interaction
             out InitialQuizOwnerApplyDisposition disposition,
             out string message)
         {
-            if (HasLiveOwner(currentTickCount))
+            if (HasCreatedOwner())
             {
                 disposition = InitialQuizOwnerApplyDisposition.IgnoredReopen;
                 message =
@@ -225,9 +225,9 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"\"{value.Trim()}\"";
         }
 
-        private bool HasLiveOwner(int currentTickCount)
+        private bool HasCreatedOwner()
         {
-            return GetRemainingMs(currentTickCount) > 0;
+            return _expiresAtTick > 0;
         }
 
         internal void ObserveRuntimeCharacterId(int runtimeCharacterId)

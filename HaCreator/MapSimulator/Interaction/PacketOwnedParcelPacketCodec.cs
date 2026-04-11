@@ -155,7 +155,8 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentMeso = parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
                 ? Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(ParcelMesoOffset, sizeof(int))))
                 : 0;
-            if (!postBodyState.HasMesoAttachment)
+            bool hasMesoAttachment = postBodyState.HasMesoAttachment || attachmentMeso > 0;
+            if (!hasMesoAttachment)
             {
                 attachmentMeso = 0;
             }
@@ -176,7 +177,7 @@ namespace HaCreator.MapSimulator.Interaction
                 StateFlags = postBodyByte,
                 PostBodyItemPresenceFlag = postBodyByte,
                 HasItemAttachment = postBodyState.HasItemAttachment,
-                HasMesoAttachment = postBodyState.HasMesoAttachment,
+                HasMesoAttachment = hasMesoAttachment,
                 AttachmentItemId = Math.Max(0, itemId),
                 AttachmentQuantity = Math.Max(0, quantity),
                 AttachmentMeso = attachmentMeso,

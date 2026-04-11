@@ -122,7 +122,24 @@ namespace HaCreator.MapSimulator.Character
             public int BodyPreparedDurationMs { get; init; }
             public int TamingMobPreparedDurationMs { get; init; }
             public int TotalPreparedDurationMs { get; init; }
+            public int BodyFrameIndex { get; set; } = -1;
+            public int BodyFrameRemainingMs { get; set; }
+            public int TamingMobFrameIndex { get; set; } = -1;
+            public int TamingMobFrameRemainingMs { get; set; }
+            public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
         }
+
+        internal readonly record struct MountedActionLayerStateForTesting(
+            string ActionName,
+            string PersistentBodyActionName,
+            int BodyPreparedDurationMs,
+            int TamingMobPreparedDurationMs,
+            int TotalPreparedDurationMs,
+            int BodyFrameIndex,
+            int BodyFrameRemainingMs,
+            int TamingMobFrameIndex,
+            int TamingMobFrameRemainingMs,
+            int LastClockUpdateTimeMs);
 
         internal readonly record struct SkillAvatarTransformResolutionForTesting(
             IReadOnlyList<string> StandActionNames,
@@ -278,6 +295,9 @@ namespace HaCreator.MapSimulator.Character
         {
             public AvatarRenderLayer RenderLayer { get; set; }
             public int PreparedLayerObjectId { get; set; }
+            public int PreparedLayerZ { get; set; } = MirrorImageClientLayerZ;
+            public int PreparedLayerFilter { get; set; } = MirrorImageClientDefaultLayerFilter;
+            public Color PreparedLayerColor { get; set; } = MirrorImageTint;
             public int SourceSignature { get; set; }
             public int LastInsertedSourceSignature { get; set; }
             public Rectangle Bounds { get; set; }
@@ -301,7 +321,8 @@ namespace HaCreator.MapSimulator.Character
                 Rectangle positionBounds,
                 Point origin,
                 bool facingRight,
-                int transitionStartTime)
+                int transitionStartTime,
+                Color layerColor)
             {
                 PreparedSnapshotTexture = preparedSnapshotTexture;
                 PreparedSnapshotSourceBounds = preparedSnapshotSourceBounds;
@@ -309,6 +330,7 @@ namespace HaCreator.MapSimulator.Character
                 Origin = origin;
                 FacingRight = facingRight;
                 TransitionStartTime = transitionStartTime;
+                LayerColor = layerColor;
             }
 
             public Texture2D PreparedSnapshotTexture { get; }
@@ -317,6 +339,7 @@ namespace HaCreator.MapSimulator.Character
             public Point Origin { get; }
             public bool FacingRight { get; }
             public int TransitionStartTime { get; }
+            public Color LayerColor { get; }
         }
 
         private readonly struct AvatarEffectRenderable
@@ -380,6 +403,10 @@ namespace HaCreator.MapSimulator.Character
         private const int MirrorImageClientSideOffsetPx = 50;
         private const int MirrorImageClientBackActionOffsetYPx = 50;
         private const int MirrorImageTransitionDurationMs = 200;
+        private const int MirrorImageClientLayerZ = -2;
+        private const int MirrorImageClientDefaultScalePercent = 100;
+        private const int MirrorImageClientDefaultLayerFilter = 0;
+        private const int MirrorImageClientScaledLayerFilter = 2;
         private const int PacketOwnedEmotionEffectSkillId = 2099000000;
         private const int BlinkEmotionId = 8;
         // Float idle should ignore the tiny passive sink applied by swim physics.
@@ -1896,6 +1923,7 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 // Check if attack animation is complete
+                UpdateMountedActionLayerFrameClock(GetMountedActionLayerState(), currentTime);
                 int attackDuration = ResolveCurrentClientActionLayerDuration();
                 if (attackDuration > 0)
                 {
@@ -2069,6 +2097,28 @@ namespace HaCreator.MapSimulator.Character
                 : null;
         }
 
+        internal MountedActionLayerStateForTesting? GetMountedActionLayerStateForTesting(int currentTime)
+        {
+            MountedActionLayerState state = GetMountedActionLayerState();
+            if (state == null)
+            {
+                return null;
+            }
+
+            UpdateMountedActionLayerFrameClock(state, currentTime);
+            return new MountedActionLayerStateForTesting(
+                state.ActionName,
+                state.PersistentBodyActionName,
+                state.BodyPreparedDurationMs,
+                state.TamingMobPreparedDurationMs,
+                state.TotalPreparedDurationMs,
+                state.BodyFrameIndex,
+                state.BodyFrameRemainingMs,
+                state.TamingMobFrameIndex,
+                state.TamingMobFrameRemainingMs,
+                state.LastClockUpdateTimeMs);
+        }
+
         private void RefreshMountedActionLayerState()
         {
             _mountedActionLayerState = null;
@@ -2104,6 +2154,46 @@ namespace HaCreator.MapSimulator.Character
             };
         }
 
+        private void UpdateMountedActionLayerFrameClock(MountedActionLayerState mountedActionLayerState, int currentTime)
+        {
+            if (mountedActionLayerState == null || Assembler == null)
+            {
+                return;
+            }
+
+            int animationTime = GetRenderAnimationTime(currentTime);
+            string bodyActionName = mountedActionLayerState.ActionName;
+            int bodyAnimationTime = animationTime;
+            if (AvatarActionLayerCoordinator.TryResolveMountedOneTimeBodyAnimationTime(
+                    mountedActionLayerState.ActionName,
+                    animationTime,
+                    mountedActionLayerState.BodyPreparedDurationMs,
+                    mountedActionLayerState.TamingMobPreparedDurationMs,
+                    out int persistentBodyAnimationTime)
+                && !string.IsNullOrWhiteSpace(mountedActionLayerState.PersistentBodyActionName))
+            {
+                bodyActionName = mountedActionLayerState.PersistentBodyActionName;
+                bodyAnimationTime = persistentBodyAnimationTime;
+            }
+
+            if (!Assembler.TryGetMountedActionLayerFrameTiming(
+                    bodyActionName,
+                    bodyAnimationTime,
+                    mountedActionLayerState.ActionName,
+                    animationTime,
+                    out AvatarActionLayerCoordinator.PreparedFrameTiming bodyTiming,
+                    out AvatarActionLayerCoordinator.PreparedFrameTiming tamingMobTiming))
+            {
+                return;
+            }
+
+            mountedActionLayerState.BodyFrameIndex = bodyTiming.FrameIndex;
+            mountedActionLayerState.BodyFrameRemainingMs = bodyTiming.FrameRemainingMs;
+            mountedActionLayerState.TamingMobFrameIndex = tamingMobTiming.FrameIndex;
+            mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobTiming.FrameRemainingMs;
+            mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
+        }
+
         private bool TryResolveMountedTransitionCurrentFrame(int currentTime, out AssembledFrame frame)
         {
             return TryResolveMountedTransitionCurrentFrame(currentTime, out frame, out _);
@@ -2125,6 +2215,8 @@ namespace HaCreator.MapSimulator.Character
             {
                 return false;
             }
+
+            UpdateMountedActionLayerFrameClock(mountedActionLayerState, currentTime);
 
             int animationTime = GetRenderAnimationTime(currentTime);
             if (!AvatarActionLayerCoordinator.TryResolveMountedOneTimeBodyAnimationTime(
@@ -2555,7 +2647,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Determine attack type based on weapon
             var weapon = Build?.GetWeapon();
-            _currentAttackType = ResolveClientBasicAttackType(previousState, weapon?.WeaponType);
+            _currentAttackType = ResolveClientBasicAttackType(previousState, weapon);
 
             CurrentAction = GetAttackAction();
             CurrentActionName = CharacterPart.GetActionString(CurrentAction);
@@ -2574,6 +2666,25 @@ namespace HaCreator.MapSimulator.Character
                 return AttackType.ProneStab;
             }
 
+            return ResolveClientBasicAttackType(weaponType);
+        }
+
+        internal static AttackType ResolveClientBasicAttackType(PlayerState previousState, WeaponPart weapon)
+        {
+            if (previousState == PlayerState.Prone)
+            {
+                return AttackType.ProneStab;
+            }
+
+            return weapon?.AttackFrameCount switch
+            {
+                3 or 4 or 9 or 11 or 12 => AttackType.Shoot,
+                _ => ResolveClientBasicAttackType(weapon?.WeaponType)
+            };
+        }
+
+        private static AttackType ResolveClientBasicAttackType(string weaponType)
+        {
             string normalizedWeaponType = weaponType?.Trim().ToLowerInvariant();
             return normalizedWeaponType switch
             {
@@ -2659,7 +2770,9 @@ namespace HaCreator.MapSimulator.Character
             _activeMeleeAfterImage = null;
 
             _attackFrame = 0;
-            _animationStartTime = Environment.TickCount; // Set animation start time for completion check
+            _animationStartTime = currentTime == int.MinValue
+                ? Environment.TickCount
+                : currentTime;
             SyncAssemblerActionLayerContext();
             RefreshMountedActionLayerState();
             if (playEffectiveWeaponSfx)
@@ -2694,7 +2807,9 @@ namespace HaCreator.MapSimulator.Character
             if (!isSameAction)
             {
                 _attackFrame = 0;
-                _animationStartTime = Environment.TickCount;
+                _animationStartTime = currentTime == int.MinValue
+                    ? Environment.TickCount
+                    : currentTime;
             }
 
             SyncAssemblerActionLayerContext();
@@ -4287,16 +4402,15 @@ namespace HaCreator.MapSimulator.Character
 
             bool activeAction = _activeMeleeAfterImage.FadeStartTime < 0
                 && State == PlayerState.Attacking
-                && string.Equals(CurrentActionName, _activeMeleeAfterImage.ActionName, StringComparison.OrdinalIgnoreCase);
+                && !MeleeAfterimagePlaybackResolver.ShouldBeginFadeForActionBoundary(
+                    currentTime,
+                    _activeMeleeAfterImage.AnimationStartTime,
+                    _activeMeleeAfterImage.ActionDuration,
+                    CurrentActionName,
+                    _activeMeleeAfterImage.ActionName);
             if (!activeAction)
             {
                 BeginMeleeAfterImageFade(currentTime);
-            }
-            else if (_activeMeleeAfterImage.ActionDuration > 0
-                     && currentTime - _activeMeleeAfterImage.AnimationStartTime >= _activeMeleeAfterImage.ActionDuration)
-            {
-                BeginMeleeAfterImageFade(currentTime);
-                activeAction = false;
             }
 
             int frameIndex = _activeMeleeAfterImage.LastFrameIndex;
@@ -4585,7 +4699,7 @@ namespace HaCreator.MapSimulator.Character
                 Point layerOffset = ResolveMirrorImageCurrentOffset(currentTime, transitionStartTime);
                 int adjustedY = screenY + layerOffset.Y - _activeMirrorImage.PreparedFeetOffset;
                 int adjustedX = screenX + layerOffset.X;
-                Color tint = MirrorImageTint * alpha;
+                Color tint = ResolveMirrorImageLayerTint(renderableLayer.Value.LayerColor, alpha);
                 if (renderableLayer.Value.PreparedSnapshotTexture == null)
                 {
                     continue;
@@ -4700,6 +4814,9 @@ namespace HaCreator.MapSimulator.Character
                 {
                     RenderLayer = renderLayer,
                     PreparedLayerObjectId = 0,
+                    PreparedLayerZ = ResolveMirrorImagePreparedLayerZ(),
+                    PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilter(MirrorImageClientDefaultScalePercent),
+                    PreparedLayerColor = ResolveMirrorImagePreparedLayerColor(),
                     SourceSignature = 0,
                     LastInsertedSourceSignature = 0,
                     Bounds = Rectangle.Empty,
@@ -4807,7 +4924,8 @@ namespace HaCreator.MapSimulator.Character
                         CalculateMirrorImageSourceLayerBounds(liveSourceParts)),
                     preparedLayer.Origin,
                     FacingRight,
-                    ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime));
+                    ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime),
+                    preparedLayer.PreparedLayerColor);
             }
 
             if (!CanRenderPreparedMirrorImageSourceLayer(
@@ -4829,7 +4947,8 @@ namespace HaCreator.MapSimulator.Character
                     ResolveMirrorImageLiveRenderBounds(frame, preparedLayer.RenderLayer)),
                 preparedLayer.Origin,
                 ResolveMirrorImagePreparedFallbackFacing(preparedLayer.PreparedFacingRight, FacingRight),
-                ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime));
+                ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime),
+                preparedLayer.PreparedLayerColor);
         }
 
         private bool TryResolveLiveMirrorImageSourceLayer(
@@ -4883,7 +5002,7 @@ namespace HaCreator.MapSimulator.Character
                     preparedLayer.Parts?.Count ?? 0))
                 {
                     preparedLayer.RenderLayer = renderLayer;
-                    preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
+                    ApplyMirrorImagePreparedLayerClientProperties(preparedLayer, renderLayer);
                     return preparedLayer;
                 }
 
@@ -4927,7 +5046,7 @@ namespace HaCreator.MapSimulator.Character
                     currentTime,
                     hasSourceCanvas);
                 preparedLayer.PreparedFacingRight = facingRight;
-                preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
+                ApplyMirrorImagePreparedLayerClientProperties(preparedLayer, renderLayer);
                 return preparedLayer;
             }
 
@@ -4974,6 +5093,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.PreparedLayerObjectId = AllocateMirrorImagePreparedLayerObjectId(
                 preparedLayer.PreparedLayerObjectId,
                 preservesExistingLayerObject);
+            ApplyMirrorImagePreparedLayerClientProperties(preparedLayer, renderLayer);
             ApplyMirrorImageInsertCanvasMetadata(
                 preparedLayer,
                 sourceSignature,
@@ -4994,6 +5114,9 @@ namespace HaCreator.MapSimulator.Character
             DisposeMirrorImagePreparedSourceLayerTexture(preparedLayer);
             preparedLayer.RenderLayer = renderLayer;
             preparedLayer.PreparedLayerObjectId = 0;
+            preparedLayer.PreparedLayerZ = ResolveMirrorImagePreparedLayerZ();
+            preparedLayer.PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilter(MirrorImageClientDefaultScalePercent);
+            preparedLayer.PreparedLayerColor = ResolveMirrorImagePreparedLayerColor();
             preparedLayer.SourceSignature = sourceSignature;
             preparedLayer.LastInsertedSourceSignature = 0;
             preparedLayer.Bounds = Rectangle.Empty;
@@ -5033,6 +5156,43 @@ namespace HaCreator.MapSimulator.Character
         internal static AvatarRenderLayer ResolveMirrorImageOverlayTargetLayer(AvatarRenderLayer renderLayer)
         {
             return AvatarRenderLayer.UnderFace;
+        }
+
+        private static void ApplyMirrorImagePreparedLayerClientProperties(
+            MirrorImagePreparedSourceLayer preparedLayer,
+            AvatarRenderLayer renderLayer)
+        {
+            if (preparedLayer == null)
+            {
+                return;
+            }
+
+            preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
+            preparedLayer.PreparedLayerZ = ResolveMirrorImagePreparedLayerZ();
+            preparedLayer.PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilter(MirrorImageClientDefaultScalePercent);
+            preparedLayer.PreparedLayerColor = ResolveMirrorImagePreparedLayerColor();
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerZ()
+        {
+            return MirrorImageClientLayerZ;
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerFilter(int scalePercent)
+        {
+            return scalePercent == MirrorImageClientDefaultScalePercent
+                ? MirrorImageClientDefaultLayerFilter
+                : MirrorImageClientScaledLayerFilter;
+        }
+
+        internal static Color ResolveMirrorImagePreparedLayerColor()
+        {
+            return MirrorImageTint;
+        }
+
+        internal static Color ResolveMirrorImageLayerTint(Color layerColor, float alpha)
+        {
+            return layerColor * MathHelper.Clamp(alpha, 0f, 1f);
         }
 
         internal static int ResolveMirrorImageOverlayInsertionIndex(
@@ -5274,7 +5434,7 @@ namespace HaCreator.MapSimulator.Character
 
                 AvatarRenderLayer renderLayer = (AvatarRenderLayer)layerIndex;
                 preparedLayer.RenderLayer = renderLayer;
-                preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
+                ApplyMirrorImagePreparedLayerClientProperties(preparedLayer, renderLayer);
             }
         }
 
@@ -7980,6 +8140,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             SyncAssemblerActionLayerContext();
+            UpdateMountedActionLayerFrameClock(GetMountedActionLayerState(), currentTime);
             if (TryResolveMountedTransitionCurrentFrame(currentTime, out AssembledFrame mountedTransitionFrame, out currentFrameIndex))
             {
                 return mountedTransitionFrame;

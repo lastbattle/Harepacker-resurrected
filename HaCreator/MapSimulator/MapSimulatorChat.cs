@@ -655,8 +655,7 @@ namespace HaCreator.MapSimulator
                         ActivateWhisperTargetPickerModalComboFocus();
                     }
 
-                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
-                        || _isWhisperTargetPickerComboDropdownOpen)
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
                     {
                         OpenWhisperTargetPickerModalComboDropdown();
                         MoveWhisperTargetPickerSelectionToBoundary(
@@ -685,8 +684,7 @@ namespace HaCreator.MapSimulator
                         ActivateWhisperTargetPickerModalComboFocus();
                     }
 
-                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
-                        || _isWhisperTargetPickerComboDropdownOpen)
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
                     {
                         OpenWhisperTargetPickerModalComboDropdown();
                         MoveWhisperTargetPickerSelectionToBoundary(
@@ -714,8 +712,7 @@ namespace HaCreator.MapSimulator
                         ActivateWhisperTargetPickerModalComboFocus();
                     }
 
-                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
-                        || _isWhisperTargetPickerComboDropdownOpen)
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
                     {
                         OpenWhisperTargetPickerModalComboDropdown();
                         PageWhisperTargetPickerSelection(
@@ -736,8 +733,7 @@ namespace HaCreator.MapSimulator
                         ActivateWhisperTargetPickerModalComboFocus();
                     }
 
-                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal
-                        || _isWhisperTargetPickerComboDropdownOpen)
+                    if (_whisperTargetPickerPresentation != WhisperTargetPickerPresentation.Modal)
                     {
                         OpenWhisperTargetPickerModalComboDropdown();
                         PageWhisperTargetPickerSelection(

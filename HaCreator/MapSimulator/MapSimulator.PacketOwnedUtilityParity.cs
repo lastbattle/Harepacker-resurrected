@@ -183,6 +183,14 @@ namespace HaCreator.MapSimulator
         private readonly AdminShopPacketInboxManager _adminShopPacketInbox = new();
         private readonly LocalUtilityOfficialSessionBridgeManager _localUtilityOfficialSessionBridge = new();
         private readonly MessengerOfficialSessionBridgeManager _messengerOfficialSessionBridge = new();
+        private readonly MessengerOfficialSessionBridgeManager _mapleTvOfficialSessionBridge =
+            new(
+                "MapleTV",
+                18505,
+                MapleTvRuntime.PacketTypeSetMessage,
+                MapleTvRuntime.ConsumeCashItemUseRequestOpcode,
+                MapleTvRuntime.PacketTypeClearMessage,
+                MapleTvRuntime.PacketTypeSendMessageResult);
         private readonly LocalUtilityPacketTransportManager _localUtilityPacketOutbox = new();
         private readonly List<PacketOwnedItemMakerHiddenRecipeUnlockEntry> _pendingPacketOwnedItemMakerHiddenUnlocks = new();
         private readonly List<PacketOwnedItemMakerResult> _pendingPacketOwnedItemMakerResults = new();
@@ -211,6 +219,7 @@ namespace HaCreator.MapSimulator
         private int _lastQuestDemandItemQueryQuestId;
         private readonly List<int> _lastQuestDemandQueryVisibleItemIds = new();
         private readonly Dictionary<int, List<int>> _lastQuestDemandQueryVisibleItemMapIds = new();
+        private readonly Dictionary<int, QuestDemandItemMapResultSource> _lastQuestDemandQueryVisibleItemMapSources = new();
         private int _lastQuestDemandQueryPreferredItemId;
         private int _lastQuestDemandQueryHiddenItemCount;
         private bool _lastQuestDemandQueryHasPacketOwnedMapResults;
@@ -329,6 +338,16 @@ namespace HaCreator.MapSimulator
         private int? _messengerOfficialSessionBridgeConfiguredLocalPort;
         private const int MessengerOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private int _nextMessengerOfficialSessionBridgeDiscoveryRefreshAt;
+        private bool _mapleTvOfficialSessionBridgeEnabled;
+        private bool _mapleTvOfficialSessionBridgeUseDiscovery;
+        private int _mapleTvOfficialSessionBridgeConfiguredListenPort = 18505;
+        private string _mapleTvOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+        private int _mapleTvOfficialSessionBridgeConfiguredRemotePort;
+        private ushort _mapleTvOfficialSessionBridgeConfiguredInboundOpcode = MapleTvRuntime.PacketTypeSetMessage;
+        private string _mapleTvOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _mapleTvOfficialSessionBridgeConfiguredLocalPort;
+        private const int MapleTvOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
+        private int _nextMapleTvOfficialSessionBridgeDiscoveryRefreshAt;
         private bool _localUtilityPacketOutboxEnabled;
         private int _localUtilityPacketOutboxConfiguredPort = LocalUtilityPacketTransportManager.DefaultPort;
 
@@ -561,6 +580,7 @@ namespace HaCreator.MapSimulator
             _lastQuestDemandItemQueryQuestId = Math.Max(0, queryState?.QuestId ?? 0);
             _lastQuestDemandQueryVisibleItemIds.Clear();
             _lastQuestDemandQueryVisibleItemMapIds.Clear();
+            _lastQuestDemandQueryVisibleItemMapSources.Clear();
             _lastQuestDemandQueryPreferredItemId = Math.Max(0, queryState?.PreferredItemId ?? 0);
             _lastQuestDemandQueryHiddenItemCount = Math.Max(0, queryState?.HiddenItemCount ?? 0);
             _lastQuestDemandQueryHasPacketOwnedMapResults = queryState?.HasPacketOwnedMapResults == true;
@@ -595,6 +615,19 @@ namespace HaCreator.MapSimulator
                     {
                         _lastQuestDemandQueryVisibleItemMapIds[itemId] = normalizedMapIds;
                     }
+                }
+            }
+
+            if (queryState?.VisibleItemMapResults != null)
+            {
+                foreach ((int itemId, QuestDemandItemMapResultSet resultSet) in queryState.VisibleItemMapResults)
+                {
+                    if (itemId <= 0 || resultSet == null)
+                    {
+                        continue;
+                    }
+
+                    _lastQuestDemandQueryVisibleItemMapSources[itemId] = resultSet.Source;
                 }
             }
 
@@ -640,10 +673,11 @@ namespace HaCreator.MapSimulator
             string hiddenSuffix = _lastQuestDemandQueryHiddenItemCount > 0
                 ? $" {_lastQuestDemandQueryHiddenItemCount} hidden demand item(s) remain packet-only."
                 : string.Empty;
-            string mapSuffix = _lastQuestDemandQueryHasPacketOwnedMapResults && focusMapIds.Count > 0
+            QuestDemandItemMapResultSource focusSource = ResolveQuestDemandQueryMapSource(focusItemId);
+            string mapSuffix = focusMapIds.Count > 0
                 ? focusMapIds.Count == 1
-                    ? $" Routed to {ResolveMapTransferDisplayName(focusMapId, null)}."
-                    : $" Routed across {focusMapIds.Count} packet-authored map result(s)."
+                    ? $" Routed to {ResolveMapTransferDisplayName(focusMapId, null)} via {FormatQuestDemandQueryMapSource(focusSource)}."
+                    : $" Routed across {focusMapIds.Count} {FormatQuestDemandQueryMapSource(focusSource)} map result(s)."
                 : string.Empty;
             return focusedItem
                 ? $"Opened a packet-shaped quest demand item query for {focusItemName}.{hiddenSuffix}{mapSuffix}".TrimEnd()
@@ -718,9 +752,7 @@ namespace HaCreator.MapSimulator
                     }
 
                     string mapName = ResolveMapTransferDisplayName(mapId, null);
-                    string sourceText = _lastQuestDemandQueryHasPacketOwnedMapResults
-                        ? "Packet-authored quest demand item query"
-                        : "Quest demand item query";
+                    string sourceText = FormatQuestDemandQuerySearchResultSource(ResolveQuestDemandQueryMapSource(itemId));
                     results.Add(new WorldMapUI.SearchResultEntry
                     {
                         Kind = WorldMapUI.SearchResultKind.Item,
@@ -737,6 +769,7 @@ namespace HaCreator.MapSimulator
             _lastQuestDemandItemQueryQuestId = 0;
             _lastQuestDemandQueryVisibleItemIds.Clear();
             _lastQuestDemandQueryVisibleItemMapIds.Clear();
+            _lastQuestDemandQueryVisibleItemMapSources.Clear();
             _lastQuestDemandQueryPreferredItemId = 0;
             _lastQuestDemandQueryHiddenItemCount = 0;
             _lastQuestDemandQueryHasPacketOwnedMapResults = false;
@@ -762,18 +795,60 @@ namespace HaCreator.MapSimulator
                 : Array.Empty<int>();
         }
 
+        private QuestDemandItemMapResultSource ResolveQuestDemandQueryMapSource(int itemId)
+        {
+            return itemId > 0 &&
+                   _lastQuestDemandQueryVisibleItemMapSources.TryGetValue(itemId, out QuestDemandItemMapResultSource source)
+                ? source
+                : QuestDemandItemMapResultSource.None;
+        }
+
+        private static string FormatQuestDemandQueryMapSource(QuestDemandItemMapResultSource source)
+        {
+            return source switch
+            {
+                QuestDemandItemMapResultSource.PacketOwnedMob => "packet-authored mob",
+                QuestDemandItemMapResultSource.WzMobDemand => "WZ mob-demand",
+                QuestDemandItemMapResultSource.WzNpcFallback => "WZ NPC fallback",
+                QuestDemandItemMapResultSource.CurrentFieldFallback => "current-field fallback",
+                _ => "quest-demand"
+            };
+        }
+
         private static IReadOnlyList<int> ResolveRuntimeFallbackDemandItemMapIds(QuestDemandItemQueryState runtimeFallbackQuery, int itemId)
         {
-            if (itemId > 0 &&
-                runtimeFallbackQuery?.VisibleItemMapIds != null &&
+            QuestDemandItemMapResultSet resultSet = ResolveRuntimeFallbackDemandItemMapResult(runtimeFallbackQuery, itemId);
+            return resultSet?.MapIds ?? Array.Empty<int>();
+        }
+
+        private static QuestDemandItemMapResultSet ResolveRuntimeFallbackDemandItemMapResult(QuestDemandItemQueryState runtimeFallbackQuery, int itemId)
+        {
+            if (itemId <= 0 || runtimeFallbackQuery == null)
+            {
+                return null;
+            }
+
+            if (runtimeFallbackQuery.VisibleItemMapResults != null &&
+                runtimeFallbackQuery.VisibleItemMapResults.TryGetValue(itemId, out QuestDemandItemMapResultSet resultSet) &&
+                resultSet?.MapIds != null &&
+                resultSet.MapIds.Count > 0)
+            {
+                return resultSet;
+            }
+
+            if (runtimeFallbackQuery.VisibleItemMapIds != null &&
                 runtimeFallbackQuery.VisibleItemMapIds.TryGetValue(itemId, out IReadOnlyList<int> mapIds) &&
                 mapIds != null &&
                 mapIds.Count > 0)
             {
-                return mapIds;
+                return new QuestDemandItemMapResultSet
+                {
+                    MapIds = mapIds,
+                    Source = QuestDemandItemMapResultSource.WzNpcFallback
+                };
             }
 
-            return Array.Empty<int>();
+            return null;
         }
 
         private string ApplyClassCompetitionPageLaunch()
@@ -1880,6 +1955,18 @@ namespace HaCreator.MapSimulator
                     }
                 }
             }
+        }
+
+        private static string FormatQuestDemandQuerySearchResultSource(QuestDemandItemMapResultSource source)
+        {
+            return source switch
+            {
+                QuestDemandItemMapResultSource.PacketOwnedMob => "Packet-authored quest demand item query",
+                QuestDemandItemMapResultSource.WzMobDemand => "WZ mob-demand quest item query",
+                QuestDemandItemMapResultSource.WzNpcFallback => "WZ NPC fallback quest item query",
+                QuestDemandItemMapResultSource.CurrentFieldFallback => "Current-field fallback quest item query",
+                _ => "Quest demand item query"
+            };
         }
 
         private void DrainLocalUtilityOfficialSessionBridge()
@@ -5797,7 +5884,7 @@ namespace HaCreator.MapSimulator
                 float knockbackX = _playerManager.Player.FacingRight ? -impactMagnitude : impactMagnitude;
                 float knockbackY = -impactMagnitude;
                 _playerManager.Player.ApplyPacketDamageReaction(
-                    appliedDamage,
+                    ResolvePacketOwnedTimeBombHpMutationDamage(appliedDamage),
                     Math.Max(1, appliedHitPeriodMs),
                     knockbackX,
                     knockbackY,
@@ -9579,6 +9666,11 @@ namespace HaCreator.MapSimulator
                 : PacketOwnedTimeBombHpEffectKind.None;
         }
 
+        internal static int ResolvePacketOwnedTimeBombHpMutationDamage(int damage)
+        {
+            return 0;
+        }
+
         private static bool IsPacketOwnedVengeanceSkillId(int skillId)
         {
             return skillId > 0 && PacketOwnedVengeanceSkillIdCatalog.Value.Contains(skillId);
@@ -11245,6 +11337,7 @@ namespace HaCreator.MapSimulator
         {
             List<int> visibleItemIds = new();
             Dictionary<int, IReadOnlyList<int>> visibleItemMapIds = new();
+            Dictionary<int, QuestDemandItemMapResultSet> visibleItemMapResults = new();
             int hiddenItemCount = 0;
             bool hasPacketOwnedMapResults = false;
             int preferredItemId = 0;
@@ -11262,6 +11355,7 @@ namespace HaCreator.MapSimulator
 
                     HashSet<int> mapIds = new();
                     IReadOnlyList<int> childIds = records[i].ChildIds ?? Array.Empty<int>();
+                    bool itemHasPacketOwnedMapResults = false;
                     for (int childIndex = 0; childIndex < childIds.Count; childIndex++)
                     {
                         int mobId = childIds[childIndex];
@@ -11276,6 +11370,7 @@ namespace HaCreator.MapSimulator
                             if (packetResolvedMapIds[mapIndex] > 0)
                             {
                                 mapIds.Add(packetResolvedMapIds[mapIndex]);
+                                itemHasPacketOwnedMapResults = true;
                                 hasPacketOwnedMapResults = true;
                             }
                         }
@@ -11290,23 +11385,39 @@ namespace HaCreator.MapSimulator
                         }
                     }
 
-                    IReadOnlyList<int> runtimeFallbackMapIds = ResolveRuntimeFallbackDemandItemMapIds(runtimeFallbackQuery, itemId);
+                    QuestDemandItemMapResultSet runtimeFallbackMapResult = ResolveRuntimeFallbackDemandItemMapResult(runtimeFallbackQuery, itemId);
+                    IReadOnlyList<int> runtimeFallbackMapIds = runtimeFallbackMapResult?.MapIds ?? Array.Empty<int>();
+                    bool itemHasRuntimeFallbackMapResults = false;
                     for (int mapIndex = 0; mapIndex < runtimeFallbackMapIds.Count; mapIndex++)
                     {
                         if (runtimeFallbackMapIds[mapIndex] > 0)
                         {
                             mapIds.Add(runtimeFallbackMapIds[mapIndex]);
+                            itemHasRuntimeFallbackMapResults = true;
                         }
                     }
+
+                    QuestDemandItemMapResultSource mapSource = itemHasPacketOwnedMapResults
+                        ? QuestDemandItemMapResultSource.PacketOwnedMob
+                        : itemHasRuntimeFallbackMapResults
+                            ? runtimeFallbackMapResult.Source
+                            : QuestDemandItemMapResultSource.None;
 
                     if (mapIds.Count == 0 && currentMapId > 0)
                     {
                         mapIds.Add(currentMapId);
+                        mapSource = QuestDemandItemMapResultSource.CurrentFieldFallback;
                     }
 
                     if (mapIds.Count > 0)
                     {
-                        visibleItemMapIds[itemId] = mapIds.OrderBy(mapId => mapId).ToArray();
+                        int[] normalizedMapIds = mapIds.OrderBy(mapId => mapId).ToArray();
+                        visibleItemMapIds[itemId] = normalizedMapIds;
+                        visibleItemMapResults[itemId] = new QuestDemandItemMapResultSet
+                        {
+                            MapIds = normalizedMapIds,
+                            Source = mapSource
+                        };
                     }
                 }
             }
@@ -11327,14 +11438,21 @@ namespace HaCreator.MapSimulator
                     {
                         preferredItemId = itemId;
                     }
-                    IReadOnlyList<int> runtimeFallbackMapIds = ResolveRuntimeFallbackDemandItemMapIds(runtimeFallbackQuery, itemId);
+                    QuestDemandItemMapResultSet runtimeFallbackMapResult = ResolveRuntimeFallbackDemandItemMapResult(runtimeFallbackQuery, itemId);
+                    IReadOnlyList<int> runtimeFallbackMapIds = runtimeFallbackMapResult?.MapIds ?? Array.Empty<int>();
                     if (runtimeFallbackMapIds.Count > 0)
                     {
-                        visibleItemMapIds[itemId] = runtimeFallbackMapIds
+                        int[] normalizedMapIds = runtimeFallbackMapIds
                             .Where(mapId => mapId > 0)
                             .Distinct()
                             .OrderBy(mapId => mapId)
                             .ToArray();
+                        visibleItemMapIds[itemId] = normalizedMapIds;
+                        visibleItemMapResults[itemId] = new QuestDemandItemMapResultSet
+                        {
+                            MapIds = normalizedMapIds,
+                            Source = runtimeFallbackMapResult.Source
+                        };
                     }
                 }
             }
@@ -11356,6 +11474,7 @@ namespace HaCreator.MapSimulator
                 QuestId = questId,
                 VisibleItemIds = visibleItemIds,
                 VisibleItemMapIds = visibleItemMapIds,
+                VisibleItemMapResults = visibleItemMapResults,
                 PreferredItemId = preferredItemId,
                 HiddenItemCount = hiddenItemCount,
                 FallbackNpcName = fallbackNpcName,
@@ -12483,7 +12602,8 @@ namespace HaCreator.MapSimulator
                         string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText,
                         int.MinValue,
                         ResolvePacketOwnedEventEntrySortPriority(status),
-                        parsedEntries.Count));
+                        parsedEntries.Count,
+                        alarmText: string.Empty));
                 }
 
                 if (includesAlarmLines)
@@ -12936,6 +13056,15 @@ namespace HaCreator.MapSimulator
                     "statusLabel",
                     "stateLabel",
                     "progressLabel");
+                string alarmText = ResolvePacketOwnedJsonText(
+                    eventItem,
+                    item,
+                    "alarmText",
+                    "ctText",
+                    "m_aCT",
+                    "ct",
+                    "alarmLine",
+                    "eventAlarmText");
                 int sourceTick = TryGetJsonInt32Property(eventItem, out int parsedSourceTick, "sourceTick", "tick")
                     || TryGetJsonInt32Property(item, out parsedSourceTick, "sourceTick", "tick")
                     ? parsedSourceTick
@@ -12948,7 +13077,7 @@ namespace HaCreator.MapSimulator
                     || TryGetJsonInt32Property(item, out parsedSortOrder, "sortOrder", "index", "order")
                     ? parsedSortOrder
                     : index;
-                destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, title.Trim(), detail, status, statusText, sourceTick, sortPriority, sortOrder));
+                destination.Add(CreatePacketOwnedEventCalendarEntry(scheduledAt, title.Trim(), detail, status, statusText, sourceTick, sortPriority, sortOrder, alarmText));
                 index++;
             }
         }
@@ -13051,7 +13180,8 @@ namespace HaCreator.MapSimulator
                 GetDefaultPacketOwnedEventStatusText(status),
                 int.MinValue,
                 ResolvePacketOwnedEventEntrySortPriority(status),
-                sortOrder);
+                sortOrder,
+                alarmText: string.Empty);
             return true;
         }
 
@@ -13063,13 +13193,15 @@ namespace HaCreator.MapSimulator
             string statusText,
             int sourceTick,
             int sortPriority,
-            int sortOrder)
+            int sortOrder,
+            string alarmText = "")
         {
             return new EventEntrySnapshot
             {
                 Title = title ?? string.Empty,
                 Detail = detail ?? string.Empty,
                 StatusText = string.IsNullOrWhiteSpace(statusText) ? GetDefaultPacketOwnedEventStatusText(status) : statusText.Trim(),
+                AlarmText = alarmText?.Trim() ?? string.Empty,
                 Status = status,
                 ScheduledAt = scheduledAt.Date,
                 SourceTick = sourceTick,

@@ -2295,8 +2295,13 @@ namespace HaCreator.MapSimulator.UI
                 return _cashGachaponLastSummary;
             }
 
+            string cashItemInfoDetail = result.CashItemInfoEntry?.Detail ?? string.Empty;
             _cashGachaponLastSummary =
-                $"CashShop gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)} staged item {result.RevealResult.ItemId.ToString(CultureInfo.InvariantCulture)} x{result.RevealResult.Count.ToString(CultureInfo.InvariantCulture)}{(result.RevealResult.IsJackpot ? " with jackpot animation" : string.Empty)}.";
+                $"CashShop gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)} staged item {result.RevealResult.ItemId.ToString(CultureInfo.InvariantCulture)} x{result.RevealResult.Count.ToString(CultureInfo.InvariantCulture)}{(result.RevealResult.IsJackpot ? " with jackpot animation" : string.Empty)}{(string.IsNullOrWhiteSpace(cashItemInfoDetail) ? string.Empty : $"; embedded {cashItemInfoDetail}")}.";
+            AppendCashPacketCatalogEntry(
+                "Packet gachapon",
+                "Gachapon",
+                ClonePacketCatalogEntry(result.CashItemInfoEntry, "Gachapon body"));
             AppendCashPacketCatalogEntry("Packet gachapon", "Gachapon", new PacketCatalogEntry
             {
                 Title = $"Gachapon packet {packetType.ToString(CultureInfo.InvariantCulture)}",
@@ -2352,17 +2357,24 @@ namespace HaCreator.MapSimulator.UI
 
         internal readonly struct CashGachaponStagePacketPayload
         {
-            public CashGachaponStagePacketPayload(byte statusCode, long serialNumber, CashGachaponResultPayload revealResult, string failureNotice)
+            public CashGachaponStagePacketPayload(
+                byte statusCode,
+                long serialNumber,
+                CashGachaponResultPayload revealResult,
+                PacketCatalogEntry cashItemInfoEntry,
+                string failureNotice)
             {
                 StatusCode = statusCode;
                 SerialNumber = serialNumber;
                 RevealResult = revealResult;
+                CashItemInfoEntry = cashItemInfoEntry;
                 FailureNotice = failureNotice ?? string.Empty;
             }
 
             public byte StatusCode { get; }
             public long SerialNumber { get; }
             public CashGachaponResultPayload RevealResult { get; }
+            public PacketCatalogEntry CashItemInfoEntry { get; }
             public string FailureNotice { get; }
             public bool HasRevealResult => StatusCode == 193;
         }
@@ -2407,6 +2419,7 @@ namespace HaCreator.MapSimulator.UI
                     statusCode,
                     serialNumber: 0,
                     revealResult: default,
+                    cashItemInfoEntry: null,
                     failureNotice: MapleStoryStringPool.GetOrFallback(
                         0x022C,
                         "Cash-item gachapon could not reveal the selected prize."));
@@ -2421,6 +2434,23 @@ namespace HaCreator.MapSimulator.UI
             }
 
             long serialNumber = BitConverter.ToInt64(payload, 1);
+            PacketCatalogEntry cashItemInfoEntry;
+            using (MemoryStream stream = new(payload, writable: false))
+            using (BinaryReader reader = new(stream))
+            {
+                stream.Position = 1 + sizeof(long) + sizeof(int);
+                if (!TryReadCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot cashItemInfoSnapshot))
+                {
+                    return false;
+                }
+
+                cashItemInfoEntry = BuildCashItemInfoPacketEntry(
+                    cashItemInfoSnapshot,
+                    "Gachapon cash item",
+                    "CCashShop gachapon",
+                    "Gachapon body");
+            }
+
             byte[] revealPayload = new byte[payload.Length - revealOffset];
             Buffer.BlockCopy(payload, revealOffset, revealPayload, 0, revealPayload.Length);
             if (!TryDecodeCashGachaponResultPayload(revealPayload, hasSubtypeByte: false, out CashGachaponResultPayload revealResult))
@@ -2432,6 +2462,7 @@ namespace HaCreator.MapSimulator.UI
                 statusCode,
                 serialNumber,
                 revealResult,
+                cashItemInfoEntry,
                 failureNotice: string.Empty);
             return true;
         }

@@ -139,6 +139,12 @@ namespace HaCreator.MapSimulator.Managers
                 mapId = reader.ReadInt32();
             }
 
+            if (stream.Position != stream.Length)
+            {
+                errorMessage = "Map transfer request packet contains trailing bytes beyond the client opcode 114 payload.";
+                return false;
+            }
+
             request = new MapTransferRuntimeRequest
             {
                 Type = resolvedType,

@@ -474,7 +474,9 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> refreshedResults = _sourceDialog.SearchWishlistEntries(_searchQuery, _selectedCategoryKey, _selectedPriceRangeIndex, out message);
+            string clientSearchQuery = AdminShopDialogUI.BuildClientWishlistSearchQuery(_searchQuery?.Trim());
+            _searchQuery = clientSearchQuery;
+            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> refreshedResults = _sourceDialog.SearchWishlistEntries(clientSearchQuery, _selectedCategoryKey, _selectedPriceRangeIndex, out message);
             _searchResults = refreshedResults.ToList();
             BeginWishlistSearchResultSession(_searchResults, isCategoryResult: false, categoryLabel: string.Empty);
             _selectedResultIndex = _searchResults.Count > 0 ? 0 : -1;
@@ -1038,7 +1040,9 @@ namespace HaCreator.MapSimulator.UI
                 CloseCategoryAddOn();
             }
 
-            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results = _sourceDialog.SearchWishlistEntries(_searchQuery, _selectedCategoryKey, _selectedPriceRangeIndex, out _statusMessage);
+            string clientSearchQuery = AdminShopDialogUI.BuildClientWishlistSearchQuery(_searchQuery?.Trim());
+            _searchQuery = clientSearchQuery;
+            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results = _sourceDialog.SearchWishlistEntries(clientSearchQuery, _selectedCategoryKey, _selectedPriceRangeIndex, out _statusMessage);
             _searchResults = results.ToList();
             BeginWishlistSearchResultSession(_searchResults, isCategoryResult: false, categoryLabel: string.Empty);
             _selectedResultIndex = _searchResults.Count > 0 ? 0 : -1;

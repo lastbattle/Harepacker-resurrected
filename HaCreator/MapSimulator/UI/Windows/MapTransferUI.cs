@@ -284,6 +284,14 @@ namespace HaCreator.MapSimulator.UI
             SetSelectedDestinationFocus(mapId);
         }
 
+        public void ClearSelectedDestination()
+        {
+            _selectedIndex = -1;
+            ClampScrollOffset();
+            UpdateRowButtons();
+            UpdateButtonStates();
+        }
+
         public override void Update(GameTime gameTime)
         {
             if (!IsVisible)

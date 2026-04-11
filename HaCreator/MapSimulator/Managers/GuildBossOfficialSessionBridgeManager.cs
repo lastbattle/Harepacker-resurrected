@@ -484,7 +484,13 @@ namespace HaCreator.MapSimulator.Managers
             queued = false;
             if (HasPassiveEstablishedSocketPair && !IsRunning)
             {
-                return TrySendPulleyRequest(request, out status);
+                if (!TryQueuePulleyRequest(request, out status))
+                {
+                    return false;
+                }
+
+                queued = true;
+                return true;
             }
 
             if (HasConnectedSession)
@@ -503,9 +509,10 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryQueuePulleyRequest(GuildBossField.PulleyPacketRequest request, out string status)
         {
-            if (HasPassiveEstablishedSocketPair && !IsRunning)
+            if (HasPassiveEstablishedSocketPair
+                && !IsRunning
+                && !TryArmReconnectProxyForPassiveAttach(out status))
             {
-                status = $"Guild boss official-session bridge is observing {DescribePassiveEstablishedSession(_passiveEstablishedSession.Value)}. Deferred opcode {OutboundPulleyRequestOpcode} queueing only applies to sessions that reconnect through the localhost proxy.";
                 LastStatus = status;
                 return false;
             }
@@ -524,6 +531,48 @@ namespace HaCreator.MapSimulator.Managers
                 : $"Queued Guild Boss opcode {OutboundPulleyRequestOpcode} request #{request.Sequence} for deferred live-session injection.";
             LastStatus = status;
             return true;
+        }
+
+        private bool TryArmReconnectProxyForPassiveAttach(out string status)
+        {
+            status = "Guild boss official-session bridge has no passive Maple socket pair to arm for deferred queueing.";
+
+            SessionDiscoveryCandidate? passiveCandidate = _passiveEstablishedSession;
+            if (!passiveCandidate.HasValue)
+            {
+                return false;
+            }
+
+            SessionDiscoveryCandidate candidate = passiveCandidate.Value;
+            string resolvedRemoteHost = candidate.RemoteEndpoint.Address.ToString();
+            int resolvedRemotePort = candidate.RemoteEndpoint.Port;
+            int requestedListenPort = ListenPort > 0 ? ListenPort : DefaultListenPort;
+
+            lock (_sync)
+            {
+                if (_activePair != null)
+                {
+                    status = $"Guild boss official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before arming a different reconnect proxy.";
+                    return false;
+                }
+
+                if (IsRunning)
+                {
+                    status = $"Guild boss official-session bridge is already armed on 127.0.0.1:{ListenPort} for deferred reconnects.";
+                    return true;
+                }
+
+                if (!TryStartProxyListener(requestedListenPort, resolvedRemoteHost, resolvedRemotePort, out string startStatus))
+                {
+                    status = $"Observed already-established Guild Boss Maple socket pair {DescribeEstablishedSession(candidate)}, but automatic reconnect-proxy arming failed. {startStatus}";
+                    return false;
+                }
+
+                _passiveEstablishedSession = candidate;
+                status = $"Observed already-established Guild Boss Maple socket pair {DescribeEstablishedSession(candidate)}. {startStatus} Deferred opcode {OutboundPulleyRequestOpcode} queueing is now armed for reconnects through 127.0.0.1:{ListenPort}.";
+                LastStatus = status;
+                return true;
+            }
         }
 
         public void RecordDispatchResult(string source, int packetType, bool success, string message)

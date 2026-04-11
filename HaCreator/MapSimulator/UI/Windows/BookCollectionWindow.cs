@@ -112,6 +112,8 @@ namespace HaCreator.MapSimulator.UI
         private ClientTextRasterizer _candidateTextRasterizer;
         private ClientTextRasterizer _candidateSelectedTextRasterizer;
 
+        private IDXObject _collectionOwnerFrame;
+        private IDXObject _monsterBookOwnerFrame;
         private Texture2D _cardSlotTexture;
         private Texture2D _infoPageTexture;
         private Texture2D _coveredSlotTexture;
@@ -137,6 +139,12 @@ namespace HaCreator.MapSimulator.UI
         private KeyboardState _previousKeyboardState;
         private UIObject _prevButton;
         private UIObject _nextButton;
+        private UIObject _collectionPrevButton;
+        private UIObject _collectionNextButton;
+        private UIObject _collectionCloseButton;
+        private UIObject _monsterBookPrevButton;
+        private UIObject _monsterBookNextButton;
+        private UIObject _monsterBookCloseButton;
         private UIObject _searchButton;
         private UIObject _registerButton;
         private UIObject _releaseButton;
@@ -237,7 +245,11 @@ namespace HaCreator.MapSimulator.UI
             _compositionCursorPosition = -1;
             ClearImeCandidateList();
         }
-        public void SetCollectionSnapshotProvider(Func<Func<string, int, float>, CollectionBookSnapshot> snapshotProvider) => _collectionSnapshotProvider = snapshotProvider;
+        public void SetCollectionSnapshotProvider(Func<Func<string, int, float>, CollectionBookSnapshot> snapshotProvider)
+        {
+            _collectionSnapshotProvider = snapshotProvider;
+            ApplyOwnerModeVisuals();
+        }
 
         public override void HandleCommittedText(string text)
         {
@@ -257,7 +269,11 @@ namespace HaCreator.MapSimulator.UI
             UpdateImePresentationPlacement();
         }
 
-        public void SetMonsterBookSnapshotProvider(Func<MonsterBookSnapshot> snapshotProvider) => _snapshotProvider = snapshotProvider;
+        public void SetMonsterBookSnapshotProvider(Func<MonsterBookSnapshot> snapshotProvider)
+        {
+            _snapshotProvider = snapshotProvider;
+            ApplyOwnerModeVisuals();
+        }
         public void SetMonsterBookRegistrationHandler(Func<int, bool, MonsterBookSnapshot> registrationHandler) => _registrationHandler = registrationHandler;
 
         public override void HandleImeCandidateList(ImeCandidateListState state)
@@ -292,6 +308,12 @@ namespace HaCreator.MapSimulator.UI
         public void SetMonsterBookContextMenuArt(Texture2D topTexture, Texture2D centerTexture, Texture2D bottomTexture) { _contextMenuTopTexture = topTexture; _contextMenuCenterTexture = centerTexture; _contextMenuBottomTexture = bottomTexture; }
         public void SetPageMarkerTextures(Texture2D inactiveMarkerTexture, Texture2D activeMarkerTexture) { _inactivePageMarkerTexture = inactiveMarkerTexture; _activePageMarkerTexture = activeMarkerTexture; }
         public void SetPageRuleTexture(Texture2D ruleTexture) => _pageRuleTexture = ruleTexture;
+        public void SetOwnerFrames(IDXObject collectionOwnerFrame, IDXObject monsterBookOwnerFrame)
+        {
+            _collectionOwnerFrame = collectionOwnerFrame;
+            _monsterBookOwnerFrame = monsterBookOwnerFrame;
+            ApplyOwnerModeVisuals();
+        }
 
         public void InitializeButtons(UIObject prevButton, UIObject nextButton, UIObject closeButton, UIObject searchButton = null)
         {
@@ -308,6 +330,50 @@ namespace HaCreator.MapSimulator.UI
             });
             RegisterButton(searchButton, SearchButtonId, HandleSearchButtonClicked);
             InitializeCloseButton(closeButton);
+            ApplyOwnerModeVisuals();
+        }
+
+        public void InitializeOwnerButtons(
+            UIObject collectionPrevButton,
+            UIObject collectionNextButton,
+            UIObject collectionCloseButton,
+            UIObject monsterBookPrevButton,
+            UIObject monsterBookNextButton,
+            UIObject monsterBookCloseButton,
+            UIObject searchButton = null)
+        {
+            _collectionPrevButton = collectionPrevButton;
+            _collectionNextButton = collectionNextButton;
+            _collectionCloseButton = collectionCloseButton;
+            _monsterBookPrevButton = monsterBookPrevButton;
+            _monsterBookNextButton = monsterBookNextButton;
+            _monsterBookCloseButton = monsterBookCloseButton;
+            _searchButton = searchButton;
+
+            RegisterButton(collectionPrevButton, PrevButtonId, () =>
+            {
+                ExitSearchModeForExternalInteraction();
+                MoveSpread(-1);
+            });
+            RegisterButton(monsterBookPrevButton, PrevButtonId, () =>
+            {
+                ExitSearchModeForExternalInteraction();
+                MoveSpread(-1);
+            });
+            RegisterButton(collectionNextButton, NextButtonId, () =>
+            {
+                ExitSearchModeForExternalInteraction();
+                MoveSpread(1);
+            });
+            RegisterButton(monsterBookNextButton, NextButtonId, () =>
+            {
+                ExitSearchModeForExternalInteraction();
+                MoveSpread(1);
+            });
+            RegisterButton(searchButton, SearchButtonId, HandleSearchButtonClicked);
+            RegisterCloseButton(collectionCloseButton);
+            RegisterCloseButton(monsterBookCloseButton);
+            ApplyOwnerModeVisuals();
         }
 
         public void InitializeContextMenuButtons(UIObject registerButton, UIObject releaseButton)
@@ -444,6 +510,55 @@ namespace HaCreator.MapSimulator.UI
             AddButton(button);
             _buttonActions[buttonId] = action;
             button.ButtonClickReleased += _ => { if (_buttonActions.TryGetValue(buttonId, out Action handler)) handler?.Invoke(); };
+        }
+
+        private void RegisterCloseButton(UIObject button)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            AddButton(button);
+            button.ButtonClickReleased += OnCloseButtonClicked;
+        }
+
+        private void ApplyOwnerModeVisuals()
+        {
+            bool collectionLayout = UsesCollectionLayout;
+            IDXObject ownerFrame = collectionLayout
+                ? _collectionOwnerFrame ?? _monsterBookOwnerFrame
+                : _monsterBookOwnerFrame ?? _collectionOwnerFrame;
+            Frame = ownerFrame;
+
+            _prevButton = collectionLayout
+                ? _collectionPrevButton ?? _monsterBookPrevButton ?? _prevButton
+                : _monsterBookPrevButton ?? _collectionPrevButton ?? _prevButton;
+            _nextButton = collectionLayout
+                ? _collectionNextButton ?? _monsterBookNextButton ?? _nextButton
+                : _monsterBookNextButton ?? _collectionNextButton ?? _nextButton;
+            closeButton = collectionLayout
+                ? _collectionCloseButton ?? _monsterBookCloseButton ?? closeButton
+                : _monsterBookCloseButton ?? _collectionCloseButton ?? closeButton;
+
+            SetOwnerButtonVisible(_collectionPrevButton, collectionLayout);
+            SetOwnerButtonVisible(_collectionNextButton, collectionLayout);
+            SetOwnerButtonVisible(_collectionCloseButton, collectionLayout);
+            SetOwnerButtonVisible(_monsterBookPrevButton, !collectionLayout);
+            SetOwnerButtonVisible(_monsterBookNextButton, !collectionLayout);
+            SetOwnerButtonVisible(_monsterBookCloseButton, !collectionLayout);
+            if (_searchButton != null)
+            {
+                _searchButton.ButtonVisible = !collectionLayout;
+            }
+        }
+
+        private static void SetOwnerButtonVisible(UIObject button, bool visible)
+        {
+            if (button != null)
+            {
+                button.ButtonVisible = visible;
+            }
         }
 
         private void RefreshContentSnapshot()

@@ -153,6 +153,12 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind.Notice => SetPacketGuildNoticeText(packet.Notice, packet.GuildId),
                 SocialListClientGuildResultKind.Mark when packet.MarkSelection.HasValue => SetPacketGuildMarkSelection(packet.MarkSelection.Value, packet.GuildId),
                 SocialListClientGuildResultKind.PointsAndLevel => SetPacketGuildPointsAndLevel(packet.GuildPoints, packet.GuildLevel, packet.GuildId),
+                SocialListClientGuildResultKind.GuildQuestNotEnoughMembers => SetPacketSyncSummary(
+                    SocialListTab.Guild,
+                    BuildClientGuildQuestDirectNoticeSummary(packet)),
+                SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected => SetPacketSyncSummary(
+                    SocialListTab.Guild,
+                    BuildClientGuildQuestDirectNoticeSummary(packet)),
                 SocialListClientGuildResultKind.GuildQuestQueueNotice => SetPacketSyncSummary(
                     SocialListTab.Guild,
                     BuildClientGuildQuestQueueNoticeSummary(packet)),
@@ -177,6 +183,14 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"shared StringPool 0x{SocialListGuildResultClientText.SharedResultNoticeStringPoolId:X} notice";
 
             return $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.ResultNotice}) reported {noticeSource}: {notice}.";
+        }
+
+        private static string BuildClientGuildQuestDirectNoticeSummary(SocialListClientGuildResultPacket packet)
+        {
+            string notice = packet.Kind == SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected
+                ? SocialListGuildResultClientText.GetGuildQuestRegistrantDisconnectedNotice()
+                : SocialListGuildResultClientText.GetGuildQuestNotEnoughMembersNotice();
+            return $"Client OnGuildResult({(byte)packet.Kind}) reported guild-quest notice: {notice}";
         }
 
         private static string BuildClientGuildQuestQueueNoticeSummary(SocialListClientGuildResultPacket packet)

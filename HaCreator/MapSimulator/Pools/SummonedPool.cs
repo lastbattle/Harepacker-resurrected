@@ -2168,6 +2168,7 @@ namespace HaCreator.MapSimulator.Pools
                 state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
+                ResolvePacketOwnedTeslaRuntimeStateAfterActionPlayback(state);
                 ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             }
 
@@ -2224,6 +2225,20 @@ namespace HaCreator.MapSimulator.Pools
             {
                 state.Summon.CurrentAnimationBranchName = null;
             }
+        }
+
+        private static void ResolvePacketOwnedTeslaRuntimeStateAfterActionPlayback(PacketOwnedSummonState state)
+        {
+            if (state?.Summon?.SkillId != TeslaCoilSkillId)
+            {
+                return;
+            }
+
+            byte resolvedState = PacketOwnedSummonUpdateRules.ResolvePacketOwnedTeslaRuntimeStateAfterOneTimeAction(
+                state.Summon.TeslaCoilState,
+                hasActiveOneTimeActionPlayback: false);
+            state.Summon.TeslaCoilState = resolvedState;
+            state.TeslaCoilState = resolvedState;
         }
 
         private static bool IsSummonAnimationActive(SkillAnimation animation, int animationStartTime, int currentTime, int initialDelay = 0)
@@ -3509,12 +3524,14 @@ namespace HaCreator.MapSimulator.Pools
                 return Array.Empty<int>();
             }
 
-            Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
-            Dictionary<int, PacketOwnedExpiryTargetCandidate> candidatesById = candidates
+            List<PacketOwnedExpiryTargetCandidate> candidateList = candidates
                 .Where(static candidate => candidate.MobObjectId > 0 && !candidate.Hitbox.IsEmpty)
                 .GroupBy(static candidate => candidate.MobObjectId)
-                .ToDictionary(static group => group.Key, static group => group.First());
-            if (candidatesById.Count == 0)
+                .Select(static group => group.First())
+                .ToList();
+            Dictionary<int, PacketOwnedExpiryTargetCandidate> candidatesById = candidateList
+                .ToDictionary(static candidate => candidate.MobObjectId);
+            if (candidateList.Count == 0)
             {
                 return Array.Empty<int>();
             }
@@ -3544,33 +3561,13 @@ namespace HaCreator.MapSimulator.Pools
 
             bool fallbackFacingRight = ResolvePacketOwnedExpiryFallbackFacingRight(
                 summon,
-                candidatesById.Values.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)),
+                candidateList.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)),
                 ownerReferenceX);
             Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon, fallbackFacingRight);
-            IEnumerable<int> fallbackTargetIds = candidatesById.Values
+            IEnumerable<int> fallbackTargetIds = candidateList
                 .Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)
                                     && IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, candidate.Hitbox, fallbackFacingRight))
-                .Select(candidate =>
-                {
-                    float centerX = candidate.Hitbox.Left + (candidate.Hitbox.Width * 0.5f);
-                    float centerY = candidate.Hitbox.Top + (candidate.Hitbox.Height * 0.5f);
-                    float deltaX = centerX - summonPosition.X;
-                    float deltaY = centerY - summonPosition.Y;
-                    return new
-                    {
-                        candidate.MobObjectId,
-                        DistanceSq = (deltaX * deltaX) + (deltaY * deltaY),
-                        ForwardPenalty = fallbackFacingRight
-                            ? (deltaX < 0f ? 1 : 0)
-                            : (deltaX > 0f ? 1 : 0),
-                        VerticalDistance = MathF.Abs(deltaY)
-                    };
-                })
-                .OrderBy(entry => entry.DistanceSq)
-                .ThenBy(entry => entry.ForwardPenalty)
-                .ThenBy(entry => entry.VerticalDistance)
-                .ThenBy(entry => entry.MobObjectId)
-                .Select(entry => entry.MobObjectId);
+                .Select(static candidate => candidate.MobObjectId);
 
             foreach (int fallbackTargetId in fallbackTargetIds)
             {
@@ -4700,11 +4697,10 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (liveHitEffectEntry?.Frames?.Count > 0)
             {
-                MobAnimationSet.AttackInfoMetadata attackInfo = ShouldBorrowTemplateAttackInfoForLiveHitEntry(
-                        liveAttackInfo,
-                        liveHitEffectEntry)
-                    ? templateAttackInfo ?? liveAttackInfo
-                    : liveAttackInfo ?? templateAttackInfo;
+                MobAnimationSet.AttackInfoMetadata attackInfo = SelectPacketMobAttackInfoForLiveHitEntry(
+                    liveAttackInfo,
+                    liveHitEffectEntry,
+                    templateAttackInfo);
 
                 return new PacketOwnedMobAttackFeedbackPresentation(
                     attackInfo,
@@ -4718,6 +4714,106 @@ namespace HaCreator.MapSimulator.Pools
                 templateHitEffectEntry,
                 templateCharDamSoundKey,
                 ResolvePacketMobAttackFeedbackHitAfterMs(templateAttackInfo ?? liveAttackInfo));
+        }
+
+        internal static MobAnimationSet.AttackInfoMetadata SelectPacketMobAttackInfoForLiveHitEntry(
+            MobAnimationSet.AttackInfoMetadata liveAttackInfo,
+            MobAnimationSet.AttackHitEffectEntry liveHitEffectEntry,
+            MobAnimationSet.AttackInfoMetadata templateAttackInfo)
+        {
+            if (liveHitEffectEntry?.Frames?.Count <= 0)
+            {
+                return templateAttackInfo ?? liveAttackInfo;
+            }
+
+            if (ShouldBorrowTemplateAttackInfoForLiveHitEntry(liveAttackInfo, liveHitEffectEntry))
+            {
+                return templateAttackInfo ?? liveAttackInfo;
+            }
+
+            if (liveAttackInfo == null || templateAttackInfo == null)
+            {
+                return liveAttackInfo ?? templateAttackInfo;
+            }
+
+            bool needsTemplateHitAfter = !liveAttackInfo.HasHitAfterMetadata && templateAttackInfo.HasHitAfterMetadata;
+            bool needsTemplateRangeOrigin = !liveAttackInfo.HasRangeOrigin && templateAttackInfo.HasRangeOrigin;
+            bool needsTemplateRangeBounds = !liveAttackInfo.HasRangeBounds && templateAttackInfo.HasRangeBounds;
+            if (!needsTemplateHitAfter && !needsTemplateRangeOrigin && !needsTemplateRangeBounds)
+            {
+                return liveAttackInfo;
+            }
+
+            MobAnimationSet.AttackInfoMetadata mergedAttackInfo = CloneAttackInfoMetadata(liveAttackInfo);
+            if (needsTemplateHitAfter)
+            {
+                mergedAttackInfo.HitAfterMs = templateAttackInfo.HitAfterMs;
+                mergedAttackInfo.HasHitAfterMetadata = true;
+            }
+
+            if (needsTemplateRangeOrigin)
+            {
+                mergedAttackInfo.HasRangeOrigin = true;
+                mergedAttackInfo.RangeOrigin = templateAttackInfo.RangeOrigin;
+            }
+
+            if (needsTemplateRangeBounds)
+            {
+                mergedAttackInfo.HasRangeBounds = true;
+                mergedAttackInfo.RangeBounds = templateAttackInfo.RangeBounds;
+            }
+
+            return mergedAttackInfo;
+        }
+
+        private static MobAnimationSet.AttackInfoMetadata CloneAttackInfoMetadata(
+            MobAnimationSet.AttackInfoMetadata source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            MobAnimationSet.AttackInfoMetadata clone = new()
+            {
+                AttackType = source.AttackType,
+                HitAnimationSourceFrameIndex = source.HitAnimationSourceFrameIndex,
+                HitAttach = source.HitAttach,
+                FacingAttach = source.FacingAttach,
+                HitAfterMs = source.HitAfterMs,
+                HasHitAfterMetadata = source.HasHitAfterMetadata,
+                EffectFacingAttach = source.EffectFacingAttach,
+                HasRangeBounds = source.HasRangeBounds,
+                RangeBounds = source.RangeBounds,
+                HasRangeOrigin = source.HasRangeOrigin,
+                RangeOrigin = source.RangeOrigin,
+                RangeRadius = source.RangeRadius,
+                EffectAfter = source.EffectAfter,
+                AttackAfter = source.AttackAfter,
+                RandDelayAttack = source.RandDelayAttack,
+                AreaCount = source.AreaCount,
+                AttackCount = source.AttackCount,
+                StartOffset = source.StartOffset,
+                HasPrimaryEffect = source.HasPrimaryEffect,
+                HasAreaWarning = source.HasAreaWarning,
+                IsRushAttack = source.IsRushAttack,
+                IsJumpAttack = source.IsJumpAttack,
+                Tremble = source.Tremble,
+                IsAngerAttack = source.IsAngerAttack,
+                IsSpecialAttack = source.IsSpecialAttack
+            };
+
+            foreach (KeyValuePair<int, bool> entry in source.FrameHitAttachOverrides)
+            {
+                clone.FrameHitAttachOverrides[entry.Key] = entry.Value;
+            }
+
+            foreach (KeyValuePair<int, bool> entry in source.FrameFacingAttachOverrides)
+            {
+                clone.FrameFacingAttachOverrides[entry.Key] = entry.Value;
+            }
+
+            return clone;
         }
 
         internal static bool ShouldBorrowTemplateAttackInfoForLiveHitEntry(

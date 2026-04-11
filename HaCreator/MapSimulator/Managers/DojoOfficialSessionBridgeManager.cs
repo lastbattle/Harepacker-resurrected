@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18490;
         private const string DefaultProcessName = "MapleStory";
+        private const int FieldSpecificDataOpcode = 149;
         private const int CurrentWrapperRelayOpcode = 163;
         private const int AddressFamilyInet = 2;
         private const int ErrorInsufficientBuffer = 122;
@@ -911,7 +912,7 @@ namespace HaCreator.MapSimulator.Managers
                 mappingReason = $"auto:{inferredReason}";
                 LastStatus = ShouldPersistInferredOpcodeMapping(opcode)
                     ? $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from payload inference ({inferredReason})."
-                    : $"Identified shared current-wrapper opcode {opcode} as {DescribePacketType(packetType)} from payload inference ({inferredReason}); keeping inference payload-scoped because CField::OnPacket opcode 163 is not a Dojo-only packet table entry.";
+                    : $"Identified shared Dojo dispatch opcode {opcode} as {DescribePacketType(packetType)} from payload inference ({inferredReason}); keeping inference payload-scoped because {DescribeSharedDispatchOpcode(opcode)} is not a Dojo-only packet table entry.";
                 return true;
             }
 
@@ -939,7 +940,7 @@ namespace HaCreator.MapSimulator.Managers
                 mappingReason = $"state:{stateReason}";
                 LastStatus = ShouldPersistInferredOpcodeMapping(opcode)
                     ? $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from field-state inference ({stateReason})."
-                    : $"Identified shared current-wrapper opcode {opcode} as {DescribePacketType(packetType)} from field-state inference ({stateReason}); keeping inference payload-scoped because CField::OnPacket opcode 163 is not a Dojo-only packet table entry.";
+                    : $"Identified shared Dojo dispatch opcode {opcode} as {DescribePacketType(packetType)} from field-state inference ({stateReason}); keeping inference payload-scoped because {DescribeSharedDispatchOpcode(opcode)} is not a Dojo-only packet table entry.";
                 return true;
             }
 
@@ -995,14 +996,25 @@ namespace HaCreator.MapSimulator.Managers
                 ReceivedCount++;
                 LastStatus = ShouldPersistInferredOpcodeMapping(packet.Opcode)
                     ? $"Promoted deferred Dojo opcode {packet.Opcode} to {DescribePacketType(packetType)} after field-state evidence ({evidence})."
-                    : $"Promoted deferred shared current-wrapper opcode {packet.Opcode} to {DescribePacketType(packetType)} after field-state evidence ({evidence}); keeping inference payload-scoped because CField::OnPacket opcode 163 is not a Dojo-only packet table entry.";
+                    : $"Promoted deferred shared Dojo dispatch opcode {packet.Opcode} to {DescribePacketType(packetType)} after field-state evidence ({evidence}); keeping inference payload-scoped because {DescribeSharedDispatchOpcode(packet.Opcode)} is not a Dojo-only packet table entry.";
                 _deferredPackets.RemoveAt(i);
             }
         }
 
         private static bool ShouldPersistInferredOpcodeMapping(int opcode)
         {
-            return opcode != CurrentWrapperRelayOpcode;
+            return opcode != FieldSpecificDataOpcode
+                && opcode != CurrentWrapperRelayOpcode;
+        }
+
+        private static string DescribeSharedDispatchOpcode(int opcode)
+        {
+            return opcode switch
+            {
+                FieldSpecificDataOpcode => "CField::OnPacket opcode 149 calls CField::OnFieldSpecificData and then the active field's virtual field-specific handler",
+                CurrentWrapperRelayOpcode => "CField::OnPacket opcode 163 calls the active current-wrapper relay",
+                _ => $"opcode {opcode}"
+            };
         }
 
         private bool TryResolveDeferredPacketNoLock(DeferredInboundPacket packet, out int packetType, out string evidence)

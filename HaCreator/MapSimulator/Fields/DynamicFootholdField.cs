@@ -496,7 +496,7 @@ namespace HaCreator.MapSimulator.Fields
                 yield break;
             }
 
-            foreach (string segment in tagsValue.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            foreach (string segment in tagsValue.Split(new[] { ',', ';', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 string normalized = NormalizeDynamicObjectKey(segment);
                 if (normalized.Length > 0)

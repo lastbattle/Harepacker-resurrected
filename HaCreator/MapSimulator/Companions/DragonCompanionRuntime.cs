@@ -885,8 +885,12 @@ namespace HaCreator.MapSimulator.Companions
 
         internal static bool ShouldSnapActiveFollowToTarget(Vector2 currentAnchor, Vector2 targetAnchor)
         {
-            return Math.Abs(targetAnchor.X - currentAnchor.X) > ActiveFollowSnapWidth
-                   || Math.Abs(targetAnchor.Y - currentAnchor.Y) > ActiveFollowSnapHeight;
+            float deltaX = targetAnchor.X - currentAnchor.X;
+            float deltaY = targetAnchor.Y - currentAnchor.Y;
+            return deltaX < -ActiveFollowSnapWidth
+                   || deltaX >= ActiveFollowSnapWidth
+                   || deltaY < -ActiveFollowSnapHeight
+                   || deltaY >= ActiveFollowSnapHeight;
         }
 
         internal static float ResolveClientActiveFollowHorizontalStep(float currentX, float targetX, out double velocityX)
@@ -956,7 +960,7 @@ namespace HaCreator.MapSimulator.Companions
                 return currentY;
             }
 
-            float verticalStep = MathF.Min(ActiveFollowVerticalStepCap, absoluteDeltaY / ActiveFollowVerticalStepDivisor) + 1f;
+            int verticalStep = Math.Max(1, (int)(MathF.Min(ActiveFollowVerticalStepCap, absoluteDeltaY / ActiveFollowVerticalStepDivisor) + 1f));
             float nextY = deltaY >= 0f
                 ? Math.Min(targetY, currentY + verticalStep)
                 : Math.Max(targetY, currentY - verticalStep);

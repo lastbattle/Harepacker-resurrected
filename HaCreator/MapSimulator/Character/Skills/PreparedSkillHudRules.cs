@@ -115,6 +115,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             WildHunterSwallowAttackSkillId
         };
+        private static readonly HashSet<int> ClientKeyDownEndCancelRequestSkillIds = new()
+        {
+            3121004,
+            5221004,
+            13111002,
+            33121009,
+            35001001,
+            35101009
+        };
 
         private const int SG88SkillId = 35121003;
         private const int MonkeyWaveFallbackGaugeDurationMs = 1080;
@@ -202,6 +211,23 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return UsesReleaseTriggeredExecution(skillId)
                 || RemoteReleaseFollowUpPayloadSkillIds.Contains(skillId);
+        }
+
+        public static bool UsesClientKeyDownEndCancelRequest(int skillId)
+        {
+            return ClientKeyDownEndCancelRequestSkillIds.Contains(skillId);
+        }
+
+        public static bool TryResolveClientKeyDownEndSkillEffectRequestId(int skillId, out int effectSkillId)
+        {
+            effectSkillId = skillId switch
+            {
+                35001001 => 35000001,
+                35101009 => 35100009,
+                _ => 0
+            };
+
+            return effectSkillId > 0;
         }
 
         public static bool TryResolveRemotePreparedSkillReleaseOwner(int skillId, int? followUpValue, out int preparedSkillId)

@@ -1636,6 +1636,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             List<int> visibleItemIds = new();
             Dictionary<int, IReadOnlyList<int>> visibleItemMapIds = new();
+            Dictionary<int, QuestDemandItemMapResultSet> visibleItemMapResults = new();
             int hiddenItemCount = 0;
             int currentMapId = Math.Max(0, _currentMapIdProvider?.Invoke() ?? 0);
             int preferredItemId = GetPreferredQuestGuideItemRequirement(definition.EndItemRequirements)?.ItemId ?? 0;
@@ -1651,10 +1652,11 @@ namespace HaCreator.MapSimulator.Interaction
                 if (!visibleItemIds.Contains(requirement.ItemId))
                 {
                     visibleItemIds.Add(requirement.ItemId);
-                    IReadOnlyList<int> mapIds = ResolveQuestDemandItemMapIds(definition, requirement.ItemId, currentMapId);
-                    if (mapIds.Count > 0)
+                    QuestDemandItemMapResultSet mapResult = ResolveQuestDemandItemMapResultSet(definition, requirement.ItemId, currentMapId);
+                    if (mapResult.MapIds.Count > 0)
                     {
-                        visibleItemMapIds[requirement.ItemId] = mapIds;
+                        visibleItemMapIds[requirement.ItemId] = mapResult.MapIds;
+                        visibleItemMapResults[requirement.ItemId] = mapResult;
                     }
                 }
             }
@@ -1669,6 +1671,7 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestId = questId,
                 VisibleItemIds = visibleItemIds,
                 VisibleItemMapIds = visibleItemMapIds,
+                VisibleItemMapResults = visibleItemMapResults,
                 PreferredItemId = visibleItemIds.Contains(preferredItemId) ? preferredItemId : 0,
                 HiddenItemCount = hiddenItemCount,
                 FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
@@ -1678,13 +1681,25 @@ namespace HaCreator.MapSimulator.Interaction
 
         private IReadOnlyList<int> ResolveQuestDemandItemMapIds(QuestDefinition definition, int itemId, int fallbackMapId)
         {
+            return ResolveQuestDemandItemMapResultSet(definition, itemId, fallbackMapId).MapIds;
+        }
+
+        private QuestDemandItemMapResultSet ResolveQuestDemandItemMapResultSet(QuestDefinition definition, int itemId, int fallbackMapId)
+        {
             if (definition == null)
             {
-                return fallbackMapId > 0 ? new[] { fallbackMapId } : Array.Empty<int>();
+                return new QuestDemandItemMapResultSet
+                {
+                    MapIds = fallbackMapId > 0 ? new[] { fallbackMapId } : Array.Empty<int>(),
+                    Source = fallbackMapId > 0
+                        ? QuestDemandItemMapResultSource.CurrentFieldFallback
+                        : QuestDemandItemMapResultSource.None
+                };
             }
 
             var seen = new HashSet<int>();
             var resolvedMapIds = new List<int>();
+            QuestDemandItemMapResultSource source = QuestDemandItemMapResultSource.None;
             bool hasSingleVisibleDemandItem = definition.EndItemRequirements
                 .Count(requirement => requirement != null && !requirement.IsSecret && requirement.ItemId > 0) == 1;
             bool hasSingleDemandMob = definition.EndMobRequirements
@@ -1702,20 +1717,34 @@ namespace HaCreator.MapSimulator.Interaction
 
                     AppendUniqueMapIds(resolvedMapIds, seen, _mobMapIdsProvider?.Invoke(requirement.MobId));
                 }
+
+                if (resolvedMapIds.Count > 0)
+                {
+                    source = QuestDemandItemMapResultSource.WzMobDemand;
+                }
             }
 
             if (resolvedMapIds.Count == 0)
             {
                 AppendUniqueMapIds(resolvedMapIds, seen, _npcMapIdsProvider?.Invoke(definition.EndNpcId ?? 0));
                 AppendUniqueMapIds(resolvedMapIds, seen, _npcMapIdsProvider?.Invoke(definition.StartNpcId ?? 0));
+                if (resolvedMapIds.Count > 0)
+                {
+                    source = QuestDemandItemMapResultSource.WzNpcFallback;
+                }
             }
 
             if (resolvedMapIds.Count == 0 && fallbackMapId > 0)
             {
                 resolvedMapIds.Add(fallbackMapId);
+                source = QuestDemandItemMapResultSource.CurrentFieldFallback;
             }
 
-            return resolvedMapIds;
+            return new QuestDemandItemMapResultSet
+            {
+                MapIds = resolvedMapIds,
+                Source = source
+            };
         }
 
         private IReadOnlyList<int> ResolveQuestMobMapIds(int mobId, int fallbackMapId)
@@ -8147,12 +8176,17 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendConversationChoices(pageProperty, choices);
                 AppendInlineSelectionChoices(rawText, pageIndex, pageStopProperties, GetRemainingPages(pages, i + 1), choices);
 
-                if (i == numberedPages.Count - 1 && rootChoiceProperty != null)
+                int? rootChoicePageIndex = ResolveConversationRootChoicePageIndex(numberedPages, rootChoiceProperty);
+                int? fallbackRootChoicePageIndex = ResolveConversationRootChoicePageIndex(numberedPages, fallbackRootChoiceProperty);
+                bool isLastPage = i == numberedPages.Count - 1;
+
+                if (ShouldAppendRootConversationChoices(rootChoicePageIndex, pageIndex, isLastPage) &&
+                    rootChoiceProperty != null)
                 {
                     AppendConversationChoices(rootChoiceProperty, choices, suppressDuplicateLabels: true);
                 }
 
-                if (i == numberedPages.Count - 1 &&
+                if (ShouldAppendRootConversationChoices(fallbackRootChoicePageIndex, pageIndex, isLastPage) &&
                     fallbackRootChoiceProperty != null &&
                     !ReferenceEquals(fallbackRootChoiceProperty, rootChoiceProperty))
                 {
@@ -8176,6 +8210,37 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return pages.Where(page => page != null).ToArray();
+        }
+
+        private static int? ResolveConversationRootChoicePageIndex(
+            IReadOnlyList<WzImageProperty> numberedPages,
+            WzImageProperty rootChoiceProperty)
+        {
+            int askPageIndex = GetIntValue(rootChoiceProperty?["ask"]);
+            if (askPageIndex < 0 || numberedPages == null || numberedPages.Count == 0)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < numberedPages.Count; i++)
+            {
+                if (int.TryParse(numberedPages[i]?.Name, out int pageIndex) && pageIndex == askPageIndex)
+                {
+                    return askPageIndex;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool ShouldAppendRootConversationChoices(
+            int? authoredAskPageIndex,
+            int pageIndex,
+            bool isLastPage)
+        {
+            return authoredAskPageIndex.HasValue
+                ? pageIndex == authoredAskPageIndex.Value
+                : isLastPage;
         }
 
         private static IReadOnlyList<WzImageProperty> ResolveConversationPageStopProperties(

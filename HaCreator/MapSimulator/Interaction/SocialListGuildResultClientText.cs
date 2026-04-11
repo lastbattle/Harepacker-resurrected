@@ -6,6 +6,8 @@ namespace HaCreator.MapSimulator.Interaction
     internal static class SocialListGuildResultClientText
     {
         internal const int SharedResultNoticeStringPoolId = 0x0176;
+        private const int GuildQuestNotEnoughMembersNoticeStringPoolId = 0x0DFD;
+        private const int GuildQuestRegistrantDisconnectedNoticeStringPoolId = 0x0DFE;
         private const int GuildQuestEnterNoticeStringPoolId = 0x0DFF;
         private const int GuildQuestWaitNoticeStringPoolId = 0x0E00;
         private const int GuildQuestWaitlistNoticeStringPoolId = 0x0E01;
@@ -51,6 +53,24 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return string.Format(CultureInfo.InvariantCulture, fallbackFormat, argument);
             }
+        }
+
+        internal static string GetGuildQuestNotEnoughMembersNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                GuildQuestNotEnoughMembersNoticeStringPoolId,
+                "There are less than 6 members remaining, so the quest cannot continue. Your Guild Quest will end in 5 seconds.",
+                appendFallbackSuffix: true,
+                minimumHexWidth: 3);
+        }
+
+        internal static string GetGuildQuestRegistrantDisconnectedNotice()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                GuildQuestRegistrantDisconnectedNoticeStringPoolId,
+                "The user that registered has disconnected, so the quest cannot continue. Your Guild Quest will end in 5 seconds.",
+                appendFallbackSuffix: true,
+                minimumHexWidth: 3);
         }
     }
 }

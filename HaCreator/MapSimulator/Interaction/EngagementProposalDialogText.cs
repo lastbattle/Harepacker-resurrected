@@ -26,6 +26,27 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int ReservationSuccessStringPoolId = 0x10B0;
         internal const int EtcSlotFullStringPoolId = 0x10B1;
         internal const int EnterPartnerNameStringPoolId = 0x10B2;
+        internal const byte ResultSubtypeEngaged = 11;
+        internal const byte ResultSubtypeMarried = 12;
+        internal const byte ResultSubtypeEngagementBroken = 13;
+        internal const byte ResultSubtypeNoLongerMarried = 14;
+        internal const byte ResultSubtypeReservationSuccess = 16;
+        internal const byte ResultSubtypeWrongCharacterName = 18;
+        internal const byte ResultSubtypePartnerSameMap = 19;
+        internal const byte ResultSubtypeRequesterEtcSlotFull = 20;
+        internal const byte ResultSubtypePartnerEtcSlotFull = 21;
+        internal const byte ResultSubtypeSameGender = 22;
+        internal const byte ResultSubtypeAlreadyEngaged = 23;
+        internal const byte ResultSubtypePartnerAlreadyEngaged = 24;
+        internal const byte ResultSubtypeAlreadyMarried = 25;
+        internal const byte ResultSubtypePartnerAlreadyMarried = 26;
+        internal const byte ResultSubtypeRequesterBusy = 27;
+        internal const byte ResultSubtypePartnerBusy = 28;
+        internal const byte ResultSubtypeWithdrawnRequest = 29;
+        internal const byte ResultSubtypeDeclined = 30;
+        internal const byte ResultSubtypeReservationCanceled = 31;
+        internal const byte ResultSubtypeReservationLockedBreak = 32;
+        internal const byte ResultSubtypeInvitationInvalid = 34;
 
         private const string WaitForResponseFallback = "Waiting for her response...";
         private const string IncomingRequestPromptFallback = "%s has requested engagement.\r\nWill you accept this proposal?";
@@ -175,6 +196,82 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string GetEnterPartnerNameText()
         {
             return MapleStoryStringPool.GetOrFallback(EnterPartnerNameStringPoolId, EnterPartnerNameFallback);
+        }
+
+        internal static bool TryGetMarriageResultNotice(byte subtype, string serverText, out string notice)
+        {
+            switch (subtype)
+            {
+                case ResultSubtypeEngaged:
+                    notice = GetAcceptedText();
+                    return true;
+                case ResultSubtypeMarried:
+                    notice = GetAcceptedMarriageText();
+                    return true;
+                case ResultSubtypeEngagementBroken:
+                    notice = GetBrokenEngagementText();
+                    return true;
+                case ResultSubtypeNoLongerMarried:
+                    notice = GetNoLongerMarriedText();
+                    return true;
+                case ResultSubtypeReservationSuccess:
+                    notice = GetReservationSuccessText();
+                    return true;
+                case ResultSubtypeWrongCharacterName:
+                    notice = GetWrongCharacterNameText();
+                    return true;
+                case ResultSubtypePartnerSameMap:
+                    notice = GetPartnerSameMapText();
+                    return true;
+                case ResultSubtypeRequesterEtcSlotFull:
+                    notice = GetEtcSlotFullText();
+                    return true;
+                case ResultSubtypePartnerEtcSlotFull:
+                    notice = GetPartnerEtcSlotFullText();
+                    return true;
+                case ResultSubtypeSameGender:
+                    notice = GetSameGenderText();
+                    return true;
+                case ResultSubtypeAlreadyEngaged:
+                    notice = GetAlreadyEngagedText();
+                    return true;
+                case ResultSubtypePartnerAlreadyEngaged:
+                    notice = GetPartnerAlreadyEngagedText();
+                    return true;
+                case ResultSubtypeAlreadyMarried:
+                    notice = GetAlreadyMarriedText();
+                    return true;
+                case ResultSubtypePartnerAlreadyMarried:
+                    notice = GetPartnerAlreadyMarriedText();
+                    return true;
+                case ResultSubtypeRequesterBusy:
+                    notice = GetRequesterBusyText();
+                    return true;
+                case ResultSubtypePartnerBusy:
+                    notice = GetPartnerBusyText();
+                    return true;
+                case ResultSubtypeWithdrawnRequest:
+                    notice = GetWithdrawnRequestText();
+                    return true;
+                case ResultSubtypeDeclined:
+                    notice = GetDeclinedRequestText();
+                    return true;
+                case ResultSubtypeReservationCanceled:
+                    notice = GetReservationCanceledText();
+                    return true;
+                case ResultSubtypeReservationLockedBreak:
+                    notice = GetReservationLockedBreakText();
+                    return true;
+                case ResultSubtypeInvitationInvalid:
+                    notice = GetInvitationInvalidText();
+                    return true;
+                case 36:
+                    notice = string.IsNullOrWhiteSpace(serverText) ? string.Empty : serverText.Trim();
+                    return !string.IsNullOrWhiteSpace(notice);
+                default:
+                    notice = null;
+                    return false;
+            }
         }
     }
 }

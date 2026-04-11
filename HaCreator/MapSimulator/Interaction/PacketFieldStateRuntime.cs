@@ -160,6 +160,7 @@ namespace HaCreator.MapSimulator.Interaction
             byte[] payload,
             int currentTick,
             Func<string, bool?, int, int?, bool> setDynamicObjectTagState,
+            Func<string, bool> hasDynamicObjectTagState,
             Func<byte[], int, string> fieldSpecificDataHandler,
             out string message)
         {
@@ -181,7 +182,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case 167:
                     return TryApplyQuestTime(payload, currentTick, out message);
                 case 169:
-                    return TryApplyObjectState(payload, currentTick, setDynamicObjectTagState, out message);
+                    return TryApplyObjectState(payload, currentTick, setDynamicObjectTagState, hasDynamicObjectTagState, out message);
                 default:
                     message = $"Unsupported field packet type {packetType}.";
                     return false;
@@ -567,6 +568,7 @@ namespace HaCreator.MapSimulator.Interaction
             byte[] payload,
             int currentTick,
             Func<string, bool?, int, int?, bool> setDynamicObjectTagState,
+            Func<string, bool> hasDynamicObjectTagState,
             out string message)
         {
             if (payload == null || payload.Length == 0)
@@ -580,16 +582,26 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketReader reader = new(payload);
                 string tag = reader.ReadMapleString();
                 int stateValue = reader.ReadInt();
-                bool isEnabled = stateValue != 0;
                 if (string.IsNullOrWhiteSpace(tag))
                 {
                     message = "Object-state packet did not contain a tag name.";
                     return false;
                 }
 
+                if (stateValue == -1)
+                {
+                    bool available = hasDynamicObjectTagState?.Invoke(tag) == true;
+                    message = available
+                        ? $"Replayed current object-state packet for '{tag}' (state=-1); boolean tag visibility was left unchanged."
+                        : $"Object-state replay packet for '{tag}' was ignored because no matching tagged object state is available.";
+                    _statusMessage = message;
+                    return available;
+                }
+
+                bool isEnabled = stateValue != 0;
                 bool applied = setDynamicObjectTagState?.Invoke(tag, isEnabled, 0, currentTick) == true;
                 message = applied
-                    ? $"Applied object-state packet for '{tag}' => {(isEnabled ? "on" : "off")}."
+                    ? $"Applied object-state packet for '{tag}' => state {stateValue} ({(isEnabled ? "on" : "off")} visibility bridge)."
                     : $"Object-state packet for '{tag}' was ignored because no matching tagged object state is available.";
                 _statusMessage = message;
                 return applied;

@@ -435,6 +435,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return beholderSupportAction;
             }
 
+            int healingRobotSupportAction = ResolveHealingRobotLocalSupportActionCode(skill, assistType, branchName);
+            if (healingRobotSupportAction > 0)
+            {
+                return healingRobotSupportAction;
+            }
+
+            if (IsSitdownHealingSupportSummon(skill))
+            {
+                return 0;
+            }
+
             if (assistType == SummonAssistType.Support
                 && IsSupportOwnedSuspendBranch(skill, assistType, branchName))
             {
@@ -451,6 +462,25 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return 0;
+        }
+
+        private static int ResolveHealingRobotLocalSupportActionCode(
+            SkillData skill,
+            SummonAssistType assistType,
+            string branchName)
+        {
+            if (assistType != SummonAssistType.Support
+                || !IsSitdownHealingSupportSummon(skill)
+                || string.IsNullOrWhiteSpace(branchName))
+            {
+                return 0;
+            }
+
+            string healBranchName = ResolveSupportOwnedBranch(skill, preferHealFirst: true);
+            return !string.IsNullOrWhiteSpace(healBranchName)
+                   && string.Equals(branchName, healBranchName, StringComparison.OrdinalIgnoreCase)
+                ? PacketSkillActionHealingRobotHeal
+                : 0;
         }
 
         internal static bool TryResolveExplicitSelfDestructPlayback(

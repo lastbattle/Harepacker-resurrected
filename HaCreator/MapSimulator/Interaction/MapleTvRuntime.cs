@@ -545,6 +545,79 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryApplyConsumeCashItemUseRequestPayload(
+            byte[] payload,
+            int currentTick,
+            Func<int, (string ItemName, string ItemDescription)> itemMetadataResolver,
+            out string message)
+        {
+            message = string.Empty;
+            if (!TryDecodeConsumeCashItemUseRequestPayload(payload, out MapleTvConsumeCashItemUseRequest request, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            (string itemName, string itemDescription) = itemMetadataResolver?.Invoke(request.ItemId) ?? (null, null);
+            SetItem(request.ItemId, itemName, itemDescription);
+            SetReceiver(request.ReceiverName);
+            for (int i = 0; i < DisplayLineCount; i++)
+            {
+                _draftLines[i] = i < request.Lines.Count ? request.Lines[i] ?? string.Empty : string.Empty;
+            }
+
+            _statusMessage = OnSetMessage(currentTick);
+            message = $"Applied CUserLocal::ConsumeCashItem MapleTV request for item {request.ItemId} from slot {request.InventoryPosition}. {_statusMessage}";
+            return true;
+        }
+
+        internal static bool TryDecodeConsumeCashItemUseRequestPayload(
+            byte[] payload,
+            out MapleTvConsumeCashItemUseRequest request,
+            out string error)
+        {
+            request = null;
+            error = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                error = "MapleTV consume-cash item request payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(payload);
+                int clientTick = reader.ReadInt();
+                short inventoryPosition = reader.ReadShort();
+                int itemId = reader.ReadInt();
+                if (!MapleTvItemProfile.IsKnownMapleTvCashItem(itemId))
+                {
+                    error = $"Consume-cash item request item {itemId} is not a MapleTV or Megassenger item.";
+                    return false;
+                }
+
+                string receiverName = reader.ReadMapleString();
+                string[] lines = new string[DisplayLineCount];
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    lines[i] = reader.ReadMapleString();
+                }
+
+                request = new MapleTvConsumeCashItemUseRequest(clientTick, inventoryPosition, itemId, receiverName, Array.AsReadOnly(lines));
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "MapleTV consume-cash item request ended before decoding completed.";
+                return false;
+            }
+            catch (IOException)
+            {
+                error = "MapleTV consume-cash item request could not be read.";
+                return false;
+            }
+        }
+
         internal string BuildMegassengerChatMirrorMessage()
         {
             if (!(_itemProfile?.MirrorsToChat ?? false))
@@ -886,6 +959,13 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed record MapleTvSendResultDefinition(int ResultCode, int StringPoolId, string StatusLabel);
 
+    internal sealed record MapleTvConsumeCashItemUseRequest(
+        int ClientTick,
+        short InventoryPosition,
+        int ItemId,
+        string ReceiverName,
+        IReadOnlyList<string> Lines);
+
     internal sealed class MapleTvSnapshot
     {
         public string SenderName { get; init; } = string.Empty;
@@ -1174,6 +1254,11 @@ namespace HaCreator.MapSimulator.Interaction
                 5075005 => inferredProfile with { MediaIndex = alternateMediaB, DurationMs = 15000, AudienceMode = MapleTvAudienceMode.Flexible, MirrorsToChat = true },
                 _ => CreateDefault(itemId, resolvedName, normalizedDefaultMediaIndex, DefaultItemDurationMs, availableMediaIndices)
             };
+        }
+
+        internal static bool IsKnownMapleTvCashItem(int itemId)
+        {
+            return itemId >= 5075000 && itemId <= 5075005;
         }
     }
 }

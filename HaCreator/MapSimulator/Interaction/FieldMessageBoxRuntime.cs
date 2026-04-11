@@ -25,6 +25,9 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ClientLeaveInsertCanvasEndAlphaValue = 0;
         private const int ClientLayerRepeatAnimation = 1;
         private const int ClientLayerStopAnimation = 0;
+        private const int ClientLayerVectorObjectStringPoolId = 0x3D2;
+        private const int ClientLayerColorValue = -1073343424;
+        private const int ClientLayerInitialAlpha = 255;
         private const int DefaultBoxOffsetX = -3;
         private const int DefaultBoxOffsetY = -100;
         private const float DefaultBobAmplitude = 3f;
@@ -1551,6 +1554,20 @@ namespace HaCreator.MapSimulator.Interaction
                 RegistersOneTimeAnimation: true);
         }
 
+        internal static (int VectorObjectStringPoolId, int LayerColorValue, int InitialAlpha, int AnimationMode, bool CreatesVector, bool CreatesLayer, bool LoadsAnimationLayer, bool AttachesLayerToVector) GetEnterFieldRegistrationTraceForTest()
+        {
+            ManagedMessageBoxLayer layer = ManagedMessageBoxLayer.CreateLoaded(Point.Zero, currentTick: 0);
+            return (
+                layer.VectorObjectStringPoolId.GetValueOrDefault(),
+                layer.LayerColorValue.GetValueOrDefault(),
+                layer.InitialAlpha.GetValueOrDefault(),
+                layer.AnimationMode,
+                layer.CreatedVector,
+                layer.CreatedLayer,
+                layer.LoadedAnimationLayer,
+                layer.AttachedLayerToVector);
+        }
+
         internal static ((int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom) FirstFrame, (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom) SecondFrame) ComputeAnimatedFrameTextLayoutsForTest(
             int textureWidth,
             int textureHeight,
@@ -2087,13 +2104,29 @@ namespace HaCreator.MapSimulator.Interaction
             public bool VectorResetForLeave { get; private set; }
             public bool RegisteredOneTimeAnimation { get; private set; }
             public bool RemovedFromPool { get; private set; }
+            public int? VectorObjectStringPoolId { get; private set; }
+            public int? LayerColorValue { get; private set; }
+            public int? InitialAlpha { get; private set; }
+            public bool CreatedVector { get; private set; }
+            public bool CreatedLayer { get; private set; }
+            public bool LoadedAnimationLayer { get; private set; }
+            public bool AttachedLayerToVector { get; private set; }
 
             public static ManagedMessageBoxLayer CreateLoaded(Point position, int currentTick)
             {
-                return new ManagedMessageBoxLayer(position)
+                ManagedMessageBoxLayer layer = new(position)
                 {
                     _leaveStartedAt = currentTick
                 };
+                layer.CreateVector(ClientLayerVectorObjectStringPoolId);
+                layer.RelMove(position, currentTick);
+                layer.CreateLayer();
+                layer.LoadAnimationLayer();
+                layer.SetLayerColor(ClientLayerColorValue);
+                layer.SetAlpha(ClientLayerInitialAlpha);
+                layer.AttachLayerToVector();
+                layer.Animate(ClientLayerRepeatAnimation);
+                return layer;
             }
 
             public void RelMove(Point position, int currentTick)
@@ -2144,6 +2177,37 @@ namespace HaCreator.MapSimulator.Interaction
             private void Animate(int mode)
             {
                 AnimationMode = mode;
+            }
+
+            private void CreateVector(int stringPoolId)
+            {
+                CreatedVector = true;
+                VectorObjectStringPoolId = stringPoolId;
+            }
+
+            private void CreateLayer()
+            {
+                CreatedLayer = true;
+            }
+
+            private void LoadAnimationLayer()
+            {
+                LoadedAnimationLayer = true;
+            }
+
+            private void SetLayerColor(int colorValue)
+            {
+                LayerColorValue = colorValue;
+            }
+
+            private void SetAlpha(int alpha)
+            {
+                InitialAlpha = alpha;
+            }
+
+            private void AttachLayerToVector()
+            {
+                AttachedLayerToVector = true;
             }
 
             public void UpdateLeave(int currentTick)

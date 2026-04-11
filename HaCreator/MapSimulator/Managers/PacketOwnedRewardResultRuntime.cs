@@ -21,11 +21,15 @@ namespace HaCreator.MapSimulator.Managers
         public string DescriptionText { get; init; } = string.Empty;
         public string AmountText { get; init; } = string.Empty;
         public string ChatLineText { get; init; } = string.Empty;
+        public int ChatMessageType { get; init; }
         public string SoundDescriptor { get; init; } = string.Empty;
+        public int SoundVolume { get; init; }
     }
 
     internal static class PacketOwnedRewardResultRuntime
     {
+        public const int RandomMesoBagStatusBarChatType = 12;
+        public const int RandomMesoBagSoundVolume = 100;
         private const int MesoGiveSucceededStringPoolId = 0x32E;
         private const int MesoGiveFailedStringPoolId = 0x32F;
         private const int UtilDlgNoticeBackgroundStringPoolId = 0x03D0;
@@ -187,7 +191,9 @@ namespace HaCreator.MapSimulator.Managers
                         "You obtained {0:N0} mesos from the Random Meso Sack.",
                         1),
                     mesoAmount),
-                SoundDescriptor = ResolveRandomMesoBagSound(normalizedRank)
+                ChatMessageType = RandomMesoBagStatusBarChatType,
+                SoundDescriptor = ResolveRandomMesoBagSound(normalizedRank),
+                SoundVolume = RandomMesoBagSoundVolume
             };
         }
 

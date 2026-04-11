@@ -361,12 +361,8 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 EventRowTextLayout textLayout = ResolveEventRowTextLayout(bounds, slotBounds);
-                sprite.DrawString(_font, entry.Title, new Vector2(textLayout.TitleX, textLayout.TitleY), Color.White);
-                sprite.DrawString(
-                    _font,
-                    entry.StatusText,
-                    new Vector2(bounds.Right - Math.Min(textLayout.StatusMaxWidth, (int)_font.MeasureString(entry.StatusText).X) - 10, textLayout.TitleY),
-                    new Color(255, 228, 151));
+                DrawTrimmedText(sprite, entry.Title, textLayout.TitleX, textLayout.TitleY, textLayout.TitleMaxWidth, Color.White);
+                DrawTrimmedText(sprite, entry.StatusText, textLayout.StatusX, textLayout.StatusY, textLayout.StatusMaxWidth, new Color(255, 228, 151));
                 DrawWrappedText(sprite, entry.Detail, textLayout.DetailX, textLayout.DetailY, textLayout.DetailWidth, new Color(224, 224, 224));
             }
         }
@@ -823,21 +819,36 @@ namespace HaCreator.MapSimulator.UI
 
         internal readonly struct EventRowTextLayout
         {
-            public EventRowTextLayout(int titleX, int titleY, int detailX, int detailY, float detailWidth, int statusMaxWidth)
+            public EventRowTextLayout(
+                int titleX,
+                int titleY,
+                float titleMaxWidth,
+                int detailX,
+                int detailY,
+                float detailWidth,
+                int statusX,
+                int statusY,
+                int statusMaxWidth)
             {
                 TitleX = titleX;
                 TitleY = titleY;
+                TitleMaxWidth = titleMaxWidth;
                 DetailX = detailX;
                 DetailY = detailY;
                 DetailWidth = detailWidth;
+                StatusX = statusX;
+                StatusY = statusY;
                 StatusMaxWidth = statusMaxWidth;
             }
 
             public int TitleX { get; }
             public int TitleY { get; }
+            public float TitleMaxWidth { get; }
             public int DetailX { get; }
             public int DetailY { get; }
             public float DetailWidth { get; }
+            public int StatusX { get; }
+            public int StatusY { get; }
             public int StatusMaxWidth { get; }
         }
 
@@ -864,13 +875,22 @@ namespace HaCreator.MapSimulator.UI
         internal static EventRowTextLayout ResolveEventRowTextLayout(Rectangle rowBounds, Rectangle slotBounds)
         {
             int contentLeft = slotBounds.Right + 10;
+            // WZ evidence: EventList/main/event/BtStart/BtIng/BtClear/BtNone/BtWill
+            // use 57x32 button canvases with origin (-226,-5), anchoring the row status lane at (226,5).
+            int statusLeft = rowBounds.X + 226;
+            int statusTop = rowBounds.Y + 8;
+            int statusWidth = Math.Max(40, Math.Min(57, rowBounds.Right - statusLeft - 5));
+            float titleWidth = Math.Max(40f, statusLeft - contentLeft - 8f);
             return new EventRowTextLayout(
                 contentLeft,
                 rowBounds.Y + 8,
+                titleWidth,
                 contentLeft,
                 rowBounds.Y + 30,
                 Math.Max(40f, rowBounds.Right - contentLeft - 12f),
-                86);
+                statusLeft,
+                statusTop,
+                statusWidth);
         }
 
         private int GetRowsPerPage()
@@ -1331,6 +1351,16 @@ namespace HaCreator.MapSimulator.UI
             {
                 yield return currentLine;
             }
+        }
+
+        private void DrawTrimmedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            sprite.DrawString(_font, TrimTextToWidth(text, maxWidth), new Vector2(x, y), color);
         }
 
         private int DrawAlarmFeed(SpriteBatch sprite, EventWindowSnapshot snapshot)

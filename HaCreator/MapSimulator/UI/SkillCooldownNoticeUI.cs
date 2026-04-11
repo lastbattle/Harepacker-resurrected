@@ -27,7 +27,6 @@ namespace HaCreator.MapSimulator.UI
             int BottomHeight,
             int ExtraPartCount);
 
-        private const int ReferenceClientHeight = 578;
         private const int MaxNotices = 3;
         private const int DisplayDurationMs = 2200;
         private const int FadeDurationMs = 260;
@@ -442,12 +441,17 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetTopMargin()
         {
-            if (_screenHeight <= 0)
+            return ResolveTopMarginForClientParity(_screenHeight);
+        }
+
+        internal static int ResolveTopMarginForClientParity(int screenHeight)
+        {
+            if (screenHeight <= 0)
             {
                 return TopMargin;
             }
 
-            return Math.Max(24, (int)Math.Round(_screenHeight * (TopMargin / (float)ReferenceClientHeight)));
+            return Math.Clamp(TopMargin, 0, Math.Max(0, screenHeight - 8));
         }
 
         private void UpdateFrameLayoutMetrics()

@@ -127,7 +127,7 @@ namespace HaCreator.MapSimulator.Interaction
         public byte MiniRoomBalloonByte0 { get; }
         public byte MiniRoomBalloonByte1 { get; }
         public byte MiniRoomBalloonByte2 { get; }
-        public bool HasMiniRoomBalloon => MiniRoomType != 0 && !string.IsNullOrWhiteSpace(MiniRoomBalloonTitle);
+        public bool HasMiniRoomBalloon => MiniRoomType != 0;
     }
 
     public sealed class SocialRoomOccupant
@@ -675,6 +675,7 @@ namespace HaCreator.MapSimulator.Interaction
                 RoomState = RoomState,
                 ModeName = ModeName,
                 PacketOwnerSummary = _lastPacketOwnerSummary,
+                LocalSeatIndex = _miniRoomLocalSeatIndex,
                 PersonalShopTotalSoldGross = _personalShopTotalSoldGross,
                 PersonalShopTotalReceivedNet = _personalShopTotalReceivedNet,
                 MiniRoomModeIndex = _miniRoomModeIndex,
@@ -830,6 +831,7 @@ namespace HaCreator.MapSimulator.Interaction
                 RoomState = source?.RoomState ?? _defaultSnapshot.RoomState;
                 ModeName = source?.ModeName ?? _defaultSnapshot.ModeName;
                 _lastPacketOwnerSummary = source?.PacketOwnerSummary ?? _defaultSnapshot.PacketOwnerSummary ?? BuildDefaultPacketOwnerSummary();
+                _miniRoomLocalSeatIndex = Math.Max(0, source?.LocalSeatIndex ?? _defaultSnapshot.LocalSeatIndex);
                 _personalShopTotalSoldGross = Math.Max(0, source?.PersonalShopTotalSoldGross ?? _defaultSnapshot.PersonalShopTotalSoldGross);
                 _personalShopTotalReceivedNet = Math.Max(0, source?.PersonalShopTotalReceivedNet ?? _defaultSnapshot.PersonalShopTotalReceivedNet);
                 _miniRoomModeIndex = source?.MiniRoomModeIndex ?? _defaultSnapshot.MiniRoomModeIndex;
@@ -1831,7 +1833,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case PersonalShopMoveItemToInventoryPacketType:
                     return TryApplyPersonalShopMoveItemPacket(reader, out message);
                 case PersonalShopBasePacketType:
-                    return TryApplyMerchantShopEnterResultPacket(reader, out message);
+                    return TryDispatchMiniRoomBasePacket(reader, tickCount, out message);
                 default:
                     return FailPacket(packetType, out message);
             }
@@ -3365,6 +3367,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private SocialRoomChatTone ResolveMiniRoomBaseSpeakerChatTone(int seatIndex)
         {
+            if (Kind is SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop)
+            {
+                return seatIndex == _miniRoomLocalSeatIndex
+                    ? SocialRoomChatTone.LocalSpeaker
+                    : SocialRoomChatTone.RemoteSpeaker;
+            }
+
             if (seatIndex <= 0)
             {
                 return SocialRoomChatTone.LocalSpeaker;
@@ -4820,6 +4829,27 @@ namespace HaCreator.MapSimulator.Interaction
             return activeEntries;
         }
 
+        private int ResolveNextTradingRoomPacketSlot(string ownerName)
+        {
+            HashSet<int> occupiedSlots = _items
+                .Where(item =>
+                    string.Equals(item.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase)
+                    && item.PacketSlotIndex.HasValue
+                    && item.PacketSlotIndex.Value > 0)
+                .Select(item => item.PacketSlotIndex.Value)
+                .ToHashSet();
+
+            for (int slot = 1; slot <= TradingRoomClientItemSlotCount; slot++)
+            {
+                if (!occupiedSlots.Contains(slot))
+                {
+                    return slot;
+                }
+            }
+
+            return TradingRoomClientItemSlotCount;
+        }
+
         private int TrimActiveMerchantPacketRows(int activeRowCount)
         {
             int normalizedActiveRowCount = Math.Max(0, activeRowCount);
@@ -6056,17 +6086,59 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            ClearTradeHandshake();
-            MesoAmount += mesoAmount;
-            _tradeLocalOfferMeso += mesoAmount;
-            RefreshTradeOccupantsAndRows();
-            StatusMessage = $"Escrowed {mesoAmount:N0} meso into the trading room.";
+            int packetOfferTotal = Math.Max(0, _tradeLocalOfferMeso) + mesoAmount;
+            if (!TryDispatchTradingRoomPacketOwnedMeso(0, packetOfferTotal, Environment.TickCount, out message))
+            {
+                _inventoryRuntime.AddMeso(mesoAmount);
+                return false;
+            }
+
+            message = $"{message} Local command escrowed {mesoAmount:N0} meso through the packet-owned subtype {TradingRoomPutMoneyPacketType} path.";
+            StatusMessage = message;
             PersistState();
-            message = StatusMessage;
             return true;
         }
 
         public bool TryOfferTradeItem(int itemId, int quantity, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.TradingRoom)
+            {
+                message = "Trade item escrow only applies to the trading-room shell.";
+                return false;
+            }
+
+            if (!TryConsumeInventoryItem(itemId, quantity, out InventoryType inventoryType, out InventorySlotData slotData, out message))
+            {
+                return false;
+            }
+
+            if (!_inventoryBackedRows)
+            {
+                _items.RemoveAll(item => string.Equals(item.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase));
+                _inventoryBackedRows = true;
+            }
+
+            int nextPacketSlot = ResolveNextTradingRoomPacketSlot(OwnerName);
+            if (!TryDispatchTradingRoomPacketOwnedItem(0, nextPacketSlot, itemId, quantity, Environment.TickCount, out message))
+            {
+                _inventoryRuntime?.AddItem(inventoryType, slotData.ItemId, slotData.ItemTexture, slotData.Quantity);
+                return false;
+            }
+
+            SocialRoomItemEntry entry = FindTradingRoomPacketEntry(OwnerName, nextPacketSlot);
+            if (entry != null)
+            {
+                _inventoryEscrow.Add(new InventoryEscrowEntry(entry, inventoryType, slotData, returnOnReset: true, returnOnClose: true));
+            }
+
+            message = $"{message} Local command escrowed {slotData.ItemName} x{quantity} through the packet-owned subtype {TradingRoomPutItemPacketType} path.";
+            StatusMessage = message;
+            PersistState();
+            return true;
+        }
+
+        public bool TryOfferTradeItemDirect(int itemId, int quantity, out string message)
         {
             message = null;
             if (Kind != SocialRoomKind.TradingRoom)
@@ -6119,14 +6191,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            ClearTradeHandshake();
             string remoteName = ResolveRemoteTraderName();
-            SocialRoomItemEntry entry = new SocialRoomItemEntry(remoteName, remoteInventoryEntry.ItemName, quantity, 0, "Guest offer | Remote inventory escrowed");
-            int insertIndex = _items.FindLastIndex(item => string.Equals(item.OwnerName, OwnerName, StringComparison.OrdinalIgnoreCase));
-            _items.Insert(insertIndex < 0 ? _items.Count : insertIndex + 1, entry);
-            RoomState = "Negotiating";
-            RefreshTradeOccupantsAndRows();
-            StatusMessage = $"Remote trader added {entry.ItemName} x{quantity} to the preview offer.";
+            int nextPacketSlot = ResolveNextTradingRoomPacketSlot(remoteName);
+            if (!TryDispatchTradingRoomPacketOwnedItem(1, nextPacketSlot, itemId, quantity, Environment.TickCount, out message))
+            {
+                AddRemoteInventoryItem(itemId, quantity);
+                return false;
+            }
+
+            message = $"{message} Remote preview consumed {remoteInventoryEntry.ItemName} x{quantity} through the packet-owned subtype {TradingRoomPutItemPacketType} path.";
+            StatusMessage = message;
             RefreshRemoteInventoryNotes();
             PersistState();
             message = StatusMessage;
@@ -6154,12 +6228,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            ClearTradeHandshake();
             _remoteInventoryMeso -= mesoAmount;
-            _tradeRemoteOfferMeso += mesoAmount;
-            RoomState = "Negotiating";
-            RefreshTradeOccupantsAndRows();
-            StatusMessage = $"Remote trader escrowed {mesoAmount:N0} meso into the preview offer.";
+            int packetOfferTotal = Math.Max(0, _tradeRemoteOfferMeso) + mesoAmount;
+            if (!TryDispatchTradingRoomPacketOwnedMeso(1, packetOfferTotal, Environment.TickCount, out message))
+            {
+                _remoteInventoryMeso += mesoAmount;
+                return false;
+            }
+
+            message = $"{message} Remote preview escrowed {mesoAmount:N0} meso through the packet-owned subtype {TradingRoomPutMoneyPacketType} path.";
+            StatusMessage = message;
             RefreshRemoteInventoryNotes();
             PersistState();
             message = StatusMessage;

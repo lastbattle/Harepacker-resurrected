@@ -386,7 +386,12 @@ namespace HaCreator.MapSimulator
                 : IsPacketOwnedAntiMacroNoticeVisible()
                     ? $"notice active=\"{_lastPacketOwnedAntiMacroNotice}\""
                     : $"lastNotice=\"{_lastPacketOwnedAntiMacroNotice}\" (closed)";
-            return $"Anti-macro mode={_lastPacketOwnedAntiMacroMode}, type={_lastPacketOwnedAntiMacroType}, comboHeld={_packetOwnedAntiMacroComboHeld}, {ownerState}, {noticeState}, {screenshotState}, {screenshotBaseFolderState}. {_lastPacketOwnedAntiMacroSummary}";
+            string resultSourceState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroResultSource)
+                ? "resultSource=none"
+                : _lastPacketOwnedAntiMacroAuthoritativeRoundTrip
+                    ? $"resultSource={_lastPacketOwnedAntiMacroResultSource} (authoritative round-trip)"
+                    : $"resultSource={_lastPacketOwnedAntiMacroResultSource}";
+            return $"Anti-macro mode={_lastPacketOwnedAntiMacroMode}, type={_lastPacketOwnedAntiMacroType}, comboHeld={_packetOwnedAntiMacroComboHeld}, {ownerState}, {noticeState}, {screenshotState}, {screenshotBaseFolderState}, {resultSourceState}. {_lastPacketOwnedAntiMacroSummary}";
         }
 
         private string ClearPacketOwnedAntiMacro(bool releaseCombo)
@@ -417,6 +422,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedAntiMacroCurrentRemainingMs = 0;
             _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
             _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
+            _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
             _lastPacketOwnedAntiMacroSummary = "Closed packet-owned anti-macro owner.";
             return _lastPacketOwnedAntiMacroSummary;
         }
@@ -474,6 +480,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
             _lastPacketOwnedAntiMacroSubmitTransportPath = PacketOwnedAntiMacroSubmitTransportPath.None;
             _lastPacketOwnedAntiMacroSubmittedRawPacket = Array.Empty<byte>();
+            _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
             _lastPacketOwnedAntiMacroSummary =
                 $"Opened packet-owned {(adminVariant ? "admin " : string.Empty)}anti-macro challenge with remaining={remainingMs}ms and held Ctrl combo input.";
             return _lastPacketOwnedAntiMacroSummary;
@@ -996,6 +1003,11 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedAntiMacroPayload(byte[] payload, out string message)
         {
+            return TryApplyPacketOwnedAntiMacroPayload(payload, out message, source: null);
+        }
+
+        private bool TryApplyPacketOwnedAntiMacroPayload(byte[] payload, out string message, string source)
+        {
             message = "Anti-macro payload is missing.";
             if (payload == null || payload.Length < 2)
             {
@@ -1004,6 +1016,11 @@ namespace HaCreator.MapSimulator
 
             try
             {
+                bool wasAwaitingResult = _packetOwnedAntiMacroAwaitingResult;
+                string resolvedSource = ResolvePacketOwnedAntiMacroResultSource(source);
+                _lastPacketOwnedAntiMacroResultSource = resolvedSource;
+                _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = false;
+
                 using MemoryStream stream = new(payload, writable: false);
                 using BinaryReader reader = new(stream);
                 int mode = reader.ReadByte();
@@ -1019,13 +1036,21 @@ namespace HaCreator.MapSimulator
                         ? reader.ReadByte()
                         : 0;
                     byte[] jpegBytes = ReadPacketOwnedAntiMacroCanvasPayload(reader);
-                    message = ApplyPacketOwnedAntiMacroChallenge(antiMacroType, answerCount, jpegBytes);
+                    message = AppendPacketOwnedAntiMacroResultSourceSummary(
+                        ApplyPacketOwnedAntiMacroChallenge(antiMacroType, answerCount, jpegBytes),
+                        resolvedSource,
+                        authoritativeRoundTrip: false);
                     return true;
                 }
 
                 if (IsPacketOwnedAntiMacroCloseResultMode(mode))
                 {
-                    message = ApplyPacketOwnedAntiMacroCloseResult(mode, antiMacroType);
+                    bool authoritativeRoundTrip = IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource)
+                        && wasAwaitingResult;
+                    message = AppendPacketOwnedAntiMacroResultSourceSummary(
+                        ApplyPacketOwnedAntiMacroCloseResult(mode, antiMacroType),
+                        resolvedSource,
+                        authoritativeRoundTrip);
                     return true;
                 }
 
@@ -1034,11 +1059,19 @@ namespace HaCreator.MapSimulator
                     string userName = reader.BaseStream.Position < reader.BaseStream.Length
                         ? ReadPacketOwnedMapleString(reader)
                         : string.Empty;
-                    message = ApplyPacketOwnedAntiMacroUserBranch(mode, antiMacroType, userName);
+                    bool authoritativeRoundTrip = IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource)
+                        && wasAwaitingResult;
+                    message = AppendPacketOwnedAntiMacroResultSourceSummary(
+                        ApplyPacketOwnedAntiMacroUserBranch(mode, antiMacroType, userName),
+                        resolvedSource,
+                        authoritativeRoundTrip);
                     return true;
                 }
 
-                message = ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType);
+                message = AppendPacketOwnedAntiMacroResultSourceSummary(
+                    ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType),
+                    resolvedSource,
+                    authoritativeRoundTrip: false);
                 return true;
             }
             catch (Exception ex)
@@ -1140,16 +1173,38 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private bool TryApplyPacketOwnedAntiMacroPayload(byte[] payload, out string message, string source)
-        {
-            return TryApplyPacketOwnedAntiMacroPayload(payload, out message);
-        }
-
         private void HandlePacketOwnedAntiMacroNoticeClosed(int responseCode)
         {
             _lastPacketOwnedAntiMacroSummary = responseCode == 2
                 ? "Dismissed anti-macro notice with Cancel."
                 : "Dismissed anti-macro notice with OK.";
+        }
+
+        private string AppendPacketOwnedAntiMacroResultSourceSummary(
+            string summary,
+            string source,
+            bool authoritativeRoundTrip)
+        {
+            _lastPacketOwnedAntiMacroResultSource = source ?? string.Empty;
+            _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = authoritativeRoundTrip;
+
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return summary;
+            }
+
+            string sourceSummary = authoritativeRoundTrip
+                ? $" Result arrived from {source} and completed the official-session anti-macro round-trip."
+                : $" Result arrived from {source}.";
+            _lastPacketOwnedAntiMacroSummary = $"{summary}{sourceSummary}";
+            return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        internal static string ResolvePacketOwnedAntiMacroResultSource(string source)
+        {
+            return string.IsNullOrWhiteSpace(source)
+                ? string.Empty
+                : source.Trim();
         }
 
         private bool IsPacketOwnedAntiMacroNoticeVisible()

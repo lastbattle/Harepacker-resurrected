@@ -945,6 +945,19 @@ namespace HaCreator.MapSimulator.UI
 
                 string slotText = $"Target {sourceSlot.ItemName ?? GetItemName(sourceSlot.ItemId)} x1";
                 sprite.DrawString(_font, slotText, new Vector2(detailOrigin.X, y), new Color(255, 223, 153));
+                y += 18;
+
+                if (recipe.MesoCost > 0)
+                {
+                    y = DrawSectionHeader(sprite, "Meso", detailOrigin, y);
+                    long mesoCount = _inventory?.GetMesoCount() ?? 0L;
+                    y = DrawTextRequirementRow(
+                        sprite,
+                        detailOrigin,
+                        y,
+                        $"Cost: {recipe.MesoCost:N0} meso",
+                        mesoCount >= recipe.MesoCost);
+                }
             }
         }
 
@@ -1476,6 +1489,12 @@ namespace HaCreator.MapSimulator.UI
                     return false;
                 }
 
+                if (recipe.MesoCost > 0 && _inventory.GetMesoCount() < recipe.MesoCost)
+                {
+                    failureReason = "Not enough meso for this disassembly.";
+                    return false;
+                }
+
                 failureReason = $"Ready to disassemble {slotData.ItemName ?? GetItemName(slotData.ItemId)}.";
                 return true;
             }
@@ -1872,7 +1891,8 @@ namespace HaCreator.MapSimulator.UI
                 {
                     IsDisassembly = true,
                     SourceSlotIndex = recipe.SourceSlotIndex,
-                    SourceItemId = recipe.OutputItemId
+                    SourceItemId = recipe.OutputItemId,
+                    MesoCost = recipe.MesoCost
                 };
                 _pendingPacketOwnedDisassemblySlotIndex = recipe.SourceSlotIndex;
                 _pendingPacketOwnedDisassemblyItemId = recipe.OutputItemId;
@@ -2634,6 +2654,7 @@ namespace HaCreator.MapSimulator.UI
                     OutputItemId = slot.ItemId,
                     OutputQuantity = 1,
                     RequiredEmptyEtcSlots = ResolveDisassemblyRequiredEtcSlotCount(slot.ItemId),
+                    MesoCost = ResolveDisassemblyMesoCost(slot.ItemId),
                     SourceSlotIndex = slotIndex
                 });
             }
@@ -2648,6 +2669,31 @@ namespace HaCreator.MapSimulator.UI
                 _allRecipes
                     .Where(recipe => recipe.Mode == ItemMakerRecipeMode.Craft)
                     .Select(recipe => (recipe.OutputItemId, recipe.Materials?.Length ?? 0)));
+        }
+
+        private int ResolveDisassemblyMesoCost(int itemId)
+        {
+            int makeCost = _allRecipes
+                .Where(recipe => recipe.Mode == ItemMakerRecipeMode.Craft && recipe.OutputItemId == itemId)
+                .Select(recipe => recipe.MesoCost)
+                .FirstOrDefault(cost => cost > 0);
+            return ResolveClientDisassemblyMesoCost(makeCost);
+        }
+
+        internal static int ResolveClientDisassemblyMesoCost(int makeCost)
+        {
+            if (makeCost <= 0)
+            {
+                return 0;
+            }
+
+            // CItemInfo::CalcMakerSkillDisassembleCost starts from nMakeCost / 10, uses
+            // the normal-quality 150% multiplier when equip stat quality does not move
+            // into a special branch, then rounds down to a 1000-meso boundary.
+            int baseCost = makeCost / 10;
+            int scaledCost = 150 * baseCost / 100;
+            int remainder = scaledCost % 1000;
+            return scaledCost - (remainder <= 0 ? 0 : remainder);
         }
 
         internal static List<(int SlotIndex, int ItemId)> ResolveAuthoritativeDisassemblyTargets(

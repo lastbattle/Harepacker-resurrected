@@ -81,6 +81,12 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            if (request.SourceInventoryType != InventoryType.EQUIP)
+            {
+                rejectReason = "Mechanic retail ChangeSlotPosition request only supports the equip inventory.";
+                return false;
+            }
+
             int sourceSlotPosition = request.SourceInventoryIndex + 1;
             if (sourceSlotPosition > ushort.MaxValue)
             {

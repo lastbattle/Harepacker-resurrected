@@ -425,8 +425,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (!adminShopWindow.IsVisible
-                && !adminShopWindow.HasPacketOwnedAdminShopSession)
+            if (!adminShopWindow.ShouldAcceptPacketOwnedAdminShopResultAtOwnerGate)
             {
                 message = adminShopWindow.ApplyPacketOwnedAdminShopResultIgnoredByUniqueModelessOwner(
                     resultSnapshot.Subtype,

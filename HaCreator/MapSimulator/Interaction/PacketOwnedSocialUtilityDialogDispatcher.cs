@@ -492,6 +492,9 @@ namespace HaCreator.MapSimulator.Interaction
             IsOpen = true;
             ShouldShowOwnerWindowAfterApply = true;
             _currentDialogMode = modeTwoOpen ? 2 : 0;
+            ParcelDialogTab activeTab = !modeTwoOpen && session.ReceiveEntries.Count == 0
+                ? ParcelDialogTab.Send
+                : ParcelDialogTab.Receive;
             _memoMailbox.ReplacePacketOwnedParcelSession(
                 session.ReceiveEntries,
                 _currentDialogMode switch
@@ -499,7 +502,7 @@ namespace HaCreator.MapSimulator.Interaction
                     2 => ParcelDialogTabAvailability.Receive,
                     _ => ParcelDialogTabAvailability.Receive | ParcelDialogTabAvailability.Send
                 },
-                ParcelDialogTab.Receive,
+                activeTab,
                 out string sessionMessage);
             if (session.ArrivalNoticeEntries.Count > 0)
             {
@@ -508,7 +511,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string arrivalSummary = DescribeArrivalNoticeSummary(session.ArrivalNoticeEntries);
-            StatusMessage = $"CParcelDlg packet 8 opened the packet-owned receive owner through {(modeTwoOpen ? "mode 2" : "mode 0")} and applied {session.ReceiveEntries.Count.ToString(CultureInfo.InvariantCulture)} receive row(s){arrivalSummary}. {sessionMessage}";
+            StatusMessage = $"CParcelDlg packet 8 opened the packet-owned receive owner through {(modeTwoOpen ? "mode 2" : "mode 0")} on the {activeTab} tab and applied {session.ReceiveEntries.Count.ToString(CultureInfo.InvariantCulture)} receive row(s){arrivalSummary}. {sessionMessage}";
             message = StatusMessage;
             return true;
         }

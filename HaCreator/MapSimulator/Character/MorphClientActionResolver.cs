@@ -57,6 +57,28 @@ namespace HaCreator.MapSimulator.Character
             "arrowRain"
         };
 
+        private static readonly string[] ClientPublishedIceSpellMorphFallbackAliases =
+        {
+            "iceAttack1",
+            "iceAttack2",
+            "iceSmash",
+            "iceTempest",
+            "iceChop",
+            "icePanic",
+            "icemanAttack"
+        };
+
+        private static readonly string[] ClientPublishedAlertMorphFallbackAliases =
+        {
+            "alert",
+            "alert2",
+            "alert3",
+            "alert4",
+            "alert5",
+            "alert6",
+            "alert7"
+        };
+
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedAuthoredMorphFallbackAliases =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
@@ -203,6 +225,28 @@ namespace HaCreator.MapSimulator.Character
                     "icePanic",
                     "icemanAttack"
                 },
+                // Evan skill rows in Skill/2200.img and Skill/2210.img through
+                // Skill/2218.img, plus the Flame Gear rows under Skill/000.img,
+                // Skill/001.img, and Skill/1211.img, still publish these client
+                // raw spell roots, while current Morph/*.img exposes no verbatim
+                // magic branches. Keep them on the already-evidenced morph
+                // spell/ice combat surface.
+                ["magicmissile"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["fireCircle"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["lightingBolt"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["flamegear"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["dragonBreathe"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["breathe_prepare"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["icebreathe_prepare"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["blaze"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["illusion"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["dragonIceBreathe"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["magicFlare"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["killingWing"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["Earthquake"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["dragonThrust"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["darkFog"] = ClientPublishedIceSpellMorphFallbackAliases,
+                ["flameWheel"] = ClientPublishedIceSpellMorphFallbackAliases,
                 ["iceAttack1"] = new[] { "icemanAttack" },
                 ["iceAttack2"] = new[] { "icemanAttack" },
                 ["iceSmash"] = new[] { "icemanAttack" },
@@ -286,6 +330,22 @@ namespace HaCreator.MapSimulator.Character
                 ["smokeshell"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["holyshield"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["resurrection"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                // Spell support/buff/debuff rows are also present as skill-side raw
+                // requests in the current WZ export, but Morph/*.img publishes no
+                // verbatim support roots for them.
+                ["elementalReset"] = ClientPublishedAlertMorphFallbackAliases,
+                ["magicRegistance"] = ClientPublishedAlertMorphFallbackAliases,
+                ["magicBooster"] = ClientPublishedAlertMorphFallbackAliases,
+                ["magicShield"] = ClientPublishedAlertMorphFallbackAliases,
+                ["recoveryAura"] = ClientPublishedAlertMorphFallbackAliases,
+                ["OnixBlessing"] = ClientPublishedAlertMorphFallbackAliases,
+                ["soulStone"] = ClientPublishedAlertMorphFallbackAliases,
+                ["ghostLettering"] = ClientPublishedAlertMorphFallbackAliases,
+                ["slow"] = ClientPublishedAlertMorphFallbackAliases,
+                ["mapleHero"] = ClientPublishedAlertMorphFallbackAliases,
+                ["OnixProtection"] = ClientPublishedAlertMorphFallbackAliases,
+                ["OnixWill"] = ClientPublishedAlertMorphFallbackAliases,
+                ["Awakening"] = ClientPublishedAlertMorphFallbackAliases,
                 // Later Demon / Mercedes support roots still resolve through the same
                 // alert-family body surface in Character/00002000.img.
                 ["demonGravity"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
@@ -428,6 +488,8 @@ namespace HaCreator.MapSimulator.Character
                 ["monsterBombPrepare"] = new[] { "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["monsterBombThrow"] = new[] { "swingOF", "swingO1", "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab", "alert" },
                 ["darkChain"] = new[] { "swingO3", "swingO2", "stabO1", "swingT1", "swingT3", "stabO2", "proneStab" },
+                ["darkLightning"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["swingT2Giant"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7", "stabO2", "stabO1", "proneStab", "swingT1", "swingT3" },
                 // The client raw table still exposes dual-blade swing-family names while
                 // archer morphs such as 1003/1103 only publish generic swingT branches.
                 ["swingC1"] = new[] { "swingT1", "swingT3" },
@@ -507,6 +569,10 @@ namespace HaCreator.MapSimulator.Character
                 ["swallow_loop"] = new[] { "sit", "stand" },
                 ["swallow"] = new[] { "sit", "stand" },
                 ["swallow_attack"] = new[] { "sit", "stand" },
+                // Skill/3212.img publishes the prepared cyclone raw action, while
+                // Character/00002000.img starts that body sequence on alert/stab
+                // frames and Morph/*.img publishes no verbatim cyclone branch.
+                ["cyclone_pre"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7", "stabO1", "stabO2", "proneStab", "swingT1", "swingT3", "stand" },
                 // Character/00002000.img backs the checked full-screen jaguar rain
                 // branch with `alert` rather than a morph-owned `*Rain` attack root.
                 ["flashRain"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7", "stand" }

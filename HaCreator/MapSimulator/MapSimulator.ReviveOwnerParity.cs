@@ -199,7 +199,8 @@ namespace HaCreator.MapSimulator
             _pendingReviveOwnerTransferRequest = null;
             _pendingReviveOwnerTransferTick = int.MinValue;
 
-            if (request.Premium && _playerManager?.Player != null)
+            if (_playerManager?.Player != null
+                && ReviveOwnerRuntime.ShouldConsumeCashItemForLocalResolution(request))
             {
                 if (!TryConsumeReviveOwnerPremiumItem(request))
                 {
@@ -213,7 +214,10 @@ namespace HaCreator.MapSimulator
                     _playerManager?.Respawn();
                     return;
                 }
+            }
 
+            if (request.Premium && _playerManager?.Player != null)
+            {
                 if (request.Variant == ReviveOwnerVariant.SoulStoneChoice)
                 {
                     _playerManager?.Skills?.CancelActiveBuff(ReviveOwnerSoulStoneSkillId);

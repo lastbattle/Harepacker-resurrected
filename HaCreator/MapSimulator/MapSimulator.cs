@@ -28700,6 +28700,43 @@ namespace HaCreator.MapSimulator
             }
 
             HashSet<string> availableTags = CollectAvailableDynamicObjectTags();
+            IReadOnlyList<FieldObjectScriptTagAliasResolver.ScriptAliasPublication> timerPublications =
+                FieldObjectScriptTagAliasResolver.ResolveTimerCallbackPublications(scriptName);
+            bool publishedTimerPublication = false;
+            for (int i = 0; i < timerPublications.Count; i++)
+            {
+                FieldObjectScriptTagAliasResolver.ScriptAliasPublication publication = timerPublications[i];
+                if (string.IsNullOrWhiteSpace(publication.ScriptName)
+                    || !FieldObjectScriptTagAliasResolver.TryResolvePublishedTagMutation(
+                        publication.ScriptName,
+                        availableTags,
+                        out _))
+                {
+                    continue;
+                }
+
+                int publicationDelayMs = delayMs >= int.MaxValue - publication.DelayMs
+                    ? int.MaxValue
+                    : delayMs + publication.DelayMs;
+                if (publicationDelayMs <= 0)
+                {
+                    publishedTimerPublication |= PublishDynamicObjectTagStatesForScriptName(
+                        publication.ScriptName,
+                        currentTickCount);
+                    continue;
+                }
+
+                int publicationDueTick = unchecked(currentTickCount + publicationDelayMs);
+                _scheduledDynamicObjectScriptPublications.Add(
+                    new ScheduledDynamicObjectScriptPublication(publication.ScriptName.Trim(), publicationDueTick));
+                publishedTimerPublication = true;
+            }
+
+            if (publishedTimerPublication)
+            {
+                return true;
+            }
+
             if (!FieldObjectScriptTagAliasResolver.TryResolvePublishedTagMutation(
                     scriptName,
                     availableTags,

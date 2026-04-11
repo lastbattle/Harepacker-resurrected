@@ -1633,11 +1633,15 @@ namespace HaCreator.MapSimulator.Interaction
             if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
             {
                 windowWidth = _packetQuestResultTopTexture?.Width ?? PacketQuestResultUtilDialogLayout.DefaultWindowWidth;
-                windowHeight = ShouldUsePacketQuestResultWindowArt()
+                int baseWindowHeight = ShouldUsePacketQuestResultWindowArt()
                     ? (_packetQuestResultTopTexture.Height
                        + (_packetQuestResultCenterTexture.Height * PacketQuestResultUtilDialogLayout.DefaultCenterRepeatCount)
                        + _packetQuestResultBottomTexture.Height)
                     : PacketQuestResultUtilDialogLayout.DefaultWindowHeight;
+                windowHeight = PacketQuestResultUtilDialogLayout.ResolveWindowHeight(
+                    baseWindowHeight,
+                    HasPacketQuestResultPrevPage(),
+                    _currentPage < GetCurrentPages().Count - 1);
             }
 
             int x = (renderWidth - windowWidth) / 2;

@@ -1774,7 +1774,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 int skillId = reader.ReadInt32();
                 int rawSkillLevel = reader.ReadInt32();
-                int rawMasterLevel = IsSkillNeedMasterLevel(skillId)
+                bool hasMasterLevelData = IsSkillNeedMasterLevel(skillId);
+                int rawMasterLevel = hasMasterLevelData
                     ? reader.ReadInt32()
                     : 0;
                 if (skillId > 0)
@@ -1787,7 +1788,8 @@ namespace HaCreator.MapSimulator.Interaction
                         0,
                         masterLevel,
                         rawSkillLevel,
-                        rawMasterLevel));
+                        rawMasterLevel,
+                        hasMasterLevelData));
                     levelsBySkillId[skillId] = normalizedSkillLevel;
                     if (masterLevel > 0)
                     {
@@ -2000,7 +2002,7 @@ namespace HaCreator.MapSimulator.Interaction
                 or 33120010;
         }
 
-        private static bool IsSkillNeedMasterLevel(int skillId)
+        internal static bool IsSkillNeedMasterLevel(int skillId)
         {
             if (skillId <= 0 || IsIgnoreMasterLevelForCommon(skillId))
             {
@@ -2415,7 +2417,8 @@ namespace HaCreator.MapSimulator.Interaction
         long ExpirationFileTime,
         int MasterLevel = 0,
         int RawSkillLevel = 0,
-        int RawMasterLevel = 0);
+        int RawMasterLevel = 0,
+        bool HasMasterLevelData = false);
 
     internal readonly record struct PacketCharacterDataNewYearCardRecord(
         int SerialNumber,

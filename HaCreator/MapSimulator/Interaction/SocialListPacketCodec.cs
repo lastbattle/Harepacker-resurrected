@@ -165,6 +165,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         GradeChange = 66,
         Ranking = 76,
+        GuildQuestNotEnoughMembers = 77,
+        GuildQuestRegistrantDisconnected = 78,
         RankTitles = 68,
         Notice = 71,
         Mark = 69,
@@ -988,6 +990,25 @@ namespace HaCreator.MapSimulator.Interaction
                             null,
                             channel,
                             waitStatus);
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.GuildQuestNotEnoughMembers:
+                    case SocialListClientGuildResultKind.GuildQuestRegistrantDisconnected:
+                    {
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            0,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            null,
+                            null,
+                            0,
+                            0,
+                            HasExplicitNotice: false,
+                            null,
+                            default,
+                            null);
                         return true;
                     }
 

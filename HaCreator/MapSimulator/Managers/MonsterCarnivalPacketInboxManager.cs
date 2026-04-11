@@ -98,13 +98,18 @@ namespace HaCreator.MapSimulator.Managers
 
         public void EnqueueLocal(int packetType, byte[] payload, string source)
         {
+            int ownerPacketType = packetType;
             if (packetType != SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode)
             {
                 payload = SpecialFieldRuntimeCoordinator.BuildCurrentWrapperRelayPayload(packetType, payload);
                 packetType = SpecialFieldRuntimeCoordinator.CurrentWrapperRelayOpcode;
             }
+            else if (!TryResolveRelayedPacketType(payload, out ownerPacketType))
+            {
+                ownerPacketType = packetType;
+            }
 
-            _pendingMessages.Enqueue(new MonsterCarnivalPacketInboxMessage(packetType, payload, source, $"{packetType}", relayedPacketType: packetType));
+            _pendingMessages.Enqueue(new MonsterCarnivalPacketInboxMessage(packetType, payload, source, $"{packetType}", relayedPacketType: ownerPacketType));
         }
 
         public bool TryDequeue(out MonsterCarnivalPacketInboxMessage message)
@@ -268,9 +273,12 @@ namespace HaCreator.MapSimulator.Managers
                             continue;
                         }
 
-                        _pendingMessages.Enqueue(new MonsterCarnivalPacketInboxMessage(packetType, payload, remoteEndpoint, line));
+                        int? relayedPacketType = TryResolveRelayedPacketType(payload, out int ownerPacketType)
+                            ? ownerPacketType
+                            : null;
+                        _pendingMessages.Enqueue(new MonsterCarnivalPacketInboxMessage(packetType, payload, remoteEndpoint, line, relayedPacketType));
                         ReceivedCount++;
-                        LastStatus = $"Queued {DescribePacketType(packetType)} from {remoteEndpoint}.";
+                        LastStatus = $"Queued {DescribePacketType(relayedPacketType ?? packetType)} from {remoteEndpoint}.";
                     }
                 }
             }
@@ -333,6 +341,16 @@ namespace HaCreator.MapSimulator.Managers
                 PacketTypeGameResult => "gameresult (353)",
                 _ => packetType.ToString()
             };
+        }
+
+        private static bool TryResolveRelayedPacketType(byte[] relayPayload, out int packetType)
+        {
+            return SpecialFieldRuntimeCoordinator.TryDecodeCurrentWrapperRelayPayload(
+                       relayPayload,
+                       out packetType,
+                       out _,
+                       out _)
+                   && packetType is >= PacketTypeEnter and <= PacketTypeGameResult;
         }
 
         private static string RemoveWhitespace(string text)

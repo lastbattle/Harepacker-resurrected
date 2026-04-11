@@ -194,10 +194,17 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (IsFollowRequestThrottled(currentTime, out int remainingMs))
+            {
+                message = $"Local follow withdraw request is throttled for another {remainingMs} ms.";
+                return false;
+            }
+
             string displayName = DescribeActor(_pendingOutgoingDriverId, nameResolver);
             _pendingOutgoingDriverId = 0;
             _pendingOutgoingAutoRequest = false;
             _pendingOutgoingKeyInput = false;
+            _lastOutgoingRequestTick = currentTime;
             _lastOutgoingRequestOpcodeDriverId = 0;
             _lastOutgoingRequestOpcodeAutoRequest = false;
             _lastOutgoingRequestOpcodeKeyInput = true;
@@ -217,11 +224,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (_lastOutgoingRequestTick != int.MinValue
-                && currentTime != int.MinValue
-                && currentTime - _lastOutgoingRequestTick < FollowRequestThrottleMs)
+            if (IsFollowRequestThrottled(currentTime, out int remainingMs))
             {
-                int remainingMs = FollowRequestThrottleMs - Math.Max(0, currentTime - _lastOutgoingRequestTick);
                 message = $"Local follow release request is throttled for another {remainingMs} ms.";
                 return false;
             }
@@ -442,16 +446,27 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (_lastOutgoingRequestTick != int.MinValue
-                && currentTime != int.MinValue
-                && currentTime - _lastOutgoingRequestTick < FollowRequestThrottleMs)
+            if (IsFollowRequestThrottled(currentTime, out int remainingMs))
             {
-                int remainingMs = FollowRequestThrottleMs - Math.Max(0, currentTime - _lastOutgoingRequestTick);
                 message = $"Local follow request to {driver.DisplayName} is throttled for another {remainingMs} ms.";
                 return false;
             }
 
             message = null;
+            return true;
+        }
+
+        private bool IsFollowRequestThrottled(int currentTime, out int remainingMs)
+        {
+            remainingMs = 0;
+            if (_lastOutgoingRequestTick == int.MinValue
+                || currentTime == int.MinValue
+                || currentTime - _lastOutgoingRequestTick >= FollowRequestThrottleMs)
+            {
+                return false;
+            }
+
+            remainingMs = FollowRequestThrottleMs - Math.Max(0, currentTime - _lastOutgoingRequestTick);
             return true;
         }
 

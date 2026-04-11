@@ -37,9 +37,9 @@ namespace HaCreator.MapSimulator.Interaction
         private const int VisibleCommentCount = 4;
         private const int VisibleCashEmoticonCount = 8;
         private const int DefaultBasicEmoticonCount = 3;
-        private const int DefaultCashEmoticonCount = ClientInventoryCashEmoticonItemCount;
+        private const int DefaultCashEmoticonCount = ClientVisibleCashEmoticonCount;
         internal const int ClientVisibleCashEmoticonCount = 8;
-        internal const int ClientInventoryCashEmoticonItemCount = 8;
+        internal const int ClientInventoryCashEmoticonItemCount = 7;
         private const int CashEmoticonItemIdStart = 5290000;
         private const int ClientCashEmoticonIdStart = 100;
         private const GuildBbsPermissionMask SupportedPermissionMask =
@@ -142,7 +142,7 @@ namespace HaCreator.MapSimulator.Interaction
         public void ConfigureEmoticonCatalog(int basicEmoticonCount, int cashEmoticonCount)
         {
             _basicEmoticonCount = Math.Max(1, basicEmoticonCount);
-            _cashEmoticonCount = Math.Clamp(cashEmoticonCount, 1, ClientInventoryCashEmoticonItemCount);
+            _cashEmoticonCount = Math.Max(1, cashEmoticonCount);
             NormalizeDraftState();
         }
 
@@ -160,7 +160,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 foreach (int itemId in ownedCashEmoticonItemIds)
                 {
-                    if (itemId >= CashEmoticonItemIdStart && itemId < CashEmoticonItemIdStart + _cashEmoticonCount)
+                    if (IsClientInventoryCashEmoticonItemId(itemId))
                     {
                         _inventoryOwnedCashEmoticonIds.Add(itemId);
                     }
@@ -1868,20 +1868,26 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryResolvePacketCashItemId(int rawValue, out int itemId)
         {
             itemId = 0;
-            if (rawValue >= CashEmoticonItemIdStart && rawValue < CashEmoticonItemIdStart + _cashEmoticonCount)
+            if (IsClientInventoryCashEmoticonItemId(rawValue))
             {
                 itemId = rawValue;
                 return true;
             }
 
             int slotIndex = rawValue - ClientCashEmoticonIdStart;
-            if (slotIndex >= 0 && slotIndex < _cashEmoticonCount)
+            if (slotIndex >= 0 && slotIndex < ClientInventoryCashEmoticonItemCount)
             {
                 itemId = CashEmoticonItemIdStart + slotIndex;
                 return true;
             }
 
             return false;
+        }
+
+        private static bool IsClientInventoryCashEmoticonItemId(int itemId)
+        {
+            return itemId >= CashEmoticonItemIdStart
+                && itemId < CashEmoticonItemIdStart + ClientInventoryCashEmoticonItemCount;
         }
 
         private static string GetEnterTitleNotice()

@@ -204,6 +204,92 @@ namespace HaCreator.MapSimulator.Character
             return frame != null;
         }
 
+        internal static bool TryGetPreparedFrameTimingAtTime(
+            CharacterAnimation animation,
+            string actionName,
+            int timeMs,
+            int actionSpeed,
+            int walkSpeed,
+            bool heldShootAction,
+            bool isMorphAvatar,
+            bool isSuperManMorph,
+            out PreparedFrameTiming timing)
+        {
+            timing = default;
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            if (animation.Frames.Count == 1)
+            {
+                int preparedDelay = ResolvePreparedFrameDelay(
+                    actionName,
+                    animation.Frames[0]?.Delay ?? 0,
+                    actionSpeed,
+                    walkSpeed,
+                    heldShootAction,
+                    0,
+                    isMorphAvatar,
+                    isSuperManMorph);
+                int singleFrameElapsed = Math.Max(0, timeMs);
+                timing = new PreparedFrameTiming(
+                    FrameIndex: 0,
+                    FrameElapsedMs: singleFrameElapsed,
+                    FrameRemainingMs: Math.Max(0, preparedDelay - singleFrameElapsed),
+                    PreparedDelayMs: Math.Max(0, preparedDelay));
+                return true;
+            }
+
+            int[] preparedDelays = new int[animation.Frames.Count];
+            long totalDuration = 0;
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                int preparedDelay = ResolvePreparedFrameDelay(
+                    actionName,
+                    animation.Frames[i]?.Delay ?? 0,
+                    actionSpeed,
+                    walkSpeed,
+                    heldShootAction,
+                    i,
+                    isMorphAvatar,
+                    isSuperManMorph);
+                preparedDelays[i] = Math.Max(0, preparedDelay);
+                totalDuration += preparedDelays[i];
+            }
+
+            if (totalDuration <= 0)
+            {
+                timing = new PreparedFrameTiming(0, 0, 0, 0);
+                return true;
+            }
+
+            long time = animation.Loop
+                ? Math.Max(0, timeMs) % totalDuration
+                : Math.Min(Math.Max(0, timeMs), totalDuration);
+            long elapsed = 0;
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                int frameDelay = preparedDelays[i];
+                if (time < elapsed + frameDelay || i == animation.Frames.Count - 1)
+                {
+                    int frameElapsed = (int)Math.Max(0, time - elapsed);
+                    timing = new PreparedFrameTiming(
+                        i,
+                        frameElapsed,
+                        Math.Max(0, frameDelay - frameElapsed),
+                        frameDelay);
+                    return true;
+                }
+
+                elapsed += frameDelay;
+            }
+
+            int lastIndex = animation.Frames.Count - 1;
+            timing = new PreparedFrameTiming(lastIndex, preparedDelays[lastIndex], 0, preparedDelays[lastIndex]);
+            return true;
+        }
+
         internal static bool TryResolveMountedTransitionBodyAnimationTime(
             string actionName,
             int elapsedTimeMs,
@@ -373,6 +459,12 @@ namespace HaCreator.MapSimulator.Character
             public Point? TamingMobHeadOrigin { get; set; }
             public Point? TamingMobMuzzleOrigin { get; set; }
         }
+
+        internal readonly record struct PreparedFrameTiming(
+            int FrameIndex,
+            int FrameElapsedMs,
+            int FrameRemainingMs,
+            int PreparedDelayMs);
 
         private static bool UsesWalkSpeedTiming(string actionName)
         {

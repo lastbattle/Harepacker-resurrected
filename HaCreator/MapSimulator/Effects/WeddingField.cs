@@ -645,7 +645,8 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PacketOwnedItemEffectItemId,
                     participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
-                    participant.AvatarModifiedRevision);
+                    participant.AvatarModifiedRevision,
+                    participant.NameTagRevision);
                 return true;
             }
 
@@ -675,7 +676,8 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PacketOwnedItemEffectItemId,
                     participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
-                    participant.AvatarModifiedRevision));
+                    participant.AvatarModifiedRevision,
+                    participant.NameTagRevision));
             }
 
             return snapshots;
@@ -706,7 +708,8 @@ namespace HaCreator.MapSimulator.Effects
                     participant.PacketOwnedItemEffectItemId,
                     participant.PacketOwnedItemEffectRevision,
                     participant.AvatarModifiedState,
-                    participant.AvatarModifiedRevision));
+                    participant.AvatarModifiedRevision,
+                    participant.NameTagRevision));
             }
 
             return snapshots;
@@ -1038,7 +1041,8 @@ namespace HaCreator.MapSimulator.Effects
                 participant.PacketOwnedItemEffectItemId,
                 participant.PacketOwnedItemEffectRevision,
                 participant.AvatarModifiedState,
-                participant.AvatarModifiedRevision);
+                participant.AvatarModifiedRevision,
+                participant.NameTagRevision);
             return true;
         }
 
@@ -1097,6 +1101,7 @@ namespace HaCreator.MapSimulator.Effects
             if (build != null)
             {
                 CharacterBuild actorBuild = build.Clone();
+                string previousName = participant.Name;
                 if (string.IsNullOrWhiteSpace(actorBuild.Name))
                 {
                     actorBuild.Name = participant.Name;
@@ -1106,6 +1111,12 @@ namespace HaCreator.MapSimulator.Effects
                 participant.Build = actorBuild;
                 participant.Assembler = new CharacterAssembler(actorBuild);
                 participant.HasExplicitBuild = true;
+                if (!string.Equals(previousName, participant.Name, StringComparison.Ordinal)
+                    || !string.Equals(actorBuild.GuildName, build.GuildName, StringComparison.Ordinal)
+                    || participant.NameTagRevision == 0)
+                {
+                    RefreshParticipantNameTag(participant);
+                }
             }
 
             if (facingRight.HasValue)
@@ -1778,6 +1789,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             participant.ActionName = ResolveVisibleParticipantActionName(participant, participant.BaseActionName);
+            RefreshParticipantNameTag(participant);
         }
 
         private static void ApplyParticipantGuildNameChanged(WeddingRemoteParticipant participant, string guildName)
@@ -1789,6 +1801,7 @@ namespace HaCreator.MapSimulator.Effects
 
             participant.Build.GuildName = string.IsNullOrWhiteSpace(guildName) ? string.Empty : guildName.Trim();
             participant.Build.HasAuthoritativeProfileGuild = true;
+            RefreshParticipantNameTag(participant);
         }
 
         private static void ApplyParticipantProfileMetadata(WeddingRemoteParticipant participant, RemoteUserProfilePacket packet)
@@ -1816,6 +1829,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 build.GuildName = string.IsNullOrWhiteSpace(packet.GuildName) ? string.Empty : packet.GuildName.Trim();
                 build.HasAuthoritativeProfileGuild = true;
+                RefreshParticipantNameTag(participant);
             }
 
             if (packet.AllianceName != null)
@@ -1929,6 +1943,17 @@ namespace HaCreator.MapSimulator.Effects
             participant.Build.GuildMarkBackgroundColor = markBackgroundColor;
             participant.Build.GuildMarkId = markId > 0 ? markId : null;
             participant.Build.GuildMarkColor = markColor;
+            RefreshParticipantNameTag(participant);
+        }
+
+        private static void RefreshParticipantNameTag(WeddingRemoteParticipant participant)
+        {
+            if (participant == null)
+            {
+                return;
+            }
+
+            participant.NameTagRevision++;
         }
 
         private bool TryResolveParticipantForTemporaryStats(int characterId, out WeddingRemoteParticipant participant, out string errorMessage)
@@ -4305,7 +4330,8 @@ namespace HaCreator.MapSimulator.Effects
         int? PacketOwnedItemEffectItemId,
         int PacketOwnedItemEffectRevision,
         RemoteUserAvatarModifiedPacket? AvatarModifiedState,
-        int AvatarModifiedRevision);
+        int AvatarModifiedRevision,
+        int NameTagRevision);
 
     internal readonly record struct WeddingRemoteSpawnPacket(
         int CharacterId,
@@ -4367,6 +4393,7 @@ namespace HaCreator.MapSimulator.Effects
         public int PacketOwnedItemEffectRevision { get; set; }
         public RemoteUserAvatarModifiedPacket? AvatarModifiedState { get; set; }
         public int AvatarModifiedRevision { get; set; }
+        public int NameTagRevision { get; set; }
         public bool MovementDrivenActionSelection { get; set; }
         public bool HasExplicitFacing { get; set; }
         public bool HasExplicitAction { get; set; }

@@ -337,6 +337,66 @@ namespace HaCreator.MapSimulator.Character
                 : ResolveDynamicPortableChairFrame(mountedFrame, tamingMobTimeMs);
         }
 
+        internal bool TryGetMountedActionLayerFrameTiming(
+            string bodyActionName,
+            int bodyTimeMs,
+            string tamingMobActionName,
+            int tamingMobTimeMs,
+            out AvatarActionLayerCoordinator.PreparedFrameTiming bodyTiming,
+            out AvatarActionLayerCoordinator.PreparedFrameTiming tamingMobTiming)
+        {
+            bodyTiming = default;
+            tamingMobTiming = default;
+            if (_overrideAvatarPart != null)
+            {
+                return false;
+            }
+
+            string preparedActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(bodyActionName, isMorphAvatar: false);
+            CharacterLoader.CharacterActionMergeInput mergeInput =
+                CharacterLoader.PrepareActionMergeInput(_build, preparedActionName, GetActiveTamingMobPart());
+            string resolvedActionName = mergeInput?.ActionName ?? preparedActionName;
+            CharacterPart activeTamingMob = mergeInput?.ActiveTamingMobPart;
+            if (activeTamingMob?.Slot != EquipSlot.TamingMob
+                || ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, resolvedActionName))
+            {
+                return false;
+            }
+
+            CharacterAnimation bodyAnimation = _build.Body?.GetAnimation(CharacterPart.ParseActionString(resolvedActionName))
+                                           ?? _build.Body?.GetAnimation(CharacterAction.Stand1);
+            string preparedTamingMobActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(
+                tamingMobActionName,
+                isMorphAvatar: false);
+            CharacterAnimation tamingMobAnimation = GetPartAnimation(activeTamingMob, preparedTamingMobActionName)
+                                                ?? GetPartAnimation(activeTamingMob, resolvedActionName);
+            if (bodyAnimation?.Frames?.Count <= 0 || tamingMobAnimation?.Frames?.Count <= 0)
+            {
+                return false;
+            }
+
+            return AvatarActionLayerCoordinator.TryGetPreparedFrameTimingAtTime(
+                       bodyAnimation,
+                       resolvedActionName,
+                       bodyTimeMs,
+                       PreparedActionSpeedDegree,
+                       PreparedWalkSpeed,
+                       HeldActionFrameDelay,
+                       isMorphAvatar: false,
+                       isSuperManMorph: false,
+                       out bodyTiming)
+                   && AvatarActionLayerCoordinator.TryGetPreparedFrameTimingAtTime(
+                       tamingMobAnimation,
+                       preparedTamingMobActionName,
+                       tamingMobTimeMs,
+                       PreparedActionSpeedDegree,
+                       PreparedWalkSpeed,
+                       HeldActionFrameDelay,
+                       isMorphAvatar: false,
+                       isSuperManMorph: false,
+                       out tamingMobTiming);
+        }
+
         public int GetFrameIndexAtTime(string actionName, int timeMs)
         {
             var frames = GetAnimation(actionName);

@@ -484,30 +484,10 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<int, List<ContextOwnedStageAffectedMapEntry>> byFieldId = new();
             foreach (WzImageProperty root in roots ?? Enumerable.Empty<WzImageProperty>())
             {
-                foreach (WzImageProperty property in EnumerateDescendants(root))
-                {
-                    int fieldId = InfoTool.GetInt(property["fieldID"], int.MinValue);
-                    string stageKeyword = InfoTool.GetString(property["stageKeyword"]);
-                    if (fieldId <= 0 || string.IsNullOrWhiteSpace(stageKeyword))
-                    {
-                        continue;
-                    }
-
-                    if (!byFieldId.TryGetValue(fieldId, out List<ContextOwnedStageAffectedMapEntry> entries))
-                    {
-                        entries = new List<ContextOwnedStageAffectedMapEntry>();
-                        byFieldId[fieldId] = entries;
-                    }
-
-                    entries.Add(new ContextOwnedStageAffectedMapEntry(
-                        fieldId,
-                        stageKeyword.Trim(),
-                        InfoTool.GetInt(property["priority"]),
-                        InfoTool.GetInt(property["questID"]),
-                        InfoTool.GetInt(property["questState"]),
-                        property["questState"] != null,
-                        InfoTool.GetInt(property["randTime"])));
-                }
+                AppendAffectedMapEntries(
+                    root,
+                    inherited: ContextOwnedStageAffectedMapRow.Empty,
+                    byFieldId);
             }
 
             return byFieldId.ToDictionary(
@@ -517,20 +497,32 @@ namespace HaCreator.MapSimulator.Interaction
                     .ToArray());
         }
 
-        private static IEnumerable<WzImageProperty> EnumerateDescendants(WzImageProperty property)
+        private static void AppendAffectedMapEntries(
+            WzImageProperty property,
+            ContextOwnedStageAffectedMapRow inherited,
+            Dictionary<int, List<ContextOwnedStageAffectedMapEntry>> byFieldId)
         {
             if (property == null)
             {
-                yield break;
+                return;
             }
 
-            yield return property;
+            ContextOwnedStageAffectedMapRow row = inherited.Merge(property);
+            int fieldId = row.ResolveFieldId(property);
+            if (fieldId > 0 && !string.IsNullOrWhiteSpace(row.StageKeyword))
+            {
+                if (!byFieldId.TryGetValue(fieldId, out List<ContextOwnedStageAffectedMapEntry> entries))
+                {
+                    entries = new List<ContextOwnedStageAffectedMapEntry>();
+                    byFieldId[fieldId] = entries;
+                }
+
+                entries.Add(row.CreateEntry(fieldId));
+            }
+
             foreach (WzImageProperty child in property.WzProperties.OfType<WzImageProperty>())
             {
-                foreach (WzImageProperty descendant in EnumerateDescendants(child))
-                {
-                    yield return descendant;
-                }
+                AppendAffectedMapEntries(child, row, byFieldId);
             }
         }
 
@@ -859,6 +851,95 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string StageTheme { get; set; }
         internal bool Enabled { get; set; }
+    }
+
+    internal readonly record struct ContextOwnedStageAffectedMapRow(
+        string StageKeyword,
+        int? Priority,
+        int? QuestId,
+        int? QuestState,
+        bool HasQuestStateGate,
+        int? RandomTimeSeconds)
+    {
+        internal static ContextOwnedStageAffectedMapRow Empty { get; } = new(
+            StageKeyword: null,
+            Priority: null,
+            QuestId: null,
+            QuestState: null,
+            HasQuestStateGate: false,
+            RandomTimeSeconds: null);
+
+        internal ContextOwnedStageAffectedMapRow Merge(WzImageProperty property)
+        {
+            string stageKeyword = ReadString(property["stageKeyword"]) ?? StageKeyword;
+            int? priority = ReadInt(property["priority"]) ?? Priority;
+            int? questId = ReadInt(property["questID"]) ?? QuestId;
+            int? questState = ReadInt(property["questState"]) ?? QuestState;
+            int? randomTimeSeconds = ReadInt(property["randTime"]) ?? RandomTimeSeconds;
+            return new ContextOwnedStageAffectedMapRow(
+                stageKeyword,
+                priority,
+                questId,
+                questState,
+                HasQuestStateGate || property["questState"] != null,
+                randomTimeSeconds);
+        }
+
+        internal int ResolveFieldId(WzImageProperty property)
+        {
+            int? currentFieldId = ReadInt(property?["fieldID"]);
+            if (currentFieldId.HasValue)
+            {
+                return currentFieldId.Value;
+            }
+
+            if (property is WzIntProperty intProperty
+                && int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return intProperty.Value;
+            }
+
+            return property != null
+                && int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
+                ? parsed
+                : int.MinValue;
+        }
+
+        internal ContextOwnedStageAffectedMapEntry CreateEntry(int fieldId)
+        {
+            return new ContextOwnedStageAffectedMapEntry(
+                fieldId,
+                StageKeyword.Trim(),
+                Priority.GetValueOrDefault(),
+                QuestId.GetValueOrDefault(),
+                QuestState.GetValueOrDefault(),
+                HasQuestStateGate,
+                RandomTimeSeconds.GetValueOrDefault());
+        }
+
+        private static string ReadString(WzImageProperty property)
+        {
+            string text = InfoTool.GetString(property);
+            return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        }
+
+        private static int? ReadInt(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            if (property is WzIntProperty intProperty)
+            {
+                return intProperty.Value;
+            }
+
+            string text = InfoTool.GetString(property);
+            return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
+                ? parsed
+                : null;
+        }
     }
 
     internal sealed record ContextOwnedStageAffectedMapEntry(

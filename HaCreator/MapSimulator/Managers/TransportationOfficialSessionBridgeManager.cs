@@ -569,10 +569,12 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryQueueRawPacket(byte[] rawPacket, out string status)
         {
+            string armStatus = null;
             if (HasPassiveEstablishedSocketPair
                 && !IsRunning
-                && !TryArmReconnectProxyForPassiveAttach(out status))
+                && !TryArmReconnectProxyForPassiveAttach(out armStatus))
             {
+                status = armStatus;
                 LastStatus = status;
                 return false;
             }
@@ -589,9 +591,12 @@ namespace HaCreator.MapSimulator.Managers
             QueuedCount++;
             LastQueuedOpcode = opcode;
             LastQueuedRawPacket = clonedPacket;
-            status = HasPassiveEstablishedSocketPair
+            string queueStatus = HasPassiveEstablishedSocketPair
                 ? $"Queued outbound {DescribeOutboundPacket(opcode, clonedPacket)} for deferred live-session injection after Maple reconnects through 127.0.0.1:{ListenPort}."
                 : $"Queued outbound {DescribeOutboundPacket(opcode, clonedPacket)} for deferred live-session injection.";
+            status = string.IsNullOrWhiteSpace(armStatus)
+                ? queueStatus
+                : $"{armStatus} {queueStatus}";
             LastStatus = status;
             return true;
         }

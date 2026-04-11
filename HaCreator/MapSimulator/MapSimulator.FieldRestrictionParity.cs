@@ -158,8 +158,50 @@ namespace HaCreator.MapSimulator
             player.TakeDamage(fallDamage.Damage, 0f, 0f);
         }
 
+        private void WireFieldDeathPenaltyHandler()
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null)
+            {
+                return;
+            }
+
+            Action<PlayerCharacter> deathHandler = player.OnDeath;
+            if (deathHandler == null
+                || Array.IndexOf(deathHandler.GetInvocationList(), (Action<PlayerCharacter>)HandlePlayerDeathApplyFieldExpPenalty) < 0)
+            {
+                player.OnDeath = deathHandler + HandlePlayerDeathApplyFieldExpPenalty;
+            }
+        }
+
+        private void HandlePlayerDeathApplyFieldExpPenalty(PlayerCharacter player)
+        {
+            CharacterBuild build = player?.Build;
+            if (build == null)
+            {
+                return;
+            }
+
+            FieldDeathPenaltyResult result = FieldDeathPenaltyEvaluator.Evaluate(
+                build.Exp,
+                build.ExpToNextLevel,
+                _mapBoard?.MapInfo?.fieldLimit ?? 0);
+
+            if (result.ShouldApply)
+            {
+                build.Exp = result.ExperienceAfter;
+            }
+
+            if (!string.IsNullOrWhiteSpace(result.Message))
+            {
+                PushFieldRuleMessage(result.Message, Environment.TickCount, showOverlay: false);
+            }
+        }
+
         private void ApplyFieldRuntimeInteractionRestrictions()
         {
+            WireFieldDeathPenaltyHandler();
+
             PetController pets = _playerManager?.Pets;
             if (pets != null)
             {

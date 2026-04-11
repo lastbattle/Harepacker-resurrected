@@ -17,6 +17,57 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public class LimitedViewField
     {
+        internal const int ClientOwnedDarkCanvasWidth = 1024;
+        internal const int ClientOwnedDarkCanvasHeight = 768;
+        internal const int ClientOwnedDarkLayerOffsetX = -512;
+        internal const int ClientOwnedDarkLayerOffsetY = -468;
+        internal const int ClientOwnedSmallDarkCanvasWidth = 316;
+        internal const int ClientOwnedSmallDarkCanvasHeight = 316;
+        internal const int ClientOwnedCanvasClassStringPoolId = 0x3D0;
+        internal const int ClientOwnedViewrangePathStringPoolId = 0xE6E;
+
+        internal enum ClientOwnedInitOperationKind
+        {
+            CreateDarkCanvas,
+            FillDarkCanvasBlack,
+            CreateDarkLayer,
+            InsertDarkCanvasIntoLayer,
+            BindDarkLayerToGraphicsCenter,
+            MoveDarkLayer,
+            SetDarkLayerColor,
+            SetDarkLayerZ,
+            CreateSmallDarkCanvas,
+            FillSmallDarkCanvasBlack,
+            LoadViewrangeCanvas,
+            DrawInitialViewrange
+        }
+
+        internal readonly struct ClientOwnedInitOperation
+        {
+            public ClientOwnedInitOperation(
+                ClientOwnedInitOperationKind kind,
+                int width = 0,
+                int height = 0,
+                int x = 0,
+                int y = 0,
+                string source = null)
+            {
+                Kind = kind;
+                Width = Math.Max(0, width);
+                Height = Math.Max(0, height);
+                X = x;
+                Y = y;
+                Source = source ?? string.Empty;
+            }
+
+            public ClientOwnedInitOperationKind Kind { get; }
+            public int Width { get; }
+            public int Height { get; }
+            public int X { get; }
+            public int Y { get; }
+            public string Source { get; }
+        }
+
         internal enum ClientOwnedDrawViewrangeOperationKind
         {
             RestorePreviousSmallDarkPatch,

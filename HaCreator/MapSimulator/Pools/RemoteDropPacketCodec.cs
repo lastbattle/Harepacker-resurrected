@@ -148,14 +148,13 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (reason == PacketDropLeaveReason.PetPickup)
                 {
-                    try
+                    if (reader.Remaining < sizeof(int))
                     {
-                        secondaryActorId = reader.ReadInt();
+                        error = "DropLeave pet-pickup payload must include the client nPetIndex field.";
+                        return false;
                     }
-                    catch (EndOfStreamException)
-                    {
-                        secondaryActorId = 0;
-                    }
+
+                    secondaryActorId = reader.ReadInt();
                 }
 
                 packet = new RemoteDropLeavePacket(reason, dropId, actorId, delayMs, secondaryActorId);

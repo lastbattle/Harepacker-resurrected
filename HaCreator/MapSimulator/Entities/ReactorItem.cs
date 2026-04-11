@@ -291,6 +291,17 @@ namespace HaCreator.MapSimulator.Entities
             Position = new Point(_originWorldX - x, _originWorldY - y);
         }
 
+        internal void SetLogicalWorldPosition(int x, int y)
+        {
+            if (_reactorInstance == null)
+            {
+                return;
+            }
+
+            _reactorInstance.X = x;
+            _reactorInstance.Y = y;
+        }
+
         public void SetFlipState(bool isFlipped)
         {
             flip = isFlipped;
@@ -488,9 +499,17 @@ namespace HaCreator.MapSimulator.Entities
 
         public int GetRemainingStoppedAnimationDuration(int tickCount)
         {
-            return _transientFrames == null && IsStateRepeat(_activeState)
-                ? 0
-                : GetRemainingAnimationDuration(tickCount);
+            return ResolveStoppedAnimationDuration(GetRemainingAnimationDuration(tickCount));
+        }
+
+        internal static int ResolveStoppedAnimationDurationForTesting(int remainingAnimationDuration)
+        {
+            return ResolveStoppedAnimationDuration(remainingAnimationDuration);
+        }
+
+        private static int ResolveStoppedAnimationDuration(int remainingAnimationDuration)
+        {
+            return Math.Max(0, remainingAnimationDuration);
         }
 
         public int GetHitAnimationDuration(int state)
@@ -1293,6 +1312,7 @@ namespace HaCreator.MapSimulator.Entities
                 .ThenBy(transition => GetSameTypeDescendantLookaheadPriority(transition, request))
                 .ThenBy(transition => GetAuthoredGraphContinuationLookaheadPriority(transition, request))
                 .ThenBy(transition => GetAuthoredGraphContinuationWeightLookaheadPriority(transition, request))
+                .ThenBy(transition => GetAuthoredGraphAnyContinuationLookaheadPriority(transition, request))
                 .ThenBy(transition => transition.Order)
                 .ToArray();
 
@@ -1565,6 +1585,55 @@ namespace HaCreator.MapSimulator.Entities
             return continuationDepth > 0
                 ? -Math.Min(continuationDepth, 32)
                 : 0;
+        }
+
+        private int GetAuthoredGraphAnyContinuationLookaheadPriority(AuthoredStateTransition transition, ReactorTransitionRequest request)
+        {
+            if (request.ActivationType == ReactorActivationType.None
+                || request.ActivationType == ReactorActivationType.Quest)
+            {
+                return 0;
+            }
+
+            int resolvedTargetState = ResolveState(transition.TargetState);
+            int continuationWeight = ResolveAuthoredGraphAnyContinuationWeight(
+                resolvedTargetState,
+                new HashSet<int> { resolvedTargetState });
+            return continuationWeight > 0
+                ? -Math.Min(continuationWeight, 128)
+                : 0;
+        }
+
+        private int ResolveAuthoredGraphAnyContinuationWeight(int state, HashSet<int> visitedStates)
+        {
+            int resolvedState = ResolveState(state);
+            if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                return 0;
+            }
+
+            int weight = 0;
+            foreach (AuthoredStateTransition transition in transitions)
+            {
+                if (transition.TargetState == resolvedState
+                    || !HasRenderableState(transition.TargetState))
+                {
+                    continue;
+                }
+
+                weight++;
+                int nextState = ResolveState(transition.TargetState);
+                if (!visitedStates.Add(nextState))
+                {
+                    continue;
+                }
+
+                weight += ResolveAuthoredGraphAnyContinuationWeight(nextState, visitedStates);
+                visitedStates.Remove(nextState);
+            }
+
+            return weight;
         }
 
         private int ResolveAuthoredGraphContinuationDepth(int state, HashSet<int> visitedStates)

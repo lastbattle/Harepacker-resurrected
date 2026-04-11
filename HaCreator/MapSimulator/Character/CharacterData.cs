@@ -1463,8 +1463,8 @@ namespace HaCreator.MapSimulator.Character
                 8 => ClientAttackActionFamily.KnuckleHybrid,
                 9 => ClientAttackActionFamily.GunShoot,
                 10 when normalizedWeaponType == "katara" => ClientAttackActionFamily.KataraSubWeapon,
-                11 when normalizedWeaponType == "double bowgun" => ClientAttackActionFamily.DualBowgunHybrid,
-                12 when normalizedWeaponType == "cannon" => ClientAttackActionFamily.CannonHybrid,
+                11 => ClientAttackActionFamily.DualBowgunHybrid,
+                12 => ClientAttackActionFamily.CannonHybrid,
                 _ => ClientAttackActionFamily.None
             };
         }

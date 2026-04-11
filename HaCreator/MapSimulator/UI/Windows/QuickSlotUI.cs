@@ -642,7 +642,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             Rectangle hoveredSlotRect = ResolveSlotBounds(_hoveredSlot);
-            Point tooltipAnchor = new Point(hoveredSlotRect.Right + TOOLTIP_OFFSET_X, hoveredSlotRect.Bottom);
+            Point tooltipAnchor = ResolveTooltipAnchor(hoveredSlotRect);
 
             int absoluteSlotIndex = SlotOffset + _hoveredSlot;
             int macroIndex = _skillManager?.GetHotkeyMacroIndex(absoluteSlotIndex) ?? -1;
@@ -765,7 +765,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             Rectangle hoveredSlotRect = ResolveSlotBounds(_hoveredSlot);
-            Point tooltipAnchor = new Point(hoveredSlotRect.Right + TOOLTIP_OFFSET_X, hoveredSlotRect.Bottom);
+            Point tooltipAnchor = ResolveTooltipAnchor(hoveredSlotRect);
 
             int itemCount = _skillManager.GetHotkeyItemCount(absoluteSlotIndex);
             InventoryType inventoryType = _skillManager.GetHotkeyItemInventoryType(absoluteSlotIndex);
@@ -890,7 +890,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             Rectangle hoveredSlotRect = ResolveSlotBounds(_hoveredSlot);
-            Point tooltipAnchor = new Point(hoveredSlotRect.Right + TOOLTIP_OFFSET_X, hoveredSlotRect.Bottom);
+            Point tooltipAnchor = ResolveTooltipAnchor(hoveredSlotRect);
 
             int tooltipWidth = ResolveTooltipWidth();
             string[] wrappedTitle = WrapTooltipText(SanitizeFontText(macro.Name), tooltipWidth - (TOOLTIP_PADDING * 2));
@@ -988,6 +988,11 @@ namespace HaCreator.MapSimulator.UI
                 contentY + row * rowHeight,
                 SLOT_SIZE,
                 SLOT_SIZE);
+        }
+
+        internal static Point ResolveTooltipAnchor(Rectangle slotRect)
+        {
+            return new Point(slotRect.Right + TOOLTIP_OFFSET_X, slotRect.Bottom + TOOLTIP_OFFSET_Y);
         }
 
         private Rectangle ResolveTooltipRect(

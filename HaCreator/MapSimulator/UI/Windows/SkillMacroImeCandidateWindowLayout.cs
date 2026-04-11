@@ -1,6 +1,7 @@
 using System;
 using HaCreator.MapSimulator;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -177,6 +178,53 @@ namespace HaCreator.MapSimulator.UI
             return columnIndex >= 0 && columnIndex < visibleCount
                 ? columnIndex
                 : -1;
+        }
+
+        internal static int ResolveVisibleCandidateIndexFromKeyboard(
+            ImeCandidateListState state,
+            KeyboardState keyboard,
+            Func<KeyboardState, Keys, bool> wasPressed)
+        {
+            if (state == null || !state.HasCandidates || wasPressed == null)
+            {
+                return -1;
+            }
+
+            int visibleNumber = ResolvePressedCandidateNumber(keyboard, wasPressed);
+            if (visibleNumber <= 0)
+            {
+                return -1;
+            }
+
+            int pageStart = Math.Clamp(state.PageStart, 0, state.Candidates.Count);
+            int pageSize = state.PageSize > 0 ? state.PageSize : state.Candidates.Count;
+            int visibleCount = Math.Max(0, Math.Min(pageSize, state.Candidates.Count - pageStart));
+            if (visibleNumber > visibleCount)
+            {
+                return -1;
+            }
+
+            return pageStart + visibleNumber - 1;
+        }
+
+        private static int ResolvePressedCandidateNumber(
+            KeyboardState keyboard,
+            Func<KeyboardState, Keys, bool> wasPressed)
+        {
+            for (int i = 0; i < 9; i++)
+            {
+                if (wasPressed(keyboard, Keys.D1 + i) || wasPressed(keyboard, Keys.NumPad1 + i))
+                {
+                    return i + 1;
+                }
+            }
+
+            if (wasPressed(keyboard, Keys.D0) || wasPressed(keyboard, Keys.NumPad0))
+            {
+                return 10;
+            }
+
+            return -1;
         }
     }
 }

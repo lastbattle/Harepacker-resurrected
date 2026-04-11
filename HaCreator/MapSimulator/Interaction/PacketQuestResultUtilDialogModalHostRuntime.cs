@@ -10,6 +10,8 @@ namespace HaCreator.MapSimulator.Interaction
         int PageCount,
         bool HasPrevPage,
         bool HasNextPage,
+        bool HasTextNavigation,
+        int TextNavigationExtraHeight,
         int EnterCount,
         int RunPumpCount,
         int ExitCount,
@@ -27,6 +29,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal int PageCount { get; private set; }
         internal bool HasPrevPage { get; private set; }
         internal bool HasNextPage { get; private set; }
+        internal bool HasTextNavigation => HasPrevPage || HasNextPage;
+        internal int TextNavigationExtraHeight =>
+            HasTextNavigation ? PacketQuestResultUtilDialogLayout.TextNavigationExtraHeight : 0;
         internal int EnterCount { get; private set; }
         internal int RunPumpCount { get; private set; }
         internal int ExitCount { get; private set; }
@@ -84,6 +89,8 @@ namespace HaCreator.MapSimulator.Interaction
                 PageCount,
                 HasPrevPage,
                 HasNextPage,
+                HasTextNavigation,
+                TextNavigationExtraHeight,
                 EnterCount,
                 RunPumpCount,
                 ExitCount,

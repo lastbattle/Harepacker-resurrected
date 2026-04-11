@@ -1417,6 +1417,7 @@ namespace HaCreator.MapSimulator.UI
         public string Title { get; init; } = string.Empty;
         public string Detail { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
+        public string AlarmText { get; init; } = string.Empty;
         public EventEntryStatus Status { get; init; }
         public DateTime ScheduledAt { get; init; } = DateTime.Today;
         public int SourceTick { get; init; } = int.MinValue;
