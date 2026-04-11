@@ -98,10 +98,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
         private static readonly HashSet<int> ReleaseArmedTextSkillIds = new()
         {
+            FireArrowIceArrowSkillId,
             2121001,
             2221001,
             2321001,
             3221001,
+            AssaulterShadowChargeSkillId,
             PirateScrewPunchSkillId,
             PoisonBombSkillId,
             4341002,
@@ -336,6 +338,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return clampedElapsedMs;
+        }
+
+        public static bool CanExecuteReleasePayload(int skillId, int elapsedMs, int gaugeDurationMs = 0)
+        {
+            int normalizedElapsedMs = ResolveReleaseChargeElapsedMs(skillId, elapsedMs, gaugeDurationMs);
+            if (normalizedElapsedMs <= 0)
+            {
+                return false;
+            }
+
+            if (skillId == WildHunterSwallowSkillId)
+            {
+                int normalizedGaugeDurationMs = gaugeDurationMs > 0
+                    ? gaugeDurationMs
+                    : ResolveGaugeDuration(skillId);
+                return normalizedGaugeDurationMs > 0
+                    && normalizedElapsedMs >= normalizedGaugeDurationMs;
+            }
+
+            return true;
         }
 
         public static void ResolveRemotePreparedSkillPhases(

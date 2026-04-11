@@ -136,6 +136,31 @@ namespace HaCreator.MapSimulator.Fields
             _lastUpdateToken = int.MinValue;
         }
 
+        internal void SetAttachedFollowerForTest(MobMovementInfo movement)
+        {
+            _attachedFollower = movement;
+        }
+
+        internal void BeginUpdatePassForTest(int updateToken)
+        {
+            BeginUpdatePass(updateToken);
+        }
+
+        internal void MarkFrameStartingFollowerProcessedForTest()
+        {
+            _frameStartingFollowerProcessed = true;
+        }
+
+        internal bool IsFrameStartingFollowerForTest(MobMovementInfo movement)
+        {
+            return ReferenceEquals(_frameStartingFollower, movement);
+        }
+
+        internal bool IsFrameStartingFollowerProcessedForTest()
+        {
+            return _frameStartingFollowerProcessed;
+        }
+
         private void BeginUpdatePass(int updateToken)
         {
             if (_lastUpdateToken == updateToken)

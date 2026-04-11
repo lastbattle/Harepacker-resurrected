@@ -2396,6 +2396,11 @@ namespace HaCreator.MapSimulator.Loaders
                 System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading job skills into SkillUIBigBang for job {jobId}");
                 LoadSkillsForJob(skillBigBang, jobId, device);
             }
+            else if (skill is SkillUI legacySkill)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading job skills into SkillUI for job {jobId}");
+                LoadSkillsForJob(legacySkill, jobId, device);
+            }
 
 
             // Create skill macro window (post-BB only)

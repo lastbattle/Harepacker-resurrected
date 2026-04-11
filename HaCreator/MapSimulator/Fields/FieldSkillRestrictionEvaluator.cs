@@ -652,11 +652,6 @@ namespace HaCreator.MapSimulator.Fields
                 return 0;
             }
 
-            if (jobId >= 800 && jobId < 1000)
-            {
-                return 1;
-            }
-
             if (ClientFacingNoSkillClassExcludedRoots.Contains(jobId))
             {
                 return 0;

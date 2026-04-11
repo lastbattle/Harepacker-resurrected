@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator
         private string OpenGuildRankWindow()
         {
             GuildDialogContext dialogContext = _socialListRuntime.BuildGuildDialogContext(_playerManager?.Player?.Build);
+            _guildRankController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             return _guildRankController.Open(
                 uiWindowManager,
                 _playerManager?.Player?.Build,
@@ -20,6 +21,7 @@ namespace HaCreator.MapSimulator
 
         private string OpenGuildMarkWindow()
         {
+            _guildMarkController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             return _guildMarkController.Open(
                 uiWindowManager,
                 _fontChat,
@@ -32,6 +34,7 @@ namespace HaCreator.MapSimulator
         private string OpenGuildCreateAgreementWindow(string masterName, string guildName)
         {
             GuildDialogContext dialogContext = _socialListRuntime.BuildGuildDialogContext(_playerManager?.Player?.Build);
+            _guildCreateAgreementController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             return _guildCreateAgreementController.Open(
                 masterName,
                 guildName,
@@ -46,6 +49,7 @@ namespace HaCreator.MapSimulator
         private void WireGuildRankWindowData()
         {
             GuildDialogContext dialogContext = _socialListRuntime.BuildGuildDialogContext(_playerManager?.Player?.Build);
+            _guildRankController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             _guildRankController.WireWindow(
                 uiWindowManager,
                 _playerManager?.Player?.Build,
@@ -57,6 +61,7 @@ namespace HaCreator.MapSimulator
 
         private void WireGuildMarkWindowData()
         {
+            _guildMarkController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             _guildMarkController.WireWindow(
                 uiWindowManager,
                 _fontChat,
@@ -67,6 +72,7 @@ namespace HaCreator.MapSimulator
 
         private void WireGuildCreateAgreementWindowData()
         {
+            _guildCreateAgreementController.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             _guildCreateAgreementController.WireWindow(
                 uiWindowManager,
                 _fontChat,

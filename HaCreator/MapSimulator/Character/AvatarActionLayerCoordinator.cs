@@ -466,6 +466,114 @@ namespace HaCreator.MapSimulator.Character
             int FrameRemainingMs,
             int PreparedDelayMs);
 
+        internal readonly record struct PreparedFrameClock(
+            int FrameIndex,
+            int FrameRemainingMs);
+
+        internal static bool TryCreatePreparedFrameClock(
+            CharacterAnimation animation,
+            string actionName,
+            int actionSpeed,
+            int walkSpeed,
+            bool heldShootAction,
+            bool isMorphAvatar,
+            bool isSuperManMorph,
+            out PreparedFrameClock clock)
+        {
+            clock = default;
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            int preparedDelay = ResolvePreparedDelayAtFrameIndex(
+                animation,
+                actionName,
+                0,
+                actionSpeed,
+                walkSpeed,
+                heldShootAction,
+                isMorphAvatar,
+                isSuperManMorph);
+            clock = new PreparedFrameClock(
+                0,
+                preparedDelay);
+            return true;
+        }
+
+        internal static bool TryAdvancePreparedFrameClock(
+            CharacterAnimation animation,
+            string actionName,
+            ref PreparedFrameClock clock,
+            int elapsedMs,
+            int actionSpeed,
+            int walkSpeed,
+            bool heldShootAction,
+            bool isMorphAvatar,
+            bool isSuperManMorph,
+            bool allowLoop,
+            out bool completedAction,
+            out int remainingElapsedMs)
+        {
+            completedAction = false;
+            remainingElapsedMs = 0;
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return false;
+            }
+
+            int frameCount = animation.Frames.Count;
+            int frameIndex = Math.Clamp(clock.FrameIndex, 0, frameCount - 1);
+            int frameRemaining = clock.FrameRemainingMs;
+            if (frameRemaining <= 0)
+            {
+                frameRemaining = ResolvePreparedDelayAtFrameIndex(
+                    animation,
+                    actionName,
+                    frameIndex,
+                    actionSpeed,
+                    walkSpeed,
+                    heldShootAction,
+                    isMorphAvatar,
+                    isSuperManMorph);
+            }
+
+            int elapsed = Math.Max(0, elapsedMs);
+            while (elapsed > 0)
+            {
+                if (frameRemaining > elapsed)
+                {
+                    frameRemaining -= elapsed;
+                    elapsed = 0;
+                    break;
+                }
+
+                elapsed -= Math.Max(frameRemaining, 0);
+                bool reachedLastFrame = frameIndex >= frameCount - 1;
+                if (reachedLastFrame && !allowLoop)
+                {
+                    clock = new PreparedFrameClock(frameIndex, 0);
+                    completedAction = true;
+                    remainingElapsedMs = elapsed;
+                    return true;
+                }
+
+                frameIndex = reachedLastFrame ? 0 : frameIndex + 1;
+                frameRemaining = ResolvePreparedDelayAtFrameIndex(
+                    animation,
+                    actionName,
+                    frameIndex,
+                    actionSpeed,
+                    walkSpeed,
+                    heldShootAction,
+                    isMorphAvatar,
+                    isSuperManMorph);
+            }
+
+            clock = new PreparedFrameClock(frameIndex, Math.Max(0, frameRemaining));
+            return true;
+        }
+
         private static bool UsesWalkSpeedTiming(string actionName)
         {
             if (!CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode))
@@ -558,6 +666,33 @@ namespace HaCreator.MapSimulator.Character
         {
             point = Point.Zero;
             return frame?.Map != null && frame.Map.TryGetValue(name, out point);
+        }
+
+        private static int ResolvePreparedDelayAtFrameIndex(
+            CharacterAnimation animation,
+            string actionName,
+            int frameIndex,
+            int actionSpeed,
+            int walkSpeed,
+            bool heldShootAction,
+            bool isMorphAvatar,
+            bool isSuperManMorph)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int clampedFrameIndex = Math.Clamp(frameIndex, 0, animation.Frames.Count - 1);
+            return Math.Max(0, ResolvePreparedFrameDelay(
+                actionName,
+                animation.Frames[clampedFrameIndex]?.Delay ?? 0,
+                actionSpeed,
+                walkSpeed,
+                heldShootAction,
+                clampedFrameIndex,
+                isMorphAvatar,
+                isSuperManMorph));
         }
 
         private static Point ApplyClientFlip(Point point, bool facingRight)

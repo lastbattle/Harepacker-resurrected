@@ -21,6 +21,7 @@ namespace HaCreator.MapSimulator.Interaction
             true,
             Array.Empty<GuildRankingSeedEntry>());
         private string _statusMessage = "Guild creation agreement is idle.";
+        internal Action<string, int> SocialChatObserved { get; set; }
 
         internal string Open(string masterName, string guildName, GuildDialogContext dialogContext)
         {
@@ -32,6 +33,7 @@ namespace HaCreator.MapSimulator.Interaction
             _masterName = string.IsNullOrWhiteSpace(masterName) ? "Guild Master" : masterName.Trim();
             _guildName = string.IsNullOrWhiteSpace(guildName) ? "New Guild" : guildName.Trim();
             _statusMessage = $"Opened guild creation agreement for {_masterName} creating {_guildName}. The guild-management seam now supplies the active role and admission state, while packet or script entry still remains outside the simulator.";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
@@ -58,6 +60,7 @@ namespace HaCreator.MapSimulator.Interaction
             _timedOut = true;
             string timeoutText = MapleStoryStringPool.GetOrFallback(0x015A, "The guild creation agreement timed out.");
             _statusMessage = $"{timeoutText} ({_masterName}, {_guildName})";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
@@ -79,6 +82,7 @@ namespace HaCreator.MapSimulator.Interaction
             _isOpen = false;
             acceptance = new GuildCreateAgreementAcceptance(_masterName, _guildName, DateTimeOffset.UtcNow);
             _statusMessage = $"Accepted guild creation agreement for {_masterName} and {_guildName}. The simulator now hands the acceptance back to the shared guild seam, but a real server-backed guild record still remains outside this runtime.";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
@@ -93,6 +97,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isOpen = false;
             _statusMessage = $"Declined guild creation agreement for {_masterName} and {_guildName}.";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
@@ -118,6 +123,16 @@ namespace HaCreator.MapSimulator.Interaction
                 IntroRemainingMs = Math.Max(0, IntroRevealDurationMs - _elapsedMs),
                 StatusMessage = _statusMessage
             };
+        }
+
+        private void NotifySocialChatObserved(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message.Trim(), Environment.TickCount);
         }
 
         private bool IsInteractive => _isOpen && _elapsedMs >= IntroRevealDurationMs;

@@ -2659,8 +2659,8 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int x = reactor.ReactorInstance.X;
-            int y = reactor.ReactorInstance.Y;
+            int x = reactor.CurrentWorldX;
+            int y = reactor.CurrentWorldY;
             ReactorFootholdPlacement placement = _reactorFootholdPlacementResolver?.Invoke(x, y)
                 ?? new ReactorFootholdPlacement(0, 0);
             reactor.RenderSortKey = ResolveReactorRenderSortKey(
@@ -2800,68 +2800,36 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            static List<PacketEnterAuthoredReactorCandidate> IntersectCandidates(
+            static List<PacketEnterAuthoredReactorCandidate> PreferTrueCandidates(
                 IReadOnlyList<PacketEnterAuthoredReactorCandidate> scope,
-                bool? requirePacketNameMatch = null,
-                bool? requireExactName = null,
-                bool? requireImmediatePosition = null,
-                bool? requireLocallyTouched = null,
-                int? requiredVisualState = null)
+                Func<PacketEnterAuthoredReactorCandidate, bool> selector)
             {
-                IEnumerable<PacketEnterAuthoredReactorCandidate> query = scope ?? Array.Empty<PacketEnterAuthoredReactorCandidate>();
-
-                if (requirePacketNameMatch.HasValue)
+                if (scope == null || scope.Count == 0 || selector == null)
                 {
-                    query = query.Where(candidate => candidate.MatchesPacketName == requirePacketNameMatch.Value);
+                    return scope?.ToList() ?? new List<PacketEnterAuthoredReactorCandidate>();
                 }
 
-                if (requireExactName.HasValue)
-                {
-                    query = query.Where(candidate => candidate.HasExactNameMatch == requireExactName.Value);
-                }
-
-                if (requireImmediatePosition.HasValue)
-                {
-                    query = query.Where(candidate => candidate.ContainsCurrentLocalUserPosition == requireImmediatePosition.Value);
-                }
-
-                if (requireLocallyTouched.HasValue)
-                {
-                    query = query.Where(candidate => candidate.IsLocallyTouched == requireLocallyTouched.Value);
-                }
-
-                if (requiredVisualState.HasValue)
-                {
-                    query = query.Where(candidate => candidate.VisualState == requiredVisualState.Value);
-                }
-
-                return query.ToList();
+                List<PacketEnterAuthoredReactorCandidate> preferred = scope
+                    .Where(selector)
+                    .ToList();
+                return preferred.Count > 0
+                    ? preferred
+                    : scope.ToList();
             }
 
-            IReadOnlyList<PacketEnterAuthoredReactorCandidate>[] prioritizedScopes =
+            List<PacketEnterAuthoredReactorCandidate> scope = candidates.ToList();
+            Func<PacketEnterAuthoredReactorCandidate, bool>[] prioritizedFilters =
             {
-                IntersectCandidates(candidates, requirePacketNameMatch: true, requireImmediatePosition: true, requireLocallyTouched: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requirePacketNameMatch: true, requireImmediatePosition: true, requireLocallyTouched: true),
-                IntersectCandidates(candidates, requirePacketNameMatch: true, requireImmediatePosition: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requirePacketNameMatch: true, requireLocallyTouched: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requirePacketNameMatch: true, requireImmediatePosition: true),
-                IntersectCandidates(candidates, requirePacketNameMatch: true, requireLocallyTouched: true),
-                IntersectCandidates(candidates, requirePacketNameMatch: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requireExactName: true, requireImmediatePosition: true, requireLocallyTouched: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requireExactName: true, requireImmediatePosition: true, requireLocallyTouched: true),
-                IntersectCandidates(candidates, requireExactName: true, requireImmediatePosition: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requireExactName: true, requireLocallyTouched: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requireImmediatePosition: true, requireLocallyTouched: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requireExactName: true, requireImmediatePosition: true),
-                IntersectCandidates(candidates, requireExactName: true, requireLocallyTouched: true),
-                IntersectCandidates(candidates, requireImmediatePosition: true, requireLocallyTouched: true),
-                IntersectCandidates(candidates, requireExactName: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requireImmediatePosition: true, requiredVisualState: initialState),
-                IntersectCandidates(candidates, requireLocallyTouched: true, requiredVisualState: initialState)
+                static candidate => candidate.HasExactNameMatch,
+                static candidate => candidate.MatchesPacketName,
+                static candidate => candidate.ContainsCurrentLocalUserPosition,
+                static candidate => candidate.IsLocallyTouched,
+                candidate => candidate.VisualState == initialState
             };
 
-            foreach (IReadOnlyList<PacketEnterAuthoredReactorCandidate> scope in prioritizedScopes)
+            foreach (Func<PacketEnterAuthoredReactorCandidate, bool> filter in prioritizedFilters)
             {
+                scope = PreferTrueCandidates(scope, filter);
                 if (TrySelectUniqueCandidate(scope, out index))
                 {
                     selectionReason = PacketEnterAuthoredReactorSelectionReason.ClientSignal;
@@ -2869,7 +2837,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            if (TrySelectFullyAmbiguousWzAuthoredOrderCandidate(candidates, initialState, out index))
+            if (TrySelectFullyAmbiguousWzAuthoredOrderCandidate(scope, initialState, out index))
             {
                 selectionReason = PacketEnterAuthoredReactorSelectionReason.WzAuthoredOrderFallback;
                 return true;
@@ -3670,8 +3638,7 @@ namespace HaCreator.MapSimulator.Pools
                 && currentTick >= data.PacketStateEndTime
                 && data.PacketHitStartTime <= 0
                 && data.PacketAnimationEndTime <= 0
-                && !data.PacketLeavePending
-                && !ShouldPreservePacketSourceAfterAutoHitLayerRefusal(data);
+                && !data.PacketLeavePending;
         }
 
         internal static bool ShouldDelayActivatedPacketHandoffUntilStateEnd(ReactorRuntimeData data, int currentTick)
@@ -3711,7 +3678,7 @@ namespace HaCreator.MapSimulator.Pools
                 && !data.PacketLeavePending;
         }
 
-        private static void RefuseUnmatchedPacketAutoHitLayer(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
+        internal static void RefuseUnmatchedPacketAutoHitLayer(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
         {
             if (data == null)
             {
@@ -3720,12 +3687,10 @@ namespace HaCreator.MapSimulator.Pools
 
             reactor?.ClearTransientAnimation();
             data.PacketPendingVisualState = -1;
-            data.PacketStateEndTime = 0;
             data.PacketAnimationEndTime = 0;
-            data.PacketAnimationPhase = PacketReactorAnimationPhase.Idle;
-            data.State = ReactorState.Active;
+            data.PacketAnimationPhase = PacketReactorAnimationPhase.AwaitingAutoHitLayerCompletion;
+            data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
-            ClearPacketStateMovement(reactor, data, snapToTarget: false);
         }
 
         private static void CommitPacketVisualOwnership(ReactorItem reactor, ReactorRuntimeData data, int currentTick)

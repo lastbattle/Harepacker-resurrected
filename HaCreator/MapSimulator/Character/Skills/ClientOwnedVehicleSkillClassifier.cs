@@ -140,10 +140,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             // WZ publishes these exact roots on Character/TamingMob/01932016, and the client
             // taming-mob action gates key the extra coverage by vehicle id rather than prefix.
-            // IsAbleTamingMobOneTimeAction still admits raw action 241 (gatlingshot2)
-            // for vehicle 1932016. The neighboring standalone one-shot skill names
-            // gatlingshot, drillrush, earthslug, mbooster, and rpunch remain WZ-only
-            // vehicle surfaces here until client transform-owner evidence promotes them.
+            // The active transform-owner seam still comes from MoveAction2RawAction and the
+            // active 35121005 tank path in PrepareActionLayer. Even though
+            // IsAbleTamingMobOneTimeAction admits raw action 241 (gatlingshot2) for vehicle
+            // 1932016, PrepareActionLayer only rewrites that one-time root after the tank owner
+            // is already active, so gatlingshot2 stays out of the standalone current-action /
+            // transform-owner surface alongside gatlingshot, drillrush, earthslug, mbooster,
+            // and rpunch until explicit client owner evidence promotes them.
             "tank_pre",
             "tank",
             "tank_walk",
@@ -167,7 +170,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             "rbooster_pre",
             "rbooster",
             "rbooster_after",
-            "gatlingshot2",
             "msummon",
             "msummon2",
             "ride2",
@@ -345,6 +347,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool IsWzOnlyMechanicVehicleOneTimeActionName(string actionName)
         {
             return string.Equals(actionName, "gatlingshot", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "gatlingshot2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "drillrush", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "earthslug", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "mbooster", StringComparison.OrdinalIgnoreCase)

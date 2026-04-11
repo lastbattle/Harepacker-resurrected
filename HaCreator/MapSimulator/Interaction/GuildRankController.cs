@@ -8,6 +8,10 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class GuildRankController
     {
         private readonly GuildRankRuntime _runtime = new();
+        internal Action<string, int> SocialChatObserved
+        {
+            set => _runtime.SocialChatObserved = value;
+        }
 
         internal string DescribeStatus()
         {

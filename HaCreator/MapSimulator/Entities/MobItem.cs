@@ -533,6 +533,23 @@ namespace HaCreator.MapSimulator.Entities
             return _animationSet?.GetAttackInfoMetadata(attackAction);
         }
 
+        public MobAttackData GetAttackData(string attackAction)
+        {
+            MobData mobData = _mobInstance?.MobInfo?.MobData;
+            if (mobData?.AttackData == null || string.IsNullOrWhiteSpace(attackAction))
+            {
+                return null;
+            }
+
+            int actionIndex = ResolveActionIndex(attackAction);
+            if (actionIndex <= 0)
+            {
+                return null;
+            }
+
+            return GetAttackMetadataForAction(mobData, actionIndex, new HashSet<int>());
+        }
+
         /// <summary>
         /// Check if this mob has hit effect frames for a specific attack
         /// </summary>
@@ -959,6 +976,28 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return null;
+        }
+
+        private static int ResolveActionIndex(string attackAction)
+        {
+            if (string.IsNullOrWhiteSpace(attackAction))
+            {
+                return 0;
+            }
+
+            if (attackAction.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(attackAction["attack".Length..], out int attackIndex))
+            {
+                return attackIndex;
+            }
+
+            if (attackAction.StartsWith("skill", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(attackAction["skill".Length..], out int skillIndex))
+            {
+                return skillIndex;
+            }
+
+            return 0;
         }
 
         private static int ResolveProjectileCount(
@@ -1776,12 +1815,19 @@ namespace HaCreator.MapSimulator.Entities
                 _angerGaugeLoopStartTick = tickCount;
             }
 
-            if (MobAngerGaugeBurstParity.ShouldRegisterBurst(
+            bool shouldRegisterBurst = currentChargeCount >= AI.AngerChargeTarget
+                && AI.ShouldTriggerAngerGaugeFullChargeEffect(tickCount);
+            if (!shouldRegisterBurst && !AI.HasSpecialAttackFullChargeEffectOwnerTiming)
+            {
+                shouldRegisterBurst = MobAngerGaugeBurstParity.ShouldRegisterBurst(
                     currentChargeCount,
                     AI.AngerChargeTarget,
                     _lastAngerChargeCount,
                     _angerGaugeBurstNextAllowedTick,
-                    tickCount))
+                    tickCount);
+            }
+
+            if (shouldRegisterBurst)
             {
                 RegisterAngerGaugeBurst(tickCount);
             }

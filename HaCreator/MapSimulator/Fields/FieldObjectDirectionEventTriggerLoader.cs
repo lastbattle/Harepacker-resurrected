@@ -124,14 +124,22 @@ namespace HaCreator.MapSimulator.Fields
                 CollectScriptPublications(child, effectiveDelayMs, publications, seenPublications);
             }
 
-            if (publications.Count != publicationCountBeforeChildren
-                || !ShouldTreatPropertyNameAsScriptAlias(property.Name)
-                || !ChildrenContainOnlyAliasMetadata(children))
+            if (!ShouldTreatPropertyNameAsScriptAlias(property.Name))
             {
                 return;
             }
 
-            AppendScriptPublications(property.Name, effectiveDelayMs, publications, seenPublications);
+            if (ChildrenContainOnlyAliasMetadata(children)
+                || ChildrenContainOnlyNestedAliasContainers(children))
+            {
+                AppendScriptPublications(property.Name, effectiveDelayMs, publications, seenPublications);
+                return;
+            }
+
+            if (publications.Count != publicationCountBeforeChildren)
+            {
+                return;
+            }
         }
 
         private static void AppendScriptPublications(
@@ -202,6 +210,61 @@ namespace HaCreator.MapSimulator.Fields
             for (int i = 0; i < children.Count; i++)
             {
                 if (!IsAliasMetadataPropertyName(children[i]?.Name))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool ChildrenContainOnlyNestedAliasContainers(IReadOnlyList<WzImageProperty> children)
+        {
+            if (children == null || children.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < children.Count; i++)
+            {
+                WzImageProperty child = children[i];
+                if (IsAliasMetadataPropertyName(child?.Name))
+                {
+                    continue;
+                }
+
+                if (!IsNestedAliasContainer(child))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsNestedAliasContainer(WzImageProperty property)
+        {
+            if (property == null
+                || !ShouldTreatPropertyNameAsScriptAlias(property.Name))
+            {
+                return false;
+            }
+
+            IReadOnlyList<WzImageProperty> children = property.WzProperties;
+            if (children == null || children.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < children.Count; i++)
+            {
+                WzImageProperty child = children[i];
+                if (IsAliasMetadataPropertyName(child?.Name))
+                {
+                    continue;
+                }
+
+                if (!IsNestedAliasContainer(child))
                 {
                     return false;
                 }

@@ -7274,7 +7274,91 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            if (names.Count == 0
+                && ShouldTreatPropertyNameAsScriptAlias(property.Name)
+                && ChildrenContainOnlyScriptAliasMetadata(property.WzProperties))
+            {
+                names.Add(property.Name.Trim());
+            }
+
             return names.Count == 0 ? Array.Empty<string>() : names.ToArray();
+        }
+
+        private static bool ShouldTreatPropertyNameAsScriptAlias(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            if (int.TryParse(propertyName, NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
+
+            switch (propertyName.Trim().ToLowerInvariant())
+            {
+                case "script":
+                case "scripts":
+                case "name":
+                case "info":
+                case "delay":
+                case "wait":
+                case "time":
+                case "t":
+                case "startdelay":
+                case "visible":
+                case "state":
+                case "value":
+                case "show":
+                case "on":
+                    return false;
+                default:
+                    return true;
+            }
+        }
+
+        private static bool ChildrenContainOnlyScriptAliasMetadata(IReadOnlyList<WzImageProperty> children)
+        {
+            if (children == null || children.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < children.Count; i++)
+            {
+                if (!IsScriptAliasMetadataPropertyName(children[i]?.Name))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsScriptAliasMetadataPropertyName(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return false;
+            }
+
+            switch (propertyName.Trim().ToLowerInvariant())
+            {
+                case "delay":
+                case "wait":
+                case "time":
+                case "t":
+                case "startdelay":
+                case "visible":
+                case "state":
+                case "value":
+                case "show":
+                case "on":
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static void AddParsedScriptNames(ISet<string> names, string value)
@@ -8102,6 +8186,13 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(branchProperty);
+                if (branchPages.Count == 0)
+                {
+                    branchPages = CreateBranchPlaceholderPages(
+                        FormatConversationBranchChoiceLabel(branchProperty.Name),
+                        branchProperty);
+                }
+
                 if (branchPages.Count > 0)
                 {
                     pagesByBranch[branchProperty.Name] = branchPages;
@@ -8518,12 +8609,19 @@ namespace HaCreator.MapSimulator.Interaction
                 for (int i = 0; i < stopProperty.WzProperties.Count; i++)
                 {
                     WzImageProperty branchProperty = stopProperty.WzProperties[i];
-                    if (int.TryParse(branchProperty.Name, out _))
+                    if (branchProperty == null || int.TryParse(branchProperty.Name, out _))
                     {
                         continue;
                     }
 
                     IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(branchProperty);
+                    if (branchPages.Count == 0)
+                    {
+                        branchPages = CreateBranchPlaceholderPages(
+                            FormatConversationBranchChoiceLabel(branchProperty.Name),
+                            branchProperty);
+                    }
+
                     if (branchPages.Count > 0)
                     {
                         pagesByBranch[branchProperty.Name] = branchPages;
@@ -8538,10 +8636,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             foreach (WzImageProperty container in EnumerateConversationMetadataContainers(property))
             {
-                IReadOnlyList<NpcInteractionPage> lostPages = ParseBranchPages(container?["lost"]);
+                WzImageProperty lostProperty = container?["lost"];
+                IReadOnlyList<NpcInteractionPage> lostPages = ParseBranchPages(lostProperty);
                 if (lostPages.Count > 0)
                 {
                     return lostPages;
+                }
+
+                if (lostProperty != null)
+                {
+                    return CreateBranchPlaceholderPages("Continue", lostProperty);
                 }
             }
 
@@ -8726,7 +8830,7 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(property);
             if (branchPages.Count == 0)
             {
-                branchPages = CreateUnavailableSelectionPages(label, ResolveConversationFlipSpeaker(property));
+                branchPages = CreateBranchPlaceholderPages(label, property);
             }
 
             choices.Add(new NpcInteractionChoice
@@ -8773,7 +8877,7 @@ namespace HaCreator.MapSimulator.Interaction
                 IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(child);
                 if (branchPages.Count == 0)
                 {
-                    branchPages = CreateUnavailableSelectionPages(label, ResolveConversationFlipSpeaker(child));
+                    branchPages = CreateBranchPlaceholderPages(label, child);
                 }
 
                 choices.Add(new NpcInteractionChoice
@@ -9171,6 +9275,49 @@ namespace HaCreator.MapSimulator.Interaction
                     FlipSpeaker = flipSpeaker
                 }
             };
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> CreateBranchPlaceholderPages(
+            string branchLabel,
+            WzImageProperty branchProperty)
+        {
+            return CreateUnavailableSelectionPages(
+                branchLabel,
+                ResolveConversationBranchFlipSpeaker(branchProperty));
+        }
+
+        private static bool ResolveConversationBranchFlipSpeaker(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return false;
+            }
+
+            if (ResolveConversationFlipSpeaker(property))
+            {
+                return true;
+            }
+
+            return HasNestedConversationFlip(property);
+        }
+
+        private static bool HasNestedConversationFlip(WzImageProperty property)
+        {
+            if (property?.WzProperties == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                WzImageProperty child = property.WzProperties[i];
+                if (ResolveConversationFlipSpeaker(child) || HasNestedConversationFlip(child))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static IReadOnlyList<NpcInteractionPage> ParseBranchPages(WzImageProperty property)
@@ -10615,31 +10762,15 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
-            bool hasSummaryText = !string.IsNullOrWhiteSpace(summaryText);
-            string categoryNoticeText = hasSummaryText && actions.MesoReward < 0
+            if (string.IsNullOrWhiteSpace(summaryText))
+            {
+                return string.Empty;
+            }
+
+            string categoryNoticeText = actions.MesoReward < 0
                 ? QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText)
                 : summaryText;
-
-            List<string> supplementalLines = BuildVisibleQuestActionLines(
-                actions,
-                build,
-                questId,
-                includeSelectionTag: false,
-                includeRewardItems: false,
-                suppressNegativeMesoLine: actions.MesoReward < 0);
-
-            if (string.IsNullOrWhiteSpace(categoryNoticeText))
-            {
-                return string.Join("\n", supplementalLines);
-            }
-
-            if (supplementalLines.Count == 0)
-            {
-                return categoryNoticeText;
-            }
-
-            supplementalLines.Insert(0, categoryNoticeText);
-            return string.Join("\n", supplementalLines);
+            return categoryNoticeText;
         }
 
         private static string ResolvePacketQuestResultPrimaryText(

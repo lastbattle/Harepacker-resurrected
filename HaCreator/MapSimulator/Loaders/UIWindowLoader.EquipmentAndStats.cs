@@ -548,7 +548,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// Create the Skill window from UI.wz/UIWindow.img/Skill
         /// </summary>
         public static SkillUI CreateSkillWindow(
-            WzImage uiWindowImage, WzImage soundUIImage,
+            WzImage uiWindowImage, WzImage basicImage, WzImage soundUIImage,
             GraphicsDevice device, int screenWidth, int screenHeight)
         {
             WzSubProperty skillProperty = (WzSubProperty)uiWindowImage?["Skill"];
@@ -591,6 +591,52 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject closeBtn = LoadButton(skillProperty, "BtClose", btClickSound, btOverSound, device);
 
             skill.InitializeCloseButton(closeBtn);
+
+            Texture2D skillRow0 = LoadCanvasTexture(skillProperty, "skill0", device);
+            Texture2D skillRow1 = LoadCanvasTexture(skillProperty, "skill1", device);
+            Texture2D recommendTexture = LoadCanvasTexture(skillProperty["recommend"] as WzSubProperty, "0", device);
+            Texture2D skillLine = LoadCanvasTexture(skillProperty, "line", device);
+            skill.SetSkillRowTextures(skillRow0, skillRow1, skillLine);
+            skill.SetRecommendTexture(recommendTexture);
+
+            WzSubProperty spUpProperty = skillProperty["BtSpUp"] as WzSubProperty;
+            if (spUpProperty != null)
+            {
+                skill.SetSpUpTextures(
+                    LoadButtonStateTexture(spUpProperty, "normal", device),
+                    LoadButtonStateTexture(spUpProperty, "pressed", device),
+                    LoadButtonStateTexture(spUpProperty, "disabled", device),
+                    LoadButtonStateTexture(spUpProperty, "mouseOver", device));
+            }
+
+            WzSubProperty skillTabProperty = skillProperty["Tab"] as WzSubProperty;
+            if (skillTabProperty != null)
+            {
+                skill.InitializeTabs(
+                    LoadCanvasStateTabButton(skillTabProperty, "0", device),
+                    LoadCanvasStateTabButton(skillTabProperty, "1", device),
+                    LoadCanvasStateTabButton(skillTabProperty, "2", device),
+                    LoadCanvasStateTabButton(skillTabProperty, "3", device),
+                    LoadCanvasStateTabButton(skillTabProperty, "4", device));
+            }
+
+            WzSubProperty vScrollProperty = basicImage?["VScr"] as WzSubProperty;
+            if (vScrollProperty != null)
+            {
+                WzSubProperty enabledProperty = vScrollProperty["enabled"] as WzSubProperty;
+                WzSubProperty disabledProperty = vScrollProperty["disabled"] as WzSubProperty;
+                skill.SetScrollBarTextures(
+                    LoadCanvasTexture(enabledProperty, "prev0", device),
+                    LoadCanvasTexture(enabledProperty, "prev1", device),
+                    LoadCanvasTexture(enabledProperty, "next0", device),
+                    LoadCanvasTexture(enabledProperty, "next1", device),
+                    LoadCanvasTexture(enabledProperty, "base", device),
+                    LoadCanvasTexture(enabledProperty, "thumb0", device),
+                    LoadCanvasTexture(enabledProperty, "thumb1", device),
+                    LoadCanvasTexture(disabledProperty, "prev", device),
+                    LoadCanvasTexture(disabledProperty, "next", device),
+                    LoadCanvasTexture(disabledProperty, "base", device));
+            }
 
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
             WzSubProperty postBigBangSkillMain = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;

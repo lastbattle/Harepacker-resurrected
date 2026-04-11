@@ -60,6 +60,18 @@ namespace HaCreator.MapSimulator.UI
         private const int PARCEL_PICKER_BANNER_Y = 31;
         private const int PARCEL_PICKER_BANNER_WIDTH = 146;
         private const int PARCEL_PICKER_BANNER_HEIGHT = 14;
+        private const int DROP_PROMPT_FRAME_FALLBACK_WIDTH = 156;
+        private const int DROP_PROMPT_FRAME_FALLBACK_HEIGHT = 86;
+        private const int DROP_PROMPT_FRAME_OFFSET_X = 4;
+        private const int DROP_PROMPT_FRAME_OFFSET_Y = 78;
+        private const int DROP_PROMPT_BUTTON_BOTTOM_MARGIN = 8;
+        private const int DROP_PROMPT_BUTTON_SIDE_MARGIN = 12;
+        private const int DROP_PROMPT_BUTTON_GAP = 6;
+        private const int DROP_PROMPT_ADJUST_BUTTON_TOP = 24;
+        private const int DROP_PROMPT_ADJUST_BUTTON_SIDE_MARGIN = 12;
+        private const float DROP_PROMPT_TITLE_SCALE = 0.40f;
+        private const float DROP_PROMPT_BODY_SCALE = 0.42f;
+        private const float DROP_PROMPT_HINT_SCALE = 0.28f;
         #endregion
 
         private readonly struct TooltipSection
@@ -156,6 +168,11 @@ namespace HaCreator.MapSimulator.UI
         private bool _mesoDropPromptVisible;
         private string _mesoDropPromptText = string.Empty;
         private long _mesoDropPromptMaximum = 1L;
+        private Texture2D _dropPromptFrameTexture;
+        private Texture2D _dropPromptPrevButtonTexture;
+        private Texture2D _dropPromptNextButtonTexture;
+        private Texture2D _dropPromptConfirmButtonTexture;
+        private Texture2D _dropPromptCancelButtonTexture;
 
         protected Texture2D ActiveIconTexture;
         protected Texture2D DisabledSlotTexture;
@@ -267,6 +284,20 @@ namespace HaCreator.MapSimulator.UI
             {
                 _tooltipFrames[i] = tooltipFrames[i];
             }
+        }
+
+        public void SetDropPromptAssets(
+            Texture2D frameTexture,
+            Texture2D previousButtonTexture,
+            Texture2D nextButtonTexture,
+            Texture2D confirmButtonTexture,
+            Texture2D cancelButtonTexture)
+        {
+            _dropPromptFrameTexture = frameTexture;
+            _dropPromptPrevButtonTexture = previousButtonTexture;
+            _dropPromptNextButtonTexture = nextButtonTexture;
+            _dropPromptConfirmButtonTexture = confirmButtonTexture;
+            _dropPromptCancelButtonTexture = cancelButtonTexture;
         }
 
         public void SetTooltipOrigins(Point[] tooltipOrigins)
@@ -508,40 +539,56 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Rectangle bounds = new Rectangle(windowX + 8, windowY + 94, 146, 54);
-            sprite.Draw(_debugTooltipTexture, bounds, new Color(46, 37, 18, 225));
-            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(255, 222, 156, 220));
-            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(123, 96, 36, 220));
+            Rectangle bounds = GetDropPromptBounds(windowX, windowY);
+            if (_dropPromptFrameTexture != null)
+            {
+                sprite.Draw(_dropPromptFrameTexture, bounds, Color.White);
+            }
+            else
+            {
+                sprite.Draw(_debugTooltipTexture, bounds, new Color(46, 37, 18, 225));
+                sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(255, 222, 156, 220));
+                sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(123, 96, 36, 220));
+            }
 
             string title = _mesoDropPromptVisible ? "Drop Mesos" : "Discard Count";
             string quantityText = _mesoDropPromptVisible
                 ? $"Amount: {FormatMesoDropPromptAmount()} / {_mesoDropPromptMaximum.ToString("N0", CultureInfo.InvariantCulture)}"
                 : $"Qty: {_dropQuantityPromptValue} / {_dropQuantityPromptMaximum}";
             string detailText = _mesoDropPromptVisible
-                ? "Type amount  Enter confirm"
-                : "Enter/Space confirm  Esc cancel";
+                ? "Type amount. OK confirms, Close cancels."
+                : "Prev/Next adjusts. OK confirms, Close cancels.";
 
             InventoryRenderUtil.DrawOutlinedText(
                 sprite,
                 _font,
                 title,
-                new Vector2(bounds.X + 24, bounds.Y + 5),
+                new Vector2(bounds.X + 18, bounds.Y + 8),
                 new Color(255, 232, 182),
-                0.42f);
+                DROP_PROMPT_TITLE_SCALE);
             InventoryRenderUtil.DrawOutlinedText(
                 sprite,
                 _font,
                 quantityText,
-                new Vector2(bounds.X + 16, bounds.Y + 21),
+                new Vector2(bounds.X + 14, bounds.Y + 29),
                 Color.White,
-                0.42f);
+                DROP_PROMPT_BODY_SCALE);
             InventoryRenderUtil.DrawOutlinedText(
                 sprite,
                 _font,
                 detailText,
-                new Vector2(bounds.X + 6, bounds.Y + 37),
+                new Vector2(bounds.X + 10, bounds.Y + 47),
                 new Color(223, 214, 196),
-                0.28f);
+                DROP_PROMPT_HINT_SCALE);
+
+            if (!_mesoDropPromptVisible)
+            {
+                DrawPromptButton(sprite, _dropPromptPrevButtonTexture, GetDropPromptAdjustButtonBounds(bounds, isPrevious: true));
+                DrawPromptButton(sprite, _dropPromptNextButtonTexture, GetDropPromptAdjustButtonBounds(bounds, isPrevious: false));
+            }
+
+            DrawPromptButton(sprite, _dropPromptConfirmButtonTexture, GetDropPromptConfirmButtonBounds(bounds));
+            DrawPromptButton(sprite, _dropPromptCancelButtonTexture, GetDropPromptCancelButtonBounds(bounds));
         }
         #endregion
 
@@ -1497,6 +1544,12 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_mesoDropPromptVisible)
             {
+                if (HandlePromptButtonClick(mouseState))
+                {
+                    _previousInteractionMouseState = mouseState;
+                    return;
+                }
+
                 HandleMesoDropPromptInput(keyboardState);
                 _previousInteractionMouseState = mouseState;
                 return;
@@ -1504,6 +1557,12 @@ namespace HaCreator.MapSimulator.UI
 
             if (!_dropQuantityPromptVisible)
             {
+                return;
+            }
+
+            if (HandlePromptButtonClick(mouseState))
+            {
+                _previousInteractionMouseState = mouseState;
                 return;
             }
 
@@ -1744,6 +1803,114 @@ namespace HaCreator.MapSimulator.UI
         private bool WasPressed(KeyboardState keyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+        }
+
+        private bool HandlePromptButtonClick(MouseState mouseState)
+        {
+            if (mouseState.LeftButton != ButtonState.Pressed || _previousInteractionMouseState.LeftButton == ButtonState.Pressed)
+            {
+                return false;
+            }
+
+            Rectangle bounds = GetDropPromptBounds(Position.X, Position.Y);
+            Point mousePoint = new(mouseState.X, mouseState.Y);
+            if (!_mesoDropPromptVisible)
+            {
+                if (GetDropPromptAdjustButtonBounds(bounds, isPrevious: true).Contains(mousePoint))
+                {
+                    AdjustDropQuantityPromptValue(-1);
+                    return true;
+                }
+
+                if (GetDropPromptAdjustButtonBounds(bounds, isPrevious: false).Contains(mousePoint))
+                {
+                    AdjustDropQuantityPromptValue(1);
+                    return true;
+                }
+            }
+
+            if (GetDropPromptConfirmButtonBounds(bounds).Contains(mousePoint))
+            {
+                if (_mesoDropPromptVisible)
+                {
+                    ConfirmMesoDropPrompt();
+                }
+                else
+                {
+                    ConfirmDropQuantityPrompt();
+                }
+
+                return true;
+            }
+
+            if (GetDropPromptCancelButtonBounds(bounds).Contains(mousePoint))
+            {
+                if (_mesoDropPromptVisible)
+                {
+                    CloseMesoDropPrompt();
+                }
+                else
+                {
+                    CloseDropQuantityPrompt();
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private Rectangle GetDropPromptBounds(int windowX, int windowY)
+        {
+            int width = _dropPromptFrameTexture?.Width ?? DROP_PROMPT_FRAME_FALLBACK_WIDTH;
+            int height = _dropPromptFrameTexture?.Height ?? DROP_PROMPT_FRAME_FALLBACK_HEIGHT;
+            return new Rectangle(
+                windowX + DROP_PROMPT_FRAME_OFFSET_X,
+                windowY + DROP_PROMPT_FRAME_OFFSET_Y,
+                width,
+                height);
+        }
+
+        private Rectangle GetDropPromptAdjustButtonBounds(Rectangle promptBounds, bool isPrevious)
+        {
+            Texture2D texture = isPrevious ? _dropPromptPrevButtonTexture : _dropPromptNextButtonTexture;
+            int width = texture?.Width ?? 18;
+            int height = texture?.Height ?? 18;
+            int x = isPrevious
+                ? promptBounds.X + DROP_PROMPT_ADJUST_BUTTON_SIDE_MARGIN
+                : promptBounds.Right - DROP_PROMPT_ADJUST_BUTTON_SIDE_MARGIN - width;
+            return new Rectangle(x, promptBounds.Y + DROP_PROMPT_ADJUST_BUTTON_TOP, width, height);
+        }
+
+        private Rectangle GetDropPromptConfirmButtonBounds(Rectangle promptBounds)
+        {
+            int width = _dropPromptConfirmButtonTexture?.Width ?? 36;
+            int height = _dropPromptConfirmButtonTexture?.Height ?? 18;
+            int y = promptBounds.Bottom - DROP_PROMPT_BUTTON_BOTTOM_MARGIN - height;
+            int cancelWidth = _dropPromptCancelButtonTexture?.Width ?? 36;
+            int totalWidth = width + DROP_PROMPT_BUTTON_GAP + cancelWidth;
+            int x = promptBounds.X + Math.Max(
+                DROP_PROMPT_BUTTON_SIDE_MARGIN,
+                (promptBounds.Width - totalWidth) / 2);
+            return new Rectangle(x, y, width, height);
+        }
+
+        private Rectangle GetDropPromptCancelButtonBounds(Rectangle promptBounds)
+        {
+            Rectangle confirmBounds = GetDropPromptConfirmButtonBounds(promptBounds);
+            int width = _dropPromptCancelButtonTexture?.Width ?? 36;
+            int height = _dropPromptCancelButtonTexture?.Height ?? 18;
+            return new Rectangle(confirmBounds.Right + DROP_PROMPT_BUTTON_GAP, confirmBounds.Y, width, height);
+        }
+
+        private static void DrawPromptButton(SpriteBatch sprite, Texture2D texture, Rectangle bounds)
+        {
+            if (texture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(texture, bounds, Color.White);
         }
 
         private static bool IsStackable(InventoryType type, int maxStackSize)

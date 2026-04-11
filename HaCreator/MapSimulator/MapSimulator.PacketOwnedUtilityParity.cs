@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator
         private const string PacketOwnedTimeBombInvincibilityDurationTemplate = "Invincible for #time more seconds after getting attacked.";
         private const string PacketOwnedTimeBombInvincibilityChanceTemplate = "#prop% chance to become invincible for #time seconds when attacked.";
         private static readonly int[] PacketOwnedFallbackTimeBombInvincibilityOptionIds = { 20366, 30366, 30371, 40366, 40371 };
+        private static readonly int[] PacketOwnedClientAppliedTimeBombInvincibilityOptionIds = { 20366, 30366, 30371 };
         private static readonly IReadOnlyDictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> PacketOwnedFallbackTimeBombInvincibilityOptionDefinitions =
             CreatePacketOwnedFallbackTimeBombInvincibilityOptionDefinitions();
         private const string PacketOwnedApspPromptPrimaryLabel = "OK";
@@ -9115,6 +9116,11 @@ namespace HaCreator.MapSimulator
 
         private PacketOwnedTimeBombInvincibilityOptionLevelData? ResolvePacketOwnedTimeBombInvincibilityOptionLevel(int itemOptionId, int equipLevel)
         {
+            if (!IsClientAppliedPacketOwnedTimeBombInvincibilityOptionId(itemOptionId))
+            {
+                return null;
+            }
+
             PacketOwnedTimeBombInvincibilityOptionDefinition definition = ResolvePacketOwnedTimeBombInvincibilityOptionDefinition(itemOptionId);
             if (definition?.Levels == null || equipLevel <= 0 || equipLevel >= definition.Levels.Length)
             {
@@ -9351,6 +9357,11 @@ namespace HaCreator.MapSimulator
         internal static bool IsPacketOwnedTimeBombInvincibilityOptionId(int itemOptionId)
         {
             return itemOptionId > 0 && PacketOwnedTimeBombInvincibilityOptionIds.Value.Contains(itemOptionId);
+        }
+
+        internal static bool IsClientAppliedPacketOwnedTimeBombInvincibilityOptionId(int itemOptionId)
+        {
+            return itemOptionId > 0 && Array.IndexOf(PacketOwnedClientAppliedTimeBombInvincibilityOptionIds, itemOptionId) >= 0;
         }
 
         internal static bool IsPacketOwnedVisiblePotentialItemOptionId(int itemOptionId)

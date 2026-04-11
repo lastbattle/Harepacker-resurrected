@@ -352,12 +352,11 @@ namespace HaCreator.MapSimulator.Loaders
             invisible |= ResolveBooleanProperty(skillEntry, "invisible");
             timeLimited |= ResolveBooleanProperty(skillEntry, "timeLimited");
 
-            // Get level info for max level determination
+            // Guild skills such as `Skill/9100.img` publish their cap in `common/maxLevel`
+            // instead of `info/maxLevel` or a `level/*` branch, so keep the loader on that
+            // same WZ-backed seam before building descriptions and formulas.
             WzSubProperty levelProperty = (WzSubProperty)skillEntry["level"];
-            if (levelProperty != null && maxLevel == 0)
-            {
-                maxLevel = levelProperty.WzProperties.Count;
-            }
+            maxLevel = ResolveDisplayMaxLevel(skillEntry, infoProperty, levelProperty, maxLevel);
 
             // Get skill name and description from String.wz
             string skillName = $"Skill {skillId}";
@@ -439,6 +438,35 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return displayData;
+        }
+
+        internal static int ResolveDisplayMaxLevel(
+            WzSubProperty skillEntry,
+            WzSubProperty infoProperty,
+            WzSubProperty levelProperty,
+            int currentMaxLevel = 0)
+        {
+            int maxLevel = currentMaxLevel;
+
+            if (infoProperty != null)
+            {
+                WzIntProperty maxLevelProp = (WzIntProperty)infoProperty["maxLevel"];
+                if (maxLevelProp != null)
+                    maxLevel = Math.Max(maxLevel, maxLevelProp.Value);
+            }
+
+            if (levelProperty != null)
+            {
+                maxLevel = Math.Max(maxLevel, levelProperty.WzProperties.Count);
+            }
+
+            if (skillEntry?["common"] is WzImageProperty commonProperty &&
+                TryGetNumericPropertyValue(commonProperty, "maxLevel", 1, out int commonMaxLevel))
+            {
+                maxLevel = Math.Max(maxLevel, commonMaxLevel);
+            }
+
+            return maxLevel;
         }
 
         private static int ResolveGuildPriceUnit(WzImageProperty commonNode)

@@ -94,6 +94,12 @@ namespace HaCreator.MapSimulator.UI
 
         internal static string ResolveNoticeFrameFamilyForClientParity(IReadOnlyList<NoticeFrameCandidate> candidates)
         {
+            string exactMatchName = ResolveExactNotice3FamilyMatch(candidates);
+            if (!string.IsNullOrEmpty(exactMatchName))
+            {
+                return exactMatchName;
+            }
+
             string bestName = null;
             int bestScore = int.MaxValue;
 
@@ -135,6 +141,50 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return bestName;
+        }
+
+        private static string ResolveExactNotice3FamilyMatch(IReadOnlyList<NoticeFrameCandidate> candidates)
+        {
+            if (candidates == null)
+            {
+                return null;
+            }
+
+            string exactNamedMatch = null;
+            string exactUnnamedMatch = null;
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                NoticeFrameCandidate candidate = candidates[i];
+                if (!IsExactNotice3Family(candidate))
+                {
+                    continue;
+                }
+
+                if (string.Equals(candidate.Name, "Notice3", StringComparison.OrdinalIgnoreCase))
+                {
+                    exactNamedMatch = candidate.Name;
+                    break;
+                }
+
+                exactUnnamedMatch ??= candidate.Name;
+            }
+
+            return exactNamedMatch ?? exactUnnamedMatch;
+        }
+
+        private static bool IsExactNotice3Family(NoticeFrameCandidate candidate)
+        {
+            return candidate.HasTop
+                   && candidate.HasCenter
+                   && candidate.HasBottom
+                   && candidate.TopWidth == 266
+                   && candidate.CenterWidth == 266
+                   && candidate.BottomWidth == 266
+                   && candidate.TopHeight == 21
+                   && candidate.CenterHeight == 20
+                   && candidate.BottomHeight == 55
+                   && candidate.ExtraPartCount <= 0;
         }
 
         public void Initialize(SpriteFont font, Texture2D pixelTexture, int screenWidth, int screenHeight)

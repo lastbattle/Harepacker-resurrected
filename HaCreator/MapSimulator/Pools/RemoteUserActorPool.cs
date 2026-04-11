@@ -89,6 +89,11 @@ namespace HaCreator.MapSimulator.Pools
             int CharacterId,
             string SoundPath,
             int CurrentTime);
+        public readonly record struct RemoteClientSoundPresentation(
+            int CharacterId,
+            string SoundPath,
+            string DefaultImageName,
+            int CurrentTime);
         public readonly record struct RemoteStringEffectPresentation(
             int CharacterId,
             byte EffectType,
@@ -379,11 +384,17 @@ namespace HaCreator.MapSimulator.Pools
         private const int MakerSkillEffectStringPoolId = 0x931;
         private const int MakerResultMessageStringPoolId = 0x1493;
         private const int IncubatorMessageStringPoolId = 0x1559;
+        private const int ItemMakeSuccessSoundStringPoolId = 0x507;
+        private const int ItemMakeFailureSoundStringPoolId = 0x508;
+        private const int ConsumeEffectSoundPathStringPoolId = 0x130C;
         private const int RemoteEffectChatLogType = 7;
         private const string MakerSkillEffectFallbackPath = "Effect/BasicEff.img/DoubleJump";
         private const string MakerResultMessageFallbackFormat = "Maker result {0}.";
         private const string IncubatorMessageFallbackText = "Incubator message.";
         private const string EvolRingStatusBarEffectName = "Eff_EvolRing";
+        private const string ItemMakeSuccessSoundFallbackPath = "Sound/Game.img/EnchantSuccess";
+        private const string ItemMakeFailureSoundFallbackPath = "Sound/Game.img/EnchantFailure";
+        private const string ConsumeEffectSoundPathFallbackFormat = "Sound/ConsumeEffect.img/{0}/Use";
         private int _preparedSkillWorldOverlayCount;
         private int _helperMarkerCount;
         private CharacterLoader _loader;
@@ -401,6 +412,7 @@ namespace HaCreator.MapSimulator.Pools
         public event Action<RemoteMobAttackHitPresentation> MobAttackHitEffectRegistered;
         public event Action<RemoteMobDamageInfoPresentation> MobDamageInfoRegistered;
         public event Action<RemoteFieldSoundPresentation> FieldSoundRegistered;
+        public event Action<RemoteClientSoundPresentation> ClientSoundRegistered;
         public event Action<RemoteStringEffectPresentation> StringEffectRegistered;
         public event Action<RemoteChatLogMessagePresentation> ChatLogMessageRegistered;
         public event Action<RemoteStatusBarEffectPresentation> StatusBarEffectRegistered;
@@ -2830,6 +2842,17 @@ namespace HaCreator.MapSimulator.Pools
                         itemMakeResultCode,
                         itemMakeResultCode == 0,
                         currentTime));
+                    RegisterClientSoundPresentation(
+                        packet.CharacterId,
+                        ResolveRemoteSoundDescriptor(
+                            itemMakeResultCode == 0
+                                ? ItemMakeSuccessSoundStringPoolId
+                                : ItemMakeFailureSoundStringPoolId,
+                            itemMakeResultCode == 0
+                                ? ItemMakeSuccessSoundFallbackPath
+                                : ItemMakeFailureSoundFallbackPath),
+                        defaultImageName: null,
+                        currentTime);
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} registered item-make {(itemMakeResultCode == 0 ? "success" : "failure")} presentation.";
                     return true;
 
@@ -2854,12 +2877,39 @@ namespace HaCreator.MapSimulator.Pools
                         return false;
                     }
 
-                    return TryApplyTransientItemEffect(actor, itemEffectItemId, currentTime, out message);
+                    bool transientItemEffectApplied = TryApplyTransientItemEffect(actor, itemEffectItemId, currentTime, out message);
+                    if (transientItemEffectApplied
+                        && TryResolveRemoteConsumeEffectSoundDescriptor(itemEffectItemId, out string effectByItemSoundDescriptor))
+                    {
+                        RegisterClientSoundPresentation(
+                            packet.CharacterId,
+                            effectByItemSoundDescriptor,
+                            defaultImageName: null,
+                            currentTime);
+                        if (!string.IsNullOrWhiteSpace(message))
+                        {
+                            message = $"{message} Item-use sound {effectByItemSoundDescriptor} was also registered.";
+                        }
+                    }
+
+                    return transientItemEffectApplied;
 
                 case RemoteUserEffectSubtype.ReservedEffect:
                 case RemoteUserEffectSubtype.CarnivalReservedEffect:
                 case RemoteUserEffectSubtype.StringEffect:
                 case RemoteUserEffectSubtype.ItemSoundStringEffect:
+                    if (packet.KnownSubtype == RemoteUserEffectSubtype.ItemSoundStringEffect
+                        && TryResolveRemoteConsumeEffectSoundDescriptor(
+                            packet.Int32Value.GetValueOrDefault(),
+                            out string itemSoundEffectDescriptor))
+                    {
+                        RegisterClientSoundPresentation(
+                            packet.CharacterId,
+                            itemSoundEffectDescriptor,
+                            defaultImageName: null,
+                            currentTime);
+                    }
+
                     if (string.IsNullOrWhiteSpace(packet.StringValue))
                     {
                         message = $"Remote user {packet.CharacterId} string-effect packet path is empty.";
@@ -2938,6 +2988,14 @@ namespace HaCreator.MapSimulator.Pools
                     }
 
                     actor.PacketOwnedQuestDeliveryEffectItemId = itemId;
+                    if (TryResolveRemoteConsumeEffectSoundDescriptor(itemId, out string questDeliverySoundDescriptor))
+                    {
+                        RegisterClientSoundPresentation(
+                            packet.CharacterId,
+                            questDeliverySoundDescriptor,
+                            defaultImageName: null,
+                            currentTime);
+                    }
                     message = $"Remote user {packet.CharacterId} effect subtype {packet.EffectType} started quest-delivery presentation with item {itemId}.";
                     return true;
 
@@ -2979,6 +3037,46 @@ namespace HaCreator.MapSimulator.Pools
             {
                 return $"{format} ({value.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
             }
+        }
+
+        private void RegisterClientSoundPresentation(
+            int characterId,
+            string soundPath,
+            string defaultImageName,
+            int currentTime)
+        {
+            if (string.IsNullOrWhiteSpace(soundPath))
+            {
+                return;
+            }
+
+            ClientSoundRegistered?.Invoke(new RemoteClientSoundPresentation(
+                characterId,
+                soundPath,
+                defaultImageName,
+                currentTime));
+        }
+
+        private static string ResolveRemoteSoundDescriptor(int stringPoolId, string fallbackDescriptor)
+        {
+            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackDescriptor);
+        }
+
+        internal static bool TryResolveRemoteConsumeEffectSoundDescriptor(int itemId, out string descriptor)
+        {
+            descriptor = null;
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            string compositeFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                ConsumeEffectSoundPathStringPoolId,
+                ConsumeEffectSoundPathFallbackFormat,
+                maxPlaceholderCount: 1,
+                out _);
+            descriptor = string.Format(System.Globalization.CultureInfo.InvariantCulture, compositeFormat, itemId);
+            return !string.IsNullOrWhiteSpace(descriptor);
         }
 
         internal static string ResolveRemoteSkillUseAppointedActionNameForParity(
@@ -3077,6 +3175,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            ApplyRemotePreparedSkillRelease(actor, packet.SkillId, preparedSkillReleaseFollowUpValue: null);
             actor.LastThrowGrenadeSkillId = packet.SkillId;
             actor.LastThrowGrenadeId = packet.GrenadeId;
             actor.LastThrowGrenadeTarget = new Point(packet.X, packet.Y);
@@ -8085,13 +8184,37 @@ namespace HaCreator.MapSimulator.Pools
             int horizontalOffsetPx = ShadowPartnerClientActionResolver.ResolveHorizontalOffsetPx(
                 actor.ShadowPartnerPresentation.CurrentPlaybackAnimation,
                 actor.TemporaryStatShadowPartnerSkill.ShadowPartnerHorizontalOffsetPx);
-            int drawX = screenX + clientOffset.X + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
-            drawX = flip
-                ? drawX - (frame.Texture.Width - frame.Origin.X)
-                : drawX - frame.Origin.X;
-
-            int drawY = screenY + clientOffset.Y - frame.Origin.Y;
+            int anchorX = screenX + clientOffset.X + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
+            int anchorY = screenY + clientOffset.Y;
             Color frameTint = RemoteShadowPartnerTint * ResolveRemoteShadowPartnerFrameAlpha(frame, frameElapsedMs);
+            if (ShadowPartnerClientActionResolver.TryResolveFrameDrawTransform(
+                    frame,
+                    anchorX,
+                    anchorY,
+                    flip,
+                    out Vector2 drawPosition,
+                    out Vector2 drawOrigin,
+                    out float rotationRadians,
+                    out SpriteEffects drawEffects)
+                && frame.Texture.Texture != null)
+            {
+                spriteBatch.Draw(
+                    frame.Texture.Texture,
+                    drawPosition,
+                    null,
+                    frameTint,
+                    rotationRadians,
+                    drawOrigin,
+                    1f,
+                    drawEffects,
+                    0f);
+                return;
+            }
+
+            int drawX = flip
+                ? anchorX - (frame.Texture.Width - frame.Origin.X)
+                : anchorX - frame.Origin.X;
+            int drawY = anchorY - frame.Origin.Y;
             frame.Texture.DrawBackground(spriteBatch, skeletonMeshRenderer, null, drawX, drawY, frameTint, flip, null);
         }
 

@@ -870,6 +870,50 @@ namespace HaCreator.MapSimulator.Entities
                 || _stateLayerProperties.ContainsKey(resolvedState);
         }
 
+        private bool HasReachableRenderableState(int state)
+        {
+            int resolvedState = ResolveState(state);
+            return HasReachableRenderableState(resolvedState, new HashSet<int> { resolvedState });
+        }
+
+        private bool HasReachableRenderableState(int state, HashSet<int> visitedStates)
+        {
+            int resolvedState = ResolveState(state);
+            if (HasRenderableState(resolvedState))
+            {
+                return true;
+            }
+
+            if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                || transitions.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (AuthoredStateTransition transition in transitions)
+            {
+                if (transition.TargetState == resolvedState)
+                {
+                    continue;
+                }
+
+                int nextState = ResolveState(transition.TargetState);
+                if (!visitedStates.Add(nextState))
+                {
+                    continue;
+                }
+
+                if (HasReachableRenderableState(nextState, visitedStates))
+                {
+                    return true;
+                }
+
+                visitedStates.Remove(nextState);
+            }
+
+            return false;
+        }
+
         private int GetExactStateDuration(int state)
         {
             IDXObject[] frames = EnsureStateFramesLoaded(state);
@@ -1303,7 +1347,7 @@ namespace HaCreator.MapSimulator.Entities
             AuthoredStateTransition[] filteredTransitions = FilterTransitionsBySelector(
                 transitions.Where(transition => MatchesAuthoredEventType(transition.EventType, request.ActivationType)).ToArray(),
                 request)
-                .Where(transition => HasRenderableState(transition.TargetState))
+                .Where(transition => HasReachableRenderableState(transition.TargetState))
                 .Where(transition => transition.TargetState != resolvedState)
                 .OrderBy(transition => GetEventTypePriority(transition.EventType, request))
                 .ThenBy(transition => GetSelectorPriority(transition, request))
@@ -1313,6 +1357,7 @@ namespace HaCreator.MapSimulator.Entities
                 .ThenBy(transition => GetAuthoredGraphContinuationLookaheadPriority(transition, request))
                 .ThenBy(transition => GetAuthoredGraphContinuationWeightLookaheadPriority(transition, request))
                 .ThenBy(transition => GetAuthoredGraphAnyContinuationLookaheadPriority(transition, request))
+                .ThenBy(transition => GetDirectRenderableTargetPriority(transition))
                 .ThenBy(transition => transition.Order)
                 .ToArray();
 
@@ -1426,7 +1471,7 @@ namespace HaCreator.MapSimulator.Entities
             AuthoredStateTransition[] matchingTransitions = transitions
                 .Where(transition => MatchesAuthoredEventType(transition.EventType, request.ActivationType))
                 .Where(transition => transition.TargetState != resolvedState)
-                .Where(transition => HasRenderableState(transition.TargetState))
+                .Where(transition => HasReachableRenderableState(transition.TargetState))
                 .ToArray();
             if (matchingTransitions.Any(transition => transition.SelectorValues.Contains(request.ActivationValue)))
             {
@@ -1482,7 +1527,7 @@ namespace HaCreator.MapSimulator.Entities
             {
                 if (!MatchesAuthoredEventType(transition.EventType, ReactorActivationType.Hit)
                     || transition.TargetState == resolvedState
-                    || !HasRenderableState(transition.TargetState))
+                    || !HasReachableRenderableState(transition.TargetState))
                 {
                     continue;
                 }
@@ -1545,7 +1590,7 @@ namespace HaCreator.MapSimulator.Entities
             {
                 if (!MatchesAuthoredEventType(transition.EventType, activationType)
                     || transition.TargetState == resolvedState
-                    || !HasRenderableState(transition.TargetState))
+                    || !HasReachableRenderableState(transition.TargetState))
                 {
                     continue;
                 }
@@ -1617,7 +1662,7 @@ namespace HaCreator.MapSimulator.Entities
             foreach (AuthoredStateTransition transition in transitions)
             {
                 if (transition.TargetState == resolvedState
-                    || !HasRenderableState(transition.TargetState))
+                    || !HasReachableRenderableState(transition.TargetState))
                 {
                     continue;
                 }
@@ -1650,7 +1695,7 @@ namespace HaCreator.MapSimulator.Entities
             {
                 if (transition.SelectorValues.Length != 0
                     || transition.TargetState == resolvedState
-                    || !HasRenderableState(transition.TargetState))
+                    || !HasReachableRenderableState(transition.TargetState))
                 {
                     continue;
                 }
@@ -1704,7 +1749,7 @@ namespace HaCreator.MapSimulator.Entities
             {
                 if (transition.SelectorValues.Length != 0
                     || transition.TargetState == resolvedState
-                    || !HasRenderableState(transition.TargetState))
+                    || !HasReachableRenderableState(transition.TargetState))
                 {
                     continue;
                 }
@@ -1735,6 +1780,11 @@ namespace HaCreator.MapSimulator.Entities
             return activationType == ReactorActivationType.Item
                 || activationType == ReactorActivationType.Skill
                 || activationType == ReactorActivationType.Quest;
+        }
+
+        private int GetDirectRenderableTargetPriority(AuthoredStateTransition transition)
+        {
+            return HasRenderableState(transition.TargetState) ? 0 : 1;
         }
 
         private static int GetEventTypePriority(int eventType, ReactorTransitionRequest request)

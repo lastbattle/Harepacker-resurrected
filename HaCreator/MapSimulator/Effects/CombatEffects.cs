@@ -585,12 +585,21 @@ namespace HaCreator.MapSimulator.Effects
         /// <param name="comboIndex">Multi-hit combo index</param>
         /// <param name="colorType">Damage color type (Red=player damage, Blue=received, Violet=party)</param>
         public void AddDamageNumber(int damage, float x, float y, bool isCritical, bool isMiss, int currentTime,
-            int comboIndex = 0, DamageColorType colorType = DamageColorType.Red)
+            int comboIndex = 0, DamageColorType colorType = DamageColorType.Red, string specialTextName = null)
         {
             // Use WZ renderer if available
             if (_useWzDamageNumbers && _wzDamageRenderer != null)
             {
-                _wzDamageRenderer.SpawnDamageNumber(damage, x, y, colorType, isCritical, isMiss, currentTime, comboIndex);
+                _wzDamageRenderer.SpawnDamageNumber(
+                    damage,
+                    x,
+                    y,
+                    colorType,
+                    isCritical,
+                    isMiss,
+                    currentTime,
+                    comboIndex,
+                    specialTextName);
                 return;
             }
 
@@ -612,7 +621,9 @@ namespace HaCreator.MapSimulator.Effects
             display.SpawnTime = currentTime;
             display.IsCritical = isCritical;
             display.IsMiss = isMiss;
-            display.SpecialTextName = isMiss ? "Miss" : null;
+            display.SpecialTextName = isMiss
+                ? DamageNumberRenderer.ResolveSpecialTextName(specialTextName)
+                : null;
             display.Alpha = 1.0f;
             display.Scale = isCritical ? 1.2f : 1.0f;
             display.ComboIndex = comboIndex;
@@ -658,7 +669,7 @@ namespace HaCreator.MapSimulator.Effects
         /// </summary>
         public void AddMiss(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
         {
-            AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType);
+            AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType, "Miss");
         }
 
         public void AddGuard(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
@@ -673,30 +684,7 @@ namespace HaCreator.MapSimulator.Effects
                 AddMiss(x, y, currentTime, colorType);
                 return;
             }
-
-            if (_useWzDamageNumbers && _wzDamageRenderer != null)
-            {
-                _wzDamageRenderer.SpawnSpecialText(specialTextName, x, y, colorType, currentTime);
-                return;
-            }
-
-            var display = new DamageNumberDisplay
-            {
-                Damage = 0,
-                X = x,
-                Y = y,
-                StartY = y,
-                SpawnTime = currentTime,
-                IsCritical = false,
-                IsMiss = true,
-                SpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName),
-                Alpha = 1.0f,
-                Scale = 1.0f,
-                ComboIndex = 0,
-                ColorType = colorType
-            };
-
-            _damageNumbers.Add(display);
+            AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType, specialTextName);
         }
 
         /// <summary>

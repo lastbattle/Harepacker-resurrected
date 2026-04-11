@@ -704,9 +704,18 @@ namespace HaCreator.MapSimulator.Pools
         private const float PET_CHASE_SPEED = 150f;             // Pet movement speed when chasing drops
         private const int PET_PICKUP_COOLDOWN = 200;            // Cooldown between pet pickups (ms)
         private const int PICKUP_FAILURE_REPORT_COOLDOWN = 1500;
+        internal const int ClientPlayerPickupHalfWidth = 25;
+        internal const int ClientPlayerPickupTopOffset = 50;
+        internal const int ClientPlayerPickupBottomOffset = 10;
+        internal const int ClientPetPickupHalfWidth = 25;
+        internal const int ClientPetPickupTopOffset = 50;
+        internal const int ClientPetPickupBottomOffset = 10;
 
         // Mob pickup constants
         private const float MOB_PICKUP_RANGE = 30f;             // Range for mob pickup detection
+        internal const int ClientMobPickupHalfWidth = 20;
+        internal const int ClientMobPickupTopOffset = 40;
+        internal const int ClientMobPickupBottomOffset = 10;
 
         // Meso explosion constants
         private const float MESO_EXPLOSION_RANGE = 150f;        // Default meso explosion range
@@ -1341,7 +1350,15 @@ namespace HaCreator.MapSimulator.Pools
                 float dx = drop.X - petX;
                 float dy = drop.Y - petY;
                 float distSq = dx * dx + dy * dy;
-                if (distSq > rangeSq)
+                if (distSq > rangeSq
+                    || !IsWithinClientPickupRect(
+                        petX,
+                        petY,
+                        drop.X,
+                        drop.Y,
+                        ClientPetPickupHalfWidth,
+                        ClientPetPickupTopOffset,
+                        ClientPetPickupBottomOffset))
                 {
                     continue;
                 }
@@ -1408,7 +1425,15 @@ namespace HaCreator.MapSimulator.Pools
                 float dx = drop.X - x;
                 float dy = drop.Y - y;
                 float distSq = dx * dx + dy * dy;
-                if (distSq > rangeSq)
+                if (distSq > rangeSq
+                    || !IsWithinClientPickupRect(
+                        x,
+                        y,
+                        drop.X,
+                        drop.Y,
+                        ClientPlayerPickupHalfWidth,
+                        ClientPlayerPickupTopOffset,
+                        ClientPlayerPickupBottomOffset))
                 {
                     continue;
                 }
@@ -1685,7 +1710,15 @@ namespace HaCreator.MapSimulator.Pools
                 float dx = drop.X - petX;
                 float dy = drop.Y - petY;
                 float distSq = dx * dx + dy * dy;
-                if (distSq > rangeSq)
+                if (distSq > rangeSq
+                    || !IsWithinClientPickupRect(
+                        petX,
+                        petY,
+                        drop.X,
+                        drop.Y,
+                        ClientPetPickupHalfWidth,
+                        ClientPetPickupTopOffset,
+                        ClientPetPickupBottomOffset))
                     continue;
 
                 if (!CanPetPickup(drop, playerId, currentTime))
@@ -1973,6 +2006,16 @@ namespace HaCreator.MapSimulator.Pools
                 float dx = drop.X - mobX;
                 float dy = drop.Y - mobY;
                 float distSq = dx * dx + dy * dy;
+
+                if (!IsWithinClientPickupRect(
+                        mobX,
+                        mobY,
+                        drop.X,
+                        drop.Y,
+                        ClientMobPickupHalfWidth,
+                        ClientMobPickupTopOffset,
+                        ClientMobPickupBottomOffset))
+                    continue;
 
                 if (distSq < closestDistSq)
                 {
@@ -2820,6 +2863,21 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return _partyPickupMembershipEvaluator?.Invoke(ownerId, actorId) == true;
+        }
+
+        internal static bool IsWithinClientPickupRect(
+            float actorX,
+            float actorY,
+            float dropX,
+            float dropY,
+            int halfWidth,
+            int topOffset,
+            int bottomOffset)
+        {
+            return dropX >= actorX - halfWidth
+                && dropX <= actorX + halfWidth
+                && dropY >= actorY - topOffset
+                && dropY <= actorY + bottomOffset;
         }
 
         private static int CalculateParabolicMotionDuration(float startY, float targetY, bool explosiveOwnership, bool elongatedEnter)

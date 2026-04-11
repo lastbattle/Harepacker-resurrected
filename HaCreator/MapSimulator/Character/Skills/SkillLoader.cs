@@ -2150,6 +2150,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             SynthesizeClientOwnedShadowPartnerActionAnimations(
                 skill.ShadowPartnerActionAnimations,
                 skill.ShadowPartnerSupportedRawActionNames);
+            SynthesizeMountedCharacterShadowPartnerActionAnimations(
+                skill.ShadowPartnerActionAnimations,
+                skill.ShadowPartnerSupportedRawActionNames);
             ApplyClientReplayTailsToShadowPartnerActionAnimations(skill.ShadowPartnerActionAnimations);
             skill.ShadowPartnerHorizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(skill.ShadowPartnerActionAnimations);
         }
@@ -2514,6 +2517,56 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private void SynthesizeMountedCharacterShadowPartnerActionAnimations(
+            IDictionary<string, SkillAnimation> actionAnimations,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            if (actionAnimations == null || actionAnimations.Count == 0)
+            {
+                return;
+            }
+
+            WzImage actionImage = global::HaCreator.Program.FindImage("Character", "0000/00002000");
+            if (actionImage?.WzProperties == null || actionImage.WzProperties.Count == 0)
+            {
+                return;
+            }
+
+            IReadOnlyDictionary<string, SkillAnimation> readOnlyActionAnimations =
+                actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+
+            foreach (WzImageProperty actionNode in actionImage.WzProperties)
+            {
+                string actionName = actionNode?.Name;
+                if (string.IsNullOrWhiteSpace(actionName)
+                    || actionAnimations.ContainsKey(actionName)
+                    || !ShadowPartnerClientActionResolver.ShouldSynthesizeMountedCharacterActionName(
+                        actionName,
+                        supportedRawActionNames)
+                    || !TryGetShadowPartnerClientActionPieces(
+                        actionName,
+                        out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan))
+                {
+                    continue;
+                }
+
+                SkillAnimation piecedAnimation = ShadowPartnerClientActionResolver.TryBuildPiecedShadowPartnerActionAnimation(
+                    readOnlyActionAnimations,
+                    actionName,
+                    supportedRawActionNames,
+                    piecePlanOverride: piecePlan,
+                    requireSupportedRawActionName: false);
+                if (piecedAnimation?.Frames.Count > 0)
+                {
+                    actionAnimations[actionName] = piecedAnimation;
+                    readOnlyActionAnimations =
+                        actionAnimations as IReadOnlyDictionary<string, SkillAnimation>
+                        ?? new Dictionary<string, SkillAnimation>(actionAnimations, StringComparer.OrdinalIgnoreCase);
+                }
+            }
+        }
+
         private bool TryGetShadowPartnerClientActionPieces(
             string actionName,
             out IReadOnlyList<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> piecePlan)
@@ -2583,7 +2636,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ResolveShadowPartnerClientActionPieceSlotIndex(pieceNode.Name, fallbackSlotIndex++),
                     pieceActionName,
                     GetInt(pieceNode, "frame"),
-                    pieceNode["delay"] != null ? Math.Abs(GetInt(pieceNode, "delay")) : null,
+                    pieceNode["delay"] != null ? GetInt(pieceNode, "delay") : null,
                     GetInt(pieceNode, "flip") != 0,
                     GetVector(pieceNode, "move"),
                     GetInt(pieceNode, "rotate")));
@@ -4903,7 +4956,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            if (TryResolveClientSummonedUolRootSkillNode(normalizedPath, out WzImageProperty rootSkillNode)
+                && !ReferenceEquals(rootSkillNode, candidateNode)
+                && TryResolveSummonSourcePropertyFromSkillNode(rootSkillNode, out summonNode))
+            {
+                return true;
+            }
+
             return TryResolveVisibleSummonSourcePropertyFromClientSummonedUolPath(normalizedPath, out summonNode);
+        }
+
+        private bool TryResolveClientSummonedUolRootSkillNode(string normalizedPath, out WzImageProperty rootSkillNode)
+        {
+            rootSkillNode = null;
+            if (!TryParseClientSummonedUolRootSkillId(normalizedPath, out int rootSkillId))
+            {
+                return false;
+            }
+
+            return TryGetSkillNode(rootSkillId, out rootSkillNode);
         }
 
         private bool TryResolveVisibleSummonSourcePropertyFromClientSummonedUolPath(
@@ -5031,6 +5102,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 summonedUolPath,
                 linkedSkillResolver,
                 reverseAffectedSkillResolver);
+        }
+
+        internal bool TryResolveClientSummonedUolPropertyForTest(string summonedUolPath, out WzImageProperty summonNode)
+        {
+            return TryResolveClientSummonedUolProperty(summonedUolPath, out summonNode);
+        }
+
+        internal static bool TryParseClientSummonedUolRootSkillIdForTest(string summonedUolPath, out int skillId)
+        {
+            return TryParseClientSummonedUolRootSkillId(NormalizeClientSummonedUolPath(summonedUolPath), out skillId);
         }
 
         internal static bool TryParseNormalizedSkillAnimationPathForTest(
@@ -6034,7 +6115,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (!skill.IsSwallowSkill && skill.ClientInfoType != 98)
+            if (!skill.IsSwallowSkill)
             {
                 return false;
             }

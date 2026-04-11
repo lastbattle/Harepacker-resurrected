@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator.Character
         private const int AffectedAreaAvatarEffectIdBase = int.MinValue;
         private const int DragonFurySkillId = 22160000;
         private const string WeaponSfxAttackSoundName = "Attack";
+        internal const int ClientPickupRepeatDelayMs = 30;
 
         private sealed class AffectedAreaAvatarEffectCacheEntry
         {
@@ -1862,8 +1863,7 @@ namespace HaCreator.MapSimulator.Character
         private bool TryDoingBasicMeleeAttack(int currentTime)
         {
             string actionName = ResolveClientBasicAttackActionName(AttackType.Swing);
-            Player.TriggerSkillAnimation(actionName);
-            Player.PlayEffectiveWeaponSfx();
+            Player.TriggerSkillAnimation(actionName, currentTime: currentTime, playEffectiveWeaponSfx: true);
             Skills?.UpdateBasicMeleeAfterImageState(actionName, currentTime);
             System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicMeleeAttack - {actionName} triggered");
 
@@ -1922,8 +1922,7 @@ namespace HaCreator.MapSimulator.Character
         private bool TryDoingBasicShoot(int currentTime)
         {
             string actionName = ResolveClientBasicAttackActionName(AttackType.Shoot);
-            Player.TriggerSkillAnimation(actionName);
-            Player.PlayEffectiveWeaponSfx();
+            Player.TriggerSkillAnimation(actionName, currentTime: currentTime, playEffectiveWeaponSfx: true);
             System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicShoot - {actionName} triggered");
             // Note: Projectile spawning requires SkillManager
             return true;
@@ -1935,8 +1934,7 @@ namespace HaCreator.MapSimulator.Character
         private bool TryDoingBasicMagicAttack(int currentTime)
         {
             string actionName = ResolveClientBasicAttackActionName(AttackType.Swing);
-            Player.TriggerSkillAnimation(actionName);
-            Player.PlayEffectiveWeaponSfx();
+            Player.TriggerSkillAnimation(actionName, currentTime: currentTime);
             System.Diagnostics.Debug.WriteLine($"[Attack] TryDoingBasicMagicAttack - {actionName} triggered");
 
             // Apply damage to closest mob if mob pool is available
@@ -2136,7 +2134,7 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            return currentTime - lastPickupAttemptTime >= DropItem.PICKUP_DURATION;
+            return currentTime - lastPickupAttemptTime >= ClientPickupRepeatDelayMs;
         }
 
         #endregion

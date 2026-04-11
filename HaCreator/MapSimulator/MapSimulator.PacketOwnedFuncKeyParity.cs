@@ -29,10 +29,6 @@ namespace HaCreator.MapSimulator
         private const byte PacketOwnedFuncKeyMacroType = 8;
         private const int PacketOwnedPetConsumeMpAttemptThrottleMs = 200;
         private static readonly int[] PacketOwnedFuncKeyLegacyLookupScanCodes = { 112, 115, 121, 123, 125 };
-        private static readonly InputAction[] PacketOwnedProtectedBindings = BuildPacketOwnedProtectedBindings();
-        private static readonly PacketOwnedKeyActionSlot[] PacketOwnedBindableHotkeySlots = BuildPacketOwnedBindableHotkeySlots();
-        private static readonly IReadOnlyDictionary<Keys, int> PacketOwnedPreferredBindableHotkeySlotIndicesByKey = BuildPacketOwnedPreferredBindableHotkeySlotIndicesByKey();
-
         // Client menu ids follow the v95 MENU_* enum used by CDraggableMenu/CFuncKeyMappedMan.
         private static readonly (int ClientFunctionId, InputAction Action)[] PacketOwnedKnownFunctionBindings =
         {
@@ -70,6 +66,9 @@ namespace HaCreator.MapSimulator
             ("BtSkill", "BtSkill", 3, 0x98C, "Skills ({0})"),
             ("BtQuest", "BtQuest", 8, 0x18ED, "Quest ({0})"),
         };
+        private static readonly InputAction[] PacketOwnedProtectedBindings = BuildPacketOwnedProtectedBindings();
+        private static readonly PacketOwnedKeyActionSlot[] PacketOwnedBindableHotkeySlots = BuildPacketOwnedBindableHotkeySlots();
+        private static readonly IReadOnlyDictionary<Keys, int> PacketOwnedPreferredBindableHotkeySlotIndicesByKey = BuildPacketOwnedPreferredBindableHotkeySlotIndicesByKey();
 
         private readonly PacketOwnedFuncKeyConfigStore _packetOwnedFuncKeyConfigStore = new();
         private PacketOwnedFuncKeyMappedEntry[] _packetOwnedFuncKeyMapped = CreateEmptyPacketOwnedFuncKeyMap();

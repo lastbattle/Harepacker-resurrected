@@ -16954,6 +16954,7 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.HitFeedbackRegistered += HandleRemoteHitFeedback;
             _remoteUserPool.MobAttackHitEffectRegistered += HandleRemoteMobAttackHitEffect;
             _remoteUserPool.FieldSoundRegistered += HandleRemoteFieldSoundEffect;
+            _remoteUserPool.ClientSoundRegistered += HandleRemoteClientSoundEffect;
             _remoteUserPool.StringEffectRegistered += HandleRemoteStringEffect;
             _remoteUserPool.ChatLogMessageRegistered += HandleRemoteEffectChatLogMessage;
             _remoteUserPool.StatusBarEffectRegistered += HandleRemoteStatusBarEffect;
@@ -18904,6 +18905,7 @@ namespace HaCreator.MapSimulator
                          mobItem.MovementInfo,
                          _playerManager?.IsMovementLockedByMobStatus == true,
                          _mapBoard?.MapInfo?.nofollowCharacter != true && IsFollowRequestOptionEnabled(),
+                         tickCount,
                          tickCount);
                 mobItem.SetEscortFollowActive(escortFollowActive);
 
@@ -26813,6 +26815,7 @@ namespace HaCreator.MapSimulator
             return PassiveTransferFieldReadinessEvaluator.CanRetryFromLiveFieldInterface(
                 new PassiveTransferFieldInterfaceState(
                     HasLiveFieldInterface: HasPassiveTransferFieldInterface(),
+                    HasCollidingTransferPortal: HasPassiveTransferFieldPortalCollision(),
                     HasActiveVectorControl: _playerManager?.IsPlayerActive == true,
                     HasPendingMapChange: _gameState.PendingMapChange,
                     HasPlayerInputControl: _gameState.IsPlayerInputEnabled,
@@ -27521,31 +27524,47 @@ namespace HaCreator.MapSimulator
             string value,
             out PortalSessionValueImpactOwnerKind ownerKind)
         {
+            return TryResolveStructuredPortalSessionValueImpactOwner(
+                _mapBoard?.MapInfo,
+                _specialFieldRuntime?.PartyRaid.IsActive == true,
+                key,
+                value,
+                out ownerKind);
+        }
+
+        internal static bool TryResolveStructuredPortalSessionValueImpactOwner(
+            MapInfo mapInfo,
+            bool partyRaidRuntimeActive,
+            string key,
+            string value,
+            out PortalSessionValueImpactOwnerKind ownerKind)
+        {
             ownerKind = PortalSessionValueImpactOwnerKind.None;
             if (string.IsNullOrWhiteSpace(key))
             {
                 return false;
             }
 
-            if (_specialFieldRuntime?.PartyRaid.IsActive == true)
-            {
-                ownerKind = PortalSessionValueImpactOwnerKind.PartyRaid;
-                return true;
-            }
-
-            if (IsChaosZakumPortalSessionWrapperMap(_mapBoard?.MapInfo)
+            if (IsChaosZakumPortalSessionWrapperMap(mapInfo)
                 && IsChaosZakumPortalSessionKey(key))
             {
                 ownerKind = PortalSessionValueImpactOwnerKind.ChaosZakum;
                 return true;
             }
 
-            if (_mapBoard?.MapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON
+            if (mapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON
                 && string.Equals(key?.Trim(), "balloon_Team", StringComparison.Ordinal)
                 && (string.Equals(value, "redTeam", StringComparison.Ordinal)
                     || string.Equals(value, "blueTeam", StringComparison.Ordinal)))
             {
                 ownerKind = PortalSessionValueImpactOwnerKind.HuntingAdBalloon;
+                return true;
+            }
+
+            if (partyRaidRuntimeActive
+                && Fields.PartyRaidField.IsPartyRaidMap(mapInfo))
+            {
+                ownerKind = PortalSessionValueImpactOwnerKind.PartyRaid;
                 return true;
             }
 
@@ -32156,16 +32175,26 @@ namespace HaCreator.MapSimulator
 
         private void RefreshSkillWindowForJob(int jobId)
         {
-            if (uiWindowManager?.SkillWindow is not SkillUIBigBang skillWindow)
+            if (uiWindowManager?.SkillWindow is SkillUIBigBang skillWindow)
+            {
+                UIWindowLoader.LoadSkillsForJob(
+                    skillWindow,
+                    jobId,
+                    GraphicsDevice,
+                    _playerManager?.Skills?.GetLearnedSkillRecordIds(),
+                    _playerManager?.Player?.Build?.SubJob ?? 0);
+            }
+            else if (uiWindowManager?.SkillWindow is SkillUI legacySkillWindow)
+            {
+                UIWindowLoader.LoadSkillsForJob(
+                    legacySkillWindow,
+                    jobId,
+                    GraphicsDevice);
+            }
+            else
+            {
                 return;
-
-
-            UIWindowLoader.LoadSkillsForJob(
-                skillWindow,
-                jobId,
-                GraphicsDevice,
-                _playerManager?.Skills?.GetLearnedSkillRecordIds(),
-                _playerManager?.Player?.Build?.SubJob ?? 0);
+            }
 
             ConfigureSkillUIBindings();
 

@@ -39,6 +39,48 @@ internal static class SummonClientPostEffectRules
                && HasClientOwnedReactiveAttackChainBallVisual(skillData?.Projectile);
     }
 
+    public static SkillAnimation ResolveAttackTileOverlayAnimation(
+        SkillData skillData,
+        int skillLevel,
+        int ownerCharacterLevel)
+    {
+        return skillData?.ZoneEffect?.ResolveAnimationVariant(
+                   Math.Max(1, skillLevel),
+                   Math.Max(1, ownerCharacterLevel),
+                   skillData.MaxLevel)
+               ?? skillData?.ZoneAnimation;
+    }
+
+    public static string ResolveAttackTileOverlayAnimationPath(
+        SkillData skillData,
+        int skillLevel,
+        int ownerCharacterLevel)
+    {
+        if (skillData == null)
+        {
+            return null;
+        }
+
+        return skillData.ZoneEffect?.ResolveTileUolPath(
+                   Math.Max(1, skillLevel),
+                   Math.Max(1, ownerCharacterLevel))
+               ?? skillData.ZoneEffect?.ResolveAnimationVariantPath(
+                   Math.Max(1, skillLevel),
+                   Math.Max(1, ownerCharacterLevel),
+                   skillData.MaxLevel);
+    }
+
+    public static int ResolveAttackTileOverlayEffectDistance(
+        SkillData skillData,
+        int skillLevel,
+        int ownerCharacterLevel)
+    {
+        return skillData?.ZoneEffect?.ResolveEffectDistanceVariant(
+                   Math.Max(1, skillLevel),
+                   Math.Max(1, ownerCharacterLevel))
+               ?? 0;
+    }
+
     public static bool IsReactiveAttackChainSkill(int skillId)
     {
         return skillId == ClientConfirmedShadowMesoReactiveSkillId
@@ -95,6 +137,48 @@ internal static class SummonClientPostEffectRules
         }
 
         return (chainSource, chainTarget);
+    }
+
+    public static SkillAnimation ResolveReactiveAttackChainAnimation(
+        int skillId,
+        SkillData skillData,
+        int skillLevel,
+        int ownerCharacterLevel,
+        bool flip = false)
+    {
+        if (!IsReactiveAttackChainSkill(skillId))
+        {
+            return null;
+        }
+
+        return skillData?.Projectile?.ResolveGetBallLikeAnimation(
+            Math.Max(1, skillLevel),
+            Math.Max(1, ownerCharacterLevel),
+            flip,
+            skillData.MaxLevel);
+    }
+
+    public static string ResolveReactiveAttackChainAnimationPath(
+        int skillId,
+        SkillData skillData,
+        int skillLevel,
+        int ownerCharacterLevel,
+        bool flip = false)
+    {
+        if (!IsReactiveAttackChainSkill(skillId))
+        {
+            return null;
+        }
+
+        return skillData?.Projectile?.ResolveGetBallLikeUolPath(
+                   Math.Max(1, skillLevel),
+                   Math.Max(1, ownerCharacterLevel),
+                   flip,
+                   skillData.MaxLevel)
+               ?? skillData?.Projectile?.ResolveGetBallLikeAnimationPath(
+                   Math.Max(1, skillLevel),
+                   Math.Max(1, ownerCharacterLevel),
+                   skillData.MaxLevel);
     }
 
     public static Rectangle BuildAttackTileOverlayArea(

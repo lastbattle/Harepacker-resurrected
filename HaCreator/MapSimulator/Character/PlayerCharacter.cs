@@ -119,6 +119,9 @@ namespace HaCreator.MapSimulator.Character
         {
             public string ActionName { get; init; }
             public string PersistentBodyActionName { get; init; }
+            public string PersistentTamingMobActionName { get; init; }
+            public string CurrentBodyActionName { get; set; }
+            public string CurrentTamingMobActionName { get; set; }
             public int BodyPreparedDurationMs { get; init; }
             public int TamingMobPreparedDurationMs { get; init; }
             public int TotalPreparedDurationMs { get; init; }
@@ -126,12 +129,16 @@ namespace HaCreator.MapSimulator.Character
             public int BodyFrameRemainingMs { get; set; }
             public int TamingMobFrameIndex { get; set; } = -1;
             public int TamingMobFrameRemainingMs { get; set; }
+            public int LastAnimationElapsedMs { get; set; }
             public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
         }
 
         internal readonly record struct MountedActionLayerStateForTesting(
             string ActionName,
             string PersistentBodyActionName,
+            string PersistentTamingMobActionName,
+            string CurrentBodyActionName,
+            string CurrentTamingMobActionName,
             int BodyPreparedDurationMs,
             int TamingMobPreparedDurationMs,
             int TotalPreparedDurationMs,
@@ -139,6 +146,7 @@ namespace HaCreator.MapSimulator.Character
             int BodyFrameRemainingMs,
             int TamingMobFrameIndex,
             int TamingMobFrameRemainingMs,
+            int LastAnimationElapsedMs,
             int LastClockUpdateTimeMs);
 
         internal readonly record struct SkillAvatarTransformResolutionForTesting(
@@ -2109,6 +2117,9 @@ namespace HaCreator.MapSimulator.Character
             return new MountedActionLayerStateForTesting(
                 state.ActionName,
                 state.PersistentBodyActionName,
+                state.PersistentTamingMobActionName,
+                state.CurrentBodyActionName,
+                state.CurrentTamingMobActionName,
                 state.BodyPreparedDurationMs,
                 state.TamingMobPreparedDurationMs,
                 state.TotalPreparedDurationMs,
@@ -2116,6 +2127,7 @@ namespace HaCreator.MapSimulator.Character
                 state.BodyFrameRemainingMs,
                 state.TamingMobFrameIndex,
                 state.TamingMobFrameRemainingMs,
+                state.LastAnimationElapsedMs,
                 state.LastClockUpdateTimeMs);
         }
 
@@ -2144,13 +2156,32 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            if (!Assembler.TryCreateMountedActionLayerFrameClocks(
+                    CurrentActionName,
+                    CurrentActionName,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock bodyClock,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock tamingMobClock))
+            {
+                return;
+            }
+
+            string persistentBodyActionName = ResolveMountedTransitionPersistentBodyActionName();
             _mountedActionLayerState = new MountedActionLayerState
             {
                 ActionName = CurrentActionName,
-                PersistentBodyActionName = ResolveMountedTransitionPersistentBodyActionName(),
+                PersistentBodyActionName = persistentBodyActionName,
+                PersistentTamingMobActionName = persistentBodyActionName,
+                CurrentBodyActionName = CurrentActionName,
+                CurrentTamingMobActionName = CurrentActionName,
                 BodyPreparedDurationMs = bodyDuration,
                 TamingMobPreparedDurationMs = tamingMobDuration,
-                TotalPreparedDurationMs = Math.Max(bodyDuration, tamingMobDuration)
+                TotalPreparedDurationMs = Math.Max(bodyDuration, tamingMobDuration),
+                BodyFrameIndex = bodyClock.FrameIndex,
+                BodyFrameRemainingMs = bodyClock.FrameRemainingMs,
+                TamingMobFrameIndex = tamingMobClock.FrameIndex,
+                TamingMobFrameRemainingMs = tamingMobClock.FrameRemainingMs,
+                LastAnimationElapsedMs = 0,
+                LastClockUpdateTimeMs = _animationStartTime
             };
         }
 
@@ -2161,37 +2192,126 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            int animationTime = GetRenderAnimationTime(currentTime);
-            string bodyActionName = mountedActionLayerState.ActionName;
-            int bodyAnimationTime = animationTime;
-            if (AvatarActionLayerCoordinator.TryResolveMountedOneTimeBodyAnimationTime(
-                    mountedActionLayerState.ActionName,
-                    animationTime,
-                    mountedActionLayerState.BodyPreparedDurationMs,
-                    mountedActionLayerState.TamingMobPreparedDurationMs,
-                    out int persistentBodyAnimationTime)
-                && !string.IsNullOrWhiteSpace(mountedActionLayerState.PersistentBodyActionName))
+            int animationElapsedMs = GetRenderAnimationTime(currentTime);
+            int elapsedSinceLastUpdateMs = Math.Max(0, animationElapsedMs - mountedActionLayerState.LastAnimationElapsedMs);
+            if (elapsedSinceLastUpdateMs <= 0)
             {
-                bodyActionName = mountedActionLayerState.PersistentBodyActionName;
-                bodyAnimationTime = persistentBodyAnimationTime;
+                mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
+                return;
             }
 
-            if (!Assembler.TryGetMountedActionLayerFrameTiming(
-                    bodyActionName,
-                    bodyAnimationTime,
-                    mountedActionLayerState.ActionName,
-                    animationTime,
-                    out AvatarActionLayerCoordinator.PreparedFrameTiming bodyTiming,
-                    out AvatarActionLayerCoordinator.PreparedFrameTiming tamingMobTiming))
+            int bodyElapsedSinceLastUpdateMs = elapsedSinceLastUpdateMs;
+            int tamingMobElapsedSinceLastUpdateMs = elapsedSinceLastUpdateMs;
+            AdvanceMountedActionLayerClockOwner(
+                mountedActionLayerState,
+                advanceBodyClock: true,
+                ref bodyElapsedSinceLastUpdateMs);
+            AdvanceMountedActionLayerClockOwner(
+                mountedActionLayerState,
+                advanceBodyClock: false,
+                ref tamingMobElapsedSinceLastUpdateMs);
+
+            mountedActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
+            mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
+        }
+
+        private void AdvanceMountedActionLayerClockOwner(
+            MountedActionLayerState mountedActionLayerState,
+            bool advanceBodyClock,
+            ref int elapsedSinceLastUpdateMs)
+        {
+            if (mountedActionLayerState == null || Assembler == null)
             {
                 return;
             }
 
-            mountedActionLayerState.BodyFrameIndex = bodyTiming.FrameIndex;
-            mountedActionLayerState.BodyFrameRemainingMs = bodyTiming.FrameRemainingMs;
-            mountedActionLayerState.TamingMobFrameIndex = tamingMobTiming.FrameIndex;
-            mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobTiming.FrameRemainingMs;
-            mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
+            AvatarActionLayerCoordinator.PreparedFrameClock bodyClock = new(
+                mountedActionLayerState.BodyFrameIndex,
+                mountedActionLayerState.BodyFrameRemainingMs);
+            AvatarActionLayerCoordinator.PreparedFrameClock tamingMobClock = new(
+                mountedActionLayerState.TamingMobFrameIndex,
+                mountedActionLayerState.TamingMobFrameRemainingMs);
+
+            string currentBodyActionName = mountedActionLayerState.CurrentBodyActionName ?? mountedActionLayerState.ActionName;
+            string currentTamingMobActionName = mountedActionLayerState.CurrentTamingMobActionName ?? mountedActionLayerState.ActionName;
+            bool allowLoop = !IsMountedOneTimeLayerActive(mountedActionLayerState, advanceBodyClock);
+            if (!Assembler.TryAdvanceMountedActionLayerFrameClock(
+                    currentBodyActionName,
+                    ref bodyClock,
+                    currentTamingMobActionName,
+                    ref tamingMobClock,
+                    advanceBodyClock,
+                    allowLoop,
+                    elapsedSinceLastUpdateMs,
+                    out bool completedAction,
+                    out int remainingElapsedMs))
+            {
+                return;
+            }
+
+            mountedActionLayerState.BodyFrameIndex = bodyClock.FrameIndex;
+            mountedActionLayerState.BodyFrameRemainingMs = bodyClock.FrameRemainingMs;
+            mountedActionLayerState.TamingMobFrameIndex = tamingMobClock.FrameIndex;
+            mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobClock.FrameRemainingMs;
+
+            if (!completedAction)
+            {
+                return;
+            }
+
+            string persistentActionName = advanceBodyClock
+                ? mountedActionLayerState.PersistentBodyActionName
+                : mountedActionLayerState.PersistentTamingMobActionName;
+            if (string.IsNullOrWhiteSpace(persistentActionName))
+            {
+                return;
+            }
+
+            if (advanceBodyClock)
+            {
+                mountedActionLayerState.CurrentBodyActionName = persistentActionName;
+            }
+            else
+            {
+                mountedActionLayerState.CurrentTamingMobActionName = persistentActionName;
+            }
+
+            if (!Assembler.TryCreateMountedActionLayerFrameClocks(
+                    mountedActionLayerState.CurrentBodyActionName,
+                    mountedActionLayerState.CurrentTamingMobActionName,
+                    out bodyClock,
+                    out tamingMobClock))
+            {
+                return;
+            }
+
+            if (advanceBodyClock)
+            {
+                tamingMobClock = new AvatarActionLayerCoordinator.PreparedFrameClock(
+                    mountedActionLayerState.TamingMobFrameIndex,
+                    mountedActionLayerState.TamingMobFrameRemainingMs);
+            }
+            else
+            {
+                bodyClock = new AvatarActionLayerCoordinator.PreparedFrameClock(
+                    mountedActionLayerState.BodyFrameIndex,
+                    mountedActionLayerState.BodyFrameRemainingMs);
+            }
+
+            mountedActionLayerState.BodyFrameIndex = bodyClock.FrameIndex;
+            mountedActionLayerState.BodyFrameRemainingMs = bodyClock.FrameRemainingMs;
+            mountedActionLayerState.TamingMobFrameIndex = tamingMobClock.FrameIndex;
+            mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobClock.FrameRemainingMs;
+            elapsedSinceLastUpdateMs = remainingElapsedMs;
+            if (remainingElapsedMs <= 0)
+            {
+                return;
+            }
+
+            AdvanceMountedActionLayerClockOwner(
+                mountedActionLayerState,
+                advanceBodyClock,
+                ref elapsedSinceLastUpdateMs);
         }
 
         private bool TryResolveMountedTransitionCurrentFrame(int currentTime, out AssembledFrame frame)
@@ -2217,36 +2337,28 @@ namespace HaCreator.MapSimulator.Character
             }
 
             UpdateMountedActionLayerFrameClock(mountedActionLayerState, currentTime);
-
-            int animationTime = GetRenderAnimationTime(currentTime);
-            if (!AvatarActionLayerCoordinator.TryResolveMountedOneTimeBodyAnimationTime(
-                    mountedActionLayerState.ActionName,
-                    animationTime,
-                    mountedActionLayerState.BodyPreparedDurationMs,
-                    mountedActionLayerState.TamingMobPreparedDurationMs,
-                    out int bodyAnimationTime))
+            string currentBodyActionName = mountedActionLayerState.CurrentBodyActionName;
+            string currentTamingMobActionName = mountedActionLayerState.CurrentTamingMobActionName;
+            bool bodyActionSplit = !string.Equals(currentBodyActionName, mountedActionLayerState.ActionName, StringComparison.OrdinalIgnoreCase);
+            bool tamingMobActionSplit = !string.Equals(currentTamingMobActionName, mountedActionLayerState.ActionName, StringComparison.OrdinalIgnoreCase);
+            if ((!bodyActionSplit && !tamingMobActionSplit)
+                || string.IsNullOrWhiteSpace(currentBodyActionName)
+                || string.IsNullOrWhiteSpace(currentTamingMobActionName))
             {
                 return false;
             }
 
-            string persistentBodyActionName = mountedActionLayerState.PersistentBodyActionName;
-            if (string.IsNullOrWhiteSpace(persistentBodyActionName)
-                || string.Equals(persistentBodyActionName, mountedActionLayerState.ActionName, StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            frame = Assembler.GetMountedFrameAtTime(
-                persistentBodyActionName,
-                bodyAnimationTime,
-                mountedActionLayerState.ActionName,
-                animationTime);
+            frame = Assembler.GetMountedFrameAtIndices(
+                currentBodyActionName,
+                mountedActionLayerState.BodyFrameIndex,
+                currentTamingMobActionName,
+                mountedActionLayerState.TamingMobFrameIndex);
             if (frame == null)
             {
                 return false;
             }
 
-            currentFrameIndex = Assembler.GetFrameIndexAtTime(persistentBodyActionName, bodyAnimationTime);
+            currentFrameIndex = mountedActionLayerState.BodyFrameIndex;
             return true;
         }
 
@@ -2283,6 +2395,26 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return CharacterPart.GetActionString(ResolveClientStandAction());
+        }
+
+        private static bool IsMountedOneTimeLayerActive(
+            MountedActionLayerState mountedActionLayerState,
+            bool bodyLayer)
+        {
+            if (mountedActionLayerState == null)
+            {
+                return false;
+            }
+
+            string currentActionName = bodyLayer
+                ? mountedActionLayerState.CurrentBodyActionName
+                : mountedActionLayerState.CurrentTamingMobActionName;
+            string persistentActionName = bodyLayer
+                ? mountedActionLayerState.PersistentBodyActionName
+                : mountedActionLayerState.PersistentTamingMobActionName;
+            return !string.IsNullOrWhiteSpace(currentActionName)
+                   && !string.IsNullOrWhiteSpace(persistentActionName)
+                   && !string.Equals(currentActionName, persistentActionName, StringComparison.OrdinalIgnoreCase);
         }
 
         private void UpdateFaceExpression(int currentTime)
@@ -3164,7 +3296,7 @@ namespace HaCreator.MapSimulator.Character
         public void NotifyTamingMobOwnershipHandledExternally()
         {
             _suppressAutomaticTamingMobTransition = true;
-            _observedTamingMobPart = GetEquippedTamingMobPart();
+            _observedTamingMobPart = ResolveAutomaticTamingMobTransitionMount(GetEquippedTamingMobPart());
             _observedClientOwnedTamingMobActive = IsClientOwnedVehicleTamingMobStateActive(_observedTamingMobPart);
             SetTransientTamingMobOverride(null);
         }
@@ -4598,13 +4730,37 @@ namespace HaCreator.MapSimulator.Character
             bool flip = facingRight ^ frame.Flip;
             Point clientOffset = _activeShadowPartner?.CurrentClientOffsetPx ?? Point.Zero;
             int horizontalOffsetPx = ResolveShadowPartnerHorizontalOffsetPx(animation);
-            int drawX = screenX + clientOffset.X + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
-            drawX = flip
-                ? drawX - (frame.Texture.Width - frame.Origin.X)
-                : drawX - frame.Origin.X;
-
-            int drawY = screenY + clientOffset.Y - frame.Origin.Y;
+            int anchorX = screenX + clientOffset.X + (facingRight ? -horizontalOffsetPx : horizontalOffsetPx);
+            int anchorY = screenY + clientOffset.Y;
             Color frameTint = ShadowPartnerTint * ResolveShadowPartnerFrameAlpha(frame, frameElapsedMs);
+            if (ShadowPartnerClientActionResolver.TryResolveFrameDrawTransform(
+                    frame,
+                    anchorX,
+                    anchorY,
+                    flip,
+                    out Vector2 drawPosition,
+                    out Vector2 drawOrigin,
+                    out float rotationRadians,
+                    out SpriteEffects drawEffects)
+                && frame.Texture.Texture != null)
+            {
+                spriteBatch.Draw(
+                    frame.Texture.Texture,
+                    drawPosition,
+                    null,
+                    frameTint,
+                    rotationRadians,
+                    drawOrigin,
+                    1f,
+                    drawEffects,
+                    0f);
+                return;
+            }
+
+            int drawX = flip
+                ? anchorX - (frame.Texture.Width - frame.Origin.X)
+                : anchorX - frame.Origin.X;
+            int drawY = anchorY - frame.Origin.Y;
             frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, frameTint, flip, null);
         }
 
@@ -8468,10 +8624,30 @@ namespace HaCreator.MapSimulator.Character
 
         private CharacterPart ResolveAutomaticTamingMobTransitionMount(CharacterPart equippedMount)
         {
-            CharacterPart clientOwnedVehicleMount = GetClientOwnedVehicleTamingMobPart();
-            return clientOwnedVehicleMount?.Slot == EquipSlot.TamingMob
-                ? clientOwnedVehicleMount
-                : equippedMount;
+            return ResolveAutomaticTamingMobTransitionMount(
+                GetClientOwnedVehicleTamingMobPart(),
+                ResolveClientOwnedVehicleAvatarTransformMountPart(),
+                equippedMount);
+        }
+
+        internal static CharacterPart ResolveAutomaticTamingMobTransitionMount(
+            CharacterPart clientOwnedVehicleMount,
+            CharacterPart transformOwnedVehicleMount,
+            CharacterPart equippedMount)
+        {
+            if (clientOwnedVehicleMount?.Slot == EquipSlot.TamingMob)
+            {
+                return clientOwnedVehicleMount;
+            }
+
+            if (transformOwnedVehicleMount?.Slot == EquipSlot.TamingMob)
+            {
+                return transformOwnedVehicleMount;
+            }
+
+            return equippedMount?.Slot == EquipSlot.TamingMob
+                ? equippedMount
+                : null;
         }
 
         private CharacterPart ResolveClientOwnedVehicleAvatarTransformMountPart()

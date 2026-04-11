@@ -114,6 +114,14 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterAssembler
     {
+        internal sealed record MountedActionLayerResolution(
+            CharacterLoader.CharacterActionMergeInput MergeInput,
+            string BodyActionName,
+            CharacterAnimation BodyAnimation,
+            string TamingMobActionName,
+            CharacterAnimation TamingMobAnimation,
+            CharacterPart ActiveTamingMobPart);
+
         private const int MechanicTamingMobItemId = 1932016;
         private const int PortableChairBackZ = -100;
         private const int PortableChairFrontZ = 900;
@@ -337,6 +345,22 @@ namespace HaCreator.MapSimulator.Character
                 : ResolveDynamicPortableChairFrame(mountedFrame, tamingMobTimeMs);
         }
 
+        internal AssembledFrame GetMountedFrameAtIndices(
+            string bodyActionName,
+            int bodyFrameIndex,
+            string tamingMobActionName,
+            int tamingMobFrameIndex)
+        {
+            AssembledFrame mountedFrame = TryResolveMountedFrameAtIndices(
+                bodyActionName,
+                bodyFrameIndex,
+                tamingMobActionName,
+                tamingMobFrameIndex);
+            return mountedFrame == null
+                ? null
+                : ResolveDynamicPortableChairFrame(mountedFrame, 0);
+        }
+
         internal bool TryGetMountedActionLayerFrameTiming(
             string bodyActionName,
             int bodyTimeMs,
@@ -352,32 +376,22 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            string preparedActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(bodyActionName, isMorphAvatar: false);
-            CharacterLoader.CharacterActionMergeInput mergeInput =
-                CharacterLoader.PrepareActionMergeInput(_build, preparedActionName, GetActiveTamingMobPart());
-            string resolvedActionName = mergeInput?.ActionName ?? preparedActionName;
-            CharacterPart activeTamingMob = mergeInput?.ActiveTamingMobPart;
-            if (activeTamingMob?.Slot != EquipSlot.TamingMob
-                || ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, resolvedActionName))
+            if (!TryResolveMountedActionLayerResolution(
+                    bodyActionName,
+                    tamingMobActionName,
+                    out MountedActionLayerResolution resolution))
             {
                 return false;
             }
 
-            CharacterAnimation bodyAnimation = _build.Body?.GetAnimation(CharacterPart.ParseActionString(resolvedActionName))
-                                           ?? _build.Body?.GetAnimation(CharacterAction.Stand1);
-            string preparedTamingMobActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(
-                tamingMobActionName,
-                isMorphAvatar: false);
-            CharacterAnimation tamingMobAnimation = GetPartAnimation(activeTamingMob, preparedTamingMobActionName)
-                                                ?? GetPartAnimation(activeTamingMob, resolvedActionName);
-            if (bodyAnimation?.Frames?.Count <= 0 || tamingMobAnimation?.Frames?.Count <= 0)
+            if (resolution.BodyAnimation?.Frames?.Count <= 0 || resolution.TamingMobAnimation?.Frames?.Count <= 0)
             {
                 return false;
             }
 
             return AvatarActionLayerCoordinator.TryGetPreparedFrameTimingAtTime(
-                       bodyAnimation,
-                       resolvedActionName,
+                       resolution.BodyAnimation,
+                       resolution.BodyActionName,
                        bodyTimeMs,
                        PreparedActionSpeedDegree,
                        PreparedWalkSpeed,
@@ -386,8 +400,8 @@ namespace HaCreator.MapSimulator.Character
                        isSuperManMorph: false,
                        out bodyTiming)
                    && AvatarActionLayerCoordinator.TryGetPreparedFrameTimingAtTime(
-                       tamingMobAnimation,
-                       preparedTamingMobActionName,
+                       resolution.TamingMobAnimation,
+                       resolution.TamingMobActionName,
                        tamingMobTimeMs,
                        PreparedActionSpeedDegree,
                        PreparedWalkSpeed,
@@ -395,6 +409,101 @@ namespace HaCreator.MapSimulator.Character
                        isMorphAvatar: false,
                        isSuperManMorph: false,
                        out tamingMobTiming);
+        }
+
+        internal bool TryCreateMountedActionLayerFrameClocks(
+            string bodyActionName,
+            string tamingMobActionName,
+            out AvatarActionLayerCoordinator.PreparedFrameClock bodyClock,
+            out AvatarActionLayerCoordinator.PreparedFrameClock tamingMobClock)
+        {
+            bodyClock = default;
+            tamingMobClock = default;
+            if (!TryResolveMountedActionLayerResolution(
+                    bodyActionName,
+                    tamingMobActionName,
+                    out MountedActionLayerResolution resolution))
+            {
+                return false;
+            }
+
+            return AvatarActionLayerCoordinator.TryCreatePreparedFrameClock(
+                       resolution.BodyAnimation,
+                       resolution.BodyActionName,
+                       PreparedActionSpeedDegree,
+                       PreparedWalkSpeed,
+                       HeldActionFrameDelay,
+                       isMorphAvatar: false,
+                       isSuperManMorph: false,
+                       out bodyClock)
+                   && AvatarActionLayerCoordinator.TryCreatePreparedFrameClock(
+                       resolution.TamingMobAnimation,
+                       resolution.TamingMobActionName,
+                       PreparedActionSpeedDegree,
+                       PreparedWalkSpeed,
+                       HeldActionFrameDelay,
+                       isMorphAvatar: false,
+                       isSuperManMorph: false,
+                       out tamingMobClock);
+        }
+
+        internal bool TryAdvanceMountedActionLayerFrameClock(
+            string bodyActionName,
+            ref AvatarActionLayerCoordinator.PreparedFrameClock bodyClock,
+            string tamingMobActionName,
+            ref AvatarActionLayerCoordinator.PreparedFrameClock tamingMobClock,
+            bool advanceBodyClock,
+            bool allowLoop,
+            int elapsedMs,
+            out bool completedAction,
+            out int remainingElapsedMs)
+        {
+            completedAction = false;
+            remainingElapsedMs = 0;
+            if (!TryResolveMountedActionLayerResolution(
+                    bodyActionName,
+                    tamingMobActionName,
+                    out MountedActionLayerResolution resolution))
+            {
+                return false;
+            }
+
+            CharacterAnimation animation = advanceBodyClock
+                ? resolution.BodyAnimation
+                : resolution.TamingMobAnimation;
+            string resolvedActionName = advanceBodyClock
+                ? resolution.BodyActionName
+                : resolution.TamingMobActionName;
+            if (advanceBodyClock)
+            {
+                return AvatarActionLayerCoordinator.TryAdvancePreparedFrameClock(
+                    animation,
+                    resolvedActionName,
+                    ref bodyClock,
+                    elapsedMs,
+                    PreparedActionSpeedDegree,
+                    PreparedWalkSpeed,
+                    HeldActionFrameDelay,
+                    isMorphAvatar: false,
+                    isSuperManMorph: false,
+                    allowLoop,
+                    out completedAction,
+                    out remainingElapsedMs);
+            }
+
+            return AvatarActionLayerCoordinator.TryAdvancePreparedFrameClock(
+                animation,
+                resolvedActionName,
+                ref tamingMobClock,
+                elapsedMs,
+                PreparedActionSpeedDegree,
+                PreparedWalkSpeed,
+                HeldActionFrameDelay,
+                isMorphAvatar: false,
+                isSuperManMorph: false,
+                allowLoop,
+                out completedAction,
+                out remainingElapsedMs);
         }
 
         public int GetFrameIndexAtTime(string actionName, int timeMs)
@@ -714,37 +823,22 @@ namespace HaCreator.MapSimulator.Character
             string tamingMobActionName,
             int tamingMobTimeMs)
         {
-            if (_overrideAvatarPart != null)
+            if (!TryResolveMountedActionLayerResolution(
+                    bodyActionName,
+                    tamingMobActionName,
+                    out MountedActionLayerResolution resolution))
             {
                 return null;
             }
 
-            string preparedActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(bodyActionName, isMorphAvatar: false);
-            CharacterLoader.CharacterActionMergeInput mergeInput =
-                CharacterLoader.PrepareActionMergeInput(_build, preparedActionName, GetActiveTamingMobPart());
-            string resolvedActionName = mergeInput?.ActionName ?? preparedActionName;
-            CharacterPart activeTamingMob = mergeInput?.ActiveTamingMobPart;
-            if (activeTamingMob?.Slot != EquipSlot.TamingMob
-                || ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, resolvedActionName))
-            {
-                return null;
-            }
-
-            CharacterAnimation bodyAnimation = _build.Body?.GetAnimation(CharacterPart.ParseActionString(resolvedActionName))
-                                           ?? _build.Body?.GetAnimation(CharacterAction.Stand1);
-            string preparedTamingMobActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(
-                tamingMobActionName,
-                isMorphAvatar: false);
-            CharacterAnimation tamingMobAnimation = GetPartAnimation(activeTamingMob, preparedTamingMobActionName)
-                                                ?? GetPartAnimation(activeTamingMob, resolvedActionName);
-            if (bodyAnimation?.Frames?.Count <= 0 || tamingMobAnimation?.Frames?.Count <= 0)
+            if (resolution.BodyAnimation?.Frames?.Count <= 0 || resolution.TamingMobAnimation?.Frames?.Count <= 0)
             {
                 return null;
             }
 
             if (!AvatarActionLayerCoordinator.TryGetPreparedFrameAtTime(
-                    bodyAnimation,
-                    resolvedActionName,
+                    resolution.BodyAnimation,
+                    resolution.BodyActionName,
                     bodyTimeMs,
                     PreparedActionSpeedDegree,
                     PreparedWalkSpeed,
@@ -754,8 +848,8 @@ namespace HaCreator.MapSimulator.Character
                     out CharacterFrame bodyFrame,
                     out int bodyFrameIndex)
                 || !AvatarActionLayerCoordinator.TryGetPreparedFrameAtTime(
-                    tamingMobAnimation,
-                    preparedTamingMobActionName,
+                    resolution.TamingMobAnimation,
+                    resolution.TamingMobActionName,
                     tamingMobTimeMs,
                     PreparedActionSpeedDegree,
                     PreparedWalkSpeed,
@@ -769,8 +863,43 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return AssembleFrame(
-                mergeInput,
+                resolution.MergeInput,
                 bodyFrameIndex,
+                bodyFrame,
+                tamingMobFrame);
+        }
+
+        private AssembledFrame TryResolveMountedFrameAtIndices(
+            string bodyActionName,
+            int bodyFrameIndex,
+            string tamingMobActionName,
+            int tamingMobFrameIndex)
+        {
+            if (!TryResolveMountedActionLayerResolution(
+                    bodyActionName,
+                    tamingMobActionName,
+                    out MountedActionLayerResolution resolution))
+            {
+                return null;
+            }
+
+            if (resolution.BodyAnimation?.Frames?.Count <= 0 || resolution.TamingMobAnimation?.Frames?.Count <= 0)
+            {
+                return null;
+            }
+
+            int clampedBodyFrameIndex = Math.Clamp(bodyFrameIndex, 0, resolution.BodyAnimation.Frames.Count - 1);
+            int clampedTamingMobFrameIndex = Math.Clamp(tamingMobFrameIndex, 0, resolution.TamingMobAnimation.Frames.Count - 1);
+            CharacterFrame bodyFrame = resolution.BodyAnimation.Frames[clampedBodyFrameIndex];
+            CharacterFrame tamingMobFrame = resolution.TamingMobAnimation.Frames[clampedTamingMobFrameIndex];
+            if (bodyFrame == null || tamingMobFrame == null)
+            {
+                return null;
+            }
+
+            return AssembleFrame(
+                resolution.MergeInput,
+                clampedBodyFrameIndex,
                 bodyFrame,
                 tamingMobFrame);
         }
@@ -801,6 +930,50 @@ namespace HaCreator.MapSimulator.Character
                 PreparedWalkSpeed,
                 HeldActionFrameDelay);
             return durationMs > 0;
+        }
+
+        private bool TryResolveMountedActionLayerResolution(
+            string bodyActionName,
+            string tamingMobActionName,
+            out MountedActionLayerResolution resolution)
+        {
+            resolution = null;
+            if (_overrideAvatarPart != null)
+            {
+                return false;
+            }
+
+            string preparedBodyActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(bodyActionName, isMorphAvatar: false);
+            CharacterLoader.CharacterActionMergeInput mergeInput =
+                CharacterLoader.PrepareActionMergeInput(_build, preparedBodyActionName, GetActiveTamingMobPart());
+            string resolvedBodyActionName = mergeInput?.ActionName ?? preparedBodyActionName;
+            CharacterPart activeTamingMob = mergeInput?.ActiveTamingMobPart;
+            if (activeTamingMob?.Slot != EquipSlot.TamingMob
+                || ShouldSuppressBaseAvatarForTamingMob(activeTamingMob, resolvedBodyActionName))
+            {
+                return false;
+            }
+
+            CharacterAnimation bodyAnimation = _build.Body?.GetAnimation(CharacterPart.ParseActionString(resolvedBodyActionName))
+                                           ?? _build.Body?.GetAnimation(CharacterAction.Stand1);
+            string preparedTamingMobActionName = AvatarActionLayerCoordinator.ResolvePreparedActionName(
+                tamingMobActionName,
+                isMorphAvatar: false);
+            CharacterAnimation tamingMobAnimation = GetPartAnimation(activeTamingMob, preparedTamingMobActionName)
+                                                ?? GetPartAnimation(activeTamingMob, resolvedBodyActionName);
+            if (bodyAnimation?.Frames?.Count <= 0 || tamingMobAnimation?.Frames?.Count <= 0)
+            {
+                return false;
+            }
+
+            resolution = new MountedActionLayerResolution(
+                mergeInput,
+                resolvedBodyActionName,
+                bodyAnimation,
+                preparedTamingMobActionName,
+                tamingMobAnimation,
+                activeTamingMob);
+            return true;
         }
 
         #region Assembly

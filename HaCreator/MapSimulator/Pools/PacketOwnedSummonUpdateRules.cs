@@ -189,11 +189,10 @@ namespace HaCreator.MapSimulator.Pools
             int skillLevel,
             int ownerCharacterLevel)
         {
-            SkillAnimation zoneAnimation = summon?.SkillData?.ZoneEffect?.ResolveAnimationVariant(
-                                            skillLevel > 0 ? skillLevel : summon.Level,
-                                            Math.Max(1, ownerCharacterLevel),
-                                            summon?.SkillData?.MaxLevel ?? 0)
-                                        ?? summon?.SkillData?.ZoneAnimation;
+            SkillAnimation zoneAnimation = SummonClientPostEffectRules.ResolveAttackTileOverlayAnimation(
+                summon?.SkillData,
+                skillLevel > 0 ? skillLevel : summon?.Level ?? 1,
+                ownerCharacterLevel);
             return summon != null
                    && SummonClientPostEffectRules.ShouldRegisterAttackTileOverlay(
                        summon.SkillId,
@@ -227,6 +226,22 @@ namespace HaCreator.MapSimulator.Pools
             return SummonRuntimeRules.ResolveTeslaCoilIdleRuntimeState(
                 currentRuntimeState,
                 hasActiveOneTimeActionPlayback);
+        }
+
+        internal static void RearmPacketOwnedTeslaCoilForRefresh(
+            ActiveSummon summon,
+            ref byte packetRuntimeState,
+            ref Point[] packetTrianglePoints,
+            int teslaCoilSkillId)
+        {
+            if (summon?.SkillId != teslaCoilSkillId)
+            {
+                return;
+            }
+
+            SummonRuntimeRules.RearmTeslaCoilForRefresh(summon, teslaCoilSkillId);
+            packetRuntimeState = 1;
+            packetTrianglePoints = Array.Empty<Point>();
         }
 
         internal static int ResolveClientOwnedPostAttackEffectDelayMs(ActiveSummon summon)
@@ -293,10 +308,10 @@ namespace HaCreator.MapSimulator.Pools
             int skillLevel,
             int ownerCharacterLevel)
         {
-            return summon?.SkillData?.ZoneEffect?.ResolveEffectDistanceVariant(
-                       skillLevel > 0 ? skillLevel : summon.Level,
-                       Math.Max(1, ownerCharacterLevel))
-                   ?? 0;
+            return SummonClientPostEffectRules.ResolveAttackTileOverlayEffectDistance(
+                summon?.SkillData,
+                skillLevel > 0 ? skillLevel : summon?.Level ?? 1,
+                ownerCharacterLevel);
         }
 
         internal static string ResolveClientOwnedTileOverlayAnimationPath(
@@ -304,14 +319,10 @@ namespace HaCreator.MapSimulator.Pools
             int skillLevel,
             int ownerCharacterLevel)
         {
-            SkillData skill = summon?.SkillData;
-            return skill?.ZoneEffect?.ResolveTileUolPath(
+            return SummonClientPostEffectRules.ResolveAttackTileOverlayAnimationPath(
+                summon?.SkillData,
                 skillLevel > 0 ? skillLevel : summon?.Level ?? 1,
-                Math.Max(1, ownerCharacterLevel))
-                   ?? skill?.ZoneEffect?.ResolveAnimationVariantPath(
-                       skillLevel > 0 ? skillLevel : summon?.Level ?? 1,
-                       Math.Max(1, ownerCharacterLevel),
-                       skill?.MaxLevel ?? 0);
+                ownerCharacterLevel);
         }
 
         internal static string ResolveClientOwnedReactiveAttackChainAnimationPath(
@@ -320,17 +331,15 @@ namespace HaCreator.MapSimulator.Pools
             bool flip = false)
         {
             SkillData skill = summon?.SkillData;
-            if (SummonClientPostEffectRules.IsReactiveAttackChainSkill(summon?.SkillId ?? 0))
+            string chainAnimationPath = SummonClientPostEffectRules.ResolveReactiveAttackChainAnimationPath(
+                summon?.SkillId ?? 0,
+                skill,
+                summon?.Level ?? 1,
+                ownerCharacterLevel,
+                flip);
+            if (!string.IsNullOrWhiteSpace(chainAnimationPath))
             {
-                string resolvedBallAnimationPath = skill?.Projectile?.ResolveGetBallLikeUolPath(
-                    summon.Level,
-                    Math.Max(1, ownerCharacterLevel),
-                    flip,
-                    skill?.MaxLevel ?? 0);
-                if (!string.IsNullOrWhiteSpace(resolvedBallAnimationPath))
-                {
-                    return resolvedBallAnimationPath;
-                }
+                return chainAnimationPath;
             }
 
             return skill?.Projectile?.ResolveGetBallLikeUolPath(

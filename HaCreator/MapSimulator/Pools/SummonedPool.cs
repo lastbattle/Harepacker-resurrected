@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Animation;
+using HaCreator.MapEditor.Info;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Loaders;
@@ -9,6 +10,10 @@ using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Physics;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Wz;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -2775,6 +2780,15 @@ namespace HaCreator.MapSimulator.Pools
             {
                 teslaCoil.Summon.StartTime = currentTime;
                 teslaCoil.Summon.Duration = refreshedDurationMs;
+                byte teslaCoilState = teslaCoil.TeslaCoilState;
+                Point[] teslaTrianglePoints = teslaCoil.TeslaTrianglePoints;
+                PacketOwnedSummonUpdateRules.RearmPacketOwnedTeslaCoilForRefresh(
+                    teslaCoil.Summon,
+                    ref teslaCoilState,
+                    ref teslaTrianglePoints,
+                    TeslaCoilSkillId);
+                teslaCoil.TeslaCoilState = teslaCoilState;
+                teslaCoil.TeslaTrianglePoints = teslaTrianglePoints;
                 RegisterSummonExpiryTimer(teslaCoil.Summon);
             }
         }
@@ -3478,8 +3492,8 @@ namespace HaCreator.MapSimulator.Pools
                 .GroupBy(static mob => mob.PoolId)
                 .ToDictionary(static group => group.Key, static group => group.First());
 
-            PlayerCharacter localPlayer = state.OwnerIsLocal
-                ? _localPlayerAccessor?.Invoke()
+            float? ownerReferenceX = TryResolveOwnerPosition(state.OwnerCharacterId, out Vector2 ownerPosition)
+                ? ownerPosition.X
                 : null;
             int[] orderedTargetIds = ResolvePacketOwnedExpiryTargetOrder(
                 summon,
@@ -3488,7 +3502,7 @@ namespace HaCreator.MapSimulator.Pools
                     GetMobHitbox(mob, currentTime))),
                 maxTargets,
                 ResolvePacketOwnedExpiryPreferredTargetMobIds(state),
-                localPlayer?.X);
+                ownerReferenceX);
 
             return orderedTargetIds
                 .Where(candidatesById.ContainsKey)
@@ -3610,13 +3624,20 @@ namespace HaCreator.MapSimulator.Pools
                 return summon?.FacingRight ?? true;
             }
 
+            IReadOnlyList<PacketOwnedExpiryTargetCandidate> candidateList = candidates as IReadOnlyList<PacketOwnedExpiryTargetCandidate>
+                ?? candidates.ToArray();
+            if (TryResolvePacketOwnedExpiryProbeFacingRight(summon, candidateList, ownerReferenceX, out bool probeFacingRight))
+            {
+                return probeFacingRight;
+            }
+
             PacketOwnedExpiryFacingScore rightScore = ScorePacketOwnedExpiryFacingCandidates(
                 summon,
-                candidates,
+                candidateList,
                 facingRight: true);
             PacketOwnedExpiryFacingScore leftScore = ScorePacketOwnedExpiryFacingCandidates(
                 summon,
-                candidates,
+                candidateList,
                 facingRight: false);
             if (rightScore.InRangeCount != leftScore.InRangeCount)
             {
@@ -3646,6 +3667,88 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return summon.FacingRight;
+        }
+
+        internal static bool TryResolvePacketOwnedExpiryProbeFacingRight(
+            ActiveSummon summon,
+            IReadOnlyList<PacketOwnedExpiryTargetCandidate> candidates,
+            float? ownerReferenceX,
+            out bool facingRight)
+        {
+            facingRight = summon?.FacingRight ?? true;
+            if (summon?.SkillData == null || candidates == null || candidates.Count == 0)
+            {
+                return false;
+            }
+
+            bool hasRightHit = FindFirstPacketOwnedExpiryTargetInRange(
+                summon,
+                candidates,
+                facingRight: true) > 0;
+            bool hasLeftHit = FindFirstPacketOwnedExpiryTargetInRange(
+                summon,
+                candidates,
+                facingRight: false) > 0;
+            if (!hasRightHit && !hasLeftHit)
+            {
+                return false;
+            }
+
+            if (hasRightHit != hasLeftHit)
+            {
+                facingRight = hasRightHit;
+                return true;
+            }
+
+            if (!ownerReferenceX.HasValue)
+            {
+                return false;
+            }
+
+            float ownerDeltaX = ownerReferenceX.Value - summon.PositionX;
+            if (MathF.Abs(ownerDeltaX) <= 0.5f)
+            {
+                return false;
+            }
+
+            facingRight = ownerDeltaX >= 0f;
+            return true;
+        }
+
+        private static int FindFirstPacketOwnedExpiryTargetInRange(
+            ActiveSummon summon,
+            IReadOnlyList<PacketOwnedExpiryTargetCandidate> candidates,
+            bool facingRight)
+        {
+            if (summon?.SkillData == null || candidates == null || candidates.Count == 0)
+            {
+                return 0;
+            }
+
+            Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon, facingRight);
+            if (summonBounds.IsEmpty)
+            {
+                return 0;
+            }
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                PacketOwnedExpiryTargetCandidate candidate = candidates[i];
+                if (candidate.MobObjectId <= 0
+                    || candidate.Hitbox.IsEmpty
+                    || !IsMobHitboxInPacketOwnedSummonAttackRange(
+                        summon,
+                        summonBounds,
+                        candidate.Hitbox,
+                        facingRight))
+                {
+                    continue;
+                }
+
+                return candidate.MobObjectId;
+            }
+
+            return 0;
         }
 
         private static PacketOwnedExpiryFacingScore ScorePacketOwnedExpiryFacingCandidates(
@@ -4109,17 +4212,18 @@ namespace HaCreator.MapSimulator.Pools
             int ownerCharacterLevel = 1)
         {
             SkillData skill = summon?.SkillData;
+            SkillAnimation authoredReactiveChainAnimation = SummonClientPostEffectRules.ResolveReactiveAttackChainAnimation(
+                summon?.SkillId ?? 0,
+                skill,
+                summon?.Level ?? 1,
+                ownerCharacterLevel);
+            if (authoredReactiveChainAnimation?.Frames.Count > 0)
+            {
+                return authoredReactiveChainAnimation;
+            }
+
             if (SummonClientPostEffectRules.IsReactiveAttackChainSkill(summon?.SkillId ?? 0))
             {
-                SkillAnimation resolvedBallAnimation = skill?.Projectile?.ResolveGetBallLikeAnimation(
-                    summon.Level,
-                    Math.Max(1, ownerCharacterLevel),
-                    skill.MaxLevel);
-                if (resolvedBallAnimation?.Frames.Count > 0)
-                {
-                    return resolvedBallAnimation;
-                }
-
                 return null;
             }
 
@@ -4629,7 +4733,10 @@ namespace HaCreator.MapSimulator.Pools
             GraphicsDevice graphicsDevice,
             int damageSoundIndex)
         {
-            MobAnimationSet.AttackInfoMetadata liveAttackInfo = mob?.GetAttackInfo(attackAction);
+            MobAttackData liveAttackData = mob?.GetAttackData(attackAction);
+            MobAnimationSet.AttackInfoMetadata liveAttackInfo = ApplyPacketMobAttackDataOverrides(
+                mob?.GetAttackInfo(attackAction),
+                liveAttackData);
             MobAnimationSet.AttackHitEffectEntry liveHitEffectEntry = mob?.GetAttackHitEffectEntry(
                 attackAction,
                 currentMobAttackFrameIndex);
@@ -4646,6 +4753,7 @@ namespace HaCreator.MapSimulator.Pools
             bool hasLiveHitFrames = liveHitEffectEntry?.Frames?.Count > 0;
             bool needsTemplateAttackInfo = ShouldBorrowTemplateAttackInfoForLiveHitEntry(liveAttackInfo, liveHitEffectEntry);
             bool needsTemplateSoundKey = !HasRequestedLivePacketMobAttackSound(mob, damageSoundIndex);
+            MobAttackData templateAttackData = ResolvePacketMobAttackData(resolvedMobTemplateId, attackAction);
             MobAnimationSet templateAnimationSet = null;
             MobAnimationSet.AttackInfoMetadata templateAttackInfo = null;
             if (needsTemplateAttackInfo || !hasLiveHitFrames)
@@ -4654,7 +4762,9 @@ namespace HaCreator.MapSimulator.Pools
                     texturePool,
                     graphicsDevice,
                     resolvedMobTemplateId.ToString());
-                templateAttackInfo = templateAnimationSet?.GetAttackInfoMetadata(attackAction);
+                templateAttackInfo = ApplyPacketMobAttackDataOverrides(
+                    templateAnimationSet?.GetAttackInfoMetadata(attackAction),
+                    templateAttackData);
             }
 
             if (hasLiveHitFrames)
@@ -4676,6 +4786,12 @@ namespace HaCreator.MapSimulator.Pools
                 templateAnimationSet,
                 attackAction,
                 currentMobAttackFrameIndex);
+            templateHitEffectEntry ??= ResolvePacketMobAttackGeneralEffectEntry(
+                templateAttackData,
+                resolvedMobTemplateId.ToString(),
+                attackAction,
+                texturePool,
+                graphicsDevice);
             string charDamSoundKey = LifeLoader.ResolveMobCharDamSoundKey(
                 soundManager,
                 resolvedMobTemplateId.ToString(),
@@ -4965,6 +5081,232 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return templateCharDamSoundKey;
+        }
+
+        internal static MobAnimationSet.AttackInfoMetadata ApplyPacketMobAttackDataOverrides(
+            MobAnimationSet.AttackInfoMetadata attackInfo,
+            MobAttackData attackData)
+        {
+            if (attackData?.HasHitAttach != true)
+            {
+                return attackInfo;
+            }
+
+            if (attackInfo == null)
+            {
+                return new MobAnimationSet.AttackInfoMetadata
+                {
+                    HitAttach = attackData.HitAttach
+                };
+            }
+
+            if (attackInfo.HitAttach == attackData.HitAttach)
+            {
+                return attackInfo;
+            }
+
+            MobAnimationSet.AttackInfoMetadata clone = CloneAttackInfoMetadata(attackInfo);
+            clone.HitAttach = attackData.HitAttach;
+            return clone;
+        }
+
+        private static MobAttackData ResolvePacketMobAttackData(int mobTemplateId, string attackAction)
+        {
+            if (mobTemplateId <= 0 || string.IsNullOrWhiteSpace(attackAction))
+            {
+                return null;
+            }
+
+            string mobInfoId = mobTemplateId.ToString().TrimStart('0');
+            if (mobInfoId.Length == 0)
+            {
+                mobInfoId = "0";
+            }
+
+            MobInfo mobInfo = MobInfo.Get(mobInfoId);
+            IReadOnlyList<MobAttackData> attackData = mobInfo?.MobData?.AttackData;
+            if (attackData == null || attackData.Count == 0)
+            {
+                return null;
+            }
+
+            int actionIndex = ResolvePacketMobAttackActionIndex(attackAction);
+            if (actionIndex <= 0)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < attackData.Count; i++)
+            {
+                MobAttackData entry = attackData[i];
+                int attackNum = entry?.AttackNum ?? 0;
+                if ((entry?.Action ?? 0) == actionIndex || attackNum == actionIndex || attackNum + 1 == actionIndex)
+                {
+                    return entry;
+                }
+            }
+
+            return attackData[0];
+        }
+
+        private static int ResolvePacketMobAttackActionIndex(string attackAction)
+        {
+            if (string.IsNullOrWhiteSpace(attackAction))
+            {
+                return 0;
+            }
+
+            if (attackAction.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(attackAction["attack".Length..], out int attackIndex))
+            {
+                return attackIndex;
+            }
+
+            if (attackAction.StartsWith("skill", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(attackAction["skill".Length..], out int skillIndex))
+            {
+                return skillIndex;
+            }
+
+            return 0;
+        }
+
+        private static MobAnimationSet.AttackHitEffectEntry ResolvePacketMobAttackGeneralEffectEntry(
+            MobAttackData attackData,
+            string mobTemplateId,
+            string attackAction,
+            TexturePool texturePool,
+            GraphicsDevice graphicsDevice)
+        {
+            List<IDXObject> frames = TryLoadPacketMobAttackGeneralEffectFrames(
+                attackData,
+                mobTemplateId,
+                attackAction,
+                texturePool,
+                graphicsDevice);
+            return frames?.Count > 0
+                ? new MobAnimationSet.AttackHitEffectEntry
+                {
+                    Frames = frames,
+                    SourceFrameIndex = 0,
+                    IsAttackFrameOwned = false
+                }
+                : null;
+        }
+
+        private static List<IDXObject> TryLoadPacketMobAttackGeneralEffectFrames(
+            MobAttackData attackData,
+            string mobTemplateId,
+            string attackAction,
+            TexturePool texturePool,
+            GraphicsDevice graphicsDevice)
+        {
+            if (texturePool == null
+                || graphicsDevice == null
+                || string.IsNullOrWhiteSpace(attackData?.HitEffectPath))
+            {
+                return null;
+            }
+
+            string[] candidates = EnumeratePacketMobAttackGeneralEffectCandidateUols(
+                attackData.HitEffectPath,
+                mobTemplateId,
+                attackAction);
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                WzImageProperty property = ResolvePacketMobAttackGeneralEffectProperty(candidates[i]);
+                if (property == null)
+                {
+                    continue;
+                }
+
+                List<IDXObject> frames = MapSimulatorLoader.LoadFrames(
+                    texturePool,
+                    property.GetLinkedWzImageProperty() ?? property,
+                    0,
+                    0,
+                    graphicsDevice,
+                    usedProps: null);
+                if (frames?.Count > 0)
+                {
+                    return frames;
+                }
+            }
+
+            return null;
+        }
+
+        internal static string[] EnumeratePacketMobAttackGeneralEffectCandidateUols(
+            string effectPath,
+            string mobTemplateId,
+            string attackAction)
+        {
+            string normalizedEffectPath = effectPath?.Replace('\\', '/').Trim().Trim('/');
+            if (string.IsNullOrWhiteSpace(normalizedEffectPath))
+            {
+                return Array.Empty<string>();
+            }
+
+            var candidates = new List<string>();
+            if (normalizedEffectPath.Split('/').Length >= 3)
+            {
+                candidates.Add(normalizedEffectPath);
+            }
+
+            string normalizedTemplateId = mobTemplateId?.Trim();
+            if (!string.IsNullOrWhiteSpace(normalizedTemplateId))
+            {
+                normalizedTemplateId = normalizedTemplateId.PadLeft(7, '0');
+            }
+            if (!string.IsNullOrWhiteSpace(normalizedTemplateId))
+            {
+                candidates.Add($"Mob/{normalizedTemplateId}.img/{normalizedEffectPath}");
+                if (!string.IsNullOrWhiteSpace(attackAction))
+                {
+                    candidates.Add($"Mob/{normalizedTemplateId}.img/{attackAction}/{normalizedEffectPath}");
+                    candidates.Add($"Mob/{normalizedTemplateId}.img/{attackAction}/info/{normalizedEffectPath}");
+                }
+            }
+
+            return candidates
+                .Where(static candidate => !string.IsNullOrWhiteSpace(candidate))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static WzImageProperty ResolvePacketMobAttackGeneralEffectProperty(string effectUol)
+        {
+            if (string.IsNullOrWhiteSpace(effectUol))
+            {
+                return null;
+            }
+
+            string normalized = effectUol.Replace('\\', '/').Trim().Trim('/');
+            string[] segments = normalized.Split('/');
+            if (segments.Length < 3)
+            {
+                return null;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage(segments[0], segments[1]);
+            if (image == null)
+            {
+                return null;
+            }
+
+            WzImageProperty current = null;
+            for (int i = 2; i < segments.Length; i++)
+            {
+                current = i == 2
+                    ? WzInfoTools.GetRealProperty(image[segments[i]])
+                    : WzInfoTools.GetRealProperty(current?[segments[i]]);
+                if (current == null)
+                {
+                    break;
+                }
+            }
+
+            return current;
         }
 
         private void PlayPacketSummonHitSound(SkillData skill)

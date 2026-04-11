@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Combat;
 using HaCreator.MapSimulator.Interaction;
@@ -2087,7 +2088,7 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<int> selectedSlots = GetNumericNamedIntRows(infoProperty["selectedSlot"] as WzSubProperty);
             if (selectedSlots.Count > 0)
             {
-                metadataLines.Add($"Eligible Equip Slots: {string.Join(", ", selectedSlots)}");
+                metadataLines.Add($"Eligible Equip Slots: {FormatEligibleEquipSlotLabels(selectedSlots)}");
             }
         }
 
@@ -3889,10 +3890,70 @@ namespace HaCreator.MapSimulator.UI
                 : value.ToString(CultureInfo.InvariantCulture);
         }
 
+        private static string FormatEligibleEquipSlotLabels(IReadOnlyList<int> selectedSlots)
+        {
+            if (selectedSlots == null || selectedSlots.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> labels = new(selectedSlots.Count);
+            HashSet<string> seenLabels = new(StringComparer.Ordinal);
+            for (int i = 0; i < selectedSlots.Count; i++)
+            {
+                string label = ResolveEligibleEquipSlotLabel(selectedSlots[i]);
+                if (!string.IsNullOrWhiteSpace(label) && seenLabels.Add(label))
+                {
+                    labels.Add(label);
+                }
+            }
+
+            return labels.Count > 0
+                ? string.Join(", ", labels)
+                : string.Join(", ", selectedSlots);
+        }
+
+        private static string ResolveEligibleEquipSlotLabel(int slotValue)
+        {
+            EquipSlot slot = Enum.IsDefined(typeof(EquipSlot), slotValue)
+                ? (EquipSlot)slotValue
+                : EquipSlot.None;
+
+            return slot switch
+            {
+                EquipSlot.Cap => "Cap",
+                EquipSlot.FaceAccessory => "Face Accessory",
+                EquipSlot.EyeAccessory => "Eye Accessory",
+                EquipSlot.Earrings => "Earrings",
+                EquipSlot.Coat => "Top",
+                EquipSlot.Longcoat => "Overall",
+                EquipSlot.Pants => "Bottom",
+                EquipSlot.Shoes => "Shoes",
+                EquipSlot.Glove => "Gloves",
+                EquipSlot.Shield => "Shield",
+                EquipSlot.Cape => "Cape",
+                EquipSlot.Ring1 or EquipSlot.Ring2 or EquipSlot.Ring3 or EquipSlot.Ring4 => "Ring",
+                EquipSlot.Pendant or EquipSlot.Pendant2 => "Pendant",
+                EquipSlot.Belt => "Belt",
+                EquipSlot.Medal => "Medal",
+                EquipSlot.Shoulder => "Shoulder",
+                EquipSlot.Pocket => "Pocket",
+                EquipSlot.Badge => "Badge",
+                EquipSlot.Weapon => "Weapon",
+                EquipSlot.TamingMob => "Mount",
+                EquipSlot.Saddle => "Saddle",
+                EquipSlot.TamingMobAccessory => "Mount Accessory",
+                EquipSlot.Android => "Android",
+                EquipSlot.AndroidHeart => "Android Heart",
+                _ => slotValue.ToString(CultureInfo.InvariantCulture)
+            };
+        }
+
         private static int? ResolveRequiredLevel(WzSubProperty infoProperty)
         {
             return TryGetPositiveInt(infoProperty?["lv"])
-                   ?? TryGetPositiveInt(infoProperty?["reqLevel"]);
+                   ?? TryGetPositiveInt(infoProperty?["reqLevel"])
+                   ?? TryGetPositiveInt(infoProperty?["reqLEV"]);
         }
 
         private static int? TryGetPositiveInt(WzImageProperty property)

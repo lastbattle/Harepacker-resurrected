@@ -57,32 +57,75 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            Dictionary<short, PacketCharacterDataItemSlot> itemsByPosition = authoritativeCashItems?
-                .GroupBy(static item => item.InventoryPosition)
-                .Select(static group => group.First())
-                .ToDictionary(static item => item.InventoryPosition)
-                ?? new Dictionary<short, PacketCharacterDataItemSlot>();
+            List<PacketCharacterDataItemSlot> authoritativePetItems = authoritativeCashItems?
+                .Where(static item =>
+                    item.HasCashItemSerialNumber &&
+                    item.CashItemSerialNumber > 0 &&
+                    IsPetCashItem(item.ItemId))
+                .ToList()
+                ?? new List<PacketCharacterDataItemSlot>();
+            HashSet<int> matchedLiveIndices = new();
+            List<PacketCharacterDataItemSlot> unresolvedAuthoritativeItems = new();
 
             for (int i = 0; i < liveCashSlots.Count; i++)
             {
                 InventorySlotData slot = liveCashSlots[i];
-                if (slot == null || !IsPetCashItem(slot.ItemId))
+                if (slot == null)
                 {
                     continue;
                 }
 
-                short inventoryPosition = (short)(i + 1);
-                if (itemsByPosition.TryGetValue(inventoryPosition, out PacketCharacterDataItemSlot authoritativeItem)
-                    && authoritativeItem.ItemId == slot.ItemId
-                    && authoritativeItem.HasCashItemSerialNumber
-                    && authoritativeItem.CashItemSerialNumber > 0)
+                if (!IsPetCashItem(slot.ItemId))
                 {
-                    slot.CashItemSerialNumber = authoritativeItem.CashItemSerialNumber;
+                    continue;
                 }
-                else
+
+                slot.CashItemSerialNumber = null;
+            }
+
+            foreach (PacketCharacterDataItemSlot authoritativeItem in authoritativePetItems)
+            {
+                int liveIndex = authoritativeItem.InventoryPosition - 1;
+                if (liveIndex >= 0 &&
+                    liveIndex < liveCashSlots.Count &&
+                    !matchedLiveIndices.Contains(liveIndex))
                 {
-                    slot.CashItemSerialNumber = null;
+                    InventorySlotData liveSlot = liveCashSlots[liveIndex];
+                    if (liveSlot != null &&
+                        IsPetCashItem(liveSlot.ItemId) &&
+                        liveSlot.ItemId == authoritativeItem.ItemId)
+                    {
+                        liveSlot.CashItemSerialNumber = authoritativeItem.CashItemSerialNumber;
+                        matchedLiveIndices.Add(liveIndex);
+                        continue;
+                    }
                 }
+
+                unresolvedAuthoritativeItems.Add(authoritativeItem);
+            }
+
+            if (unresolvedAuthoritativeItems.Count == 0)
+            {
+                return;
+            }
+
+            Dictionary<int, List<int>> unresolvedLiveIndicesByItemId = BuildUnresolvedLiveIndicesByItemId(liveCashSlots, matchedLiveIndices);
+            foreach (IGrouping<int, PacketCharacterDataItemSlot> group in unresolvedAuthoritativeItems.GroupBy(static item => item.ItemId))
+            {
+                if (!unresolvedLiveIndicesByItemId.TryGetValue(group.Key, out List<int> liveIndices) ||
+                    liveIndices.Count != 1)
+                {
+                    continue;
+                }
+
+                PacketCharacterDataItemSlot[] authoritativeMatches = group.ToArray();
+                if (authoritativeMatches.Length != 1)
+                {
+                    continue;
+                }
+
+                int liveIndex = liveIndices[0];
+                liveCashSlots[liveIndex].CashItemSerialNumber = authoritativeMatches[0].CashItemSerialNumber;
             }
         }
 
@@ -144,6 +187,36 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return ResolvePetDisplayName(itemId, inventoryPosition);
+        }
+
+        private static Dictionary<int, List<int>> BuildUnresolvedLiveIndicesByItemId(
+            IReadOnlyList<InventorySlotData> liveCashSlots,
+            HashSet<int> matchedLiveIndices)
+        {
+            Dictionary<int, List<int>> unresolved = new();
+            for (int i = 0; i < liveCashSlots.Count; i++)
+            {
+                if (matchedLiveIndices.Contains(i))
+                {
+                    continue;
+                }
+
+                InventorySlotData slot = liveCashSlots[i];
+                if (slot == null || !IsPetCashItem(slot.ItemId))
+                {
+                    continue;
+                }
+
+                if (!unresolved.TryGetValue(slot.ItemId, out List<int> liveIndices))
+                {
+                    liveIndices = new List<int>();
+                    unresolved[slot.ItemId] = liveIndices;
+                }
+
+                liveIndices.Add(i);
+            }
+
+            return unresolved;
         }
     }
 }

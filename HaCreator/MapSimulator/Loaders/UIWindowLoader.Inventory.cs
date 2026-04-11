@@ -34,6 +34,8 @@ namespace HaCreator.MapSimulator.Loaders
                 return CreatePlaceholderInventory(device, screenWidth, screenHeight);
             }
 
+            WzSubProperty utilDlgExProperty = uiWindowImage?["UtilDlgEx"] as WzSubProperty;
+
 
             // Get main background
             WzCanvasProperty backgrnd = (WzCanvasProperty)itemProperty["backgrnd"];
@@ -59,6 +61,12 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(itemProperty, "disabled", device),
                 LoadCanvasTexture(itemProperty, "shadow", device),
                 LoadInventoryMarkerTextures(itemProperty, "Grade", device));
+            inventory.SetDropPromptAssets(
+                CreateUtilDlgNoticeFrameTexture(utilDlgExProperty, uiWindowImage, null, device, width: 156, height: 86),
+                LoadCanvasTexture(utilDlgExProperty?["BtPrev"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(utilDlgExProperty?["BtNext"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(utilDlgExProperty?["BtOK"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(utilDlgExProperty?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device));
 
 
             // Load tab buttons if available
@@ -179,6 +187,9 @@ namespace HaCreator.MapSimulator.Loaders
                 return CreatePlaceholderInventoryBigBang(device, screenWidth, screenHeight);
             }
 
+            WzSubProperty utilDlgExProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty
+                ?? uiWindow1Image?["UtilDlgEx"] as WzSubProperty;
+
 
             // Get main background
             WzCanvasProperty backgrnd = (WzCanvasProperty)itemProperty["backgrnd"];
@@ -199,6 +210,12 @@ namespace HaCreator.MapSimulator.Loaders
             InventoryUIBigBang inventory = new InventoryUIBigBang(frame, device);
 
             inventory.Position = new Point(screenWidth - bgTexture.Width - 20, 100);
+            inventory.SetDropPromptAssets(
+                CreateUtilDlgNoticeFrameTexture(utilDlgExProperty, uiWindow1Image, uiWindow2Image, device, width: 156, height: 86),
+                LoadCanvasTexture(utilDlgExProperty?["BtPrev"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(utilDlgExProperty?["BtNext"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(utilDlgExProperty?["BtOK"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(utilDlgExProperty?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device));
 
 
 

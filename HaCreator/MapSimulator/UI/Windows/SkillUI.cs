@@ -251,6 +251,28 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public SkillDisplayData DraggedSkill => _isDragging ? _dragSkill : null;
 
+        public List<SkillDisplayData> CurrentSkills
+        {
+            get
+            {
+                if (skillsByTab.TryGetValue(_currentTab, out var skills))
+                    return skills;
+
+                return new List<SkillDisplayData>();
+            }
+        }
+
+        public SkillDisplayData SelectedSkill
+        {
+            get
+            {
+                var skills = CurrentSkills;
+                return _selectedSkillIndex >= 0 && _selectedSkillIndex < skills.Count
+                    ? skills[_selectedSkillIndex]
+                    : null;
+            }
+        }
+
         /// <summary>
         /// Callback when drag starts
         /// </summary>
@@ -400,6 +422,75 @@ namespace HaCreator.MapSimulator.UI
             _cooldownMaskTextures = cooldownMaskTextures ?? Array.Empty<Texture2D>();
         }
 
+        public void SetSkillRowTextures(Texture2D row0, Texture2D row1, Texture2D line)
+        {
+            _skillRow0 = row0;
+            _skillRow1 = row1;
+            _skillRowLine = line;
+        }
+
+        public void SetRecommendTexture(Texture2D recommendTexture)
+        {
+            _recommendTexture = recommendTexture;
+        }
+
+        public void SetDisplayedSkillRootId(int tab, int skillRootId)
+        {
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+            _displaySkillRootByTab[tabIndex] = Math.Max(0, skillRootId);
+        }
+
+        public void SetRecommendedSkillEntries(int tab, IEnumerable<SkillDataLoader.RecommendedSkillEntry> entries)
+        {
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+            if (!_recommendedSkillsByTab.TryGetValue(tabIndex, out List<SkillDataLoader.RecommendedSkillEntry> list))
+            {
+                list = new List<SkillDataLoader.RecommendedSkillEntry>();
+                _recommendedSkillsByTab[tabIndex] = list;
+            }
+
+            list.Clear();
+            if (entries == null)
+                return;
+
+            list.AddRange(entries
+                .Where(entry => entry.SkillId > 0)
+                .OrderBy(entry => entry.SpentSpThreshold)
+                .ThenBy(entry => entry.SkillId));
+        }
+
+        public void SetSpUpTextures(Texture2D normal, Texture2D pressed, Texture2D disabled, Texture2D mouseOver)
+        {
+            _spUpNormal = normal;
+            _spUpPressed = pressed;
+            _spUpDisabled = disabled;
+            _spUpMouseOver = mouseOver;
+        }
+
+        public void SetScrollBarTextures(
+            Texture2D prevNormal,
+            Texture2D prevPressed,
+            Texture2D nextNormal,
+            Texture2D nextPressed,
+            Texture2D trackEnabled,
+            Texture2D thumbNormal,
+            Texture2D thumbPressed,
+            Texture2D prevDisabled,
+            Texture2D nextDisabled,
+            Texture2D trackDisabled)
+        {
+            _scrollPrevNormal = prevNormal;
+            _scrollPrevPressed = prevPressed;
+            _scrollNextNormal = nextNormal;
+            _scrollNextPressed = nextPressed;
+            _scrollTrackEnabled = trackEnabled;
+            _scrollThumbNormal = thumbNormal;
+            _scrollThumbPressed = thumbPressed;
+            _scrollPrevDisabled = prevDisabled;
+            _scrollNextDisabled = nextDisabled;
+            _scrollTrackDisabled = trackDisabled;
+        }
+
         /// <summary>
         /// Initialize job advancement tab buttons
         /// </summary>
@@ -461,13 +552,16 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            if (!skillsByTab.TryGetValue(_currentTab, out var skills))
+            var skills = CurrentSkills;
+            if (skills.Count == 0 && !skillsByTab.ContainsKey(_currentTab))
                 return;
 
             int windowX = Position.X;
             int windowY = Position.Y;
 
             DrawJobHeader(sprite, windowX, windowY);
+            int availableSp = GetCurrentSkillPoints();
+            int recommendedSkillId = ResolveRecommendedSkillId(skills);
 
             // Draw visible skill rows using official client layout
             int rowIndex = 0;
@@ -475,14 +569,25 @@ namespace HaCreator.MapSimulator.UI
             {
                 int skillIndex = rowIndex + _scrollOffset;
                 var skill = skills[skillIndex];
+                bool canLevelUp = CanLevelUp(skill, availableSp);
                 bool isUnlearned = skill.CurrentLevel <= 0;
+                Texture2D rowBg = canLevelUp ? _skillRow1 : _skillRow0;
+                if (rowBg != null)
+                {
+                    sprite.Draw(rowBg, new Vector2(windowX + ROW_BG_X, windowY + nTop + ROW_BG_Y_OFFSET), Color.White);
+                }
+
+                if (skill.SkillId == recommendedSkillId && _recommendTexture != null)
+                {
+                    sprite.Draw(_recommendTexture, new Vector2(windowX + RECOMMEND_X, windowY + nTop + ROW_BG_Y_OFFSET), Color.White);
+                }
 
                 // Calculate icon position: (12, nTop - 17)
                 int iconX = windowX + ICON_X;
                 int iconY = windowY + nTop + ICON_Y_OFFSET;
 
                 // Draw skill icon
-                Texture2D iconTexture = skill.GetIconForState(isUnlearned, skillIndex == _hoveredSkillIndex);
+                Texture2D iconTexture = skill.GetIconForState(isUnlearned, canLevelUp && skillIndex == _hoveredSkillIndex);
                 if (iconTexture != null)
                 {
                     Rectangle iconRect = new Rectangle(iconX, iconY, SKILL_ICON_SIZE, SKILL_ICON_SIZE);
@@ -544,13 +649,33 @@ namespace HaCreator.MapSimulator.UI
                 // Highlight selected skill
                 if (skillIndex == _selectedSkillIndex)
                 {
-                    // Draw selection highlight around icon
-                    DrawSelectionHighlight(sprite, iconX - 2, iconY - 2, SKILL_ICON_SIZE + 4, SKILL_ICON_SIZE + 4);
+                    DrawSelectionHighlight(
+                        sprite,
+                        windowX + ROW_BG_X,
+                        windowY + nTop + ROW_BG_Y_OFFSET,
+                        rowBg?.Width ?? 140,
+                        Math.Max(SKILL_ICON_SIZE + 4, rowBg?.Height ?? 37));
+                }
+
+                if (skill.CurrentLevel < skill.MaxLevel)
+                {
+                    Texture2D spUpTexture = GetSpUpTexture(canLevelUp, skillIndex);
+                    if (spUpTexture != null)
+                    {
+                        Rectangle spUpBounds = GetSpUpButtonBounds(rowIndex);
+                        sprite.Draw(spUpTexture, new Vector2(spUpBounds.X, spUpBounds.Y), Color.White);
+                    }
+                }
+
+                if (_skillRowLine != null && rowIndex < VISIBLE_ROWS - 1 && skillIndex + 1 < skills.Count)
+                {
+                    sprite.Draw(_skillRowLine, new Vector2(windowX + LINE_X, windowY + nTop + LINE_Y_OFFSET), Color.White);
                 }
 
                 rowIndex++;
             }
 
+            DrawScrollBar(sprite);
             DrawSkillPointCount(sprite, windowX, windowY);
         }
 
@@ -560,6 +685,18 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
+            if (_hoveredSpUpSkillIndex >= 0)
+            {
+                DrawNativeHintTooltip(sprite, 1, renderParameters.RenderWidth, renderParameters.RenderHeight);
+                return;
+            }
+
+            if (_hoveredSkillPointDisplay)
+            {
+                DrawNativeHintTooltip(sprite, 2, renderParameters.RenderWidth, renderParameters.RenderHeight);
+                return;
+            }
+
             DrawHoveredSkillTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight, TickCount);
         }
 
@@ -652,20 +789,260 @@ namespace HaCreator.MapSimulator.UI
                 SP_DISPLAY_TEXT_SCALE);
         }
 
+        private Rectangle GetSkillPointBounds()
+        {
+            float textWidth = 12f;
+            if (_font != null)
+            {
+                textWidth = Math.Max(textWidth, MeasureSkillBookText(GetCurrentSkillPoints().ToString(), SP_DISPLAY_TEXT_SCALE).X);
+            }
+
+            return new Rectangle(
+                Position.X + SP_DISPLAY_X_BASE - (int)Math.Ceiling(textWidth) - 4,
+                Position.Y + SP_DISPLAY_Y - 2,
+                (int)Math.Ceiling(textWidth) + 8,
+                _font != null
+                    ? (int)Math.Ceiling(ClientTextDrawing.Measure((GraphicsDevice)null, "Ag", SP_DISPLAY_TEXT_SCALE, _font).Y) + 4
+                    : 14);
+        }
+
         /// <summary>
         /// Draw a selection highlight rectangle
         /// </summary>
         private void DrawSelectionHighlight(SpriteBatch sprite, int x, int y, int width, int height)
         {
-            // Simple highlight using the empty slot texture as a reference
-            // In production, this would use a proper highlight texture
-            if (_emptySlotTexture != null)
+            if (_debugPlaceholder != null)
             {
-                Color highlightColor = new Color(255, 200, 100, 100);
-                sprite.Draw(_emptySlotTexture,
-                    new Rectangle(x, y, width, height),
-                    highlightColor);
+                sprite.Draw(_debugPlaceholder, new Rectangle(x, y, width, height), new Color(80, 140, 255, 70));
             }
+        }
+
+        private void DrawScrollBar(SpriteBatch sprite)
+        {
+            Rectangle upButtonBounds = GetScrollUpButtonBounds();
+            Rectangle downButtonBounds = GetScrollDownButtonBounds();
+            Rectangle trackBounds = GetScrollTrackBounds();
+            bool canScroll = CanScrollSkills();
+            bool leftPressed = Mouse.GetState().LeftButton == ButtonState.Pressed;
+
+            DrawScrollTexture(
+                sprite,
+                canScroll
+                    ? ((leftPressed && upButtonBounds.Contains(_lastMousePosition) && !_isDraggingScrollThumb)
+                        ? _scrollPrevPressed ?? _scrollPrevNormal
+                        : _scrollPrevNormal)
+                    : _scrollPrevDisabled ?? _scrollPrevNormal,
+                upButtonBounds);
+
+            DrawTiledTrack(sprite, canScroll ? _scrollTrackEnabled : _scrollTrackDisabled ?? _scrollTrackEnabled, trackBounds);
+
+            if (canScroll)
+            {
+                Rectangle thumbBounds = GetScrollThumbBounds();
+                bool thumbPressed = _isDraggingScrollThumb || (leftPressed && thumbBounds.Contains(_lastMousePosition));
+                DrawScrollTexture(sprite, thumbPressed ? _scrollThumbPressed ?? _scrollThumbNormal : _scrollThumbNormal, thumbBounds);
+            }
+
+            DrawScrollTexture(
+                sprite,
+                canScroll
+                    ? ((leftPressed && downButtonBounds.Contains(_lastMousePosition) && !_isDraggingScrollThumb)
+                        ? _scrollNextPressed ?? _scrollNextNormal
+                        : _scrollNextNormal)
+                    : _scrollNextDisabled ?? _scrollNextNormal,
+                downButtonBounds);
+        }
+
+        private void DrawScrollTexture(SpriteBatch sprite, Texture2D texture, Rectangle bounds)
+        {
+            if (texture != null)
+            {
+                sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
+                return;
+            }
+
+            if (_debugPlaceholder != null)
+            {
+                sprite.Draw(_debugPlaceholder, bounds, new Color(54, 70, 94, 200));
+            }
+        }
+
+        private void DrawTiledTrack(SpriteBatch sprite, Texture2D texture, Rectangle bounds)
+        {
+            if (texture == null)
+            {
+                if (_debugPlaceholder != null)
+                {
+                    sprite.Draw(_debugPlaceholder, bounds, new Color(39, 53, 73, 160));
+                }
+                return;
+            }
+
+            int tileHeight = Math.Max(1, texture.Height);
+            for (int y = bounds.Y; y < bounds.Bottom; y += tileHeight)
+            {
+                int height = Math.Min(tileHeight, bounds.Bottom - y);
+                Rectangle destination = new Rectangle(bounds.X, y, bounds.Width, height);
+                Rectangle source = new Rectangle(0, 0, texture.Width, height);
+                sprite.Draw(texture, destination, source, Color.White);
+            }
+        }
+
+        private void DrawNativeHintTooltip(SpriteBatch sprite, int tooltipFrameIndex, int renderWidth, int renderHeight)
+        {
+            if (tooltipFrameIndex < 0 || tooltipFrameIndex >= _tooltipFrames.Length)
+                return;
+
+            Texture2D tooltipFrame = _tooltipFrames[tooltipFrameIndex];
+            if (tooltipFrame == null)
+                return;
+
+            Point anchorPoint = tooltipFrameIndex switch
+            {
+                1 when _hoveredSpUpSkillIndex >= _scrollOffset =>
+                    new Point(
+                        GetSpUpButtonBounds(_hoveredSpUpSkillIndex - _scrollOffset).Left,
+                        GetSpUpButtonBounds(_hoveredSpUpSkillIndex - _scrollOffset).Bottom),
+                2 => new Point(GetSkillPointBounds().Right, GetSkillPointBounds().Top),
+                _ => new Point(_lastMousePosition.X, _lastMousePosition.Y + HOVER_TOOLTIP_CURSOR_GAP)
+            };
+
+            Rectangle tooltipRect = ResolveTooltipRect(
+                anchorPoint,
+                tooltipFrame.Width,
+                tooltipFrame.Height,
+                renderWidth,
+                renderHeight,
+                stackalloc[] { tooltipFrameIndex },
+                out _);
+            sprite.Draw(tooltipFrame, tooltipRect, Color.White);
+        }
+
+        private int ResolveRecommendedSkillId(IReadOnlyList<SkillDisplayData> skills)
+        {
+            if (skills == null || skills.Count == 0)
+                return 0;
+
+            if (!_recommendedSkillsByTab.TryGetValue(_currentTab, out List<SkillDataLoader.RecommendedSkillEntry> entries) ||
+                entries == null ||
+                entries.Count == 0)
+            {
+                return skills.FirstOrDefault(skill => skill != null && skill.CurrentLevel < skill.MaxLevel)?.SkillId ?? 0;
+            }
+
+            int spentSp = GetSpentSkillPointsForTab(_currentTab);
+            return SkillRootRecommendationResolver.ResolveRecommendedSkillId(skills, entries, spentSp);
+        }
+
+        private int GetSpentSkillPointsForTab(int tab)
+        {
+            if (!skillsByTab.TryGetValue(tab, out List<SkillDisplayData> skills) || skills == null)
+                return 0;
+
+            int spentSp = 0;
+            for (int i = 0; i < skills.Count; i++)
+            {
+                spentSp += Math.Max(0, skills[i]?.CurrentLevel ?? 0);
+            }
+
+            return spentSp;
+        }
+
+        private bool CanLevelUp(SkillDisplayData skill, int availableSp)
+        {
+            if (skill == null || availableSp <= 0 || skill.CurrentLevel >= skill.MaxLevel)
+                return false;
+
+            if (skill.RequiredCharacterLevel > 0 && _characterLevel < skill.RequiredCharacterLevel)
+                return false;
+
+            if (skill.RequiredSkillId > 0 && skill.RequiredSkillLevel > 0)
+            {
+                SkillDisplayData requiredSkill = FindSkill(skill.RequiredSkillId);
+                if (requiredSkill == null || requiredSkill.CurrentLevel < skill.RequiredSkillLevel)
+                    return false;
+            }
+
+            return true;
+        }
+
+        private SkillDisplayData FindSkill(int skillId)
+        {
+            foreach (List<SkillDisplayData> tabSkills in skillsByTab.Values)
+            {
+                SkillDisplayData match = tabSkills.FirstOrDefault(skill => skill?.SkillId == skillId);
+                if (match != null)
+                    return match;
+            }
+
+            return null;
+        }
+
+        private Texture2D GetSpUpTexture(bool canLevelUp, int skillIndex)
+        {
+            if (!canLevelUp)
+                return _spUpDisabled ?? _spUpNormal;
+
+            if (_pressedSpUpSkillIndex == skillIndex)
+                return _spUpPressed ?? _spUpMouseOver ?? _spUpNormal;
+
+            if (_hoveredSpUpSkillIndex == skillIndex)
+                return _spUpMouseOver ?? _spUpNormal;
+
+            return _spUpNormal;
+        }
+
+        private Rectangle GetSpUpButtonBounds(int visibleRowIndex)
+        {
+            int nTop = FIRST_ROW_TOP + (visibleRowIndex * SKILL_ROW_HEIGHT);
+            Texture2D texture = _spUpNormal ?? _spUpMouseOver ?? _spUpPressed ?? _spUpDisabled;
+            int width = texture?.Width ?? SP_UP_BUTTON_FALLBACK_WIDTH;
+            int height = texture?.Height ?? SP_UP_BUTTON_FALLBACK_HEIGHT;
+            return new Rectangle(
+                Position.X + SP_UP_BUTTON_X,
+                Position.Y + nTop + SP_UP_BUTTON_Y_OFFSET,
+                width,
+                height);
+        }
+
+        private int GetSpUpSkillIndexAtPosition(int mouseX, int mouseY)
+        {
+            var skills = CurrentSkills;
+            int availableSp = GetCurrentSkillPoints();
+
+            for (int rowIndex = 0; rowIndex < VISIBLE_ROWS; rowIndex++)
+            {
+                int skillIndex = _scrollOffset + rowIndex;
+                if (skillIndex >= skills.Count)
+                    break;
+
+                SkillDisplayData skill = skills[skillIndex];
+                if (!CanLevelUp(skill, availableSp))
+                    continue;
+
+                if (GetSpUpButtonBounds(rowIndex).Contains(mouseX, mouseY))
+                    return skillIndex;
+            }
+
+            return -1;
+        }
+
+        private bool TryHandleSkillLevelUp(int skillIndex)
+        {
+            var skills = CurrentSkills;
+            if (skillIndex < 0 || skillIndex >= skills.Count)
+                return false;
+
+            SkillDisplayData skill = skills[skillIndex];
+            if (!CanLevelUp(skill, GetCurrentSkillPoints()))
+                return false;
+
+            if (OnSkillLevelUpRequested != null)
+                return OnSkillLevelUpRequested(skill);
+
+            skill.CurrentLevel = Math.Min(skill.MaxLevel, skill.CurrentLevel + 1);
+            skillPoints[_currentTab] = Math.Max(0, GetCurrentSkillPoints() - 1);
+            return true;
         }
 
         /// <summary>
@@ -1602,8 +1979,21 @@ namespace HaCreator.MapSimulator.UI
                 kvp.Value.Clear();
                 skillPoints[kvp.Key] = 0;
             }
+            foreach (var kvp in _recommendedSkillsByTab)
+            {
+                kvp.Value.Clear();
+            }
+            foreach (int tab in _displaySkillRootByTab.Keys.ToArray())
+            {
+                _displaySkillRootByTab[tab] = 0;
+            }
             _selectedSkill = null;
             _selectedSkillIndex = -1;
+            _hoveredSkillIndex = -1;
+            _hoveredSpUpSkillIndex = -1;
+            _hoveredSkillPointDisplay = false;
+            _pressedSpUpSkillIndex = -1;
+            _scrollOffset = 0;
         }
 
         /// <summary>
@@ -1611,18 +2001,16 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void SelectSkill(int index)
         {
-            if (skillsByTab.TryGetValue(_currentTab, out var skills))
+            var skills = CurrentSkills;
+            if (index >= 0 && index < skills.Count)
             {
-                if (index >= 0 && index < skills.Count)
-                {
-                    _selectedSkillIndex = index;
-                    _selectedSkill = skills[index];
-                }
-                else
-                {
-                    _selectedSkillIndex = -1;
-                    _selectedSkill = null;
-                }
+                _selectedSkillIndex = index;
+                _selectedSkill = skills[index];
+            }
+            else
+            {
+                _selectedSkillIndex = -1;
+                _selectedSkill = null;
             }
         }
 
@@ -1631,8 +2019,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void ScrollUp()
         {
-            if (_scrollOffset > 0)
-                _scrollOffset--;
+            ScrollBy(-1);
         }
 
         /// <summary>
@@ -1640,13 +2027,243 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void ScrollDown()
         {
-            if (skillsByTab.TryGetValue(_currentTab, out var skills))
+            ScrollBy(1);
+        }
+        #endregion
+
+        #region Navigation
+        private Rectangle GetSkillListBounds()
+        {
+            return new Rectangle(Position.X + ROW_BG_X, Position.Y + FIRST_ROW_TOP + ROW_HIT_TOP_OFFSET, 141, SKILL_ROW_HEIGHT * VISIBLE_ROWS);
+        }
+
+        private Rectangle GetScrollBarBounds()
+        {
+            return new Rectangle(Position.X + SCROLLBAR_X, Position.Y + SCROLLBAR_Y, SCROLLBAR_WIDTH, SCROLLBAR_HEIGHT);
+        }
+
+        private Rectangle GetScrollUpButtonBounds()
+        {
+            return new Rectangle(Position.X + SCROLLBAR_X, Position.Y + SCROLLBAR_Y, SCROLLBAR_WIDTH, SCROLLBAR_BUTTON_HEIGHT);
+        }
+
+        private Rectangle GetScrollDownButtonBounds()
+        {
+            return new Rectangle(
+                Position.X + SCROLLBAR_X,
+                Position.Y + SCROLLBAR_Y + SCROLLBAR_HEIGHT - SCROLLBAR_BUTTON_HEIGHT,
+                SCROLLBAR_WIDTH,
+                SCROLLBAR_BUTTON_HEIGHT);
+        }
+
+        private Rectangle GetScrollTrackBounds()
+        {
+            return new Rectangle(
+                Position.X + SCROLLBAR_X,
+                Position.Y + SCROLLBAR_Y + SCROLLBAR_BUTTON_HEIGHT,
+                SCROLLBAR_WIDTH,
+                SCROLLBAR_HEIGHT - (SCROLLBAR_BUTTON_HEIGHT * 2));
+        }
+
+        private Rectangle GetScrollThumbBounds()
+        {
+            Rectangle trackBounds = GetScrollTrackBounds();
+            int thumbHeight = Math.Min(trackBounds.Height, Math.Max(1, _scrollThumbNormal?.Height ?? SCROLLBAR_WIDTH));
+            int maxScroll = GetMaxScrollOffset();
+            if (maxScroll <= 0)
+                return new Rectangle(trackBounds.X, trackBounds.Y, trackBounds.Width, thumbHeight);
+
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int thumbY = trackBounds.Y;
+            if (travel > 0)
             {
-                // Client uses list layout (1 skill per row), not grid
-                int maxScroll = Math.Max(0, skills.Count - VISIBLE_ROWS);
-                if (_scrollOffset < maxScroll)
-                    _scrollOffset++;
+                float ratio = _scrollOffset / (float)maxScroll;
+                thumbY += (int)Math.Round(travel * ratio);
             }
+
+            return new Rectangle(trackBounds.X, thumbY, trackBounds.Width, thumbHeight);
+        }
+
+        private int GetMaxScrollOffset()
+        {
+            return Math.Max(0, CurrentSkills.Count - VISIBLE_ROWS);
+        }
+
+        private bool CanScrollSkills()
+        {
+            return GetMaxScrollOffset() > 0;
+        }
+
+        private void SetScrollOffset(int offset)
+        {
+            _scrollOffset = Math.Clamp(offset, 0, GetMaxScrollOffset());
+        }
+
+        private void ScrollBy(int delta)
+        {
+            SetScrollOffset(_scrollOffset + delta);
+        }
+
+        private void SetScrollOffsetFromThumb(int mouseY)
+        {
+            Rectangle trackBounds = GetScrollTrackBounds();
+            int thumbHeight = Math.Min(trackBounds.Height, Math.Max(1, _scrollThumbNormal?.Height ?? SCROLLBAR_WIDTH));
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int maxScroll = GetMaxScrollOffset();
+            if (travel <= 0 || maxScroll <= 0)
+            {
+                SetScrollOffset(0);
+                return;
+            }
+
+            int thumbTop = Math.Clamp(mouseY - _scrollThumbDragOffsetY, trackBounds.Y, trackBounds.Y + travel);
+            float ratio = (thumbTop - trackBounds.Y) / (float)travel;
+            SetScrollOffset((int)Math.Round(ratio * maxScroll));
+        }
+
+        private bool TryHandleScrollBarMouseDown(MouseState mouseState)
+        {
+            if (!GetScrollBarBounds().Contains(mouseState.X, mouseState.Y))
+                return false;
+
+            if (!CanScrollSkills())
+                return true;
+
+            Rectangle upButtonBounds = GetScrollUpButtonBounds();
+            if (upButtonBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                ScrollUp();
+                return true;
+            }
+
+            Rectangle downButtonBounds = GetScrollDownButtonBounds();
+            if (downButtonBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                ScrollDown();
+                return true;
+            }
+
+            Rectangle thumbBounds = GetScrollThumbBounds();
+            if (thumbBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                _isDraggingScrollThumb = true;
+                _scrollThumbDragOffsetY = mouseState.Y - thumbBounds.Y;
+                return true;
+            }
+
+            Rectangle trackBounds = GetScrollTrackBounds();
+            if (trackBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                ScrollBy(mouseState.Y < thumbBounds.Y ? -VISIBLE_ROWS : VISIBLE_ROWS);
+                return true;
+            }
+
+            return false;
+        }
+
+        private void EnsureSkillVisible(int skillIndex)
+        {
+            if (skillIndex < 0)
+                return;
+
+            int maxScroll = GetMaxScrollOffset();
+            if (skillIndex < _scrollOffset)
+            {
+                _scrollOffset = skillIndex;
+            }
+            else if (skillIndex >= _scrollOffset + VISIBLE_ROWS)
+            {
+                _scrollOffset = skillIndex - VISIBLE_ROWS + 1;
+            }
+
+            _scrollOffset = Math.Clamp(_scrollOffset, 0, maxScroll);
+        }
+
+        private void SelectSkillIndex(int skillIndex, bool notifySelection)
+        {
+            var skills = CurrentSkills;
+            if (skillIndex < 0 || skillIndex >= skills.Count)
+                return;
+
+            _selectedSkillIndex = skillIndex;
+            _selectedSkill = skills[skillIndex];
+            EnsureSkillVisible(skillIndex);
+
+            if (notifySelection)
+                OnSkillSelected?.Invoke(skills[skillIndex]);
+        }
+
+        private bool MoveSelection(int delta)
+        {
+            var skills = CurrentSkills;
+            if (skills.Count == 0)
+                return false;
+
+            int baseIndex = _selectedSkillIndex >= 0 ? _selectedSkillIndex : (delta >= 0 ? 0 : skills.Count - 1);
+            int nextIndex = Math.Clamp(baseIndex + delta, 0, skills.Count - 1);
+            if (nextIndex == _selectedSkillIndex)
+                return false;
+
+            SelectSkillIndex(nextIndex, true);
+            return true;
+        }
+
+        private bool TryHandleSkillListKeyboardNavigation(KeyboardState keyboardState)
+        {
+            var skills = CurrentSkills;
+            if (skills.Count == 0)
+                return false;
+
+            bool WasPressed(Keys key) => keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+
+            if (WasPressed(Keys.Up))
+                return MoveSelection(-1);
+
+            if (WasPressed(Keys.Down))
+                return MoveSelection(1);
+
+            if (WasPressed(Keys.PageUp))
+                return MoveSelection(-VISIBLE_ROWS);
+
+            if (WasPressed(Keys.PageDown))
+                return MoveSelection(VISIBLE_ROWS);
+
+            if (WasPressed(Keys.Home))
+            {
+                SelectSkillIndex(0, true);
+                return true;
+            }
+
+            if (WasPressed(Keys.End))
+            {
+                SelectSkillIndex(skills.Count - 1, true);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryHandleTabKeyboardNavigation(KeyboardState keyboardState)
+        {
+            bool WasPressed(Keys key) => keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+
+            if (WasPressed(Keys.Left))
+                return TrySwitchTab(-1);
+
+            if (WasPressed(Keys.Right))
+                return TrySwitchTab(1);
+
+            return false;
+        }
+
+        private bool TrySwitchTab(int direction)
+        {
+            int nextTab = Math.Clamp(_currentTab + direction, TAB_BEGINNER, TAB_4TH);
+            if (nextTab == _currentTab)
+                return false;
+
+            CurrentTab = nextTab;
+            return true;
         }
         #endregion
 
@@ -1662,7 +2279,8 @@ namespace HaCreator.MapSimulator.UI
         {
             hitIcon = false;
 
-            if (!skillsByTab.TryGetValue(_currentTab, out var skills))
+            var skills = CurrentSkills;
+            if (skills.Count == 0)
                 return -1;
 
             // Convert to window-relative coordinates
@@ -1721,7 +2339,8 @@ namespace HaCreator.MapSimulator.UI
             int index = GetSkillIndexAtPosition(mouseX, mouseY);
             if (index < 0) return null;
 
-            if (skillsByTab.TryGetValue(_currentTab, out var skills) && index < skills.Count)
+            var skills = CurrentSkills;
+            if (index < skills.Count)
                 return skills[index];
 
             return null;
@@ -1732,17 +2351,21 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void OnSkillMouseDown(int mouseX, int mouseY)
         {
-            var skill = GetSkillAtPosition(mouseX, mouseY);
-            if (skill != null && skill.CurrentLevel > 0)
-            {
-                _isDragging = true;
-                _dragSkillId = skill.SkillId;
-                _dragSkill = skill;
-                _dragSourceIndex = GetSkillIndexAtPosition(mouseX, mouseY);
-                _dragPosition = new Vector2(mouseX, mouseY);
+            int skillIndex = GetSkillIndexAtPosition(mouseX, mouseY, out bool hitIcon);
+            if (!hitIcon || skillIndex < 0)
+                return;
 
-                OnDragStart?.Invoke(_dragSkillId, skill);
-            }
+            var skill = GetSkillAtPosition(mouseX, mouseY);
+            if (skill == null || skill.CurrentLevel <= 0)
+                return;
+
+            _isDragging = true;
+            _dragSkillId = skill.SkillId;
+            _dragSkill = skill;
+            _dragSourceIndex = skillIndex;
+            _dragPosition = new Vector2(mouseX, mouseY);
+
+            OnDragStart?.Invoke(_dragSkillId, skill);
         }
 
         /// <summary>
@@ -1809,13 +2432,109 @@ namespace HaCreator.MapSimulator.UI
 
             MouseState mouseState = Mouse.GetState();
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
+            Rectangle skillListBounds = GetSkillListBounds();
+            Rectangle scrollBarBounds = GetScrollBarBounds();
             _hoveredSkillIndex = _isDragging ? -1 : GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
+            _hoveredSpUpSkillIndex = GetSpUpSkillIndexAtPosition(mouseState.X, mouseState.Y);
+            _hoveredSkillPointDisplay = GetSkillPointBounds().Contains(mouseState.X, mouseState.Y);
 
-            // Update drag position if dragging
+            if (_isDraggingScrollThumb)
+            {
+                if (mouseState.LeftButton == ButtonState.Pressed)
+                {
+                    SetScrollOffsetFromThumb(mouseState.Y);
+                }
+                else
+                {
+                    _isDraggingScrollThumb = false;
+                }
+            }
+
+            if (mouseState.LeftButton == ButtonState.Pressed &&
+                _previousMouseState.LeftButton == ButtonState.Released)
+            {
+                if (TryHandleScrollBarMouseDown(mouseState))
+                {
+                    _hoveredSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
+                    _previousMouseState = mouseState;
+                    _previousKeyboardState = Keyboard.GetState();
+                    return;
+                }
+
+                int clickedSpUpSkillIndex = GetSpUpSkillIndexAtPosition(mouseState.X, mouseState.Y);
+                if (clickedSpUpSkillIndex >= 0)
+                {
+                    _pressedSpUpSkillIndex = clickedSpUpSkillIndex;
+                    SelectSkillIndex(clickedSpUpSkillIndex, true);
+                    TryHandleSkillLevelUp(clickedSpUpSkillIndex);
+                    _previousMouseState = mouseState;
+                    _previousKeyboardState = Keyboard.GetState();
+                    return;
+                }
+
+                int clickedSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
+                if (clickedSkillIndex >= 0)
+                {
+                    SelectSkillIndex(clickedSkillIndex, false);
+                    SkillDisplayData selectedSkill = GetSkillAtPosition(mouseState.X, mouseState.Y);
+                    if (selectedSkill != null)
+                    {
+                        OnSkillSelected?.Invoke(selectedSkill);
+                    }
+                }
+            }
+
+            if (mouseState.RightButton == ButtonState.Pressed &&
+                _previousMouseState.RightButton == ButtonState.Released)
+            {
+                int spUpSkillIndex = GetSpUpSkillIndexAtPosition(mouseState.X, mouseState.Y);
+                SkillDisplayData selectedSkill = spUpSkillIndex >= 0 ? null : GetSkillAtPosition(mouseState.X, mouseState.Y);
+                if (selectedSkill != null)
+                {
+                    SelectSkillIndex(GetSkillIndexAtPosition(mouseState.X, mouseState.Y), false);
+                    OnSkillSelected?.Invoke(selectedSkill);
+                    OnSkillInvoked?.Invoke(selectedSkill.SkillId);
+                }
+            }
+
+            if (mouseState.LeftButton == ButtonState.Released)
+            {
+                _pressedSpUpSkillIndex = -1;
+            }
+
+            int scrollDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
+            if (scrollDelta != 0 &&
+                (skillListBounds.Contains(mouseState.X, mouseState.Y) || scrollBarBounds.Contains(mouseState.X, mouseState.Y)))
+            {
+                if (scrollDelta > 0)
+                    ScrollUp();
+                else
+                    ScrollDown();
+
+                if (_selectedSkillIndex >= 0)
+                {
+                    EnsureSkillVisible(_selectedSkillIndex);
+                }
+            }
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            TryHandleTabKeyboardNavigation(keyboardState);
+            TryHandleSkillListKeyboardNavigation(keyboardState);
+            bool invokeSelected = SelectedSkill != null &&
+                                  ((keyboardState.IsKeyDown(Keys.Enter) && !_previousKeyboardState.IsKeyDown(Keys.Enter)) ||
+                                   (keyboardState.IsKeyDown(Keys.Space) && !_previousKeyboardState.IsKeyDown(Keys.Space)));
+            if (invokeSelected)
+            {
+                OnSkillInvoked?.Invoke(SelectedSkill.SkillId);
+            }
+
             if (_isDragging)
             {
                 _dragPosition = new Vector2(mouseState.X, mouseState.Y);
             }
+
+            _previousMouseState = mouseState;
+            _previousKeyboardState = keyboardState;
         }
         #endregion
     }

@@ -317,6 +317,7 @@ namespace HaCreator.MapSimulator.Loaders
             if (clientActionId >= 2)
             {
                 IReadOnlyList<string> clientTemplateActionOrder = BuildClientTemplateActionOrder(
+                    clientActionId,
                     availableActionOrder,
                     authoredSpeakFallbackActions);
                 foreach (string candidate in EnumerateAuthoredTemplateActionCandidates(
@@ -349,16 +350,20 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         private static IReadOnlyList<string> BuildClientTemplateActionOrder(
+            int clientActionId,
             IReadOnlyList<string> availableActionOrder,
             IEnumerable<string> authoredSpeakFallbackActions)
         {
-            List<string> authoredSpeakActionOrder = authoredSpeakFallbackActions?
-                .Where(static action => !string.IsNullOrWhiteSpace(action))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            if (authoredSpeakActionOrder?.Count > 0)
+            if (clientActionId == 2)
             {
-                return authoredSpeakActionOrder;
+                List<string> authoredSpeakActionOrder = authoredSpeakFallbackActions?
+                    .Where(static action => !string.IsNullOrWhiteSpace(action))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (authoredSpeakActionOrder?.Count > 0)
+                {
+                    return authoredSpeakActionOrder;
+                }
             }
 
             return availableActionOrder ?? Array.Empty<string>();

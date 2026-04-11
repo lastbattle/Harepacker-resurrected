@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.Interaction
         private GuildMarkSelection? _committedSelection;
         private int _comboIndex;
         private string _statusMessage = "Guild mark dialog is idle.";
+        internal Action<string, int> SocialChatObserved { get; set; }
 
         internal void SyncCurrentSelection(GuildMarkSelection? selection)
         {
@@ -41,6 +42,7 @@ namespace HaCreator.MapSimulator.Interaction
                     _catalog.ResolveFamilyIndex(_catalog.DefaultMarkId));
             _comboIndex = _selection.ComboIndex;
             _statusMessage = "Opened the dedicated guild-mark dialog. The initial emblem now mirrors the shared guild seam before the WZ-backed intro finishes and the client-owned post-animation delay unlocks controls.";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
@@ -129,6 +131,7 @@ namespace HaCreator.MapSimulator.Interaction
             };
 
             _statusMessage = $"Guild mark symbol family switched to {family.Label} (group {family.Group}).";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
@@ -143,6 +146,7 @@ namespace HaCreator.MapSimulator.Interaction
             _committedSelection = _selection with { ComboIndex = _comboIndex };
             _currentSelection = _committedSelection;
             _statusMessage = $"Accepted guild mark selection bg={_selection.MarkBackground}:{_selection.MarkBackgroundColor}, mark={_selection.Mark}:{_selection.MarkColor}. The dialog now reuses the shared emblem seed across guild owners while the authoritative server echo still remains outside this runtime.";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
@@ -155,6 +159,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isOpen = false;
             _statusMessage = "Canceled guild mark editing.";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
@@ -194,7 +199,18 @@ namespace HaCreator.MapSimulator.Interaction
         private string BuildSelectionMessage(string changedPart)
         {
             _statusMessage = $"Guild mark {changedPart} updated to bg={_selection.MarkBackground}:{_selection.MarkBackgroundColor}, mark={_selection.Mark}:{_selection.MarkColor}.";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
+        }
+
+        private void NotifySocialChatObserved(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message.Trim(), Environment.TickCount);
         }
 
         private static int Wrap(int value, int minimum, int maximum)

@@ -4,6 +4,7 @@ namespace HaCreator.MapSimulator.Fields
 {
     public readonly record struct PassiveTransferFieldInterfaceState(
         bool HasLiveFieldInterface,
+        bool HasCollidingTransferPortal,
         bool HasActiveVectorControl,
         bool HasPendingMapChange,
         bool HasPlayerInputControl,
@@ -49,6 +50,7 @@ namespace HaCreator.MapSimulator.Fields
         public static bool CanRetryFromLiveFieldInterface(PassiveTransferFieldInterfaceState state)
         {
             return state.HasLiveFieldInterface
+                   && state.HasCollidingTransferPortal
                    && state.HasActiveVectorControl
                    && !state.HasPendingMapChange
                    && state.HasPlayerInputControl

@@ -2041,9 +2041,17 @@ namespace HaCreator.MapSimulator.Character.Skills
         Magic
     }
 
+    public enum QueuedProjectileVisualLane
+    {
+        None,
+        Use,
+        Cash
+    }
+
     public sealed class BulletAnimationPresentation
     {
         public BulletAnimationOwnerKind Kind { get; init; }
+        public QueuedProjectileVisualLane VisualLane { get; init; }
         public int StartTime { get; init; }
         public int EndTime { get; init; }
         public Vector2 SourcePoint { get; init; }
@@ -2171,6 +2179,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int PresentationBulletCount { get; set; } = 1;
         public int BulletAnimationOwnerId { get; set; }
         public BulletAnimationPresentation BulletAnimation { get; set; }
+        public int ImpactPresentationBaseTime { get; set; } = int.MinValue;
         public List<ProjectileAfterimageLayer> AfterimageLayers { get; } = new();
         public int LastAfterimageUpdateTime { get; set; } = int.MinValue;
 

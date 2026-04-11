@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
         private GuildMarkSelection? _localGuildMarkSelection;
         private int _pageIndex;
         private string _statusMessage = "Guild ranking dialog is idle.";
+        internal Action<string, int> SocialChatObserved { get; set; }
 
         internal void UpdateLocalContext(CharacterBuild build, GuildDialogContext dialogContext, GuildMarkSelection? localGuildMarkSelection)
         {
@@ -63,6 +64,7 @@ namespace HaCreator.MapSimulator.Interaction
             UpdateLocalContext(build, dialogContext, localGuildMarkSelection);
             _pageIndex = 0;
             _statusMessage = $"Opened the dedicated guild-ranking dialog for {_dialogContext.GuildName}. Local guild identity follows the shared guild-management seam, and rival rows now follow packet-fed OnGuildResult ranking payloads when present.";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
@@ -78,12 +80,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _statusMessage = $"Guild ranking moved to page {_pageIndex + 1}/{GetTotalPages()}.";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
         internal string Close()
         {
             _statusMessage = "Closed the dedicated guild-ranking dialog.";
+            NotifySocialChatObserved(_statusMessage);
             return _statusMessage;
         }
 
@@ -186,6 +190,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return _entries.FirstOrDefault(entry =>
                 string.Equals(entry.GuildName, guildName?.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void NotifySocialChatObserved(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message.Trim(), Environment.TickCount);
         }
 
         private static int ResolveSeedPoints(GuildRankingSeedEntry seedEntry, int seedIndex)

@@ -7,6 +7,10 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class GuildCreateAgreementController
     {
         private readonly GuildCreateAgreementRuntime _runtime = new();
+        internal Action<string, int> SocialChatObserved
+        {
+            set => _runtime.SocialChatObserved = value;
+        }
 
         internal string DescribeStatus()
         {

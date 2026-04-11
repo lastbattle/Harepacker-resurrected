@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using HaCreator.MapSimulator.Character.Skills;
+using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Character
@@ -940,6 +941,36 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        internal static bool IsGenericHelperSurfaceActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (GenericHelperSurfaceActionNames.Contains(actionName))
+            {
+                return true;
+            }
+
+            return TryParseIndexedAlertNumber(actionName, out int indexedAlert)
+                   && indexedAlert > 1;
+        }
+
+        internal static bool ShouldSynthesizeMountedCharacterActionName(
+            string actionName,
+            IReadOnlySet<string> supportedRawActionNames)
+        {
+            if (IsGenericHelperSurfaceActionName(actionName))
+            {
+                return true;
+            }
+
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && SupportedRawActionCanonicalNames.ContainsKey(actionName)
+                   && IsSupportedRawActionName(actionName, supportedRawActionNames);
+        }
+
         internal static IEnumerable<string> EnumerateClientInitializedShadowPartnerRawActionNames()
         {
             return CharacterPart.EnumerateClientRawActionStrings(ClientInitializedShadowPartnerActionCodeLimitExclusive);
@@ -1070,6 +1101,35 @@ namespace HaCreator.MapSimulator.Character
                 ZoomEnd = sourceFrame.ZoomEnd,
                 RotationDegrees = sourceFrame.RotationDegrees + pieceRotationDegrees
             };
+        }
+
+        internal static bool TryResolveFrameDrawTransform(
+            SkillFrame frame,
+            int anchorX,
+            int anchorY,
+            bool flip,
+            out Vector2 position,
+            out Vector2 origin,
+            out float rotationRadians,
+            out SpriteEffects effects)
+        {
+            position = Vector2.Zero;
+            origin = Vector2.Zero;
+            rotationRadians = 0f;
+            effects = SpriteEffects.None;
+
+            if (frame?.Texture == null)
+            {
+                return false;
+            }
+
+            position = new Vector2(anchorX, anchorY);
+            origin = flip
+                ? new Vector2(frame.Texture.Width - frame.Origin.X, frame.Origin.Y)
+                : new Vector2(frame.Origin.X, frame.Origin.Y);
+            rotationRadians = MathHelper.ToRadians(frame.RotationDegrees);
+            effects = flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+            return true;
         }
 
         internal static IReadOnlyList<ShadowPartnerActionPiece> GetPiecedShadowPartnerActionPlan(string actionName)
@@ -1472,14 +1532,7 @@ namespace HaCreator.MapSimulator.Character
         private static bool TryParseIndexedAlertFrame(string playerActionName, int availableFrameCount, out int frameIndex)
         {
             frameIndex = 0;
-            if (!playerActionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase)
-                || playerActionName.Length <= "alert".Length)
-            {
-                return false;
-            }
-
-            string suffix = playerActionName["alert".Length..];
-            if (!int.TryParse(suffix, out int indexedAlert)
+            if (!TryParseIndexedAlertNumber(playerActionName, out int indexedAlert)
                 || indexedAlert <= 1)
             {
                 return false;
@@ -1487,6 +1540,19 @@ namespace HaCreator.MapSimulator.Character
 
             frameIndex = Math.Clamp(indexedAlert - 1, 0, availableFrameCount - 1);
             return true;
+        }
+
+        private static bool TryParseIndexedAlertNumber(string actionName, out int indexedAlert)
+        {
+            indexedAlert = 0;
+            if (string.IsNullOrWhiteSpace(actionName)
+                || !actionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase)
+                || actionName.Length <= "alert".Length)
+            {
+                return false;
+            }
+
+            return int.TryParse(actionName["alert".Length..], out indexedAlert);
         }
 
         private static IEnumerable<string> EnumerateActionSpecificAliasCandidates(string actionName)
@@ -1683,7 +1749,7 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            if (GenericHelperSurfaceActionNames.Contains(actionName))
+            if (IsGenericHelperSurfaceActionName(actionName))
             {
                 return true;
             }
@@ -1832,7 +1898,7 @@ namespace HaCreator.MapSimulator.Character
                     i,
                     pieceFrames[i].PieceActionName,
                     pieceFrames[i].SourceFrameIndex,
-                    Math.Abs(pieceFrames[i].DelayOverrideMs));
+                    pieceFrames[i].DelayOverrideMs);
             }
 
             return pieces;
@@ -1853,7 +1919,7 @@ namespace HaCreator.MapSimulator.Character
                     i,
                     pieceFrames[i].PieceActionName,
                     pieceFrames[i].SourceFrameIndex,
-                    Math.Abs(pieceFrames[i].DelayOverrideMs),
+                    pieceFrames[i].DelayOverrideMs,
                     pieceFrames[i].Flip);
             }
 
@@ -1873,7 +1939,7 @@ namespace HaCreator.MapSimulator.Character
                 slotIndex,
                 pieceActionName,
                 sourceFrameIndex,
-                Math.Abs(delayOverrideMs),
+                delayOverrideMs,
                 flip,
                 move,
                 rotationDegrees);

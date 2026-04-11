@@ -270,6 +270,23 @@ namespace HaCreator.MapSimulator
             TryPlayPacketOwnedFieldFeedbackSound(presentation.SoundPath);
         }
 
+        private void HandleRemoteClientSoundEffect(RemoteUserActorPool.RemoteClientSoundPresentation presentation)
+        {
+            if (string.IsNullOrWhiteSpace(presentation.SoundPath))
+            {
+                return;
+            }
+
+            string defaultImageName = string.IsNullOrWhiteSpace(presentation.DefaultImageName)
+                ? "UI.img"
+                : presentation.DefaultImageName;
+            TryPlayPacketOwnedWzSound(
+                presentation.SoundPath,
+                defaultImageName,
+                out _,
+                out _);
+        }
+
         private void HandleRemoteEffectChatLogMessage(RemoteUserActorPool.RemoteChatLogMessagePresentation presentation)
         {
             if (string.IsNullOrWhiteSpace(presentation.Message))

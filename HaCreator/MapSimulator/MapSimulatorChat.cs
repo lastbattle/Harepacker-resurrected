@@ -662,6 +662,12 @@ namespace HaCreator.MapSimulator
                             moveToLast: false,
                             updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
                     }
+                    else if (IsWhisperTargetPickerModalDropdownNavigating())
+                    {
+                        MoveWhisperTargetPickerSelectionToBoundary(
+                            moveToLast: false,
+                            updateInputText: false);
+                    }
                     else
                     {
                         _cursorPosition = 0;
@@ -691,6 +697,12 @@ namespace HaCreator.MapSimulator
                             moveToLast: true,
                             updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
                     }
+                    else if (IsWhisperTargetPickerModalDropdownNavigating())
+                    {
+                        MoveWhisperTargetPickerSelectionToBoundary(
+                            moveToLast: true,
+                            updateInputText: false);
+                    }
                     else
                     {
                         _cursorPosition = _inputText.Length;
@@ -719,6 +731,12 @@ namespace HaCreator.MapSimulator
                             -1,
                             updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
                     }
+                    else if (IsWhisperTargetPickerModalDropdownNavigating())
+                    {
+                        PageWhisperTargetPickerSelection(
+                            -1,
+                            updateInputText: false);
+                    }
 
                     return true;
                 }
@@ -739,6 +757,12 @@ namespace HaCreator.MapSimulator
                         PageWhisperTargetPickerSelection(
                             1,
                             updateInputText: !IsWhisperTargetPickerModalDropdownNavigating());
+                    }
+                    else if (IsWhisperTargetPickerModalDropdownNavigating())
+                    {
+                        PageWhisperTargetPickerSelection(
+                            1,
+                            updateInputText: false);
                     }
 
                     return true;
@@ -1187,6 +1211,18 @@ namespace HaCreator.MapSimulator
             }
 
             string whisperTarget = ResolveWhisperTargetPickerSelection();
+            string resolvedWhisperTarget = whisperTarget;
+            if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal
+                && !TryResolveModalWhisperTargetConfirmation(whisperTarget, tickCount, out resolvedWhisperTarget))
+            {
+                return false;
+            }
+
+            if (_whisperTargetPickerPresentation == WhisperTargetPickerPresentation.Modal)
+            {
+                whisperTarget = resolvedWhisperTarget;
+            }
+
             if (!TryArmWhisperTarget(whisperTarget, tickCount))
             {
                 return false;
@@ -2410,6 +2446,40 @@ namespace HaCreator.MapSimulator
             return _whisperTargetPickerSelectionIndex >= 0 && _whisperTargetPickerSelectionIndex < _whisperCandidates.Count
                 ? _whisperCandidates[_whisperTargetPickerSelectionIndex]
                 : string.Empty;
+        }
+
+        private bool TryResolveModalWhisperTargetConfirmation(string whisperTarget, int tickCount, out string resolvedWhisperTarget)
+        {
+            resolvedWhisperTarget = string.Empty;
+            WhisperTargetValidationResult validationResult = ValidateExplicitWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult == WhisperTargetValidationResult.Valid)
+            {
+                resolvedWhisperTarget = normalizedTarget;
+                return true;
+            }
+
+            if (validationResult == WhisperTargetValidationResult.Invalid)
+            {
+                AddClientMessage(
+                    MapleStoryStringPool.GetOrFallback(0x031F, "Please enter a valid character name."),
+                    tickCount,
+                    ClientChatLogType.System);
+            }
+            else if (validationResult == WhisperTargetValidationResult.Self)
+            {
+                AddClientMessage(
+                    MapleStoryStringPool.GetOrFallback(0x0320, "You cannot whisper yourself."),
+                    tickCount,
+                    ClientChatLogType.System);
+            }
+
+            CloseWhisperTargetPicker(restoreDraft: true);
+            _isActive = true;
+            _cursorBlinkTimer = tickCount;
+            return false;
         }
 
         private void SyncWhisperTargetPickerSelectionFromInput()

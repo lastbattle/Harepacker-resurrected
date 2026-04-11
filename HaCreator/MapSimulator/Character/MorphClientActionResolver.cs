@@ -309,15 +309,15 @@ namespace HaCreator.MapSimulator.Character
                 // Later Mercedes dual-vulcan body actions in Character/00002000.img still
                 // collapse onto generic `shoot1` / `shoot2` roots, while Morph/*.img
                 // continues to publish only generic `shoot*` plus authored `windshot`.
-                ["dualVulcanPrep"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
-                ["dualVulcanLoop"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
-                ["dualVulcanEnd"] = new[] { "shoot1", "shoot2", "shootF", "windshot" },
+                ["dualVulcanPrep"] = new[] { "shoot1", "shoot2" },
+                ["dualVulcanLoop"] = new[] { "shoot1", "shoot2" },
+                ["dualVulcanEnd"] = new[] { "shoot1", "shoot2" },
                 // Client-table and skill-side dual-shot requests still reach the morph
                 // owner as raw names, while Character/00002000.img backs them with
                 // ordinary shoot frames plus late swing backstops and Morph/*.img only
                 // publishes generic shoot roots for the same surface.
-                ["speedDualShot"] = new[] { "shoot1", "shoot2", "shootF", "windshot", "swingT1", "swingT3" },
-                ["shootDb1"] = new[] { "shoot1", "shoot2", "shootF", "windshot", "swingT1", "swingT3" },
+                ["speedDualShot"] = new[] { "shoot1", "swingT2" },
+                ["shootDb1"] = new[] { "shoot1", "swingP2" },
                 // Mercedes `strikeDual` skill rows still request the raw action name,
                 // while Character/00002000.img backs it with shoot-family frames before
                 // mixed swing/stab backstops and Morph/*.img publishes only generic
@@ -330,6 +330,11 @@ namespace HaCreator.MapSimulator.Character
                 ["smokeshell"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["holyshield"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
                 ["resurrection"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                // Beginner and thief concealment/support rows still publish raw
+                // `bamboo` and `darksight` requests on the skill side, while the
+                // checked morph templates expose no verbatim support roots for them.
+                ["bamboo"] = ClientPublishedAlertMorphFallbackAliases,
+                ["darksight"] = ClientPublishedAlertMorphFallbackAliases,
                 // Spell support/buff/debuff rows are also present as skill-side raw
                 // requests in the current WZ export, but Morph/*.img publishes no
                 // verbatim support roots for them.
@@ -348,8 +353,8 @@ namespace HaCreator.MapSimulator.Character
                 ["Awakening"] = ClientPublishedAlertMorphFallbackAliases,
                 // Later Demon / Mercedes support roots still resolve through the same
                 // alert-family body surface in Character/00002000.img.
-                ["demonGravity"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
-                ["blessOfGaia"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" },
+                ["demonGravity"] = new[] { "alert" },
+                ["blessOfGaia"] = new[] { "alert" },
                 // The latest checked support-like body rows (`mistEruption`,
                 // `demolitionElf`, and `powerEndure`) also collapse entirely onto the
                 // alert family, while Morph/*.img still publishes no verbatim roots.
@@ -450,29 +455,29 @@ namespace HaCreator.MapSimulator.Character
                 // Later Demon / Mercedes / Resistance body actions in
                 // Character/00002000.img still collapse onto generic swing/stab families
                 // rather than unique morph roots.
-                ["demonSlasher"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["bluntSmash"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["demonTrace"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["elfrush"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["elfrush2"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["elfrush_final"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["elfrush_final2"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["deathDraw"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["dealingRush"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["elfTornado"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["devilCry"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["movebind"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["darkSpin"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["darkThrust"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
-                ["healingAttack"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                ["demonSlasher"] = new[] { "swingO2" },
+                ["bluntSmash"] = new[] { "swingO3", "swingOF" },
+                ["demonTrace"] = new[] { "swingOF" },
+                ["elfrush"] = new[] { "alert", "swingO1" },
+                ["elfrush2"] = new[] { "alert", "swingO1" },
+                ["elfrush_final"] = new[] { "alert", "swingO1" },
+                ["elfrush_final2"] = new[] { "alert", "swingO1" },
+                ["deathDraw"] = new[] { "swingO2", "swingOF", "swingO3" },
+                ["dealingRush"] = new[] { "swingPF", "swingO1" },
+                ["elfTornado"] = new[] { "swingPF", "swingTF" },
+                ["devilCry"] = new[] { "swingT1" },
+                ["movebind"] = new[] { "swingO2", "swingOF" },
+                ["darkSpin"] = new[] { "swingT1" },
+                ["darkThrust"] = new[] { "stabT1", "swingT1" },
+                ["healingAttack"] = new[] { "stabO1" },
                 // These later WZ skill action rows remain raw-name requests, while
                 // Character/00002000.img backs them with ordinary swing/stab body
                 // families and Morph/*.img still publishes no verbatim roots.
-                ["darkImpale"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab", "alert" },
+                ["darkImpale"] = new[] { "swingT1", "alert" },
                 ["glacialChain"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["windEffect"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["jShot"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["multiSniping"] = new[] { "swingT1", "swingT3", "shoot1", "shoot2", "shootF", "windshot", "stabO1", "stabO2", "proneStab" },
+                ["jShot"] = new[] { "swingT2", "swingPF", "swingOF" },
+                ["multiSniping"] = new[] { "swingT1", "swingTF", "shoot1", "shoot2" },
                 ["maxForce0"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["maxForce1"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["maxForce2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
@@ -480,7 +485,7 @@ namespace HaCreator.MapSimulator.Character
                 // `shotC1` is present on the recovered client raw-action surface and
                 // Character/00002000.img backs it with alert first, then stab frames.
                 // Current Morph/*.img publishes no verbatim cannon-shot branch.
-                ["shotC1"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7", "stabO1", "stabO2", "proneStab" },
+                ["shotC1"] = new[] { "alert", "stabO1" },
                 // These dual-blade and resistance raw skill-side requests are absent
                 // from Morph/*.img, while Character/00002000.img resolves them onto
                 // ordinary swing/stab body surfaces.
@@ -488,8 +493,8 @@ namespace HaCreator.MapSimulator.Character
                 ["monsterBombPrepare"] = new[] { "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["monsterBombThrow"] = new[] { "swingOF", "swingO1", "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab", "alert" },
                 ["darkChain"] = new[] { "swingO3", "swingO2", "stabO1", "swingT1", "swingT3", "stabO2", "proneStab" },
-                ["darkLightning"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
-                ["swingT2Giant"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7", "stabO2", "stabO1", "proneStab", "swingT1", "swingT3" },
+                ["darkLightning"] = new[] { "swingO2", "stabO1", "stabO2" },
+                ["swingT2Giant"] = new[] { "alert", "stabO2" },
                 // The client raw table still exposes dual-blade swing-family names while
                 // archer morphs such as 1003/1103 only publish generic swingT branches.
                 ["swingC1"] = new[] { "swingT1", "swingT3" },
@@ -552,30 +557,30 @@ namespace HaCreator.MapSimulator.Character
                 // These client raw action names are published by WZ skill rows and
                 // Character/00002000.img backs them with `sit` body frames, while
                 // Morph/*.img publishes no verbatim branches for the same surface.
-                ["gatlingshot"] = new[] { "sit", "stand" },
-                ["gatlingshot2"] = new[] { "sit", "stand" },
-                ["flamethrower"] = new[] { "sit", "stand" },
-                ["flamethrower_pre"] = new[] { "sit", "stand" },
-                ["flamethrower_after"] = new[] { "sit", "stand" },
-                ["flamethrower2"] = new[] { "sit", "stand" },
-                ["flamethrower_pre2"] = new[] { "sit", "stand" },
-                ["flamethrower_after2"] = new[] { "sit", "stand" },
-                ["clawCut"] = new[] { "sit", "stand" },
-                ["sonicBoom"] = new[] { "sit", "stand" },
-                ["wildbeast"] = new[] { "sit", "stand" },
-                ["rpunch"] = new[] { "sit", "stand" },
-                ["mRush"] = new[] { "sit", "stand" },
-                ["swallow_pre"] = new[] { "sit", "stand" },
-                ["swallow_loop"] = new[] { "sit", "stand" },
-                ["swallow"] = new[] { "sit", "stand" },
-                ["swallow_attack"] = new[] { "sit", "stand" },
+                ["gatlingshot"] = new[] { "sit" },
+                ["gatlingshot2"] = new[] { "sit" },
+                ["flamethrower"] = new[] { "sit" },
+                ["flamethrower_pre"] = new[] { "sit" },
+                ["flamethrower_after"] = new[] { "sit" },
+                ["flamethrower2"] = new[] { "sit" },
+                ["flamethrower_pre2"] = new[] { "sit" },
+                ["flamethrower_after2"] = new[] { "sit" },
+                ["clawCut"] = new[] { "sit" },
+                ["sonicBoom"] = new[] { "sit" },
+                ["wildbeast"] = new[] { "sit" },
+                ["rpunch"] = new[] { "sit" },
+                ["mRush"] = new[] { "sit" },
+                ["swallow_pre"] = new[] { "sit" },
+                ["swallow_loop"] = new[] { "sit" },
+                ["swallow"] = new[] { "sit" },
+                ["swallow_attack"] = new[] { "sit" },
                 // Skill/3212.img publishes the prepared cyclone raw action, while
                 // Character/00002000.img starts that body sequence on alert/stab
                 // frames and Morph/*.img publishes no verbatim cyclone branch.
-                ["cyclone_pre"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7", "stabO1", "stabO2", "proneStab", "swingT1", "swingT3", "stand" },
+                ["cyclone_pre"] = new[] { "alert", "stabO1", "swingO2" },
                 // Character/00002000.img backs the checked full-screen jaguar rain
                 // branch with `alert` rather than a morph-owned `*Rain` attack root.
-                ["flashRain"] = new[] { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7", "stand" }
+                ["flashRain"] = new[] { "alert" }
             };
 
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)

@@ -855,7 +855,6 @@ namespace HaCreator.MapSimulator.Pools
                     PlayerMobStatusEffect.PainMark,
                     durationMs,
                     ResolveHostilePlayerAreaStatusMagnitude(levelData, fallback: 10),
-                    TickIntervalMs: 1000,
                     PropPercent: primaryStatusPropPercent));
             }
 

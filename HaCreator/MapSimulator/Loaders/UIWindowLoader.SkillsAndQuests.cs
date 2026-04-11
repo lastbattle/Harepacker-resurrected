@@ -32,7 +32,7 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 return CreateSkillWindowBigBang(uiWindow2Image, uiWindow1Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
             }
-            return CreateSkillWindow(uiWindow1Image, soundUIImage, device, screenWidth, screenHeight);
+            return CreateSkillWindow(uiWindow1Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
         }
 
 
@@ -348,6 +348,60 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
 
+
+        /// <summary>
+        /// Load skills for the pre-Big Bang skill window.
+        /// </summary>
+        public static void LoadSkillsForJob(SkillUI skillWindow, int jobId, GraphicsDevice device)
+        {
+            if (skillWindow == null)
+                return;
+
+            try
+            {
+                skillWindow.ClearSkills();
+
+                IReadOnlyList<int> displayedSkillBookIds = GetDisplayedSkillBookJobIdsForJob(jobId);
+                foreach (int skillRootId in displayedSkillBookIds)
+                {
+                    int tabIndex = Math.Clamp(GetSkillTabFromJobId(skillRootId), 0, 4);
+                    Dictionary<int, SkillDisplayData> skillMap = new();
+                    foreach (int bookJobId in GetSkillBookAliasesForJob(skillRootId).Distinct())
+                    {
+                        foreach (SkillDisplayData skill in SkillDataLoader.LoadSkillsForJob(bookJobId, device))
+                        {
+                            if (skill == null || skillMap.ContainsKey(skill.SkillId))
+                                continue;
+
+                            skillMap[skill.SkillId] = skill;
+                        }
+                    }
+
+                    foreach (SkillDisplayData skill in skillMap.Values.OrderBy(skill => skill.SkillId))
+                    {
+                        skillWindow.AddSkill(tabIndex, skill);
+                    }
+
+                    Texture2D jobIcon = null;
+                    foreach (int bookJobId in GetSkillBookAliasesForJob(skillRootId).Distinct())
+                    {
+                        jobIcon = SkillDataLoader.LoadJobIcon(bookJobId, device);
+                        if (jobIcon != null)
+                            break;
+                    }
+
+                    skillWindow.SetDisplayedSkillRootId(tabIndex, skillRootId);
+                    skillWindow.SetRecommendedSkillEntries(tabIndex, SkillDataLoader.LoadRecommendedSkillEntries(skillRootId, skillMap.Keys));
+                    skillWindow.SetJobInfo(tabIndex, jobIcon, SkillDataLoader.GetJobName(skillRootId));
+                }
+
+                skillWindow.CurrentTab = Math.Clamp(GetSkillTabFromJobId(jobId), 0, 4);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Failed to load pre-BB skills: {ex.Message}");
+            }
+        }
 
         /// <summary>
         /// Load beginner skills into a skill window (legacy method for compatibility)
