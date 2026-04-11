@@ -69,7 +69,9 @@ namespace HaCreator.MapSimulator.Animation
             public int AttackType { get; set; } = -1;
             public int HitAnimationSourceFrameIndex { get; set; }
             public bool HitAttach { get; set; }
+            public bool HasHitAttachMetadata { get; set; }
             public bool FacingAttach { get; set; }
+            public bool HasFacingAttachMetadata { get; set; }
             public int HitAfterMs { get; set; }
             public bool HasHitAfterMetadata { get; set; }
             public Dictionary<int, bool> FrameHitAttachOverrides { get; } = new();
@@ -113,8 +115,9 @@ namespace HaCreator.MapSimulator.Animation
 
             public bool HasExplicitHitAttachMetadata(int frameIndex)
             {
-                return frameIndex >= 0
-                       && FrameHitAttachOverrides.ContainsKey(frameIndex);
+                return HasHitAttachMetadata
+                       || (frameIndex >= 0
+                           && FrameHitAttachOverrides.ContainsKey(frameIndex));
             }
 
             public bool ResolveHitAttachForHitAnimationFrame(int frameIndex)
@@ -132,8 +135,9 @@ namespace HaCreator.MapSimulator.Animation
 
             public bool HasExplicitFacingAttachMetadata(int frameIndex)
             {
-                return frameIndex >= 0
-                       && FrameFacingAttachOverrides.ContainsKey(frameIndex);
+                return HasFacingAttachMetadata
+                       || (frameIndex >= 0
+                           && FrameFacingAttachOverrides.ContainsKey(frameIndex));
             }
 
             public bool ResolveFacingAttachForHitAnimationFrame(int frameIndex)

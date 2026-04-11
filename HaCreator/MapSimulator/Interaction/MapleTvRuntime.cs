@@ -566,7 +566,18 @@ namespace HaCreator.MapSimulator.Interaction
                 _draftLines[i] = i < request.Lines.Count ? request.Lines[i] ?? string.Empty : string.Empty;
             }
 
-            _statusMessage = OnSetMessage(currentTick);
+            string publishStatus = OnSetMessage(currentTick);
+            if (publishStatus.StartsWith("MapleTV message set", StringComparison.Ordinal))
+            {
+                MapleTvSendResultDefinition successDefinition = ResolveSendResultDefinition(1);
+                QueueSendResultFeedback(successDefinition);
+                _statusMessage = $"{publishStatus} Queued CMapleTVMan::OnSendMessageResult success feedback (StringPool 0x{successDefinition.StringPoolId:X}).";
+            }
+            else
+            {
+                _statusMessage = publishStatus;
+            }
+
             message = $"Applied CUserLocal::ConsumeCashItem MapleTV request for item {request.ItemId} from slot {request.InventoryPosition}. {_statusMessage}";
             return true;
         }

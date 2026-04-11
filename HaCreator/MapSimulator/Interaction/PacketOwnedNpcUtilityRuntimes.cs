@@ -2718,7 +2718,7 @@ namespace HaCreator.MapSimulator.Interaction
             short magicDefense = reader.ReadInt16();
             short accuracy = reader.ReadInt16();
             short avoidability = reader.ReadInt16();
-            short hands = reader.ReadInt16();
+            short craft = reader.ReadInt16();
             short speed = reader.ReadInt16();
             short jump = reader.ReadInt16();
             if (!TryReadMapleString(reader, out title))
@@ -2774,7 +2774,7 @@ namespace HaCreator.MapSimulator.Interaction
                 magicDefense,
                 accuracy,
                 avoidability,
-                hands,
+                craft,
                 speed,
                 jump,
                 attribute,
@@ -2806,7 +2806,8 @@ namespace HaCreator.MapSimulator.Interaction
                 MagicDefense = magicDefense,
                 Accuracy = accuracy,
                 Avoidability = avoidability,
-                Hands = hands,
+                Craft = craft,
+                Hands = craft,
                 Speed = speed,
                 Jump = jump,
                 Attribute = attribute,
@@ -2933,7 +2934,7 @@ namespace HaCreator.MapSimulator.Interaction
             short magicDefense,
             short accuracy,
             short avoidability,
-            short hands,
+            short craft,
             short speed,
             short jump,
             short attribute,
@@ -2971,7 +2972,7 @@ namespace HaCreator.MapSimulator.Interaction
             AppendMetadataPart(parts, "MDD", magicDefense);
             AppendMetadataPart(parts, "ACC", accuracy);
             AppendMetadataPart(parts, "EVA", avoidability);
-            AppendMetadataPart(parts, "Hands", hands);
+            AppendMetadataPart(parts, "Craft", craft);
             AppendMetadataPart(parts, "Speed", speed);
             AppendMetadataPart(parts, "Jump", jump);
 

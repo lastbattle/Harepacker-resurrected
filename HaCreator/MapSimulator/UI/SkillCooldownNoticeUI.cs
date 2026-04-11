@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.UI
 
     internal sealed class SkillCooldownNoticeUI
     {
+        private const int ReferenceClientHeight = 578;
         internal readonly record struct NoticeFrameCandidate(
             string Name,
             bool HasTop,
@@ -501,7 +502,7 @@ namespace HaCreator.MapSimulator.UI
                 return TopMargin;
             }
 
-            return Math.Clamp(TopMargin, 0, Math.Max(0, screenHeight - 8));
+            return Math.Max(24, (int)Math.Round(screenHeight * (TopMargin / (float)ReferenceClientHeight)));
         }
 
         private void UpdateFrameLayoutMetrics()

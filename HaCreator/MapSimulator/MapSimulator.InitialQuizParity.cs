@@ -19,8 +19,9 @@ namespace HaCreator.MapSimulator
         private const int InitialQuizOwnerInputMaxLength = 50;
         private const int InitialQuizOwnerInputFontHeightPixels = 12;
         private const int InitialQuizOwnerFrameFadeAlpha = 176;
-        private const int InitialQuizTimerStringPoolIdTensMinutes = 0x0F73;
-        private const int InitialQuizTimerStringPoolIdOnesMinutes = 3955;
+        private const int InitialQuizBackgroundUolStringPoolId = 0x0F72;
+        private const int InitialQuizTimerDigitUolStringPoolId = 0x0F73;
+        private const int InitialQuizTimerCommaUolStringPoolId = 0x0F74;
         private const int InitialQuizOkButtonUolStringPoolId = 0x0512;
         private const int InitialQuizQuestionLabelStringPoolId = 0x0F75;
         private const int InitialQuizHintLabelStringPoolId = 3958;
@@ -829,7 +830,9 @@ namespace HaCreator.MapSimulator
             WzCanvasProperty fallbackBackground3 = fallback?["backgrnd3"] as WzCanvasProperty;
             WzSubProperty okButtonProperty = ResolveInitialQuizOwnerOkButtonProperty(preferred, fallback);
 
-            _initialQuizOwnerBackgroundTexture = LoadUiCanvasTexture((preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
+            _initialQuizOwnerBackgroundTexture = LoadUiCanvasTexture(
+                ResolveInitialQuizOwnerCanvasFromStringPool(InitialQuizBackgroundUolStringPoolId)
+                ?? (preferred?["backgrnd"] ?? fallback?["backgrnd"]) as WzCanvasProperty);
             _initialQuizOwnerBackgroundTexture2 = LoadUiCanvasTexture((preferred?["backgrnd2"] ?? fallback?["backgrnd2"]) as WzCanvasProperty);
             _initialQuizOwnerBackgroundTexture3 = LoadUiCanvasTexture(preferredBackground3 ?? fallbackBackground3);
             _initialQuizOwnerOkButtonNormalFrame = LoadInitialQuizOwnerButtonFrame(okButtonProperty, "normal");
@@ -847,10 +850,14 @@ namespace HaCreator.MapSimulator
             Texture2D[] digits = new Texture2D[10];
             for (int i = 0; i < digits.Length; i++)
             {
-                digits[i] = LoadUiCanvasTexture((preferred?[i.ToString()] ?? fallback?[i.ToString()]) as WzCanvasProperty);
+                digits[i] = LoadUiCanvasTexture(
+                    ResolveInitialQuizOwnerTimerDigitCanvas(i)
+                    ?? (preferred?[i.ToString()] ?? fallback?[i.ToString()]) as WzCanvasProperty);
             }
 
-            commaTexture = LoadUiCanvasTexture((preferred?["comma"] ?? fallback?["comma"]) as WzCanvasProperty);
+            commaTexture = LoadUiCanvasTexture(
+                ResolveInitialQuizOwnerCanvasFromStringPool(InitialQuizTimerCommaUolStringPoolId)
+                ?? (preferred?["comma"] ?? fallback?["comma"]) as WzCanvasProperty);
             return digits;
         }
 
@@ -937,6 +944,46 @@ namespace HaCreator.MapSimulator
             WzImage image = Program.FindImage("UI", imageName.Trim());
             property = image?[propertyPath.Trim()] as WzSubProperty;
             return property != null;
+        }
+
+        private static WzCanvasProperty ResolveInitialQuizOwnerTimerDigitCanvas(int digit)
+        {
+            return ResolveInitialQuizOwnerCanvasFromStringPool(InitialQuizTimerDigitUolStringPoolId, digit);
+        }
+
+        private static WzCanvasProperty ResolveInitialQuizOwnerCanvasFromStringPool(int stringPoolId, int? formatArgument = null)
+        {
+            return TryResolveInitialQuizOwnerStringPoolResourcePath(stringPoolId, formatArgument, out string resourcePath)
+                && TryResolveInitialQuizOwnerUiCanvasPath(resourcePath, out WzCanvasProperty canvas)
+                    ? canvas
+                    : null;
+        }
+
+        internal static bool TryResolveInitialQuizOwnerStringPoolResourcePath(int stringPoolId, int? formatArgument, out string resourcePath)
+        {
+            resourcePath = null;
+            if (!MapleStoryStringPool.TryGet(stringPoolId, out string template) || string.IsNullOrWhiteSpace(template))
+            {
+                return false;
+            }
+
+            resourcePath = formatArgument.HasValue
+                ? template.Replace("%d", formatArgument.Value.ToString(), StringComparison.Ordinal)
+                : template;
+            return !string.IsNullOrWhiteSpace(resourcePath);
+        }
+
+        private static bool TryResolveInitialQuizOwnerUiCanvasPath(string resourcePath, out WzCanvasProperty canvas)
+        {
+            canvas = null;
+            if (!TryDecodeInitialQuizOwnerUiResourcePath(resourcePath, out string imageName, out string propertyPath))
+            {
+                return false;
+            }
+
+            WzImage image = Program.FindImage("UI", imageName.Trim());
+            canvas = image?[propertyPath.Trim()] as WzCanvasProperty;
+            return canvas != null;
         }
 
         private static WzCanvasProperty ResolveInitialQuizOwnerButtonCanvas(WzSubProperty buttonProperty, string stateName)

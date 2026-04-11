@@ -653,6 +653,12 @@ namespace HaCreator.MapSimulator.UI
                 return IntPtr.Zero;
             }
 
+            if (ShouldHandleClientOwnedMouseMessage(msg))
+            {
+                HandleClientOwnedMouseMessage(msg, lParam);
+                return IntPtr.Zero;
+            }
+
             if (ShouldSuppressClientUnsupportedEditKey(msg, virtualKey, controlHeld, shiftHeld))
             {
                 if (msg == WmKeyDown)
@@ -951,6 +957,13 @@ namespace HaCreator.MapSimulator.UI
             return msg is WmPaste or WmCut or WmClear;
         }
 
+        internal static bool ShouldHandleClientOwnedMouseMessage(uint msg)
+        {
+            // `CCtrlEdit::OnMouseButton` handles only left-down and double-click,
+            // while `OnMouseMove` owns drag selection. Left-up just ends capture.
+            return msg is WmLButtonDown or WmMouseMove or WmLButtonUp;
+        }
+
         private static bool IsControlKeyDown()
         {
             return (GetKeyState(VkControl) & 0x8000) != 0;
@@ -1043,6 +1056,61 @@ namespace HaCreator.MapSimulator.UI
             SendMessage(_editHandle, EmSetSel, new IntPtr(selectionStart), new IntPtr(selectionEnd));
             UpdateImePlacement();
             SynchronizeState();
+        }
+
+        private void HandleClientOwnedMouseMessage(uint msg, IntPtr lParam)
+        {
+            if (!IsAttached)
+            {
+                return;
+            }
+
+            DecodeClientMousePoint(lParam, out int localX, out int localY);
+            switch (msg)
+            {
+                case WmLButtonDown:
+                    BeginSelectionAtClientPoint(localX, localY);
+                    SetCapture(_editHandle);
+                    break;
+                case WmMouseMove:
+                    UpdateSelectionAtClientPoint(localX, localY);
+                    break;
+                case WmLButtonUp:
+                    _mouseSelecting = false;
+                    ReleaseCapture();
+                    break;
+            }
+
+            UpdateImePlacement();
+            SynchronizeState();
+        }
+
+        private void BeginSelectionAtClientPoint(int localX, int localY)
+        {
+            int caretIndex = ResolveCaretIndexFromClientPoint(localX, localY);
+            _mouseSelectionAnchor = caretIndex;
+            _mouseSelecting = true;
+            SetFocus(_editHandle);
+            SendMessage(_editHandle, EmSetSel, new IntPtr(caretIndex), new IntPtr(caretIndex));
+        }
+
+        private void UpdateSelectionAtClientPoint(int localX, int localY)
+        {
+            if (!_mouseSelecting)
+            {
+                return;
+            }
+
+            int caretIndex = ResolveCaretIndexFromClientPoint(localX, localY);
+            int anchorIndex = Math.Max(0, _mouseSelectionAnchor);
+            SendMessage(_editHandle, EmSetSel, new IntPtr(anchorIndex), new IntPtr(caretIndex));
+        }
+
+        private static void DecodeClientMousePoint(IntPtr lParam, out int localX, out int localY)
+        {
+            int packed = lParam.ToInt32();
+            localX = (short)(packed & 0xFFFF);
+            localY = (short)((packed >> 16) & 0xFFFF);
         }
 
         private int ResolveCaretIndexFromClientPoint(int localX, int localY)
@@ -1407,6 +1475,12 @@ namespace HaCreator.MapSimulator.UI
 
         [DllImport("user32.dll")]
         private static extern IntPtr SetFocus(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetCapture(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
 
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);

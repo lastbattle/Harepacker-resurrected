@@ -943,14 +943,7 @@ namespace HaCreator.MapSimulator.Interaction
                     SharedRegisteredTutorVariants.Add(nextSnapshot);
                 }
 
-                if (isActive)
-                {
-                    UpsertSharedTutorOwnerUnsafe(nextSnapshot);
-                }
-                else
-                {
-                    RemoveSharedTutorOwnerUnsafe(nextSnapshot.SkillId, nextSnapshot.BoundCharacterId);
-                }
+                UpsertSharedTutorOwnerUnsafe(nextSnapshot);
 
                 LastRegistryMutationTick = currentTick;
             }
@@ -1188,6 +1181,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IReadOnlyList<TutorVariantSnapshot> SnapshotSharedRegisteredTutorVariantsUnsafe()
         {
+            if (SharedTutorOwners.Count > 0)
+            {
+                TutorVariantSnapshot[] ownerVariants = new TutorVariantSnapshot[SharedTutorOwners.Count];
+                for (int i = 0; i < SharedTutorOwners.Count; i++)
+                {
+                    ownerVariants[i] = SharedTutorOwners[i].ToVariantSnapshot();
+                }
+
+                return ownerVariants;
+            }
+
             return SharedRegisteredTutorVariants.ToArray();
         }
 
@@ -1343,6 +1347,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            for (int i = 0; i < SharedTutorOwners.Count; i++)
+            {
+                ClientTutorOwnerState candidate = SharedTutorOwners[i];
+                if (candidate.SkillId == skillId && candidate.IsActive)
+                {
+                    return true;
+                }
+            }
+
             for (int i = 0; i < SharedRegisteredTutorVariants.Count; i++)
             {
                 TutorVariantSnapshot candidate = SharedRegisteredTutorVariants[i];
@@ -1461,15 +1474,6 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.IsActive,
                 snapshot.LastRemovalTick != int.MinValue,
                 snapshot.LastMutationTick);
-        }
-
-        private static void RemoveSharedTutorOwnerUnsafe(int skillId, int boundCharacterId)
-        {
-            int index = FindSharedTutorOwnerIndexUnsafe(skillId, boundCharacterId);
-            if (index >= 0)
-            {
-                SharedTutorOwners.RemoveAt(index);
-            }
         }
 
         private static void SynchronizeSharedTutorOwnerMessagesUnsafe()

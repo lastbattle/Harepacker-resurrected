@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator
     {
         private ChatCommandHandler.CommandResult HandleMessengerSessionCommand(string[] args)
         {
-            const string usage = "Usage: /messenger session [status|discover <remotePort> [processName|pid] [localPort]|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]>|sendraw <hex>|queueraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]";
+            const string usage = "Usage: /messenger session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|send <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]>|queue <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]>|sendraw <hex>|queueraw <hex>|sendpacketraw <opcode-framed-hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]";
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(DescribeMessengerOfficialSessionBridgeStatus());
@@ -40,10 +40,38 @@ namespace HaCreator.MapSimulator
                     _messengerOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
             }
 
+            if (string.Equals(args[0], "history", StringComparison.OrdinalIgnoreCase))
+            {
+                int count = 10;
+                if (args.Length >= 2 && (!int.TryParse(args[1], out count) || count <= 0))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session history [count]");
+                }
+
+                return ChatCommandHandler.CommandResult.Info(_messengerOfficialSessionBridge.DescribeRecentOutboundPackets(count));
+            }
+
+            if (string.Equals(args[0], "clearhistory", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_messengerOfficialSessionBridge.ClearRecentOutboundPackets());
+            }
+
+            if (string.Equals(args[0], "replay", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !int.TryParse(args[1], out int historyIndex) || historyIndex <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session replay <historyIndex>");
+                }
+
+                return _messengerOfficialSessionBridge.TryReplayRecentOutboundPacket(historyIndex, out string replayStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(replayStatus)
+                    : ChatCommandHandler.CommandResult.Error(replayStatus);
+            }
+
             if (string.Equals(args[0], "send", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(args[0], "queue", StringComparison.OrdinalIgnoreCase))
             {
-                if (args.Length < 3)
+                if (args.Length < 2)
                 {
                     return ChatCommandHandler.CommandResult.Error("Usage: /messenger session <send|queue> <invite <name>|accept [name]|leave|room <message>|claim <target>|<type>|<context>[|<chatLog>]>");
                 }
@@ -111,6 +139,18 @@ namespace HaCreator.MapSimulator
                         out string queueStatus)
                     ? ChatCommandHandler.CommandResult.Ok(queueStatus)
                     : ChatCommandHandler.CommandResult.Error(queueStatus);
+            }
+
+            if (string.Equals(args[0], "sendpacketraw", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args, 1, args.Length - 1), out byte[] rawPacket))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session sendpacketraw <opcode-framed-hex>");
+                }
+
+                return _messengerOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string rawStatus)
+                    ? ChatCommandHandler.CommandResult.Ok(rawStatus)
+                    : ChatCommandHandler.CommandResult.Error(rawStatus);
             }
 
             if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))

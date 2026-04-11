@@ -314,7 +314,7 @@ namespace HaCreator.MapSimulator.UI
                 int drawX = Position.X + RowX;
                 int drawY = Position.Y + RowY + (i * RowPitch);
 
-                if (_rowTexture != null)
+                if (_rowTexture != null && row.DrawsClientSlotBackground)
                 {
                     sprite.Draw(_rowTexture, new Vector2(drawX, drawY), Color.White);
                 }
@@ -643,7 +643,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            return _runtime.HasPendingGetAllRequest || (_selectedRowIndex >= 0 && _selectedRowIndex < GetRows().Count);
+            return _runtime.HasPendingGetAllRequest || _runtime.HasDecodedItems;
         }
 
         private IReadOnlyList<StoreBankOwnerRowSnapshot> GetRows()

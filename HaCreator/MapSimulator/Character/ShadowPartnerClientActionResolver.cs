@@ -520,11 +520,11 @@ namespace HaCreator.MapSimulator.Character
         private const int ClientActionManInitVariantRowEndRawActionCode = 131;
         internal const int ClientActionManInitDefaultPieceDelayMs = 150;
 
-        private static readonly HashSet<string> ClientActionManInitSkippedActionNames = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<int> ClientActionManInitSkippedRawActionCodes = new()
         {
             // CActionMan::Init walks get_action_name_from_code(action) for action < 0x111,
             // but skips raw action code 55 before reading Character/00002000.
-            "iceStrike"
+            55
         };
 
         private static readonly IReadOnlyDictionary<string, string> SupportedRawActionCanonicalNames =
@@ -988,6 +988,11 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
+            if (IsClientInitializedShadowPartnerRawActionName(actionName))
+            {
+                return true;
+            }
+
             return !string.IsNullOrWhiteSpace(actionName)
                    && SupportedRawActionCanonicalNames.ContainsKey(actionName)
                    && IsSupportedRawActionName(actionName, supportedRawActionNames);
@@ -995,14 +1000,34 @@ namespace HaCreator.MapSimulator.Character
 
         internal static IEnumerable<string> EnumerateClientInitializedShadowPartnerRawActionNames()
         {
-            foreach (string actionName in CharacterPart.EnumerateClientRawActionStrings(ClientInitializedShadowPartnerActionCodeLimitExclusive))
+            for (int rawActionCode = 0;
+                 rawActionCode < ClientInitializedShadowPartnerActionCodeLimitExclusive;
+                 rawActionCode++)
             {
-                if (!string.IsNullOrWhiteSpace(actionName)
-                    && !ClientActionManInitSkippedActionNames.Contains(actionName))
+                if (ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode)
+                    || !CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
+                    || string.IsNullOrWhiteSpace(actionName))
                 {
-                    yield return actionName;
+                    continue;
                 }
+
+                yield return actionName;
             }
+        }
+
+        internal static bool IsClientInitializedShadowPartnerRawActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
+                   && rawActionCode < ClientInitializedShadowPartnerActionCodeLimitExclusive
+                   && !ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode);
+        }
+
+        private static bool IsClientActionManInitSkippedActionName(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
+                   && ClientActionManInitSkippedRawActionCodes.Contains(rawActionCode);
         }
 
         internal static WzImageProperty ResolveClientActionManInitPieceOwnerNode(
@@ -1511,7 +1536,7 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (ClientActionManInitSkippedActionNames.Contains(actionName))
+            if (IsClientActionManInitSkippedActionName(actionName))
             {
                 return false;
             }

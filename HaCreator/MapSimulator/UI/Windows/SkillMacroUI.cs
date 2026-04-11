@@ -2320,6 +2320,12 @@ namespace HaCreator.MapSimulator.UI
             bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
             int tickCount = Environment.TickCount;
 
+            if (!ctrl && TryHandleImeCandidateKeyboardSelection(keyboardState))
+            {
+                _caretBlinkTick = Environment.TickCount;
+                return;
+            }
+
             if (!ctrl && shift && keyboardState.IsKeyDown(Keys.Insert) && _previousKeyboardState.IsKeyUp(Keys.Insert))
             {
                 HandleClipboardPaste();
@@ -2456,6 +2462,25 @@ namespace HaCreator.MapSimulator.UI
                 CopySelectedNameText(cutSelection: true);
                 return;
             }
+        }
+
+        private bool TryHandleImeCandidateKeyboardSelection(KeyboardState keyboardState)
+        {
+            int candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveVisibleCandidateIndexFromKeyboard(
+                _candidateListState,
+                keyboardState,
+                WasNameEditKeyPressed);
+            if (candidateIndex < 0)
+            {
+                return false;
+            }
+
+            return OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex) == true;
+        }
+
+        private bool WasNameEditKeyPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
         }
 
         private bool WasNameEditKeyPressedOrRepeated(KeyboardState keyboardState, Keys key, int tickCount)

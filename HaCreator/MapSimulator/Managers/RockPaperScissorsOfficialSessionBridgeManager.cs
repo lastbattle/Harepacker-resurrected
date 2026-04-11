@@ -525,7 +525,9 @@ namespace HaCreator.MapSimulator.Managers
             _pendingClientPackets.Enqueue(packet);
             QueuedCount++;
             queued = true;
-            status = $"Queued Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)packet.RequestType} for deferred live-session injection.";
+            status = HasPassiveEstablishedSocketPair
+                ? $"Queued Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)packet.RequestType} for deferred live-session injection after Maple reconnects through 127.0.0.1:{ListenPort}."
+                : $"Queued Rock-Paper-Scissors opcode {RockPaperScissorsField.ClientOpcode} subtype {(int)packet.RequestType} for deferred live-session injection.";
             LastStatus = status;
             return true;
         }

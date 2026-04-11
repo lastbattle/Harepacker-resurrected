@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.Managers
         Stage,
         Clear,
         TimeOver,
+        RawClientPacket,
         RawPacket
     }
 
@@ -49,6 +50,7 @@ namespace HaCreator.MapSimulator.Managers
     /// - "stage <0-32>"
     /// - "clear [auto|none|<nextMapId>]"
     /// - "timeover [<exitMapId>]"
+    /// - "packetclientraw <opcode-prefixed-hex-packet>"
     /// - "raw <packetType> <hex-payload>"
     /// - "<packetType> <hex-payload>"
     /// </summary>
@@ -157,6 +159,25 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string action = parts[0].Trim().ToLowerInvariant();
+            if (action == "packetclientraw" || action == "clientraw" || action == "packetraw")
+            {
+                if (parts.Length < 2)
+                {
+                    error = "Dojo opcode-framed raw packet lines must be 'packetclientraw <opcode-prefixed-hex-packet>'.";
+                    return false;
+                }
+
+                string hexPayload = parts.Length >= 3 ? $"{parts[1]} {parts[2]}" : parts[1];
+                if (!TryParseHexPayload(hexPayload, out payload) || payload.Length < sizeof(short))
+                {
+                    error = "Dojo opcode-framed raw packet payload must be valid hex with a 2-byte opcode prefix.";
+                    return false;
+                }
+
+                kind = DojoPacketMessageKind.RawClientPacket;
+                return true;
+            }
+
             if (action == "raw" || int.TryParse(parts[0], out packetType))
             {
                 int payloadTokenIndex = action == "raw" ? 2 : 1;
@@ -337,6 +358,7 @@ namespace HaCreator.MapSimulator.Managers
                 DojoPacketMessageKind.Stage => $"Dojo stage {value}",
                 DojoPacketMessageKind.Clear => string.IsNullOrWhiteSpace(option) ? "Dojo clear" : $"Dojo clear {option}",
                 DojoPacketMessageKind.TimeOver => string.IsNullOrWhiteSpace(option) ? "Dojo time-over" : $"Dojo time-over {option}",
+                DojoPacketMessageKind.RawClientPacket => $"Dojo opcode-framed packet ({payload?.Length ?? 0} bytes)",
                 DojoPacketMessageKind.RawPacket => $"Dojo packet {packetType} ({payload?.Length ?? 0} bytes)",
                 _ => "Dojo packet"
             };

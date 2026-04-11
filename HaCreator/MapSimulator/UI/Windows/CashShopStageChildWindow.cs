@@ -122,8 +122,12 @@ namespace HaCreator.MapSimulator.UI
             public int SelectorIndex { get; init; }
             public int SelectorCount { get; init; } = 2;
             public int SelectorControlId { get; init; } = 2001;
+            public int SelectorInitArg { get; init; } = 4;
             public int SelectorStartX { get; init; } = 2;
             public int SelectorStartY { get; init; } = 2;
+            public int SelectorNormalColor { get; init; } = -12949590;
+            public int SelectorSelectedColor { get; init; } = -1;
+            public int SelectorOutlineColor { get; init; } = -16777216;
             public Point SelectorPosition { get; init; } = new(412, 406);
             public string TodaySelectorLabel { get; init; } = "Today";
             public string PreviousSelectorLabel { get; init; } = "Previous";
@@ -718,9 +722,15 @@ namespace HaCreator.MapSimulator.UI
             string previousLabel = string.IsNullOrWhiteSpace(state.PreviousSelectorLabel) ? "Previous" : state.PreviousSelectorLabel.Trim();
             sprite.DrawString(
                 _font,
-                $"Selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} {(_oneADaySelectorIndex == 0 ? ">" : " ")} {todayLabel}  {(_oneADaySelectorIndex == 1 ? ">" : " ")} {previousLabel}  start {state.SelectorStartX.ToString(CultureInfo.InvariantCulture)},{state.SelectorStartY.ToString(CultureInfo.InvariantCulture)}  pos {state.SelectorPosition.X.ToString(CultureInfo.InvariantCulture)},{state.SelectorPosition.Y.ToString(CultureInfo.InvariantCulture)}",
+                $"Selector#{state.SelectorControlId.ToString(CultureInfo.InvariantCulture)} init {state.SelectorInitArg.ToString(CultureInfo.InvariantCulture)} {(_oneADaySelectorIndex == 0 ? ">" : " ")} {todayLabel}  {(_oneADaySelectorIndex == 1 ? ">" : " ")} {previousLabel}  start {state.SelectorStartX.ToString(CultureInfo.InvariantCulture)},{state.SelectorStartY.ToString(CultureInfo.InvariantCulture)}  pos {state.SelectorPosition.X.ToString(CultureInfo.InvariantCulture)},{state.SelectorPosition.Y.ToString(CultureInfo.InvariantCulture)}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 accentColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(
+                _font,
+                $"Selector attr {state.SelectorNormalColor.ToString(CultureInfo.InvariantCulture)}/{state.SelectorSelectedColor.ToString(CultureInfo.InvariantCulture)}/{state.SelectorOutlineColor.ToString(CultureInfo.InvariantCulture)}  Runtime {DescribeOneADaySelectorRuntime()}",
+                new Vector2(Position.X + contentBounds.X + 12, lineY),
+                detailColor);
             lineY += _font.LineSpacing;
             sprite.DrawString(
                 _font,
@@ -1283,6 +1293,7 @@ namespace HaCreator.MapSimulator.UI
                     _oneADaySessionState = !_oneADayPending
                         ? $"CCSWnd_OneADay kept the dedicated buy button armed, but no packet-authored today reward is pending for {ResolveOneADayCurrentSelectionSummary(state)}."
                         : $"CCSWnd_OneADay routed the dedicated buy button through the Today reward lane for {ResolveOneADayCurrentSelectionSummary(state)}.";
+                    RefreshOneADayInteractiveRuntime(state);
                     break;
                 case "BtItemBox":
                     _oneADayShortcutHelpActive = false;
@@ -1291,6 +1302,7 @@ namespace HaCreator.MapSimulator.UI
                     _oneADaySessionState = state?.HistoryEntries?.Count > 0
                         ? $"CCSWnd_OneADay routed the dedicated item-box button into previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)}."
                         : "CCSWnd_OneADay switched into the dedicated previous-item lane, but no packet-authored history rows are loaded.";
+                    RefreshOneADayInteractiveRuntime(state);
                     break;
                 case "BtJoin":
                     _oneADayShortcutHelpActive = false;
@@ -1300,6 +1312,7 @@ namespace HaCreator.MapSimulator.UI
                         _oneADaySessionState = historyEntry == null
                             ? "CCSWnd_OneADay kept the Previous selector active, but no packet-authored history row is loaded."
                             : $"CCSWnd_OneADay routed previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} ({historyEntry.ItemLabel}) through the recovered previous-item purchase lane.";
+                        RefreshOneADayInteractiveRuntime(state);
                         break;
                     }
 
@@ -1312,10 +1325,12 @@ namespace HaCreator.MapSimulator.UI
                     _oneADaySessionState = !_oneADayPending
                         ? $"CCSWnd_OneADay kept the Today selector active, but no packet-armed reward session is pending for {ResolveOneADayCurrentSelectionSummary(state)}."
                         : $"CCSWnd_OneADay routed the Today selector through the packet-armed purchase lane for {ResolveOneADayCurrentSelectionSummary(state)} and kept the active reward plate selected.";
+                    RefreshOneADayInteractiveRuntime(state);
                     break;
                 case "BtShortcut":
                     _oneADayShortcutHelpActive = true;
                     _oneADaySessionState = $"CCSWnd_OneADay opened the dedicated {ResolveOneADayPlateName(state)} help surface without leaving the current selector lane.";
+                    RefreshOneADayInteractiveRuntime(state);
                     break;
                 case "BtClose":
                     if (_oneADayShortcutHelpActive)
@@ -1329,6 +1344,7 @@ namespace HaCreator.MapSimulator.UI
                             ? $"CCSWnd_OneADay dismissed the previous reward preview for {ResolveOneADayHistorySelectionSummary(state)} while keeping the owner shell alive."
                             : $"CCSWnd_OneADay dismissed the current reward preview for {ResolveOneADayCurrentSelectionSummary(state)} while keeping the owner shell alive.";
                     }
+                    RefreshOneADayInteractiveRuntime(state);
                     break;
             }
         }
@@ -1888,6 +1904,7 @@ namespace HaCreator.MapSimulator.UI
             int step = delta == 0 ? 0 : Math.Sign(delta);
             _oneADayPlateFocusIndex = (_oneADayPlateFocusIndex + plateCount + step) % plateCount;
             _oneADaySessionState = $"CCSWnd_OneADay rotated the reward owner to {ResolveOneADayPlateName(state)}.";
+            RefreshOneADayInteractiveRuntime(state);
             _statusMessage = _oneADaySessionState;
         }
 
@@ -1910,6 +1927,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _oneADaySessionState = $"CCSWnd_OneADay moved the previous-item selector to slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} of {Math.Max(0, previousOfferCount - 1).ToString(CultureInfo.InvariantCulture)}.";
+            RefreshOneADayInteractiveRuntime(state);
             _statusMessage = _oneADaySessionState;
         }
 
@@ -1925,6 +1943,7 @@ namespace HaCreator.MapSimulator.UI
             int offerIndex = Math.Clamp((rowIndex * columns) + columnIndex, 0, previousOfferCount - 1);
             _oneADayPlateFocusIndex = offerIndex;
             _oneADaySessionState = $"CCSWnd_OneADay focused previous reward slot {_oneADayPlateFocusIndex.ToString(CultureInfo.InvariantCulture)} from the recovered history grid.";
+            RefreshOneADayInteractiveRuntime(state);
             _statusMessage = _oneADaySessionState;
         }
 
@@ -1935,6 +1954,11 @@ namespace HaCreator.MapSimulator.UI
             _oneADaySessionState = _oneADaySelectorIndex == 0
                 ? "CCSWnd_OneADay moved keyboard focus to the Today selector."
                 : "CCSWnd_OneADay moved keyboard focus to the Previous selector.";
+            _oneADayPlateFocusIndex = Math.Clamp(
+                _oneADayPlateFocusIndex,
+                0,
+                Math.Max(0, (_oneADaySelectorIndex == 1 ? state?.PreviousOfferCount : state?.PlateCount) ?? 1) - 1);
+            RefreshOneADayInteractiveRuntime(state);
             _statusMessage = _oneADaySessionState;
         }
 
@@ -2210,6 +2234,19 @@ namespace HaCreator.MapSimulator.UI
         private string BuildOneADayRewardSessionSummary()
         {
             return $"Reward session byte 0x{_oneADayRewardSessionByte:X2} rev {_oneADayRewardSessionRevision.ToString(CultureInfo.InvariantCulture)}  Selector runtime {_oneADaySelectorRuntime.Count.ToString(CultureInfo.InvariantCulture)}  Number mask 0x{_oneADayNumberCanvasReadyMask:X3}.";
+        }
+
+        private string DescribeOneADaySelectorRuntime()
+        {
+            if (_oneADaySelectorRuntime == null || _oneADaySelectorRuntime.Count == 0)
+            {
+                return "empty";
+            }
+
+            return string.Join(
+                "/",
+                _oneADaySelectorRuntime.Select(entry =>
+                    $"{(entry.IsActive ? ">" : string.Empty)}{entry.Index.ToString(CultureInfo.InvariantCulture)}:{TrimToLength(entry.Label, 10)}"));
         }
 
         private static int BuildOneADayNumberCanvasReadyMask(int numberCanvasCount)

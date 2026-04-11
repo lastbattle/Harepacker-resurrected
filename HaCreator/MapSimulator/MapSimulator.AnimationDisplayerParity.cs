@@ -25,6 +25,12 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerGenericUserStateSingleEffectUol = "Effect/OnUserEff.img/character/0";
         private const string AnimationDisplayerItemMakeSuccessEffectUol = "Effect/BasicEff.img/ItemMake/Success";
         private const string AnimationDisplayerItemMakeFailureEffectUol = "Effect/BasicEff.img/ItemMake/Failure";
+        private const string AnimationDisplayerBuffItemUseFallbackEffectUol = "Effect/BasicEff.img/Buff";
+        private const string AnimationDisplayerItemUnreleaseBaseEffectUol = "Effect/BasicEff.img/Enchant/Success";
+        private const int AnimationDisplayerFallingFallbackDurationMs = 1000;
+        private const int AnimationDisplayerExplosionFallbackIntervalMs = 100;
+        private const int AnimationDisplayerExplosionFallbackCount = 1;
+        private const int AnimationDisplayerExplosionFallbackDurationMs = 1000;
         private const int AnimationDisplayerSkillBookSuccessFrontStringPoolId = 0x0FF1;
         private const int AnimationDisplayerSkillBookSuccessBackStringPoolId = 0x0FF2;
         private const int AnimationDisplayerSkillBookFailureFrontStringPoolId = 0x0FF3;
@@ -118,12 +124,43 @@ namespace HaCreator.MapSimulator
             bool FollowOwnerFacing = true,
             bool FollowOwnerPosition = true);
 
+        internal readonly record struct AnimationDisplayerFallingRegistrationProfile(
+            Rectangle StartArea,
+            int OffsetX,
+            int OffsetY,
+            int Alpha,
+            int FallDistance,
+            int UpdateIntervalMs,
+            int UpdateCount,
+            int UpdateNextMs,
+            int DurationMs,
+            int FrameCount)
+        {
+            public int EffectiveFallDistance => Math.Max(1, FallDistance);
+            public int EffectiveUpdateCount => Math.Max(1, UpdateCount > 0 ? UpdateCount : FrameCount);
+            public int EffectiveDurationMs => Math.Max(120, DurationMs > 0 ? DurationMs : AnimationDisplayerFallingFallbackDurationMs);
+            public float EffectiveFallSpeed => EffectiveFallDistance * 1000f / EffectiveDurationMs;
+        }
+
+        internal readonly record struct AnimationDisplayerAreaRegistrationProfile(
+            Rectangle Area,
+            int UpdateIntervalMs,
+            int UpdateCount,
+            int UpdateNextMs,
+            int DurationMs)
+        {
+            public int EffectiveUpdateIntervalMs => Math.Max(1, UpdateIntervalMs > 0 ? UpdateIntervalMs : AnimationDisplayerExplosionFallbackIntervalMs);
+            public int EffectiveUpdateCount => Math.Max(1, UpdateCount > 0 ? UpdateCount : AnimationDisplayerExplosionFallbackCount);
+            public int EffectiveUpdateNextMs => Math.Max(0, UpdateNextMs);
+            public int EffectiveDurationMs => Math.Max(1, DurationMs > 0 ? DurationMs : AnimationDisplayerExplosionFallbackDurationMs);
+        }
+
         private void RegisterAnimationDisplayerChatCommand()
         {
             _chat.CommandHandler.RegisterCommand(
                 "socialanim",
                 "Exercise the shared social or event animation-displayer runtime",
-                "/socialanim <status|clear|newyear|firecracker|userstate|follow|questdelivery> [...]",
+                "/socialanim <status|clear|newyear|firecracker|buffitem|itemunrelease|falling|explosion|userstate|follow|questdelivery> [...]",
                 HandleAnimationDisplayerChatCommand);
         }
 
@@ -152,6 +189,72 @@ namespace HaCreator.MapSimulator
             {
                 Rectangle area = ResolveAnimationDisplayerArea(args, startIndex: 1);
                 return TryRegisterAnimationDisplayerFireCrackerAnimation(area, out string message)
+                    ? ChatCommandHandler.CommandResult.Ok(message)
+                    : ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            if (string.Equals(args[0], "buffitem", StringComparison.OrdinalIgnoreCase))
+            {
+                string requestedEffectUol = args.Length > 1 ? args[1] : null;
+                if (!TryResolveAnimationDisplayerOwner(
+                        args.Length > 2 ? args[2] : "local",
+                        out int ownerCharacterId,
+                        out Func<Vector2> getPosition,
+                        out string ownerName))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Could not resolve buff-item-use animation owner.");
+                }
+
+                return TryRegisterAnimationDisplayerBuffItemUse(
+                    requestedEffectUol,
+                    ownerCharacterId,
+                    getPosition,
+                    out string message)
+                    ? ChatCommandHandler.CommandResult.Ok($"{message} Owner={ownerName}.")
+                    : ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            if (string.Equals(args[0], "itemunrelease", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryResolveAnimationDisplayerOwner(
+                        args.Length > 1 ? args[1] : "local",
+                        out int ownerCharacterId,
+                        out Func<Vector2> getPosition,
+                        out string ownerName))
+                {
+                    return ChatCommandHandler.CommandResult.Error("Could not resolve item-unrelease animation owner.");
+                }
+
+                return TryRegisterAnimationDisplayerItemUnrelease(
+                    ownerCharacterId,
+                    getPosition,
+                    out string message)
+                    ? ChatCommandHandler.CommandResult.Ok($"{message} Owner={ownerName}.")
+                    : ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            if (string.Equals(args[0], "falling", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /socialanim falling <effectUol> [x y width height]");
+                }
+
+                Rectangle area = ResolveAnimationDisplayerArea(args, startIndex: 2);
+                return TryRegisterAnimationDisplayerFallingAnimation(args[1], area, out string message)
+                    ? ChatCommandHandler.CommandResult.Ok(message)
+                    : ChatCommandHandler.CommandResult.Error(message);
+            }
+
+            if (string.Equals(args[0], "explosion", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /socialanim explosion <effectUol> [x y width height]");
+                }
+
+                Rectangle area = ResolveAnimationDisplayerArea(args, startIndex: 2);
+                return TryRegisterAnimationDisplayerExplosionAnimation(args[1], area, out string message)
                     ? ChatCommandHandler.CommandResult.Ok(message)
                     : ChatCommandHandler.CommandResult.Error(message);
             }
@@ -243,7 +346,7 @@ namespace HaCreator.MapSimulator
                     : ChatCommandHandler.CommandResult.Error($"Quest-delivery animation frames could not be loaded for item {itemId}.");
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /socialanim <status|clear|newyear|firecracker|userstate|follow|questdelivery> [...]");
+            return ChatCommandHandler.CommandResult.Error("Usage: /socialanim <status|clear|newyear|firecracker|buffitem|itemunrelease|falling|explosion|userstate|follow|questdelivery> [...]");
         }
 
         private string DescribeAnimationDisplayerStatus()
@@ -255,13 +358,14 @@ namespace HaCreator.MapSimulator
                 : "idle";
             bool packetOwnedFollowActive = localCharacterId > 0
                 && _animationDisplayerFollowAnimationIds.ContainsKey(BuildAnimationDisplayerPacketOwnedFollowRegistrationKey(localCharacterId));
-            return $"Animation displayer parity: userStates={_animationEffects.UserStateCount}, followAnimations={_animationEffects.FollowAnimationCount}, areaAnimations={_animationEffects.AreaAnimationCount}, localUserState={(localUserStateActive ? "active" : "idle")}, localQuestDelivery={localQuestDelivery}, packetOwnedFollow={(packetOwnedFollowActive ? "active" : "idle")}, localFade={(_packetOwnedFieldFadeOverlay.IsActive ? "active" : "idle")}.";
+            return $"Animation displayer parity: userStates={_animationEffects.UserStateCount}, followAnimations={_animationEffects.FollowAnimationCount}, fallingAnimations={_animationEffects.FallingAnimationCount}, areaAnimations={_animationEffects.AreaAnimationCount}, secondaryOwners={_animationEffects.SecondarySkillAnimationOwnerCount}, localUserState={(localUserStateActive ? "active" : "idle")}, localQuestDelivery={localQuestDelivery}, packetOwnedFollow={(packetOwnedFollowActive ? "active" : "idle")}, localFade={(_packetOwnedFieldFadeOverlay.IsActive ? "active" : "idle")}.";
         }
 
         private void ClearAnimationDisplayerState()
         {
             _animationEffects.ClearUserStates();
             _animationEffects.ClearAreaAnimations();
+            _animationEffects.ClearSecondarySkillAnimationOwners();
             ClearAnimationDisplayerFollowAnimations();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
             _animationDisplayerLocalQuestDeliveryItemId = 0;
@@ -326,6 +430,253 @@ namespace HaCreator.MapSimulator
             }
 
             return anyRegistered;
+        }
+
+        private bool TryRegisterAnimationDisplayerBuffItemUse(
+            string requestedEffectUol,
+            int ownerCharacterId,
+            Func<Vector2> getPosition,
+            out string message)
+        {
+            message = null;
+            if (ownerCharacterId <= 0 || getPosition == null)
+            {
+                message = "Buff-item-use animation owner is missing.";
+                return false;
+            }
+
+            string resolvedEffectUol = ResolveAnimationDisplayerBuffItemUseEffectUol(
+                requestedEffectUol,
+                effectUol => ResolveAnimationDisplayerProperty(effectUol) != null);
+            if (!TryGetAnimationDisplayerFrames($"buffitem:{resolvedEffectUol}", resolvedEffectUol, out List<IDXObject> frames))
+            {
+                message = $"Buff-item-use animation frames could not be loaded from {resolvedEffectUol}.";
+                return false;
+            }
+
+            Vector2 fallbackPosition = getPosition();
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                getPosition,
+                getFlip: null,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                fallbackFlip: false,
+                currTickCount);
+            message = $"Registered buff-item-use animation-displayer layer from {resolvedEffectUol}.";
+            return true;
+        }
+
+        private bool TryRegisterAnimationDisplayerItemUnrelease(
+            int ownerCharacterId,
+            Func<Vector2> getPosition,
+            out string message)
+        {
+            message = null;
+            if (ownerCharacterId <= 0 || getPosition == null)
+            {
+                message = "Item-unrelease animation owner is missing.";
+                return false;
+            }
+
+            bool registered = false;
+            Vector2 fallbackPosition = getPosition();
+            foreach (string effectUol in EnumerateAnimationDisplayerItemUnreleaseEffectUols(AnimationDisplayerItemUnreleaseBaseEffectUol))
+            {
+                if (!TryGetAnimationDisplayerFrames($"itemunrelease:{effectUol}", effectUol, out List<IDXObject> frames))
+                {
+                    continue;
+                }
+
+                _animationEffects.AddOneTimeAttached(
+                    frames,
+                    getPosition,
+                    getFlip: null,
+                    fallbackPosition.X,
+                    fallbackPosition.Y,
+                    fallbackFlip: false,
+                    currTickCount);
+                registered = true;
+            }
+
+            message = registered
+                ? $"Registered item-unrelease animation-displayer layers from {AnimationDisplayerItemUnreleaseBaseEffectUol}."
+                : $"Item-unrelease animation frames could not be loaded from {AnimationDisplayerItemUnreleaseBaseEffectUol}.";
+            return registered;
+        }
+
+        private bool TryRegisterAnimationDisplayerFallingAnimation(string effectUol, Rectangle area, out string message)
+        {
+            message = null;
+            WzImageProperty property = ResolveAnimationDisplayerProperty(effectUol)?.GetLinkedWzImageProperty();
+            if (property == null)
+            {
+                message = $"Falling animation property could not be loaded from {effectUol}.";
+                return false;
+            }
+
+            List<IDXObject> frames = LoadAnimationDisplayerFrames(effectUol);
+            if (!Animation.AnimationEffects.HasFrames(frames))
+            {
+                message = $"Falling animation frames could not be loaded from {effectUol}.";
+                return false;
+            }
+
+            AnimationDisplayerFallingRegistrationProfile profile = BuildAnimationDisplayerFallingRegistrationProfile(
+                area,
+                ReadAnimationDisplayerIntProperty(property, "x"),
+                ReadAnimationDisplayerIntProperty(property, "y"),
+                ReadAnimationDisplayerIntProperty(property, "a"),
+                ReadAnimationDisplayerIntProperty(property, "fall"),
+                ReadAnimationDisplayerIntProperty(property, "interval"),
+                ReadAnimationDisplayerIntProperty(property, "count"),
+                ReadAnimationDisplayerIntProperty(property, "delay"),
+                ReadAnimationDisplayerIntProperty(property, "end"),
+                frames.Count);
+            float centerX = profile.StartArea.Left + (profile.StartArea.Width / 2f) + profile.OffsetX;
+            float endY = profile.StartArea.Bottom + profile.OffsetY;
+            float startY = endY - profile.EffectiveFallDistance;
+            _animationEffects.AddFallingBurst(
+                frames,
+                centerX,
+                startY,
+                endY,
+                Math.Max(1f, profile.StartArea.Width / 2f),
+                profile.EffectiveUpdateCount,
+                Math.Max(120f, profile.EffectiveFallSpeed),
+                currTickCount + profile.UpdateNextMs);
+            message = $"Registered falling animation-displayer effect from {effectUol} ({profile.EffectiveUpdateCount} drops).";
+            return true;
+        }
+
+        private bool TryRegisterAnimationDisplayerExplosionAnimation(string effectUol, Rectangle area, out string message)
+        {
+            message = null;
+            WzImageProperty property = ResolveAnimationDisplayerProperty(effectUol)?.GetLinkedWzImageProperty();
+            if (property == null)
+            {
+                message = $"Explosion animation property could not be loaded from {effectUol}.";
+                return false;
+            }
+
+            List<IDXObject> frames = LoadAnimationDisplayerFrames(effectUol);
+            if (!Animation.AnimationEffects.HasFrames(frames))
+            {
+                message = $"Explosion animation frames could not be loaded from {effectUol}.";
+                return false;
+            }
+
+            AnimationDisplayerAreaRegistrationProfile profile = BuildAnimationDisplayerAreaRegistrationProfile(
+                area,
+                ReadAnimationDisplayerIntProperty(property, "interval"),
+                ReadAnimationDisplayerIntProperty(property, "count"),
+                ReadAnimationDisplayerIntProperty(property, "delay"),
+                ReadAnimationDisplayerIntProperty(property, "end"));
+            int registrationId = _animationEffects.RegisterAreaAnimation(
+                frames,
+                profile.Area,
+                profile.EffectiveUpdateIntervalMs,
+                profile.EffectiveUpdateCount,
+                profile.EffectiveUpdateNextMs,
+                profile.EffectiveDurationMs,
+                currTickCount);
+            if (registrationId < 0)
+            {
+                message = $"Explosion animation-displayer effect from {effectUol} could not be registered.";
+                return false;
+            }
+
+            _packetOwnedAnimationDisplayerAreaAnimationIds.Add(registrationId);
+            message = $"Registered explosion animation-displayer area effect from {effectUol}.";
+            return true;
+        }
+
+        internal static string ResolveAnimationDisplayerBuffItemUseEffectUol(
+            string requestedEffectUol,
+            Func<string, bool> effectExists)
+        {
+            string normalized = NormalizeRemotePacketOwnedStringEffectUol(requestedEffectUol);
+            if (!string.IsNullOrWhiteSpace(normalized)
+                && (effectExists == null || effectExists(normalized)))
+            {
+                return normalized;
+            }
+
+            return AnimationDisplayerBuffItemUseFallbackEffectUol;
+        }
+
+        internal static IReadOnlyList<string> EnumerateAnimationDisplayerItemUnreleaseEffectUols(string baseEffectUol)
+        {
+            string normalizedBase = NormalizeRemotePacketOwnedStringEffectUol(baseEffectUol)
+                                    ?? AnimationDisplayerItemUnreleaseBaseEffectUol;
+            return new[]
+            {
+                CombineAnimationDisplayerEffectUol(normalizedBase, "default"),
+                CombineAnimationDisplayerEffectUol(normalizedBase, "0"),
+                normalizedBase
+            };
+        }
+
+        internal static AnimationDisplayerFallingRegistrationProfile BuildAnimationDisplayerFallingRegistrationProfile(
+            Rectangle startArea,
+            int offsetX,
+            int offsetY,
+            int alpha,
+            int fallDistance,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int frameCount)
+        {
+            return new AnimationDisplayerFallingRegistrationProfile(
+                startArea,
+                offsetX,
+                offsetY,
+                alpha,
+                Math.Max(1, fallDistance),
+                Math.Max(1, updateIntervalMs),
+                Math.Max(0, updateCount),
+                Math.Max(0, updateNextMs),
+                Math.Max(0, durationMs),
+                Math.Max(0, frameCount));
+        }
+
+        internal static AnimationDisplayerAreaRegistrationProfile BuildAnimationDisplayerAreaRegistrationProfile(
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs)
+        {
+            return new AnimationDisplayerAreaRegistrationProfile(
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs);
+        }
+
+        private static string CombineAnimationDisplayerEffectUol(string baseEffectUol, string childName)
+        {
+            string normalizedBase = baseEffectUol?.Replace('\\', '/').Trim().TrimEnd('/');
+            string normalizedChild = childName?.Replace('\\', '/').Trim().TrimStart('/');
+            if (string.IsNullOrWhiteSpace(normalizedBase))
+            {
+                return normalizedChild;
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedChild))
+            {
+                return normalizedBase;
+            }
+
+            return $"{normalizedBase}/{normalizedChild}";
+        }
+
+        private static int ReadAnimationDisplayerIntProperty(WzImageProperty property, string name)
+        {
+            return property?[name]?.GetInt() ?? 0;
         }
 
         private int TryRegisterAnimationDisplayerAreaAnimation(
@@ -817,6 +1168,31 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryRegisterCollisionCustomImpactEffect(int currentTime, double velocityX)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Physics == null
+                || !TryGetAnimationDisplayerFrames(
+                    "portalcollision:customimpact",
+                    CollisionVerticalJumpEffectUol,
+                    out List<IDXObject> frames))
+            {
+                return false;
+            }
+
+            Vector2 fallbackPosition = player.Physics.GetPosition();
+            bool clientFlip = velocityX != 0d;
+            _animationEffects.AddOneTimeAttached(
+                frames,
+                () => _playerManager?.Player?.Physics?.GetPosition() ?? fallbackPosition,
+                () => velocityX != 0d,
+                fallbackPosition.X,
+                fallbackPosition.Y,
+                clientFlip,
+                currentTime);
+            return true;
+        }
+
         private void HandleRemoteGenericUserStateEffect(RemoteUserActorPool.RemoteGenericUserStatePresentation presentation)
         {
             if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor actor) != true
@@ -1182,6 +1558,7 @@ namespace HaCreator.MapSimulator
                 prepared.StartTime,
                 effectAnimation,
                 secondaryEffectAnimation);
+            TryRegisterAnimationDisplayerPrepareOwner(prepared, effectAnimation, secondaryEffectAnimation);
             TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
@@ -1198,7 +1575,56 @@ namespace HaCreator.MapSimulator
                 currTickCount,
                 prepared.SkillData.KeydownEndEffect,
                 prepared.SkillData.KeydownEndSecondaryEffect);
+            if (prepared.SkillId > 0)
+            {
+                _animationEffects?.RemovePrepareAnimation(prepared.SkillId);
+            }
             TryRegisterAnimationDisplayerSkillUse(castInfo);
+        }
+
+        private bool TryRegisterAnimationDisplayerPrepareOwner(
+            PreparedSkill prepared,
+            SkillAnimation effectAnimation,
+            SkillAnimation secondaryEffectAnimation)
+        {
+            if (prepared?.SkillData == null || _animationEffects == null)
+            {
+                return false;
+            }
+
+            if ((effectAnimation?.Frames.Count ?? 0) <= 0
+                && (secondaryEffectAnimation?.Frames.Count ?? 0) <= 0)
+            {
+                return false;
+            }
+
+            PlayerCharacter localPlayer = _playerManager?.Player;
+            int ownerCharacterId = localPlayer?.Build?.Id ?? 0;
+            if (ownerCharacterId <= 0)
+            {
+                return false;
+            }
+
+            TryResolveAnimationDisplayerSkillUseOwner(
+                ownerCharacterId,
+                out Func<Vector2> getOwnerPosition,
+                out Func<bool> getOwnerFacingRight);
+            Vector2 fallbackPosition = getOwnerPosition?.Invoke()
+                                       ?? new Vector2(localPlayer?.X ?? 0f, localPlayer?.Y ?? 0f);
+            bool fallbackFlip = !(getOwnerFacingRight?.Invoke() ?? localPlayer?.FacingRight ?? true);
+            int durationMs = prepared.IsKeydownSkill
+                ? Math.Max(prepared.HudGaugeDurationMs, prepared.Duration)
+                : prepared.Duration;
+            return _animationEffects.RegisterPrepareAnimation(
+                prepared.SkillId,
+                effectAnimation?.ToTextureFrames(),
+                secondaryEffectAnimation?.ToTextureFrames(),
+                getOwnerPosition,
+                () => !(getOwnerFacingRight?.Invoke() ?? localPlayer?.FacingRight ?? true),
+                fallbackPosition,
+                fallbackFlip,
+                prepared.StartTime,
+                durationMs) >= 0;
         }
 
         private bool TryRegisterAnimationDisplayerLocalSkillUseRequest(SkillUseEffectRequest request)

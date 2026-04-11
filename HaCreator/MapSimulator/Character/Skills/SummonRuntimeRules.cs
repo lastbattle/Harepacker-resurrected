@@ -464,6 +464,34 @@ namespace HaCreator.MapSimulator.Character.Skills
             return 0;
         }
 
+        internal static int ResolveLocalAttackPacketActionCode(
+            SkillData skill,
+            SummonAssistType assistType,
+            string branchName,
+            bool facingRight,
+            bool isSelfDestructAction = false)
+        {
+            int actionCode = ResolveLocalAttackActionCode(
+                skill,
+                assistType,
+                branchName,
+                isSelfDestructAction);
+            return EncodeSummonedActionFacingBit(actionCode, facingRight);
+        }
+
+        internal static int EncodeSummonedActionFacingBit(int actionCode, bool facingRight)
+        {
+            if (actionCode <= 0)
+            {
+                return 0;
+            }
+
+            int normalizedActionCode = actionCode & 0x7F;
+            return facingRight
+                ? normalizedActionCode
+                : normalizedActionCode | 0x80;
+        }
+
         private static int ResolveHealingRobotLocalSupportActionCode(
             SkillData skill,
             SummonAssistType assistType,

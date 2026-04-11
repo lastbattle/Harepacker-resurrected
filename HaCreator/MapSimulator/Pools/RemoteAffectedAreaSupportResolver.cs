@@ -457,18 +457,34 @@ namespace HaCreator.MapSimulator.Pools
             SkillLevelData levelData,
             IEnumerable<SkillData> supportSkills = null)
         {
-            if (skill == null || levelData == null || levelData.X <= 0)
+            if (skill == null || levelData == null)
             {
                 return 0;
             }
 
-            if (HasAmplifyDamageMinionAbility(skill, supportSkills))
+            string combinedText = BuildCombinedSupportText(skill, supportSkills);
+            bool usesBodyBoostDarkAuraDamageAlias =
+                levelData.V > 0
+                && ContainsToken(combinedText, "body boost")
+                && ContainsToken(combinedText, "dark aura")
+                && ContainsToken(combinedText, "damage");
+            if (usesBodyBoostDarkAuraDamageAlias)
             {
-                return Math.Clamp(levelData.X, 0, 100);
+                return Math.Clamp(levelData.V, 0, 100);
             }
 
-            string combinedText = BuildCombinedSupportText(skill, supportSkills);
+            if (HasAmplifyDamageMinionAbility(skill, supportSkills))
+            {
+                int amplifyDamageRate = levelData.X > 0 ? levelData.X : levelData.V;
+                return Math.Clamp(amplifyDamageRate, 0, 100);
+            }
+
             if (string.IsNullOrWhiteSpace(combinedText))
+            {
+                return 0;
+            }
+
+            if (levelData.X <= 0)
             {
                 return 0;
             }
@@ -1414,6 +1430,30 @@ namespace HaCreator.MapSimulator.Pools
             if (derivedMovementSpeedFromAliasX)
             {
                 projected.Speed = Math.Max(projected.Speed, authoredLevelData.X);
+            }
+
+            bool usesBodyBoostAuraAliases =
+                authoredLevelData != null
+                && ContainsToken(combinedText, "body boost")
+                && ContainsToken(combinedText, "dark aura")
+                && ContainsToken(combinedText, "yellow aura")
+                && ContainsToken(combinedText, "blue aura");
+            if (usesBodyBoostAuraAliases)
+            {
+                if (authoredLevelData.W > 0 && ContainsToken(combinedText, "speed"))
+                {
+                    projected.Speed = Math.Max(projected.Speed, authoredLevelData.W);
+                }
+
+                if (authoredLevelData.X > 0 && ContainsToken(combinedText, "attack speed", "weapon speed"))
+                {
+                    projected.X = Math.Max(projected.X, authoredLevelData.X);
+                }
+
+                if (authoredLevelData.Y > 0 && ContainsToken(combinedText, "evading enemy attack", "dodge chance", "avoidability"))
+                {
+                    projected.AvoidabilityPercent = Math.Max(projected.AvoidabilityPercent, authoredLevelData.Y);
+                }
             }
 
             if (ContainsToken(combinedText, "attack speed", "weapon speed"))

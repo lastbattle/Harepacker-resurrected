@@ -352,56 +352,47 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>
         /// Load skills for the pre-Big Bang skill window.
         /// </summary>
-        public static void LoadSkillsForJob(SkillUI skillWindow, int jobId, GraphicsDevice device)
+        public static void LoadSkillsForJob(
+            SkillUI skillWindow,
+            int jobId,
+            GraphicsDevice device,
+            IEnumerable<int> learnedSkillIds = null,
+            int subJob = 0)
         {
             if (skillWindow == null)
                 return;
 
             try
             {
-                skillWindow.ClearSkills();
-                skillWindow.SetUseDualTabStrip(IsDualBladeJob(jobId));
-
-                IReadOnlyList<int> displayedSkillBookIds = GetDisplayedSkillBookJobIdsForJob(jobId);
-                foreach (int skillRootId in displayedSkillBookIds)
-                {
-                    int tabIndex = Math.Clamp(GetSkillTabFromJobId(skillRootId), 0, 6);
-                    Dictionary<int, SkillDisplayData> skillMap = new();
-                    foreach (int bookJobId in GetSkillBookAliasesForJob(skillRootId).Distinct())
-                    {
-                        foreach (SkillDisplayData skill in SkillDataLoader.LoadSkillsForJob(bookJobId, device))
-                        {
-                            if (skill == null || skillMap.ContainsKey(skill.SkillId))
-                                continue;
-
-                            skillMap[skill.SkillId] = skill;
-                        }
-                    }
-
-                    foreach (SkillDisplayData skill in skillMap.Values.OrderBy(skill => skill.SkillId))
-                    {
-                        skillWindow.AddSkill(tabIndex, skill);
-                    }
-
-                    Texture2D jobIcon = null;
-                    foreach (int bookJobId in GetSkillBookAliasesForJob(skillRootId).Distinct())
-                    {
-                        jobIcon = SkillDataLoader.LoadJobIcon(bookJobId, device);
-                        if (jobIcon != null)
-                            break;
-                    }
-
-                    skillWindow.SetDisplayedSkillRootId(tabIndex, skillRootId);
-                    skillWindow.SetRecommendedSkillEntries(tabIndex, SkillDataLoader.LoadRecommendedSkillEntries(skillRootId, skillMap.Keys));
-                    skillWindow.SetJobInfo(tabIndex, jobIcon, SkillDataLoader.GetJobName(skillRootId));
-                }
-
-                skillWindow.CurrentTab = Math.Clamp(GetSkillTabFromJobId(jobId), 0, 6);
+                ReloadVisibleSkillRoots(
+                    skillWindow,
+                    jobId,
+                    device,
+                    learnedSkillIds,
+                    subJob,
+                    clearLoadedSkillTabs: true);
+                skillWindow.CurrentTab = GetSkillTabFromJobId(jobId);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Failed to load pre-BB skills: {ex.Message}");
             }
+        }
+
+        internal static void RefreshVisibleSkillRootsFromCurrentRecords(
+            SkillUI skillWindow,
+            int jobId,
+            GraphicsDevice device,
+            IEnumerable<int> learnedSkillIds = null,
+            int subJob = 0)
+        {
+            ReloadVisibleSkillRoots(
+                skillWindow,
+                jobId,
+                device,
+                learnedSkillIds,
+                subJob,
+                clearLoadedSkillTabs: false);
         }
 
         /// <summary>
@@ -840,6 +831,109 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
+            skillWindow.SetJobInfo(tabIndex, jobIcon, SkillDataLoader.GetJobName(skillRootId));
+        }
+
+        private static void ReloadVisibleSkillRoots(
+            SkillUI skillWindow,
+            int jobId,
+            GraphicsDevice device,
+            IEnumerable<int> learnedSkillIds,
+            int subJob,
+            bool clearLoadedSkillTabs)
+        {
+            if (skillWindow == null)
+                return;
+
+            if (clearLoadedSkillTabs)
+                skillWindow.ClearSkills();
+
+            skillWindow.SetUseDualTabStrip(IsDualBladeJob(jobId));
+            skillWindow.SetCharacterJob(jobId, subJob);
+
+            IReadOnlyList<int> visibleRootIds = GetVisibleSkillRootIdsForJob(jobId, subJob, learnedSkillIds);
+            if (!clearLoadedSkillTabs)
+                ResetTabsForNoLongerVisibleSkillRoots(skillWindow, visibleRootIds);
+
+            foreach (int skillRootId in visibleRootIds)
+                EnsureSkillRootLoaded(skillWindow, skillRootId, device);
+
+            skillWindow.RefreshVisibleTabsFromLoadedSkillRoots();
+        }
+
+        private static void ResetTabsForNoLongerVisibleSkillRoots(
+            SkillUI skillWindow,
+            IEnumerable<int> visibleRootIds)
+        {
+            HashSet<int> visibleTabs = visibleRootIds?
+                .Select(GetSkillTabFromJobId)
+                .ToHashSet() ?? new HashSet<int>();
+
+            for (int tabIndex = 0; tabIndex <= 6; tabIndex++)
+            {
+                if (visibleTabs.Contains(tabIndex))
+                    continue;
+
+                bool hasDisplayedRoot = skillWindow.TryGetDisplayedSkillRootId(tabIndex, out int displayedSkillRootId);
+                bool hasLoadedSkills = skillWindow.GetLoadedSkillCount(tabIndex) > 0;
+                if (!hasDisplayedRoot && !hasLoadedSkills)
+                    continue;
+
+                if (displayedSkillRootId <= 0 && !hasLoadedSkills)
+                    continue;
+
+                skillWindow.ResetSkillRootTab(tabIndex);
+            }
+        }
+
+        private static void EnsureSkillRootLoaded(SkillUI skillWindow, int skillRootId, GraphicsDevice device)
+        {
+            int tabIndex = GetSkillTabFromJobId(skillRootId);
+            bool hasLoadedCurrentRoot = skillWindow.TryGetDisplayedSkillRootId(tabIndex, out int displayedSkillRootId)
+                && displayedSkillRootId == skillRootId
+                && skillWindow.GetLoadedSkillCount(tabIndex) > 0;
+
+            Dictionary<int, SkillDisplayData> skillMap = null;
+            if (!hasLoadedCurrentRoot)
+            {
+                skillWindow.ClearSkills(tabIndex);
+
+                skillMap = new Dictionary<int, SkillDisplayData>();
+                foreach (int bookJobId in GetSkillBookAliasesForJob(skillRootId).Distinct())
+                {
+                    foreach (SkillDisplayData skill in SkillDataLoader.LoadSkillsForJob(bookJobId, device))
+                    {
+                        if (skill == null || skillMap.ContainsKey(skill.SkillId))
+                            continue;
+
+                        skillMap[skill.SkillId] = skill;
+                    }
+                }
+
+                if (skillMap.Count > 0)
+                {
+                    skillWindow.SetDisplayedSkillRootId(tabIndex, skillRootId);
+                    skillWindow.AddSkills(tabIndex, skillMap.Values.OrderBy(skill => skill.SkillId));
+                }
+            }
+
+            Texture2D jobIcon = SkillDataLoader.LoadJobIcon(skillRootId, device);
+            if (jobIcon == null)
+            {
+                foreach (int bookJobId in GetSkillBookAliasesForJob(skillRootId).Distinct())
+                {
+                    jobIcon = SkillDataLoader.LoadJobIcon(bookJobId, device);
+                    if (jobIcon != null)
+                        break;
+                }
+            }
+
+            IEnumerable<int> loadedSkillIds = skillMap?.Keys;
+            skillWindow.SetRecommendedSkillEntries(
+                tabIndex,
+                loadedSkillIds == null
+                    ? SkillDataLoader.LoadRecommendedSkillEntries(skillRootId)
+                    : SkillDataLoader.LoadRecommendedSkillEntries(skillRootId, loadedSkillIds));
             skillWindow.SetJobInfo(tabIndex, jobIcon, SkillDataLoader.GetJobName(skillRootId));
         }
 

@@ -1711,20 +1711,11 @@ namespace HaCreator.MapSimulator.UI
 
         private void AppendMesoDropPromptDigit(char digit)
         {
-            string candidate = _mesoDropPromptText + digit;
-            if (!long.TryParse(candidate, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsedAmount))
-            {
-                return;
-            }
-
-            if (parsedAmount <= 0)
-            {
-                _mesoDropPromptText = string.Empty;
-                return;
-            }
-
-            long normalizedAmount = Math.Min(parsedAmount, _mesoDropPromptMaximum);
-            _mesoDropPromptText = normalizedAmount.ToString(CultureInfo.InvariantCulture);
+            FieldDropRequestEvaluator.TryAppendMesoDropPromptAmountDigit(
+                _mesoDropPromptText,
+                digit,
+                _mesoDropPromptMaximum,
+                out _mesoDropPromptText);
         }
 
         private void OpenDropQuantityPrompt(InventoryType inventoryType, int slotIndex, InventorySlotData slotData)
@@ -2136,7 +2127,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (_dropQuantityPromptVisible)
+            if (_dropQuantityPromptVisible || _mesoDropPromptVisible)
             {
                 _previousInteractionMouseState = mouseState;
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
@@ -2222,6 +2213,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_isDraggingItem
                 || _dropQuantityPromptVisible
+                || _mesoDropPromptVisible
                 || _font == null
                 || _hoveredInventoryType == InventoryType.NONE
                 || _hoveredSlotIndex < 0
@@ -3881,6 +3873,7 @@ namespace HaCreator.MapSimulator.UI
         public CharacterPart TooltipPart { get; set; }
         public int? OwnerAccountId { get; set; }
         public int? OwnerCharacterId { get; set; }
+        public int? ClientItemToken { get; set; }
         public bool IsCashOwnershipLocked { get; set; }
         public long? CashItemSerialNumber { get; set; }
         public int PendingRequestId { get; set; }
@@ -3904,6 +3897,7 @@ namespace HaCreator.MapSimulator.UI
                 TooltipPart = TooltipPart?.Clone(),
                 OwnerAccountId = OwnerAccountId,
                 OwnerCharacterId = OwnerCharacterId,
+                ClientItemToken = ClientItemToken,
                 IsCashOwnershipLocked = IsCashOwnershipLocked,
                 CashItemSerialNumber = CashItemSerialNumber,
                 PendingRequestId = PendingRequestId

@@ -232,7 +232,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static bool ShouldConsumeCashItemForLocalResolution(ReviveOwnerTransferRequest request)
         {
-            return request.Premium && GetConsumableCashItemId(request.Variant) > 0;
+            return request.ClientPremiumFlag && GetConsumableCashItemId(request.Variant) > 0;
         }
 
         public static ReviveOwnerVariant ResolveClientVariant(

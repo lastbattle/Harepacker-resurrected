@@ -77,7 +77,7 @@ namespace HaCreator.MapSimulator
                 payload,
                 currTickCount,
                 (tag, state, transitionTimeMs, currentTimeMs) => SetDynamicObjectTagState(tag, state, transitionTimeMs, currentTimeMs),
-                tag => IsAvailableDynamicObjectTag(tag?.Trim()),
+                tag => TryGetDynamicObjectTagState(tag?.Trim()),
                 HandleFieldSpecificDataPacketHandoff,
                 out message);
             if (TryApplyPendingPortalSessionValueImpactFromPacket(packetType, payload, out string fieldStatePortalImpactMessage))
@@ -433,7 +433,15 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            player.Physics.SetImpactNext(pendingImpact.VelocityX, pendingImpact.VelocityY);
+            if (!TryApplyCollisionCustomImpactToPlayer(
+                    player,
+                    pendingImpact.VelocityX,
+                    pendingImpact.VelocityY,
+                    currTickCount))
+            {
+                return false;
+            }
+
             _pendingPortalSessionValueImpacts.RemoveAt(pendingIndex);
             _ = ClearPacketOwnedTeleportPassengerLink();
             return true;

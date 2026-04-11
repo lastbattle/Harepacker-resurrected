@@ -128,6 +128,25 @@ namespace HaCreator.MapEditor.Info
             private set { }
         }
 
+        public bool HideName
+        {
+            get
+            {
+                WzImage npcImage = LinkedWzImage ?? ParentObject as WzImage;
+                if (npcImage == null)
+                {
+                    return false;
+                }
+
+                if (!npcImage.Parsed)
+                {
+                    npcImage.ParseImage();
+                }
+
+                return (npcImage["info"]?["hideName"] as WzIntProperty)?.Value != 0;
+            }
+        }
+
         /// <summary>
         /// The source WzImage of the reactor or default
         /// </summary>

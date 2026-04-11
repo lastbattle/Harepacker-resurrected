@@ -128,6 +128,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestRewardRaisePutItemConfirmResultPacketType = 1039;
         public const int QuestRewardRaiseOwnerDestroyResultPacketType = 1040;
         public const int QuestRewardRaiseQuestRecordMessagePacketType = 1041;
+        public const int RandomMorphResultClientPacketType = 123;
         public const int RandomMorphRequestAckPacketType = 1042;
         public const int QuestAlarmTitleTooltipPacketType = 1043;
         public const int ClassCompetitionRemotePagePacketType = 1044;
@@ -1057,10 +1058,17 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            if (token.Equals("randommorphack", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("randommorphresult", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("randommorphrequestack", StringComparison.OrdinalIgnoreCase)
+            if (token.Equals("randommorphresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandommorphres", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("cwvscontextonrandommorphres", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("cuirandommorphresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RandomMorphResultClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("randommorphack", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("randommorphrequestack", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = RandomMorphRequestAckPacketType;
                 return true;
@@ -1192,6 +1200,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == QuestRewardRaisePutItemConfirmResultPacketType
                 || packetType == QuestRewardRaiseOwnerDestroyResultPacketType
                 || packetType == QuestRewardRaiseQuestRecordMessagePacketType
+                || packetType == RandomMorphResultClientPacketType
                 || packetType == RandomMorphRequestAckPacketType
                 || packetType == QuestAlarmTitleTooltipPacketType
                 || packetType == QuestAlarmRegistrationSyncPacketType
@@ -1400,6 +1409,7 @@ namespace HaCreator.MapSimulator.Managers
                 QuestRewardRaisePutItemConfirmResultPacketType => "RaisePutItemConfirmResult(1039)",
                 QuestRewardRaiseOwnerDestroyResultPacketType => "RaiseOwnerDestroyResult(1040)",
                 QuestRewardRaiseQuestRecordMessagePacketType => "RaiseQuestRecordMessage(1041)",
+                RandomMorphResultClientPacketType => "OnRandomMorphRes(123)",
                 RandomMorphRequestAckPacketType => "RandomMorphRequestAck(1042)",
                 QuestAlarmTitleTooltipPacketType => "QuestAlarmTitleTooltip(1043)",
                 QuestAlarmRegistrationSyncPacketType => "QuestAlarmRegistrationSync(1045)",

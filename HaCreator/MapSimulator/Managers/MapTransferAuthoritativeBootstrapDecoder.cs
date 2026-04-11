@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.Managers
                         characterDataFlags,
                         characterJobId,
                         isPlausibleMapId,
+                        requireRealMap: false,
                         out regularFields,
                         out continentFields,
                         out matchedOffset,
@@ -88,6 +89,7 @@ namespace HaCreator.MapSimulator.Managers
                         characterDataFlags,
                         characterJobId,
                         isPlausibleMapId,
+                        requireRealMap: true,
                         out regularFields,
                         out continentFields,
                         out matchedOffset,
@@ -123,6 +125,7 @@ namespace HaCreator.MapSimulator.Managers
                     characterDataFlags,
                     characterJobId,
                     isPlausibleMapId,
+                    requireRealMap: false,
                     out regularFields,
                     out continentFields,
                     out matchedOffset,
@@ -156,6 +159,7 @@ namespace HaCreator.MapSimulator.Managers
                 characterDataFlags,
                 characterJobId,
                 isPlausibleMapId,
+                requireRealMap: true,
                 out regularFields,
                 out continentFields,
                 out matchedOffset,
@@ -170,6 +174,7 @@ namespace HaCreator.MapSimulator.Managers
             ulong characterDataFlags,
             short characterJobId,
             Func<int, bool> isPlausibleMapId,
+            bool requireRealMap,
             out int[] regularFields,
             out int[] continentFields,
             out int matchedOffset,
@@ -198,6 +203,7 @@ namespace HaCreator.MapSimulator.Managers
                 characterDataFlags,
                 characterJobId,
                 isPlausibleMapId,
+                requireRealMap,
                 out regularFields,
                 out continentFields,
                 out matchedOffset,
@@ -227,6 +233,7 @@ namespace HaCreator.MapSimulator.Managers
             ulong characterDataFlags,
             short characterJobId,
             Func<int, bool> isPlausibleMapId,
+            bool requireRealMap,
             out int[] regularFields,
             out int[] continentFields,
             out int matchedOffset,
@@ -256,6 +263,7 @@ namespace HaCreator.MapSimulator.Managers
                         characterDataFlags,
                         characterJobId,
                         isPlausibleMapId,
+                        requireRealMap,
                         out regularFields,
                         out continentFields,
                         out matchedOffset,
@@ -276,6 +284,7 @@ namespace HaCreator.MapSimulator.Managers
             ulong characterDataFlags,
             short characterJobId,
             Func<int, bool> isPlausibleMapId,
+            bool requireRealMap,
             out int[] regularFields,
             out int[] continentFields,
             out int matchedOffset,
@@ -323,7 +332,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
-            if (seenMaps.Count == 0)
+            if (requireRealMap && seenMaps.Count == 0)
             {
                 return false;
             }
@@ -386,6 +395,7 @@ namespace HaCreator.MapSimulator.Managers
                         characterDataFlags,
                         characterJobId,
                         isPlausibleMapId,
+                        requireRealMap: false,
                         out regularFields,
                         out continentFields,
                         out matchedOffset,

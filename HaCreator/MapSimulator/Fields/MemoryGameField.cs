@@ -475,6 +475,33 @@ namespace HaCreator.MapSimulator.Fields
         }
 
 
+        public bool TryClickReadyButton(int tickCount, out string message)
+        {
+            if (_stage != RoomStage.Lobby)
+            {
+                message = "Ready requests are only valid from the Match Cards lobby.";
+                return false;
+            }
+
+            byte subtype = _readyStates[_localPlayerIndex]
+                ? MemoryGameCancelReadyPacketType
+                : MemoryGameReadyPacketType;
+            return TryDispatchOfficialClientSubtype(subtype, tickCount, out message);
+        }
+
+
+        public bool TryClickStartButton(int tickCount, out string message)
+        {
+            if (_stage != RoomStage.Lobby)
+            {
+                message = "Start requests are only valid from the Match Cards lobby.";
+                return false;
+            }
+
+            return TryDispatchOfficialClientSubtype(MemoryGameStartPacketType, tickCount, out message);
+        }
+
+
         public bool TryStartGame(int tickCount, out string message)
         {
             if (_stage == RoomStage.Hidden)
@@ -2698,12 +2725,11 @@ namespace HaCreator.MapSimulator.Fields
 
             if (ResolvePrimaryButtonMode() == MemoryGamePrimaryButtonMode.Ready)
             {
-                bool nextReadyState = !_readyStates[_localPlayerIndex];
-                TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: nextReadyState);
+                TryClickReadyButton(tickCount, out message);
                 return true;
             }
 
-            TryDispatchPacket(MemoryGamePacketType.StartGame, tickCount, out message);
+            TryClickStartButton(tickCount, out message);
             return true;
 
         }
@@ -2746,12 +2772,6 @@ namespace HaCreator.MapSimulator.Fields
             if (_miniRoomRuntime?.Occupants.Count <= 1 && !_miniRoomParticipants.ContainsKey(1))
             {
                 message = "Start is unavailable until an opponent joins the Match Cards room.";
-                return false;
-            }
-
-            if (!_readyStates[1])
-            {
-                message = $"{ResolveParticipantName(1)} is not ready yet.";
                 return false;
             }
 

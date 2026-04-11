@@ -360,6 +360,8 @@ namespace HaCreator.MapSimulator
         private bool _questWorldMapEntityIndexBuilt;
         private bool _questUiBindingsConfigured;
         private int _activeQuestDetailQuestId;
+        private QuestDetailInlineReference? _lastQuestDetailInlineWorldMapReference;
+        private IReadOnlyList<int> _lastQuestDetailInlineWorldMapIds = Array.Empty<int>();
         private int _activeMemoAttachmentId = -1;
         private NpcItem _activeNpcInteractionNpc;
         private int _activeNpcInteractionNpcId;
@@ -704,6 +706,7 @@ namespace HaCreator.MapSimulator
         private byte[] _lastPacketOwnedTeleportOutboundPayload = Array.Empty<byte>();
         private string _lastPacketOwnedTeleportOutboundSummary;
         private int _lastCollisionVerticalJumpMovePathAttribute = -1;
+        private int _lastCollisionCustomImpactMovePathAttribute = -1;
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
@@ -1123,6 +1126,7 @@ namespace HaCreator.MapSimulator
 
 
             AppendPacketQuestGuideSearchResults(results, seen);
+            AppendQuestDetailInlineReferenceSearchResult(results, seen);
             AppendQuestDemandItemSearchResults(results, seen);
 
 
@@ -21959,6 +21963,14 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!ShouldSurfaceRecentPickupNotice(
+                    recentPickup,
+                    _playerManager?.Player?.Build?.Id ?? 0,
+                    AreDropActorsInSameParty))
+            {
+                return true;
+            }
+
             long noticeKey = ((long)dropId << 32) ^ (uint)Math.Max(0, actorId);
             if (_recentPickupRemoteNoticeTimes.TryGetValue(noticeKey, out int lastNoticeTime)
                 && currentTime - lastNoticeTime < 250)
@@ -26752,6 +26764,7 @@ namespace HaCreator.MapSimulator
 
             if (queuedRetryDecision == PassiveTransferFieldReadinessEvaluator.QueuedRetryDecision.ReplayHandleUpKeyDown)
             {
+                StopSkillMacroForHandleUpKeyDown();
                 if (CanReplayPassiveTransferFieldUpKeyPath(currentTime))
                 {
                     TryHandlePortalInteractCore(currentTime);
@@ -26783,6 +26796,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            StopSkillMacroForHandleUpKeyDown();
 
 
             if (CanReplayPassiveTransferFieldUpKeyPath(currentTime) && _playerManager.Player?.CanMove == true)
@@ -26805,6 +26819,11 @@ namespace HaCreator.MapSimulator
             }
 
             _passiveTransferRequestPending = true;
+        }
+
+        private void StopSkillMacroForHandleUpKeyDown()
+        {
+            _playerManager?.Skills?.ClearSkillQueue();
         }
 
 
@@ -27550,11 +27569,54 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            player.Physics.Impact(
-                portal.horizontalImpact ?? 0,
-                -(portal.verticalImpact ?? 0));
+            if (!TryApplyCollisionCustomImpactToPlayer(
+                    player,
+                    portal.horizontalImpact ?? 0,
+                    -(portal.verticalImpact ?? 0),
+                    currTickCount))
+            {
+                return false;
+            }
+
             _ = ClearPacketOwnedTeleportPassengerLink();
             return true;
+        }
+
+        private bool TryApplyCollisionCustomImpactToPlayer(
+            PlayerCharacter player,
+            double velocityX,
+            double velocityY,
+            int currentTime)
+        {
+            if (player?.Physics == null
+                || !CanHandleCollisionCustomImpactFromLiveInterface(
+                    hasLiveFieldInterface: HasPassiveTransferFieldInterface(),
+                    hasActiveVectorControl: _playerManager?.IsPlayerActive == true,
+                    hasPendingMapChange: _gameState.PendingMapChange,
+                    hasAttachedDriver: _localFollowRuntime.HasAttachedDriver))
+            {
+                return false;
+            }
+
+            player.Physics.SetMovePathAttribute(CollisionCustomImpactMovePathAttribute);
+            player.Physics.SetImpactNext(velocityX, velocityY);
+            _lastCollisionCustomImpactMovePathAttribute = CollisionCustomImpactMovePathAttribute;
+            TryRegisterCollisionCustomImpactEffect(currentTime, velocityX);
+            return true;
+        }
+
+        internal const int CollisionCustomImpactMovePathAttribute = 25;
+
+        internal static bool CanHandleCollisionCustomImpactFromLiveInterface(
+            bool hasLiveFieldInterface,
+            bool hasActiveVectorControl,
+            bool hasPendingMapChange,
+            bool hasAttachedDriver)
+        {
+            return hasLiveFieldInterface
+                   && hasActiveVectorControl
+                   && !hasPendingMapChange
+                   && !hasAttachedDriver;
         }
 
         private bool CanApplyCustomImpactPortalFromReactor(PortalInstance portal)
@@ -29838,13 +29900,22 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.SkillWindow is SkillUI skillWindowClassic)
             {
+                UIWindowLoader.LoadSkillsForJob(
+                    skillWindowClassic,
+                    _playerManager.Player?.Build?.Job ?? 0,
+                    GraphicsDevice,
+                    _playerManager.Skills.GetLearnedSkillRecordIds(),
+                    _playerManager.Player?.Build?.SubJob ?? 0);
+
                 skillWindowClassic.SetSkillManager(_playerManager.Skills);
                 skillWindowClassic.SetCharacterLevel(_playerManager.Player?.Level ?? 1);
+                skillWindowClassic.SetCharacterJob(_playerManager.Player?.Build?.Job ?? 0, _playerManager.Player?.Build?.SubJob ?? 0);
                 skillWindowClassic.OnSkillInvoked = skillId =>
                 {
                     _playerManager.Skills.TryCastSkill(skillId, currTickCount);
                 };
                 skillWindowClassic.OnSkillLevelUpRequested = TryHandleSkillUiLevelUp;
+                RefreshVisibleSkillRootsFromCurrentRecords();
                 return;
             }
 
@@ -29898,7 +29969,7 @@ namespace HaCreator.MapSimulator
 
         private void RefreshVisibleSkillRootsFromCurrentRecords()
         {
-            if (uiWindowManager?.SkillWindow is not SkillUIBigBang skillWindow
+            if (uiWindowManager?.SkillWindow == null
                 || _playerManager?.Skills == null
                 || _playerManager.Player?.Build == null)
             {
@@ -29906,12 +29977,6 @@ namespace HaCreator.MapSimulator
             }
 
             CharacterBuild build = _playerManager.Player.Build;
-            UIWindowLoader.RefreshVisibleSkillRootsFromCurrentRecords(
-                skillWindow,
-                build.Job,
-                GraphicsDevice,
-                _playerManager.Skills.GetLearnedSkillRecordIds(),
-                build.SubJob);
 
             Dictionary<int, SkillData> skillDataById = _playerManager.Skills
                 .GetAllSkills()
@@ -29919,12 +29984,39 @@ namespace HaCreator.MapSimulator
                 .GroupBy(skill => skill.SkillId)
                 .ToDictionary(group => group.Key, group => group.First());
 
-            skillWindow.SynchronizeLoadedSkillLevels(
-                skillId => _playerManager.Skills.GetSkillLevel(skillId),
-                skillId => skillDataById.TryGetValue(skillId, out SkillData skillData)
-                    ? skillData.MaxLevel
-                    : 0);
-            skillWindow.RecalculateSkillPointsFromCurrentLevels();
+            if (uiWindowManager.SkillWindow is SkillUIBigBang skillWindow)
+            {
+                UIWindowLoader.RefreshVisibleSkillRootsFromCurrentRecords(
+                    skillWindow,
+                    build.Job,
+                    GraphicsDevice,
+                    _playerManager.Skills.GetLearnedSkillRecordIds(),
+                    build.SubJob);
+
+                skillWindow.SynchronizeLoadedSkillLevels(
+                    skillId => _playerManager.Skills.GetSkillLevel(skillId),
+                    skillId => skillDataById.TryGetValue(skillId, out SkillData skillData)
+                        ? skillData.MaxLevel
+                        : 0);
+                skillWindow.RecalculateSkillPointsFromCurrentLevels();
+            }
+            else if (uiWindowManager.SkillWindow is SkillUI legacySkillWindow)
+            {
+                UIWindowLoader.RefreshVisibleSkillRootsFromCurrentRecords(
+                    legacySkillWindow,
+                    build.Job,
+                    GraphicsDevice,
+                    _playerManager.Skills.GetLearnedSkillRecordIds(),
+                    build.SubJob);
+
+                legacySkillWindow.SynchronizeLoadedSkillLevels(
+                    skillId => _playerManager.Skills.GetSkillLevel(skillId),
+                    skillId => skillDataById.TryGetValue(skillId, out SkillData skillData)
+                        ? skillData.MaxLevel
+                        : 0);
+                legacySkillWindow.RecalculateSkillPointsFromCurrentLevels();
+            }
+
             ApplyQuestGrantedSkillPointBonuses();
         }
 
@@ -30005,6 +30097,7 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.QuestDetailWindow.PreviousRequested += () => NavigateQuestDetail(-1);
                 uiWindowManager.QuestDetailWindow.NextRequested += () => NavigateQuestDetail(1);
                 uiWindowManager.QuestDetailWindow.ActionRequested += HandleQuestDetailAction;
+                uiWindowManager.QuestDetailWindow.InlineReferenceRequested += HandleQuestDetailInlineReference;
             }
 
 
@@ -30419,6 +30512,105 @@ namespace HaCreator.MapSimulator
             };
             HandleQuestWindowActionResult(result);
 
+        }
+
+        private void HandleQuestDetailInlineReference(QuestDetailInlineReference reference)
+        {
+            QuestWindowActionResult result = OpenQuestDetailInlineReferenceWorldMap(reference);
+            HandleQuestWindowActionResult(result);
+        }
+
+        private QuestWindowActionResult OpenQuestDetailInlineReferenceWorldMap(QuestDetailInlineReference reference)
+        {
+            if (reference.TargetId <= 0)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = _activeQuestDetailQuestId,
+                    Messages = new[] { "This quest-detail reference does not expose a usable world-map target." }
+                };
+            }
+
+            if (reference.Kind == QuestDetailInlineReferenceKind.Item &&
+                _activeQuestDetailQuestId > 0 &&
+                _questRuntime.TryBuildQuestDemandItemQuery(_activeQuestDetailQuestId, out QuestDemandItemQueryState itemQueryState) &&
+                itemQueryState != null)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = _activeQuestDetailQuestId,
+                    Messages = new[] { ApplyQuestDemandItemQueryLaunch(itemQueryState, reference.TargetId) }
+                };
+            }
+
+            int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
+            IReadOnlyList<int> mapIds;
+            WorldMapUI.SearchResultKind resultKind;
+            string label;
+
+            switch (reference.Kind)
+            {
+                case QuestDetailInlineReferenceKind.Npc:
+                    mapIds = ResolveQuestNpcMapIds(reference.TargetId);
+                    resultKind = WorldMapUI.SearchResultKind.Npc;
+                    label = ResolveQuestDetailInlineNpcName(reference);
+                    break;
+                case QuestDetailInlineReferenceKind.Mob:
+                    mapIds = ResolveQuestMobMapIds(reference.TargetId);
+                    resultKind = WorldMapUI.SearchResultKind.Mob;
+                    label = ResolveQuestDetailInlineMobName(reference);
+                    break;
+                case QuestDetailInlineReferenceKind.Map:
+                    mapIds = new[] { reference.TargetId };
+                    resultKind = WorldMapUI.SearchResultKind.Field;
+                    label = ResolveQuestDetailInlineMapName(reference);
+                    break;
+                case QuestDetailInlineReferenceKind.Item:
+                    mapIds = currentMapId > 0 ? new[] { currentMapId } : Array.Empty<int>();
+                    resultKind = WorldMapUI.SearchResultKind.Item;
+                    label = ResolveQuestDetailInlineItemName(reference);
+                    break;
+                default:
+                    return new QuestWindowActionResult
+                    {
+                        QuestId = _activeQuestDetailQuestId,
+                        Messages = new[] { "This quest-detail reference kind is not modeled by the world-map owner." }
+                    };
+            }
+
+            if (mapIds == null || mapIds.Count == 0)
+            {
+                mapIds = currentMapId > 0 ? new[] { currentMapId } : Array.Empty<int>();
+            }
+
+            int focusMapId = mapIds.Count > 0 ? mapIds[0] : currentMapId;
+            _lastQuestDetailInlineWorldMapReference = reference;
+            _lastQuestDetailInlineWorldMapIds = mapIds.Where(mapId => mapId > 0).Distinct().OrderBy(mapId => mapId).ToArray();
+
+            RefreshWorldMapWindow(focusMapId);
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.WorldMap) is not WorldMapUI worldMapWindow)
+            {
+                return new QuestWindowActionResult
+                {
+                    QuestId = _activeQuestDetailQuestId,
+                    Messages = new[] { "World map window is not available in this UI build." }
+                };
+            }
+
+            bool focused = worldMapWindow.FocusSearchResult(resultKind, label, focusMapId);
+            uiWindowManager.ShowWindow(MapSimulatorWindowNames.WorldMap);
+            uiWindowManager.BringToFront(worldMapWindow);
+
+            string mapSuffix = _lastQuestDetailInlineWorldMapIds.Count > 1
+                ? $" across {_lastQuestDetailInlineWorldMapIds.Count} WZ-indexed map result(s)"
+                : string.Empty;
+            return new QuestWindowActionResult
+            {
+                QuestId = _activeQuestDetailQuestId,
+                Messages = focused
+                    ? new[] { $"Opened the world map for quest-detail {reference.Kind.ToString().ToLowerInvariant()} reference {label}{mapSuffix}." }
+                    : new[] { $"Opened the world map, but quest-detail reference {label} could not be focused in the search owner{mapSuffix}." }
+            };
         }
 
         private void HandleQuestWindowActionResult(QuestWindowActionResult result)
@@ -32290,7 +32482,9 @@ namespace HaCreator.MapSimulator
                 UIWindowLoader.LoadSkillsForJob(
                     legacySkillWindow,
                     jobId,
-                    GraphicsDevice);
+                    GraphicsDevice,
+                    _playerManager?.Skills?.GetLearnedSkillRecordIds(),
+                    _playerManager?.Player?.Build?.SubJob ?? 0);
             }
             else
             {
@@ -35178,6 +35372,37 @@ namespace HaCreator.MapSimulator
                 ? runtime.DescribeStatus()
                 : "Trading-room runtime inactive.";
             return $"{_tradingRoomOfficialSessionBridge.DescribeStatus()}{Environment.NewLine}{runtimeStatus}";
+        }
+
+        private bool TrySendTradingRoomTradeRequest(SocialRoomRuntime runtime, out string message)
+        {
+            message = null;
+            if (runtime == null)
+            {
+                message = "Trading-room runtime inactive.";
+                return false;
+            }
+
+            if (!runtime.TryApplyTradingRoomLocalTradeRequest(out byte[] rawPacket, out string localMessage))
+            {
+                message = localMessage;
+                return false;
+            }
+
+            if (_tradingRoomOfficialSessionBridge.HasConnectedSession)
+            {
+                if (_tradingRoomOfficialSessionBridge.TrySendOutboundRawPacket(rawPacket, out string bridgeMessage))
+                {
+                    message = $"{localMessage}{Environment.NewLine}{bridgeMessage}";
+                    return true;
+                }
+
+                message = $"{localMessage}{Environment.NewLine}{_tradingRoomOfficialSessionBridge.DescribeStatus()}";
+                return true;
+            }
+
+            message = $"{localMessage}{Environment.NewLine}No live trading-room bridge session is attached; built raw packet {Convert.ToHexString(rawPacket)} for /socialroom tradingroom session sendraw.";
+            return true;
         }
 
         private void EnsureTradingRoomOfficialSessionBridgeState(bool shouldRun)

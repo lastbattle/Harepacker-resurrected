@@ -180,6 +180,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientCollectionAnalyzedTextLineHeight = 12;
         private const int ClientCollectionStandardEntryFirstTop = 66;
         private const int ClientCollectionFooterRuleTop = 221;
+        private const int ClientCollectionFooterTextTop = 227;
         private const int ClientCollectionTextLaneLeft = 0;
         private const int ClientCollectionTextLaneWidthInt = 190;
         private const int ClientCollectionRuleLaneLeft = ClientCollectionTextLaneLeft;
@@ -529,6 +530,8 @@ namespace HaCreator.MapSimulator.UI
                     currentTop = ruleTop + ClientCollectionEntryRuleGap;
                 }
             }
+
+            AddFooterRecords(records, page?.Footer);
             return records;
         }
 
@@ -553,7 +556,30 @@ namespace HaCreator.MapSimulator.UI
             {
                 currentTop = AddOverviewMetricEntryRecords(records, entries[row + 2], currentTop, measureTextWidth);
             }
+
+            AddFooterRecords(records, page?.Footer);
             return records;
+        }
+
+        private static void AddFooterRecords(List<CollectionBookRecordSnapshot> records, string footer)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            records.Add(CreateClientRuleRecord(ClientCollectionFooterRuleTop));
+            if (!string.IsNullOrWhiteSpace(footer))
+            {
+                records.Add(CreateTextRecord(
+                    footer.Trim(),
+                    ClientCollectionTextLaneLeft,
+                    ClientCollectionFooterTextTop,
+                    ClientCollectionTextLaneWidthInt,
+                    11,
+                    CollectionBookTextAlignment.Center,
+                    CollectionBookRecordRole.Footer));
+            }
         }
 
         private static int AddOverviewIdentityEntryRecords(List<CollectionBookRecordSnapshot> records, CollectionBookEntrySnapshot entry, int top, Func<string, int, float> measureTextWidth = null)

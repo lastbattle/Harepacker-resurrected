@@ -1100,8 +1100,8 @@ namespace HaCreator.MapSimulator.Effects
 
             if (build != null)
             {
+                WeddingParticipantNameTagSignature previousNameTag = CreateNameTagSignature(participant);
                 CharacterBuild actorBuild = build.Clone();
-                string previousName = participant.Name;
                 if (string.IsNullOrWhiteSpace(actorBuild.Name))
                 {
                     actorBuild.Name = participant.Name;
@@ -1111,8 +1111,7 @@ namespace HaCreator.MapSimulator.Effects
                 participant.Build = actorBuild;
                 participant.Assembler = new CharacterAssembler(actorBuild);
                 participant.HasExplicitBuild = true;
-                if (!string.Equals(previousName, participant.Name, StringComparison.Ordinal)
-                    || !string.Equals(actorBuild.GuildName, build.GuildName, StringComparison.Ordinal)
+                if (!previousNameTag.Equals(CreateNameTagSignature(participant))
                     || participant.NameTagRevision == 0)
                 {
                     RefreshParticipantNameTag(participant);
@@ -1228,6 +1227,7 @@ namespace HaCreator.MapSimulator.Effects
             destination.HasExplicitFacing = source.HasExplicitFacing;
             destination.HasExplicitAction = source.HasExplicitAction;
             destination.HasExplicitBuild = source.HasExplicitBuild;
+            destination.NameTagRevision = Math.Max(destination.NameTagRevision, source.NameTagRevision);
             if (!string.IsNullOrWhiteSpace(source.BaseActionName))
             {
                 destination.BaseActionName = source.BaseActionName;
@@ -1955,6 +1955,31 @@ namespace HaCreator.MapSimulator.Effects
 
             participant.NameTagRevision++;
         }
+
+        private static WeddingParticipantNameTagSignature CreateNameTagSignature(WeddingRemoteParticipant participant)
+        {
+            CharacterBuild build = participant?.Build;
+            return new WeddingParticipantNameTagSignature(
+                NormalizeNameTagText(participant?.Name),
+                NormalizeNameTagText(build?.GuildName),
+                build?.GuildMarkBackgroundId,
+                build?.GuildMarkBackgroundColor,
+                build?.GuildMarkId,
+                build?.GuildMarkColor);
+        }
+
+        private static string NormalizeNameTagText(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+        }
+
+        private readonly record struct WeddingParticipantNameTagSignature(
+            string Name,
+            string GuildName,
+            int? GuildMarkBackgroundId,
+            int? GuildMarkBackgroundColor,
+            int? GuildMarkId,
+            int? GuildMarkColor);
 
         private bool TryResolveParticipantForTemporaryStats(int characterId, out WeddingRemoteParticipant participant, out string errorMessage)
         {

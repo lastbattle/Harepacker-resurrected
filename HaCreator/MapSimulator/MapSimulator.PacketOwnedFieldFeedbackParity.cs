@@ -44,6 +44,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedSummonSoundStringPoolId = 0x8BE;
         private const int PacketOwnedScreenEffectStringPoolId = 0x9ED;
         private const int PacketOwnedRewardRoulettePathJoinStringPoolId = 0x3DA;
+        private const int PacketOwnedWhisperChaseTransferFieldRequestOpcode = 41;
+        private const byte PacketOwnedWhisperChaseSyntheticFieldKey = 0;
         private const int PacketOwnedUiReferenceWidth = 800;
         private const int PacketOwnedUiReferenceHeight = 600;
         private const int PacketOwnedScreenEffectYOffset = -40;
@@ -573,15 +575,115 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (_gameState.PendingMapChange)
+            {
+                ShowUtilityFeedbackMessage("Whisper follow transfer is unavailable while another map change is pending.");
+                return false;
+            }
+
+            if (!CanSendTransferFieldRequest(currTickCount))
+            {
+                ShowUtilityFeedbackMessage("Whisper follow transfer request is still waiting for the previous transfer-field request to resolve.");
+                return false;
+            }
+
+            string transferRequestSummary = DispatchPacketOwnedWhisperChaseTransferFieldRequest(mapId, x, y);
+            SetTransferFieldExclusiveRequestSent(currTickCount);
             bool queued = QueueMapTransfer(mapId, null);
             if (queued)
             {
                 SetPendingMapSpawnTarget(x, y);
                 ShowUtilityFeedbackMessage(
-                    $"Queued packet-owned whisper follow transfer to {ResolveMapTransferDisplayName(mapId, null)} ({x}, {y}).");
+                    $"Queued packet-owned whisper follow transfer to {ResolveMapTransferDisplayName(mapId, null)} ({x}, {y}). {transferRequestSummary}");
             }
 
             return queued;
+        }
+
+        private string DispatchPacketOwnedWhisperChaseTransferFieldRequest(int mapId, int x, int y)
+        {
+            if (!TryBuildPacketOwnedWhisperChaseTransferFieldPayload(mapId, x, y, out byte[] payload))
+            {
+                return "Could not build the packet-owned whisper chase transfer-field request payload.";
+            }
+
+            string payloadHex = Convert.ToHexString(payload);
+            string summary = $"Mirrored CField::SendTransferFieldRequest as opcode {PacketOwnedWhisperChaseTransferFieldRequestOpcode} [{payloadHex}] with field key {PacketOwnedWhisperChaseSyntheticFieldKey}, empty portal, bPremium=0, s_bChase=1, and target position ({x}, {y}).";
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                PacketOwnedWhisperChaseTransferFieldRequestOpcode,
+                payload,
+                out string bridgeStatus))
+            {
+                return $"{summary} Dispatched it through the live official-session bridge. {bridgeStatus}";
+            }
+
+            string outboxStatus = "generic packet outbox not attempted.";
+            string queuedBridgeStatus = string.Empty;
+            bool deferredBridgeQueued = _localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PacketOwnedWhisperChaseTransferFieldRequestOpcode,
+                    payload,
+                    out queuedBridgeStatus);
+            if (deferredBridgeQueued)
+            {
+                return $"{summary} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                PacketOwnedWhisperChaseTransferFieldRequestOpcode,
+                payload,
+                out outboxStatus))
+            {
+                return $"{summary} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                PacketOwnedWhisperChaseTransferFieldRequestOpcode,
+                payload,
+                out string queuedOutboxStatus))
+            {
+                return $"{summary} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PacketOwnedWhisperChaseTransferFieldRequestOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+        }
+
+        private static bool TryBuildPacketOwnedWhisperChaseTransferFieldPayload(int mapId, int x, int y, out byte[] payload)
+        {
+            payload = Array.Empty<byte>();
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            {
+                return false;
+            }
+
+            try
+            {
+                using var stream = new MemoryStream();
+                using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+                writer.Write(PacketOwnedWhisperChaseSyntheticFieldKey);
+                writer.Write(mapId);
+                WritePacketOwnedMapleString(writer, string.Empty);
+                writer.Write((byte)0);
+                writer.Write((byte)0);
+                writer.Write((byte)1);
+                writer.Write(x);
+                writer.Write(y);
+                writer.Flush();
+                payload = stream.ToArray();
+                return true;
+            }
+            catch
+            {
+                payload = Array.Empty<byte>();
+                return false;
+            }
+        }
+
+        internal static byte[] BuildPacketOwnedWhisperChaseTransferFieldPayloadForTest(int mapId, int x, int y)
+        {
+            return TryBuildPacketOwnedWhisperChaseTransferFieldPayload(mapId, x, y, out byte[] payload)
+                ? payload
+                : Array.Empty<byte>();
         }
 
         private bool HasPacketOwnedWhisperTransferTarget(int mapId)

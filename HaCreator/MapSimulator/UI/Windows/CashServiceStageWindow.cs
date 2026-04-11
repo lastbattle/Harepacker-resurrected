@@ -86,6 +86,32 @@ namespace HaCreator.MapSimulator.UI
             public int ItemId { get; init; }
         }
 
+        internal readonly struct CashLimitGoodsCountChange
+        {
+            public CashLimitGoodsCountChange(int itemId, int commoditySerialNumber, int remainCount)
+            {
+                ItemId = Math.Max(0, itemId);
+                CommoditySerialNumber = Math.Max(0, commoditySerialNumber);
+                RemainCount = Math.Max(0, remainCount);
+            }
+
+            public int ItemId { get; }
+            public int CommoditySerialNumber { get; }
+            public int RemainCount { get; }
+        }
+
+        internal readonly struct CashEquipSlotExtension
+        {
+            public CashEquipSlotExtension(int partIndex, int days)
+            {
+                PartIndex = Math.Max(0, partIndex);
+                Days = Math.Max(0, days);
+            }
+
+            public int PartIndex { get; }
+            public int Days { get; }
+        }
+
         private const int CashItemInfoPacketByteLength = 55;
         private const int GiftListPacketByteLength = 98;
 
@@ -1034,18 +1060,25 @@ namespace HaCreator.MapSimulator.UI
             string subtypeLabel = GetCashItemResultSubtypeLabel(_cashItemResultSubtype);
             string summary = _cashItemResultSubtype switch
             {
+                84 => TryApplyCashLimitGoodsCountChanged(packetPayload, out string limitGoodsMessage)
+                    ? limitGoodsMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResLimitGoodsCountChanged", packetPayload),
                 88 => TryApplyCashLoadLockerDone(packetPayload, out string lockerMessage)
                     ? lockerMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResLoadLockerDone", packetPayload),
+                89 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResLoadLockerFailed"),
                 90 => TryApplyCashLoadGiftDone(packetPayload, out string giftMessage)
                     ? giftMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResLoadGiftDone", packetPayload),
+                91 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResLoadGiftFailed"),
                 92 => TryApplyCashWishlistPacket(packetPayload, "CCashShop::OnCashItemResLoadWishDone", out string loadWishMessage)
                     ? loadWishMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResLoadWishDone", packetPayload),
+                93 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResLoadWishFailed"),
                 98 => TryApplyCashWishlistPacket(packetPayload, "CCashShop::OnCashItemResSetWishDone", out string setWishMessage)
                     ? setWishMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResSetWishDone", packetPayload),
+                99 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResSetWishFailed"),
                 100 => TryApplyCashBuyDone(packetPayload, out string buyDoneMessage)
                     ? buyDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyDone", packetPayload),
@@ -1060,18 +1093,23 @@ namespace HaCreator.MapSimulator.UI
                 107 => TryApplyCashGiftDone(packetPayload, out string giftDoneMessage)
                     ? giftDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResGiftDone", packetPayload),
+                108 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResGiftFailed"),
                 -102 => TryApplyCashBuyPackageDone(packetPayload, out string buyPackageDoneMessage)
                     ? buyPackageDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyPackageDone", packetPayload),
+                -101 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyPackageFailed"),
                 -100 => TryApplyCashGiftPackageDone(packetPayload, out string giftPackageDoneMessage)
                     ? giftPackageDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResGiftPackageDone", packetPayload),
+                -99 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResGiftPackageFailed"),
                 -98 => TryApplyCashBuyNormalDone(packetPayload, out string buyNormalDoneMessage)
                     ? buyNormalDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResBuyNormalDone", packetPayload),
+                -97 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResBuyNormalFailed"),
                 -81 => TryApplyCashPurchaseRecord(packetPayload, out string purchaseRecordMessage)
                     ? purchaseRecordMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResPurchaseRecord", packetPayload),
+                -80 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResPurchaseRecordFailed"),
                 -77 => TryApplyCashNameChangeDone(packetPayload, out string nameChangeDoneMessage)
                     ? nameChangeDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemNameChangeResBuyDone", packetPayload),
@@ -1094,6 +1132,7 @@ namespace HaCreator.MapSimulator.UI
                 -106 => TryApplyCashRebateDone(packetPayload, out string rebateDoneMessage)
                     ? rebateDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResRebateDone", packetPayload),
+                -105 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResRebateFailed"),
                 109 => BuildCashSimpleResult("CCashShop::OnCashItemResIncSlotCountDone", packetPayload),
                 110 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResIncSlotCountFailed"),
                 111 => TryApplyCashCounterUpdate(packetPayload, "CCashShop::OnCashItemResIncTrunkCountDone", 48, value => _cashLockerSlotLimit = value, out string trunkMessage)
@@ -1108,6 +1147,10 @@ namespace HaCreator.MapSimulator.UI
                     ? buyCharacterMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResIncBuyCharacterCountDone", packetPayload),
                 116 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResIncBuyCharacterCountFailed"),
+                117 => TryApplyCashEquipSlotExtDone(packetPayload, out string equipSlotExtMessage)
+                    ? equipSlotExtMessage
+                    : BuildPacketDecodeFailure("CCashShop::OnCashItemResEnableEquipSlotExtDone", packetPayload),
+                118 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResEnableEquipSlotExtFailed"),
                 119 => TryApplyCashMoveLtoSDone(packetPayload, out string moveLtoSMessage)
                     ? moveLtoSMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResMoveLtoSDone", packetPayload),
@@ -1126,9 +1169,11 @@ namespace HaCreator.MapSimulator.UI
                 -104 => TryApplyCashRelationshipGiftDone(packetPayload, "CCashShop::OnCashItemResCoupleDone", "Couple", out string coupleDoneMessage)
                     ? coupleDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResCoupleDone", packetPayload),
+                -103 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResCoupleFailed"),
                 -94 => TryApplyCashRelationshipGiftDone(packetPayload, "CCashShop::OnCashItemResFriendShipDone", "Friendship", out string friendshipDoneMessage)
                     ? friendshipDoneMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResFriendShipDone", packetPayload),
+                -93 => BuildCashItemFailureMessage(packetPayload, "CCashShop::OnCashItemResFriendShipFailed"),
                 -86 => TryApplyCashFreeCashItemDone(packetPayload, out string freeCashItemMessage)
                     ? freeCashItemMessage
                     : BuildPacketDecodeFailure("CCashShop::OnCashItemResFreeCashItemDone", packetPayload),
@@ -2014,6 +2059,51 @@ namespace HaCreator.MapSimulator.UI
 
             applyValue(value);
             _noticeState = $"{ownerName} updated the packet-owned counter to {value.ToString(CultureInfo.InvariantCulture)}.";
+            message = _noticeState;
+            return true;
+        }
+
+        private bool TryApplyCashLimitGoodsCountChanged(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < 1 + (sizeof(int) * 2) + sizeof(short))
+            {
+                return false;
+            }
+
+            int itemId = BitConverter.ToInt32(payload, 1);
+            int commoditySerialNumber = BitConverter.ToInt32(payload, 1 + sizeof(int));
+            int remainCountOffset = 1 + (sizeof(int) * 2);
+            int remainCount = payload.Length >= remainCountOffset + sizeof(int)
+                ? BitConverter.ToInt32(payload, remainCountOffset)
+                : BitConverter.ToInt16(payload, remainCountOffset);
+            CashLimitGoodsCountChange change = new(itemId, commoditySerialNumber, remainCount);
+            _noticeState =
+                $"CCashShop::OnCashItemResLimitGoodsCountChanged updated item {change.ItemId.ToString(CultureInfo.InvariantCulture)}, commodity SN {change.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, remaining {change.RemainCount.ToString(CultureInfo.InvariantCulture)}.";
+            message = _noticeState;
+            return true;
+        }
+
+        private bool TryApplyCashEquipSlotExtDone(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < 1 + sizeof(short))
+            {
+                return false;
+            }
+
+            int partIndex = payload.Length >= 1 + sizeof(int)
+                ? BitConverter.ToInt32(payload, 1)
+                : BitConverter.ToInt16(payload, 1);
+            int daysOffset = payload.Length >= 1 + (sizeof(int) * 2) ? 1 + sizeof(int) : 1 + sizeof(short);
+            int days = payload.Length >= daysOffset + sizeof(int)
+                ? BitConverter.ToInt32(payload, daysOffset)
+                : payload.Length >= daysOffset + sizeof(short)
+                    ? BitConverter.ToInt16(payload, daysOffset)
+                    : 0;
+            CashEquipSlotExtension extension = new(partIndex, days);
+            _noticeState =
+                $"CCashShop::OnCashItemResEnableEquipSlotExtDone enabled equip slot extension part {extension.PartIndex.ToString(CultureInfo.InvariantCulture)} for {extension.Days.ToString(CultureInfo.InvariantCulture)} day(s).";
             message = _noticeState;
             return true;
         }

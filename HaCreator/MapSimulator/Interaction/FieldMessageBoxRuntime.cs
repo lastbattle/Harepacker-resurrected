@@ -578,6 +578,82 @@ namespace HaCreator.MapSimulator.Interaction
             return GetFallbackVisualPropertyPaths(itemId);
         }
 
+        internal static bool TryBuildConsumeCashItemUseRequestPayload(
+            int currentTick,
+            int inventoryPosition,
+            int itemId,
+            string messageText,
+            out byte[] payload,
+            out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = string.Empty;
+
+            if (inventoryPosition < short.MinValue || inventoryPosition > short.MaxValue)
+            {
+                error = $"Message-box use request inventory position {inventoryPosition} is outside the signed 16-bit client packet range.";
+                return false;
+            }
+
+            if (itemId <= 0)
+            {
+                error = "Message-box use request requires a positive chalkboard cash item id.";
+                return false;
+            }
+
+            if (!IsKnownChalkboardItem(itemId))
+            {
+                error = $"Message-box use request item {itemId} is not in the WZ-observed 537xxxx chalkboard family.";
+                return false;
+            }
+
+            string normalizedMessage = string.IsNullOrWhiteSpace(messageText) ? string.Empty : messageText.Trim();
+            if (string.IsNullOrEmpty(normalizedMessage))
+            {
+                error = "Message-box use request requires non-empty message text.";
+                return false;
+            }
+
+            if (normalizedMessage.Length > short.MaxValue)
+            {
+                error = $"Message-box use request text length {normalizedMessage.Length} exceeds the MapleString 16-bit length field.";
+                return false;
+            }
+
+            PacketWriter writer = new();
+            writer.WriteInt(Math.Max(0, currentTick));
+            writer.WriteShort(inventoryPosition);
+            writer.WriteInt(itemId);
+            writer.WriteMapleString(normalizedMessage);
+            payload = writer.ToArray();
+            return true;
+        }
+
+        internal static byte[] BuildOpcodePrefixedRawPacket(ushort opcode, byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+            PacketWriter writer = new(sizeof(ushort) + payload.Length);
+            writer.WriteShort(opcode);
+            writer.WriteBytes(payload);
+            return writer.ToArray();
+        }
+
+        internal static (string PayloadHex, string RawPacketHex) BuildConsumeCashItemUseRequestForTest(
+            ushort opcode,
+            int currentTick,
+            int inventoryPosition,
+            int itemId,
+            string messageText)
+        {
+            if (!TryBuildConsumeCashItemUseRequestPayload(currentTick, inventoryPosition, itemId, messageText, out byte[] payload, out string error))
+            {
+                throw new ArgumentException(error);
+            }
+
+            byte[] rawPacket = BuildOpcodePrefixedRawPacket(opcode, payload);
+            return (Convert.ToHexString(payload), Convert.ToHexString(rawPacket));
+        }
+
         private static IReadOnlyList<string> GetFallbackVisualPropertyPaths(int itemId)
         {
             return ExactChalkboardVisualFallbackPaths.TryGetValue(itemId, out IReadOnlyList<string> candidatePaths)

@@ -204,6 +204,7 @@ namespace HaCreator.MapSimulator.UI
         {
             None,
             WishlistOwnerConfirm,
+            WishlistClosePrompt,
             RequestConfirm,
             RequestQuantity
         }
@@ -341,6 +342,7 @@ namespace HaCreator.MapSimulator.UI
             public int ClientListOrder { get; init; } = int.MaxValue;
             public string CombinedText { get; init; } = string.Empty;
             public string CollapsedText { get; init; } = string.Empty;
+            public string ClientItemNameText { get; init; } = string.Empty;
             public IReadOnlyList<string> Terms { get; init; } = Array.Empty<string>();
         }
 
@@ -965,14 +967,31 @@ namespace HaCreator.MapSimulator.UI
 
         private void CloseFromUserInput()
         {
+            if (_packetOwnedAdminShopSession.IsActive
+                && _packetOwnedAdminShopSession.AskItemWishlist
+                && WishlistWindowRequested != null
+                && !_modalVisible)
+            {
+                OpenPacketOwnedWishlistClosePrompt();
+                return;
+            }
+
+            CompleteCloseFromUserInput();
+        }
+
+        private void CompleteCloseFromUserInput(bool openedWishlistBeforeClose = false)
+        {
             if (_packetOwnedAdminShopSession.IsActive)
             {
                 int npcTemplateId = _packetOwnedAdminShopSession.NpcTemplateId;
                 string outboundSummary = DispatchPacketOwnedAdminShopOutbound(PacketOwnedAdminShopCloseMode, npcTemplateId);
+                string ownerState = openedWishlistBeforeClose
+                    ? "The admin-shop close button confirmed the StringPool 0x1237 wish-list prompt, opened CUIAdminShopWishList, and closed the unique-modeless owner."
+                    : "The admin-shop unique-modeless owner was closed locally.";
                 _packetOwnedAdminShopSession.RejectOpen(
                     string.Empty,
                     outboundSummary,
-                    "The admin-shop unique-modeless owner was closed locally.",
+                    ownerState,
                     AdminShopPacketOwnedOwnerVisibilityState.Hidden);
                 _pendingPacketOwnedAdminShopResult = false;
                 _packetOwnedAdminShopRows.Clear();
@@ -1390,7 +1409,8 @@ namespace HaCreator.MapSimulator.UI
                 .Select((entry, sourceIndex) => (Entry: entry, SourceIndex: sourceIndex))
                 .Where(entry => entry.Entry.SupportsWishlist
                                 && MatchesWishlistCategory(entry.Entry, categoryKey)
-                                && MatchesWishlistPriceRange(entry.Entry, priceRangeIndex))
+                                && MatchesWishlistPriceRange(entry.Entry, priceRangeIndex)
+                                && MatchesClientWishlistItemNameSearch(entry.Entry, clientSearchQuery))
                 .Select(entry => (
                     entry.Entry,
                     Score: ScoreWishlistEntry(entry.Entry, clientSearchQuery),
@@ -3199,8 +3219,31 @@ namespace HaCreator.MapSimulator.UI
             UpdateActionButtonStates();
         }
 
+        private void OpenPacketOwnedWishlistClosePrompt()
+        {
+            _pendingModalEntry = null;
+            _modalMode = AdminShopModalMode.WishlistClosePrompt;
+            _modalVisible = true;
+            _modalQuantity = 1;
+            _modalQuantityMin = 1;
+            _modalQuantityMax = 1;
+            _modalMessage = AdminShopDialogClientParityText.GetWishlistClosePrompt();
+            _footerMessage = "CAdminShopDlg close opened the packet-owned wish-list prompt from StringPool 0x1237.";
+            PositionModalButtons();
+            UpdateModalButtons();
+            UpdateActionButtonStates();
+        }
+
         private void OnModalConfirmClicked(UIObject sender)
         {
+            if (_modalMode == AdminShopModalMode.WishlistClosePrompt)
+            {
+                WishlistWindowRequested?.Invoke(this);
+                CloseModal("Opened the dedicated wish-list owner before closing the admin-shop owner.");
+                CompleteCloseFromUserInput(openedWishlistBeforeClose: true);
+                return;
+            }
+
             if (_pendingModalEntry == null)
             {
                 CloseModal("Shop dialog closed.");
@@ -3237,6 +3280,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void OnModalCancelClicked(UIObject sender)
         {
+            if (_modalMode == AdminShopModalMode.WishlistClosePrompt)
+            {
+                CloseModal("Wish-list close prompt cancelled.");
+                CompleteCloseFromUserInput();
+                return;
+            }
+
             string title = _pendingModalEntry?.Title;
             string footerMessage = _modalMode switch
             {
@@ -3857,11 +3907,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             HashWishlistSignature(ref hash, GetEntryKey(entry));
+            HashWishlistSignature(ref hash, entry.Title);
+            HashWishlistSignature(ref hash, entry.Seller);
+            HashWishlistSignature(ref hash, entry.PriceLabel);
             HashWishlistSignature(ref hash, entry.Detail);
             HashWishlistSignature(ref hash, (int)entry.Category);
+            HashWishlistSignature(ref hash, entry.RewardItemId);
+            HashWishlistSignature(ref hash, entry.Price);
             HashWishlistSignature(ref hash, entry.StateLabel);
             HashWishlistSignature(ref hash, (int)entry.State);
             HashWishlistSignature(ref hash, entry.SupportsWishlist ? 1 : 0);
+            HashWishlistSignature(ref hash, entry.Wishlisted ? 1 : 0);
             return hash.ToString("X16", CultureInfo.InvariantCulture);
         }
 
@@ -3886,6 +3942,15 @@ namespace HaCreator.MapSimulator.UI
             unchecked
             {
                 hash ^= (uint)value;
+                hash *= 1099511628211UL;
+            }
+        }
+
+        private static void HashWishlistSignature(ref ulong hash, long value)
+        {
+            unchecked
+            {
+                hash ^= (ulong)value;
                 hash *= 1099511628211UL;
             }
         }
@@ -3929,6 +3994,60 @@ namespace HaCreator.MapSimulator.UI
             return string.IsNullOrEmpty(query)
                 ? string.Empty
                 : query.Replace(" ", string.Empty);
+        }
+
+        internal static string BuildClientWishlistItemNameMatchText(params string[] values)
+        {
+            if (values == null || values.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            return string.Concat(values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .SelectMany(value => value.Where(ch => ch != ' '))
+                .Select(char.ToLowerInvariant));
+        }
+
+        private static bool MatchesClientWishlistItemNameSearch(AdminShopEntry entry, string clientSearchQuery)
+        {
+            if (entry == null || string.IsNullOrWhiteSpace(clientSearchQuery))
+            {
+                return false;
+            }
+
+            string normalizedQuery = BuildClientWishlistItemNameMatchText(clientSearchQuery);
+            if (string.IsNullOrWhiteSpace(normalizedQuery))
+            {
+                return false;
+            }
+
+            string clientItemNameText = BuildClientWishlistItemNameText(entry);
+            return !string.IsNullOrWhiteSpace(clientItemNameText)
+                && clientItemNameText.Contains(normalizedQuery, StringComparison.Ordinal);
+        }
+
+        private static string BuildClientWishlistItemNameText(AdminShopEntry entry)
+        {
+            if (entry == null)
+            {
+                return string.Empty;
+            }
+
+            List<string> itemNameTerms = new() { entry.Title };
+            if (TryGetWishlistSearchIndexEntry(entry, out WishlistSearchIndexEntry searchIndexEntry))
+            {
+                if (!string.IsNullOrWhiteSpace(searchIndexEntry.ClientItemNameText))
+                {
+                    itemNameTerms.Add(searchIndexEntry.ClientItemNameText);
+                }
+                else if (searchIndexEntry.Terms != null)
+                {
+                    itemNameTerms.AddRange(searchIndexEntry.Terms);
+                }
+            }
+
+            return BuildClientWishlistItemNameMatchText(itemNameTerms.ToArray());
         }
 
         private static int ScoreWishlistField(string fieldValue, string rawQuery, string normalizedQuery, int exactScore, int startsWithScore, int containsScore)
@@ -6613,6 +6732,7 @@ namespace HaCreator.MapSimulator.UI
                         ClientListOrder = clientListOrder,
                         CombinedText = string.Join(" ", orderedTerms),
                         CollapsedText = string.Concat(orderedTerms.Select(CollapseWishlistSearchText).Where(term => !string.IsNullOrWhiteSpace(term))),
+                        ClientItemNameText = BuildClientWishlistItemNameMatchText(orderedTerms),
                         Terms = orderedTerms
                     };
                     clientListOrder++;
@@ -7542,6 +7662,12 @@ namespace HaCreator.MapSimulator.UI
             if (entry == null)
             {
                 error = "CAdminShopDlg::SendTradeRequest could not mirror opcode 74 mode 1 because no row is selected.";
+                return false;
+            }
+
+            if (!AdminShopPacketOwnedSellTemplateParity.CanBuildSendTradeRequestPosition(RequiresInventorySource(entry), position))
+            {
+                error = "CAdminShopDlg::SendTradeRequest could not mirror opcode 74 mode 1 because the selected source-item row has no live inventory nPOS.";
                 return false;
             }
 

@@ -56,6 +56,21 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
         }
 
+        public bool TryApplyTradingRoomLocalTradeRequest(out byte[] rawPacket, out string message)
+        {
+            rawPacket = Array.Empty<byte>();
+            message = null;
+            if (!TryBuildTradingRoomTradeRequestRawPacket(out rawPacket, out string buildMessage))
+            {
+                message = buildMessage;
+                return false;
+            }
+
+            MarkTradingRoomTradeRequestSent();
+            message = $"{buildMessage} Applied the same local lock state that CTradingRoomDlg::OnTrade sets after sending opcode 144 subtype {TradingRoomTradePacketType}.";
+            return true;
+        }
+
         public bool TryBuildTradingRoomCrcResponseRawPacket(out byte[] rawPacket, out string message)
         {
             rawPacket = Array.Empty<byte>();

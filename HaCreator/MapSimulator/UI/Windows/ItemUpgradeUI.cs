@@ -4142,7 +4142,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string normalized = text.Trim();
+            string normalized = NormalizeAuthoredScrollText(text.Trim());
             bool hasExplicitAccessorySubset = TryAddExplicitAccessorySubsetSlots(normalized, targetSlots);
             if (normalized.IndexOf("face accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 normalized.IndexOf("face accessories", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -4179,6 +4179,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (normalized.IndexOf("earring", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("ear accessory", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                normalized.IndexOf("ear accessories", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 normalized.IndexOf("ear ornament", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Earrings);
@@ -4266,13 +4268,12 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.Medal);
             }
 
-            if (normalized.IndexOf("overall armor", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                normalized.IndexOf("body armor", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (ContainsOverallArmorTarget(normalized))
             {
                 targetSlots.Add(EquipSlot.Longcoat);
             }
 
-            if (normalized.IndexOf("overall", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (ContainsOverallClothingTarget(normalized))
             {
                 targetSlots.Add(EquipSlot.Longcoat);
             }
@@ -4343,7 +4344,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            string normalized = text.Trim();
+            string normalized = NormalizeAuthoredScrollText(text.Trim());
             Match accessorySubsetMatch = AccessorySubsetRegex.Match(normalized);
             if (accessorySubsetMatch.Success)
             {
@@ -4363,15 +4364,15 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (ContainsAny(normalized, "accessories", "accessory"))
+            if (ContainsAny(normalized, "earrings", "earring", "ear accessories", "ear accessory", "ear ornament"))
             {
-                label = "accessories";
+                label = "earrings";
                 return true;
             }
 
-            if (ContainsAny(normalized, "earrings", "earring", "ear ornament"))
+            if (ContainsAny(normalized, "accessories", "accessory"))
             {
-                label = "earrings";
+                label = "accessories";
                 return true;
             }
 
@@ -4417,13 +4418,13 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (ContainsAny(normalized, "overall armor", "body armor"))
+            if (ContainsOverallArmorTarget(normalized))
             {
                 label = "overalls";
                 return true;
             }
 
-            if (ContainsAny(normalized, "overall"))
+            if (ContainsOverallClothingTarget(normalized))
             {
                 label = "overalls";
                 return true;
@@ -4530,6 +4531,24 @@ namespace HaCreator.MapSimulator.UI
                 "glasses" => "eye accessories",
                 _ => normalized.ToLowerInvariant()
             };
+        }
+
+        private static string NormalizeAuthoredScrollText(string text)
+        {
+            return string.IsNullOrWhiteSpace(text)
+                ? string.Empty
+                : text.Replace('\u2018', '\'').Replace('\u2019', '\'');
+        }
+
+        private static bool ContainsOverallArmorTarget(string text)
+        {
+            return ContainsAny(text, "overall armor", "body armor");
+        }
+
+        private static bool ContainsOverallClothingTarget(string text)
+        {
+            return ContainsAny(text, "overall") &&
+                   !ContainsAny(text, "overall defense", "overall def");
         }
 
         private static bool ContainsAny(string text, params string[] patterns)

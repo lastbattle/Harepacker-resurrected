@@ -2352,9 +2352,16 @@ namespace HaCreator.MapSimulator.Interaction
             string nativeTypeText = item.NativeItemTypeIndex > 0
                 ? $" | native TI {item.NativeItemTypeIndex}"
                 : string.Empty;
+            string slotTypeText = item.SlotType > 0
+                ? $" | GW_ItemSlotBase type {item.SlotType}"
+                : string.Empty;
+            string quantityText = item.SlotType == 2
+                ? $" | nNumber {item.Quantity}"
+                : string.Empty;
+            string titleLabel = item.SlotType == 3 ? "sPetName" : "sTitle";
             string titleText = string.IsNullOrWhiteSpace(item.Title)
                 ? string.Empty
-                : $" | sTitle {item.Title}";
+                : $" | {titleLabel} {item.Title}";
             string metadataText = string.IsNullOrWhiteSpace(item.MetadataSummary)
                 ? string.Empty
                 : $" | {item.MetadataSummary}";
@@ -2371,7 +2378,7 @@ namespace HaCreator.MapSimulator.Interaction
             string tailMetadataText = string.IsNullOrWhiteSpace(item.TailMetadataSummary)
                 ? string.Empty
                 : $" | {item.TailMetadataSummary}";
-            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{baseExpirationText}{cashText}{serialText}{nativeTypeText}{titleText}{metadataText}{nonCashText}{tailText}{tailMetadataText}";
+            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{slotTypeText}{baseExpirationText}{cashText}{serialText}{nativeTypeText}{quantityText}{titleText}{metadataText}{nonCashText}{tailText}{tailMetadataText}";
         }
 
         private static bool TryDecodePacketOwnedEquipBody(
@@ -2420,6 +2427,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return false;
             }
+            title = NormalizeTradePacketFixedString(title, maxClientBytesIncludingTerminator: 13);
 
             const int tailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
             int requiredTailLength = tailLength + (hasCashSerialNumber ? 0 : sizeof(long)) + sizeof(long) + sizeof(int);
@@ -2514,6 +2522,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return false;
             }
+            title = NormalizeTradePacketFixedString(title, maxClientBytesIncludingTerminator: 13);
 
             if (stream.Length - stream.Position < sizeof(short))
             {
@@ -2553,7 +2562,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            title = Encoding.ASCII.GetString(reader.ReadBytes(petNameLength)).TrimEnd('\0', ' ');
+            title = NormalizeTradePacketFixedString(
+                Encoding.ASCII.GetString(reader.ReadBytes(petNameLength)),
+                maxClientBytesIncludingTerminator: petNameLength);
             byte level = reader.ReadByte();
             short closeness = reader.ReadInt16();
             byte fullness = reader.ReadByte();
@@ -2592,6 +2603,29 @@ namespace HaCreator.MapSimulator.Interaction
             return leftover.Length > previewByteCount
                 ? $"{label} {leftover.Length}B {preview}..."
                 : $"{label} {leftover.Length}B {preview}";
+        }
+
+        private static string NormalizeTradePacketFixedString(string value, int maxClientBytesIncludingTerminator)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = value.TrimEnd('\0', ' ');
+            int maxVisibleBytes = Math.Max(0, maxClientBytesIncludingTerminator - 1);
+            if (maxVisibleBytes == 0)
+            {
+                return string.Empty;
+            }
+
+            byte[] bytes = Encoding.ASCII.GetBytes(trimmed);
+            if (bytes.Length <= maxVisibleBytes)
+            {
+                return trimmed;
+            }
+
+            return Encoding.ASCII.GetString(bytes, 0, maxVisibleBytes).TrimEnd('\0', ' ');
         }
 
         private static string BuildEquipTradeMetadataSummary(
@@ -2851,6 +2885,9 @@ namespace HaCreator.MapSimulator.Interaction
             string Title,
             string MetadataSummary,
             string TailMetadataSummary,
+            long? NonCashSerialNumber,
+            long? ExpirationTime,
+            int? TailValue,
             string DetailSummary);
 
         internal static bool TryDecodeTradingRoomItemForTest(byte[] payload, out TradingRoomDecodedItemSnapshot snapshot, out string error)
@@ -2881,6 +2918,9 @@ namespace HaCreator.MapSimulator.Interaction
                 item.Title,
                 item.MetadataSummary,
                 item.TailMetadataSummary,
+                item.NonCashSerialNumber,
+                item.ExpirationTime,
+                item.TailValue,
                 BuildTradingRoomPacketItemDetail("Owner", 1, item));
             return true;
         }

@@ -209,6 +209,11 @@ namespace HaCreator.MapSimulator.Managers
                 "UI/UIWindow.img/RandomMesoBag/BtOk");
         }
 
+        public static float ResolveClientSoundVolumeScale(int clientVolume)
+        {
+            return Math.Clamp(clientVolume, 0, 100) / 100f;
+        }
+
         internal static int NormalizeRandomMesoBagClientRank(int rank)
         {
             return rank switch

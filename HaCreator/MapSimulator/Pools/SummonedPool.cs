@@ -226,6 +226,7 @@ namespace HaCreator.MapSimulator.Pools
             public SkillAnimation Animation { get; init; }
             public string AnimationPath { get; init; }
             public bool FacingRight { get; init; }
+            public bool AllowGenericFallback { get; init; }
         }
 
         private sealed class ScheduledPacketOwnedSound
@@ -1130,6 +1131,7 @@ namespace HaCreator.MapSimulator.Pools
             state.OneTimeActionEndTime = int.MinValue;
             state.OneTimeActionClip = null;
             state.Summon.OneTimeActionFallbackAnimation = null;
+            state.Summon.OneTimeActionFallbackActionCode = 0;
             state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
             state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
             state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
@@ -1333,11 +1335,14 @@ namespace HaCreator.MapSimulator.Pools
                     }
                     else
                     {
-                        _animationEffects?.AddBlueLightning(
-                            scheduledEffect.Source,
-                            scheduledEffect.Target,
-                            scheduledEffect.DurationMs,
-                            currentTime);
+                        if (scheduledEffect.AllowGenericFallback)
+                        {
+                            _animationEffects?.AddBlueLightning(
+                                scheduledEffect.Source,
+                                scheduledEffect.Target,
+                                scheduledEffect.DurationMs,
+                                currentTime);
+                        }
                     }
                 }
             }
@@ -2188,6 +2193,7 @@ namespace HaCreator.MapSimulator.Pools
                 state.OneTimeActionEndTime = int.MinValue;
                 state.OneTimeActionClip = null;
                 state.Summon.OneTimeActionFallbackAnimation = null;
+                state.Summon.OneTimeActionFallbackActionCode = 0;
                 state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
@@ -2257,11 +2263,16 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            byte resolvedState = PacketOwnedSummonUpdateRules.ResolvePacketOwnedTeslaRuntimeStateAfterOneTimeAction(
-                state.Summon.TeslaCoilState,
+            byte teslaCoilState = state.TeslaCoilState;
+            Point[] teslaTrianglePoints = state.TeslaTrianglePoints;
+            PacketOwnedSummonUpdateRules.TryRearmPacketOwnedTeslaCoilAfterActionPlayback(
+                state.Summon,
+                ref teslaCoilState,
+                ref teslaTrianglePoints,
+                TeslaCoilSkillId,
                 hasActiveOneTimeActionPlayback: false);
-            state.Summon.TeslaCoilState = resolvedState;
-            state.TeslaCoilState = resolvedState;
+            state.TeslaCoilState = teslaCoilState;
+            state.TeslaTrianglePoints = teslaTrianglePoints;
         }
 
         private static bool IsSummonAnimationActive(SkillAnimation animation, int animationStartTime, int currentTime, int initialDelay = 0)
@@ -2423,6 +2434,7 @@ namespace HaCreator.MapSimulator.Pools
             bool hasHitAnimation = state.Summon.SkillData?.SummonHitAnimation?.Frames.Count > 0;
             state.OneTimeActionClip = null;
             state.Summon.OneTimeActionFallbackAnimation = null;
+            state.Summon.OneTimeActionFallbackActionCode = 0;
             state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
             state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
             state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
@@ -3511,19 +3523,29 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int maxTargets = ResolvePacketOwnedExpiryMaxTargetCount(summon);
-            Dictionary<int, MobItem> candidatesById = _mobPool.ActiveMobs
-                .Where(static mob => IsMobEligibleForPacketOwnedTargeting(mob) && mob.PoolId > 0)
-                .GroupBy(static mob => mob.PoolId)
-                .ToDictionary(static group => group.Key, static group => group.First());
+            List<PacketOwnedExpiryTargetCandidate> orderedCandidates = new();
+            Dictionary<int, MobItem> candidatesById = new();
+            foreach (MobItem mob in _mobPool.ActiveMobs)
+            {
+                if (!IsMobEligibleForPacketOwnedTargeting(mob)
+                    || mob.PoolId <= 0
+                    || candidatesById.ContainsKey(mob.PoolId))
+                {
+                    continue;
+                }
+
+                candidatesById[mob.PoolId] = mob;
+                orderedCandidates.Add(new PacketOwnedExpiryTargetCandidate(
+                    mob.PoolId,
+                    GetMobHitbox(mob, currentTime)));
+            }
 
             float? ownerReferenceX = TryResolveOwnerPosition(state.OwnerCharacterId, out Vector2 ownerPosition)
                 ? ownerPosition.X
                 : null;
             int[] orderedTargetIds = ResolvePacketOwnedExpiryTargetOrder(
                 summon,
-                candidatesById.Values.Select(mob => new PacketOwnedExpiryTargetCandidate(
-                    mob.PoolId,
-                    GetMobHitbox(mob, currentTime))),
+                orderedCandidates,
                 maxTargets,
                 ResolvePacketOwnedExpiryPreferredTargetMobIds(state),
                 ownerReferenceX);
@@ -3632,35 +3654,9 @@ namespace HaCreator.MapSimulator.Pools
                 return Array.Empty<PacketOwnedExpiryTargetCandidate>();
             }
 
-            Vector2 summonPosition = new(summon.PositionX, summon.PositionY);
             return candidates
                 .Where(candidate => candidate.MobObjectId > 0
                                     && !candidate.Hitbox.IsEmpty)
-                .Select(candidate =>
-                {
-                    float centerX = candidate.Hitbox.Left + (candidate.Hitbox.Width * 0.5f);
-                    float centerY = candidate.Hitbox.Top + (candidate.Hitbox.Height * 0.5f);
-                    float leadingEdgeDistance = facingRight
-                        ? MathF.Max(0f, candidate.Hitbox.Left - summonPosition.X)
-                        : MathF.Max(0f, summonPosition.X - candidate.Hitbox.Right);
-                    float centerDistanceSq = ((centerX - summonPosition.X) * (centerX - summonPosition.X))
-                                             + ((centerY - summonPosition.Y) * (centerY - summonPosition.Y));
-                    float facingOrderX = facingRight ? centerX : -centerX;
-                    return new
-                    {
-                        Candidate = candidate,
-                        LeadingEdgeDistance = leadingEdgeDistance,
-                        CenterDistanceSq = centerDistanceSq,
-                        VerticalDistance = MathF.Abs(centerY - summonPosition.Y),
-                        FacingOrderX = facingOrderX
-                    };
-                })
-                .OrderBy(static entry => entry.LeadingEdgeDistance)
-                .ThenBy(static entry => entry.CenterDistanceSq)
-                .ThenBy(static entry => entry.VerticalDistance)
-                .ThenBy(static entry => entry.FacingOrderX)
-                .ThenBy(static entry => entry.Candidate.MobObjectId)
-                .Select(static entry => entry.Candidate)
                 .ToArray();
         }
 
@@ -4253,6 +4249,11 @@ namespace HaCreator.MapSimulator.Pools
             string chainAnimationPath = PacketOwnedSummonUpdateRules.ResolveClientOwnedReactiveAttackChainAnimationPath(
                 summon,
                 state?.OwnerCharacterLevel ?? 1);
+            bool allowGenericFallback = SummonClientPostEffectRules.ShouldUseGenericReactiveAttackChainFallback(
+                summon.SkillId,
+                summon.SkillData,
+                summon.Level,
+                state?.OwnerCharacterLevel ?? 1);
             bool canRenderChain = chainAnimation?.Frames.Count > 0 || _animationEffects != null;
             if (!canRenderChain)
             {
@@ -4283,7 +4284,8 @@ namespace HaCreator.MapSimulator.Pools
                     DurationMs = chainDurationMs,
                     Animation = chainAnimation,
                     AnimationPath = chainAnimationPath,
-                    FacingRight = chainTarget.X >= source.X
+                    FacingRight = chainTarget.X >= source.X,
+                    AllowGenericFallback = allowGenericFallback
                 });
             }
         }
@@ -4827,7 +4829,8 @@ namespace HaCreator.MapSimulator.Pools
             MobAnimationSet templateAnimationSet = null;
             MobAnimationSet.AttackInfoMetadata templateAttackInfo = null;
             bool hasTemplateAttackInfoHitPath = !string.IsNullOrWhiteSpace(templateAttackData?.HitEffectPath);
-            if (needsTemplateAttackInfo || !hasLiveHitFrames || hasTemplateAttackInfoHitPath)
+            bool hasTemplateAttackDataHitAttach = templateAttackData?.HasHitAttach == true;
+            if (needsTemplateAttackInfo || !hasLiveHitFrames || hasTemplateAttackInfoHitPath || hasTemplateAttackDataHitAttach)
             {
                 templateAnimationSet = LifeLoader.CreateMobAttackPresentationSet(
                     texturePool,
@@ -4942,9 +4945,17 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             bool needsTemplateHitAfter = !liveAttackInfo.HasHitAfterMetadata && templateAttackInfo.HasHitAfterMetadata;
+            bool needsTemplateHitAttach = !liveAttackInfo.HasExplicitHitAttachMetadata(liveHitEffectEntry.SourceFrameIndex)
+                                          && templateAttackInfo.HasHitAttachMetadata;
+            bool needsTemplateFacingAttach = !liveAttackInfo.HasExplicitFacingAttachMetadata(liveHitEffectEntry.SourceFrameIndex)
+                                             && templateAttackInfo.HasFacingAttachMetadata;
             bool needsTemplateRangeOrigin = !liveAttackInfo.HasRangeOrigin && templateAttackInfo.HasRangeOrigin;
             bool needsTemplateRangeBounds = !liveAttackInfo.HasRangeBounds && templateAttackInfo.HasRangeBounds;
-            if (!needsTemplateHitAfter && !needsTemplateRangeOrigin && !needsTemplateRangeBounds)
+            if (!needsTemplateHitAfter
+                && !needsTemplateHitAttach
+                && !needsTemplateFacingAttach
+                && !needsTemplateRangeOrigin
+                && !needsTemplateRangeBounds)
             {
                 return liveAttackInfo;
             }
@@ -4954,6 +4965,18 @@ namespace HaCreator.MapSimulator.Pools
             {
                 mergedAttackInfo.HitAfterMs = templateAttackInfo.HitAfterMs;
                 mergedAttackInfo.HasHitAfterMetadata = true;
+            }
+
+            if (needsTemplateHitAttach)
+            {
+                mergedAttackInfo.HitAttach = templateAttackInfo.HitAttach;
+                mergedAttackInfo.HasHitAttachMetadata = true;
+            }
+
+            if (needsTemplateFacingAttach)
+            {
+                mergedAttackInfo.FacingAttach = templateAttackInfo.FacingAttach;
+                mergedAttackInfo.HasFacingAttachMetadata = true;
             }
 
             if (needsTemplateRangeOrigin)
@@ -4984,7 +5007,9 @@ namespace HaCreator.MapSimulator.Pools
                 AttackType = source.AttackType,
                 HitAnimationSourceFrameIndex = source.HitAnimationSourceFrameIndex,
                 HitAttach = source.HitAttach,
+                HasHitAttachMetadata = source.HasHitAttachMetadata,
                 FacingAttach = source.FacingAttach,
+                HasFacingAttachMetadata = source.HasFacingAttachMetadata,
                 HitAfterMs = source.HitAfterMs,
                 HasHitAfterMetadata = source.HasHitAfterMetadata,
                 EffectFacingAttach = source.EffectFacingAttach,
@@ -5193,17 +5218,19 @@ namespace HaCreator.MapSimulator.Pools
             {
                 return new MobAnimationSet.AttackInfoMetadata
                 {
-                    HitAttach = attackData.HitAttach
+                    HitAttach = attackData.HitAttach,
+                    HasHitAttachMetadata = true
                 };
             }
 
-            if (attackInfo.HitAttach == attackData.HitAttach)
+            if (attackInfo.HitAttach == attackData.HitAttach && attackInfo.HasHitAttachMetadata)
             {
                 return attackInfo;
             }
 
             MobAnimationSet.AttackInfoMetadata clone = CloneAttackInfoMetadata(attackInfo);
             clone.HitAttach = attackData.HitAttach;
+            clone.HasHitAttachMetadata = true;
             return clone;
         }
 

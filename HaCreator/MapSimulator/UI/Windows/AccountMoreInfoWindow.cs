@@ -18,7 +18,12 @@ namespace HaCreator.MapSimulator.UI
         private const int ContentTop = 22;
         private const int ClientOkButtonId = 1000;
         private const int ClientCancelButtonId = 1002;
+        private const int ClientComboBoxMaxShownItems = 10;
+        private const int ClientComboBoxTextOffsetY = -2;
         private const int CheckboxSize = 11;
+        private static readonly Color ClientComboBoxBackColor = new(238, 238, 238);
+        private static readonly Color ClientComboBoxFocusedBackColor = new(165, 165, 152);
+        private static readonly Color ClientComboBoxBorderColor = new(153, 153, 153);
         private static readonly Rectangle AreaGroupRect = new(89, 32, 155, 18);
         private static readonly Rectangle AreaDetailRect = new(248, 32, 135, 18);
         private static readonly Rectangle BirthYearRect = new(89, 57, 60, 18);
@@ -218,14 +223,40 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(absoluteBounds.Right - _comboBoxButtonTexture.Width, absoluteBounds.Y),
                     disabled ? Color.Gray : Color.White);
             }
+            else
+            {
+                DrawClientComboBoxFallback(sprite, absoluteBounds, disabled);
+            }
 
             DrawWindowText(
                 sprite,
                 value,
-                new Vector2(absoluteBounds.X + 6, absoluteBounds.Y + 1),
+                new Vector2(absoluteBounds.X + 6, absoluteBounds.Y + ClientComboBoxTextOffsetY),
                 disabled ? new Color(140, 140, 140) : new Color(35, 35, 35),
                 SmallTextScale,
                 Math.Max(10f, absoluteBounds.Width - 24f));
+        }
+
+        private void DrawClientComboBoxFallback(SpriteBatch sprite, Rectangle bounds, bool disabled)
+        {
+            Texture2D fallbackPixel = GetFallbackPixelTexture(sprite.GraphicsDevice);
+            Color backColor = disabled ? Color.LightGray : ClientComboBoxBackColor;
+            sprite.Draw(fallbackPixel, bounds, backColor);
+            sprite.Draw(fallbackPixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), ClientComboBoxBorderColor);
+            sprite.Draw(fallbackPixel, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), ClientComboBoxBorderColor);
+            sprite.Draw(fallbackPixel, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), ClientComboBoxBorderColor);
+            sprite.Draw(fallbackPixel, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), ClientComboBoxBorderColor);
+
+            int buttonWidth = 18;
+            Rectangle buttonBounds = new(bounds.Right - buttonWidth, bounds.Y + 1, buttonWidth - 1, Math.Max(1, bounds.Height - 2));
+            sprite.Draw(fallbackPixel, buttonBounds, disabled ? Color.Gray : ClientComboBoxFocusedBackColor);
+
+            int arrowCenterX = buttonBounds.X + (buttonBounds.Width / 2);
+            int arrowTop = buttonBounds.Y + 6;
+            sprite.Draw(fallbackPixel, new Rectangle(arrowCenterX - 3, arrowTop, 7, 1), Color.Black);
+            sprite.Draw(fallbackPixel, new Rectangle(arrowCenterX - 2, arrowTop + 1, 5, 1), Color.Black);
+            sprite.Draw(fallbackPixel, new Rectangle(arrowCenterX - 1, arrowTop + 2, 3, 1), Color.Black);
+            sprite.Draw(fallbackPixel, new Rectangle(arrowCenterX, arrowTop + 3, 1, 1), Color.Black);
         }
 
         private void DrawCheckboxGrid(

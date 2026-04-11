@@ -244,6 +244,31 @@ namespace HaCreator.MapSimulator.Pools
             packetTrianglePoints = Array.Empty<Point>();
         }
 
+        internal static bool TryRearmPacketOwnedTeslaCoilAfterActionPlayback(
+            ActiveSummon summon,
+            ref byte packetRuntimeState,
+            ref Point[] packetTrianglePoints,
+            int teslaCoilSkillId,
+            bool hasActiveOneTimeActionPlayback)
+        {
+            if (summon?.SkillId != teslaCoilSkillId)
+            {
+                return false;
+            }
+
+            bool rearmed = SummonRuntimeRules.TryRearmTeslaCoilAfterActionPlayback(
+                summon,
+                teslaCoilSkillId,
+                hasActiveOneTimeActionPlayback);
+            packetRuntimeState = summon.TeslaCoilState;
+            if (rearmed)
+            {
+                packetTrianglePoints = Array.Empty<Point>();
+            }
+
+            return rearmed;
+        }
+
         internal static int ResolveClientOwnedPostAttackEffectDelayMs(ActiveSummon summon)
         {
             return SummonClientPostEffectRules.ResolvePostAttackEffectDelayMs(

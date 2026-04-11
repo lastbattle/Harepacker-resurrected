@@ -185,9 +185,19 @@ namespace HaCreator.MapSimulator.Effects
             int SourceWidth,
             int SourceHeight,
             Point CanvasOffset);
+        internal enum DamageNumberRecoveredCompositionOperationKind
+        {
+            CreateCanvas,
+            InsertCanvas
+        }
+        internal readonly record struct PreparedDamageNumberCompositionNativeOperation(
+            DamageNumberRecoveredCompositionOperationKind Kind,
+            CanvasLayerRecoveredCanvasSettings CanvasSettings,
+            PreparedDamageNumberCompositionInsertCommand InsertCommand);
         internal readonly record struct PreparedDamageNumberCompositionTrace(
             CanvasLayerRecoveredCanvasSettings CanvasSettings,
             PreparedDamageNumberCompositionInsertCommand[] InsertCanvasCommands,
+            PreparedDamageNumberCompositionNativeOperation[] NativeOperations,
             bool KeepsCriticalBannerOnSeparateLayer,
             string CriticalBannerLayerCanvasPath,
             PreparedSpriteDrawInfo? CriticalBannerLayerSprite);
@@ -734,6 +744,10 @@ namespace HaCreator.MapSimulator.Effects
             return new PreparedDamageNumberCompositionTrace(
                 new CanvasLayerRecoveredCanvasSettings(0, ResolveCompositeCanvasHeight()),
                 Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
+                BuildRecoveredCompositionNativeOperations(
+                    0,
+                    ResolveCompositeCanvasHeight(),
+                    Array.Empty<PreparedDamageNumberCompositionInsertCommand>()),
                 KeepsCriticalBannerOnSeparateLayer: false,
                 CriticalBannerLayerCanvasPath: null,
                 CriticalBannerLayerSprite: null);
@@ -752,6 +766,10 @@ namespace HaCreator.MapSimulator.Effects
                 return new PreparedDamageNumberCompositionTrace(
                     new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                     Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
+                    BuildRecoveredCompositionNativeOperations(
+                        canvasWidth,
+                        canvasHeight,
+                        Array.Empty<PreparedDamageNumberCompositionInsertCommand>()),
                     criticalBanner.HasValue,
                     BuildBasicEffCanvasPath(largeDigitSet?.Name, criticalBanner?.SpriteName),
                     criticalBanner);
@@ -777,6 +795,7 @@ namespace HaCreator.MapSimulator.Effects
             return new PreparedDamageNumberCompositionTrace(
                 new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                 insertCommands,
+                BuildRecoveredCompositionNativeOperations(canvasWidth, canvasHeight, insertCommands),
                 criticalBanner.HasValue,
                 BuildBasicEffCanvasPath(largeDigitSet?.Name, criticalBanner?.SpriteName),
                 criticalBanner);
@@ -794,6 +813,10 @@ namespace HaCreator.MapSimulator.Effects
                 return new PreparedDamageNumberCompositionTrace(
                     new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                     Array.Empty<PreparedDamageNumberCompositionInsertCommand>(),
+                    BuildRecoveredCompositionNativeOperations(
+                        canvasWidth,
+                        canvasHeight,
+                        Array.Empty<PreparedDamageNumberCompositionInsertCommand>()),
                     KeepsCriticalBannerOnSeparateLayer: false,
                     CriticalBannerLayerCanvasPath: null,
                     CriticalBannerLayerSprite: null);
@@ -817,9 +840,40 @@ namespace HaCreator.MapSimulator.Effects
             return new PreparedDamageNumberCompositionTrace(
                 new CanvasLayerRecoveredCanvasSettings(canvasWidth, canvasHeight),
                 new[] { insertCommand },
+                BuildRecoveredCompositionNativeOperations(
+                    canvasWidth,
+                    canvasHeight,
+                    new[] { insertCommand }),
                 KeepsCriticalBannerOnSeparateLayer: false,
                 CriticalBannerLayerCanvasPath: null,
                 CriticalBannerLayerSprite: null);
+        }
+
+        private static PreparedDamageNumberCompositionNativeOperation[] BuildRecoveredCompositionNativeOperations(
+            int canvasWidth,
+            int canvasHeight,
+            IReadOnlyList<PreparedDamageNumberCompositionInsertCommand> insertCommands)
+        {
+            CanvasLayerRecoveredCanvasSettings canvasSettings = new(
+                Math.Max(0, canvasWidth),
+                Math.Max(0, canvasHeight));
+            int insertCount = insertCommands?.Count ?? 0;
+            PreparedDamageNumberCompositionNativeOperation[] operations =
+                new PreparedDamageNumberCompositionNativeOperation[insertCount + 1];
+            operations[0] = new PreparedDamageNumberCompositionNativeOperation(
+                DamageNumberRecoveredCompositionOperationKind.CreateCanvas,
+                canvasSettings,
+                default);
+
+            for (int i = 0; i < insertCount; i++)
+            {
+                operations[i + 1] = new PreparedDamageNumberCompositionNativeOperation(
+                    DamageNumberRecoveredCompositionOperationKind.InsertCanvas,
+                    canvasSettings,
+                    insertCommands[i]);
+            }
+
+            return operations;
         }
 
         internal static string BuildBasicEffCanvasPath(string setName, string spriteName)

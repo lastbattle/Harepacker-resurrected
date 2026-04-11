@@ -448,6 +448,25 @@ namespace HaCreator.MapSimulator.Character
             return !string.IsNullOrWhiteSpace(oneTimeActionName);
         }
 
+        internal static bool ShouldStallPositionGatedFrameUpdate(
+            string actionName,
+            double previousY,
+            double currentY)
+        {
+            return IsPositionGatedFrameUpdateAction(actionName)
+                   && Math.Abs(currentY - previousY) < 0.001d;
+        }
+
+        internal static bool IsPositionGatedFrameUpdateAction(string actionName)
+        {
+            if (!CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode))
+            {
+                return false;
+            }
+
+            return rawActionCode is 45 or 46 or 129 or 130;
+        }
+
         private static bool IsExplicitMountedTransitionActionName(string actionName)
         {
             return string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)

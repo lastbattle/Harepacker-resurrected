@@ -108,6 +108,7 @@ namespace HaCreator.MapSimulator.Companions
             "ok",
             "confuse",
             "irrelevant",
+            "shock",
             "roll",
             "panic",
             "fake",
@@ -130,7 +131,8 @@ namespace HaCreator.MapSimulator.Companions
             "blush",
             "upset",
             "hide",
-            "sigh"
+            "sigh",
+            "burp"
         };
 
         private static readonly string[] KnownActions = ClientBaseActionNames
@@ -214,6 +216,7 @@ namespace HaCreator.MapSimulator.Companions
                 ["question"] = new[] { "question", "what", "confuse", "surprise", "bewildered", "donno", "complain" },
                 ["confuse"] = new[] { "confuse", "bewildered", "what", "surprise", "donno", "nothing" },
                 ["panic"] = new[] { "panic", "surprise", "what", "question", "confuse", "bewildered", "alert" },
+                ["shock"] = new[] { "shock", "surprise", "panic", "stunned", "alert" },
                 ["good"] = new[] { "good", "goodboy", "happy", "ok", "yes", "smile", "love" },
                 ["goodboy"] = new[] { "goodboy", "good", "happy", "ok", "yes", "smile", "love" },
                 ["happy"] = new[] { "happy", "good", "goodboy", "ok", "yes", "smile", "love" },
@@ -241,7 +244,8 @@ namespace HaCreator.MapSimulator.Companions
                 ["cute"] = new[] { "cute", "love", "happy", "smile", "charming" },
                 ["christmas"] = new[] { "christmas", "glitter", "love", "happy", "cute" },
                 ["fart"] = new[] { "fart" },
-                ["vomit"] = new[] { "vomit" },
+                ["vomit"] = new[] { "vomit", "burp", "eat", "dung", "poop" },
+                ["burp"] = new[] { "burp", "vomit", "eat", "dung", "poop" },
                 ["roll"] = new[] { "roll", "play", "jump", "move" },
                 ["fake"] = new[] { "fake", "panic", "surprise", "confuse", "nothing" },
                 ["fire"] = new[] { "fire", "alert", "panic", "angry" },

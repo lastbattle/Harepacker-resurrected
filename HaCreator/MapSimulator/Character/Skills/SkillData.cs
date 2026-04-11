@@ -295,11 +295,32 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         public string Name { get; set; }
         public List<SkillFrame> Frames { get; set; } = new();
+        public List<SkillAnimation> VariantAnimations { get; set; } = new();
         public int TotalDuration { get; private set; }
         public bool Loop { get; set; } = false;
         public Point Origin { get; set; }           // Animation origin relative to caster
         public int ZOrder { get; set; } = 0;        // Draw order
         public int? PositionCode { get; set; }      // Optional WZ `pos` anchor selection
+
+        public List<IDXObject> ToTextureFrames()
+        {
+            if (Frames == null || Frames.Count == 0)
+            {
+                return null;
+            }
+
+            var textures = new List<IDXObject>(Frames.Count);
+            for (int i = 0; i < Frames.Count; i++)
+            {
+                IDXObject texture = Frames[i]?.Texture;
+                if (texture != null)
+                {
+                    textures.Add(texture);
+                }
+            }
+
+            return textures.Count > 0 ? textures : null;
+        }
 
         public void CalculateDuration()
         {
@@ -2182,6 +2203,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsQueuedSparkAttack { get; set; }
         public int PresentationBulletIndex { get; set; }
         public int PresentationBulletCount { get; set; } = 1;
+        public int ClientActionSpeedDegree { get; set; }
         public int BulletAnimationOwnerId { get; set; }
         public BulletAnimationPresentation BulletAnimation { get; set; }
         public int ImpactPresentationBaseTime { get; set; } = int.MinValue;
@@ -2424,6 +2446,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SummonActorState ActorState { get; set; } = SummonActorState.Spawn;
         public string CurrentAnimationBranchName { get; set; }
         public SkillAnimation OneTimeActionFallbackAnimation { get; set; }
+        public int OneTimeActionFallbackActionCode { get; set; }
         public int OneTimeActionFallbackStartTime { get; set; } = int.MinValue;
         public int OneTimeActionFallbackAnimationTime { get; set; } = int.MinValue;
         public int OneTimeActionFallbackEndTime { get; set; } = int.MinValue;

@@ -1148,6 +1148,9 @@ namespace HaCreator.MapSimulator.UI
                 if (npc?.NpcInstance == null || !npc.IsVisible)
                     continue;
 
+                if (!IsClientNpcHoverCandidate(npc))
+                    continue;
+
                 Point minimapPoint = WorldToMinimap(npc.CurrentX, npc.CurrentY);
                 BaseDXDrawableItem marker = ResolveNpcMarker(npc);
                 if (marker == null)
@@ -1303,14 +1306,28 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, trackedUser.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
-                if (!hoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(trackedUser.TooltipText))
+                bool isWithinMinimapImage = IsWithinMinimapImage(minimapPoint);
+                if (ShouldRegisterTrackedUserHoverTargetForTesting(
+                        isWithinMinimapImage,
+                        trackedUser.ShowDirectionOverlay,
+                        trackedUser.TooltipText,
+                        hoverBounds))
                 {
-                    ClientHoverTargetKind kind = !IsWithinMinimapImage(minimapPoint) && trackedUser.ShowDirectionOverlay
-                        ? ClientHoverTargetKind.RemoteDirection
-                        : ClientHoverTargetKind.TrackedUser;
-                    AddHoverTarget(trackedUser.TooltipText, hoverBounds, kind);
+                    AddHoverTarget(trackedUser.TooltipText, hoverBounds, ClientHoverTargetKind.RemoteDirection);
                 }
             }
+        }
+
+        internal static bool ShouldRegisterTrackedUserHoverTargetForTesting(
+            bool isWithinMinimapImage,
+            bool showDirectionOverlay,
+            string tooltipText,
+            Rectangle hoverBounds)
+        {
+            return !isWithinMinimapImage
+                && showDirectionOverlay
+                && !hoverBounds.IsEmpty
+                && !string.IsNullOrWhiteSpace(tooltipText);
         }
 
         private BaseDXDrawableItem ResolveHelperMarker(HelperMarkerType markerType)
@@ -1557,6 +1574,12 @@ namespace HaCreator.MapSimulator.UI
                 Position.Y + marker.Position.Y + minimapPoint.Y);
         }
 
+        private static bool IsClientNpcHoverCandidate(NpcItem npc)
+        {
+            return npc?.NpcInstance != null
+                && IsClientNpcHoverCandidateForTesting(npc.NpcInstance.NpcInfo?.HideName == true);
+        }
+
         private void ResetHoverTargets()
         {
             _hoverTargetCount = 0;
@@ -1644,6 +1667,11 @@ namespace HaCreator.MapSimulator.UI
                 markerScreenY + ClientMarkerHoverBoundsYOffset,
                 ClientMarkerHoverBoundsWidth,
                 ClientMarkerHoverBoundsHeight);
+        }
+
+        internal static bool IsClientNpcHoverCandidateForTesting(bool templateHidesName)
+        {
+            return !templateHidesName;
         }
 
         private static bool IsClientPortalHoverCandidate(PortalItem portal)

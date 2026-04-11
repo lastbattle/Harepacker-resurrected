@@ -469,6 +469,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetTamingMobLoader(Loader.LoadTamingMob);
                 Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
                 Skills.OnRepeatSkillModeEndRequested = HandleRepeatSkillModeEndRequested;
+                Skills.OnRepeatSkillImmediateEffectRequestReady = HandleRepeatSkillImmediateEffectRequestReady;
                 Skills.OnExternalAreaDamageSharingApplied = _remoteAffectedAreaDamageShareHandler;
                 Skills.OnClientSkillCancelDragonCleanupRequested = (_, currentTime) =>
                     Dragon.ClearClientOwnedOneTimeActionOnSkillCancel(Player, currentTime);
@@ -1404,6 +1405,14 @@ namespace HaCreator.MapSimulator.Character
             {
                 OnRepeatSkillModeEndEffectRequestReady?.Invoke(skillId, returnSkillId, requestedAt, request);
             }
+        }
+
+        private void HandleRepeatSkillImmediateEffectRequestReady(
+            int skillId,
+            int requestedAt,
+            PacketOwnedSkillEffectRequest request)
+        {
+            OnRepeatSkillModeEndEffectRequestReady?.Invoke(skillId, 0, requestedAt, request);
         }
 
         public bool TryResolvePacketOwnedRepeatSkillModeEndRequest(

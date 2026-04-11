@@ -3093,12 +3093,14 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanRequestPopularity(PopularityChangeDirection direction)
         {
-            if (!IsRemoteInspectionActive())
-            {
-                return false;
-            }
+            return ShouldEnablePopularityRequest(IsRemoteInspectionActive(), direction, GetDisplayedBuild()?.Fame ?? 0);
+        }
 
-            return direction != PopularityChangeDirection.Down || (GetDisplayedBuild()?.Fame ?? 0) > 0;
+        internal static bool ShouldEnablePopularityRequest(bool isRemoteInspection, PopularityChangeDirection direction, int targetFame)
+        {
+            // CUIUserInfo::OnButtonClicked forwards both BtPopUp and BtPopDown
+            // directly to SendGivePopularityRequest for inspected targets.
+            return isRemoteInspection;
         }
 
         private bool CanScrollPopupSelectionUp()

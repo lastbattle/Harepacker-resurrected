@@ -15,6 +15,8 @@ namespace HaCreator.MapSimulator.Combat
     /// </summary>
     public sealed class MobAttackSystem
     {
+        internal const int ClientAnimationDisplayerMobBulletLoadAction = 1;
+
         private sealed class ActiveMobProjectile
         {
             public MobItem SourceMob { get; set; }
@@ -1602,6 +1604,16 @@ namespace HaCreator.MapSimulator.Combat
         private static bool IsFallingEffectNode(MobAnimationSet.AttackEffectNode effectNode)
         {
             return effectNode != null && effectNode.Fall > 0;
+        }
+
+        internal static bool ShouldRegisterAnimationDisplayerMobBullet(bool hasClientMobActionFrames, string ballUol)
+        {
+            return hasClientMobActionFrames && !string.IsNullOrWhiteSpace(ballUol);
+        }
+
+        internal static bool ShouldRegisterAnimationDisplayerMobSwallowBullet(bool hasCanvasFrames)
+        {
+            return hasCanvasFrames;
         }
 
         private static Vector2 ResolveEffectNodePosition(Vector2 basePosition, MobAnimationSet.AttackEffectNode effectNode, bool flip)

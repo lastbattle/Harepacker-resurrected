@@ -150,6 +150,7 @@ namespace HaCreator.MapSimulator
 
         internal sealed class ClassCompetitionRemotePagePayload
         {
+            public string AuthKey { get; init; } = string.Empty;
             public string NavigateUrl { get; init; } = string.Empty;
             public string Source { get; init; } = string.Empty;
             public IReadOnlyList<string> PageLines { get; init; } = Array.Empty<string>();
@@ -208,7 +209,6 @@ namespace HaCreator.MapSimulator
         private static readonly Lazy<HashSet<int>> PacketOwnedTimeBombSkillIdCatalog = new(CreatePacketOwnedTimeBombSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedVengeanceSkillIdCatalog = new(CreatePacketOwnedVengeanceSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedExJablinSkillIdCatalog = new(CreatePacketOwnedExJablinSkillIdCatalog);
-        private static readonly Lazy<int[]> PacketOwnedAuthoredTimeBombSkillIdCandidates = new(CreatePacketOwnedAuthoredTimeBombSkillIdCandidates);
         private static readonly Lazy<int[]> PacketOwnedTimeBombInvincibilityOptionIds = new(CreatePacketOwnedTimeBombInvincibilityOptionIds);
         private static readonly Lazy<IReadOnlyDictionary<string, int>> PacketOwnedVisiblePotentialItemOptionIdsByLine = new(CreatePacketOwnedVisiblePotentialItemOptionIdsByLine);
         private static readonly Lazy<HashSet<int>> PacketOwnedVisiblePotentialItemOptionIds = new(CreatePacketOwnedVisiblePotentialItemOptionIdSet);
@@ -323,6 +323,9 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedRadioStartTick = int.MinValue;
         private int _lastPacketOwnedRadioExpectedStopTick = int.MinValue;
         private int _lastPacketOwnedRadioLastPollTick = int.MinValue;
+        private int _lastPacketOwnedRadioSchedulePacketType = -1;
+        private string _lastPacketOwnedRadioScheduleSource = "none";
+        private bool _lastPacketOwnedRadioScheduleFromOfficialSession;
         private bool _packetOwnedRadioSessionCreateLayerLeft;
         private int _packetOwnedRadioSessionCreateLayerMutationSequence = -1;
         private string _packetOwnedRadioSessionCreateLayerSource = "uninitialized";
@@ -585,7 +588,7 @@ namespace HaCreator.MapSimulator
             return $"Opened packet-authored quest delivery for {itemName}.";
         }
 
-        private string ApplyQuestDemandItemQueryLaunch(QuestDemandItemQueryState queryState)
+        private string ApplyQuestDemandItemQueryLaunch(QuestDemandItemQueryState queryState, int preferredVisibleItemId = 0)
         {
             StampPacketOwnedUtilityRequestState();
             _lastQuestDemandItemQueryQuestId = Math.Max(0, queryState?.QuestId ?? 0);
@@ -606,6 +609,11 @@ namespace HaCreator.MapSimulator
                         _lastQuestDemandQueryVisibleItemIds.Add(itemId);
                     }
                 }
+            }
+
+            if (preferredVisibleItemId > 0 && _lastQuestDemandQueryVisibleItemIds.Contains(preferredVisibleItemId))
+            {
+                _lastQuestDemandQueryPreferredItemId = preferredVisibleItemId;
             }
 
             if (queryState?.VisibleItemMapIds != null)
@@ -775,6 +783,117 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void AppendQuestDetailInlineReferenceSearchResult(List<WorldMapUI.SearchResultEntry> results, HashSet<string> seen)
+        {
+            if (results == null || seen == null ||
+                _lastQuestDetailInlineWorldMapReference is not QuestDetailInlineReference reference ||
+                _lastQuestDetailInlineWorldMapIds == null ||
+                _lastQuestDetailInlineWorldMapIds.Count == 0)
+            {
+                return;
+            }
+
+            WorldMapUI.SearchResultKind kind;
+            string label;
+            switch (reference.Kind)
+            {
+                case QuestDetailInlineReferenceKind.Npc:
+                    kind = WorldMapUI.SearchResultKind.Npc;
+                    label = ResolveQuestDetailInlineNpcName(reference);
+                    break;
+                case QuestDetailInlineReferenceKind.Mob:
+                    kind = WorldMapUI.SearchResultKind.Mob;
+                    label = ResolveQuestDetailInlineMobName(reference);
+                    break;
+                case QuestDetailInlineReferenceKind.Map:
+                    kind = WorldMapUI.SearchResultKind.Field;
+                    label = ResolveQuestDetailInlineMapName(reference);
+                    break;
+                case QuestDetailInlineReferenceKind.Item:
+                    kind = WorldMapUI.SearchResultKind.Item;
+                    label = ResolveQuestDetailInlineItemName(reference);
+                    break;
+                default:
+                    return;
+            }
+
+            for (int i = 0; i < _lastQuestDetailInlineWorldMapIds.Count; i++)
+            {
+                int mapId = _lastQuestDetailInlineWorldMapIds[i];
+                if (mapId <= 0)
+                {
+                    continue;
+                }
+
+                string dedupeKey = $"questdetailref:{reference.Kind}:{reference.TargetId}:{mapId}";
+                if (!seen.Add(dedupeKey))
+                {
+                    continue;
+                }
+
+                string mapName = ResolveMapTransferDisplayName(mapId, null);
+                results.Add(new WorldMapUI.SearchResultEntry
+                {
+                    Kind = kind,
+                    MapId = mapId,
+                    Label = label,
+                    Description = $"Quest-detail inline reference for quest #{_activeQuestDetailQuestId} in {mapName}"
+                });
+            }
+        }
+
+        private string ResolveQuestDetailInlineNpcName(QuestDetailInlineReference reference)
+        {
+            if (!string.IsNullOrWhiteSpace(reference.Label))
+            {
+                return reference.Label.Trim();
+            }
+
+            string key = reference.TargetId.ToString(CultureInfo.InvariantCulture);
+            return Program.InfoManager?.NpcNameCache != null &&
+                   Program.InfoManager.NpcNameCache.TryGetValue(key, out var info) &&
+                   !string.IsNullOrWhiteSpace(info?.Item1)
+                ? info.Item1
+                : $"NPC #{reference.TargetId}";
+        }
+
+        private string ResolveQuestDetailInlineMobName(QuestDetailInlineReference reference)
+        {
+            if (!string.IsNullOrWhiteSpace(reference.Label))
+            {
+                return reference.Label.Trim();
+            }
+
+            string key = reference.TargetId.ToString(CultureInfo.InvariantCulture);
+            return Program.InfoManager?.MobNameCache != null &&
+                   Program.InfoManager.MobNameCache.TryGetValue(key, out string mobName) &&
+                   !string.IsNullOrWhiteSpace(mobName)
+                ? mobName
+                : $"Mob #{reference.TargetId}";
+        }
+
+        private string ResolveQuestDetailInlineMapName(QuestDetailInlineReference reference)
+        {
+            if (!string.IsNullOrWhiteSpace(reference.Label))
+            {
+                return reference.Label.Trim();
+            }
+
+            return ResolveMapTransferDisplayName(reference.TargetId, null);
+        }
+
+        private static string ResolveQuestDetailInlineItemName(QuestDetailInlineReference reference)
+        {
+            if (!string.IsNullOrWhiteSpace(reference.Label))
+            {
+                return reference.Label.Trim();
+            }
+
+            return InventoryItemMetadataResolver.TryResolveItemName(reference.TargetId, out string itemName)
+                ? itemName
+                : $"Item {reference.TargetId}";
+        }
+
         private void ClearQuestDemandItemQueryState(bool refreshWorldMap = true)
         {
             _lastQuestDemandItemQueryQuestId = 0;
@@ -784,6 +903,8 @@ namespace HaCreator.MapSimulator
             _lastQuestDemandQueryPreferredItemId = 0;
             _lastQuestDemandQueryHiddenItemCount = 0;
             _lastQuestDemandQueryHasPacketOwnedMapResults = false;
+            _lastQuestDetailInlineWorldMapReference = null;
+            _lastQuestDetailInlineWorldMapIds = Array.Empty<int>();
 
             if (refreshWorldMap)
             {
@@ -2556,10 +2677,20 @@ namespace HaCreator.MapSimulator
                     return TryApplyPacketOwnedEventSoundPayload(payload, minigame: true, requireExactClientPayload: true, out message);
 
                 case LocalUtilityPacketInboxManager.RadioSchedulePacketType:
-                    return TryApplyPacketOwnedRadioSchedulePayload(payload, requireExactClientPayload: false, out message);
+                    return TryApplyPacketOwnedRadioSchedulePayload(
+                        payload,
+                        LocalUtilityPacketInboxManager.RadioSchedulePacketType,
+                        source,
+                        requireExactClientPayload: false,
+                        out message);
 
                 case LocalUtilityPacketInboxManager.RadioScheduleClientPacketType:
-                    return TryApplyPacketOwnedRadioSchedulePayload(payload, requireExactClientPayload: true, out message);
+                    return TryApplyPacketOwnedRadioSchedulePayload(
+                        payload,
+                        LocalUtilityPacketInboxManager.RadioScheduleClientPacketType,
+                        source,
+                        requireExactClientPayload: true,
+                        out message);
 
                 case LocalUtilityPacketInboxManager.RadioCreateLayerContextPacketType:
                     return TryApplyPacketOwnedRadioCreateLayerContextPayload(payload, out message);
@@ -4962,7 +5093,12 @@ namespace HaCreator.MapSimulator
             return message;
         }
 
-        private bool TryApplyPacketOwnedRadioSchedulePayload(byte[] payload, bool requireExactClientPayload, out string message)
+        private bool TryApplyPacketOwnedRadioSchedulePayload(
+            byte[] payload,
+            int packetType,
+            string source,
+            bool requireExactClientPayload,
+            out string message)
         {
             if (TryDecodePacketOwnedRadioSchedulePayload(
                     payload,
@@ -4971,13 +5107,21 @@ namespace HaCreator.MapSimulator
                     out int timeValue,
                     out message))
             {
-                message = ApplyPacketOwnedRadioSchedule(trackDescriptor, timeValue);
+                message = ApplyPacketOwnedRadioSchedule(
+                    trackDescriptor,
+                    timeValue,
+                    packetType,
+                    ResolvePacketOwnedRadioScheduleSourceLabel(packetType, source));
                 return true;
             }
 
             if (!requireExactClientPayload && TryDecodePacketOwnedStringPayload(payload, out string descriptor))
             {
-                message = ApplyPacketOwnedRadioSchedule(descriptor, 0);
+                message = ApplyPacketOwnedRadioSchedule(
+                    descriptor,
+                    0,
+                    packetType,
+                    ResolvePacketOwnedRadioScheduleSourceLabel(packetType, source));
                 return true;
             }
 
@@ -5071,15 +5215,25 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private string ApplyPacketOwnedRadioSchedule(string trackDescriptor, int timeValue)
+        private string ApplyPacketOwnedRadioSchedule(
+            string trackDescriptor,
+            int timeValue,
+            int packetType,
+            string packetSource)
         {
             StampPacketOwnedUtilityRequestState();
             SyncPacketOwnedRadioCreateLayerContextLifecycle();
+            string scheduleSource = string.IsNullOrWhiteSpace(packetSource)
+                ? ResolvePacketOwnedRadioScheduleSourceLabel(packetType, null)
+                : packetSource.Trim();
+            _lastPacketOwnedRadioSchedulePacketType = packetType;
+            _lastPacketOwnedRadioScheduleSource = scheduleSource;
+            _lastPacketOwnedRadioScheduleFromOfficialSession = IsPacketOwnedRadioScheduleOfficialSessionSource(scheduleSource);
 
             string normalizedTrackDescriptor = trackDescriptor?.Trim();
             if (string.IsNullOrWhiteSpace(normalizedTrackDescriptor))
             {
-                const string emptyMessage = "Packet-owned radio schedule did not include a track descriptor.";
+                string emptyMessage = $"Packet-owned radio schedule from {scheduleSource} did not include a track descriptor.";
                 _lastPacketOwnedRadioStatusMessage = emptyMessage;
                 NotifyEventAlarmOwnerActivity("packet-owned radio schedule");
                 ShowUtilityFeedbackMessage(emptyMessage);
@@ -5088,18 +5242,18 @@ namespace HaCreator.MapSimulator
 
             if (IsPacketOwnedRadioPlaying())
             {
-                string ignoreMessage = $"Ignored packet-owned radio schedule for {normalizedTrackDescriptor} because a radio session is already active.";
+                string ignoreMessage = $"Ignored packet-owned radio schedule from {scheduleSource} for {normalizedTrackDescriptor} because a radio session is already active.";
                 _lastPacketOwnedRadioStatusMessage = ignoreMessage;
                 return ignoreMessage;
             }
 
-            SetPacketOwnedRadioScheduleContext(normalizedTrackDescriptor, timeValue, "packet-radio-schedule");
+            SetPacketOwnedRadioScheduleContext(normalizedTrackDescriptor, timeValue, scheduleSource);
 
             if (!TryResolvePacketOwnedRadioTrack(
                 normalizedTrackDescriptor,
                 out PacketOwnedRadioTrackResolution trackResolution))
             {
-                string missingMessage = $"Packet-owned radio track '{normalizedTrackDescriptor}' could not be resolved in the loaded Sound/*.img data.";
+                string missingMessage = $"Packet-owned radio track '{normalizedTrackDescriptor}' from {scheduleSource} could not be resolved in the loaded Sound/*.img data.";
                 _lastPacketOwnedRadioStatusMessage = missingMessage;
                 NotifyEventAlarmOwnerActivity("packet-owned radio schedule");
                 ShowUtilityFeedbackMessage(missingMessage);
@@ -5163,7 +5317,7 @@ namespace HaCreator.MapSimulator
                 _appliedPacketOwnedRadioVolume = 0f;
                 _utilityAudioMixLastTick = startTick;
                 _lastPacketOwnedRadioStatusMessage =
-                    $"Radio play active at {normalizedTimeValue}s via " +
+                    $"Radio play active at {normalizedTimeValue}s from {scheduleSource} via " +
                     $"{RadioOwnerStringPoolText.FormatNotice(PacketOwnedRadioStartStringPoolId, trackResolution.DisplayName, appendFallbackSuffix: true)}.";
                 NotifyEventAlarmOwnerActivity("packet-owned radio schedule");
 
@@ -5176,7 +5330,7 @@ namespace HaCreator.MapSimulator
                     12);
 
                 string message =
-                    $"Started packet-owned radio playback for {trackResolution.DisplayName} " +
+                    $"Started packet-owned radio playback from {scheduleSource} for {trackResolution.DisplayName} " +
                     $"via {FormatPacketOwnedRadioTemplateResolution(PacketOwnedRadioAudioTemplateStringPoolId, normalizedTrackDescriptor, trackResolution.ResolvedAudioDescriptor)}.";
                 ShowUtilityFeedbackMessage(message);
                 return message;
@@ -5522,6 +5676,32 @@ namespace HaCreator.MapSimulator
         private static string FormatPacketOwnedRadioChatMessage(int stringPoolId, string displayName)
         {
             return RadioOwnerStringPoolText.FormatNotice(stringPoolId, displayName, appendFallbackSuffix: true);
+        }
+
+        internal static string ResolvePacketOwnedRadioScheduleSourceLabel(int packetType, string source)
+        {
+            string normalizedSource = string.IsNullOrWhiteSpace(source)
+                ? "simulator-local"
+                : source.Trim();
+            if (packetType == LocalUtilityPacketInboxManager.RadioScheduleClientPacketType)
+            {
+                return IsPacketOwnedRadioScheduleOfficialSessionSource(normalizedSource)
+                    ? $"official-session CUserLocal::OnRadioSchedule({LocalUtilityPacketInboxManager.RadioScheduleClientPacketType})"
+                    : $"client-shaped CUserLocal::OnRadioSchedule({LocalUtilityPacketInboxManager.RadioScheduleClientPacketType}) via {normalizedSource}";
+            }
+
+            if (packetType == LocalUtilityPacketInboxManager.RadioSchedulePacketType)
+            {
+                return $"simulator radio schedule seam({LocalUtilityPacketInboxManager.RadioSchedulePacketType}) via {normalizedSource}";
+            }
+
+            return $"packet-owned radio schedule({packetType}) via {normalizedSource}";
+        }
+
+        internal static bool IsPacketOwnedRadioScheduleOfficialSessionSource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.Trim().StartsWith("official-session", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string FormatPacketOwnedRadioTemplateResolution(int stringPoolId, string trackDescriptor, string resolvedDescriptor)
@@ -9965,8 +10145,7 @@ namespace HaCreator.MapSimulator
                 packetSkillId,
                 packetSkillLevel,
                 normalizedSkillId,
-                IsPacketOwnedTimeBombSkillId,
-                PacketOwnedAuthoredTimeBombSkillIdCandidates.Value);
+                IsPacketOwnedTimeBombSkillId);
         }
 
         internal static int ResolvePacketOwnedTimeBombLocalSkillId(
@@ -9975,33 +10154,11 @@ namespace HaCreator.MapSimulator
             int normalizedSkillId,
             Func<int, bool> isTimeBombSkillId)
         {
-            return ResolvePacketOwnedTimeBombLocalSkillId(
-                packetSkillId,
-                packetSkillLevel,
-                normalizedSkillId,
-                isTimeBombSkillId,
-                Array.Empty<int>());
-        }
-
-        internal static int ResolvePacketOwnedTimeBombLocalSkillId(
-            int packetSkillId,
-            int packetSkillLevel,
-            int normalizedSkillId,
-            Func<int, bool> isTimeBombSkillId,
-            IReadOnlyList<int> authoredFallbackSkillIds)
-        {
             if ((isTimeBombSkillId?.Invoke(packetSkillId) ?? false)
                 || packetSkillLevel > 0
                 || normalizedSkillId != packetSkillId)
             {
                 return normalizedSkillId;
-            }
-
-            if (packetSkillId == PacketOwnedTimeBombAttackPacketType
-                && authoredFallbackSkillIds?.Count == 1
-                && authoredFallbackSkillIds[0] > 0)
-            {
-                return authoredFallbackSkillIds[0];
             }
 
             return packetSkillId;
@@ -10080,55 +10237,6 @@ namespace HaCreator.MapSimulator
                 EnumeratePacketOwnedSkillDescriptionsFromStringCatalog());
         }
 
-        internal static bool IsPacketOwnedTimeBombAuthoredSkillCandidate(bool hasAction, bool hasPrepare, bool hasSpecial)
-        {
-            return hasAction && hasPrepare && hasSpecial;
-        }
-
-        internal static int[] CollectPacketOwnedTimeBombAuthoredSkillIds(
-            IEnumerable<(int SkillId, bool HasAction, bool HasPrepare, bool HasSpecial)> candidates)
-        {
-            if (candidates == null)
-            {
-                return Array.Empty<int>();
-            }
-
-            return candidates
-                .Where(static candidate => candidate.SkillId > 0
-                    && IsPacketOwnedTimeBombAuthoredSkillCandidate(
-                        candidate.HasAction,
-                        candidate.HasPrepare,
-                        candidate.HasSpecial))
-                .Select(static candidate => candidate.SkillId)
-                .Distinct()
-                .OrderBy(static skillId => skillId)
-                .ToArray();
-        }
-
-        internal static int[] CreatePacketOwnedAuthoredTimeBombSkillIdCandidates(
-            IEnumerable<int> candidateSkillIds,
-            Func<int, (bool HasAction, bool HasPrepare, bool HasSpecial)> getBranchCoverage)
-        {
-            int[] authoredSkillIds = CollectPacketOwnedTimeBombAuthoredSkillIds(
-                candidateSkillIds?.Select(skillId =>
-                {
-                    (bool HasAction, bool HasPrepare, bool HasSpecial) coverage = getBranchCoverage?.Invoke(skillId) ?? default;
-                    return (skillId, coverage.HasAction, coverage.HasPrepare, coverage.HasSpecial);
-                }));
-
-            return PacketOwnedSkillAliasCatalog.BuildPreferredAliasCandidates(
-                authoredSkillIds,
-                PacketOwnedCurrentTimeBombSkillId,
-                0);
-        }
-
-        private static int[] CreatePacketOwnedAuthoredTimeBombSkillIdCandidates()
-        {
-            return CreatePacketOwnedAuthoredTimeBombSkillIdCandidates(
-                PacketOwnedTimeBombSkillIdCatalog.Value,
-                TryResolvePacketOwnedTimeBombAuthoredBranchCoverage);
-        }
-
         internal static HashSet<int> CreatePacketOwnedExJablinSkillIdCatalog(
             IEnumerable<KeyValuePair<int, string>> skillNames,
             IEnumerable<KeyValuePair<int, string>> skillDescriptions)
@@ -10188,27 +10296,6 @@ namespace HaCreator.MapSimulator
         private static IEnumerable<KeyValuePair<int, string>> EnumeratePacketOwnedSkillDescriptionsFromStringCatalog()
         {
             return EnumeratePacketOwnedSkillStringsFromStringCatalog("desc", "pdesc");
-        }
-
-        private static (bool HasAction, bool HasPrepare, bool HasSpecial) TryResolvePacketOwnedTimeBombAuthoredBranchCoverage(int skillId)
-        {
-            if (skillId <= 0)
-            {
-                return default;
-            }
-
-            WzImage skillImage = Program.FindImage("Skill", ResolvePacketOwnedTutorSkillImageName(skillId));
-            if (skillImage == null)
-            {
-                return default;
-            }
-
-            skillImage.ParseImage();
-            WzImageProperty skillRoot = skillImage["skill"]?[skillId.ToString(CultureInfo.InvariantCulture)] as WzImageProperty;
-            return (
-                HasAction: skillRoot?["action"] != null,
-                HasPrepare: skillRoot?["prepare"] != null,
-                HasSpecial: skillRoot?["special"] != null);
         }
 
         private static IEnumerable<KeyValuePair<int, string>> EnumeratePacketOwnedSkillStringsFromStringCatalog(params string[] propertyNames)

@@ -136,13 +136,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             "clawCut"
         };
 
-        private static readonly string[] ClientConfirmedMechanicVehicleOneTimeActionNames =
+        private static readonly string[] WzOnlyMechanicVehicleOneTimeActionNames =
+        {
+            "gatlingshot"
+        };
+
+        private static readonly string[] ClientConfirmedMechanicVehicleRenderableOneTimeActionNames =
         {
             "gatlingshot2",
             "drillrush",
             "mbooster",
             "earthslug",
             "rpunch"
+        };
+
+        private static readonly string[] ClientConfirmedMechanicVehicleOwnerOnlyOneTimeActionNames =
+        {
+            // IDA admits raw actions 249 and 251 for vehicle id 1932016, but
+            // Character/TamingMob/01932016 does not publish these roots. Preserve
+            // the known owner without treating the names as renderable mount frames.
+            "giant",
+            "crossRoad"
         };
 
         private static readonly string[] ClientConfirmedMechanicVehicleCurrentActionNames =
@@ -351,18 +365,29 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool IsWzOnlyMechanicVehicleOneTimeActionName(string actionName)
         {
-            return string.Equals(actionName, "gatlingshot", StringComparison.OrdinalIgnoreCase);
+            return ContainsActionName(WzOnlyMechanicVehicleOneTimeActionNames, actionName);
         }
 
         internal static bool IsClientAdmittedMechanicVehicleOneTimeActionName(string actionName)
         {
-            return ContainsActionName(ClientConfirmedMechanicVehicleOneTimeActionNames, actionName);
+            return IsClientAdmittedMechanicVehicleRenderableOneTimeActionName(actionName)
+                   || IsClientAdmittedMechanicVehicleOwnerOnlyOneTimeActionName(actionName);
+        }
+
+        internal static bool IsClientAdmittedMechanicVehicleRenderableOneTimeActionName(string actionName)
+        {
+            return ContainsActionName(ClientConfirmedMechanicVehicleRenderableOneTimeActionNames, actionName);
+        }
+
+        internal static bool IsClientAdmittedMechanicVehicleOwnerOnlyOneTimeActionName(string actionName)
+        {
+            return ContainsActionName(ClientConfirmedMechanicVehicleOwnerOnlyOneTimeActionNames, actionName);
         }
 
         internal static bool IsOverlappingMechanicVehicleOneTimeActionName(string actionName)
         {
             return IsWzOnlyMechanicVehicleOneTimeActionName(actionName)
-                   || IsClientAdmittedMechanicVehicleOneTimeActionName(actionName);
+                   || IsClientAdmittedMechanicVehicleRenderableOneTimeActionName(actionName);
         }
 
         private static bool IsMechanicSkill(int skillId)

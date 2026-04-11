@@ -939,9 +939,80 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = TryApplyRemoteUserPacket(message.PacketType, message.Payload, currentTime, out string detail, sourceTag: message.Source);
+                bool applied = TryApplyRemoteUserOfficialSessionPacketThroughAriantArena(
+                    message,
+                    currentTime,
+                    out string detail);
+                if (!applied)
+                {
+                    applied = TryApplyRemoteUserPacket(
+                        message.PacketType,
+                        message.Payload,
+                        currentTime,
+                        out detail,
+                        sourceTag: message.Source);
+                }
+
                 _remoteUserOfficialSessionBridge.RecordDispatchResult(message, applied, detail);
             }
+        }
+
+        private bool TryApplyRemoteUserOfficialSessionPacketThroughAriantArena(
+            RemoteUserOfficialSessionBridgeMessage message,
+            int currentTime,
+            out string detail)
+        {
+            detail = null;
+            AriantArenaField field = _specialFieldRuntime?.Minigames?.AriantArena;
+            if (field?.IsActive != true
+                || message == null
+                || !TryResolveAriantArenaOfficialRemoteUserPacketType(message.PacketType, out int ariantPacketType))
+            {
+                return false;
+            }
+
+            bool applied = field.TryApplyPacket(
+                ariantPacketType,
+                message.Payload,
+                currentTime,
+                out detail);
+            detail = applied
+                ? $"Ariant Arena accepted live official remote-user packet {ariantPacketType} from {message.Source}."
+                : detail;
+            return applied;
+        }
+
+        internal static bool TryResolveAriantArenaOfficialRemoteUserPacketType(int remoteUserPacketType, out int ariantPacketType)
+        {
+            ariantPacketType = remoteUserPacketType switch
+            {
+                (int)RemoteUserPacketType.UserEnterField => 179,
+                (int)RemoteUserPacketType.UserLeaveField => 180,
+                (int)RemoteUserPacketType.UserMoveOfficial => 210,
+                (int)RemoteUserPacketType.UserAttackOfficial1 => 211,
+                (int)RemoteUserPacketType.UserAttackOfficial2 => 212,
+                (int)RemoteUserPacketType.UserAttackOfficial3 => 213,
+                (int)RemoteUserPacketType.UserAttackOfficial4 => 214,
+                (int)RemoteUserPacketType.UserPreparedSkillOfficial => 215,
+                (int)RemoteUserPacketType.UserMovingShootAttackPrepareOfficial => 216,
+                (int)RemoteUserPacketType.UserPreparedSkillClearOfficial => 217,
+                (int)RemoteUserPacketType.UserHitOfficial => 218,
+                (int)RemoteUserPacketType.UserEmotionOfficial => 219,
+                (int)RemoteUserPacketType.UserActiveEffectItemOfficial => 220,
+                (int)RemoteUserPacketType.UserUpgradeTombOfficial => 221,
+                (int)RemoteUserPacketType.UserPortableChairOfficial => 222,
+                (int)RemoteUserPacketType.UserAvatarModified => 223,
+                (int)RemoteUserPacketType.UserEffectOfficial => 224,
+                (int)RemoteUserPacketType.UserTemporaryStatSet => 225,
+                (int)RemoteUserPacketType.UserTemporaryStatReset => 226,
+                (int)RemoteUserPacketType.UserReceiveHpOfficial => 227,
+                (int)RemoteUserPacketType.UserGuildNameChangedOfficial => 228,
+                (int)RemoteUserPacketType.UserGuildMarkChangedOfficial => 229,
+                (int)RemoteUserPacketType.UserThrowGrenadeOfficial => 230,
+                _ => 0
+            };
+
+            return ariantPacketType != 0;
         }
 
         private ChatCommandHandler.CommandResult HandleRemoteUserSessionCommand(string[] args)

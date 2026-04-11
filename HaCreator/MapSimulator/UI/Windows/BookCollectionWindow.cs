@@ -257,14 +257,9 @@ namespace HaCreator.MapSimulator.UI
             DeleteSearchSelectionIfAny();
             int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _searchCursorPosition, 0, _searchQuery.Length);
             ClearCompositionText();
-            string updatedText = _searchQuery.Insert(insertionIndex, text);
-            if (updatedText.Length > MaxSearchLength)
-            {
-                updatedText = updatedText[..MaxSearchLength];
-            }
-
+            (string updatedText, int updatedCursorPosition) = InsertSearchTextWithClientLimit(_searchQuery, insertionIndex, text, MaxSearchLength);
             _searchQuery = updatedText;
-            _searchCursorPosition = Math.Clamp(insertionIndex + text.Length, 0, _searchQuery.Length);
+            _searchCursorPosition = updatedCursorPosition;
             OnSearchQueryChanged();
             UpdateImePresentationPlacement();
         }
@@ -2811,14 +2806,9 @@ namespace HaCreator.MapSimulator.UI
 
                 DeleteSearchSelectionIfAny();
                 int insertionIndex = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
-                string updatedText = _searchQuery.Insert(insertionIndex, normalized);
-                if (updatedText.Length > MaxSearchLength)
-                {
-                    updatedText = updatedText[..MaxSearchLength];
-                }
-
+                (string updatedText, int updatedCursorPosition) = InsertSearchTextWithClientLimit(_searchQuery, insertionIndex, normalized, MaxSearchLength);
                 _searchQuery = updatedText;
-                _searchCursorPosition = Math.Clamp(insertionIndex + normalized.Length, 0, _searchQuery.Length);
+                _searchCursorPosition = updatedCursorPosition;
                 OnSearchQueryChanged();
             }
             catch
@@ -2828,6 +2818,37 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private bool HasSearchSelection => GetSearchSelectionLength() > 0;
+
+        internal static (string Text, int CursorPosition) InsertSearchTextWithClientLimit(
+            string currentText,
+            int insertionIndex,
+            string insertionText,
+            int maxLength)
+        {
+            string safeCurrentText = currentText ?? string.Empty;
+            string safeInsertionText = insertionText ?? string.Empty;
+            int safeMaxLength = Math.Max(0, maxLength);
+            int safeInsertionIndex = Math.Clamp(insertionIndex, 0, safeCurrentText.Length);
+            if (safeMaxLength <= 0)
+            {
+                return (string.Empty, 0);
+            }
+
+            if (safeCurrentText.Length >= safeMaxLength)
+            {
+                return (safeCurrentText[..safeMaxLength], Math.Min(safeInsertionIndex, safeMaxLength));
+            }
+
+            int acceptedLength = Math.Min(safeInsertionText.Length, safeMaxLength - safeCurrentText.Length);
+            if (acceptedLength <= 0)
+            {
+                return (safeCurrentText, safeInsertionIndex);
+            }
+
+            string acceptedText = safeInsertionText[..acceptedLength];
+            string updatedText = safeCurrentText.Insert(safeInsertionIndex, acceptedText);
+            return (updatedText, safeInsertionIndex + acceptedText.Length);
+        }
 
         private int GetSearchSelectionStart()
         {

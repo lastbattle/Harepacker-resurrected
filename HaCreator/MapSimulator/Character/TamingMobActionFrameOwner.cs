@@ -422,6 +422,12 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (VehicleItemId == MechanicTamingMobItemId
+                && ClientOwnedVehicleSkillClassifier.IsClientAdmittedMechanicVehicleOwnerOnlyOneTimeActionName(actionName))
+            {
+                return false;
+            }
+
             if (MechanicExclusiveActionNames.Contains(actionName))
             {
                 return VehicleItemId == MechanicTamingMobItemId;

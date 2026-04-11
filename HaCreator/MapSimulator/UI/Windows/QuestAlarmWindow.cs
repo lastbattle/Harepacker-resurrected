@@ -425,7 +425,7 @@ namespace HaCreator.MapSimulator.UI
 
                 DrawInlineDelete(sprite, deleteRect, entry.QuestId);
 
-                if (isSelected)
+                if (rowRect.Bottom > titleRect.Bottom)
                 {
                     Rectangle detailRect = new Rectangle(Position.X + ClientDetailIndent, titleRect.Bottom, ClientDetailWidth, Math.Max(0, rowRect.Bottom - titleRect.Bottom));
                     DrawSelectedDetail(sprite, detailRect, entry);
@@ -1596,7 +1596,7 @@ namespace HaCreator.MapSimulator.UI
         private int GetRowHeight(QuestAlarmEntrySnapshot entry, bool isSelected)
         {
             int rowHeight = ClientTitleHeight;
-            if (!isSelected || entry == null)
+            if (entry == null)
             {
                 return rowHeight;
             }

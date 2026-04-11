@@ -635,6 +635,12 @@ namespace HaCreator.MapSimulator.Fields
                 packet.PartyId,
                 phase,
                 currentTime);
+
+            if (phase == RemoteOpenGateVisualPhase.Stable)
+            {
+                PromoteRemoteOpenGatePartnerAfterPartnerCreate(packet.OwnerCharacterId, packet.IsFirstSlot, currentTime);
+            }
+
             SyncRemoteOpenGateVisuals();
         }
 
@@ -667,6 +673,22 @@ namespace HaCreator.MapSimulator.Fields
         private void RestartRemoteOpenGatePartnerAfterPartnerLoss(uint ownerCharacterId, bool removedFirstSlot, int currentTime)
         {
             RemoteOpenGateKey partnerKey = new(ownerCharacterId, !removedFirstSlot);
+            if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner)
+                || partner.Phase == RemoteOpenGateVisualPhase.Removing)
+            {
+                return;
+            }
+
+            _remoteOpenGates[partnerKey] = partner with
+            {
+                Phase = RemoteOpenGateVisualPhase.Stable,
+                PhaseStartedAt = currentTime
+            };
+        }
+
+        private void PromoteRemoteOpenGatePartnerAfterPartnerCreate(uint ownerCharacterId, bool createdFirstSlot, int currentTime)
+        {
+            RemoteOpenGateKey partnerKey = new(ownerCharacterId, !createdFirstSlot);
             if (!_remoteOpenGates.TryGetValue(partnerKey, out RemoteOpenGateState partner)
                 || partner.Phase == RemoteOpenGateVisualPhase.Removing)
             {
@@ -2301,9 +2323,9 @@ namespace HaCreator.MapSimulator.Fields
             bool hasPartner,
             RemoteOpenGateVisualPhase partnerPhase)
         {
-            return phase != RemoteOpenGateVisualPhase.Removing
+            return phase == RemoteOpenGateVisualPhase.Stable
                    && hasPartner
-                   && partnerPhase != RemoteOpenGateVisualPhase.Removing;
+                   && partnerPhase == RemoteOpenGateVisualPhase.Stable;
         }
 
         private static BaseDXDrawableItem CreateRemoteOpenGateDrawable(
@@ -3427,6 +3449,14 @@ namespace HaCreator.MapSimulator.Fields
         }
 
         internal static RemoteOpenGateVisualPhase ResolveRemoteOpenGatePartnerLossPhaseForTesting(
+            RemoteOpenGateVisualPhase partnerPhase)
+        {
+            return partnerPhase == RemoteOpenGateVisualPhase.Removing
+                ? partnerPhase
+                : RemoteOpenGateVisualPhase.Stable;
+        }
+
+        internal static RemoteOpenGateVisualPhase ResolveRemoteOpenGatePartnerCreatePhaseForTesting(
             RemoteOpenGateVisualPhase partnerPhase)
         {
             return partnerPhase == RemoteOpenGateVisualPhase.Removing

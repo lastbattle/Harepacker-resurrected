@@ -529,12 +529,15 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleTradingRoomSessionCommand(string[] args, int actionIndex)
         {
-            const string sessionUsage = "Usage: /socialroom tradingroom [packet] session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]";
+            const string sessionUsage = "Usage: /socialroom tradingroom [packet] session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]";
             string sessionAction = args.Length > actionIndex + 1 ? args[actionIndex + 1] : "status";
             switch (sessionAction.ToLowerInvariant())
             {
                 case "status":
                     return ChatCommandHandler.CommandResult.Info(DescribeTradingRoomOfficialSessionBridgeStatus());
+
+                case "opcodes":
+                    return ChatCommandHandler.CommandResult.Info(_tradingRoomOfficialSessionBridge.DescribeTradingRoomOpcodeMap());
 
                 case "discover":
                     if (args.Length <= actionIndex + 2
@@ -8750,7 +8753,7 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(tradeMesoMessage)
                                         : ChatCommandHandler.CommandResult.Error(tradeMesoMessage);
                                 case "lock":
-                                    return Dispatch(SocialRoomPacketType.LockTrade, out string lockMessage)
+                                    return TrySendTradingRoomTradeRequest(runtime, out string lockMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(lockMessage)
                                         : ChatCommandHandler.CommandResult.Error(lockMessage);
                                 case "accept":
@@ -8846,7 +8849,7 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(resetMessage)
                                         : ChatCommandHandler.CommandResult.Error(resetMessage);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|exceedlimit|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|inbox [status|start [port]|stop]|session [status|opcodes|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|replay <historyIndex>|sendraw <hex>|start <listenPort> <serverHost> <serverPort> <inboundOpcode>|startauto <listenPort> <remotePort> <inboundOpcode> [processName|pid] [localPort]|stop]|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|exceedlimit|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
                     }
@@ -9271,7 +9274,7 @@ namespace HaCreator.MapSimulator
                                     }
 
                                     return ChatCommandHandler.CommandResult.Ok(
-                                        _familyChartRuntime.SetAuthorityProfileFromPacket(args[2]));
+                                        _familyChartRuntime.SetAuthorityProfileFromPacket(args.Skip(2).ToArray()));
                                 case "localchart":
                                     if (args.Length < 3)
                                     {

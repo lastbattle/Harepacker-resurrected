@@ -146,6 +146,8 @@ namespace HaCreator.MapSimulator.Interaction
             int todayReputation = _lastInfoPacketSnapshot?.TodayReputation ?? localPlayer?.TodayReputation ?? 0;
             int juniorCount = _lastInfoPacketSnapshot?.ChildCount ?? Math.Max(0, localPlayer?.Children.Count ?? 0);
             int juniorLimit = Math.Max(0, _lastInfoPacketSnapshot?.ChildLimit ?? 2);
+            Dictionary<int, int> slotMembers = BuildTreeLayout(selectedMember);
+            FamilyMemberState treeTitleMember = TryGetTreeMember(slotMembers, 0);
 
             return new FamilyChartSnapshot
             {
@@ -154,7 +156,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SelectedMemberName = localPlayer?.Name ?? "Player",
                 SelectedRank = GetRankLabel(localPlayer),
                 LocationSummary = localPlayer?.LocationSummary ?? _locationSummary,
-                TotalMembers = _members.Count,
+                TotalMembers = BuildTreeFamilyCount(slotMembers, treeTitleMember),
                 JuniorCount = juniorCount,
                 JuniorLimit = juniorLimit,
                 CurrentReputation = currentReputation,
@@ -1763,6 +1765,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return _textResources.FormatJuniorCount(Math.Max(0, juniorCount));
+        }
+
+        private int BuildTreeFamilyCount(Dictionary<int, int> slotMembers, FamilyMemberState treeTitleMember)
+        {
+            if (treeTitleMember == null && !slotMembers.ContainsKey(0))
+            {
+                return 0;
+            }
+
+            return TryGetPacketChartStatistic(-1, out int packetFamilyCount)
+                ? Math.Max(0, packetFamilyCount)
+                : _members.Count;
         }
 
         private string GetClientPlaceholderText(int slotIndex)

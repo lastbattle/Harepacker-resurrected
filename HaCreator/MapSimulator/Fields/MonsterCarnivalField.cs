@@ -112,7 +112,7 @@ namespace HaCreator.MapSimulator.Fields
 
     public readonly record struct MonsterCarnivalSpawnPoint(int Index, int X, int Y, int Foothold, int Cy);
 
-    public readonly record struct MonsterCarnivalGuardianSpawnPoint(int Index, int X, int Y, int Facing);
+    public readonly record struct MonsterCarnivalGuardianSpawnPoint(int Index, int X, int Y, int Facing, MonsterCarnivalTeam? Team = null);
 
     public sealed class MonsterCarnivalSummonedMobState
     {
@@ -768,7 +768,8 @@ namespace HaCreator.MapSimulator.Fields
                     ParseChildIndex(child.Name, positions.Count),
                     ReadInt(child["x"]),
                     ReadInt(child["y"]),
-                    ReadInt(child["f"])));
+                    ReadInt(child["f"]),
+                    TryReadTeam(child["team"], out MonsterCarnivalTeam team) ? team : null));
             }
 
             return positions;
@@ -889,6 +890,11 @@ namespace HaCreator.MapSimulator.Fields
                     reactorImage.ParseImage();
                 }
 
+                if (TryResolveGuardianEventTransitionCount(reactorImage, out int transitionCount))
+                {
+                    return transitionCount;
+                }
+
                 int numericStateCount = reactorImage.WzProperties
                     .Select(property => property?.Name)
                     .Count(name => int.TryParse(name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _));
@@ -898,6 +904,50 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return 1;
             }
+        }
+
+        private static bool TryResolveGuardianEventTransitionCount(WzImage reactorImage, out int transitionCount)
+        {
+            transitionCount = 0;
+            if (reactorImage == null)
+            {
+                return false;
+            }
+
+            int state = 1;
+            var visitedStates = new HashSet<int>();
+            while (visitedStates.Add(state))
+            {
+                WzImageProperty stateProperty = reactorImage[state.ToString(CultureInfo.InvariantCulture)];
+                if (!TryReadFirstEventTargetState(stateProperty, out int nextState))
+                {
+                    break;
+                }
+
+                transitionCount++;
+                if (nextState == state)
+                {
+                    break;
+                }
+
+                state = nextState;
+            }
+
+            return transitionCount > 0;
+        }
+
+        private static bool TryReadFirstEventTargetState(WzImageProperty stateProperty, out int nextState)
+        {
+            nextState = 0;
+            WzImageProperty eventProperty = stateProperty?["event"];
+            WzImageProperty firstEventProperty = eventProperty?["0"];
+            if (firstEventProperty == null)
+            {
+                return false;
+            }
+
+            nextState = ReadInt(firstEventProperty["state"], -1);
+            return nextState >= 0;
         }
 
         private static WzImage FindImageSafe(string category, string imageName)
@@ -944,6 +994,19 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return property.GetString();
             }
+        }
+
+        private static bool TryReadTeam(WzImageProperty property, out MonsterCarnivalTeam team)
+        {
+            int rawTeam = ReadInt(property, -1);
+            if (rawTeam is 0 or 1)
+            {
+                team = (MonsterCarnivalTeam)rawTeam;
+                return true;
+            }
+
+            team = MonsterCarnivalTeam.Team0;
+            return false;
         }
 
         private static string NormalizeMapLabel(string preferred, string fallback)

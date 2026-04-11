@@ -823,6 +823,7 @@ namespace HaCreator.MapSimulator.Character
         public bool IsNoMoveToLocker { get; set; }
         public int? OwnerAccountId { get; set; }
         public int? OwnerCharacterId { get; set; }
+        public int? ClientItemToken { get; set; }
         public bool IsCashOwnershipLocked { get; set; }
         public bool IsTimeLimited { get; set; }
         public string PotentialTierText { get; set; }
@@ -900,6 +901,7 @@ namespace HaCreator.MapSimulator.Character
                 IsNoMoveToLocker = IsNoMoveToLocker,
                 OwnerAccountId = OwnerAccountId,
                 OwnerCharacterId = OwnerCharacterId,
+                ClientItemToken = ClientItemToken,
                 IsCashOwnershipLocked = IsCashOwnershipLocked,
                 IsTimeLimited = IsTimeLimited,
                 PotentialTierText = PotentialTierText,

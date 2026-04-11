@@ -279,6 +279,14 @@ namespace HaCreator.MapSimulator.Fields
                 return fieldTypeRestrictionMessage;
             }
 
+            // Client evidence: CUserLocal::DoActiveSkill rejects Evan current jobs
+            // in FIELDTYPE_NODRAGON before dispatching the requested skill family.
+            if (mapInfo.fieldType == FieldType.FIELDTYPE_NODRAGON
+                && IsEvanJobId(currentJobId > 0 ? currentJobId : skill.Job))
+            {
+                return "Evan characters cannot use active skills in no-dragon fields.";
+            }
+
             if (runtimeState?.CoconutBasicActionOwned == true)
             {
                 return "Skills cannot be used while the Coconut minigame owns basic attacks.";
@@ -722,6 +730,12 @@ namespace HaCreator.MapSimulator.Fields
         {
             return mapInfo?.fieldType == FieldType.FIELDTYPE_NODRAGON
                    || mapInfo?.vanishDragon == true;
+        }
+
+        private static bool IsEvanJobId(int jobId)
+        {
+            jobId = Math.Abs(jobId);
+            return jobId == 2001 || jobId / 100 == 22;
         }
 
         private static bool IsEvanDragonMagicAttack(SkillData skill)

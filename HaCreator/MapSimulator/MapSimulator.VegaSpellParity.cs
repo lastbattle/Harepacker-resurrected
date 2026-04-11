@@ -860,7 +860,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int equipItemToken = BuildSyntheticVegaEquippedItemToken(request.Slot, request.EquipItemId, encodedEquipPosition);
+            CharacterPart equippedPart = null;
+            _playerManager?.Player?.Build?.Equipment?.TryGetValue(request.Slot, out equippedPart);
+            int equipItemToken = BuildVegaEquippedItemToken(
+                request.Slot,
+                request.EquipItemId,
+                encodedEquipPosition,
+                equippedPart);
             if (!TryResolveVegaModifierSlotPosition(
                     inventoryWindow,
                     request.ModifierItemId,
@@ -1053,6 +1059,20 @@ namespace HaCreator.MapSimulator
                 | (itemId & 0x00FFFFFF);
         }
 
+        private static int BuildVegaEquippedItemToken(
+            EquipSlot slot,
+            int itemId,
+            int encodedEquipPosition,
+            CharacterPart equippedPart)
+        {
+            if (TryResolveClientAuthoredVegaEquippedItemToken(equippedPart, out int itemToken))
+            {
+                return itemToken;
+            }
+
+            return BuildSyntheticVegaEquippedItemToken(slot, itemId, encodedEquipPosition);
+        }
+
         private static int BuildSyntheticVegaInventoryItemToken(
             InventoryType inventoryType,
             int slotIndex,
@@ -1117,6 +1137,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (slot.ClientItemToken.GetValueOrDefault() != 0)
+            {
+                itemToken = slot.ClientItemToken.Value;
+                return true;
+            }
+
             if (slot.PendingRequestId != 0)
             {
                 itemToken = slot.PendingRequestId;
@@ -1127,6 +1153,18 @@ namespace HaCreator.MapSimulator
             {
                 itemToken = unchecked((int)cashItemSerialNumber);
                 return itemToken != 0;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveClientAuthoredVegaEquippedItemToken(CharacterPart equippedPart, out int itemToken)
+        {
+            itemToken = 0;
+            if (equippedPart?.ClientItemToken.GetValueOrDefault() != 0)
+            {
+                itemToken = equippedPart.ClientItemToken.Value;
+                return true;
             }
 
             return false;

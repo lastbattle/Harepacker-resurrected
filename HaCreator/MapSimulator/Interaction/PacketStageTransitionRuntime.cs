@@ -2104,32 +2104,48 @@ namespace HaCreator.MapSimulator.Interaction
             ulong characterDataFlags,
             PacketCharacterDataSnapshot snapshot)
         {
-            IReadOnlyList<byte[]> miniGameRecords = Array.Empty<byte[]>();
-            IReadOnlyList<byte[]> coupleRecords = Array.Empty<byte[]>();
-            IReadOnlyList<byte[]> friendRecords = Array.Empty<byte[]>();
-            IReadOnlyList<byte[]> marriageRecords = Array.Empty<byte[]>();
+            IReadOnlyList<PacketCharacterDataFixedClientRecord> miniGameRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
+            IReadOnlyList<PacketCharacterDataFixedClientRecord> coupleRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
+            IReadOnlyList<PacketCharacterDataFixedClientRecord> friendRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
+            IReadOnlyList<PacketCharacterDataFixedClientRecord> marriageRecords = Array.Empty<PacketCharacterDataFixedClientRecord>();
             if ((characterDataFlags & CharacterDataMiniGameRecordFlag) != 0)
             {
-                miniGameRecords = ReadCharacterDataFixedRecordGroup(reader, CharacterDataMiniGameRecordByteLength);
+                miniGameRecords = ReadCharacterDataFixedRecordGroup(
+                    reader,
+                    PacketCharacterDataFixedClientRecord.MiniGameOwner,
+                    CharacterDataMiniGameRecordByteLength);
             }
 
             if ((characterDataFlags & CharacterDataRelationshipRecordFlag) != 0)
             {
-                coupleRecords = ReadCharacterDataFixedRecordGroup(reader, CharacterDataCoupleRecordByteLength);
-                friendRecords = ReadCharacterDataFixedRecordGroup(reader, CharacterDataFriendRecordByteLength);
-                marriageRecords = ReadCharacterDataFixedRecordGroup(reader, CharacterDataMarriageRecordByteLength);
+                coupleRecords = ReadCharacterDataFixedRecordGroup(
+                    reader,
+                    PacketCharacterDataFixedClientRecord.CoupleOwner,
+                    CharacterDataCoupleRecordByteLength);
+                friendRecords = ReadCharacterDataFixedRecordGroup(
+                    reader,
+                    PacketCharacterDataFixedClientRecord.FriendOwner,
+                    CharacterDataFriendRecordByteLength);
+                marriageRecords = ReadCharacterDataFixedRecordGroup(
+                    reader,
+                    PacketCharacterDataFixedClientRecord.MarriageOwner,
+                    CharacterDataMarriageRecordByteLength);
             }
 
             return snapshot with
             {
                 MiniGameRecordCount = miniGameRecords.Count,
-                MiniGameRecords = miniGameRecords,
+                MiniGameRecordEntries = miniGameRecords,
+                MiniGameRecords = ExtractFixedClientRecordBytes(miniGameRecords),
                 CoupleRecordCount = coupleRecords.Count,
-                CoupleRecords = coupleRecords,
+                CoupleRecordEntries = coupleRecords,
+                CoupleRecords = ExtractFixedClientRecordBytes(coupleRecords),
                 FriendRecordCount = friendRecords.Count,
-                FriendRecords = friendRecords,
+                FriendRecordEntries = friendRecords,
+                FriendRecords = ExtractFixedClientRecordBytes(friendRecords),
                 MarriageRecordCount = marriageRecords.Count,
-                MarriageRecords = marriageRecords
+                MarriageRecordEntries = marriageRecords,
+                MarriageRecords = ExtractFixedClientRecordBytes(marriageRecords)
             };
         }
 
@@ -2159,15 +2175,18 @@ namespace HaCreator.MapSimulator.Interaction
             return bytes;
         }
 
-        private static IReadOnlyList<byte[]> ReadCharacterDataFixedRecordGroup(BinaryReader reader, int recordByteLength)
+        private static IReadOnlyList<PacketCharacterDataFixedClientRecord> ReadCharacterDataFixedRecordGroup(
+            BinaryReader reader,
+            string clientOwner,
+            int recordByteLength)
         {
             ushort count = reader.ReadUInt16();
             if (count <= 0)
             {
-                return Array.Empty<byte[]>();
+                return Array.Empty<PacketCharacterDataFixedClientRecord>();
             }
 
-            byte[][] records = new byte[count][];
+            PacketCharacterDataFixedClientRecord[] records = new PacketCharacterDataFixedClientRecord[count];
             for (int i = 0; i < count; i++)
             {
                 byte[] bytes = reader.ReadBytes(recordByteLength);
@@ -2176,10 +2195,27 @@ namespace HaCreator.MapSimulator.Interaction
                     throw new EndOfStreamException("Character-data fixed record ended before all bytes could be consumed.");
                 }
 
-                records[i] = bytes;
+                records[i] = new PacketCharacterDataFixedClientRecord(clientOwner, recordByteLength, bytes);
             }
 
             return records;
+        }
+
+        private static IReadOnlyList<byte[]> ExtractFixedClientRecordBytes(
+            IReadOnlyList<PacketCharacterDataFixedClientRecord> records)
+        {
+            if (records == null || records.Count == 0)
+            {
+                return Array.Empty<byte[]>();
+            }
+
+            byte[][] rawRecords = new byte[records.Count][];
+            for (int i = 0; i < records.Count; i++)
+            {
+                rawRecords[i] = records[i].RawBytes;
+            }
+
+            return rawRecords;
         }
 
         private static IReadOnlyList<PacketCharacterDataNewYearCardRecord> ReadCharacterDataNewYearCardRecords(BinaryReader reader)
@@ -2490,6 +2526,19 @@ namespace HaCreator.MapSimulator.Interaction
         int Key,
         int Value);
 
+    internal readonly record struct PacketCharacterDataFixedClientRecord(
+        string ClientOwner,
+        int ClientByteLength,
+        byte[] RawBytes)
+    {
+        internal const string MiniGameOwner = "GW_MiniGameRecord::Decode";
+        internal const string CoupleOwner = "GW_CoupleRecord::Decode";
+        internal const string FriendOwner = "GW_FriendRecord::Decode";
+        internal const string MarriageOwner = "GW_MarriageRecord::Decode";
+
+        internal int RawByteCount => RawBytes?.Length ?? 0;
+    }
+
     internal readonly record struct PacketCharacterDataNewYearCardRecord(
         int SerialNumber,
         int SenderCharacterId,
@@ -2617,12 +2666,16 @@ namespace HaCreator.MapSimulator.Interaction
         IReadOnlyList<int> RegularMapTransferFields = null,
         IReadOnlyList<int> ContinentMapTransferFields = null,
         int MiniGameRecordCount = 0,
+        IReadOnlyList<PacketCharacterDataFixedClientRecord> MiniGameRecordEntries = null,
         IReadOnlyList<byte[]> MiniGameRecords = null,
         int CoupleRecordCount = 0,
+        IReadOnlyList<PacketCharacterDataFixedClientRecord> CoupleRecordEntries = null,
         IReadOnlyList<byte[]> CoupleRecords = null,
         int FriendRecordCount = 0,
+        IReadOnlyList<PacketCharacterDataFixedClientRecord> FriendRecordEntries = null,
         IReadOnlyList<byte[]> FriendRecords = null,
         int MarriageRecordCount = 0,
+        IReadOnlyList<PacketCharacterDataFixedClientRecord> MarriageRecordEntries = null,
         IReadOnlyList<byte[]> MarriageRecords = null,
         int NewYearCardRecordCount = 0,
         IReadOnlyList<PacketCharacterDataNewYearCardRecord> NewYearCardRecords = null,

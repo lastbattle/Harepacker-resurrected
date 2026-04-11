@@ -1673,13 +1673,81 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            skill.AvatarOverlayEffect = LoadAvatarEffectAnimation(skillNode, "special");
-            skill.AvatarUnderFaceEffect = LoadAvatarEffectAnimation(skillNode, "special0");
+            AssignPersistentAvatarEffectPlane(
+                skill,
+                LoadAvatarEffectAnimation(skillNode, "special"),
+                defaultUnderFace: false);
+            AssignPersistentAvatarEffectPlane(
+                skill,
+                LoadAvatarEffectAnimation(skillNode, "special0"),
+                defaultUnderFace: true);
             AssignSuddenDeathRepeatAvatarEffectPlane(skill, LoadSuddenDeathRepeatAnimation(skill, skillNode));
             skill.AvatarLadderEffect = LoadAvatarEffectAnimation(skillNode, "back");
-            skill.AvatarOverlayFinishEffect = LoadAvatarEffectAnimation(skillNode, "finish");
-            skill.AvatarUnderFaceFinishEffect = LoadAvatarEffectAnimation(skillNode, "finish0");
+            AssignPersistentAvatarFinishEffectPlane(
+                skill,
+                LoadAvatarEffectAnimation(skillNode, "finish"),
+                defaultUnderFace: false);
+            AssignPersistentAvatarFinishEffectPlane(
+                skill,
+                LoadAvatarEffectAnimation(skillNode, "finish0"),
+                defaultUnderFace: true);
             skill.AvatarLadderFinishEffect = LoadAvatarEffectAnimation(skillNode, "back_finish");
+        }
+
+        internal static void AssignPersistentAvatarEffectPlaneForTesting(
+            SkillData skill,
+            SkillAnimation animation,
+            bool defaultUnderFace)
+        {
+            AssignPersistentAvatarEffectPlane(skill, animation, defaultUnderFace);
+        }
+
+        private static void AssignPersistentAvatarEffectPlane(
+            SkillData skill,
+            SkillAnimation animation,
+            bool defaultUnderFace)
+        {
+            if (skill == null || animation == null)
+            {
+                return;
+            }
+
+            if (defaultUnderFace || ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation))
+            {
+                skill.AvatarUnderFaceEffect ??= animation;
+                skill.AvatarUnderFaceSecondaryEffect ??= animation == skill.AvatarUnderFaceEffect ? null : animation;
+                return;
+            }
+
+            skill.AvatarOverlayEffect ??= animation;
+            skill.AvatarOverlaySecondaryEffect ??= animation == skill.AvatarOverlayEffect ? null : animation;
+        }
+
+        internal static void AssignPersistentAvatarFinishEffectPlaneForTesting(
+            SkillData skill,
+            SkillAnimation animation,
+            bool defaultUnderFace)
+        {
+            AssignPersistentAvatarFinishEffectPlane(skill, animation, defaultUnderFace);
+        }
+
+        private static void AssignPersistentAvatarFinishEffectPlane(
+            SkillData skill,
+            SkillAnimation animation,
+            bool defaultUnderFace)
+        {
+            if (skill == null || animation == null)
+            {
+                return;
+            }
+
+            if (defaultUnderFace || ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation))
+            {
+                skill.AvatarUnderFaceFinishEffect ??= animation;
+                return;
+            }
+
+            skill.AvatarOverlayFinishEffect ??= animation;
         }
 
         internal static void AssignSuddenDeathRepeatAvatarEffectPlaneForTesting(
@@ -2691,8 +2759,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            if (GetInt(pieceOwnerNode, "zigzag") != 0)
+            {
+                AppendClientZigZagShadowPartnerActionPieces(pieces);
+            }
+
             piecePlan = pieces.AsReadOnly();
             return true;
+        }
+
+        private static void AppendClientZigZagShadowPartnerActionPieces(
+            List<ShadowPartnerClientActionResolver.ShadowPartnerActionPiece> pieces)
+        {
+            if (pieces == null || pieces.Count < 3)
+            {
+                return;
+            }
+
+            int originalCount = pieces.Count;
+            int nextSlotIndex = pieces.Max(static piece => piece.SlotIndex) + 1;
+            for (int sourceIndex = originalCount - 2; sourceIndex >= 1; sourceIndex--)
+            {
+                ShadowPartnerClientActionResolver.ShadowPartnerActionPiece sourcePiece = pieces[sourceIndex];
+                pieces.Add(new ShadowPartnerClientActionResolver.ShadowPartnerActionPiece(
+                    nextSlotIndex++,
+                    sourcePiece.PieceActionName,
+                    0,
+                    sourcePiece.DelayOverrideMs,
+                    sourcePiece.Flip,
+                    sourcePiece.Move,
+                    sourcePiece.RotationDegrees));
+            }
         }
 
         private static int ResolveShadowPartnerClientActionPieceSlotIndex(string pieceName, int fallbackSlotIndex)
@@ -3099,6 +3196,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             skill.SummonSpawnDistanceX = movementProfile.SpawnDistanceX;
 
             bool standaloneSummonRoot = LooksLikeStandaloneSummonSourceProperty(summonNode);
+            LoadSummonOwnedEffectAnimations(skill, summonNode);
 
             SkillAnimation directAnimation = GetOrLoadSummonActionAnimation(skill, summonNode, "summon");
             RegisterSummonActionAnimation(skill, "summon", directAnimation);
@@ -3310,6 +3408,31 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (!string.IsNullOrWhiteSpace(attackBranchName))
             {
                 PopulateSummonHitTimingMetadata(skill, attackBranchName, hitNode);
+            }
+        }
+
+        private void LoadSummonOwnedEffectAnimations(SkillData skill, WzImageProperty summonNode)
+        {
+            if (skill == null || summonNode == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty branchNode in summonNode.WzProperties)
+            {
+                if (branchNode == null || !IsClientSummonOwnedEffectBranchName(branchNode.Name))
+                {
+                    continue;
+                }
+
+                SkillAnimation animation = LoadSkillAnimation(branchNode, branchNode.Name);
+                if (animation?.Frames.Count <= 0)
+                {
+                    continue;
+                }
+
+                animation.Loop = IsClientSummonOwnedLoopingEffectBranchName(branchNode.Name) || animation.Loop;
+                skill.SummonNamedAnimations[branchNode.Name] = animation;
             }
         }
 
@@ -4084,6 +4207,20 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return !string.IsNullOrWhiteSpace(actionKey)
                 && actionKey.IndexOf('/') < 0;
+        }
+
+        internal static bool IsClientSummonOwnedEffectBranchName(string branchName)
+        {
+            return string.Equals(branchName, "effect", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "effect0", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "repeat", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "repeat0", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsClientSummonOwnedLoopingEffectBranchName(string branchName)
+        {
+            return string.Equals(branchName, "repeat", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(branchName, "repeat0", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<int> EnumerateSummonActionCacheLevels(SkillData skill)
@@ -6815,7 +6952,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (levelData == null || node == null)
                 return;
 
-            levelData.ACC = PreferPrimaryStat(levelData.ACC, GetInt(node, "ar", 0, level));
+            int accuracyRateAlias = GetInt(node, "ar", 0, level);
+            if (ResolveDescriptionBackedNamedPercentAlias(skill, "#ar", accuracyRateAlias, "accuracy") > 0)
+            {
+                levelData.AccuracyPercent = PreferPrimaryStat(levelData.AccuracyPercent, accuracyRateAlias);
+            }
+            else
+            {
+                levelData.ACC = PreferPrimaryStat(levelData.ACC, accuracyRateAlias);
+            }
+
             levelData.ACC = PreferPrimaryStat(levelData.ACC, GetInt(node, "accX", 0, level));
             levelData.PAD = PreferPrimaryStat(levelData.PAD, GetInt(node, "padX", 0, level));
             levelData.MAD = PreferPrimaryStat(levelData.MAD, GetInt(node, "madX", 0, level));
@@ -6825,7 +6971,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.DEX = PreferPrimaryStat(levelData.DEX, GetInt(node, "dexX", 0, level));
             levelData.INT = PreferPrimaryStat(levelData.INT, GetInt(node, "intX", 0, level));
             levelData.LUK = PreferPrimaryStat(levelData.LUK, GetInt(node, "lukX", 0, level));
-            levelData.EVA = PreferPrimaryStat(levelData.EVA, GetInt(node, "er", 0, level));
+            int avoidabilityRateAlias = GetInt(node, "er", 0, level);
+            if (ResolveDescriptionBackedNamedPercentAlias(
+                    skill,
+                    "#er",
+                    avoidabilityRateAlias,
+                    "avoidability",
+                    "dodge chance",
+                    "enemy attack avoidance rate",
+                    "base avoidability") > 0)
+            {
+                levelData.AvoidabilityPercent = PreferPrimaryStat(levelData.AvoidabilityPercent, avoidabilityRateAlias);
+            }
+            else
+            {
+                levelData.EVA = PreferPrimaryStat(levelData.EVA, avoidabilityRateAlias);
+            }
+
             levelData.EVA = PreferPrimaryStat(levelData.EVA, GetInt(node, "evaX", 0, level));
 
             if (levelData.ACC == 0 && UsesAccuracyXAlias(skill, node))
@@ -7124,6 +7286,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                 placeholders,
                 "magic def",
                 "magic defense");
+            levelData.AccuracyPercent = ApplyDescriptionBackedLabelAliases(
+                levelData.AccuracyPercent,
+                normalizedSurface,
+                requirePercentSuffix: true,
+                placeholders,
+                "accuracy");
+            levelData.AvoidabilityPercent = ApplyDescriptionBackedLabelAliases(
+                levelData.AvoidabilityPercent,
+                normalizedSurface,
+                requirePercentSuffix: true,
+                placeholders,
+                "avoidability",
+                "dodge chance",
+                "enemy attack avoidance rate",
+                "base avoidability");
         }
 
         private static int ApplyDescriptionBackedAliasValue(int target, int aliasValue, bool shouldApply)
@@ -7275,6 +7452,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return 0;
+        }
+
+        internal static int ResolveDescriptionBackedNamedPercentAlias(
+            SkillData skill,
+            string placeholderToken,
+            int aliasValue,
+            params string[] labelTokens)
+        {
+            if (skill == null || aliasValue == 0)
+            {
+                return 0;
+            }
+
+            string normalizedSurface = NormalizeDescriptionBackedAliasSurface(SkillDataTextSurface.GetDescriptionSurface(skill));
+            return PlaceholderMatchesHintLabel(
+                    normalizedSurface,
+                    placeholderToken,
+                    requirePercentSuffix: true,
+                    labelTokens)
+                ? Math.Max(0, aliasValue)
+                : 0;
         }
 
         private static bool PlaceholderMatchesGenericAttackHint(

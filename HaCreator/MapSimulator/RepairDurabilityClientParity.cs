@@ -427,16 +427,15 @@ namespace HaCreator.MapSimulator
             }
 
             int offset = 1;
-            if (!TryReadRepairOpcode(payload, ref offset, out short? operationCode))
-            {
-                return false;
-            }
+            TryReadRepairOpcode(payload, ref offset, out short? operationCode);
 
             int? encodedSlotPosition = null;
             if (payload.Length - offset >= sizeof(int))
             {
                 int candidateEncodedSlotPosition = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(offset, sizeof(int)));
-                if (LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition))
+                int remainingAfterSlot = payload.Length - (offset + sizeof(int));
+                if (LooksLikeEncodedSlotPosition(candidateEncodedSlotPosition)
+                    && ShouldTreatResultFirstIntAsEncodedSlot(payload[0] == 0, candidateEncodedSlotPosition, remainingAfterSlot))
                 {
                     encodedSlotPosition = candidateEncodedSlotPosition;
                     offset += sizeof(int);
@@ -470,6 +469,24 @@ namespace HaCreator.MapSimulator
                 encodedSlotPosition,
                 statusText);
             return true;
+        }
+
+        private static bool ShouldTreatResultFirstIntAsEncodedSlot(
+            bool success,
+            int candidateEncodedSlotPosition,
+            int remainingAfterSlot)
+        {
+            if (remainingAfterSlot >= sizeof(int))
+            {
+                return true;
+            }
+
+            if (candidateEncodedSlotPosition < 0)
+            {
+                return true;
+            }
+
+            return success && remainingAfterSlot == 0;
         }
 
         private static bool TryReadRepairOpcode(byte[] payload, ref int offset, out short? operationCode)

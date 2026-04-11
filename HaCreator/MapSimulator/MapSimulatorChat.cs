@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator
         public MapSimulatorChatTargetType TargetType { get; init; }
         public string WhisperTarget { get; init; } = string.Empty;
         public int WhisperTargetPickerSelectionIndex { get; init; } = -1;
+        public int WhisperTargetPickerFirstVisibleIndex { get; init; }
         public MapSimulatorChat.WhisperTargetPickerModalButtonFocus WhisperTargetPickerModalButtonFocus { get; init; } =
             MapSimulatorChat.WhisperTargetPickerModalButtonFocus.Confirm;
         public MapSimulatorChat.WhisperTargetPickerModalFocusTarget WhisperTargetPickerModalFocusTarget { get; init; } =
@@ -136,6 +137,7 @@ namespace HaCreator.MapSimulator
         private bool _isWhisperTargetPickerActive;
         private WhisperTargetPickerPresentation _whisperTargetPickerPresentation = WhisperTargetPickerPresentation.Inline;
         private int _whisperTargetPickerSelectionIndex = -1;
+        private int _whisperTargetPickerFirstVisibleIndex;
         private WhisperTargetPickerModalButtonFocus _whisperTargetPickerModalButtonFocus =
             WhisperTargetPickerModalButtonFocus.Confirm;
         private WhisperTargetPickerModalFocusTarget _whisperTargetPickerModalFocusTarget =
@@ -1143,6 +1145,7 @@ namespace HaCreator.MapSimulator
                 TargetType = _chatTarget,
                 WhisperTarget = _whisperTarget ?? string.Empty,
                 WhisperTargetPickerSelectionIndex = _whisperTargetPickerSelectionIndex,
+                WhisperTargetPickerFirstVisibleIndex = _whisperTargetPickerFirstVisibleIndex,
                 WhisperTargetPickerModalButtonFocus = _whisperTargetPickerModalButtonFocus,
                 WhisperTargetPickerModalFocusTarget = _whisperTargetPickerModalFocusTarget,
                 IsWhisperTargetPickerComboDropdownOpen = _isWhisperTargetPickerComboDropdownOpen,
@@ -1189,10 +1192,12 @@ namespace HaCreator.MapSimulator
             _whisperTargetPickerModalButtonFocus = WhisperTargetPickerModalButtonFocus.Confirm;
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
             _isWhisperTargetPickerComboDropdownOpen = false;
+            _whisperTargetPickerFirstVisibleIndex = 0;
             ResetHistoryNavigation();
 
             SetInputText(explicitInitialTarget ? normalizedInitialTarget : string.Empty);
             SyncWhisperTargetPickerSelectionFromInput();
+            SnapWhisperTargetPickerFirstVisibleIndexToSelection();
         }
 
         internal bool ConfirmWhisperTargetPicker(int tickCount)
@@ -1287,6 +1292,7 @@ namespace HaCreator.MapSimulator
                 {
                     _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
                     _whisperTargetPickerSelectionIndex = i;
+                    EnsureWhisperTargetPickerSelectionVisible();
                     return;
                 }
             }
@@ -1342,10 +1348,12 @@ namespace HaCreator.MapSimulator
             {
                 _whisperTargetPickerSelectionIndex = -1;
                 _isWhisperTargetPickerComboDropdownOpen = false;
+                _whisperTargetPickerFirstVisibleIndex = 0;
                 return;
             }
 
             _whisperTargetPickerSelectionIndex = 0;
+            _whisperTargetPickerFirstVisibleIndex = 0;
         }
 
         internal void PageWhisperTargetPickerSelection(int deltaPages)
@@ -2220,6 +2228,7 @@ namespace HaCreator.MapSimulator
             _isWhisperTargetPickerActive = false;
             _whisperTargetPickerPresentation = WhisperTargetPickerPresentation.Inline;
             _whisperTargetPickerSelectionIndex = -1;
+            _whisperTargetPickerFirstVisibleIndex = 0;
             _whisperTargetPickerModalButtonFocus = WhisperTargetPickerModalButtonFocus.Confirm;
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
             _isWhisperTargetPickerComboDropdownOpen = false;
@@ -2270,6 +2279,7 @@ namespace HaCreator.MapSimulator
             }
 
             _whisperTargetPickerSelectionIndex = targetIndex;
+            EnsureWhisperTargetPickerSelectionVisible();
             if (updateInputText)
             {
                 SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex]);
@@ -2313,7 +2323,6 @@ namespace HaCreator.MapSimulator
             }
 
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
-            _isWhisperTargetPickerComboDropdownOpen = false;
         }
 
         internal void CloseWhisperTargetPickerModalComboDropdown()
@@ -2448,6 +2457,21 @@ namespace HaCreator.MapSimulator
             return Math.Clamp(preferredStartIndex, 0, maxStartIndex);
         }
 
+        internal static int ClampWhisperTargetPickerFirstVisibleIndex(
+            int firstVisibleIndex,
+            int candidateCount,
+            int visibleRowCount = WhisperTargetPickerVisibleRowCount)
+        {
+            if (candidateCount <= 0)
+            {
+                return 0;
+            }
+
+            int clampedVisibleRowCount = Math.Max(1, visibleRowCount);
+            int maxStartIndex = Math.Max(0, candidateCount - clampedVisibleRowCount);
+            return Math.Clamp(firstVisibleIndex, 0, maxStartIndex);
+        }
+
         private string ResolveWhisperTargetPickerSelection()
         {
             string typedValue = _inputText.ToString();
@@ -2506,6 +2530,7 @@ namespace HaCreator.MapSimulator
             if (string.IsNullOrWhiteSpace(normalizedInput))
             {
                 _whisperTargetPickerSelectionIndex = -1;
+                _whisperTargetPickerFirstVisibleIndex = 0;
                 return;
             }
 
@@ -2515,6 +2540,7 @@ namespace HaCreator.MapSimulator
                 if (string.Equals(_whisperCandidates[i], normalizedInput, StringComparison.OrdinalIgnoreCase))
                 {
                     _whisperTargetPickerSelectionIndex = i;
+                    EnsureWhisperTargetPickerSelectionVisible();
                     return;
                 }
 
@@ -2526,6 +2552,49 @@ namespace HaCreator.MapSimulator
             }
 
             _whisperTargetPickerSelectionIndex = prefixMatchIndex;
+            EnsureWhisperTargetPickerSelectionVisible();
+        }
+
+        private void SnapWhisperTargetPickerFirstVisibleIndexToSelection()
+        {
+            _whisperTargetPickerFirstVisibleIndex = ResolveWhisperTargetPickerFirstVisibleIndex(
+                _whisperTargetPickerSelectionIndex,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
+        }
+
+        private void EnsureWhisperTargetPickerSelectionVisible()
+        {
+            if (_whisperCandidates.Count == 0)
+            {
+                _whisperTargetPickerFirstVisibleIndex = 0;
+                return;
+            }
+
+            _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                _whisperTargetPickerFirstVisibleIndex,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
+
+            if (_whisperTargetPickerSelectionIndex < 0)
+            {
+                return;
+            }
+
+            int lastVisibleIndex = _whisperTargetPickerFirstVisibleIndex + WhisperTargetPickerVisibleRowCount - 1;
+            if (_whisperTargetPickerSelectionIndex < _whisperTargetPickerFirstVisibleIndex)
+            {
+                _whisperTargetPickerFirstVisibleIndex = _whisperTargetPickerSelectionIndex;
+            }
+            else if (_whisperTargetPickerSelectionIndex > lastVisibleIndex)
+            {
+                _whisperTargetPickerFirstVisibleIndex = _whisperTargetPickerSelectionIndex - WhisperTargetPickerVisibleRowCount + 1;
+            }
+
+            _whisperTargetPickerFirstVisibleIndex = ClampWhisperTargetPickerFirstVisibleIndex(
+                _whisperTargetPickerFirstVisibleIndex,
+                _whisperCandidates.Count,
+                WhisperTargetPickerVisibleRowCount);
         }
 
         private void SetInputText(string text)

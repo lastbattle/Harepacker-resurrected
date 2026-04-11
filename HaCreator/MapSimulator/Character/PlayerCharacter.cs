@@ -133,6 +133,7 @@ namespace HaCreator.MapSimulator.Character
             public int TamingMobFrameRemainingMs { get; set; }
             public int LastAnimationElapsedMs { get; set; }
             public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public double LastCharacterPositionY { get; set; }
             public int ActionSpeedDegree { get; init; }
             public int WalkSpeed { get; init; }
             public bool HeldActionFrameDelay { get; init; }
@@ -145,6 +146,7 @@ namespace HaCreator.MapSimulator.Character
             public int FrameRemainingMs { get; set; }
             public int LastAnimationElapsedMs { get; set; }
             public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public double LastCharacterPositionY { get; set; }
             public int ActionSpeedDegree { get; init; }
             public int WalkSpeed { get; init; }
             public bool HeldActionFrameDelay { get; init; }
@@ -335,6 +337,9 @@ namespace HaCreator.MapSimulator.Character
             public int PreparedSourceLayerCurrentTime { get; set; } = int.MinValue;
             public int PreparedTransitionStartTime { get; set; } = int.MinValue;
             public int LastInsertCanvasTime { get; set; } = int.MinValue;
+            public int LastInsertCanvasLayerObjectId { get; set; }
+            public AvatarRenderLayer? LastInsertCanvasSourceLayer { get; set; }
+            public AvatarRenderLayer? LastInsertCanvasOverlayTargetLayer { get; set; }
             public bool PreparedFacingRight { get; set; }
             public Point PreparedTargetOffsetPx { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
@@ -2163,6 +2168,7 @@ namespace HaCreator.MapSimulator.Character
                 FrameRemainingMs = clock.FrameRemainingMs,
                 LastAnimationElapsedMs = 0,
                 LastClockUpdateTimeMs = _animationStartTime,
+                LastCharacterPositionY = Physics?.Y ?? 0d,
                 ActionSpeedDegree = Assembler.PreparedActionSpeedDegree,
                 WalkSpeed = Assembler.PreparedWalkSpeed,
                 HeldActionFrameDelay = Assembler.HeldActionFrameDelay,
@@ -2185,6 +2191,11 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            if (TryStallPositionGatedAvatarActionLayerClock(avatarActionLayerState, animationElapsedMs, currentTime))
+            {
+                return;
+            }
+
             var clock = new AvatarActionLayerCoordinator.PreparedFrameClock(
                 avatarActionLayerState.FrameIndex,
                 avatarActionLayerState.FrameRemainingMs);
@@ -2203,6 +2214,33 @@ namespace HaCreator.MapSimulator.Character
             avatarActionLayerState.FrameRemainingMs = clock.FrameRemainingMs;
             avatarActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
             avatarActionLayerState.LastClockUpdateTimeMs = currentTime;
+            avatarActionLayerState.LastCharacterPositionY = Physics?.Y ?? avatarActionLayerState.LastCharacterPositionY;
+        }
+
+        private bool TryStallPositionGatedAvatarActionLayerClock(
+            AvatarActionLayerState avatarActionLayerState,
+            int animationElapsedMs,
+            int currentTime)
+        {
+            if (avatarActionLayerState == null || Physics == null)
+            {
+                return false;
+            }
+
+            double currentY = Physics.Y;
+            if (!AvatarActionLayerCoordinator.ShouldStallPositionGatedFrameUpdate(
+                    avatarActionLayerState.ActionName,
+                    avatarActionLayerState.LastCharacterPositionY,
+                    currentY))
+            {
+                avatarActionLayerState.LastCharacterPositionY = currentY;
+                return false;
+            }
+
+            avatarActionLayerState.FrameRemainingMs = 0;
+            avatarActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
+            avatarActionLayerState.LastClockUpdateTimeMs = currentTime;
+            return true;
         }
 
         private MountedActionLayerState GetMountedActionLayerState()
@@ -2311,6 +2349,7 @@ namespace HaCreator.MapSimulator.Character
                 TamingMobFrameRemainingMs = tamingMobClock.FrameRemainingMs,
                 LastAnimationElapsedMs = 0,
                 LastClockUpdateTimeMs = _animationStartTime,
+                LastCharacterPositionY = Physics?.Y ?? 0d,
                 ActionSpeedDegree = Assembler.PreparedActionSpeedDegree,
                 WalkSpeed = Assembler.PreparedWalkSpeed,
                 HeldActionFrameDelay = Assembler.HeldActionFrameDelay
@@ -2347,17 +2386,63 @@ namespace HaCreator.MapSimulator.Character
 
             int bodyElapsedSinceLastUpdateMs = elapsedSinceLastUpdateMs;
             int tamingMobElapsedSinceLastUpdateMs = elapsedSinceLastUpdateMs;
-            AdvanceMountedActionLayerClockOwner(
+            bool stalledBodyClock = TryStallPositionGatedMountedActionLayerClock(
                 mountedActionLayerState,
-                advanceBodyClock: true,
-                ref bodyElapsedSinceLastUpdateMs);
-            AdvanceMountedActionLayerClockOwner(
+                advanceBodyClock: true);
+            bool stalledTamingMobClock = TryStallPositionGatedMountedActionLayerClock(
                 mountedActionLayerState,
-                advanceBodyClock: false,
-                ref tamingMobElapsedSinceLastUpdateMs);
+                advanceBodyClock: false);
+            if (!stalledBodyClock)
+            {
+                AdvanceMountedActionLayerClockOwner(
+                    mountedActionLayerState,
+                    advanceBodyClock: true,
+                    ref bodyElapsedSinceLastUpdateMs);
+            }
+
+            if (!stalledTamingMobClock)
+            {
+                AdvanceMountedActionLayerClockOwner(
+                    mountedActionLayerState,
+                    advanceBodyClock: false,
+                    ref tamingMobElapsedSinceLastUpdateMs);
+            }
 
             mountedActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
             mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
+            mountedActionLayerState.LastCharacterPositionY = Physics?.Y ?? mountedActionLayerState.LastCharacterPositionY;
+        }
+
+        private bool TryStallPositionGatedMountedActionLayerClock(
+            MountedActionLayerState mountedActionLayerState,
+            bool advanceBodyClock)
+        {
+            if (mountedActionLayerState == null || Physics == null)
+            {
+                return false;
+            }
+
+            string actionName = advanceBodyClock
+                ? mountedActionLayerState.CurrentBodyActionName
+                : mountedActionLayerState.CurrentTamingMobActionName;
+            if (!AvatarActionLayerCoordinator.ShouldStallPositionGatedFrameUpdate(
+                    actionName,
+                    mountedActionLayerState.LastCharacterPositionY,
+                    Physics.Y))
+            {
+                return false;
+            }
+
+            if (advanceBodyClock)
+            {
+                mountedActionLayerState.BodyFrameRemainingMs = 0;
+            }
+            else
+            {
+                mountedActionLayerState.TamingMobFrameRemainingMs = 0;
+            }
+
+            return true;
         }
 
         private void AdvanceMountedActionLayerClockOwner(
@@ -4734,28 +4819,28 @@ namespace HaCreator.MapSimulator.Character
             foreach (AfterimageRenderableLayer layer in layers)
             {
                 SkillFrame frame = layer.Frame;
-                if (frame?.Texture == null)
+                if (!MeleeAfterimagePlaybackResolver.TryResolveSpriteBatchDrawParameters(
+                        frame,
+                        screenX,
+                        screenY,
+                        _activeMeleeAfterImage.FacingRight,
+                        layer.Alpha,
+                        layer.Zoom,
+                        tint,
+                        out MeleeAfterimagePlaybackResolver.SpriteBatchDrawParameters drawParameters))
                 {
                     continue;
                 }
 
-                Color frameTint = tint * MathHelper.Clamp(layer.Alpha, 0f, 1f);
-                bool shouldFlip = _activeMeleeAfterImage.FacingRight ^ frame.Flip;
-                float zoom = MathHelper.Clamp(layer.Zoom, 0.01f, 10f);
-                int drawWidth = Math.Max(1, (int)Math.Round(frame.Texture.Width * zoom));
-                int drawHeight = Math.Max(1, (int)Math.Round(frame.Texture.Height * zoom));
-                int drawX = shouldFlip
-                    ? screenX - (int)Math.Round((frame.Texture.Width - frame.Origin.X) * zoom)
-                    : screenX - (int)Math.Round(frame.Origin.X * zoom);
-                int drawY = screenY - (int)Math.Round(frame.Origin.Y * zoom);
                 spriteBatch.Draw(
                     frame.Texture.Texture,
-                    new Rectangle(drawX, drawY, drawWidth, drawHeight),
+                    drawParameters.Position,
                     null,
-                    frameTint,
+                    drawParameters.Tint,
                     0f,
-                    Vector2.Zero,
-                    shouldFlip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
+                    drawParameters.Origin,
+                    drawParameters.Scale,
+                    drawParameters.Effects,
                     0f);
             }
         }
@@ -5129,6 +5214,9 @@ namespace HaCreator.MapSimulator.Character
                     PreparedSourceLayerCurrentTime = int.MinValue,
                     PreparedTransitionStartTime = int.MinValue,
                     LastInsertCanvasTime = int.MinValue,
+                    LastInsertCanvasLayerObjectId = 0,
+                    LastInsertCanvasSourceLayer = null,
+                    LastInsertCanvasOverlayTargetLayer = null,
                     PreparedFacingRight = false,
                     PreparedTargetOffsetPx = Point.Zero,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
@@ -5440,6 +5528,9 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.PreparedSourceLayerCurrentTime = int.MinValue;
             preparedLayer.PreparedTransitionStartTime = int.MinValue;
             preparedLayer.LastInsertCanvasTime = int.MinValue;
+            preparedLayer.LastInsertCanvasLayerObjectId = 0;
+            preparedLayer.LastInsertCanvasSourceLayer = null;
+            preparedLayer.LastInsertCanvasOverlayTargetLayer = null;
             preparedLayer.PreparedFacingRight = false;
             preparedLayer.PreparedTargetOffsetPx = Point.Zero;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
@@ -5465,6 +5556,18 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.LastInsertCanvasTime = ResolveMirrorImageLastInsertCanvasTime(
                 preparedLayer.LastInsertCanvasTime,
                 currentTime,
+                hasSourceCanvas);
+            preparedLayer.LastInsertCanvasLayerObjectId = ResolveMirrorImageLastInsertCanvasLayerObjectId(
+                preparedLayer.LastInsertCanvasLayerObjectId,
+                preparedLayer.PreparedLayerObjectId,
+                hasSourceCanvas);
+            preparedLayer.LastInsertCanvasSourceLayer = ResolveMirrorImageLastInsertCanvasSourceLayer(
+                preparedLayer.LastInsertCanvasSourceLayer,
+                preparedLayer.RenderLayer,
+                hasSourceCanvas);
+            preparedLayer.LastInsertCanvasOverlayTargetLayer = ResolveMirrorImageLastInsertCanvasOverlayTargetLayer(
+                preparedLayer.LastInsertCanvasOverlayTargetLayer,
+                preparedLayer.OverlayTargetLayer,
                 hasSourceCanvas);
         }
 
@@ -5641,6 +5744,36 @@ namespace HaCreator.MapSimulator.Character
             return hasSourceCanvas
                 ? currentTime
                 : existingLastInsertCanvasTime;
+        }
+
+        internal static int ResolveMirrorImageLastInsertCanvasLayerObjectId(
+            int existingLayerObjectId,
+            int currentLayerObjectId,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas && currentLayerObjectId > 0
+                ? currentLayerObjectId
+                : existingLayerObjectId;
+        }
+
+        internal static AvatarRenderLayer? ResolveMirrorImageLastInsertCanvasSourceLayer(
+            AvatarRenderLayer? existingSourceLayer,
+            AvatarRenderLayer currentSourceLayer,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas
+                ? currentSourceLayer
+                : existingSourceLayer;
+        }
+
+        internal static AvatarRenderLayer? ResolveMirrorImageLastInsertCanvasOverlayTargetLayer(
+            AvatarRenderLayer? existingOverlayTargetLayer,
+            AvatarRenderLayer currentOverlayTargetLayer,
+            bool hasSourceCanvas)
+        {
+            return hasSourceCanvas
+                ? currentOverlayTargetLayer
+                : existingOverlayTargetLayer;
         }
 
         internal static bool CanPreserveMirrorImagePreparedSourceLayerArrayWhenSourceListMissing(
@@ -7791,11 +7924,8 @@ namespace HaCreator.MapSimulator.Character
 
         internal static string ResolvePortableChairActionName(PortableChair chair)
         {
-            if (chair?.SitActionId is int sitActionId && sitActionId > 0)
-            {
-                return $"sit{sitActionId}";
-            }
-
+            // CUser::SetActivePortableChair owns additional layers and riding-chair handoff;
+            // sitAction remains item metadata rather than an avatar action override.
             return CharacterPart.GetActionString(CharacterAction.Sit);
         }
 

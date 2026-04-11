@@ -233,6 +233,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal void SetLocalGuildFundMeso(int guildFundMeso)
         {
             _guildFundMeso = Math.Max(0, guildFundMeso);
+            EnsureRecommendation();
             if (_isInGuild)
             {
                 SaveCurrentGuildState(_activeGuildStateKey);
@@ -573,6 +574,7 @@ namespace HaCreator.MapSimulator.Interaction
             DateTimeOffset renewedExpiration = baseTime.AddMinutes(durationMinutes);
             _activeGuildSkillExpirations[selectedSkill.SkillId] = renewedExpiration;
             _guildFundMeso = Math.Max(0, _guildFundMeso - renewalCost);
+            EnsureRecommendation();
             SaveCurrentGuildState(_activeGuildStateKey);
 
             int remainingMinutes = Math.Max(1, (int)Math.Ceiling((renewedExpiration - now).TotalMinutes));
@@ -687,6 +689,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             SaveCurrentGuildState(_activeGuildStateKey);
+            EnsureRecommendation();
 
             return resolvedRemainingMinutes > 0
                 ? $"{selectedSkill.SkillName} now mirrors the packet-owned renewal window with {FormatDuration(resolvedRemainingMinutes)} remaining. Guild fund: {FormatMeso(_guildFundMeso)}."
@@ -856,6 +859,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             SaveCurrentGuildState(_activeGuildStateKey);
+            EnsureRecommendation();
 
             return resolvedRemainingMinutes > 0
                 ? $"{selectedSkill.SkillName} now mirrors the packet-owned renewal echo with {FormatDuration(resolvedRemainingMinutes)} remaining. Guild fund: {FormatMeso(_guildFundMeso)}."
@@ -876,6 +880,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             SaveCurrentGuildState(_activeGuildStateKey);
+            EnsureRecommendation();
             return $"Packet-owned guild-fund sync updated the dedicated guild-skill ledger to {FormatMeso(_guildFundMeso)}.";
         }
 
@@ -976,13 +981,25 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            if (_skills.Any(skill => skill.SkillId == _recommendedSkillId))
+            SkillDisplayData currentRecommended = _skills.FirstOrDefault(skill => skill.SkillId == _recommendedSkillId);
+            if (currentRecommended != null && CanLevelUp(currentRecommended))
             {
                 return;
             }
 
-            SkillDisplayData nextRecommended = _skills.FirstOrDefault(CanLevelUp) ?? _skills[0];
-            _recommendedSkillId = nextRecommended.SkillId;
+            SkillDisplayData nextRecommended = _skills.FirstOrDefault(CanLevelUp);
+            if (nextRecommended != null)
+            {
+                _recommendedSkillId = nextRecommended.SkillId;
+                return;
+            }
+
+            if (currentRecommended != null)
+            {
+                return;
+            }
+
+            _recommendedSkillId = _skills[0].SkillId;
         }
 
         private string[] BuildSummaryLines(

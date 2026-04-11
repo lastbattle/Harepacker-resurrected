@@ -227,21 +227,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IEnumerable<(byte Mode, WzImageProperty Property)> EnumerateIndexedPeriodNodes(WzImageProperty container)
         {
-            int ordinal = 0;
-            foreach (WzImageProperty child in container.WzProperties.OfType<WzImageProperty>())
+            int count = container?.WzProperties?.Count ?? 0;
+            for (int ordinal = 0; ordinal < count && ordinal <= byte.MaxValue; ordinal++)
             {
-                if (byte.TryParse(child.Name, NumberStyles.None, CultureInfo.InvariantCulture, out byte explicitMode))
+                // `CStageSystem::IterateStageSystemClient` walks `stage` / `stageList`
+                // by zero-based string index and uses that same index as the period mode.
+                if (container[ordinal.ToString(CultureInfo.InvariantCulture)] is WzImageProperty period)
                 {
-                    yield return (explicitMode, child);
+                    yield return ((byte)ordinal, period);
                 }
-                else if (ordinal <= byte.MaxValue)
-                {
-                    // `CStageSystem::IterateStageSystemClient` walks `stage` / `stageList`
-                    // by child index rather than by extracted property name.
-                    yield return ((byte)ordinal, child);
-                }
-
-                ordinal++;
             }
         }
 

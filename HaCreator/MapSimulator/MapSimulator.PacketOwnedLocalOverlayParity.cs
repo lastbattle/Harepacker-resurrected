@@ -121,6 +121,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBalloonLongArrowThreshold = 18;
         private const int PacketOwnedBalloonMaxOverlapPasses = 8;
         private const int PacketOwnedBalloonBodyExtraWidth = PacketOwnedBalloonHorizontalPadding * 2;
+        private const double PacketOwnedBalloonClientCenterArrowBias = 0.699999988079071d;
         private const int PacketOwnedBalloonInlineIconSize = 16;
         private const int PacketOwnedBalloonInlineIconSpacing = 2;
         private const float PacketOwnedBalloonEmphasisOffsetX = 1f;
@@ -517,15 +518,21 @@ namespace HaCreator.MapSimulator
             LocalOverlayBalloonArrowSprite arrow,
             bool topMounted)
         {
-            float bodyCenterX = bodyBounds.X + (bodyBounds.Width / 2f);
+            int arrowWidth = arrowTexture?.Width ?? 0;
+            float arrowX = bodyBounds.X + ResolvePacketOwnedBalloonClientCenterArrowLeft(bodyBounds.Width, arrowWidth);
             if (arrow == null || arrowTexture == null)
             {
-                return new Vector2(bodyCenterX, topMounted ? bodyBounds.Y : bodyBounds.Bottom - 1);
+                return new Vector2(arrowX, topMounted ? bodyBounds.Y : bodyBounds.Bottom - 1);
             }
 
             Point mountPoint = topMounted ? arrow.BottomMountPoint : arrow.TopMountPoint;
             float mountY = topMounted ? bodyBounds.Y : bodyBounds.Bottom - 1;
-            return new Vector2(bodyCenterX - mountPoint.X, mountY - mountPoint.Y);
+            return new Vector2(arrowX, mountY - mountPoint.Y);
+        }
+
+        internal static int ResolvePacketOwnedBalloonClientCenterArrowLeft(int bodyWidth, int arrowWidth)
+        {
+            return (int)Math.Truncate((Math.Max(0, bodyWidth) * PacketOwnedBalloonClientCenterArrowBias) - Math.Max(0, arrowWidth));
         }
 
         private Rectangle ResolvePacketOwnedBalloonArrowBounds(

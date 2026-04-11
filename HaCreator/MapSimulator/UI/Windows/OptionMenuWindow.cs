@@ -1174,14 +1174,17 @@ namespace HaCreator.MapSimulator.UI
 
         private void AddJoypadBindingRow(InputAction action, string label, string description, int clientSlotIndex = -1, int clientY = 0)
         {
+            bool isClientCombo = clientSlotIndex >= 0;
             _joypadRows.Add(new JoypadRow(
                 action,
                 label,
                 $"{description} Left click arms live pad capture; right click clears the staged pad button.",
-                session => FormatGamepadButton(GetJoypadBinding(session, action)),
+                session => isClientCombo
+                    ? FormatClientJoypadComboSelection(session, action)
+                    : FormatGamepadButton(GetJoypadBinding(session, action)),
                 (_, _) => { },
                 JoypadRowKind.Binding,
-                clientControlId: clientSlotIndex >= 0 ? JoypadClientComboFirstId + clientSlotIndex : 0,
+                clientControlId: isClientCombo ? JoypadClientComboFirstId + clientSlotIndex : 0,
                 clientY: clientY));
         }
 
@@ -2024,7 +2027,9 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 session.Bindings[row.Action.Value] = StepJoypadBinding(row.Action.Value, GetJoypadBinding(session, row.Action.Value), direction);
-                _statusMessage = $"{row.Label}: {FormatGamepadButton(GetJoypadBinding(session, row.Action.Value))}. Left or right cycles the staged shared-button binding; A arms live capture.";
+                _statusMessage = row.IsClientCombo
+                    ? $"{row.Label}: {FormatClientJoypadComboSelection(session, row.Action.Value)} ({FormatGamepadButton(GetJoypadBinding(session, row.Action.Value))}). Left or right cycles the staged client combo item; A arms live capture."
+                    : $"{row.Label}: {FormatGamepadButton(GetJoypadBinding(session, row.Action.Value))}. Left or right cycles the staged shared-button binding; A arms live capture.";
                 return;
             }
 
@@ -2551,7 +2556,7 @@ namespace HaCreator.MapSimulator.UI
             int coreSlotIndex = GetJoypadClientCoreSlotIndex(action);
             if (coreSlotIndex >= 0)
             {
-                return $"{label}: {value}. Client CUIJoyPad slot {coreSlotIndex + 1} is now staged here; left or right cycles the shared button family, A or Space arms capture, and Delete or X clears it.";
+                return $"{label}: {value}. Client CUIJoyPad combo {JoypadClientComboFirstId + coreSlotIndex} is staged here with the recovered StringPool-backed item text; left or right cycles Button 1..N, A or Space arms capture, and Delete or X clears it.";
             }
 
             return $"{label}: {value}. This stays on the simulator extension lane beyond the recovered eleven-combo CUIJoyPad core set; left or right cycles the staged shared-button binding, A or Space arms capture, and Delete or X clears it.";
@@ -3076,6 +3081,14 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
             return index >= 0 ? index + 1 : 0;
+        }
+
+        private static string FormatClientJoypadComboSelection(JoypadSessionSnapshot session, InputAction action)
+        {
+            int itemNumber = ResolveClientJoypadComboSelectedItemNumber(session, action);
+            return itemNumber > 0
+                ? FormatClientJoypadButtonItem(itemNumber)
+                : MapleStoryStringPool.GetOrFallback(JoypadClientEmptyButtonNameStringPoolId, "None");
         }
 
         private static string FormatClientJoypadComboLabel(int slotNumber)

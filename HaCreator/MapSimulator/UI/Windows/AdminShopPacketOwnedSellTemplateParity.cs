@@ -29,5 +29,10 @@ namespace HaCreator.MapSimulator.UI
             long totalPrice = Math.Max(0L, unitPrice) * Math.Max(1, requestCount);
             return totalPrice <= 0L || Math.Max(0L, currentMeso) >= totalPrice;
         }
+
+        internal static bool CanBuildSendTradeRequestPosition(bool requiresInventorySource, int position)
+        {
+            return !requiresInventorySource || position > 0;
+        }
     }
 }

@@ -903,7 +903,9 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 AttackType = InfoTool.GetInt(infoNode["type"], -1),
                 HitAttach = hitAttach,
+                HasHitAttachMetadata = resolvedHitAttach != int.MinValue || resolvedFacingAttach != int.MinValue,
                 FacingAttach = facingAttach,
+                HasFacingAttachMetadata = resolvedFacingAttach != int.MinValue,
                 HitAfterMs = Math.Max(0, ReadOptionalInt(infoHitNode, 0, "hitAfter")),
                 HasHitAfterMetadata = WzInfoTools.GetRealProperty(infoHitNode?["hitAfter"]) != null,
                 EffectFacingAttach = effectFacingAttach,

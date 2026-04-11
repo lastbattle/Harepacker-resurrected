@@ -222,6 +222,7 @@ namespace HaCreator.MapSimulator.Managers
             if (string.Equals(normalized, "petconsumeresult", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "petitemuseresult", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "petuseresult", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "hpresult", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalized, "hazardresult", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = PetConsumeResultPacketType;

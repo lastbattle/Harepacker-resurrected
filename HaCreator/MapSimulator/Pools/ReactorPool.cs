@@ -1600,12 +1600,9 @@ namespace HaCreator.MapSimulator.Pools
 
             if (TryGetReactorIndexByPacketObjectId(packetObjectId, out int existingIndex))
             {
-                bool promoteExistingTouch = IsImmediateLocalUserTouchCandidate(
-                    GetReactor(existingIndex),
-                    GetReactorData(existingIndex),
-                    currentTick,
-                    localPlayerX,
-                    localPlayerY);
+                ReactorRuntimeData existingTouchData = GetReactorData(existingIndex);
+                bool promoteExistingTouch = ShouldPromotePacketEnterLocalTouch(
+                    IsLocallyTouchedReactor(existingIndex, existingTouchData));
                 ApplyPacketOwnershipToReactor(existingIndex, packetObjectId, canRespawn: false, promoteLocalUserTouch: promoteExistingTouch);
                 ApplyPacketReactorState(existingIndex, initialState, x, y, flip, currentTick);
                 ReactorRuntimeData existingData = GetReactorData(existingIndex);
@@ -1634,12 +1631,9 @@ namespace HaCreator.MapSimulator.Pools
                 out PacketEnterAuthoredReactorSelectionReason selectionReason,
                 out int authoredIndex))
             {
-                bool promoteAuthoredTouch = IsImmediateLocalUserTouchCandidate(
-                    GetReactor(authoredIndex),
-                    GetReactorData(authoredIndex),
-                    currentTick,
-                    localPlayerX,
-                    localPlayerY);
+                ReactorRuntimeData authoredTouchData = GetReactorData(authoredIndex);
+                bool promoteAuthoredTouch = ShouldPromotePacketEnterLocalTouch(
+                    IsLocallyTouchedReactor(authoredIndex, authoredTouchData));
                 ApplyPacketOwnershipToReactor(authoredIndex, packetObjectId, canRespawn: false, promoteLocalUserTouch: promoteAuthoredTouch);
                 ApplyPacketReactorState(authoredIndex, initialState, x, y, flip, currentTick);
                 ReactorRuntimeData authoredData = GetReactorData(authoredIndex);
@@ -2408,7 +2402,7 @@ namespace HaCreator.MapSimulator.Pools
 
             reactor.ClearTransientAnimation();
             reactor.SetAnimationState(data.PacketPendingVisualState, currentTick, restartIfSameState: true);
-            data.PacketAnimationSourceState = data.PacketPendingVisualState;
+            CommitPacketLayerSourceOwnership(data, data.PacketPendingVisualState);
             data.PacketPendingVisualState = -1;
             RefreshReactorLayerPlacement(reactor);
         }
@@ -2863,6 +2857,14 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        internal static bool ShouldPromotePacketEnterLocalTouch(bool isAlreadyLocallyTouched)
+        {
+            // CReactorPool::OnReactorEnterField only adds a live reactor. Re-key the
+            // touched set immediately only when this packet recovers the id for a
+            // reactor the local poll owner had already marked as touched.
+            return isAlreadyLocallyTouched;
         }
 
         private static bool HasDisjointTouchAndReturnedStateSignals(
@@ -3598,6 +3600,17 @@ namespace HaCreator.MapSimulator.Pools
                 : data.PacketAnimationSourceState >= 0
                     ? data.PacketAnimationSourceState
                     : data.VisualState;
+        }
+
+        internal static void CommitPacketLayerSourceOwnership(ReactorRuntimeData data, int visualState)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            data.PacketAnimationSourceState = visualState;
+            data.PacketHitAnimationState = -1;
         }
 
         private static string BuildReactorHitSoundDescriptor(ReactorItem reactor, int sourceState)

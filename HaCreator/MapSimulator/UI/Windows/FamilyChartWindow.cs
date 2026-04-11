@@ -163,7 +163,7 @@ namespace HaCreator.MapSimulator.UI
             FamilyChartSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
 
             DrawCenteredText(sprite, snapshot.TitleText, 7, 34, 209, new Color(80, 58, 31), 0.50f);
-            DrawRightAlignedText(sprite, $"{Math.Max(0, snapshot.JuniorCount)}/2", 47, 78, 31, new Color(70, 70, 70), 0.42f);
+            DrawRightAlignedText(sprite, $"{Math.Max(0, snapshot.JuniorCount)}/{Math.Max(0, snapshot.JuniorLimit)}", 47, 78, 31, new Color(70, 70, 70), 0.42f);
             DrawRightAlignedText(sprite, FormatReputation(snapshot), 47, 100, 153, new Color(70, 70, 70), 0.42f);
             DrawRightAlignedText(sprite, FormatSignedValue(snapshot.TodayReputation), 107, 119, 92, new Color(70, 70, 70), 0.42f);
 
@@ -189,7 +189,7 @@ namespace HaCreator.MapSimulator.UI
                 new Color(116, 116, 116),
                 0.30f);
             DrawCenteredText(sprite, ResolveEntitlementLabel(snapshot), 12, 182, 191, new Color(74, 74, 74), 0.31f);
-            DrawRightAlignedText(sprite, snapshot.SpecialReputationCost.ToString("N0"), 45, 201, 41, new Color(70, 70, 70), 0.38f);
+            DrawRightAlignedText(sprite, snapshot.SpecialReputationCost.ToString("N0"), 69, 201, 41, new Color(70, 70, 70), 0.38f);
             DrawRightAlignedText(sprite, $"{Math.Max(0, snapshot.SpecialUseCount)} / {Math.Max(0, snapshot.SpecialUseLimit)}", 166, 201, 33, new Color(70, 70, 70), 0.38f);
         }
 
@@ -217,7 +217,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawDescriptionPanel(SpriteBatch sprite, FamilyChartSnapshot snapshot)
         {
-            DrawWrappedText(sprite, snapshot.EntitlementDescription, 13, 220, 177, new Color(170, 64, 64), 0.31f, 12);
+            DrawWrappedText(sprite, snapshot.EntitlementDescription, 13, 220, 190, new Color(170, 64, 64), 0.31f, 12);
         }
 
         private void ConfigureButton(UIObject button, Action action)

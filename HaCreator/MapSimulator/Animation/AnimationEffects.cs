@@ -54,6 +54,11 @@ namespace HaCreator.MapSimulator.Animation
         private readonly List<FollowParticleAnimation> _followParticleAnimations = new();
         private readonly List<AreaAnimationRegistration> _areaAnimations = new();
         private readonly List<UserStateAnimation> _userStateAnimations = new();
+        private readonly Dictionary<int, SecondaryPrepareAnimation> _secondaryPrepareAnimations = new();
+        private readonly List<SecondaryFootholdAnimation> _secondaryFootholdAnimations = new();
+        private readonly List<SecondaryHookChainAnimation> _secondaryHookChainAnimations = new();
+        private readonly List<SecondaryMotionBlurAnimation> _secondaryMotionBlurAnimations = new();
+        private readonly List<SecondaryChainSegmentAnimation> _secondaryChainSegmentAnimations = new();
 
         private readonly Random _random = new();
 
@@ -401,6 +406,133 @@ namespace HaCreator.MapSimulator.Animation
 
         #endregion
 
+        #region Secondary Skill Animation Owners
+
+        public int RegisterPrepareAnimation(
+            int ownerId,
+            List<IDXObject> primaryFrames,
+            List<IDXObject> secondaryFrames,
+            Func<Vector2> getOwnerPosition,
+            Func<bool> getOwnerFlip,
+            Vector2 fallbackPosition,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int durationMs)
+        {
+            if (ownerId <= 0 || (!HasFrames(primaryFrames) && !HasFrames(secondaryFrames)))
+            {
+                return -1;
+            }
+
+            var animation = new SecondaryPrepareAnimation();
+            animation.Initialize(ownerId, primaryFrames, secondaryFrames, getOwnerPosition, getOwnerFlip, fallbackPosition, fallbackFlip, currentTimeMs, durationMs);
+            _secondaryPrepareAnimations[ownerId] = animation;
+            return ownerId;
+        }
+
+        public bool RemovePrepareAnimation(int ownerId)
+        {
+            return ownerId > 0 && _secondaryPrepareAnimations.Remove(ownerId);
+        }
+
+        public int RegisterFootholdAnimation(
+            List<IDXObject> frames,
+            Rectangle area,
+            int tStartDelay,
+            int tDuration,
+            int updateIntervalMs,
+            int currentTimeMs,
+            bool randomPosition)
+        {
+            if (!HasFrames(frames) || area.Width <= 0 || area.Height <= 0)
+            {
+                return -1;
+            }
+
+            var animation = new SecondaryFootholdAnimation();
+            animation.Initialize(frames, area, tStartDelay, tDuration, updateIntervalMs, currentTimeMs, randomPosition, _random);
+            _secondaryFootholdAnimations.Add(animation);
+            return animation.Id;
+        }
+
+        public int RegisterHookingChainAnimation(
+            List<IDXObject> hookFrames,
+            List<IDXObject> chainFrames,
+            int ownerId,
+            Func<Vector2> getOwnerPosition,
+            Vector2 fallbackOwnerPosition,
+            Vector2? targetPosition,
+            bool left,
+            int attackTimeMs,
+            int currentTimeMs,
+            int zOrder)
+        {
+            if (!HasFrames(hookFrames) && !HasFrames(chainFrames))
+            {
+                return -1;
+            }
+
+            var animation = new SecondaryHookChainAnimation();
+            animation.Initialize(hookFrames, chainFrames, ownerId, getOwnerPosition, fallbackOwnerPosition, targetPosition, left, attackTimeMs, currentTimeMs, zOrder);
+            _secondaryHookChainAnimations.Add(animation);
+            return animation.Id;
+        }
+
+        public int RegisterMotionBlurAnimation(
+            List<IDXObject> frames,
+            Func<Vector2> getOwnerPosition,
+            Func<bool> getOwnerFlip,
+            Vector2 fallbackPosition,
+            bool fallbackFlip,
+            int delayMs,
+            int intervalMs,
+            byte alpha,
+            int currentTimeMs,
+            int durationMs)
+        {
+            if (!HasFrames(frames))
+            {
+                return -1;
+            }
+
+            var animation = new SecondaryMotionBlurAnimation();
+            animation.Initialize(frames, getOwnerPosition, getOwnerFlip, fallbackPosition, fallbackFlip, delayMs, intervalMs, alpha, currentTimeMs, durationMs);
+            _secondaryMotionBlurAnimations.Add(animation);
+            return animation.Id;
+        }
+
+        public int RegisterSecondaryChainLightningAnimation(
+            IReadOnlyList<List<IDXObject>> frameVariants,
+            Vector2 start,
+            Vector2 end,
+            int tStart,
+            int tEnd,
+            int zOrder,
+            bool ordered,
+            bool tesla,
+            int registrationKey = 0)
+        {
+            if (start == end || tEnd <= tStart)
+            {
+                return -1;
+            }
+
+            var animation = new SecondaryChainSegmentAnimation();
+            animation.Initialize(frameVariants, start, end, tStart, tEnd, zOrder, ordered, tesla, registrationKey, _random);
+            _secondaryChainSegmentAnimations.Add(animation);
+            AddLightningBolt(
+                start,
+                end,
+                tesla ? new Color(130, 220, 255) : new Color(100, 150, 255),
+                Math.Max(1, tEnd - tStart),
+                tStart,
+                tesla ? 4f : 3f,
+                Math.Max(4, animation.SegmentCount));
+            return animation.Id;
+        }
+
+        #endregion
+
         #region Falling Animation (FALLINGINFO)
 
         /// <summary>
@@ -731,6 +863,46 @@ namespace HaCreator.MapSimulator.Animation
                     _userStateAnimations.RemoveAt(i);
                 }
             }
+
+            foreach (int key in new List<int>(_secondaryPrepareAnimations.Keys))
+            {
+                if (!_secondaryPrepareAnimations[key].Update(currentTimeMs))
+                {
+                    _secondaryPrepareAnimations.Remove(key);
+                }
+            }
+
+            for (int i = _secondaryFootholdAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_secondaryFootholdAnimations[i].Update(currentTimeMs, _random))
+                {
+                    _secondaryFootholdAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _secondaryHookChainAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_secondaryHookChainAnimations[i].Update(currentTimeMs))
+                {
+                    _secondaryHookChainAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _secondaryMotionBlurAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_secondaryMotionBlurAnimations[i].Update(currentTimeMs))
+                {
+                    _secondaryMotionBlurAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _secondaryChainSegmentAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_secondaryChainSegmentAnimations[i].Update(currentTimeMs))
+                {
+                    _secondaryChainSegmentAnimations.RemoveAt(i);
+                }
+            }
         }
 
         #endregion
@@ -794,6 +966,31 @@ namespace HaCreator.MapSimulator.Animation
             {
                 anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
             }
+
+            foreach (var anim in _secondaryPrepareAnimations.Values)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
+            }
+
+            foreach (var anim in _secondaryFootholdAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
+            }
+
+            foreach (var anim in _secondaryHookChainAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, pixelTexture, mapShiftX, mapShiftY);
+            }
+
+            foreach (var anim in _secondaryMotionBlurAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
+            }
+
+            foreach (var anim in _secondaryChainSegmentAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
+            }
         }
 
         #endregion
@@ -817,6 +1014,11 @@ namespace HaCreator.MapSimulator.Animation
             _followAnimations.Clear();
             _areaAnimations.Clear();
             _userStateAnimations.Clear();
+            _secondaryPrepareAnimations.Clear();
+            _secondaryFootholdAnimations.Clear();
+            _secondaryHookChainAnimations.Clear();
+            _secondaryMotionBlurAnimations.Clear();
+            _secondaryChainSegmentAnimations.Clear();
         }
 
         /// <summary>
@@ -826,7 +1028,7 @@ namespace HaCreator.MapSimulator.Animation
             _oneTimeAnimations.Count + _oneTimeCanvasLayers.Count + _repeatAnimations.Count +
             _chainLightnings.Count + _fallingAnimations.Count +
             _followAnimations.Count + _areaAnimations.Count +
-            _userStateAnimations.Count;
+            _userStateAnimations.Count + SecondarySkillAnimationOwnerCount;
 
         internal static bool HasFrames(List<IDXObject> frames)
         {
@@ -859,6 +1061,15 @@ namespace HaCreator.MapSimulator.Animation
         public void ClearAreaAnimations()
         {
             _areaAnimations.Clear();
+        }
+
+        public void ClearSecondarySkillAnimationOwners()
+        {
+            _secondaryPrepareAnimations.Clear();
+            _secondaryFootholdAnimations.Clear();
+            _secondaryHookChainAnimations.Clear();
+            _secondaryMotionBlurAnimations.Clear();
+            _secondaryChainSegmentAnimations.Clear();
         }
 
         private void RemoveFollowParticles(int followRegistrationId)
@@ -1166,8 +1377,15 @@ namespace HaCreator.MapSimulator.Animation
 
         public int UserStateCount => _userStateAnimations.Count;
         public int AreaAnimationCount => _areaAnimations.Count;
+        public int FallingAnimationCount => _fallingAnimations.Count;
         public int FollowAnimationCount => _followAnimations.Count;
         public int FollowParticleCount => _followParticleAnimations.Count;
+        public int SecondarySkillAnimationOwnerCount =>
+            _secondaryPrepareAnimations.Count
+            + _secondaryFootholdAnimations.Count
+            + _secondaryHookChainAnimations.Count
+            + _secondaryMotionBlurAnimations.Count
+            + _secondaryChainSegmentAnimations.Count;
         internal IReadOnlyList<FollowParticleAnimation> FollowParticles => _followParticleAnimations;
         internal IReadOnlyList<OneTimeAnimation> OneTimeAnimations => _oneTimeAnimations;
 
@@ -1175,6 +1393,406 @@ namespace HaCreator.MapSimulator.Animation
     }
 
     #region Animation Classes
+
+    internal static class SecondarySkillAnimationIdSource
+    {
+        private static int _nextId = 1;
+
+        public static int NextId()
+        {
+            return _nextId++;
+        }
+    }
+
+    internal abstract class SecondarySkillFrameAnimation
+    {
+        protected static int ResolveFrameDelay(IDXObject frame)
+        {
+            return Math.Max(10, frame?.Delay ?? 100);
+        }
+
+        protected static int ResolveFrameIndex(IReadOnlyList<IDXObject> frames, int elapsedMs, bool loop)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return -1;
+            }
+
+            int totalDuration = ResolveFramesDuration(frames);
+            if (loop && totalDuration > 0)
+            {
+                elapsedMs %= totalDuration;
+            }
+
+            int cursor = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                cursor += ResolveFrameDelay(frames[i]);
+                if (elapsedMs < cursor)
+                {
+                    return i;
+                }
+            }
+
+            return loop ? 0 : frames.Count - 1;
+        }
+
+        protected static int ResolveFramesDuration(IReadOnlyList<IDXObject> frames)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return 0;
+            }
+
+            int duration = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                duration += ResolveFrameDelay(frames[i]);
+            }
+
+            return duration;
+        }
+
+        protected static void DrawFrame(
+            IReadOnlyList<IDXObject> frames,
+            int frameIndex,
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            GameTime gameTime,
+            Vector2 position,
+            bool flip,
+            int mapShiftX,
+            int mapShiftY)
+        {
+            if (frames == null || frameIndex < 0 || frameIndex >= frames.Count)
+            {
+                return;
+            }
+
+            int drawShiftX = -(int)MathF.Round(position.X) - mapShiftX;
+            int drawShiftY = -(int)MathF.Round(position.Y) - mapShiftY;
+            frames[frameIndex]?.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, flip, null);
+        }
+    }
+
+    internal sealed class SecondaryPrepareAnimation : SecondarySkillFrameAnimation
+    {
+        private int _ownerId;
+        private List<IDXObject> _primaryFrames;
+        private List<IDXObject> _secondaryFrames;
+        private Func<Vector2> _positionResolver;
+        private Func<bool> _flipResolver;
+        private Vector2 _fallbackPosition;
+        private bool _fallbackFlip;
+        private int _startTime;
+        private int _durationMs;
+        private int _lastUpdateTime;
+
+        public void Initialize(
+            int ownerId,
+            List<IDXObject> primaryFrames,
+            List<IDXObject> secondaryFrames,
+            Func<Vector2> getOwnerPosition,
+            Func<bool> getOwnerFlip,
+            Vector2 fallbackPosition,
+            bool fallbackFlip,
+            int currentTimeMs,
+            int durationMs)
+        {
+            _ownerId = ownerId;
+            _primaryFrames = primaryFrames;
+            _secondaryFrames = secondaryFrames;
+            _positionResolver = getOwnerPosition;
+            _flipResolver = getOwnerFlip;
+            _fallbackPosition = fallbackPosition;
+            _fallbackFlip = fallbackFlip;
+            _startTime = currentTimeMs;
+            _lastUpdateTime = currentTimeMs;
+            _durationMs = durationMs > 0
+                ? durationMs
+                : Math.Max(ResolveFramesDuration(primaryFrames), ResolveFramesDuration(secondaryFrames));
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            _lastUpdateTime = currentTimeMs;
+            return _ownerId > 0 && (_durationMs <= 0 || currentTimeMs - _startTime < _durationMs);
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            Vector2 position = _positionResolver?.Invoke() ?? _fallbackPosition;
+            bool flip = _flipResolver?.Invoke() ?? _fallbackFlip;
+            int elapsed = Math.Max(0, _lastUpdateTime - _startTime);
+            DrawFrame(_primaryFrames, ResolveFrameIndex(_primaryFrames, elapsed, loop: true), spriteBatch, skeletonRenderer, gameTime, position, flip, mapShiftX, mapShiftY);
+            DrawFrame(_secondaryFrames, ResolveFrameIndex(_secondaryFrames, elapsed, loop: true), spriteBatch, skeletonRenderer, gameTime, position, flip, mapShiftX, mapShiftY);
+        }
+    }
+
+    internal sealed class SecondaryFootholdAnimation : SecondarySkillFrameAnimation
+    {
+        private readonly List<(Vector2 Position, int StartTime)> _layers = new();
+        private List<IDXObject> _frames;
+        private Rectangle _area;
+        private int _startTime;
+        private int _endTime;
+        private int _nextSpawnTime;
+        private int _updateIntervalMs;
+        private bool _randomPosition;
+        private int _lastUpdateTime;
+
+        public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
+
+        public void Initialize(List<IDXObject> frames, Rectangle area, int tStartDelay, int tDuration, int updateIntervalMs, int currentTimeMs, bool randomPosition, Random random)
+        {
+            _frames = frames;
+            _area = area;
+            _startTime = currentTimeMs + Math.Max(0, tStartDelay);
+            _endTime = _startTime + Math.Max(1, tDuration);
+            _nextSpawnTime = _startTime;
+            _lastUpdateTime = currentTimeMs;
+            _updateIntervalMs = Math.Max(30, updateIntervalMs);
+            _randomPosition = randomPosition;
+            TrySpawn(_startTime, random);
+        }
+
+        public bool Update(int currentTimeMs, Random random)
+        {
+            _lastUpdateTime = currentTimeMs;
+            while (currentTimeMs >= _nextSpawnTime && _nextSpawnTime < _endTime)
+            {
+                TrySpawn(_nextSpawnTime, random);
+                _nextSpawnTime += _updateIntervalMs;
+            }
+
+            int frameDuration = ResolveFramesDuration(_frames);
+            _layers.RemoveAll(layer => currentTimeMs - layer.StartTime >= frameDuration);
+            return currentTimeMs < _endTime || _layers.Count > 0;
+        }
+
+        private void TrySpawn(int startTime, Random random)
+        {
+            if (_area.Width <= 0 || _area.Height <= 0)
+            {
+                return;
+            }
+
+            Vector2 position = _randomPosition
+                ? new Vector2(_area.Left + (random?.Next(_area.Width) ?? 0), _area.Top + (random?.Next(_area.Height) ?? 0))
+                : new Vector2(_area.Left + (_area.Width * 0.5f), _area.Top + (_area.Height * 0.5f));
+            _layers.Add((position, startTime));
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            int currentTime = _lastUpdateTime;
+            foreach ((Vector2 position, int startTime) in _layers)
+            {
+                if (currentTime < startTime)
+                {
+                    continue;
+                }
+
+                int frameIndex = ResolveFrameIndex(_frames, Math.Max(0, currentTime - startTime), loop: false);
+                DrawFrame(_frames, frameIndex, spriteBatch, skeletonRenderer, gameTime, position, flip: false, mapShiftX, mapShiftY);
+            }
+        }
+    }
+
+    internal sealed class SecondaryHookChainAnimation : SecondarySkillFrameAnimation
+    {
+        private List<IDXObject> _hookFrames;
+        private List<IDXObject> _chainFrames;
+        private Func<Vector2> _ownerPositionResolver;
+        private Vector2 _fallbackOwnerPosition;
+        private Vector2 _targetPosition;
+        private bool _left;
+        private int _startTime;
+        private int _stretchEndTime;
+        private int _endTime;
+        private int _lastUpdateTime;
+
+        public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
+
+        public void Initialize(List<IDXObject> hookFrames, List<IDXObject> chainFrames, int ownerId, Func<Vector2> getOwnerPosition, Vector2 fallbackOwnerPosition, Vector2? targetPosition, bool left, int attackTimeMs, int currentTimeMs, int zOrder)
+        {
+            _hookFrames = hookFrames;
+            _chainFrames = chainFrames;
+            _ownerPositionResolver = getOwnerPosition;
+            _fallbackOwnerPosition = fallbackOwnerPosition;
+            _left = left;
+            _startTime = currentTimeMs;
+            _lastUpdateTime = currentTimeMs;
+            _stretchEndTime = attackTimeMs - 100;
+            _endTime = _stretchEndTime + 1000;
+            Vector2 userPoint = ResolveUserPoint();
+            _targetPosition = targetPosition ?? new Vector2(userPoint.X + (left ? -300f : 300f), userPoint.Y);
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            _lastUpdateTime = currentTimeMs;
+            return currentTimeMs < _endTime;
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, Texture2D pixelTexture, int mapShiftX, int mapShiftY)
+        {
+            int currentTime = _lastUpdateTime;
+            Vector2 userPoint = ResolveUserPoint();
+            float progress = _stretchEndTime <= _startTime
+                ? 1f
+                : MathHelper.Clamp((float)(currentTime - _startTime) / (_stretchEndTime - _startTime), 0f, 1f);
+            Vector2 tip = Vector2.Lerp(userPoint, _targetPosition, progress);
+            if (pixelTexture != null)
+            {
+                DrawLine(spriteBatch, pixelTexture, userPoint + new Vector2(mapShiftX, mapShiftY), tip + new Vector2(mapShiftX, mapShiftY), 3f, Color.White * 0.8f);
+            }
+
+            int elapsed = Math.Max(0, currentTime - _startTime);
+            DrawFrame(_chainFrames, ResolveFrameIndex(_chainFrames, elapsed, loop: true), spriteBatch, skeletonRenderer, gameTime, (userPoint + tip) * 0.5f, _left, mapShiftX, mapShiftY);
+            DrawFrame(_hookFrames, ResolveFrameIndex(_hookFrames, elapsed, loop: true), spriteBatch, skeletonRenderer, gameTime, tip, _left, mapShiftX, mapShiftY);
+        }
+
+        private Vector2 ResolveUserPoint()
+        {
+            Vector2 owner = _ownerPositionResolver?.Invoke() ?? _fallbackOwnerPosition;
+            return new Vector2(owner.X + (_left ? -25f : 25f), owner.Y - 20f);
+        }
+
+        private static void DrawLine(SpriteBatch spriteBatch, Texture2D texture, Vector2 start, Vector2 end, float width, Color color)
+        {
+            Vector2 delta = end - start;
+            float length = delta.Length();
+            if (length < 0.01f)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(texture, start, null, color, (float)Math.Atan2(delta.Y, delta.X), new Vector2(0, 0.5f), new Vector2(length, width), SpriteEffects.None, 0);
+        }
+    }
+
+    internal sealed class SecondaryMotionBlurAnimation : SecondarySkillFrameAnimation
+    {
+        private readonly List<(Vector2 Position, bool Flip, int StartTime)> _snapshots = new();
+        private List<IDXObject> _frames;
+        private Func<Vector2> _positionResolver;
+        private Func<bool> _flipResolver;
+        private Vector2 _fallbackPosition;
+        private bool _fallbackFlip;
+        private int _nextUpdateTime;
+        private int _endTime;
+        private int _intervalMs;
+        private byte _alpha;
+        private int _lastUpdateTime;
+
+        public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
+
+        public void Initialize(List<IDXObject> frames, Func<Vector2> getOwnerPosition, Func<bool> getOwnerFlip, Vector2 fallbackPosition, bool fallbackFlip, int delayMs, int intervalMs, byte alpha, int currentTimeMs, int durationMs)
+        {
+            _frames = frames;
+            _positionResolver = getOwnerPosition;
+            _flipResolver = getOwnerFlip;
+            _fallbackPosition = fallbackPosition;
+            _fallbackFlip = fallbackFlip;
+            _nextUpdateTime = currentTimeMs + Math.Max(0, delayMs);
+            _lastUpdateTime = currentTimeMs;
+            _endTime = currentTimeMs + Math.Max(1, durationMs);
+            _intervalMs = Math.Max(16, intervalMs);
+            _alpha = alpha;
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            _lastUpdateTime = currentTimeMs;
+            while (currentTimeMs >= _nextUpdateTime && _nextUpdateTime < _endTime)
+            {
+                _snapshots.Add((_positionResolver?.Invoke() ?? _fallbackPosition, _flipResolver?.Invoke() ?? _fallbackFlip, _nextUpdateTime));
+                _nextUpdateTime += _intervalMs;
+            }
+
+            int frameDuration = ResolveFramesDuration(_frames);
+            _snapshots.RemoveAll(snapshot => currentTimeMs - snapshot.StartTime >= frameDuration);
+            return currentTimeMs < _endTime || _snapshots.Count > 0;
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            int currentTime = _lastUpdateTime;
+            foreach ((Vector2 position, bool flip, int startTime) in _snapshots)
+            {
+                int frameIndex = ResolveFrameIndex(_frames, Math.Max(0, currentTime - startTime), loop: false);
+                DrawFrame(_frames, frameIndex, spriteBatch, skeletonRenderer, gameTime, position, flip, mapShiftX, mapShiftY);
+            }
+        }
+    }
+
+    internal sealed class SecondaryChainSegmentAnimation : SecondarySkillFrameAnimation
+    {
+        private readonly List<(Vector2 Position, int Variant)> _segments = new();
+        private IReadOnlyList<List<IDXObject>> _frameVariants;
+        private int _startTime;
+        private int _endTime;
+        private int _lastUpdateTime;
+
+        public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
+        public int SegmentCount => _segments.Count;
+
+        public void Initialize(IReadOnlyList<List<IDXObject>> frameVariants, Vector2 start, Vector2 end, int tStart, int tEnd, int zOrder, bool ordered, bool tesla, int registrationKey, Random random)
+        {
+            _frameVariants = frameVariants ?? Array.Empty<List<IDXObject>>();
+            _startTime = tStart;
+            _endTime = tEnd;
+            _lastUpdateTime = tStart;
+            Vector2 delta = end - start;
+            float distance = delta.Length();
+            int count = Math.Max(1, (int)(distance / 48f) + 1);
+            for (int i = 0; i < count; i++)
+            {
+                float t = count == 1 ? 0.5f : (float)i / (count - 1);
+                int variant = ResolveVariantIndex(i, count, ordered, tesla, random);
+                _segments.Add((start + (delta * t), variant));
+            }
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            _lastUpdateTime = currentTimeMs;
+            return currentTimeMs < _endTime;
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            int elapsed = Math.Max(0, _lastUpdateTime - _startTime);
+            for (int i = 0; i < _segments.Count; i++)
+            {
+                (Vector2 position, int variant) = _segments[i];
+                List<IDXObject> frames = variant >= 0 && variant < _frameVariants.Count ? _frameVariants[variant] : null;
+                int frameIndex = ResolveFrameIndex(frames, elapsed, loop: true);
+                DrawFrame(frames, frameIndex, spriteBatch, skeletonRenderer, gameTime, position, flip: false, mapShiftX, mapShiftY);
+            }
+        }
+
+        private static int ResolveVariantIndex(int index, int count, bool ordered, bool tesla, Random random)
+        {
+            if (tesla)
+            {
+                if (index == 0)
+                {
+                    return 0;
+                }
+
+                if (index == count - 1)
+                {
+                    return 4;
+                }
+
+                return (random?.Next(3) ?? 0) + 1;
+            }
+
+            return ordered ? random?.Next(2) ?? 0 : random?.Next(3) ?? 0;
+        }
+    }
 
     /// <summary>
     /// Shared one-time canvas layer owners used by animation-displayer parity paths.
@@ -1196,6 +1814,38 @@ namespace HaCreator.MapSimulator.Animation
         Default = 0,
         GA_STOP = 1
     }
+
+    internal enum FollowParticleRecoveredNativeOperationKind
+    {
+        LoadLayer = 0,
+        PutFlip = 1,
+        RelOffset = 2,
+        AlphaRelMove = 3,
+        AnimateRepeat = 4,
+        RegisterRepeatAnimation = 5
+    }
+
+    internal readonly record struct FollowParticleRecoveredNativeOperation(
+        FollowParticleRecoveredNativeOperationKind Kind,
+        bool RelativeToTarget,
+        bool AppliesOwnerFlip,
+        Vector2 StartOffset,
+        Vector2 EndOffset,
+        int ZOrder,
+        int DurationMs,
+        int AlphaStart,
+        int AlphaEnd);
+
+    internal readonly record struct FollowParticleRecoveredNativeLayerState(
+        bool RelativeToTarget,
+        bool AppliesOwnerFlip,
+        Vector2 StartOffset,
+        Vector2 EndOffset,
+        int ZOrder,
+        int DurationMs,
+        int AlphaStart,
+        int AlphaEnd,
+        bool RegistersRepeatLayer);
 
     /// <summary>
     /// Recovered native call shape for one-time animation-displayer owners that are still drawn through managed DX frames.
@@ -1261,7 +1911,14 @@ namespace HaCreator.MapSimulator.Animation
         int OriginOffsetX,
         int OriginOffsetY,
         bool UsesOverlayLayer,
-        int Value);
+        int Value,
+        int LoadLayerCanvasValue = 0,
+        int LoadLayerAlphaValue = 0,
+        bool LoadLayerFlip = false,
+        int LoadLayerReservedValue = 0,
+        bool AnimateUsesMissingStartTime = false,
+        bool AnimateUsesMissingRepeatCount = false,
+        bool RegisterOneTimeAnimationHasCallback = false);
 
     internal enum AnimationCanvasLayerContent
     {
@@ -2054,7 +2711,11 @@ namespace HaCreator.MapSimulator.Animation
                     trace.LoadLayerOriginOffsetX,
                     trace.LoadLayerOriginOffsetY,
                     trace.UsesOverlayLayer,
-                    trace.LoadLayerOptionValue),
+                    trace.LoadLayerOptionValue,
+                    trace.LoadLayerCanvasValue,
+                    trace.LoadLayerAlphaValue,
+                    trace.LoadLayerFlip,
+                    trace.LoadLayerReservedValue),
                 new(
                     OneTimeAnimationRecoveredNativeOperationKind.Animate,
                     trace.SourceUol,
@@ -2063,7 +2724,9 @@ namespace HaCreator.MapSimulator.Animation
                     0,
                     0,
                     false,
-                    (int)trace.AnimatePlaybackMode)
+                    (int)trace.AnimatePlaybackMode,
+                    AnimateUsesMissingStartTime: trace.AnimateUsesMissingStartTime,
+                    AnimateUsesMissingRepeatCount: trace.AnimateUsesMissingRepeatCount)
             };
 
             if (trace.RegistersOneTimeAnimation)
@@ -2076,7 +2739,8 @@ namespace HaCreator.MapSimulator.Animation
                     0,
                     0,
                     false,
-                    trace.RegisterOneTimeAnimationDelayMs));
+                    trace.RegisterOneTimeAnimationDelayMs,
+                    RegisterOneTimeAnimationHasCallback: trace.RegisterOneTimeAnimationHasCallback));
             }
 
             return operations.ToArray();
@@ -2634,6 +3298,9 @@ namespace HaCreator.MapSimulator.Animation
 
         public int FollowRegistrationId { get; private set; }
         public int ZOrder => _zOrder;
+        internal IReadOnlyList<FollowParticleRecoveredNativeOperation> RecoveredNativeExecutionTrace { get; private set; }
+            = Array.Empty<FollowParticleRecoveredNativeOperation>();
+        internal FollowParticleRecoveredNativeLayerState RecoveredNativeLayerState { get; private set; }
 
         public void Initialize(
             int followRegistrationId,
@@ -2667,6 +3334,14 @@ namespace HaCreator.MapSimulator.Animation
             _duration = Math.Max(1, durationMs);
             _currentFrame = 0;
             _lastFrameTime = currentTimeMs;
+            RecoveredNativeLayerState = BuildRecoveredNativeLayerState(
+                _relativeToTarget,
+                !_suppressTargetFlip,
+                _startOffset,
+                _endOffset,
+                _zOrder,
+                _duration);
+            RecoveredNativeExecutionTrace = BuildRecoveredNativeExecutionTrace(RecoveredNativeLayerState);
         }
 
         public bool Update(int currentTimeMs)
@@ -2728,6 +3403,62 @@ namespace HaCreator.MapSimulator.Animation
                 new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, alpha),
                 flip,
                 null);
+        }
+
+        internal static FollowParticleRecoveredNativeLayerState BuildRecoveredNativeLayerState(
+            bool relativeToTarget,
+            bool appliesOwnerFlip,
+            Vector2 startOffset,
+            Vector2 endOffset,
+            int zOrder,
+            int durationMs)
+        {
+            return new FollowParticleRecoveredNativeLayerState(
+                relativeToTarget,
+                appliesOwnerFlip,
+                startOffset,
+                endOffset,
+                zOrder,
+                Math.Max(1, durationMs),
+                AlphaStart: byte.MaxValue,
+                AlphaEnd: byte.MinValue,
+                RegistersRepeatLayer: true);
+        }
+
+        internal static FollowParticleRecoveredNativeOperation[] BuildRecoveredNativeExecutionTrace(
+            FollowParticleRecoveredNativeLayerState layerState)
+        {
+            var operations = new List<FollowParticleRecoveredNativeOperation>(6)
+            {
+                BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.LoadLayer, layerState)
+            };
+
+            if (layerState.AppliesOwnerFlip)
+            {
+                operations.Add(BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.PutFlip, layerState));
+            }
+
+            operations.Add(BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.RelOffset, layerState));
+            operations.Add(BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.AlphaRelMove, layerState));
+            operations.Add(BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.AnimateRepeat, layerState));
+            operations.Add(BuildRecoveredNativeOperation(FollowParticleRecoveredNativeOperationKind.RegisterRepeatAnimation, layerState));
+            return operations.ToArray();
+        }
+
+        private static FollowParticleRecoveredNativeOperation BuildRecoveredNativeOperation(
+            FollowParticleRecoveredNativeOperationKind kind,
+            FollowParticleRecoveredNativeLayerState layerState)
+        {
+            return new FollowParticleRecoveredNativeOperation(
+                kind,
+                layerState.RelativeToTarget,
+                layerState.AppliesOwnerFlip,
+                layerState.StartOffset,
+                layerState.EndOffset,
+                layerState.ZOrder,
+                layerState.DurationMs,
+                layerState.AlphaStart,
+                layerState.AlphaEnd);
         }
     }
 

@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Queue<string> _packetActionTrail = new();
         private TournamentSessionPhase _sessionPhase;
         private string _sessionPhaseSummary;
+        private bool _clientTournamentParticipationContext;
         private readonly TournamentMatchTableDialogState _matchTableDialog = new();
 
         public bool IsActive => _isActive;
@@ -82,6 +83,7 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<int> LastPrizeItemIds => _lastPrizeItemIds;
         public TournamentLifecyclePhase LifecyclePhase => _lifecyclePhase;
         public TournamentSessionPhase SessionPhase => _sessionPhase;
+        public bool ClientTournamentParticipationContext => _clientTournamentParticipationContext;
         public TournamentMatchTableDialogState MatchTableDialog => _matchTableDialog;
         public IReadOnlyList<string> PacketActionTrail => _packetActionTrail.ToArray();
 
@@ -92,6 +94,7 @@ namespace HaCreator.MapSimulator.Fields
             _isActive = mapInfo?.fieldType == FieldType.FIELDTYPE_TOURNAMENT;
             if (_isActive)
             {
+                _clientTournamentParticipationContext = true;
                 SetLifecyclePhase(
                     TournamentLifecyclePhase.Lobby,
                     "String/Map.img/victoria/109070000/help0 keeps the Tournament wrapper anchored to the bracket lobby, resting period, prize podium, and five-minute post-finals exit flow.");
@@ -101,6 +104,11 @@ namespace HaCreator.MapSimulator.Fields
                 _statusMessage = $"Tournament wrapper ready for map {_mapId} ({TournamentContractSummary})";
                 _statusMessageUntil = Environment.TickCount + StatusDurationMs;
             }
+        }
+
+        public void SetClientTournamentParticipationContext(bool isParticipantOrRegistered)
+        {
+            _clientTournamentParticipationContext = isParticipantOrRegistered;
         }
 
         public void Update(int tickCount)
@@ -327,6 +335,7 @@ namespace HaCreator.MapSimulator.Fields
             _packetActionTrail.Clear();
             _sessionPhase = TournamentSessionPhase.None;
             _sessionPhaseSummary = null;
+            _clientTournamentParticipationContext = true;
             _matchTableDialog.Reset();
         }
 
@@ -335,7 +344,7 @@ namespace HaCreator.MapSimulator.Fields
             byte branch = reader.ReadByte();
             byte noticeCode = reader.ReadByte();
 
-            if (branch == 0)
+            if (branch == 0 && _clientTournamentParticipationContext)
             {
                 if (!TryResolveBlockedEntryNotice(noticeCode, out TournamentClientMessage blockedEntryNotice))
                 {
@@ -359,6 +368,13 @@ namespace HaCreator.MapSimulator.Fields
                     TournamentSessionPhase.Notice,
                     $"CField_Tournament::OnTournament handled blocked-entry code {noticeCode}.");
                 return;
+            }
+
+            if (branch == 0)
+            {
+                SetLifecyclePhase(
+                    TournamentLifecyclePhase.RestPeriod,
+                    "CField_Tournament::OnTournament treated branch 0 as the round-result path because the local CWvsContext tournament participation flags were not set.");
             }
 
             if (noticeCode > 0x10)
@@ -462,6 +478,19 @@ namespace HaCreator.MapSimulator.Fields
             TournamentClientMessage fallbackMessage = prizeCode != 0
                 ? new TournamentClientMessage(0x3A8, $"Tournament prize notice without items selected branch code {prizeCode}.")
                 : new TournamentClientMessage(0x3A9, "Tournament prize notice reported no item rewards for the local branch.");
+
+            if (!_clientTournamentParticipationContext)
+            {
+                SetStatus(
+                    null,
+                    currentTimeMs,
+                    Array.Empty<int>(),
+                    $"set-prize (376) code={prizeCode} items=none suppressed by missing local tournament participation context");
+                SetSessionPhase(
+                    TournamentSessionPhase.Prize,
+                    "CField_Tournament::OnTournamentSetPrize decoded the podium transition but suppressed the no-item CUtilDlg::Notice because the local CWvsContext tournament participation flags were not set.");
+                return;
+            }
 
             SetStatus(
                 FormatStringPoolMessage(fallbackMessage),

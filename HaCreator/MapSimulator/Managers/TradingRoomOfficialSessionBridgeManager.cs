@@ -133,6 +133,17 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public string DescribeTradingRoomOpcodeMap()
+        {
+            string inbound = InboundTradingRoomOpcode > 0
+                ? $"inbound opcode {InboundTradingRoomOpcode} is configured"
+                : AutoDetectedInboundTradingRoomOpcode > 0
+                    ? $"inbound opcode {AutoDetectedInboundTradingRoomOpcode} was auto-detected from modeled CTradingRoomDlg::OnPacket payloads"
+                    : "inbound opcode is not mapped yet; auto-detection shape-checks modeled CTradingRoomDlg::OnPacket payloads";
+            return
+                $"Trading-room opcode map: outbound CTradingRoomDlg client requests use opcode {OutboundTradingRoomOpcode}; subtype 17 is the Trade request and subtype 20 is the CRC reply emitted by CTradingRoomDlg::OnTrade. Server-owned CTradingRoomDlg::OnPacket payloads currently model subtypes 15 put-item, 16 put-money, 17 trade handoff, 20 CRC follow-up, and 21 exceed-limit; {inbound}.";
+        }
+
         public string ClearRecentOutboundPackets()
         {
             lock (_sync)

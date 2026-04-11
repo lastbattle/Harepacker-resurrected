@@ -456,6 +456,13 @@ namespace HaCreator.MapSimulator.Character
                 ["finishAttack"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["finishAttack_link"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["finishAttack_link2"] = new[] { "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
+                // The remaining checked dual-blade / thief body rows still publish no
+                // transform-only roots in Morph/*.img. Character/00002000.img backs
+                // these client raw requests with ordinary stab, swing, or alert frames.
+                ["swingD1"] = new[] { "swingO2", "swingOF" },
+                ["swingD2"] = new[] { "swingO2", "swingOF" },
+                ["owlDead"] = new[] { "stabO1", "swingO1" },
+                ["suddenRaid"] = new[] { "alert", "swingOF" },
                 // Later Demon / Mercedes / Resistance body actions in
                 // Character/00002000.img still collapse onto generic swing/stab families
                 // rather than unique morph roots.
@@ -474,9 +481,15 @@ namespace HaCreator.MapSimulator.Character
                 ["darkSpin"] = new[] { "swingT1" },
                 ["darkThrust"] = new[] { "stabT1", "swingT1" },
                 ["healingAttack"] = new[] { "stabO1" },
-                // These later WZ skill action rows remain raw-name requests, while
-                // Character/00002000.img backs them with ordinary swing/stab body
-                // families and Morph/*.img still publishes no verbatim roots.
+                // These later client raw-action requests stay outside Morph/*.img
+                // verbatim roots; Character/00002000.img backs them with ordinary
+                // body-action families instead.
+                ["swingRes"] = new[] { "swingO2" },
+                ["lasergun"] = new[] { "shoot2", "stabO1", "shoot1" },
+                ["battlecharge"] = new[] { "swingOF", "stabT1", "alert" },
+                ["darkTornado_pre"] = new[] { "stabO1", "swingO2", "swingTF" },
+                ["darkTornado"] = new[] { "swingTF", "swingO2" },
+                ["darkTornado_after"] = new[] { "swingO2", "swingTF", "alert" },
                 ["darkImpale"] = new[] { "swingT1", "alert" },
                 ["glacialChain"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["windEffect"] = new[] { "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
@@ -532,10 +545,7 @@ namespace HaCreator.MapSimulator.Character
                 ["cannonJump"] = new[] { "jump" },
                 // The client morph action table also carries `spiritJump`; current
                 // Morph/*.img surfaces publish generic jump instead of that raw root.
-                ["spiritJump"] = new[] { "jump" },
-                // `slayerDoubleJump` is a client raw-action-table entry and body-side
-                // branch, but checked Morph/*.img publishes no verbatim slayer branch.
-                ["slayerDoubleJump"] = new[] { "jump" }
+                ["spiritJump"] = new[] { "jump" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedMovementMorphFallbackAliases =
@@ -1406,9 +1416,13 @@ namespace HaCreator.MapSimulator.Character
 
             // Keep jump-special promotion tied to the currently confirmed client request
             // surface instead of widening every future `*DoubleJump` string into the
-            // morph-owned double-jump family without evidence.
+            // morph-owned double-jump family without evidence. Skill rows publish
+            // `iceDoubleJump`, the client table publishes `slayerDoubleJump`, and the
+            // checked morph images publish only archer/ice/iceman-authored double jumps.
             return string.Equals(actionName, "doubleJump", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "slayerDoubleJump", StringComparison.OrdinalIgnoreCase);
+                   || string.Equals(actionName, "slayerDoubleJump", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "iceDoubleJump", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "archerDoubleJump", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumerateDoubleJumpAliases(CharacterPart morphPart)

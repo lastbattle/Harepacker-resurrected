@@ -37,6 +37,8 @@ namespace HaCreator.MapSimulator.Pools
         public bool PickedByPet { get; set; }
         public DropPickupActorKind ActorKind { get; set; } = DropPickupActorKind.Other;
         public string ActorName { get; set; }
+        public DropOwnershipType OwnershipType { get; set; } = DropOwnershipType.None;
+        public int OwnerId { get; set; }
         public float PickupX { get; set; }
         public float PickupY { get; set; }
     }
@@ -1306,7 +1308,15 @@ namespace HaCreator.MapSimulator.Pools
                 float dx = drop.X - playerX;
                 float dy = drop.Y - playerY;
                 float distSq = dx * dx + dy * dy;
-                if (distSq > rangeSq)
+                if (distSq > rangeSq
+                    || !IsWithinClientPickupRect(
+                        playerX,
+                        playerY,
+                        drop.X,
+                        drop.Y,
+                        ClientPlayerPickupHalfWidth,
+                        ClientPlayerPickupTopOffset,
+                        ClientPlayerPickupBottomOffset))
                 {
                     continue;
                 }
@@ -2262,6 +2272,8 @@ namespace HaCreator.MapSimulator.Pools
                 PickedByPet = pickedByPet,
                 ActorKind = actorKind,
                 ActorName = actorName,
+                OwnershipType = drop.OwnershipType,
+                OwnerId = drop.OwnerId,
                 PickupX = drop.State == DropState.PickingUp ? drop.PickupStartX : drop.X,
                 PickupY = drop.State == DropState.PickingUp ? drop.PickupStartY : drop.Y
             };

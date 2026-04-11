@@ -136,6 +136,7 @@ namespace HaCreator.MapSimulator.Companions
         private float _alpha;
         private float _ownerPhaseActionAlpha = 1f;
         private Color _actionLayerColor = Color.White;
+        private int _actionLayerZ = -1;
         private float _dragonFuryAlpha;
         private float _questInfoAlpha;
         private int _lastUpdateTime = int.MinValue;
@@ -264,6 +265,7 @@ namespace HaCreator.MapSimulator.Companions
             _facingRight = owner.FacingRight;
             _currentActionSpeed = owner.Build.GetEffectiveWeaponAttackSpeed();
             _worldAnchor = ResolveAnchor(owner, animationSet, currentTime);
+            _actionLayerZ = ResolveClientDragonActionLayerZ(owner.GetCurrentLayerZ(currentTime));
             bool suppressedForMap = ShouldSuppressForCurrentMap();
             bool suppressedForMount = ShouldSuppressForCurrentMount(owner);
             _isSuppressed = suppressedForMap || suppressedForMount;
@@ -421,6 +423,7 @@ namespace HaCreator.MapSimulator.Companions
             _alpha = 0f;
             _ownerPhaseActionAlpha = 1f;
             _actionLayerColor = Color.White;
+            _actionLayerZ = -1;
             _dragonFuryAlpha = 0f;
             _questInfoAlpha = 0f;
             _lastUpdateTime = int.MinValue;
@@ -1276,6 +1279,11 @@ namespace HaCreator.MapSimulator.Companions
         internal static float ResolveClientLayerAlpha(bool shouldShow)
         {
             return shouldShow ? 1f : 0f;
+        }
+
+        internal static int ResolveClientDragonActionLayerZ(int ownerLayerZ)
+        {
+            return ownerLayerZ - 1;
         }
 
         internal static float ResolveOwnerPhaseClampedActionLayerAlpha(float actionLayerAlpha, int? ownerPhaseAlpha)

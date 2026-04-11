@@ -4668,7 +4668,7 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject resetButton = LoadButton(tradeProperty, "BtReset", clickSound, overSound, device);
             UIObject coinButton = LoadButton(tradeProperty, "BtCoin", clickSound, overSound, device);
             UIObject acceptButton = LoadButton(tradeProperty, "BtClame", clickSound, overSound, device);
-            window.BindButton(tradeButton, () => runtime.ToggleTradeLock(out _));
+            window.BindButton(tradeButton, () => runtime.TryApplyTradingRoomLocalTradeRequest(out _, out _));
             window.BindButton(resetButton, runtime.ResetTrade);
             window.BindButton(coinButton, runtime.IncreaseTradeOffer);
             window.BindButton(acceptButton, () => runtime.ToggleTradeAcceptance(out _));

@@ -1136,8 +1136,8 @@ namespace HaCreator.MapSimulator.UI
         {
             IReadOnlyList<string> candidates = chatState.WhisperCandidates ?? Array.Empty<string>();
             int visibleCount = Math.Min(WhisperPickerVisibleRows, candidates.Count);
-            int firstVisibleIndex = MapSimulatorChat.ResolveWhisperTargetPickerFirstVisibleIndex(
-                chatState.WhisperTargetPickerSelectionIndex,
+            int firstVisibleIndex = MapSimulatorChat.ClampWhisperTargetPickerFirstVisibleIndex(
+                chatState.WhisperTargetPickerFirstVisibleIndex,
                 candidates.Count,
                 WhisperPickerVisibleRows);
             float maxCandidateWidth = ResolveWhisperPickerMaxCandidateWidth(chatState, firstVisibleIndex, visibleCount);
@@ -1205,8 +1205,8 @@ namespace HaCreator.MapSimulator.UI
         {
             IReadOnlyList<string> candidates = chatState.WhisperCandidates ?? Array.Empty<string>();
             int visibleCount = Math.Min(WhisperPickerVisibleRows, candidates.Count);
-            int firstVisibleIndex = MapSimulatorChat.ResolveWhisperTargetPickerFirstVisibleIndex(
-                chatState.WhisperTargetPickerSelectionIndex,
+            int firstVisibleIndex = MapSimulatorChat.ClampWhisperTargetPickerFirstVisibleIndex(
+                chatState.WhisperTargetPickerFirstVisibleIndex,
                 candidates.Count,
                 WhisperPickerVisibleRows);
             int rowHeight = ResolveWhisperPickerModalComboDropdownRowHeight();

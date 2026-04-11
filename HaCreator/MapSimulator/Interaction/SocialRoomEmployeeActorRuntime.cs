@@ -1274,12 +1274,22 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static byte ResolveMiniRoomCurrentUsers(SocialRoomFieldActorSnapshot snapshot)
         {
-            return snapshot?.MiniRoomBalloonByte1 ?? 0;
+            return snapshot?.MiniRoomBalloonByte2 ?? 0;
         }
 
         private static byte ResolveMiniRoomMaxUsers(SocialRoomFieldActorSnapshot snapshot)
         {
-            return snapshot?.MiniRoomBalloonByte2 ?? 0;
+            return snapshot?.MiniRoomBalloonByte1 ?? 0;
+        }
+
+        internal static byte ResolveMiniRoomCurrentUsersForTesting(SocialRoomFieldActorSnapshot snapshot)
+        {
+            return ResolveMiniRoomCurrentUsers(snapshot);
+        }
+
+        internal static byte ResolveMiniRoomMaxUsersForTesting(SocialRoomFieldActorSnapshot snapshot)
+        {
+            return ResolveMiniRoomMaxUsers(snapshot);
         }
 
         private static void DrawMiniRoomBalloonCount(SpriteBatch spriteBatch, IReadOnlyList<Texture2D> digits, byte value, int x, int y)

@@ -948,13 +948,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 int availableEtcSlots = GetAvailableSlotCount(InventoryType.ETC);
                 int requiredEtcSlots = Math.Max(1, recipe.RequiredEmptyEtcSlots);
-                y = DrawSectionHeader(sprite, "Required Slots", detailOrigin, y);
+                y = DrawSectionHeader(sprite, "Packet Result Slots", detailOrigin, y);
                 y = DrawTextRequirementRow(
                     sprite,
                     detailOrigin,
                     y,
-                    $"Etc: {Math.Min(availableEtcSlots, requiredEtcSlots)}/{requiredEtcSlots} empty slot(s)",
-                    availableEtcSlots >= requiredEtcSlots);
+                    $"Etc room now: {Math.Min(availableEtcSlots, requiredEtcSlots)}/{requiredEtcSlots} empty slot(s)",
+                    true);
 
                 string slotText = $"Target {sourceSlot.ItemName ?? GetItemName(sourceSlot.ItemId)} x1";
                 sprite.DrawString(_font, slotText, new Vector2(detailOrigin.X, y), new Color(255, 223, 153));
@@ -1487,24 +1487,6 @@ namespace HaCreator.MapSimulator.UI
                 if (!TryResolveDisassemblySource(recipe, out InventorySlotData slotData))
                 {
                     failureReason = "Select equipment to disassemble.";
-                    return false;
-                }
-
-                int requiredEtcSlots = Math.Max(1, recipe.RequiredEmptyEtcSlots);
-                int availableEtcSlots = GetAvailableSlotCount(InventoryType.ETC);
-                if (availableEtcSlots < requiredEtcSlots)
-                {
-                    failureReason = string.Format(
-                        CultureInfo.InvariantCulture,
-                        "{0} Need {1} empty Etc slot(s).",
-                        PacketOwnedItemMakerResultRuntime.BuildNoEmptySlotNotice(InventoryType.ETC, disassemblyMode: true),
-                        requiredEtcSlots);
-                    return false;
-                }
-
-                if (recipe.MesoCost > 0 && _inventory.GetMesoCount() < recipe.MesoCost)
-                {
-                    failureReason = "Not enough meso for this disassembly.";
                     return false;
                 }
 
@@ -3489,6 +3471,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return Math.Max(0, inventory.GetSlotLimit(inventoryType) - occupiedCount) > 0;
+        }
+
+        internal static bool ClientStartItemMakeAppliesCraftCapacityGate(int clientRecipeClass)
+        {
+            // CUIItemMaker::StartItemMake applies IsAbleToMake/IsExistEmptySlot/IsEnoughMeso
+            // only to recipe classes 1, 3, and 4. Class 2 is packet-owned disassembly and only
+            // checks that an equipment target is mounted before the gauge starts.
+            return clientRecipeClass is 1 or 3 or 4;
         }
     }
 }

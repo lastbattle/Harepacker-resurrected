@@ -55,10 +55,12 @@ namespace HaCreator.MapSimulator.Managers
         public const ushort ClientFriendResultOpcode = 65;
         public const ushort ClientGuildResultOpcode = 67;
         public const ushort ClientAllianceResultOpcode = 68;
+        private const int MaxRecentPackets = 32;
         private const string DefaultProcessName = "MapleStory";
 
         private readonly ConcurrentQueue<SocialListOfficialSessionBridgeMessage> _pendingMessages = new();
         private readonly object _sync = new();
+        private readonly Queue<SessionPacketTrace> _recentPackets = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -106,6 +108,15 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public readonly record struct SessionPacketTrace(
+            string Direction,
+            int Opcode,
+            string ResultLabel,
+            int PayloadLength,
+            string PayloadHex,
+            string RawPacketHex,
+            string Source);
+
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
@@ -119,6 +130,17 @@ namespace HaCreator.MapSimulator.Managers
         public int ReceivedCount { get; private set; }
         public int ForwardedOutboundCount { get; private set; }
         public int InjectedOutboundCount { get; private set; }
+        public int RecentPacketCount
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _recentPackets.Count;
+                }
+            }
+        }
+
         public int LastInjectedOutboundOpcode { get; private set; }
         public byte[] LastInjectedOutboundRawPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Social-list official-session bridge inactive.";
@@ -134,7 +156,107 @@ namespace HaCreator.MapSimulator.Managers
             string injectedText = InjectedOutboundCount > 0
                 ? $"; injectedOutbound={InjectedOutboundCount}, lastInjectedOpcode={LastInjectedOutboundOpcode}"
                 : $"; injectedOutbound={InjectedOutboundCount}";
-            return $"Social-list official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}{injectedText}; {DescribeConfiguredOpcodes(FriendResultOpcode, PartyResultOpcode, GuildResultOpcode, AllianceResultOpcode)}. {LastStatus}";
+            return $"Social-list official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; history={RecentPacketCount}{injectedText}; {DescribeConfiguredOpcodes(FriendResultOpcode, PartyResultOpcode, GuildResultOpcode, AllianceResultOpcode)}. {LastStatus}";
+        }
+
+        public string DescribeRecentPackets(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentPackets);
+            lock (_sync)
+            {
+                if (_recentPackets.Count == 0)
+                {
+                    return "Social-list official-session bridge packet history is empty.";
+                }
+
+                SessionPacketTrace[] entries = _recentPackets
+                    .Reverse()
+                    .Take(normalizedCount)
+                    .ToArray();
+                return "Social-list official-session bridge packet history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select((entry, index) =>
+                            $"#{index + 1} {entry.Direction} opcode={entry.Opcode} kind={entry.ResultLabel} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex} raw={entry.RawPacketHex}"));
+            }
+        }
+
+        public string ClearRecentPackets()
+        {
+            lock (_sync)
+            {
+                _recentPackets.Clear();
+            }
+
+            LastStatus = "Social-list official-session bridge packet history cleared.";
+            return LastStatus;
+        }
+
+        public bool TryReplayRecentPacket(int historyIndexFromNewest, out string status)
+        {
+            if (historyIndexFromNewest <= 0)
+            {
+                status = "Social-list replay index must be 1 or greater.";
+                LastStatus = status;
+                return false;
+            }
+
+            SessionPacketTrace[] entries;
+            lock (_sync)
+            {
+                if (_recentPackets.Count == 0)
+                {
+                    status = "No captured social-list packets are available to replay.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (historyIndexFromNewest > _recentPackets.Count)
+                {
+                    status = $"Social-list replay index {historyIndexFromNewest} exceeds the {_recentPackets.Count} captured packet(s).";
+                    LastStatus = status;
+                    return false;
+                }
+
+                entries = _recentPackets.ToArray();
+            }
+
+            SessionPacketTrace trace = entries[^historyIndexFromNewest];
+            try
+            {
+                byte[] rawPacket = Convert.FromHexString(trace.RawPacketHex);
+                if (string.Equals(trace.Direction, "out", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(trace.Direction, "inject", StringComparison.OrdinalIgnoreCase))
+                {
+                    return TrySendOutboundRawPacket(rawPacket, out status);
+                }
+
+                if (!TryDecodeInboundResultPacket(
+                        rawPacket,
+                        $"history-replay:{trace.Source}",
+                        FriendResultOpcode,
+                        PartyResultOpcode,
+                        GuildResultOpcode,
+                        AllianceResultOpcode,
+                        out SocialListOfficialSessionBridgeMessage message))
+                {
+                    status = $"Captured social-list packet {historyIndexFromNewest} is not a configured inbound result packet.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                _pendingMessages.Enqueue(message);
+                status = $"Queued captured {message.ResultLabel} opcode {message.Opcode} from social-list history entry {historyIndexFromNewest}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (FormatException ex)
+            {
+                status = $"Captured social-list packet {historyIndexFromNewest} could not be replayed: {ex.Message}";
+                LastStatus = status;
+                return false;
+            }
         }
 
         public void Start(
@@ -314,6 +436,7 @@ namespace HaCreator.MapSimulator.Managers
                 InjectedOutboundCount++;
                 LastInjectedOutboundOpcode = opcode;
                 LastInjectedOutboundRawPacket = clonedRawPacket;
+                RecordRecentPacket("inject", opcode, "client-request", clonedRawPacket, clonedRawPacket, $"manual-inject:{pair.RemoteEndpoint}");
                 status = $"Injected social-list outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
                 LastStatus = status;
                 return true;
@@ -482,6 +605,7 @@ namespace HaCreator.MapSimulator.Managers
 
                 _pendingMessages.Enqueue(message);
                 ReceivedCount++;
+                RecordRecentPacket("in", message.Opcode, message.ResultLabel, message.Payload, raw, message.Source);
                 LastStatus = $"Queued {message.ResultLabel} opcode {message.Opcode} ({message.Payload.Length} byte(s)) from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
@@ -502,6 +626,8 @@ namespace HaCreator.MapSimulator.Managers
                 byte[] rawPacket = packet.ToArray();
                 pair.ServerSession.SendPacket((byte[])rawPacket.Clone());
                 ForwardedOutboundCount++;
+                int opcode = rawPacket.Length >= sizeof(ushort) ? BitConverter.ToUInt16(rawPacket, 0) : 0;
+                RecordRecentPacket("out", opcode, "client-request", rawPacket.Length > sizeof(ushort) ? rawPacket[sizeof(ushort)..] : Array.Empty<byte>(), rawPacket, $"official-session:{pair.ClientEndpoint}");
             }
             catch (Exception ex)
             {
@@ -582,6 +708,31 @@ namespace HaCreator.MapSimulator.Managers
             InjectedOutboundCount = 0;
             LastInjectedOutboundOpcode = 0;
             LastInjectedOutboundRawPacket = Array.Empty<byte>();
+            lock (_sync)
+            {
+                _recentPackets.Clear();
+            }
+        }
+
+        private void RecordRecentPacket(string direction, int opcode, string resultLabel, byte[] payload, byte[] rawPacket, string source)
+        {
+            SessionPacketTrace trace = new(
+                direction,
+                opcode,
+                string.IsNullOrWhiteSpace(resultLabel) ? "unknown" : resultLabel.Trim(),
+                payload?.Length ?? 0,
+                Convert.ToHexString(payload ?? Array.Empty<byte>()),
+                Convert.ToHexString(rawPacket ?? Array.Empty<byte>()),
+                string.IsNullOrWhiteSpace(source) ? "sociallist-session" : source.Trim());
+
+            lock (_sync)
+            {
+                _recentPackets.Enqueue(trace);
+                while (_recentPackets.Count > MaxRecentPackets)
+                {
+                    _recentPackets.Dequeue();
+                }
+            }
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

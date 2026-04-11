@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 
@@ -8,6 +9,12 @@ namespace HaCreator.MapSimulator.Character.Skills
     public static class MeleeAfterimagePlaybackResolver
     {
         internal readonly record struct Snapshot(int FrameIndex, int FrameElapsedMs, IReadOnlyList<AfterimageRenderableLayer> Layers);
+        internal readonly record struct SpriteBatchDrawParameters(
+            Vector2 Position,
+            Vector2 Origin,
+            float Scale,
+            Color Tint,
+            SpriteEffects Effects);
 
         internal static void ApplySnapshotToCache(
             in Snapshot snapshot,
@@ -430,6 +437,44 @@ namespace HaCreator.MapSimulator.Character.Skills
             int endZoom = authoredZoomEnd.GetValueOrDefault(100);
 
             return (startZoom, endZoom);
+        }
+
+        internal static bool TryResolveSpriteBatchDrawParameters(
+            SkillFrame frame,
+            int screenX,
+            int screenY,
+            bool facingRight,
+            float alpha,
+            float zoom,
+            Color baseTint,
+            out SpriteBatchDrawParameters parameters)
+        {
+            parameters = default;
+            if (frame?.Texture == null)
+            {
+                return false;
+            }
+
+            bool shouldFlip = facingRight ^ frame.Flip;
+            parameters = new SpriteBatchDrawParameters(
+                new Vector2(screenX, screenY),
+                ResolveSpriteBatchDrawOrigin(frame.Origin, frame.Texture.Width, shouldFlip),
+                ResolveSpriteBatchDrawScale(zoom),
+                baseTint * MathHelper.Clamp(alpha, 0f, 1f),
+                shouldFlip ? SpriteEffects.FlipHorizontally : SpriteEffects.None);
+            return true;
+        }
+
+        internal static Vector2 ResolveSpriteBatchDrawOrigin(Point origin, int textureWidth, bool shouldFlip)
+        {
+            return new Vector2(
+                shouldFlip ? textureWidth - origin.X : origin.X,
+                origin.Y);
+        }
+
+        internal static float ResolveSpriteBatchDrawScale(float zoom)
+        {
+            return MathHelper.Clamp(zoom, 0.01f, 10f);
         }
     }
 }

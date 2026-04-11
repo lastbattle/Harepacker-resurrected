@@ -163,6 +163,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D[] _dualTabDisabled = new Texture2D[DUAL_TAB_COUNT];
         private readonly Point[] _dualTabEnabledOrigins = new Point[DUAL_TAB_COUNT];
         private readonly Point[] _dualTabDisabledOrigins = new Point[DUAL_TAB_COUNT];
+        private readonly bool[] _tabVisible = new bool[DUAL_TAB_COUNT];
         private bool _useDualTabStrip;
 
         // Empty skill slot texture
@@ -194,6 +195,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _debugPlaceholder;
         private int _hoveredSkillIndex = -1;
         private Point _lastMousePosition;
+        private int _currentJobId;
+        private int _currentSubJob;
         private readonly Dictionary<int, Texture2D> _jobIconsByTab;
         private readonly Dictionary<int, string> _jobNamesByTab;
         private readonly Dictionary<int, int> _displaySkillRootByTab;
@@ -238,7 +241,7 @@ namespace HaCreator.MapSimulator.UI
                 int maxTab = _useDualTabStrip ? MAX_TAB_INDEX : TAB_4TH;
                 if (value >= TAB_BEGINNER && value <= maxTab)
                 {
-                    ApplyCurrentTab(value);
+                    ApplyCurrentTab(CoerceVisibleTab(value));
                 }
             }
         }
@@ -268,7 +271,7 @@ namespace HaCreator.MapSimulator.UI
             get
             {
                 if (skillsByTab.TryGetValue(_currentTab, out var skills))
-                    return skills;
+                    return GetVisibleSkills(skills);
 
                 return new List<SkillDisplayData>();
             }
@@ -380,6 +383,8 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_DUAL_5TH, new List<SkillDataLoader.RecommendedSkillEntry>() },
                 { TAB_DUAL_6TH, new List<SkillDataLoader.RecommendedSkillEntry>() }
             };
+
+            SetVisibleTabs(Enumerable.Range(TAB_BEGINNER, DUAL_TAB_COUNT));
         }
 
         private void CreateEmptySlotTexture(GraphicsDevice device)
@@ -519,13 +524,33 @@ namespace HaCreator.MapSimulator.UI
         public void SetUseDualTabStrip(bool useDualTabStrip)
         {
             _useDualTabStrip = useDualTabStrip;
-            bool showStandardTabs = !useDualTabStrip;
-            _tabBeginner?.SetVisible(showStandardTabs);
-            _tab1st?.SetVisible(showStandardTabs);
-            _tab2nd?.SetVisible(showStandardTabs);
-            _tab3rd?.SetVisible(showStandardTabs);
-            _tab4th?.SetVisible(showStandardTabs);
-            CurrentTab = Math.Clamp(_currentTab, TAB_BEGINNER, useDualTabStrip ? MAX_TAB_INDEX : TAB_4TH);
+            RefreshStandardTabVisibility();
+            CurrentTab = CoerceVisibleTab(_currentTab);
+        }
+
+        public void SetVisibleTabs(IEnumerable<int> visibleTabs)
+        {
+            Array.Clear(_tabVisible, 0, _tabVisible.Length);
+
+            bool hasVisibleTab = false;
+            if (visibleTabs != null)
+            {
+                foreach (int tab in visibleTabs)
+                {
+                    int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
+                    if (_tabVisible[tabIndex])
+                        continue;
+
+                    _tabVisible[tabIndex] = true;
+                    hasVisibleTab = true;
+                }
+            }
+
+            if (!hasVisibleTab)
+                _tabVisible[TAB_BEGINNER] = true;
+
+            RefreshStandardTabVisibility();
+            ApplyCurrentTab(CoerceVisibleTab(_currentTab));
         }
 
         public void SetSpUpTextures(Texture2D normal, Texture2D pressed, Texture2D disabled, Texture2D mouseOver)
@@ -597,6 +622,7 @@ namespace HaCreator.MapSimulator.UI
                 tab4.ButtonClickReleased += (sender) => CurrentTab = TAB_4TH;
             }
 
+            RefreshStandardTabVisibility();
             UpdateTabStates();
         }
 
@@ -869,6 +895,9 @@ namespace HaCreator.MapSimulator.UI
 
             for (int tab = TAB_BEGINNER; tab <= MAX_TAB_INDEX; tab++)
             {
+                if (!_tabVisible[tab])
+                    continue;
+
                 Texture2D texture = tab == _currentTab
                     ? _dualTabEnabled[tab] ?? _dualTabDisabled[tab]
                     : _dualTabDisabled[tab] ?? _dualTabEnabled[tab];
@@ -903,6 +932,9 @@ namespace HaCreator.MapSimulator.UI
 
             for (int tab = TAB_BEGINNER; tab <= MAX_TAB_INDEX; tab++)
             {
+                if (!_tabVisible[tab])
+                    continue;
+
                 if (GetClientTabSlotBounds(Position.X, Position.Y, tab).Contains(mouseX, mouseY))
                     return tab;
             }
@@ -920,6 +952,69 @@ namespace HaCreator.MapSimulator.UI
             _hoveredSpUpSkillIndex = -1;
             _hoveredSkillPointDisplay = false;
             _pressedSpUpSkillIndex = -1;
+            UpdateTabStates();
+        }
+
+        private void RefreshStandardTabVisibility()
+        {
+            bool showStandardTabs = !_useDualTabStrip;
+            _tabBeginner?.SetVisible(showStandardTabs && _tabVisible[TAB_BEGINNER]);
+            _tab1st?.SetVisible(showStandardTabs && _tabVisible[TAB_1ST]);
+            _tab2nd?.SetVisible(showStandardTabs && _tabVisible[TAB_2ND]);
+            _tab3rd?.SetVisible(showStandardTabs && _tabVisible[TAB_3RD]);
+            _tab4th?.SetVisible(showStandardTabs && _tabVisible[TAB_4TH]);
+        }
+
+        private int CoerceVisibleTab(int requestedTab)
+        {
+            int maxTab = _useDualTabStrip ? MAX_TAB_INDEX : TAB_4TH;
+            int clampedTab = Math.Clamp(requestedTab, TAB_BEGINNER, maxTab);
+            if (_tabVisible[clampedTab])
+                return clampedTab;
+
+            for (int tab = clampedTab - 1; tab >= TAB_BEGINNER; tab--)
+            {
+                if (_tabVisible[tab])
+                    return tab;
+            }
+
+            for (int tab = clampedTab + 1; tab <= maxTab; tab++)
+            {
+                if (_tabVisible[tab])
+                    return tab;
+            }
+
+            return TAB_BEGINNER;
+        }
+
+        private static string GetDefaultTabJobName(int tabIndex)
+        {
+            return tabIndex switch
+            {
+                TAB_BEGINNER => "Beginner",
+                TAB_1ST => "1st Job",
+                TAB_2ND => "2nd Job",
+                TAB_3RD => "3rd Job",
+                TAB_4TH => "4th Job",
+                TAB_DUAL_5TH => "5th Tab",
+                TAB_DUAL_6TH => "6th Tab",
+                _ => "Beginner"
+            };
+        }
+
+        private List<SkillDisplayData> GetVisibleSkills(List<SkillDisplayData> skills)
+        {
+            if (skills == null || skills.Count == 0)
+                return new List<SkillDisplayData>();
+
+            var visibleSkills = new List<SkillDisplayData>(skills.Count);
+            foreach (SkillDisplayData skill in skills)
+            {
+                if (SkillRootVisibilityResolver.IsSkillVisible(skill, _currentJobId, _currentSubJob))
+                    visibleSkills.Add(skill);
+            }
+
+            return visibleSkills;
         }
 
         private Rectangle GetSkillPointBounds()
@@ -2038,6 +2133,18 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void AddSkills(int jobAdvancement, IEnumerable<SkillDisplayData> skillDataList)
+        {
+            if (skillDataList == null)
+                return;
+
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
+            if (skillsByTab.TryGetValue(tab, out var skills))
+            {
+                skills.AddRange(skillDataList.Where(skill => skill != null));
+            }
+        }
+
         public void SetJobInfo(int tab, Texture2D jobIcon, string jobName)
         {
             int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
@@ -2046,6 +2153,109 @@ namespace HaCreator.MapSimulator.UI
             {
                 _jobNamesByTab[tabIndex] = jobName;
             }
+        }
+
+        public void ResetSkillRootTab(int tab)
+        {
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
+            if (_recommendedSkillsByTab.TryGetValue(tabIndex, out List<SkillDataLoader.RecommendedSkillEntry> recommendedEntries))
+                recommendedEntries.Clear();
+
+            if (skillsByTab.TryGetValue(tabIndex, out List<SkillDisplayData> skills))
+                skills.Clear();
+
+            skillPoints[tabIndex] = 0;
+            _displaySkillRootByTab[tabIndex] = 0;
+            _jobIconsByTab[tabIndex] = null;
+            _jobNamesByTab[tabIndex] = GetDefaultTabJobName(tabIndex);
+
+            if (_currentTab == tabIndex)
+            {
+                _selectedSkill = null;
+                _selectedSkillIndex = -1;
+                _hoveredSkillIndex = -1;
+                _hoveredSpUpSkillIndex = -1;
+                _hoveredSkillPointDisplay = false;
+                _pressedSpUpSkillIndex = -1;
+                _scrollOffset = 0;
+            }
+        }
+
+        public bool TryGetDisplayedSkillRootId(int tab, out int skillRootId)
+        {
+            int tabIndex = Math.Clamp(tab, TAB_BEGINNER, MAX_TAB_INDEX);
+            return _displaySkillRootByTab.TryGetValue(tabIndex, out skillRootId);
+        }
+
+        public int GetLoadedSkillCount(int jobAdvancement)
+        {
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
+            return skillsByTab.TryGetValue(tab, out List<SkillDisplayData> skills)
+                ? skills.Count
+                : 0;
+        }
+
+        public void SetCharacterJob(int jobId, int subJob = 0)
+        {
+            _currentJobId = Math.Max(0, jobId);
+            _currentSubJob = Math.Max(0, subJob);
+            RefreshVisibleTabsFromLoadedSkillRoots();
+        }
+
+        public void SynchronizeLoadedSkillLevels(Func<int, int> resolveCurrentLevel, Func<int, int> resolveMaxLevel = null)
+        {
+            if (resolveCurrentLevel == null)
+                return;
+
+            foreach (List<SkillDisplayData> tabSkills in skillsByTab.Values)
+            {
+                foreach (SkillDisplayData skill in tabSkills)
+                {
+                    if (skill == null)
+                        continue;
+
+                    int currentLevel = Math.Max(0, resolveCurrentLevel(skill.SkillId));
+                    skill.CurrentLevel = currentLevel;
+
+                    if (resolveMaxLevel != null)
+                    {
+                        int resolvedMaxLevel = resolveMaxLevel(skill.SkillId);
+                        skill.MaxLevel = resolvedMaxLevel > 0
+                            ? Math.Max(currentLevel, resolvedMaxLevel)
+                            : Math.Max(skill.MaxLevel, currentLevel);
+                    }
+                    else
+                    {
+                        skill.MaxLevel = Math.Max(skill.MaxLevel, currentLevel);
+                    }
+                }
+            }
+
+            RefreshVisibleTabsFromLoadedSkillRoots();
+        }
+
+        public void RefreshVisibleTabsFromLoadedSkillRoots()
+        {
+            var visibleTabs = new List<int>();
+            foreach (KeyValuePair<int, List<SkillDisplayData>> entry in skillsByTab.OrderBy(entry => entry.Key))
+            {
+                int tab = entry.Key;
+                if (!_displaySkillRootByTab.TryGetValue(tab, out int skillRootId) || skillRootId < 0)
+                    continue;
+
+                List<SkillDisplayData> rootSkills = entry.Value;
+                if (rootSkills == null || rootSkills.Count == 0)
+                    continue;
+
+                bool hasVisibleSkill = rootSkills.Any(skill =>
+                    SkillRootVisibilityResolver.IsSkillVisible(skill, _currentJobId, _currentSubJob));
+                if (!hasVisibleSkill)
+                    continue;
+
+                visibleTabs.Add(tab);
+            }
+
+            SetVisibleTabs(visibleTabs);
         }
 
         /// <summary>
@@ -2127,6 +2337,13 @@ namespace HaCreator.MapSimulator.UI
             _hoveredSkillPointDisplay = false;
             _pressedSpUpSkillIndex = -1;
             _scrollOffset = 0;
+        }
+
+        public void ClearSkills(int jobAdvancement)
+        {
+            int tab = Math.Clamp(jobAdvancement, TAB_BEGINNER, MAX_TAB_INDEX);
+            if (skillsByTab.TryGetValue(tab, out List<SkillDisplayData> skills))
+                skills.Clear();
         }
 
         /// <summary>
@@ -2392,7 +2609,16 @@ namespace HaCreator.MapSimulator.UI
         private bool TrySwitchTab(int direction)
         {
             int maxTab = _useDualTabStrip ? MAX_TAB_INDEX : TAB_4TH;
-            int nextTab = Math.Clamp(_currentTab + direction, TAB_BEGINNER, maxTab);
+            int nextTab = _currentTab;
+            for (int tab = _currentTab + direction; tab >= TAB_BEGINNER && tab <= maxTab; tab += direction)
+            {
+                if (!_tabVisible[tab])
+                    continue;
+
+                nextTab = tab;
+                break;
+            }
+
             if (nextTab == _currentTab)
                 return false;
 

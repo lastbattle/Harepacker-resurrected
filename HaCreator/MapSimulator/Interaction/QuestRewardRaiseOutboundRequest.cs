@@ -41,6 +41,7 @@ namespace HaCreator.MapSimulator.Interaction
         string Summary)
     {
         internal const int ClientPutItemOpcode = 286;
+        internal const int ClientOpenOwnerOpcode = 284;
         internal const int OpenOwnerOpcode = 283;
         internal const int PutItemAddOpcode = 283;
         internal const int PutItemReleaseOpcode = 285;
@@ -53,9 +54,9 @@ namespace HaCreator.MapSimulator.Interaction
                 QuestRewardRaiseOutboundRequestKind.OpenOwner,
                 OpenOwnerOpcode,
                 Array.AsReadOnly(payload),
-                OpenOwnerOpcode,
-                Array.AsReadOnly(payload),
-                $"Open raise owner quest #{Math.Max(0, state?.Prompt?.QuestId ?? 0)} owner #{Math.Max(0, state?.OwnerItemId ?? 0)} session #{Math.Max(0, state?.ManagerSessionId ?? 0)}");
+                ClientOpenOwnerOpcode,
+                Array.AsReadOnly(BuildClientOpenOwnerPayload(state?.OwnerItemId ?? 0)),
+                $"Open raise owner quest #{Math.Max(0, state?.Prompt?.QuestId ?? 0)} owner #{Math.Max(0, state?.OwnerItemId ?? 0)} session #{Math.Max(0, state?.ManagerSessionId ?? 0)} with client create-window visibility signal");
         }
 
         internal static QuestRewardRaiseOutboundRequest CreatePutItemAdd(QuestRewardRaiseState state, QuestRewardRaisePlacedPiece piece)
@@ -266,6 +267,16 @@ namespace HaCreator.MapSimulator.Interaction
             using MemoryStream stream = new();
             using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
             writer.Write((ushort)Math.Clamp(questId, ushort.MinValue, ushort.MaxValue));
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildClientOpenOwnerPayload(int ownerItemId)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write(Math.Max(0, ownerItemId));
+            writer.Write((byte)1);
             writer.Flush();
             return stream.ToArray();
         }

@@ -106,10 +106,15 @@ namespace HaCreator.MapSimulator.Companions
             writer.Write(request.RequestedAtTick);
             writer.Write(ClientEquipInventoryType);
             writer.Write((ushort)sourceSlotPosition);
-            writer.Write((ushort)bodyPart);
+            writer.Write(ToClientEquipPosition(bodyPart));
             writer.Write(ClientChangeSlotPositionCountAll);
             payload = stream.ToArray();
             return true;
+        }
+
+        internal static ushort ToClientEquipPosition(int bodyPart)
+        {
+            return unchecked((ushort)-bodyPart);
         }
 
         internal static byte[] EncodeAuthorityRequestPayload(EquipmentChangeRequest request)

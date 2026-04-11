@@ -53,12 +53,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             2121001,
             2221001,
             2321001,
-            23121000,
-            24121000,
-            24121005,
-            31001000,
-            31101000,
-            31111005,
             3121004,
             3221001,
             4341003,
@@ -71,8 +65,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             33121009,
             35001001,
             35101009,
-            5721001,
             SG88SkillId
+        };
+        private static readonly HashSet<int> AuthoredKeydownWithoutClientLayerSkillIds = new()
+        {
+            23121000,
+            24121000,
+            24121005,
+            31001000,
+            31101000,
+            31111005,
+            5721001
         };
         private static readonly HashSet<int> ClientMaxGaugeTimeSkillIds = new()
         {
@@ -193,6 +196,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static bool IsSupportedKeyDownSkill(int skillId)
         {
+            if (AuthoredKeydownWithoutClientLayerSkillIds.Contains(skillId))
+            {
+                return false;
+            }
+
             return SupportedKeyDownSkillIds.Contains(skillId)
                 || HasAuthoredKeydownNode(skillId);
         }
@@ -200,6 +208,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public static bool ResolveKeyDownSkillState(int skillId, bool isKeydownSkill)
         {
             if (NonKeyDownPreparedReleaseSkillIds.Contains(skillId))
+            {
+                return false;
+            }
+
+            if (AuthoredKeydownWithoutClientLayerSkillIds.Contains(skillId))
             {
                 return false;
             }

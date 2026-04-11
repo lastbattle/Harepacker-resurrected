@@ -8724,7 +8724,7 @@ namespace HaCreator.MapSimulator.Interaction
                     if (IsQuestRecordValueRequirementMet(
                         normalizedRecordValue,
                         requiredValue,
-                        valueRequirements[i].Condition))
+                        condition: 0))
                     {
                         hasMatchingRequirement = true;
                         break;
@@ -8750,7 +8750,10 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     hasComparableRequirement = true;
-                    if (string.Equals(normalizedRecordValue, requiredValue, StringComparison.OrdinalIgnoreCase))
+                    if (IsQuestRecordValueRequirementMet(
+                        normalizedRecordValue,
+                        requiredValue,
+                        valueRequirements[i].Condition))
                     {
                         hasMatchingRequirement = true;
                         break;

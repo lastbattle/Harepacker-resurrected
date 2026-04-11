@@ -523,6 +523,9 @@ namespace HaCreator.MapSimulator.Interaction
                 _draftCounter++;
             }
 
+            RecordClientRequest("register", BuildClientRegisterRequestPayload(resolvedTitle, resolvedBody));
+            _threadPageIndex = 0;
+            RecordClientRequest("load-list", BuildClientLoadListRequestPayload());
             NotifySocialChatObserved(resolvedTitle, resolvedBody);
             IsWriteMode = false;
             _compose = new GuildBbsComposeState();
@@ -546,6 +549,9 @@ namespace HaCreator.MapSimulator.Interaction
             _threads.Remove(selectedThread);
             _selectedThreadId = 0;
             _commentPageIndex = 0;
+            RecordClientRequests(
+                ("delete", BuildClientDeleteRequestPayload(selectedThread.ThreadId)),
+                ("load-list", BuildClientLoadListRequestPayload()));
             return $"Deleted Guild BBS thread #{selectedThread.ThreadId}.";
         }
 
@@ -604,6 +610,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             IReadOnlyList<GuildBbsCommentState> orderedComments = selectedThread.Comments.OrderBy(comment => comment.CreatedAt).ToArray();
             _commentPageIndex = Math.Max(0, (orderedComments.Count - 1) / VisibleCommentCount);
+            RecordClientRequests(
+                ("comment", BuildClientCommentRequestPayload(selectedThread.ThreadId, replyBody)),
+                ("load-list", BuildClientLoadListRequestPayload()));
             NotifySocialChatObserved(replyBody);
             return $"Added a Guild BBS reply to thread #{selectedThread.ThreadId}.";
         }
@@ -625,6 +634,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             selectedThread.Comments.Remove(comment);
             EnsureCommentPageInRange(selectedThread.Comments.Count);
+            RecordClientRequests(
+                ("comment-delete", BuildClientCommentDeleteRequestPayload(selectedThread.ThreadId, comment.CommentId)),
+                ("load-list", BuildClientLoadListRequestPayload()));
             return $"Removed the latest Guild BBS reply from thread #{selectedThread.ThreadId}.";
         }
 
@@ -658,6 +670,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             selectedThread.Comments.Remove(comment);
             EnsureCommentPageInRange(selectedThread.Comments.Count);
+            RecordClientRequests(
+                ("comment-delete", BuildClientCommentDeleteRequestPayload(selectedThread.ThreadId, comment.CommentId)),
+                ("load-list", BuildClientLoadListRequestPayload()));
             return $"Removed Guild BBS reply #{comment.CommentId} from thread #{selectedThread.ThreadId}.";
         }
 

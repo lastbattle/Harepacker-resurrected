@@ -332,6 +332,23 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        internal static bool ShouldSurfaceRecentPickupNotice(
+            RecentPickupRecord recentPickup,
+            int localCharacterId,
+            Func<int, int, bool> partyMembershipEvaluator)
+        {
+            if (recentPickup == null)
+            {
+                return false;
+            }
+
+            return ShouldSurfacePickupNotice(
+                recentPickup.OwnershipType,
+                recentPickup.OwnerId,
+                localCharacterId,
+                partyMembershipEvaluator);
+        }
+
         internal static bool IsClientPartyHelperMarker(MinimapUI.HelperMarkerType? markerType)
         {
             return markerType == MinimapUI.HelperMarkerType.Party

@@ -49,6 +49,11 @@ namespace HaCreator.MapSimulator.UI
         int VisibleItemId,
         int HiddenItemId);
 
+    public readonly record struct CharacterEquipmentAuthorityInventorySlotState(
+        InventoryType InventoryType,
+        int SlotIndex,
+        int ItemId);
+
     public readonly record struct CharacterEquipmentAuthorityPayload(
         CharacterEquipmentAuthorityPayloadMode Mode,
         int RequestId,
@@ -66,6 +71,7 @@ namespace HaCreator.MapSimulator.UI
         CharacterEquipmentAuthorityResultKind ResultKind = default,
         int ResolvedBuildStateToken = 0,
         IReadOnlyList<CharacterEquipmentAuthoritySlotState> AuthoritySlotStates = null,
+        IReadOnlyList<CharacterEquipmentAuthorityInventorySlotState> AuthorityInventorySlotStates = null,
         string RejectReason = null,
         int AuthorityPacketType = 0,
         bool HasResultRequestContext = false,
@@ -134,14 +140,16 @@ namespace HaCreator.MapSimulator.UI
         public static EquipmentChangeResult Accept(
             IReadOnlyList<CharacterPart> displacedParts = null,
             CharacterPart returnedPart = null,
-            IReadOnlyList<InventorySlotData> displacedInventorySlots = null)
+            IReadOnlyList<InventorySlotData> displacedInventorySlots = null,
+            IReadOnlyList<CharacterEquipmentAuthorityInventorySlotState> authorityInventorySlotStates = null)
         {
             return new EquipmentChangeResult
             {
                 Accepted = true,
                 DisplacedParts = displacedParts ?? Array.Empty<CharacterPart>(),
                 ReturnedPart = returnedPart,
-                DisplacedInventorySlots = displacedInventorySlots ?? Array.Empty<InventorySlotData>()
+                DisplacedInventorySlots = displacedInventorySlots ?? Array.Empty<InventorySlotData>(),
+                AuthorityInventorySlotStates = authorityInventorySlotStates ?? Array.Empty<CharacterEquipmentAuthorityInventorySlotState>()
             };
         }
 
@@ -170,6 +178,7 @@ namespace HaCreator.MapSimulator.UI
         public string RejectReason { get; init; } = string.Empty;
         public IReadOnlyList<CharacterPart> DisplacedParts { get; init; } = Array.Empty<CharacterPart>();
         public IReadOnlyList<InventorySlotData> DisplacedInventorySlots { get; init; } = Array.Empty<InventorySlotData>();
+        public IReadOnlyList<CharacterEquipmentAuthorityInventorySlotState> AuthorityInventorySlotStates { get; init; } = Array.Empty<CharacterEquipmentAuthorityInventorySlotState>();
         public CharacterPart ReturnedPart { get; init; }
         public int RequestId { get; init; }
         public int RequestedAtTick { get; init; }
@@ -191,6 +200,7 @@ namespace HaCreator.MapSimulator.UI
                 RejectReason = RejectReason,
                 DisplacedParts = DisplacedParts,
                 DisplacedInventorySlots = DisplacedInventorySlots,
+                AuthorityInventorySlotStates = AuthorityInventorySlotStates,
                 ReturnedPart = ReturnedPart,
                 RequestId = requestId,
                 RequestedAtTick = requestedAtTick,
@@ -287,6 +297,58 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        public static bool HasAuthorityInventorySlotStates(EquipmentChangeResult result)
+        {
+            return result?.AuthorityInventorySlotStates != null
+                   && result.AuthorityInventorySlotStates.Count > 0;
+        }
+
+        public static bool TryValidateAuthorityInventorySlotStates(
+            InventoryUI inventoryWindow,
+            IReadOnlyList<CharacterEquipmentAuthorityInventorySlotState> slotStates,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (slotStates == null || slotStates.Count == 0)
+            {
+                return true;
+            }
+
+            if (inventoryWindow == null)
+            {
+                rejectReason = "Inventory runtime is unavailable.";
+                return false;
+            }
+
+            for (int i = 0; i < slotStates.Count; i++)
+            {
+                CharacterEquipmentAuthorityInventorySlotState state = slotStates[i];
+                if (!IsSupportedCharacterEquipmentSourceInventory(state.InventoryType))
+                {
+                    rejectReason = "Character equipment authority returned an unsupported inventory state.";
+                    return false;
+                }
+
+                if (state.SlotIndex < 0 || state.SlotIndex >= inventoryWindow.GetSlotLimit(state.InventoryType))
+                {
+                    rejectReason = "Character equipment authority returned an inventory state outside the active slot range.";
+                    return false;
+                }
+
+                IReadOnlyList<InventorySlotData> slots = inventoryWindow.GetSlots(state.InventoryType);
+                int liveItemId = state.SlotIndex < slots.Count && slots[state.SlotIndex] != null
+                    ? slots[state.SlotIndex].ItemId
+                    : 0;
+                if (liveItemId != state.ItemId)
+                {
+                    rejectReason = "Packet-authored inventory state did not match the reconciled equipment result.";
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 

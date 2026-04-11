@@ -300,7 +300,10 @@ namespace HaCreator.MapSimulator.Pools
         private const int RemoteReceiveHpGaugeWidth = 46;
         private const int RemoteReceiveHpGaugeHeight = 5;
         private const int RemoteReceiveHpGaugeVerticalPadding = 4;
+        private const int RemoteGrenadeSkillId = 5201002;
         private const int MonsterBombSkillId = 4341003;
+        private const int RemoteHitAssassinateEmotionSkillId = 4120002;
+        private const int RemoteHitAssassinateMirrorEmotionSkillId = 4220002;
         private const int MonsterBombMinimumKeyDownMs = 500;
         private const int MonsterBombGaugeDistance = 900;
         private const int MonsterBombGaugeDistanceSquaredPlusFloor = 832500;
@@ -2368,6 +2371,18 @@ namespace HaCreator.MapSimulator.Pools
                     !packet.MobHitFacingLeft,
                     currentTime,
                     usesAuthoredHitNode));
+
+                string mobAttackSoundDescriptor = BuildRemoteMobAttackHitSoundDescriptorForParity(
+                    packet.MobTemplateId.GetValueOrDefault(),
+                    packet.AttackIndex);
+                if (!string.IsNullOrWhiteSpace(mobAttackSoundDescriptor))
+                {
+                    ClientSoundRegistered?.Invoke(new RemoteClientSoundPresentation(
+                        packet.CharacterId,
+                        mobAttackSoundDescriptor,
+                        "Mob.img",
+                        currentTime));
+                }
             }
 
             if (TryBuildRemoteMobDamageInfoPresentation(packet, currentTime, out RemoteMobDamageInfoPresentation mobDamageInfo))
@@ -2416,6 +2431,20 @@ namespace HaCreator.MapSimulator.Pools
 
             if (registeredPacketSkillEffect)
             {
+                if (ShouldApplyRemoteHitPacketSpecialEmotion(packet.SkillId)
+                    && PacketOwnedAvatarEmotionResolver.TryResolveEmotionName(2, out string packetSkillEmotionName))
+                {
+                    ApplyRemoteEmotionState(
+                        actor,
+                        itemId: 0,
+                        emotionId: 2,
+                        emotionName: packetSkillEmotionName,
+                        byItemOption: false,
+                        currentTime,
+                        durationMs: 1500,
+                        loadEffectAnimation: false);
+                }
+
                 message = $"Remote user {packet.CharacterId} hit packet stored and registered special skill effect {packetSpecialSkillId}.";
             }
             else if (registeredDamageReactiveSkillEffect)
@@ -2524,6 +2553,30 @@ namespace HaCreator.MapSimulator.Pools
                 packet.MobTemplateId.Value,
                 attackNumber);
             return true;
+        }
+
+        public static string BuildRemoteMobAttackHitSoundDescriptorForParity(int mobTemplateId, sbyte attackIndex)
+        {
+            if (mobTemplateId <= 0 || attackIndex < 0)
+            {
+                return null;
+            }
+
+            int attackNumber = attackIndex + 1;
+            return attackNumber <= 0
+                ? null
+                : string.Format(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    "Mob/{0:D7}/Attack{1}",
+                    mobTemplateId,
+                    attackNumber);
+        }
+
+        public static bool ShouldApplyRemoteHitPacketSpecialEmotion(int? packetSkillId)
+        {
+            int skillId = packetSkillId.GetValueOrDefault();
+            return skillId == RemoteHitAssassinateEmotionSkillId
+                || skillId == RemoteHitAssassinateMirrorEmotionSkillId;
         }
 
         private static bool TryResolveAuthoredMobAttackHitEffectPath(RemoteUserHitPacket packet, out string effectPath)
@@ -3402,7 +3455,7 @@ namespace HaCreator.MapSimulator.Pools
             int currentTime,
             int maxGaugeTimeMs = 0)
         {
-            int clampedKeyDownTime = Math.Max(0, keyDownTime);
+            int clampedKeyDownTime = ResolveRemoteThrowGrenadeKeyDownTimeMs(skillId, keyDownTime);
             if (skillId == MonsterBombSkillId)
             {
                 int gaugeTime = Math.Max(MonsterBombMinimumKeyDownMs, clampedKeyDownTime);
@@ -3441,6 +3494,17 @@ namespace HaCreator.MapSimulator.Pools
                 ExplosionDelayMs: 0,
                 DragX: 0,
                 DragY: 0);
+        }
+
+        private static int ResolveRemoteThrowGrenadeKeyDownTimeMs(int skillId, int keyDownTime)
+        {
+            int normalizedKeyDownTime = Math.Max(0, keyDownTime);
+            if (skillId == RemoteGrenadeSkillId || skillId == MonsterBombSkillId)
+            {
+                return PreparedSkillHudRules.ResolveReleaseChargeElapsedMs(skillId, normalizedKeyDownTime);
+            }
+
+            return normalizedKeyDownTime;
         }
 
         private static int ResolveRemoteGrenadeMaxGaugeTimeMs(int skillId)
@@ -9833,31 +9897,31 @@ namespace HaCreator.MapSimulator.Pools
             foreach (AfterimageRenderableLayer layer in layers)
             {
                 SkillFrame frame = layer.Frame;
-                if (frame?.Texture == null)
+                if (!MeleeAfterimagePlaybackResolver.TryResolveSpriteBatchDrawParameters(
+                        frame,
+                        screenX,
+                        screenY,
+                        state.FacingRight,
+                        layer.Alpha,
+                        layer.Zoom,
+                        Color.White,
+                        out MeleeAfterimagePlaybackResolver.SpriteBatchDrawParameters drawParameters))
                 {
                     continue;
                 }
 
-                  Color tint = Color.White * MathHelper.Clamp(layer.Alpha, 0f, 1f);
-                  bool shouldFlip = state.FacingRight ^ frame.Flip;
-                  float zoom = MathHelper.Clamp(layer.Zoom, 0.01f, 10f);
-                  int drawWidth = Math.Max(1, (int)Math.Round(frame.Texture.Width * zoom));
-                  int drawHeight = Math.Max(1, (int)Math.Round(frame.Texture.Height * zoom));
-                  int drawX = shouldFlip
-                      ? screenX - (int)Math.Round((frame.Texture.Width - frame.Origin.X) * zoom)
-                      : screenX - (int)Math.Round(frame.Origin.X * zoom);
-                  int drawY = screenY - (int)Math.Round(frame.Origin.Y * zoom);
-                  spriteBatch.Draw(
-                      frame.Texture.Texture,
-                      new Rectangle(drawX, drawY, drawWidth, drawHeight),
-                      null,
-                      tint,
-                      0f,
-                      Vector2.Zero,
-                      shouldFlip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
-                      0f);
-              }
-          }
+                spriteBatch.Draw(
+                    frame.Texture.Texture,
+                    drawParameters.Position,
+                    null,
+                    drawParameters.Tint,
+                    0f,
+                    drawParameters.Origin,
+                    drawParameters.Scale,
+                    drawParameters.Effects,
+                    0f);
+            }
+        }
 
         private void ApplyMovementSnapshot(RemoteUserActor actor, int currentTime)
         {

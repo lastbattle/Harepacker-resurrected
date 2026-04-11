@@ -82,7 +82,7 @@ namespace HaCreator.MapSimulator.Fields
             bool foundDelay = false;
             foreach ((string FunctionName, IReadOnlyList<string> Arguments) call in EnumerateFunctionCalls(scriptName))
             {
-                if (!IsTimerCallbackFunctionName(call.FunctionName))
+                if (!IsDelayedCallbackFunctionName(call.FunctionName))
                 {
                     continue;
                 }
@@ -430,9 +430,9 @@ namespace HaCreator.MapSimulator.Fields
 
             foreach ((string FunctionName, IReadOnlyList<string> Arguments) call in EnumerateFunctionCalls(value, includeNested: false))
             {
-                if (!IsTimerCallbackFunctionName(call.FunctionName)
+                if (!IsScriptCallbackFunctionName(call.FunctionName)
                     || call.Arguments.Count == 0
-                    || !TryResolveTimerCallDelayMs(call.Arguments, out int callbackDelayMs))
+                    || !TryResolveCallbackCallDelayMs(call.FunctionName, call.Arguments, out int callbackDelayMs))
                 {
                     continue;
                 }
@@ -440,7 +440,9 @@ namespace HaCreator.MapSimulator.Fields
                 int dueDelayMs = inheritedDelayMs >= int.MaxValue - callbackDelayMs
                     ? int.MaxValue
                     : inheritedDelayMs + callbackDelayMs;
-                int firstDelayCandidateIndex = call.Arguments.Count > 1 ? 1 : call.Arguments.Count;
+                int firstDelayCandidateIndex = IsDelayedCallbackFunctionName(call.FunctionName) && call.Arguments.Count > 1
+                    ? 1
+                    : call.Arguments.Count;
                 for (int i = 0; i < call.Arguments.Count; i++)
                 {
                     string argument = NormalizeFunctionAliasArgument(call.Arguments[i]);
@@ -461,12 +463,20 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private static bool TryResolveTimerCallDelayMs(IReadOnlyList<string> arguments, out int delayMs)
+        private static bool TryResolveCallbackCallDelayMs(
+            string functionName,
+            IReadOnlyList<string> arguments,
+            out int delayMs)
         {
             delayMs = 0;
             if (arguments == null || arguments.Count == 0)
             {
                 return false;
+            }
+
+            if (!IsDelayedCallbackFunctionName(functionName))
+            {
+                return IsZeroDelayCallbackFunctionName(functionName);
             }
 
             bool foundDelay = arguments.Count == 1;
@@ -579,7 +589,7 @@ namespace HaCreator.MapSimulator.Fields
                 string functionName = functionStartIndex >= 0
                     ? value[functionStartIndex..openIndex].Trim()
                     : string.Empty;
-                if (IsTimerCallbackFunctionName(functionName))
+                if (IsScriptCallbackFunctionName(functionName))
                 {
                     yield return (functionStartIndex, closeIndex);
                 }
@@ -646,7 +656,13 @@ namespace HaCreator.MapSimulator.Fields
                 : string.Empty;
         }
 
-        private static bool IsTimerCallbackFunctionName(string functionName)
+        private static bool IsScriptCallbackFunctionName(string functionName)
+        {
+            return IsDelayedCallbackFunctionName(functionName)
+                || IsZeroDelayCallbackFunctionName(functionName);
+        }
+
+        private static bool IsDelayedCallbackFunctionName(string functionName)
         {
             if (string.IsNullOrWhiteSpace(functionName))
             {
@@ -662,17 +678,40 @@ namespace HaCreator.MapSimulator.Fields
 
             return leafName.Equals("setTimeout", StringComparison.OrdinalIgnoreCase)
                 || leafName.Equals("setInterval", StringComparison.OrdinalIgnoreCase)
-                || leafName.Equals("setImmediate", StringComparison.OrdinalIgnoreCase)
                 || leafName.Equals("setTimer", StringComparison.OrdinalIgnoreCase)
                 || leafName.Equals("setDelay", StringComparison.OrdinalIgnoreCase)
-                || leafName.Equals("requestAnimationFrame", StringComparison.OrdinalIgnoreCase)
-                || leafName.Equals("queueMicrotask", StringComparison.OrdinalIgnoreCase)
                 || leafName.Equals("schedule", StringComparison.OrdinalIgnoreCase)
                 || leafName.StartsWith("schedule", StringComparison.OrdinalIgnoreCase)
                 || (leafName.StartsWith("set", StringComparison.OrdinalIgnoreCase)
                     && (leafName.EndsWith("Timer", StringComparison.OrdinalIgnoreCase)
                         || leafName.EndsWith("Timeout", StringComparison.OrdinalIgnoreCase)
                         || leafName.EndsWith("Delay", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        private static bool IsZeroDelayCallbackFunctionName(string functionName)
+        {
+            if (string.IsNullOrWhiteSpace(functionName))
+            {
+                return false;
+            }
+
+            string leafName = functionName.Trim();
+            int memberSeparatorIndex = leafName.LastIndexOf('.');
+            if (memberSeparatorIndex >= 0 && memberSeparatorIndex < leafName.Length - 1)
+            {
+                leafName = leafName[(memberSeparatorIndex + 1)..];
+            }
+
+            return leafName.Equals("setImmediate", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("requestAnimationFrame", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("queueMicrotask", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("then", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("catch", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("finally", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("done", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("fail", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("always", StringComparison.OrdinalIgnoreCase)
+                || leafName.Equals("nextTick", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string NormalizeFunctionAliasArgument(string value)

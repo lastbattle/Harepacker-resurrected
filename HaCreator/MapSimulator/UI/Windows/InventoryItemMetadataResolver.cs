@@ -1937,6 +1937,7 @@ namespace HaCreator.MapSimulator.UI
             AppendLevelUpWarningMetadataLines(metadataLines, infoProperty);
             AppendRecipeMetadataLines(metadataLines, specProperty);
             AppendConditionalMapMetadataLines(metadataLines, specProperty);
+            AppendRepeatEffectMetadataLines(metadataLines, specProperty, specExProperty);
             AppendItemBagMetadataLines(metadataLines, specProperty);
             AppendSpecExMobSkillMetadataLines(metadataLines, specExProperty);
             AppendCashAvailabilityMetadataLines(metadataLines, infoProperty);
@@ -2115,6 +2116,12 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add($"Adds Duration: {FormatSecondDuration(addTimeSeconds)}");
             }
 
+            int addDays = GetIntOrStringValue(infoProperty["addDay"]);
+            if (addDays > 0)
+            {
+                metadataLines.Add($"Adds Duration: {FormatDayCount(addDays)}");
+            }
+
             int maxDays = GetIntOrStringValue(infoProperty["maxDays"]);
             if (maxDays > 0)
             {
@@ -2131,6 +2138,24 @@ namespace HaCreator.MapSimulator.UI
             if (selectedSlots.Count > 0)
             {
                 metadataLines.Add($"Eligible Equip Slots: {FormatEligibleEquipSlotLabels(selectedSlots)}");
+            }
+
+            int slotIndex = GetIntOrStringValue(infoProperty["slotIndex"]);
+            if (slotIndex >= 0 && infoProperty["slotIndex"] != null)
+            {
+                metadataLines.Add($"Extension Slot: {FormatExtensionSlotLabel(slotIndex)}");
+            }
+        }
+
+        private static void AppendRepeatEffectMetadataLines(
+            List<string> metadataLines,
+            WzSubProperty specProperty,
+            WzSubProperty specExProperty)
+        {
+            if (GetIntValue(specProperty?["repeatEffect"]) == 1
+                || GetIntValue(specExProperty?["repeatEffect"]) == 1)
+            {
+                metadataLines.Add("Repeats effect while active");
             }
         }
 
@@ -3983,6 +4008,15 @@ namespace HaCreator.MapSimulator.UI
             return labels.Count > 0
                 ? string.Join(", ", labels)
                 : string.Join(", ", selectedSlots);
+        }
+
+        private static string FormatExtensionSlotLabel(int slotIndex)
+        {
+            return slotIndex switch
+            {
+                0 => "Pendant",
+                _ => $"Slot {slotIndex.ToString(CultureInfo.InvariantCulture)}"
+            };
         }
 
         private static string ResolveEligibleEquipSlotLabel(int slotValue)

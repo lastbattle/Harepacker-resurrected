@@ -1471,15 +1471,6 @@ namespace HaCreator.MapSimulator.Fields
                         color);
                 }
             }
-            // Draw tree area (debug)
-            if (pixelTexture != null)
-            {
-                int treeScreenX = _treeArea.X - shiftCenterX;
-                int treeScreenY = _treeArea.Y - shiftCenterY;
-                spriteBatch.Draw(pixelTexture,
-                    new Rectangle(treeScreenX, treeScreenY, _treeArea.Width, _treeArea.Height),
-                    new Color(0, 100, 0, 50));
-            }
             DrawUI(spriteBatch, skeletonMeshRenderer, gameTime, pixelTexture, font);
             DrawRoundResult(spriteBatch, skeletonMeshRenderer, gameTime, font, tickCount);
         }

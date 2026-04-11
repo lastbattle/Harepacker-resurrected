@@ -216,6 +216,26 @@ internal static class SummonClientPostEffectRules
                    skillData.MaxLevel);
     }
 
+    public static bool ShouldUseGenericReactiveAttackChainFallback(
+        int skillId,
+        SkillData skillData,
+        int skillLevel,
+        int ownerCharacterLevel,
+        bool flip = false)
+    {
+        if (!IsReactiveAttackChainSkill(skillId))
+        {
+            return true;
+        }
+
+        return string.IsNullOrWhiteSpace(ResolveReactiveAttackChainAnimationPath(
+            skillId,
+            skillData,
+            skillLevel,
+            ownerCharacterLevel,
+            flip));
+    }
+
     public static Rectangle BuildAttackTileOverlayArea(
         Vector2 anchor,
         SkillData skillData,

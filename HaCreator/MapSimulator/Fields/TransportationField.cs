@@ -359,6 +359,7 @@ namespace HaCreator.MapSimulator.Fields
         public void DisappearShip()
         {
             if (_shipKind != 1) return; // Only for Balrog type
+            if (!HasVisibleBalrogShipLayer()) return; // Client CShip::DisappearShip is a no-op when alpha is already 0.
 
             System.Diagnostics.Debug.WriteLine("[TransportField] DisappearShip - Balrog disappearing");
 
@@ -563,6 +564,12 @@ namespace HaCreator.MapSimulator.Fields
                     if (_shipKind != 1)
                     {
                         message = "Ignored OnMoveField value 5; client DisappearShip branch only applies to Balrog-type ships.";
+                        return false;
+                    }
+
+                    if (!HasVisibleBalrogShipLayer())
+                    {
+                        message = "Ignored OnMoveField value 5; client DisappearShip is a no-op while the Balrog ship layer alpha is already 0.";
                         return false;
                     }
 
@@ -1072,6 +1079,11 @@ namespace HaCreator.MapSimulator.Fields
         private int ResolveShipFacingDirection()
         {
             return _f == 0 ? 1 : -1;
+        }
+
+        private bool HasVisibleBalrogShipLayer()
+        {
+            return _shipKind == 1 && _currentAlpha > 0f;
         }
 
         private string DescribeBalrogApproachSide()

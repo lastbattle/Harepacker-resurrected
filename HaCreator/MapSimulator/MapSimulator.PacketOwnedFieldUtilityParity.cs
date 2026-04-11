@@ -289,7 +289,7 @@ namespace HaCreator.MapSimulator
             input.SetBinding(action, Keys.None, Keys.None, (Buttons)0);
         }
 
-        private static string[] BuildPacketOwnedQuickslotLabels(int[] keyCodes)
+        internal static string[] BuildPacketOwnedQuickslotLabels(int[] keyCodes)
         {
             if (keyCodes == null || keyCodes.Length != 8)
             {

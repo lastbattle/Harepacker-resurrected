@@ -71,6 +71,36 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        public static bool TryAppendMesoDropPromptAmountDigit(
+            string currentText,
+            char digit,
+            long maximum,
+            out string normalizedText)
+        {
+            normalizedText = currentText ?? string.Empty;
+
+            if (!char.IsDigit(digit))
+            {
+                return false;
+            }
+
+            string candidate = normalizedText + digit;
+            if (!long.TryParse(candidate, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsedAmount))
+            {
+                return false;
+            }
+
+            if (parsedAmount <= 0)
+            {
+                normalizedText = string.Empty;
+                return true;
+            }
+
+            long normalizedAmount = Math.Min(parsedAmount, Math.Max(1L, maximum));
+            normalizedText = normalizedAmount.ToString(CultureInfo.InvariantCulture);
+            return true;
+        }
+
         public static bool TryResolveLocalItemDropRequest(
             long fieldLimit,
             InventoryType inventoryType,

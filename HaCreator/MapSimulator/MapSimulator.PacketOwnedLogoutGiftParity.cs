@@ -41,7 +41,6 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedLogoutGiftSelectedIndex;
         private byte[] _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
         private int[] _packetOwnedLogoutGiftLeadingOpaqueInt32Values = Array.Empty<int>();
-        private PacketOwnedLogoutGiftContextField[] _packetOwnedLogoutGiftLeadingContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
         private PacketOwnedLogoutGiftContextField? _packetOwnedLogoutGiftPredictQuitContextField;
         private PacketOwnedLogoutGiftContextField[] _packetOwnedLogoutGiftCommodityContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
         private bool _packetOwnedLogoutGiftHasPredictQuitFlag;
@@ -409,7 +408,6 @@ namespace HaCreator.MapSimulator
 
             _packetOwnedLogoutGiftLeadingOpaqueBytes = leadingOpaqueBytes ?? Array.Empty<byte>();
             _packetOwnedLogoutGiftLeadingOpaqueInt32Values = leadingOpaqueInt32Values ?? Array.Empty<int>();
-            _packetOwnedLogoutGiftLeadingContextFields = DecodePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingOpaqueInt32Values);
             _packetOwnedLogoutGiftPredictQuitContextField = DecodePacketOwnedLogoutGiftPredictQuitContextField(predictQuitRawValue);
             _packetOwnedLogoutGiftCommodityContextFields = DecodePacketOwnedLogoutGiftCommodityContextFields(_packetOwnedLogoutGiftCommoditySerialNumbers);
             _packetOwnedLogoutGiftHasPredictQuitFlag = true;
@@ -465,7 +463,6 @@ namespace HaCreator.MapSimulator
                 _packetOwnedLogoutGiftSelectedIndex = 0;
                 _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
                 _packetOwnedLogoutGiftLeadingOpaqueInt32Values = Array.Empty<int>();
-                _packetOwnedLogoutGiftLeadingContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
                 _packetOwnedLogoutGiftPredictQuitContextField = null;
                 _packetOwnedLogoutGiftCommodityContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
                 _packetOwnedLogoutGiftHasPredictQuitFlag = false;
@@ -726,10 +723,7 @@ namespace HaCreator.MapSimulator
                 values.Add(value.ToString(CultureInfo.InvariantCulture));
             }
 
-            string contextFieldDescription = DescribePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingContextFields);
-            return string.IsNullOrWhiteSpace(contextFieldDescription)
-                ? $"{_packetOwnedLogoutGiftLeadingOpaqueBytes.Length.ToString(CultureInfo.InvariantCulture)} adjacent trailing byte(s) [0x{hex}] / int32 [{string.Join(", ", values)}]"
-                : $"{_packetOwnedLogoutGiftLeadingOpaqueBytes.Length.ToString(CultureInfo.InvariantCulture)} adjacent trailing byte(s) [0x{hex}] / int32 [{string.Join(", ", values)}] => {contextFieldDescription}";
+            return $"{_packetOwnedLogoutGiftLeadingOpaqueBytes.Length.ToString(CultureInfo.InvariantCulture)} adjacent pre-`CWvsContext::OnSetLogoutGiftConfig` trailing byte(s) [0x{hex}] / aligned int32 [{string.Join(", ", values)}]";
         }
 
         private string BuildPacketOwnedLogoutGiftSubtitle(int entryCount)
@@ -990,31 +984,20 @@ namespace HaCreator.MapSimulator
             return PacketOwnedLogoutGiftOwnerAvailability.Available;
         }
 
-        internal static PacketOwnedLogoutGiftContextField[] DecodePacketOwnedLogoutGiftLeadingContextFields(int[] leadingOpaqueInt32Values)
+        internal static string DescribePacketOwnedLogoutGiftLeadingInt32Values(IReadOnlyList<int> leadingOpaqueInt32Values)
         {
-            if (leadingOpaqueInt32Values == null || leadingOpaqueInt32Values.Length == 0)
+            if (leadingOpaqueInt32Values == null || leadingOpaqueInt32Values.Count == 0)
             {
-                return Array.Empty<PacketOwnedLogoutGiftContextField>();
+                return string.Empty;
             }
 
-            int startDwordIndex = PacketOwnedLogoutGiftPredictQuitContextDwordIndex - leadingOpaqueInt32Values.Length;
-            if (startDwordIndex < 0)
+            List<string> values = new(leadingOpaqueInt32Values.Count);
+            foreach (int value in leadingOpaqueInt32Values)
             {
-                return Array.Empty<PacketOwnedLogoutGiftContextField>();
+                values.Add(value.ToString(CultureInfo.InvariantCulture));
             }
 
-            PacketOwnedLogoutGiftContextField[] fields = new PacketOwnedLogoutGiftContextField[leadingOpaqueInt32Values.Length];
-            for (int i = 0; i < leadingOpaqueInt32Values.Length; i++)
-            {
-                int dwordIndex = startDwordIndex + i;
-                fields[i] = new PacketOwnedLogoutGiftContextField(
-                    dwordIndex,
-                    ResolvePacketOwnedLogoutGiftContextByteOffset(dwordIndex),
-                    leadingOpaqueInt32Values[i],
-                    null);
-            }
-
-            return fields;
+            return string.Join(", ", values);
         }
 
         internal static PacketOwnedLogoutGiftContextField DecodePacketOwnedLogoutGiftPredictQuitContextField(int predictQuitRawValue)
@@ -1076,15 +1059,15 @@ namespace HaCreator.MapSimulator
 
         private string BuildPacketOwnedLogoutGiftContextOwnershipSuffix()
         {
-            string leading = DescribePacketOwnedLogoutGiftLeadingContextFields(_packetOwnedLogoutGiftLeadingContextFields);
             string predictQuit = _packetOwnedLogoutGiftPredictQuitContextField.HasValue
                 ? DescribePacketOwnedLogoutGiftLeadingContextFields(new[] { _packetOwnedLogoutGiftPredictQuitContextField.Value })
                 : string.Empty;
             string commodity = DescribePacketOwnedLogoutGiftCommodityContextFields(_packetOwnedLogoutGiftCommodityContextFields);
             List<string> parts = new(3);
+            string leading = DescribePacketOwnedLogoutGiftLeadingInt32Values(_packetOwnedLogoutGiftLeadingOpaqueInt32Values);
             if (!string.IsNullOrWhiteSpace(leading))
             {
-                parts.Add(leading);
+                parts.Add($"pre-`OnSetLogoutGiftConfig` aligned tail int32 [{leading}]");
             }
 
             if (!string.IsNullOrWhiteSpace(predictQuit))
