@@ -105,12 +105,24 @@ It does three things that the old notes did not do well:
 - `CAvatarMegaphone::HelloAvatarMegaphone` at `0x46e3c0`
 - `CAvatarMegaphone::Draw` at `0x46dde0`
 - `CAvatarMegaphone::ByeAvatarMegaphone` at `0x46d630`
+- `CChatBalloon::MakeMiniRoomBalloon` at `0x4a2d90`
+- `CChatBalloon::MakeBalloon` at `0x4a84f0`
+- `CChatBalloon::MakeScreenBalloon` at `0x4a94f0`
+- `CChatBalloon::MakeADBoardBalloon` at `0x4a99b0`
+- `CChatBalloon::MousePointCheck` at `0x4a1220`
+- `CChatBalloon::ADBoardMouseMove` at `0x4a1ce0`
+- `CChatBalloon::ADBoardMouseDown` at `0x4a1f00`
+- `CChatBalloon::ADBoardMouseUp` at `0x4a1850`
+- `CChatBalloon::DestroyMiniRoomBalloon` at `0x4a1a00`
+- `CChatBalloon::GetMiniRoomBalloonRect` at `0x4a1a80`
+- `CChatBalloon::CreateCanvas` at `0x4a59d0`
 
 ## Cross-Document Scope Notes
 
 - `CPersonalShopDlg`, `CEntrustedShopDlg`, and `CTradingRoomDlg` stay owned by this document as the real in-field social-room and trade-system owners.
 - `CCSWnd_Char::ShowPersonalShop` at `0x4bc660`, `CCSWnd_Char::ShowEntrustedShop` at `0x4bc6b0`, and `CCashTradingRoomDlg::OnCreate` at `0x49e8c0` belong in backlog 8 instead: they are cash-service stage preview/child-window hooks, not the primary social-room owners.
 - `CParcelDlg::OnCreate` at `0x6914c0` stays owned by backlog 8 even when memo/mail flows touch the same user-facing surface area; parcel delivery is a utility-window owner, not one of this document's primary social-system owners.
+- `CChatBalloon` stays owned by this document when it is drawing player chat, MiniRoom, merchant, or ADBoard balloons. Backlog 4 owns status-bar chat controls, while backlog 7 only owns generic field feedback that does not create these social actor balloon layers.
 
 ## Client Function Index By Backlog Area
 
@@ -286,6 +298,23 @@ The follow-up function scan exposed another social-message owner that was not na
 Notes:
 The relationship-record rows already cover New Year card overlay state in `CUserPool`, but a broad function scan shows that the client also owns a separate send/read dialog family for the same social item. WZ re-check confirms the dialog art paths used by these constructors: `UI/UIWindow.img/NewYearsCard/backgrnd` for the sender window and `UI/UIWindow.img/NewYearsCard/backgrnd3` for the read window. IDA shows the read dialog prefixes `From:` and `To:`, wraps memo text through a 150-pixel `CTextLineBreaker`, and creates a `227x263` read window at `(286,168)`, while the sender dialog stores inventory position and item id, creates the `518x188` sender window at `(221,206)`, owns target and multiline memo editors, a receiver-search child result owner, and a name-list scrollbar before `_SendNewYearCard` emits the outbound request. That is a UI/request owner beside, not inside, the existing relationship overlay and record-lifecycle seams.
 
+### 12. Chat balloon and MiniRoom balloon presentation owner discovered by broad IDA function scan
+
+- `CChatBalloon::MakeMiniRoomBalloon` at `0x4a2d90`
+- `CChatBalloon::MakeBalloon` at `0x4a84f0`
+- `CChatBalloon::MakeScreenBalloon` at `0x4a94f0`
+- `CChatBalloon::MakeADBoardBalloon` at `0x4a99b0`
+- `CChatBalloon::MousePointCheck` at `0x4a1220`
+- `CChatBalloon::ADBoardMouseMove` at `0x4a1ce0`
+- `CChatBalloon::ADBoardMouseDown` at `0x4a1f00`
+- `CChatBalloon::ADBoardMouseUp` at `0x4a1850`
+- `CChatBalloon::DestroyMiniRoomBalloon` at `0x4a1a00`
+- `CChatBalloon::GetMiniRoomBalloonRect` at `0x4a1a80`
+- `CChatBalloon::CreateCanvas` at `0x4a59d0`
+
+Notes:
+The broad function scan exposed a social presentation owner that was not named anywhere in the backlog set. `CChatBalloon` is separate from status-bar chat and from the room-state dispatchers: `MakeMiniRoomBalloon` loads and composes MiniRoom, employee, entrusted-shop skin/effect, private/progress/current/max-user, title, and game-size balloon art, then creates its own layer anchored to the supplied vector origin. The decompile also shows client-owned text fitting through `IWzFont::CalcLongestText`, title splitting/wrapping through `format_string`, fixed count formatting through `StringPool[0x1A15]`, and MiniRoom-specific Y adjustment before `AdjustCoordY` runs. The ADBoard handlers are not generic mouse helpers either: `MousePointCheck` hit-tests the dedicated ADBoard button rectangle on `m_pLayerAD`, `ADBoardMouseDown` swaps in the pressed button canvas at alpha `253`, and `ADBoardMouseUp` only returns a click when the press started on the same owner. This should be tracked as a social actor balloon/layer owner beside MiniRoom, employee, merchant-room, and avatar-megaphone parity rather than disappearing into generic chat, field feedback, or status-bar rows.
+
 ## Current State Summary
 
 This area is not completely blank in the simulator, but it is only represented by fragments today.
@@ -413,6 +442,14 @@ The relationship-record and overlay rows already track the in-field New Year car
 |--------|------|-----|----------------|--------------|
 | Missing | New Year Card sender/read dialog parity | WZ re-check confirms the dialog art that the client constructors use: `UI/UIWindow.img/NewYearsCard/backgrnd` exists as the sender background canvas and `UI/UIWindow.img/NewYearsCard/backgrnd3` exists as the read-dialog background canvas. IDA shows `CUINewYearCardDlg::CUINewYearCardDlg` creates the read window at `(286,168)` with size `227x263`, prefixes sender and receiver strings with `From:` and `To:`, stores the memo, uses the basic black font, and wraps memo text through a `CTextLineBreaker` at width `150` before draw/on-create finish the read surface. The sender owner is separate: `CUINewYearCardSenderDlg::CUINewYearCardSenderDlg` stores the inventory position and item id, sets `UI/UIWindow.img/NewYearsCard/backgrnd`, and creates the sender window at `(221,206)` with size `518x188`; `OnCreate` allocates the receiver search-result child owner, Search/OK/Cancel buttons, target edit at `(46,66,243x15)`, multiline memo edit at `(13,105,333x45)`, and the name-list scrollbar at `(498,7,93)`, while `_SendNewYearCard` owns the outbound card request. The simulator backlog currently has New Year record lifecycle and overlay effects, but not these dialog/request owners. | New Year card parity can look covered once the relationship record and midpoint overlay exist, but the client also has a social item UI for composing, searching recipients, sending, and reading cards. Keeping this row separate prevents sender/read dialog work from being hidden under generic memo, generic relationship overlays, or the packet-owned record lifecycle. | New Year card dialog layer (`CUINewYearCardDlg::CUINewYearCardDlg`, `CUINewYearCardDlg::OnCreate`, `CUINewYearCardDlg::Draw`, `CUINewYearCardSenderDlg::CUINewYearCardSenderDlg`, `CUINewYearCardSenderDlg::OnCreate`, `CUINewYearCardSenderDlg::_SendNewYearCard`, `CNewYearCardReceiverSearchResult::Draw`, `UI/UIWindow.img/NewYearsCard/{backgrnd,backgrnd3}`) |
 
+### 12. Chat balloon and MiniRoom balloon presentation owner discovered by broad IDA function scan
+
+The latest broad IDA function scan exposed `CChatBalloon` as a dedicated social presentation owner that is distinct from both status-bar chat and MiniRoom packet state.
+
+| Status | Area | Gap | Why it matters | Primary seam |
+|--------|------|-----|----------------|--------------|
+| Missing | Chat balloon, MiniRoom balloon, and ADBoard balloon parity | The simulator backlog did not previously name the `CChatBalloon` owner family. IDA shows `MakeMiniRoomBalloon` builds a separate WZ/layer surface for MiniRoom and merchant actor balloons, including MiniRoom, employee, entrusted-shop skin/effect, private/progress/count, title, and game-size art, then fits the title through `IWzFont::CalcLongestText`, continues long titles through `format_string`, and applies MiniRoom-specific Y adjustment before the shared coordinate adjuster runs. `MakeBalloon`, `MakeScreenBalloon`, and `MakeADBoardBalloon` cover the ordinary actor, screen, and board variants, while `MousePointCheck`, `ADBoardMouseMove`, `ADBoardMouseDown`, and `ADBoardMouseUp` own the ADBoard hit-test and pressed-button canvas swap rather than leaving that behavior to generic mouse input. The current simulator social rows model room state, merchant actors, chat text, and several dialog owners, but they do not yet track this dedicated balloon layer owner, its WZ canvas assembly, text fit/wrap rules, timeout rules, or ADBoard click choreography. | Social-room and merchant parity can look visually complete once the room windows and actor packets work, but the official client also creates separate actor-attached balloon layers for chat, MiniRoom status, employee/merchant boards, and ADBoard affordances. Keeping this owner explicit prevents those presentation details from being flattened into generic chat, status-bar, or MiniRoom packet rows. | social actor balloon presentation layer (`CChatBalloon::MakeMiniRoomBalloon`, `CChatBalloon::MakeBalloon`, `CChatBalloon::MakeScreenBalloon`, `CChatBalloon::MakeADBoardBalloon`, `CChatBalloon::MousePointCheck`, `CChatBalloon::ADBoardMouseMove`, `CChatBalloon::ADBoardMouseDown`, `CChatBalloon::ADBoardMouseUp`, `CChatBalloon::DestroyMiniRoomBalloon`, `CChatBalloon::GetMiniRoomBalloonRect`, `CChatBalloon::CreateCanvas`) |
+
 ## Priority Order
 
 If the goal is visible parity first, the next work in this area should be sequenced like this:
@@ -426,7 +463,7 @@ If the goal is visible parity first, the next work in this area should be sequen
 4. Room-system refinement pass:
    Deepen MiniRoom, personal-shop, entrusted-shop, trading-room, and explicit Omok packet lifecycle parity now that the base runtimes and child dialogs are already on disk.
 5. Feedback pass:
-   Close the remaining pet speech, avatar-megaphone presentation, companion equip-tab, and other secondary UI behaviors after the runtime owners exist.
+   Close the remaining pet speech, avatar-megaphone presentation, chat-balloon or MiniRoom-balloon presentation, companion equip-tab, and other secondary UI behaviors after the runtime owners exist.
 
 ## Working Rule For Future Updates
 
