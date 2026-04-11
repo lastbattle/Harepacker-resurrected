@@ -1522,7 +1522,7 @@ namespace HaCreator.GUI
 
             foreach (WzDirectory soundWzDir in soundWzDirs)
             {
-                if (Program.WzManager.IsPreBBDataWzFormat)
+                if (Program.WzManager.IsPreBBDataWzFormat && !Program.WzManager.Is64Bit)
                 {
                     WzDirectory x = (WzDirectory)soundWzDir["Sound"];
                 }
@@ -1551,17 +1551,12 @@ namespace HaCreator.GUI
 
                             if (binProperty != null)
                             {
-                                WzImage ownerImage = binProperty.GetTopMostWzImage() as WzImage;
+                                //WzImage ownerImage = binProperty.GetTopMostWzImage() as WzImage;
                                 string propertyPath = WzInformationManager.GetPropertyPathRelativeToImage(binProperty);
-                                if (ownerImage != null && !string.IsNullOrEmpty(propertyPath))
+                                if (binProperty != null && !string.IsNullOrEmpty(propertyPath))
                                 {
                                     string bgmKey = WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + binProperty.Name;
-                                    Program.InfoManager.BGMs[bgmKey] = new WzInformationManager.BgmEntry(ownerImage.Name, propertyPath);
-                                }
-
-                                if (ownerImage != null && ownerImage != soundImage && ownerImage.Parsed && !ownerImage.Changed)
-                                {
-                                    ownerImage.UnparseImage();
+                                    Program.InfoManager.BGMs[bgmKey] = new WzInformationManager.BgmEntry(binProperty.Name, propertyPath);
                                 }
                             }
                         }
