@@ -362,7 +362,7 @@ namespace HaCreator.GUI
                     $"{versionName} (Extracted {DateTime.Now:yyyy-MM-dd})",
                     mapleVer,
                     selectedCategories,
-                    resolveLinks: false,
+                    resolveLinks: true,
                     _cancellationTokenSource.Token,
                     progress);
 
