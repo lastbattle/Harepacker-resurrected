@@ -1369,24 +1369,44 @@ namespace HaCreator.GUI
                         case "Act.img":
                             foreach (WzImageProperty questActImage in questImage.WzProperties)
                             {
+                                if (Program.InfoManager.QuestActs.ContainsKey(questActImage.Name))
+                                {
+                                    ErrorLogger.Log(ErrorLevel.Info, "[Initialization] Duplicate quest act: " + questActImage.Name);
+                                    continue;
+                                }
                                 Program.InfoManager.QuestActs.Add(questActImage.Name, questActImage as WzSubProperty);
                             }
                             break;
                         case "Check.img":
                             foreach (WzImageProperty questCheckImage in questImage.WzProperties)
                             {
+                                if (Program.InfoManager.QuestChecks.ContainsKey(questCheckImage.Name))
+                                {
+                                    ErrorLogger.Log(ErrorLevel.Info, "[Initialization] Duplicate quest check: " + questCheckImage.Name);
+                                    continue;
+                                }
                                 Program.InfoManager.QuestChecks.Add(questCheckImage.Name, questCheckImage as WzSubProperty);
                             }
                             break;
                         case "QuestInfo.img":
                             foreach (WzImageProperty questInfoImage in questImage.WzProperties)
                             {
+                                if (Program.InfoManager.QuestInfos.ContainsKey(questInfoImage.Name))
+                                {
+                                    ErrorLogger.Log(ErrorLevel.Info, "[Initialization] Duplicate quest info: " + questInfoImage.Name);
+                                    continue;
+                                }
                                 Program.InfoManager.QuestInfos.Add(questInfoImage.Name, questInfoImage as WzSubProperty);
                             }
                             break;
                         case "Say.img":
                             foreach (WzImageProperty questSayImage in questImage.WzProperties)
                             {
+                                if (Program.InfoManager.QuestSays.ContainsKey(questSayImage.Name))
+                                {
+                                    ErrorLogger.Log(ErrorLevel.Info, "[Initialization] Duplicate quest say: " + questSayImage.Name);
+                                    continue;
+                                }
                                 Program.InfoManager.QuestSays.Add(questSayImage.Name, questSayImage as WzSubProperty);
                             }
                             break;
@@ -1428,6 +1448,11 @@ namespace HaCreator.GUI
                         foreach (WzImageProperty skillItemImage in imgSkill.WzProperties)
                         {
                             string skillId = skillItemImage.Name;
+                            if (Program.InfoManager.SkillWzImageCache.ContainsKey(skillId))
+                            {
+                                ErrorLogger.Log(ErrorLevel.Info, "[Initialization] Duplicate skill: " + skillId);
+                                continue;
+                            }
                             Program.InfoManager.SkillWzImageCache.Add(skillId, skillItemImage);
                         }
                     }
@@ -1552,11 +1577,12 @@ namespace HaCreator.GUI
                             if (binProperty != null)
                             {
                                 //WzImage ownerImage = binProperty.GetTopMostWzImage() as WzImage;
+
                                 string propertyPath = WzInformationManager.GetPropertyPathRelativeToImage(binProperty);
                                 if (binProperty != null && !string.IsNullOrEmpty(propertyPath))
                                 {
                                     string bgmKey = WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + binProperty.Name;
-                                    Program.InfoManager.BGMs[bgmKey] = new WzInformationManager.BgmEntry(binProperty.Name, propertyPath);
+                                    Program.InfoManager.BGMs[bgmKey] = new WzInformationManager.BgmEntry(binProperty.Parent.Name, propertyPath);
                                 }
                             }
                         }
