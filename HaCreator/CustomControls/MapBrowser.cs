@@ -197,6 +197,18 @@ namespace HaCreator.CustomControls
             mapNamesBox.Items.AddRange(mapsObjs);
         }
 
+        public void ReloadMapsListboxItem(bool special)
+        {
+            maps.Clear();
+            mapsMapInfo.Clear();
+            mapNamesBox.Items.Clear();
+            minimapBox.Image = new Bitmap(1, 1);
+            bLoadMapEnabled = false;
+            _bMapsLoaded = false;
+
+            InitializeMapsListboxItem(special);
+        }
+
 
         private const string SQLITE_DB_CONNECTION_STRING = "Data Source=hacreator.db;Version=3;";
         private const string SQLITE_DB_HISTORY_TABLE_NAME = "LoadedMapsHistory";
