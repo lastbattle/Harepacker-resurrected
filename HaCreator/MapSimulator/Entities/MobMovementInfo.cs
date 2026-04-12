@@ -764,13 +764,7 @@ namespace HaCreator.MapSimulator.Entities
             // Reset to spawn if fell off map
             if (MapBottom != int.MaxValue && Y > MapBottom + 100)
             {
-                X = _spawnX;
-                Y = _spawnY;
-                JumpState = MobJumpState.None;
-                VelocityX = 0;
-                VelocityY = 0;
-                _knockbackRecoveryTime = 0;
-                FindCurrentFoothold(_allFootholds);
+                ResetToSpawnAfterPhysics();
             }
         }
 
@@ -1360,10 +1354,25 @@ namespace HaCreator.MapSimulator.Entities
 
             if (fellTooFar || ((atLeftEdge || atRightEdge) && belowFH == null && Y > _spawnY + 50))
             {
-                X = _spawnX;
-                Y = _spawnY;
-                JumpState = MobJumpState.None;
-                VelocityY = 0;
+                ResetToSpawnAfterPhysics();
+            }
+        }
+
+        private void ResetToSpawnAfterPhysics()
+        {
+            X = _spawnX;
+            Y = _spawnY;
+            SrcY = _spawnY;
+            JumpState = MobJumpState.None;
+            CurrentFoothold = null;
+            VelocityX = 0;
+            VelocityY = 0;
+            _knockbackRecoveryTime = 0;
+            PlatformLeft = RX0;
+            PlatformRight = RX1;
+
+            if (MoveType != MobMoveType.Fly)
+            {
                 FindCurrentFoothold(_allFootholds);
             }
         }
@@ -1977,6 +1986,17 @@ namespace HaCreator.MapSimulator.Entities
         public void FindCurrentFoothold(IEnumerable<FootholdLine> footholds)
         {
             _allFootholds = footholds;
+
+            if (MoveType == MobMoveType.Fly || footholds == null)
+            {
+                CurrentFoothold = null;
+                PlatformLeft = RX0;
+                PlatformRight = RX1;
+                X = _spawnX;
+                Y = _spawnY;
+                SrcY = _spawnY;
+                return;
+            }
 
             // Calculate the expected foothold Y position
             // In WZ data: y = foothold Y, cy = mob display Y, yShift = cy - y
