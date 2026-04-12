@@ -16,8 +16,19 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientTooltipTextX = 87;
         internal const int ClientTooltipTextY = 32;
         internal const int ClientTooltipRightPadding = 20;
+        internal static readonly Color PlainTooltipBackgroundColor = new(0, 0, 0, 235);
         private const int MountedSkillTooltipFrameWidth = 193;
         private const int MountedSkillTooltipFrameHeight = 102;
+
+        internal static void DrawPlainTooltipBackground(SpriteBatch sprite, Texture2D fillTexture, Rectangle rect)
+        {
+            if (sprite == null || fillTexture == null || rect.Width <= 0 || rect.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(fillTexture, rect, PlainTooltipBackgroundColor);
+        }
 
         internal static Point ResolveSameFamilyOriginFallback(
             Point authoredOrigin,

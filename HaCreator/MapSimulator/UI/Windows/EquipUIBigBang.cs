@@ -5496,18 +5496,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
         {
-            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
-                ? _tooltipFrames[tooltipFrameIndex]
-                : null;
-
-            if (tooltipFrame != null)
-            {
-                sprite.Draw(tooltipFrame, rect, Color.White);
-                return;
-            }
-
-            sprite.Draw(_debugPlaceholder, rect, new Color(18, 18, 26, 235));
-            DrawTooltipBorder(sprite, rect);
+            SkillTooltipFrameLayout.DrawPlainTooltipBackground(sprite, _debugPlaceholder, rect);
         }
 
         private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)
