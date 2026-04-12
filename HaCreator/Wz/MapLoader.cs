@@ -26,6 +26,7 @@ using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
+using System.IO;
 
 namespace HaCreator.Wz
 {
@@ -296,6 +297,9 @@ namespace HaCreator.Wz
                 return;
             }
 
+            var missingMobAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var missingNpcAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (WzSubProperty life in lifeParent.WzProperties)
             {
                 string id = InfoTool.GetString(life["id"]);
@@ -315,12 +319,40 @@ namespace HaCreator.Wz
                 switch (type)
                 {
                     case "m":
+                        string mobImgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                        if (Program.FindImage("Mob", mobImgName) == null)
+                        {
+                            if (missingMobAssets.Add(mobImgName))
+                            {
+                                string error = string.Format(
+                                    "Monster asset Mob.img/{0} not found for map {1}.",
+                                    mobImgName,
+                                    mapBoard.MapInfo.id);
+                                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                            }
+                            continue;
+                        }
+
                         MobInfo mobInfo = MobInfo.Get(id);
                         if (mobInfo == null)
                             continue;
                         mapBoard.BoardItems.Mobs.Add((MobInstance)mobInfo.CreateInstance(mapBoard, x, cy, x - rx0, rx1 - x, cy - y, limitedname, mobTime, flip, hide, info, team));
                         break;
                     case "n":
+                        string npcImgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                        if (Program.FindImage("Npc", npcImgName) == null)
+                        {
+                            if (missingNpcAssets.Add(npcImgName))
+                            {
+                                string error = string.Format(
+                                    "NPC asset Npc.img/{0} not found for map {1}.",
+                                    npcImgName,
+                                    mapBoard.MapInfo.id);
+                                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                            }
+                            continue;
+                        }
+
                         NpcInfo npcInfo = NpcInfo.Get(id);
                         if (npcInfo == null)
                             continue;
@@ -1010,6 +1042,15 @@ namespace HaCreator.Wz
                 info.id = int.Parse(WzInfoTools.RemoveLeadingZeros(WzInfoTools.RemoveExtension(mapImage.Name)));
             info.mapType = type;
 
+            if (!string.IsNullOrWhiteSpace(info.bgm) && Program.InfoManager.GetBgm(info.bgm) == null)
+            {
+                string error = string.Format(
+                    "BGM Sound.wz/{0} not found for map {1}.",
+                    info.bgm,
+                    info.id);
+                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+            }
+
             Rectangle VR = new Rectangle();
             Point center = new Point();
             Point size = new Point();
@@ -1070,10 +1111,26 @@ namespace HaCreator.Wz
             }
 
             const string OUTPUT_ERROR_FILENAME = "Errors_MapLoader.txt";
-            ErrorLogger.SaveToFile(OUTPUT_ERROR_FILENAME);
-            if (UserSettings.ShowErrorsMessage)
+            var errorSnapshot = ErrorLogger.GetErrorSnapshot();
+            string logFilePath = Path.GetFullPath(OUTPUT_ERROR_FILENAME);
+            ErrorLogger.SaveToFile(logFilePath);
+            if (UserSettings.ShowErrorsMessage && errorSnapshot.Count > 0)
             {
-                // MessageBox.Show("Errors were encountered during the loading process. These errors were saved to \"errors.txt\". Please send this file to the author, either via mail (" + ApplicationSettings.AuthorEmail + ") or from the site you got this software from.\n\n(In the case that this program was not updated in so long that this message is now thrown on every map load, you may cancel this message from the settings)", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                string mapIdentifier = info != null
+                    ? $"map {info.id}"
+                    : mapImage?.Name;
+
+                if (Program.HaEditorWindow != null)
+                {
+                    Program.HaEditorWindow.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        MapLoadErrorsWindow.ShowWindow(Program.HaEditorWindow, mapIdentifier, errorSnapshot, logFilePath);
+                    }));
+                }
+                else
+                {
+                    MapLoadErrorsWindow.ShowWindow(null, mapIdentifier, errorSnapshot, logFilePath);
+                }
             }
         }
 

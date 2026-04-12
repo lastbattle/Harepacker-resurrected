@@ -176,6 +176,7 @@ namespace HaCreator.GUI
 
             // Close Object Viewer window
             ObjectViewerWindow.ForceClose();
+            MapLoadErrorsWindow.ForceClose();
 
             multiBoard.Stop();
         }
