@@ -205,6 +205,8 @@ namespace HaCreator.Wz
 
         public static void LoadLayers(WzImage mapImage, Board mapBoard)
         {
+            var missingTileAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             for (int layer = 0; layer <= MapConstants.MaxMapLayers; layer++)
             {
                 WzSubProperty layerProp = (WzSubProperty)mapImage[layer.ToString()];
@@ -217,49 +219,57 @@ namespace HaCreator.Wz
                     tS = InfoTool.GetString(tSprop);
 
                 // Load objects
-                foreach (WzImageProperty obj in layerProp["obj"].WzProperties)
+                WzImageProperty objectParent = layerProp["obj"];
+                if (objectParent != null)
                 {
-                    int x = InfoTool.GetInt(obj["x"]);
-                    int y = InfoTool.GetInt(obj["y"]);
-                    int z = InfoTool.GetInt(obj["z"]);
-                    int zM = InfoTool.GetInt(obj["zM"]);
-                    string oS = InfoTool.GetString(obj["oS"]);
-                    string l0 = InfoTool.GetString(obj["l0"]);
-                    string l1 = InfoTool.GetString(obj["l1"]);
-                    string l2 = InfoTool.GetString(obj["l2"]);
-                    string name = InfoTool.GetOptionalString(obj["name"]);
-                    MapleBool r = InfoTool.GetOptionalBool(obj["r"]);
-                    MapleBool hide = InfoTool.GetOptionalBool(obj["hide"]);
-                    MapleBool reactor = InfoTool.GetOptionalBool(obj["reactor"]);
-                    MapleBool flow = InfoTool.GetOptionalBool(obj["flow"]);
-                    int? rx = InfoTool.GetOptionalTranslatedInt(obj["rx"]);
-                    int? ry = InfoTool.GetOptionalTranslatedInt(obj["ry"]);
-                    int? cx = InfoTool.GetOptionalTranslatedInt(obj["cx"]);
-                    int? cy = InfoTool.GetOptionalTranslatedInt(obj["cy"]);
-                    string tags = InfoTool.GetOptionalString(obj["tags"]);
-
-                    WzImageProperty questParent = obj["quest"];
-                    List<ObjectInstanceQuest> questInfo = null;
-                    if (questParent != null)
+                    foreach (WzImageProperty obj in objectParent.WzProperties)
                     {
-                        questInfo = new List<ObjectInstanceQuest>();
-                        foreach (WzIntProperty info in questParent.WzProperties)
-                        {
-                            questInfo.Add(new ObjectInstanceQuest(int.Parse(info.Name), (QuestStateType)info.Value));
-                        }
-                    }
-                    bool flip = InfoTool.GetBool(obj["f"]);
-                    ObjectInfo objInfo = ObjectInfo.Get(oS, l0, l1, l2);
-                    if (objInfo == null)
-                        continue;
+                        int x = InfoTool.GetInt(obj["x"]);
+                        int y = InfoTool.GetInt(obj["y"]);
+                        int z = InfoTool.GetInt(obj["z"]);
+                        int zM = InfoTool.GetInt(obj["zM"]);
+                        string oS = InfoTool.GetString(obj["oS"]);
+                        string l0 = InfoTool.GetString(obj["l0"]);
+                        string l1 = InfoTool.GetString(obj["l1"]);
+                        string l2 = InfoTool.GetString(obj["l2"]);
+                        string name = InfoTool.GetOptionalString(obj["name"]);
+                        MapleBool r = InfoTool.GetOptionalBool(obj["r"]);
+                        MapleBool hide = InfoTool.GetOptionalBool(obj["hide"]);
+                        MapleBool reactor = InfoTool.GetOptionalBool(obj["reactor"]);
+                        MapleBool flow = InfoTool.GetOptionalBool(obj["flow"]);
+                        int? rx = InfoTool.GetOptionalTranslatedInt(obj["rx"]);
+                        int? ry = InfoTool.GetOptionalTranslatedInt(obj["ry"]);
+                        int? cx = InfoTool.GetOptionalTranslatedInt(obj["cx"]);
+                        int? cy = InfoTool.GetOptionalTranslatedInt(obj["cy"]);
+                        string tags = InfoTool.GetOptionalString(obj["tags"]);
 
-                    Layer l = mapBoard.Layers[layer];
-                    mapBoard.BoardItems.TileObjs.Add((LayeredItem)objInfo.CreateInstance(l, mapBoard, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip, false));
-                    l.zMList.Add(zM);
+                        WzImageProperty questParent = obj["quest"];
+                        List<ObjectInstanceQuest> questInfo = null;
+                        if (questParent != null)
+                        {
+                            questInfo = new List<ObjectInstanceQuest>();
+                            foreach (WzIntProperty info in questParent.WzProperties)
+                            {
+                                questInfo.Add(new ObjectInstanceQuest(int.Parse(info.Name), (QuestStateType)info.Value));
+                            }
+                        }
+
+                        bool flip = InfoTool.GetBool(obj["f"]);
+                        ObjectInfo objInfo = ObjectInfo.Get(oS, l0, l1, l2);
+                        if (objInfo == null)
+                            continue;
+
+                        Layer l = mapBoard.Layers[layer];
+                        mapBoard.BoardItems.TileObjs.Add((LayeredItem)objInfo.CreateInstance(l, mapBoard, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip, false));
+                        l.zMList.Add(zM);
+                    }
                 }
 
                 // Load tiles
                 WzImageProperty tileParent = layerProp["tile"];
+                if (tileParent == null)
+                    continue;
+
                 foreach (WzImageProperty tile in tileParent.WzProperties)
                 {
                     int x = InfoTool.GetInt(tile["x"]);
@@ -270,6 +280,20 @@ namespace HaCreator.Wz
                     Layer l = mapBoard.Layers[layer];
 
                     TileInfo tileInfo = TileInfo.Get(tS, u, no.ToString());
+                    if (tileInfo == null)
+                    {
+                        string tileAssetPath = string.Format("Map.wz/Tile/{0}/{1}/{2}", tS, u, no);
+                        if (missingTileAssets.Add(tileAssetPath))
+                        {
+                            string error = string.Format(
+                                "Tile asset {0} not found for map {1}.",
+                                tileAssetPath,
+                                mapBoard.MapInfo.id);
+                            ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                        }
+                        continue;
+                    }
+
                     mapBoard.BoardItems.TileObjs.Add((LayeredItem)tileInfo.CreateInstance(l, mapBoard, x, y, int.Parse(tile.Name), zM, false, false));
                     l.zMList.Add(zM);
                 }
