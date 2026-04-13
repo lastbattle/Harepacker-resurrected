@@ -4363,13 +4363,6 @@ namespace HaCreator.MapSimulator.Character
                 weaponSticker = null;
             }
 
-            if (ShouldSuppressShieldAndWeaponForMountedFamily(activeTamingMobPart))
-            {
-                equipment.Remove(EquipSlot.Shield);
-                equipment.Remove(EquipSlot.Weapon);
-                resolvedActionName = RemapMountedFamilyAction(resolvedActionName);
-            }
-
             if (string.Equals(requestedActionName, "coolingeffect", StringComparison.OrdinalIgnoreCase))
             {
                 equipment.Remove(EquipSlot.Shield);
@@ -4392,6 +4385,23 @@ namespace HaCreator.MapSimulator.Character
             if (filteredTamingMobPart?.Slot != EquipSlot.TamingMob)
             {
                 equipment.TryGetValue(EquipSlot.TamingMob, out filteredTamingMobPart);
+            }
+
+            // Mechanic's shared 1932016 mount asset publishes ordinary locomotion roots
+            // such as walk1/stand1, but those should not be rendered as a separate taming-mob
+            // under the avatar unless the current action is one of the client-owned vehicle
+            // ownership signals that actually puts the character into the mounted presentation.
+            if (filteredTamingMobPart?.ItemId == MechanicTamingMobItemId
+                && !CharacterAssembler.IsTamingMobRenderOwnershipAction(filteredTamingMobPart, resolvedActionName))
+            {
+                filteredTamingMobPart = null;
+            }
+
+            if (ShouldSuppressShieldAndWeaponForMountedFamily(filteredTamingMobPart))
+            {
+                equipment.Remove(EquipSlot.Shield);
+                equipment.Remove(EquipSlot.Weapon);
+                resolvedActionName = RemapMountedFamilyAction(resolvedActionName);
             }
 
             filteredTamingMobPart = PrepareTamingMobActionMergePart(filteredTamingMobPart, equipment);

@@ -2060,9 +2060,7 @@ namespace HaCreator.MapSimulator.Character
             }
             else
             {
-                newActionName = ResolveAvatarActionLayerCoordinatorActionName(
-                    GetSkillTransformActionName(State) ?? CharacterPart.GetActionString(newAction))
-                    ?? CharacterPart.GetActionString(newAction);
+                newActionName = GetSkillTransformActionName(State) ?? CharacterPart.GetActionString(newAction);
             }
 
             bool isFloatAction = IsFloatAnimationAction(newAction);
@@ -8682,7 +8680,7 @@ namespace HaCreator.MapSimulator.Character
 
             AvatarActionLayerState avatarActionLayerState = GetAvatarActionLayerState();
             UpdateAvatarActionLayerFrameClock(avatarActionLayerState, currentTime);
-            if (avatarActionLayerState != null)
+            if (avatarActionLayerState != null && ShouldUsePreparedAvatarActionLayer())
             {
                 AssembledFrame indexedFrame = Assembler.GetFrameAtIndex(
                     avatarActionLayerState.ActionName,
@@ -8698,6 +8696,17 @@ namespace HaCreator.MapSimulator.Character
             int animationTime = GetRenderAnimationTime(currentTime);
             currentFrameIndex = Assembler.GetFrameIndexAtTime(CurrentActionName, animationTime);
             return Assembler.GetFrameAtTime(CurrentActionName, animationTime);
+        }
+
+        private bool ShouldUsePreparedAvatarActionLayer()
+        {
+            if (HasActiveMorphTransform || _sustainedSkillAnimation || State == PlayerState.Attacking)
+            {
+                return true;
+            }
+
+            string defaultActionName = CharacterPart.GetActionString(CurrentAction);
+            return !string.Equals(CurrentActionName, defaultActionName, StringComparison.OrdinalIgnoreCase);
         }
 
         public Point? TryGetCurrentBodyMapPoint(string mapPointName, int currentTime)

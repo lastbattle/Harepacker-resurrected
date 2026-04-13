@@ -4618,10 +4618,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (CharacterAssembler.SupportsTamingMobAction(mountPart, actionName))
-            {
-                return true;
-            }
 
             if (ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
                     mountPart.ItemId,
@@ -4630,9 +4626,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            // Client-owned vehicle ownership is established before this seam. Preserve the
-            // canonical mount owner through blank current-action ticks instead of dropping the
-            // mounted state solely because no visible action name was published for that frame.
+            // Client-owned vehicle ownership must already be established before this seam.
+            // Do not infer ownership from generic taming-mob animation support alone, because
+            // shared movement roots such as walk1/stand1 can exist on the mount asset without
+            // meaning the client still considers the vehicle owner active for that frame.
+            // Preserve the canonical owner only through blank current-action ticks instead of
+            // dropping the mounted state solely because no visible action name was published.
             return string.IsNullOrWhiteSpace(actionName)
                    && NormalizeClientOwnedVehicleCurrentActionMountItemId(mountPart.ItemId) > 0;
         }

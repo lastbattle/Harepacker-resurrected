@@ -1547,10 +1547,7 @@ namespace HaCreator.MapSimulator.Character
         private static bool IsMechanicMountedRenderOwnershipSignal(CharacterPart tamingMobPart, string actionName)
         {
             return SupportsTamingMobAction(tamingMobPart, actionName)
-                   && (ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
-                           MechanicTamingMobItemId,
-                           actionName)
-                       || IsMechanicMountOnlyAction(tamingMobPart, actionName));
+                   && IsMechanicMountOnlyAction(tamingMobPart, actionName);
         }
 
         private static bool IsMechanicMountOnlyAction(CharacterPart tamingMobPart, string actionName)
