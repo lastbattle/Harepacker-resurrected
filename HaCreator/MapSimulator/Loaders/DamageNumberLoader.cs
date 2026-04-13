@@ -89,6 +89,8 @@ namespace HaCreator.MapSimulator.Loaders
         {
             int accumulatedX = 0;  // v15 in the binary
             int previousOverlap = 0;  // lY in the binary
+            int minLeft = int.MaxValue;
+            int maxRight = int.MinValue;
 
             foreach (char c in numberString)
             {
@@ -98,6 +100,12 @@ namespace HaCreator.MapSimulator.Loaders
                 int digit = c - '0';
                 int width = Widths[digit];
                 int originX = Origins[digit].X;
+                int relativeX = accumulatedX + width - previousOverlap;
+                int drawLeft = relativeX - originX;
+                int drawRight = drawLeft + width;
+
+                minLeft = Math.Min(minLeft, drawLeft);
+                maxRight = Math.Max(maxRight, drawRight);
 
                 // Update accumulated position: accumulatedX = accumulatedX - previousOverlap + originX
                 // Binary: v15 = v15 - lY + idx; (where idx is origin.x)
@@ -108,9 +116,12 @@ namespace HaCreator.MapSimulator.Loaders
                 previousOverlap = 3 * (originX - width) / 5;
             }
 
-            // Total width is the final accumulated position
-            // Binary: lWidth = v15; (line 305)
-            return accumulatedX;
+            if (minLeft == int.MaxValue || maxRight == int.MinValue)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, maxRight - minLeft);
         }
     }
 

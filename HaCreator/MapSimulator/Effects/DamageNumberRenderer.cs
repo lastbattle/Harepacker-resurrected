@@ -589,19 +589,21 @@ namespace HaCreator.MapSimulator.Effects
             }
         }
 
-        internal static (DigitLayoutEntry[] Entries, int TotalWidth) BuildDigitLayout(
+        internal static (DigitLayoutEntry[] Entries, int LeftOffset, int TotalWidth) BuildDigitLayout(
             string damageString,
             DamageNumberDigitSet largeDigitSet,
             DamageNumberDigitSet smallDigitSet,
             bool addCriticalSpacing)
         {
             if (string.IsNullOrEmpty(damageString))
-                return (Array.Empty<DigitLayoutEntry>(), 0);
+                return (Array.Empty<DigitLayoutEntry>(), 0, 0);
 
             List<DigitLayoutEntry> entries = new(damageString.Length);
             int accumulatedX = addCriticalSpacing ? 30 : 0;
             int previousOverlap = 0;
             bool useLargeDigitSet = true;
+            int minLeft = int.MaxValue;
+            int maxRight = int.MinValue;
 
             foreach (char c in damageString)
             {
@@ -613,15 +615,24 @@ namespace HaCreator.MapSimulator.Effects
                 int width = digitSet.Widths[digit];
                 int originX = digitSet.Origins[digit].X;
                 int relativeX = accumulatedX + width - previousOverlap;
+                int drawLeft = relativeX - originX;
+                int drawRight = drawLeft + width;
 
                 entries.Add(new DigitLayoutEntry(digit, useLargeDigitSet, relativeX));
+                minLeft = Math.Min(minLeft, drawLeft);
+                maxRight = Math.Max(maxRight, drawRight);
 
                 accumulatedX = accumulatedX - previousOverlap + originX;
                 previousOverlap = 3 * (originX - width) / 5;
                 useLargeDigitSet = false;
             }
 
-            return (entries.ToArray(), accumulatedX);
+            if (entries.Count == 0)
+            {
+                return (Array.Empty<DigitLayoutEntry>(), 0, 0);
+            }
+
+            return (entries.ToArray(), minLeft, Math.Max(0, maxRight - minLeft));
         }
 
         internal static PreparedDamageNumberVisual PrepareVisual(
@@ -689,7 +700,7 @@ namespace HaCreator.MapSimulator.Effects
                         specialTextDigitSet));
             }
 
-            (DigitLayoutEntry[] layoutEntries, int totalWidth) = BuildDigitLayout(
+            (DigitLayoutEntry[] layoutEntries, int leftOffset, int totalWidth) = BuildDigitLayout(
                 damageString,
                 largeDigitSet,
                 smallDigitSet,
@@ -706,7 +717,7 @@ namespace HaCreator.MapSimulator.Effects
                 digits[i] = new PreparedDigitDrawInfo(
                     entry.Digit,
                     entry.UseLargeDigitSet,
-                    entry.RelativeX - origin.X,
+                    entry.RelativeX - origin.X - leftOffset,
                     baselineY - origin.Y);
             }
 
