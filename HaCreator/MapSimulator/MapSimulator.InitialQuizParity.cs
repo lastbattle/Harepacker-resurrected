@@ -796,6 +796,11 @@ namespace HaCreator.MapSimulator
             return _initialQuizTimerRuntime.TryBuildOwnerSnapshot(currTickCount, out _);
         }
 
+        internal static bool ShouldForwardInitialQuizOwnerInputToActiveWindow(bool ownerCapturesWindowInput)
+        {
+            return !ownerCapturesWindowInput;
+        }
+
         private void HandleInitialQuizOwnerCommittedText(string text)
         {
             if (!ShouldCaptureInitialQuizOwnerTextInput())

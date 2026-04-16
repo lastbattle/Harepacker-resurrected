@@ -135,6 +135,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int WhisperLocationStringPoolId = 0x9D;
         private const int WhisperHiddenFieldStringPoolId = 0x9E;
         private const int WhisperUserListFormatStringPoolId = 0x2D7;
+        private const int WhisperUserListNotFoundStringPoolId = 0x1A2D;
         private const int IncomingWhisperSameChannelStringPoolId = 0x72E;
         private const int IncomingWhisperOtherChannelStringPoolId = 0x72F;
         private const int OutgoingWhisperLogStringPoolId = 0x730;
@@ -157,6 +158,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const string WhisperNotFoundFallback = "{0} could not be found.";
         private const string WhisperLocationFallback = "{0} is in {1}.";
         private const string WhisperHiddenFieldFallback = "{0} is in a hidden field.";
+        private const string WhisperUserListEntryFallback = "{0}: {1}";
+        private const string WhisperUserListNotFoundFallback = "Not found.";
         private const string IncomingWhisperSameChannelFallback = "{0}: {1}";
         private const string IncomingWhisperOtherChannelFallback = "{0} ({1}): {2}";
         private const string OutgoingWhisperLogFallback = "> {0}: {1}";
@@ -1633,6 +1636,51 @@ namespace HaCreator.MapSimulator.Interaction
             out string text)
         {
             string normalizedTarget = target?.Trim() ?? string.Empty;
+            if (subtype == 72)
+            {
+                switch (result)
+                {
+                    case 1:
+                        if (!HasWhisperTransferTarget(value, callbacks))
+                        {
+                            string hiddenText = MapleStoryStringPool.GetOrFallback(
+                                WhisperHiddenFieldStringPoolId,
+                                string.Format(CultureInfo.InvariantCulture, WhisperHiddenFieldFallback, normalizedTarget));
+                            text = FormatWhisperUserListText(normalizedTarget, hiddenText);
+                            return true;
+                        }
+
+                        string mapName = callbacks?.ResolveMapName?.Invoke(value);
+                        text = string.IsNullOrWhiteSpace(mapName)
+                            ? string.Empty
+                            : FormatWhisperUserListText(normalizedTarget, mapName.Trim());
+                        return true;
+                    case 2:
+                        text = FormatWhisperUserListText(
+                            normalizedTarget,
+                            MapleStoryStringPool.GetOrFallback(WhisperUserListNotFoundStringPoolId, WhisperUserListNotFoundFallback));
+                        return true;
+                    case 3:
+                        string channelName = callbacks?.ResolveChannelName?.Invoke(value);
+                        text = string.IsNullOrWhiteSpace(channelName)
+                            ? string.Empty
+                            : FormatWhisperUserListText(normalizedTarget, channelName.Trim());
+                        return true;
+                    case 4:
+                        text = FormatWhisperStringPoolText(
+                            WhisperLocationUnavailableStringPoolId,
+                            WhisperLocationUnavailableFallback,
+                            normalizedTarget);
+                        return true;
+                    default:
+                        text = FormatWhisperStringPoolText(
+                            WhisperLocationUnavailableStringPoolId,
+                            WhisperLocationUnavailableFallback,
+                            normalizedTarget);
+                        return true;
+                }
+            }
+
             switch (result)
             {
                 case 1:
@@ -1677,6 +1725,15 @@ namespace HaCreator.MapSimulator.Interaction
                     text = $"{normalizedTarget} returned whisper result {result}.";
                     return true;
             }
+        }
+
+        private static string FormatWhisperUserListText(string target, string detailText)
+        {
+            return FormatWhisperStringPoolText(
+                WhisperUserListFormatStringPoolId,
+                WhisperUserListEntryFallback,
+                target,
+                detailText ?? string.Empty);
         }
 
         private static bool TryResolveGroupFamily(byte family, out int chatLogType, out string prefix)

@@ -86,7 +86,7 @@ namespace HaCreator.MapSimulator
             {
                 RegisterDynamicReactorForRendering(reactorIndex);
                 FlushPendingReactorTouchRequestRemovals();
-                DispatchReactorTouchStateChanges(_reactorPool.DrainPendingPacketTouchStateChanges());
+                DispatchReactorTouchStateChanges(_reactorPool.DrainPendingPacketTouchStateChanges(), currentTick);
             }
 
             return new PacketReactorPoolApplyResult(entered, detail);
@@ -285,6 +285,12 @@ namespace HaCreator.MapSimulator
                     _chat?.AddErrorMessage(detail, currTickCount);
                 }
             }
+        }
+
+        private void FlushDeferredReactorTouchOwnership(int currentTick)
+        {
+            _reactorPoolOfficialSessionBridge.TryFlushDeferredTouchRequests(currentTick, out _);
+            _reactorTouchPacketOutbox.TryFlushDeferredTouchRequests(currentTick, out _);
         }
 
         private string DescribeReactorPoolOfficialSessionBridgeStatus()

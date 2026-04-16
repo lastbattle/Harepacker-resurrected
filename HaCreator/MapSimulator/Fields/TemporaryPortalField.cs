@@ -758,8 +758,17 @@ namespace HaCreator.MapSimulator.Fields
                     frameVisuals);
                 TemporaryPortal townPortal = townRuntime.Portal;
 
-                fieldPortal.LinkedPortalId = townPortal.Id;
-                townPortal.LinkedPortalId = fieldPortal.Id;
+                if (ShouldLinkRemoteTownPortal(state))
+                {
+                    fieldPortal.LinkedPortalId = townPortal.Id;
+                    townPortal.LinkedPortalId = fieldPortal.Id;
+                }
+                else
+                {
+                    fieldPortal.LinkedPortalId = null;
+                    townPortal.LinkedPortalId = null;
+                }
+
                 _remoteTownPortalRuntimes[state.OwnerCharacterId] = new RemoteTownPortalRuntimePair(fieldRuntime, townRuntime);
             }
 
@@ -2161,6 +2170,12 @@ namespace HaCreator.MapSimulator.Fields
                 && Math.Abs(left.Value.Y - right.Value.Y) < 0.01f;
         }
 
+        private static bool ShouldLinkRemoteTownPortal(RemoteTownPortalState state)
+        {
+            return state.Destination.HasValue
+                   && state.Phase != RemoteTownPortalVisualPhase.Removing;
+        }
+
         private static bool ShouldRefreshRemoteTownPortalInferredMetadata(
             RemoteTownPortalFieldMetadata? metadata,
             RemoteTownPortalOwnerFieldObservation? ownerObservation,
@@ -3559,6 +3574,14 @@ namespace HaCreator.MapSimulator.Fields
                     refreshedDestinationMapId,
                     refreshedDestinationX,
                     refreshedDestinationY));
+        }
+
+        internal static bool ShouldLinkRemoteTownPortalForTesting(
+            RemoteTownPortalVisualPhase phase,
+            bool hasDestination)
+        {
+            return hasDestination
+                   && phase != RemoteTownPortalVisualPhase.Removing;
         }
 
         internal static RemoteOpenGateVisualPhase AdvanceRemoteOpenGatePhaseForTesting(RemoteOpenGateVisualPhase phase, int phaseStartedAt, int currentTime)

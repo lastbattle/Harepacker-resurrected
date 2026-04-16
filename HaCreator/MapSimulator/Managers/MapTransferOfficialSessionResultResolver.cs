@@ -56,8 +56,11 @@ namespace HaCreator.MapSimulator.Managers
                 _ => null
             };
             expectedType ??= InferRequestTypeFromFailureResultCode(authoritativeResponse.PacketResultCode);
+            if (!expectedType.HasValue)
+            {
+                return -1;
+            }
 
-            int bookFallbackIndex = -1;
             int typeFallbackIndex = -1;
             for (int index = 0; index < pendingRequests.Count; index++)
             {
@@ -67,13 +70,7 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
-                bookFallbackIndex = index;
-                if (!expectedType.HasValue)
-                {
-                    return index;
-                }
-
-                if (request.Type != expectedType.Value)
+                if (request.Type != expectedType)
                 {
                     continue;
                 }
@@ -89,7 +86,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
-            return typeFallbackIndex >= 0 ? typeFallbackIndex : bookFallbackIndex;
+            return typeFallbackIndex;
         }
 
         private static MapTransferRuntimeRequestType? InferRequestTypeFromFailureResultCode(
@@ -99,6 +96,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 MapTransferRuntimePacketResultCode.NoEmptySlot => MapTransferRuntimeRequestType.Register,
                 MapTransferRuntimePacketResultCode.AlreadyRegistered => MapTransferRuntimeRequestType.Register,
+                MapTransferRuntimePacketResultCode.OfficialFailure8 => MapTransferRuntimeRequestType.Register,
                 MapTransferRuntimePacketResultCode.CannotSaveDestination => MapTransferRuntimeRequestType.Register,
                 MapTransferRuntimePacketResultCode.OfficialFailure11 => MapTransferRuntimeRequestType.Register,
                 _ => null

@@ -108,10 +108,8 @@ namespace HaCreator.MapSimulator.Animation
             List<IDXObject> frames,
             string sourceUol,
             Func<Vector2> getOrigin,
-            Func<bool> getFlip,
             float fallbackX,
             float fallbackY,
-            bool fallbackFlip,
             int currentTimeMs,
             int zOrder = 1)
         {
@@ -2468,9 +2466,10 @@ namespace HaCreator.MapSimulator.Animation
                     continue;
                 }
 
+                CanvasLayerRecoveredPositionSettings basePosition = ResolveContentBasePosition(operation.Descriptor.Content);
                 Vector2 position = new(
-                    _left + mapShiftX + operation.Descriptor.Offset.X,
-                    _top + mapShiftY + operation.Descriptor.Offset.Y + riseOffset);
+                    basePosition.Left + mapShiftX + operation.Descriptor.Offset.X,
+                    basePosition.Top + mapShiftY + operation.Descriptor.Offset.Y + riseOffset);
 
                 spriteBatch.Draw(operation.Texture, position, Color.White * alpha);
             }
@@ -2586,7 +2585,7 @@ namespace HaCreator.MapSimulator.Animation
 
             if (hasOverlayPositionWrite)
             {
-                Point overlayOffset = ownerTrace.GetValueOrDefault().OverlayOffset;
+                Point overlayOffset = ResolveOverlayInsertOffset(insertCommands);
                 operations.Add(new CanvasLayerRecoveredNativeOperation(
                     CanvasLayerRecoveredNativeOperationKind.SetLayerPosition,
                     AnimationCanvasLayerContent.OverlayCanvas,
@@ -2624,6 +2623,37 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             return operations.ToArray();
+        }
+
+        private static Point ResolveOverlayInsertOffset(IReadOnlyList<CanvasLayerRecoveredInsertCommand> insertCommands)
+        {
+            if (insertCommands == null)
+            {
+                return Point.Zero;
+            }
+
+            for (int i = 0; i < insertCommands.Count; i++)
+            {
+                if (insertCommands[i].Content == AnimationCanvasLayerContent.OverlayCanvas)
+                {
+                    return insertCommands[i].Offset;
+                }
+            }
+
+            return Point.Zero;
+        }
+
+        private CanvasLayerRecoveredPositionSettings ResolveContentBasePosition(AnimationCanvasLayerContent content)
+        {
+            if (content == AnimationCanvasLayerContent.OverlayCanvas
+                && RecoveredNativeLayerState.HasOverlayPosition)
+            {
+                return RecoveredNativeLayerState.OverlayPosition;
+            }
+
+            return new CanvasLayerRecoveredPositionSettings(
+                (int)Math.Round(_left, MidpointRounding.AwayFromZero),
+                (int)Math.Round(_top, MidpointRounding.AwayFromZero));
         }
 
         internal static CanvasLayerRecoveredRegistrationTrace BuildRecoveredRegistrationTrace(

@@ -147,8 +147,15 @@ namespace HaCreator.MapSimulator.Interaction
             string normalizedLocation = string.IsNullOrWhiteSpace(locationInfo)
                 ? string.Empty
                 : locationInfo.Trim();
-            if (normalizedName.Length == 0 || normalizedLocation.Length == 0)
+            if (normalizedName.Length == 0)
             {
+                return;
+            }
+
+            if (normalizedLocation.Length == 0)
+            {
+                _packetWhisperLocationInfo = string.Empty;
+                _lastPacketSyncSummaryByTab[SocialListTab.Friend] = $"Packet whisper find invalidated user-list location for {normalizedName}.";
                 return;
             }
 

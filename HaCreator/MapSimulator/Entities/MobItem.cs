@@ -513,6 +513,12 @@ namespace HaCreator.MapSimulator.Entities
             return _animationSet?.GetAttackProjectileEffect(attackAction);
         }
 
+        public bool HasActionAnimation(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && (_animationSet?.HasAnimation(actionName) ?? false);
+        }
+
         public List<IDXObject> GetAttackEffectFrames(string attackAction)
         {
             return _animationSet?.GetAttackEffect(attackAction);
@@ -1298,6 +1304,8 @@ namespace HaCreator.MapSimulator.Entities
             private set { }
         }
 
+        public int MobId => _mobInstance?.MobInfo?.ID != null? int.Parse(_mobInstance.MobInfo.ID) : 0;
+
         public MobData MobData => _mobInstance.MobInfo?.MobData;
         #endregion
 
@@ -1866,10 +1874,8 @@ namespace HaCreator.MapSimulator.Entities
                     effectFrames,
                     effectPath,
                     GetAngerGaugeBurstAnchor,
-                    () => flip,
                     anchor.X,
                     anchor.Y,
-                    flip,
                     tickCount,
                     zOrder: 1);
                 return;

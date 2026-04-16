@@ -3,6 +3,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Combat;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Fields;
 using MapleLib.ClientLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib;
@@ -380,6 +381,16 @@ namespace HaCreator.MapSimulator.UI
 
             WzSubProperty itemProperty = LoadItemProperty(itemId);
             return TryResolveSpecScripts(itemProperty?["spec"] as WzSubProperty, out scripts);
+        }
+
+        internal static bool TryResolveSpecScriptPublications(
+            int itemId,
+            out IReadOnlyList<FieldObjectScriptPublication> publications)
+        {
+            publications = Array.Empty<FieldObjectScriptPublication>();
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            return TryResolveSpecScriptPublications(itemProperty?["spec"] as WzSubProperty, out publications);
         }
 
         public static bool TryResolveSpecNpc(int itemId, out int npcId)
@@ -1000,6 +1011,23 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        internal static bool TryResolveSpecScriptPublications(
+            WzSubProperty specProperty,
+            out IReadOnlyList<FieldObjectScriptPublication> publications)
+        {
+            publications = Array.Empty<FieldObjectScriptPublication>();
+
+            IReadOnlyList<FieldObjectScriptPublication> resolvedPublications =
+                FieldObjectScriptPublicationParser.Parse(specProperty?["script"]);
+            if (resolvedPublications.Count == 0)
+            {
+                return false;
+            }
+
+            publications = resolvedPublications;
+            return true;
+        }
+
         public static bool TryResolveSpecScriptForTests(WzSubProperty specProperty, out string script)
         {
             return TryResolveSpecScript(specProperty, out script);
@@ -1008,6 +1036,13 @@ namespace HaCreator.MapSimulator.UI
         public static bool TryResolveSpecScriptsForTests(WzSubProperty specProperty, out IReadOnlyList<string> scripts)
         {
             return TryResolveSpecScripts(specProperty, out scripts);
+        }
+
+        internal static bool TryResolveSpecScriptPublicationsForTests(
+            WzSubProperty specProperty,
+            out IReadOnlyList<FieldObjectScriptPublication> publications)
+        {
+            return TryResolveSpecScriptPublications(specProperty, out publications);
         }
 
         public static bool IsWeddingInvitationItemForTests(

@@ -3,6 +3,15 @@ using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.UI
 {
+    internal readonly record struct PacketOwnedCommodityMetadataCandidate(
+        int SerialNumber,
+        int ItemId,
+        long Price,
+        bool OnSale,
+        int Count,
+        int PeriodDays,
+        int Priority);
+
     internal static class AdminShopPacketOwnedSellTemplateParity
     {
         internal static bool IsClientSetUserItemsSlotEligible(
@@ -33,6 +42,86 @@ namespace HaCreator.MapSimulator.UI
         internal static bool CanBuildSendTradeRequestPosition(bool requiresInventorySource, int position)
         {
             return !requiresInventorySource || position > 0;
+        }
+
+        internal static int SelectBestPacketOwnedCommodityMetadataSerial(
+            int packetSerialNumber,
+            int packetItemId,
+            long packetPrice,
+            IReadOnlyList<PacketOwnedCommodityMetadataCandidate> candidates)
+        {
+            if (packetItemId <= 0 || candidates == null || candidates.Count == 0)
+            {
+                return 0;
+            }
+
+            long normalizedPacketPrice = Math.Max(0L, Math.Abs(packetPrice));
+            bool hasBest = false;
+            PacketOwnedCommodityMetadataCandidate best = default;
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                PacketOwnedCommodityMetadataCandidate candidate = candidates[i];
+                if (candidate.ItemId != packetItemId || candidate.SerialNumber <= 0)
+                {
+                    continue;
+                }
+
+                if (!hasBest || IsPreferredCandidate(candidate, best, packetSerialNumber, normalizedPacketPrice))
+                {
+                    best = candidate;
+                    hasBest = true;
+                }
+            }
+
+            return hasBest ? best.SerialNumber : 0;
+        }
+
+        private static bool IsPreferredCandidate(
+            PacketOwnedCommodityMetadataCandidate candidate,
+            PacketOwnedCommodityMetadataCandidate existing,
+            int packetSerialNumber,
+            long normalizedPacketPrice)
+        {
+            bool candidateExactSerial = packetSerialNumber > 0 && candidate.SerialNumber == packetSerialNumber;
+            bool existingExactSerial = packetSerialNumber > 0 && existing.SerialNumber == packetSerialNumber;
+            if (candidateExactSerial != existingExactSerial)
+            {
+                return candidateExactSerial;
+            }
+
+            bool candidateExactPrice = Math.Max(0L, candidate.Price) == normalizedPacketPrice;
+            bool existingExactPrice = Math.Max(0L, existing.Price) == normalizedPacketPrice;
+            if (candidateExactPrice != existingExactPrice)
+            {
+                return candidateExactPrice;
+            }
+
+            if (candidate.OnSale != existing.OnSale)
+            {
+                return candidate.OnSale;
+            }
+
+            if (candidate.Priority != existing.Priority)
+            {
+                return candidate.Priority > existing.Priority;
+            }
+
+            if (candidate.Count != existing.Count)
+            {
+                return candidate.Count > existing.Count;
+            }
+
+            if (candidate.PeriodDays != existing.PeriodDays)
+            {
+                return candidate.PeriodDays > existing.PeriodDays;
+            }
+
+            if (candidate.Price != existing.Price)
+            {
+                return candidate.Price < existing.Price;
+            }
+
+            return candidate.SerialNumber < existing.SerialNumber;
         }
     }
 }

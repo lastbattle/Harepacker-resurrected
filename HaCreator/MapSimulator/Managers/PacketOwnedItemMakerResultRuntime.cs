@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int ItemMakerSecondaryGainStringPoolId = 306;
         private const int LostMesosStringPoolId = 305;
         private const int DisassemblySuccessStringPoolId = 307;
+        private const int ItemMakerDisassemblyNoticeStringPoolId = 768;
         private const int ItemMakerResultNoticeStringPoolId = 770;
         private const int ItemMakerIncorrectRequestStringPoolId = 766;
         private const int ItemMakerNoEmptySlotDisassemblyStringPoolId = 769;
@@ -204,7 +205,8 @@ namespace HaCreator.MapSimulator.Managers
 
         public static string BuildStatusMessage(
             PacketOwnedItemMakerResult result,
-            PacketOwnedItemMakerPendingRequest pendingRequest = null)
+            PacketOwnedItemMakerPendingRequest pendingRequest = null,
+            bool disassemblyMode = false)
         {
             if (result == null)
             {
@@ -229,15 +231,15 @@ namespace HaCreator.MapSimulator.Managers
 
             if (result.DisassembledItemId > 0)
             {
-                return FormatDisassemblySuccess(result.DisassembledItemId);
+                return FormatDisassemblyNotice(result.DisassembledItemId);
             }
 
             return result.ResultCode switch
             {
                 1 => MapleStoryStringPool.GetOrFallback(ItemMakerResultNoticeStringPoolId, "This item cannot be disassembled."),
                 2 => MapleStoryStringPool.GetOrFallback(ItemMakerIncorrectRequestStringPoolId, "You have made an incorrect request."),
-                3 => BuildNoEmptySlotNotice(InventoryType.SETUP),
-                4 => BuildNoEmptySlotNotice(InventoryType.ETC),
+                3 => BuildNoEmptySlotNotice(InventoryType.SETUP, disassemblyMode),
+                4 => BuildNoEmptySlotNotice(InventoryType.ETC, disassemblyMode),
                 _ => $"Packet-owned maker result code {result.ResultCode} subtype {result.ResultType}."
             };
         }
@@ -427,6 +429,16 @@ namespace HaCreator.MapSimulator.Managers
         {
             string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
                 DisassemblySuccessStringPoolId,
+                "You have successfully disassembled the {0}.",
+                maxPlaceholderCount: 1,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, ResolveItemName(itemId));
+        }
+
+        private static string FormatDisassemblyNotice(int itemId)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                ItemMakerDisassemblyNoticeStringPoolId,
                 "You have successfully disassembled the {0}.",
                 maxPlaceholderCount: 1,
                 out _);

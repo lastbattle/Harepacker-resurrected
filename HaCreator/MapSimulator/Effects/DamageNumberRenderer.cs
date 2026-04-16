@@ -998,7 +998,7 @@ namespace HaCreator.MapSimulator.Effects
                 timeline.FadeDurationMs,
                 timeline.RiseDistancePx,
                 hasCriticalBanner,
-                criticalBannerOffset,
+                NormalizeCriticalBannerInsertOffset(criticalBannerOffset, hasCriticalBanner),
                 timeline.CriticalDelayMs);
             CanvasLayerRecoveredRegistrationTrace recoveredRegistrationTrace =
                 OneTimeCanvasLayerAnimation.BuildRecoveredRegistrationTrace(
@@ -1025,6 +1025,18 @@ namespace HaCreator.MapSimulator.Effects
                     BuildRecoveredOwnerTrace(visual)),
                 recoveredLayerSettings,
                 recoveredRegistrationTrace);
+        }
+
+        private static Point NormalizeCriticalBannerInsertOffset(Point offset, bool hasCriticalBanner)
+        {
+            if (!hasCriticalBanner)
+            {
+                return offset;
+            }
+
+            return new Point(
+                offset.X,
+                offset.Y - DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y);
         }
 
         internal static CanvasLayerRecoveredOwnerTrace? BuildRecoveredOwnerTrace(PreparedDamageNumberVisual visual)

@@ -2116,6 +2116,16 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation EffectAnimation { get; init; }
     }
 
+    public sealed class RegisteredBulletPresentationContext
+    {
+        public QueuedProjectileVisualLane VisualLane { get; init; }
+        public int BulletItemId { get; init; }
+        public int BulletUseItemId { get; init; }
+        public int BulletCashItemId { get; init; }
+        public int WeaponCode { get; init; }
+        public int WeaponItemId { get; init; }
+    }
+
     public sealed class ActiveBulletAnimationOwner
     {
         public int Id { get; set; }
@@ -2256,6 +2266,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ClientActionSpeedDegree { get; set; }
         public int BulletAnimationOwnerId { get; set; }
         public BulletAnimationPresentation BulletAnimation { get; set; }
+        public RegisteredBulletPresentationContext RegisteredBulletPresentation { get; set; }
         public int ImpactPresentationBaseTime { get; set; } = int.MinValue;
         public List<ProjectileAfterimageLayer> AfterimageLayers { get; } = new();
         public int LastAfterimageUpdateTime { get; set; } = int.MinValue;

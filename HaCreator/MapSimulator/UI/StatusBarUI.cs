@@ -96,6 +96,7 @@ namespace HaCreator.MapSimulator.UI {
         public string TooltipCostLineMarkup { get; set; }
         public bool SuppressProgressOverlay { get; set; }
         public bool SuppressCounterText { get; set; }
+        public bool UseQuickSlotMaskSurface { get; set; } = true;
     }
 
     public class StatusBarKeyDownBarTextures
@@ -1184,7 +1185,8 @@ namespace HaCreator.MapSimulator.UI {
                 BUFF_ICON_SIZE,
                 BUFF_ICON_SPACING,
                 COOLDOWN_TRAY_RIGHT_MARGIN,
-                COOLDOWN_TRAY_TOP_MARGIN);
+                COOLDOWN_TRAY_TOP_MARGIN,
+                SkillManager.CooldownMaskSurface.QuickSlot);
             DrawCooldownTrayGroup(
                 sprite,
                 renderParameters,
@@ -1195,7 +1197,8 @@ namespace HaCreator.MapSimulator.UI {
                 OFFBAR_COOLDOWN_ICON_SIZE,
                 OFFBAR_COOLDOWN_ICON_SPACING,
                 OFFBAR_COOLDOWN_TRAY_RIGHT_MARGIN,
-                OFFBAR_COOLDOWN_TRAY_TOP_MARGIN);
+                OFFBAR_COOLDOWN_TRAY_TOP_MARGIN,
+                SkillManager.CooldownMaskSurface.SkillBook);
         }
 
         private void DrawCooldownTrayGroup(
@@ -1208,7 +1211,8 @@ namespace HaCreator.MapSimulator.UI {
             int iconSize,
             int iconSpacing,
             int rightMargin,
-            int topMargin)
+            int topMargin,
+            SkillManager.CooldownMaskSurface fallbackMaskSurface)
         {
             if (provider == null)
             {
@@ -1257,7 +1261,13 @@ namespace HaCreator.MapSimulator.UI {
 
                     if (!cooldownEntry.SuppressProgressOverlay)
                     {
-                        DrawCooldownMask(sprite, iconRect, cooldownEntry.MaskFrameIndex);
+                        DrawCooldownMask(
+                            sprite,
+                            iconRect,
+                            cooldownEntry.MaskFrameIndex,
+                            cooldownEntry.UseQuickSlotMaskSurface
+                                ? SkillManager.CooldownMaskSurface.QuickSlot
+                                : fallbackMaskSurface);
                     }
 
                     if (!HasStatusBarTextRenderer() || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
@@ -1302,7 +1312,11 @@ namespace HaCreator.MapSimulator.UI {
                 anchorOwner: SkillTooltipAnchorOwner.StatusBarCooldownTray);
         }
 
-        private void DrawCooldownMask(SpriteBatch sprite, Rectangle iconRect, int frameIndex)
+        private void DrawCooldownMask(
+            SpriteBatch sprite,
+            Rectangle iconRect,
+            int frameIndex,
+            SkillManager.CooldownMaskSurface maskSurface)
         {
             if (_cooldownMaskTextures.Length > 0)
             {
@@ -1322,7 +1336,7 @@ namespace HaCreator.MapSimulator.UI {
 
             float remainingProgress = SkillManager.ResolveCooldownMaskFallbackFillRatio(
                 frameIndex,
-                SkillManager.CooldownMaskSurface.QuickSlot);
+                maskSurface);
             int overlayHeight = Math.Clamp((int)Math.Ceiling(iconRect.Height * remainingProgress), 0, iconRect.Height);
             if (overlayHeight <= 0)
             {

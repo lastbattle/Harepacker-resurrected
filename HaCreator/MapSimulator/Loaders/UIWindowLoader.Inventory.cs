@@ -66,7 +66,9 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(utilDlgExProperty?["BtPrev"]?["normal"]?["0"] as WzCanvasProperty, device),
                 LoadCanvasTexture(utilDlgExProperty?["BtNext"]?["normal"]?["0"] as WzCanvasProperty, device),
                 LoadCanvasTexture(utilDlgExProperty?["BtOK"]?["normal"]?["0"] as WzCanvasProperty, device),
-                LoadCanvasTexture(utilDlgExProperty?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device));
+                LoadCanvasTexture(utilDlgExProperty?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(utilDlgExProperty?["line"] as WzCanvasProperty, device),
+                LoadCanvasTexture(utilDlgExProperty?["bar"] as WzCanvasProperty, device));
 
 
             // Load tab buttons if available
@@ -215,7 +217,9 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(utilDlgExProperty?["BtPrev"]?["normal"]?["0"] as WzCanvasProperty, device),
                 LoadCanvasTexture(utilDlgExProperty?["BtNext"]?["normal"]?["0"] as WzCanvasProperty, device),
                 LoadCanvasTexture(utilDlgExProperty?["BtOK"]?["normal"]?["0"] as WzCanvasProperty, device),
-                LoadCanvasTexture(utilDlgExProperty?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device));
+                LoadCanvasTexture(utilDlgExProperty?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device),
+                LoadCanvasTexture(utilDlgExProperty?["line"] as WzCanvasProperty, device),
+                LoadCanvasTexture(utilDlgExProperty?["bar"] as WzCanvasProperty, device));
 
 
 

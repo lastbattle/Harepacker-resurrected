@@ -30,6 +30,8 @@ namespace HaCreator.MapSimulator.Managers
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private BridgePair _activePair;
+        private int _nextDeferredTouchFlushTick = int.MinValue;
+        private bool _deferredTouchFlushTickInitialized;
 
         private sealed class BridgePair
         {
@@ -74,16 +76,18 @@ namespace HaCreator.MapSimulator.Managers
 
         private sealed class PendingTouchRequest
         {
-            public PendingTouchRequest(int objectId, bool isTouching, byte[] packet)
+            public PendingTouchRequest(int objectId, bool isTouching, byte[] packet, int sourceTick)
             {
                 ObjectId = objectId;
                 IsTouching = isTouching;
                 Packet = packet ?? Array.Empty<byte>();
+                SourceTick = sourceTick;
             }
 
             public int ObjectId { get; }
             public bool IsTouching { get; }
             public byte[] Packet { get; }
+            public int SourceTick { get; }
         }
 
         public int ListenPort { get; private set; } = DefaultListenPort;
@@ -129,7 +133,7 @@ namespace HaCreator.MapSimulator.Managers
             return $"Reactor official-session bridge {lifecycle}; {session}; received={ReceivedCount}; touch injected={InjectedTouchRequestCount}; touch queued={QueuedTouchRequestCount}; inbound opcodes=334,335,336,337.{lastInjected}{lastQueued} {LastStatus}";
         }
 
-        public bool TrySendTouchRequest(int objectId, bool isTouching, out string status)
+        public bool TrySendTouchRequest(int objectId, bool isTouching, out string status, int currentTick = int.MinValue)
         {
             if (objectId <= 0)
             {
@@ -147,7 +151,7 @@ namespace HaCreator.MapSimulator.Managers
                     return false;
                 }
 
-                FlushQueuedTouchRequestsUnsafe(pair);
+                FlushQueuedTouchRequestsUnsafe(pair, currentTick);
                 byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
                 pair.ServerSession.SendPacket(packet);
                 InjectedTouchRequestCount++;
@@ -160,7 +164,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public bool TryQueueTouchRequest(int objectId, bool isTouching, out string status)
+        public bool TryQueueTouchRequest(int objectId, bool isTouching, out string status, int currentTick = int.MinValue)
         {
             if (objectId <= 0)
             {
@@ -170,10 +174,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] packet = BuildTouchRequestPacket(objectId, isTouching);
+            int resolvedTick = ResolveCurrentTick(currentTick);
             bool queued;
             lock (_sync)
             {
-                queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(new PendingTouchRequest(objectId, isTouching, packet));
+                queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(new PendingTouchRequest(objectId, isTouching, packet, resolvedTick));
             }
 
             if (queued)
@@ -238,6 +243,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 int removedCount = _pendingTouchRequests.Count;
                 _pendingTouchRequests.Clear();
+                ResetDeferredTouchFlushScheduleUnsafe();
                 if (removedCount > 0)
                 {
                     LastStatus = $"Cleared {removedCount} queued reactor touch opcode {OutboundTouchReactorOpcode} request(s).";
@@ -250,6 +256,27 @@ namespace HaCreator.MapSimulator.Managers
         public bool WasLastInjectedTouchRequest(int objectId, bool isTouching)
         {
             return LastInjectedTouchObjectId == objectId && LastInjectedTouchFlag == isTouching;
+        }
+
+        public bool TryFlushDeferredTouchRequests(int currentTick, out string status)
+        {
+            lock (_sync)
+            {
+                BridgePair pair = _activePair;
+                if (pair?.InitCompleted != true)
+                {
+                    status = "Reactor official-session bridge has no connected Maple session for deferred touch replay.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                int flushed = FlushQueuedTouchRequestsUnsafe(pair, currentTick);
+                status = flushed > 0
+                    ? $"Flushed {flushed} deferred reactor touch request(s) into live session {pair.RemoteEndpoint}."
+                    : "No deferred reactor touch requests were due for replay yet.";
+                LastStatus = status;
+                return flushed > 0;
+            }
         }
 
         internal static byte[] BuildTouchRequestPacket(int objectId, bool isTouching)
@@ -489,7 +516,7 @@ namespace HaCreator.MapSimulator.Managers
                     pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
                     pair.InitCompleted = true;
                     LastStatus = $"Reactor official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
-                    FlushQueuedTouchRequests(pair);
+                    FlushQueuedTouchRequests(pair, Environment.TickCount);
                     pair.ClientSession.WaitForData();
                     return;
                 }
@@ -591,6 +618,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 _pendingTouchRequests.Clear();
+                ResetDeferredTouchFlushScheduleUnsafe();
                 ReceivedCount = 0;
                 LastQueuedTouchObjectId = null;
                 LastQueuedTouchFlag = null;
@@ -598,23 +626,31 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private void FlushQueuedTouchRequests(BridgePair pair)
+        private void FlushQueuedTouchRequests(BridgePair pair, int currentTick)
         {
             lock (_sync)
             {
-                FlushQueuedTouchRequestsUnsafe(pair);
+                FlushQueuedTouchRequestsUnsafe(pair, currentTick);
             }
         }
 
-        private void FlushQueuedTouchRequestsUnsafe(BridgePair pair)
+        private int FlushQueuedTouchRequestsUnsafe(BridgePair pair, int currentTick)
         {
             if (pair?.InitCompleted != true)
             {
-                return;
+                return 0;
+            }
+
+            if (_pendingTouchRequests.Count == 0)
+            {
+                ResetDeferredTouchFlushScheduleUnsafe();
+                return 0;
             }
 
             int flushed = 0;
-            while (_pendingTouchRequests.Count > 0)
+            int resolvedCurrentTick = ResolveCurrentTick(currentTick);
+            while (_pendingTouchRequests.Count > 0
+                && ShouldFlushDeferredTouchAtTick(resolvedCurrentTick, _nextDeferredTouchFlushTick, _deferredTouchFlushTickInitialized))
             {
                 try
                 {
@@ -627,6 +663,7 @@ namespace HaCreator.MapSimulator.Managers
                     LastInjectedTouchObjectId = dequeued.ObjectId;
                     LastInjectedTouchFlag = dequeued.IsTouching;
                     LastInjectedTouchPacket = dequeued.Packet;
+                    UpdateDeferredTouchFlushScheduleAfterSendUnsafe(dequeued, resolvedCurrentTick);
                 }
                 catch (Exception ex)
                 {
@@ -635,10 +672,17 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            if (_pendingTouchRequests.Count == 0)
+            {
+                ResetDeferredTouchFlushScheduleUnsafe();
+            }
+
             if (flushed > 0)
             {
                 LastStatus = $"Flushed {flushed} queued reactor touch request(s) into live session {pair.RemoteEndpoint}.";
             }
+
+            return flushed;
         }
 
         private int RemoveQueuedTouchRequestsUnsafe(int objectId)
@@ -663,6 +707,11 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            if (_pendingTouchRequests.Count == 0)
+            {
+                ResetDeferredTouchFlushScheduleUnsafe();
+            }
+
             return removedCount;
         }
 
@@ -684,6 +733,49 @@ namespace HaCreator.MapSimulator.Managers
 
             _pendingTouchRequests.Enqueue(next);
             return true;
+        }
+
+        private static int ResolveCurrentTick(int currentTick)
+        {
+            return currentTick == int.MinValue
+                ? Environment.TickCount
+                : currentTick;
+        }
+
+        internal static bool ShouldFlushDeferredTouchAtTick(int currentTick, int nextFlushTick, bool hasSchedule)
+        {
+            return !hasSchedule || unchecked(currentTick - nextFlushTick) >= 0;
+        }
+
+        internal static int ComputeDeferredTouchReplayDelayMs(int previousSourceTick, int nextSourceTick)
+        {
+            int delta = unchecked(nextSourceTick - previousSourceTick);
+            if (delta < 0)
+            {
+                return 0;
+            }
+
+            return Math.Min(delta, 5000);
+        }
+
+        private void UpdateDeferredTouchFlushScheduleAfterSendUnsafe(PendingTouchRequest sent, int currentTick)
+        {
+            if (_pendingTouchRequests.Count == 0)
+            {
+                ResetDeferredTouchFlushScheduleUnsafe();
+                return;
+            }
+
+            PendingTouchRequest next = _pendingTouchRequests.Peek();
+            int replayDelay = ComputeDeferredTouchReplayDelayMs(sent.SourceTick, next.SourceTick);
+            _nextDeferredTouchFlushTick = unchecked(currentTick + replayDelay);
+            _deferredTouchFlushTickInitialized = true;
+        }
+
+        private void ResetDeferredTouchFlushScheduleUnsafe()
+        {
+            _nextDeferredTouchFlushTick = int.MinValue;
+            _deferredTouchFlushTickInitialized = false;
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

@@ -59,16 +59,18 @@ namespace HaCreator.MapSimulator.Managers
 
         private sealed class PendingTouchRequest
         {
-            public PendingTouchRequest(int objectId, bool isTouching, byte[] rawPacket)
+            public PendingTouchRequest(int objectId, bool isTouching, byte[] rawPacket, int sourceTick)
             {
                 ObjectId = objectId;
                 IsTouching = isTouching;
                 RawPacket = rawPacket ?? Array.Empty<byte>();
+                SourceTick = sourceTick;
             }
 
             public int ObjectId { get; }
             public bool IsTouching { get; }
             public byte[] RawPacket { get; }
+            public int SourceTick { get; }
         }
 
         private readonly object _listenerLock = new();
@@ -79,6 +81,8 @@ namespace HaCreator.MapSimulator.Managers
         private CancellationTokenSource _listenerCancellation;
         private Task _listenerTask;
         private int _nextClientId;
+        private int _nextDeferredTouchFlushTick = int.MinValue;
+        private bool _deferredTouchFlushTickInitialized;
 
         public int Port { get; private set; } = DefaultPort;
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
@@ -156,7 +160,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public bool TrySendTouchRequest(int objectId, bool isTouching, out string status)
+        public bool TrySendTouchRequest(int objectId, bool isTouching, out string status, int currentTick = int.MinValue)
         {
             ConnectedClient[] clients = _clients.Values.ToArray();
             if (clients.Length == 0)
@@ -175,7 +179,7 @@ namespace HaCreator.MapSimulator.Managers
 
             lock (_queueLock)
             {
-                FlushQueuedOutboundPacketsUnsafe(clients);
+                FlushQueuedOutboundPacketsUnsafe(clients, currentTick);
             }
 
             byte[] rawPacket = ReactorPoolOfficialSessionBridgeManager.BuildTouchRequestPacket(objectId, isTouching);
@@ -216,7 +220,7 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
-        public bool TryQueueTouchRequest(int objectId, bool isTouching, out string status)
+        public bool TryQueueTouchRequest(int objectId, bool isTouching, out string status, int currentTick = int.MinValue)
         {
             if (objectId <= 0)
             {
@@ -226,10 +230,11 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             byte[] rawPacket = ReactorPoolOfficialSessionBridgeManager.BuildTouchRequestPacket(objectId, isTouching);
+            int resolvedTick = ResolveCurrentTick(currentTick);
             bool queued;
             lock (_queueLock)
             {
-                queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(new PendingTouchRequest(objectId, isTouching, rawPacket));
+                queued = EnqueueOrCoalesceDuplicateTouchRequestUnsafe(new PendingTouchRequest(objectId, isTouching, rawPacket, resolvedTick));
             }
 
             if (queued)
@@ -295,6 +300,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 int removedCount = _pendingOutboundPackets.Count;
                 _pendingOutboundPackets.Clear();
+                ResetDeferredTouchFlushScheduleUnsafe();
                 if (removedCount > 0)
                 {
                     LastStatus = $"Cleared {removedCount} queued packetoutraw reactor touch request(s).";
@@ -307,6 +313,29 @@ namespace HaCreator.MapSimulator.Managers
         public bool WasLastSentTouchRequest(int objectId, bool isTouching)
         {
             return LastSentObjectId == objectId && LastSentTouchFlag == isTouching;
+        }
+
+        public bool TryFlushDeferredTouchRequests(int currentTick, out string status)
+        {
+            ConnectedClient[] clients = _clients.Values.ToArray();
+            if (clients.Length == 0)
+            {
+                status = "Reactor touch outbox has no connected clients for deferred replay.";
+                LastStatus = status;
+                return false;
+            }
+
+            int flushed;
+            lock (_queueLock)
+            {
+                flushed = FlushQueuedOutboundPacketsUnsafe(clients, currentTick);
+            }
+
+            status = flushed > 0
+                ? $"Flushed {flushed} deferred packetoutraw reactor touch request(s)."
+                : "No deferred packetoutraw reactor touch requests were due for replay yet.";
+            LastStatus = status;
+            return flushed > 0;
         }
 
         public void Dispose()
@@ -328,7 +357,7 @@ namespace HaCreator.MapSimulator.Managers
                     string endpoint = client.Client?.RemoteEndPoint?.ToString() ?? $"reactor-touch-outbox-{clientId}";
                     var connectedClient = new ConnectedClient(clientId, client, endpoint);
                     _clients[clientId] = connectedClient;
-                    int flushed = FlushQueuedOutboundPackets();
+                    int flushed = FlushQueuedOutboundPackets(Environment.TickCount);
                     LastStatus = flushed > 0
                         ? $"Reactor touch outbox client connected: {endpoint}. Flushed {flushed} queued packet(s)."
                         : $"Reactor touch outbox client connected: {endpoint}.";
@@ -385,24 +414,32 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private int FlushQueuedOutboundPackets()
+        private int FlushQueuedOutboundPackets(int currentTick)
         {
             ConnectedClient[] clients = _clients.Values.ToArray();
             lock (_queueLock)
             {
-                return FlushQueuedOutboundPacketsUnsafe(clients);
+                return FlushQueuedOutboundPacketsUnsafe(clients, currentTick);
             }
         }
 
-        private int FlushQueuedOutboundPacketsUnsafe(ConnectedClient[] clients)
+        private int FlushQueuedOutboundPacketsUnsafe(ConnectedClient[] clients, int currentTick)
         {
             if (clients.Length == 0)
             {
                 return 0;
             }
 
+            if (_pendingOutboundPackets.Count == 0)
+            {
+                ResetDeferredTouchFlushScheduleUnsafe();
+                return 0;
+            }
+
             int flushed = 0;
-            while (_pendingOutboundPackets.Count > 0)
+            int resolvedCurrentTick = ResolveCurrentTick(currentTick);
+            while (_pendingOutboundPackets.Count > 0
+                && ShouldFlushDeferredTouchAtTick(resolvedCurrentTick, _nextDeferredTouchFlushTick, _deferredTouchFlushTickInitialized))
             {
                 PendingTouchRequest packet = _pendingOutboundPackets.Peek();
                 string line = $"packetoutraw {Convert.ToHexString(packet.RawPacket)}";
@@ -437,6 +474,12 @@ namespace HaCreator.MapSimulator.Managers
                 LastSentObjectId = dequeued.ObjectId;
                 LastSentTouchFlag = dequeued.IsTouching;
                 LastSentRawPacket = dequeued.RawPacket;
+                UpdateDeferredTouchFlushScheduleAfterSendUnsafe(dequeued, resolvedCurrentTick);
+            }
+
+            if (_pendingOutboundPackets.Count == 0)
+            {
+                ResetDeferredTouchFlushScheduleUnsafe();
             }
 
             return flushed;
@@ -464,6 +507,11 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
+            if (_pendingOutboundPackets.Count == 0)
+            {
+                ResetDeferredTouchFlushScheduleUnsafe();
+            }
+
             return removedCount;
         }
 
@@ -485,6 +533,49 @@ namespace HaCreator.MapSimulator.Managers
 
             _pendingOutboundPackets.Enqueue(next);
             return true;
+        }
+
+        private static int ResolveCurrentTick(int currentTick)
+        {
+            return currentTick == int.MinValue
+                ? Environment.TickCount
+                : currentTick;
+        }
+
+        internal static bool ShouldFlushDeferredTouchAtTick(int currentTick, int nextFlushTick, bool hasSchedule)
+        {
+            return !hasSchedule || unchecked(currentTick - nextFlushTick) >= 0;
+        }
+
+        internal static int ComputeDeferredTouchReplayDelayMs(int previousSourceTick, int nextSourceTick)
+        {
+            int delta = unchecked(nextSourceTick - previousSourceTick);
+            if (delta < 0)
+            {
+                return 0;
+            }
+
+            return Math.Min(delta, 5000);
+        }
+
+        private void UpdateDeferredTouchFlushScheduleAfterSendUnsafe(PendingTouchRequest sent, int currentTick)
+        {
+            if (_pendingOutboundPackets.Count == 0)
+            {
+                ResetDeferredTouchFlushScheduleUnsafe();
+                return;
+            }
+
+            PendingTouchRequest next = _pendingOutboundPackets.Peek();
+            int replayDelay = ComputeDeferredTouchReplayDelayMs(sent.SourceTick, next.SourceTick);
+            _nextDeferredTouchFlushTick = unchecked(currentTick + replayDelay);
+            _deferredTouchFlushTickInitialized = true;
+        }
+
+        private void ResetDeferredTouchFlushScheduleUnsafe()
+        {
+            _nextDeferredTouchFlushTick = int.MinValue;
+            _deferredTouchFlushTickInitialized = false;
         }
 
         private void RemoveClient(int clientId, string status)
@@ -537,6 +628,7 @@ namespace HaCreator.MapSimulator.Managers
                 while (_pendingOutboundPackets.TryDequeue(out _))
                 {
                 }
+                ResetDeferredTouchFlushScheduleUnsafe();
 
                 SentCount = 0;
                 QueuedCount = 0;

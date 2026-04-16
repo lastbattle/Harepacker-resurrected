@@ -63,7 +63,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach ((int fieldId, IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries) in _affectedMapsByFieldId)
             {
-                if (entries != null && entries.Any(candidate => candidate.Matches(entry, questStateProvider, elapsedStagePeriodMilliseconds)))
+                if (MatchesAffectedMapEntries(
+                    entries,
+                    entry,
+                    questStateProvider,
+                    elapsedStagePeriodMilliseconds))
                 {
                     affectedMaps.Add(fieldId);
                 }
@@ -756,13 +760,51 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     foreach ((int fieldId, IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries) in affectedMapsByFieldId)
                     {
-                        if (entries.Any(entry => entry.RandomTimeSeconds <= 0 && entry.Matches(period)))
+                        if (MatchesAffectedMapEntries(
+                            entries,
+                            period,
+                            questStateProvider: null,
+                            elapsedStagePeriodMilliseconds: 0,
+                            ignoreRandomTimeGate: true))
                         {
                             period.AffectedMapIds.Add(fieldId);
                         }
                     }
                 }
             }
+        }
+
+        private static bool MatchesAffectedMapEntries(
+            IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries,
+            ContextOwnedStagePeriodCatalogEntry period,
+            Func<int, QuestStateType> questStateProvider,
+            int elapsedStagePeriodMilliseconds,
+            bool ignoreRandomTimeGate = false)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return false;
+            }
+
+            int highestPriority = entries.Max(static entry => entry.Priority);
+            foreach (ContextOwnedStageAffectedMapEntry candidate in entries)
+            {
+                if (candidate.Priority != highestPriority)
+                {
+                    continue;
+                }
+
+                if (candidate.Matches(
+                    period,
+                    questStateProvider,
+                    elapsedStagePeriodMilliseconds,
+                    ignoreRandomTimeGate))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool TryLoadImage(string path, out WzImage image)
@@ -1104,15 +1146,22 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool Matches(
             ContextOwnedStagePeriodCatalogEntry period,
             Func<int, QuestStateType> questStateProvider = null,
-            int elapsedStagePeriodMilliseconds = 0)
+            int elapsedStagePeriodMilliseconds = 0,
+            bool ignoreRandomTimeGate = false)
         {
             if (period == null || string.IsNullOrWhiteSpace(StageKeyword) || !period.Keywords.Contains(StageKeyword))
             {
                 return false;
             }
 
-            if (RandomTimeSeconds > 0
+            if (!ignoreRandomTimeGate
+                && RandomTimeSeconds > 0
                 && elapsedStagePeriodMilliseconds < RandomTimeSeconds * 1000)
+            {
+                return false;
+            }
+
+            if (HasQuestStateGate && QuestId <= 0)
             {
                 return false;
             }

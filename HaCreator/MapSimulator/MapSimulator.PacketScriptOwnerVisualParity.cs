@@ -40,6 +40,11 @@ namespace HaCreator.MapSimulator
             PacketScriptButtonFrame Disabled,
             PacketScriptButtonFrame KeyFocused)
         {
+            internal PacketScriptButtonFrame ResolveFocusedFrame()
+            {
+                return KeyFocused ?? Normal ?? Hover ?? Pressed ?? Disabled;
+            }
+
             internal PacketScriptButtonFrame ResolveFrame(PacketScriptOwnerButtonVisualState state)
             {
                 return state switch

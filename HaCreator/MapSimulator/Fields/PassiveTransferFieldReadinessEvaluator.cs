@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator.Fields
         bool AllowsTransferField,
         bool HasPendingSpecialTransfer,
         bool HasPendingPacketOwnedTransfer,
+        bool HasPacketOwnedTeleportRegistrationCoolingDown,
         bool HasPendingExclusiveTransferRequest,
         bool HasAttachedPacketOwnedDriver,
         bool HasPendingSameMapTransfer,
@@ -59,6 +60,7 @@ namespace HaCreator.MapSimulator.Fields
                    && state.AllowsTransferField
                    && !state.HasPendingSpecialTransfer
                    && !state.HasPendingPacketOwnedTransfer
+                   && !state.HasPacketOwnedTeleportRegistrationCoolingDown
                    && !state.HasPendingExclusiveTransferRequest
                    && !state.HasAttachedPacketOwnedDriver
                    && !state.HasPendingSameMapTransfer

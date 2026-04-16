@@ -1094,17 +1094,28 @@ namespace HaCreator.MapSimulator.Character
             string actionName,
             WzImageProperty actionNode)
         {
-            if (actionNode == null
-                || string.IsNullOrWhiteSpace(actionName)
-                || !CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
-                || rawActionCode < ClientActionManInitVariantRowStartRawActionCode
-                || rawActionCode > ClientActionManInitVariantRowEndRawActionCode)
+            if (actionNode == null)
             {
                 return actionNode;
             }
 
             WzImageProperty variantNode = actionNode["1"];
             if (variantNode?.WzProperties == null || variantNode.WzProperties.Count == 0)
+            {
+                return actionNode;
+            }
+
+            bool actionNodeHasPieceChildren = ContainsClientActionPieceChildren(actionNode);
+            bool variantNodeHasPieceChildren = ContainsClientActionPieceChildren(variantNode);
+            if (!actionNodeHasPieceChildren && variantNodeHasPieceChildren)
+            {
+                return variantNode;
+            }
+
+            if (string.IsNullOrWhiteSpace(actionName)
+                || !CharacterPart.TryGetClientRawActionCode(actionName, out int rawActionCode)
+                || rawActionCode < ClientActionManInitVariantRowStartRawActionCode
+                || rawActionCode > ClientActionManInitVariantRowEndRawActionCode)
             {
                 return actionNode;
             }
@@ -1116,6 +1127,12 @@ namespace HaCreator.MapSimulator.Character
             return IsClientActionPieceNode(variantNode)
                 ? actionNode
                 : variantNode;
+        }
+
+        internal static bool ContainsClientActionPieceChildren(WzImageProperty node)
+        {
+            return node?.WzProperties != null
+                   && node.WzProperties.Any(static child => IsClientActionPieceNode(child));
         }
 
         internal static bool IsClientActionPieceNode(WzImageProperty pieceNode)
@@ -1155,10 +1172,11 @@ namespace HaCreator.MapSimulator.Character
             SkillAnimation firstPieceAnimation = null;
             foreach (ShadowPartnerActionPiece piece in piecePlan.OrderBy(static entry => entry.SlotIndex))
             {
-                if (string.IsNullOrWhiteSpace(piece.PieceActionName)
-                    || !actionAnimations.TryGetValue(piece.PieceActionName, out SkillAnimation pieceAnimation)
-                    || pieceAnimation?.Frames == null
-                    || pieceAnimation.Frames.Count == 0)
+                if (!TryResolvePieceAnimation(
+                        actionAnimations,
+                        piece.PieceActionName,
+                        supportedRawActionNames,
+                        out SkillAnimation pieceAnimation))
                 {
                     continue;
                 }
@@ -1213,6 +1231,49 @@ namespace HaCreator.MapSimulator.Character
             };
             piecedAnimation.CalculateDuration();
             return piecedAnimation;
+        }
+
+        private static bool TryResolvePieceAnimation(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string pieceActionName,
+            IReadOnlySet<string> supportedRawActionNames,
+            out SkillAnimation pieceAnimation)
+        {
+            pieceAnimation = null;
+            if (actionAnimations == null
+                || actionAnimations.Count == 0
+                || string.IsNullOrWhiteSpace(pieceActionName))
+            {
+                return false;
+            }
+
+            if (actionAnimations.TryGetValue(pieceActionName, out pieceAnimation)
+                && pieceAnimation?.Frames != null
+                && pieceAnimation.Frames.Count > 0)
+            {
+                return true;
+            }
+
+            foreach (string remappedCandidate in EnumerateLoaderRemappedActionCandidates(pieceActionName))
+            {
+                if (string.IsNullOrWhiteSpace(remappedCandidate)
+                    || !actionAnimations.TryGetValue(remappedCandidate, out pieceAnimation)
+                    || pieceAnimation?.Frames == null
+                    || pieceAnimation.Frames.Count == 0)
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            pieceAnimation = ResolvePlaybackAnimation(
+                actionAnimations,
+                pieceActionName,
+                pieceActionName,
+                rawActionName: pieceActionName,
+                supportedRawActionNames: supportedRawActionNames);
+            return pieceAnimation?.Frames != null && pieceAnimation.Frames.Count > 0;
         }
 
         internal static int ResolveClientActionManInitEventDelayMs(

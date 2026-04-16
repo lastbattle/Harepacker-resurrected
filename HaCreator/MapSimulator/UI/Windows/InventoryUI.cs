@@ -174,6 +174,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _dropPromptNextButtonTexture;
         private Texture2D _dropPromptConfirmButtonTexture;
         private Texture2D _dropPromptCancelButtonTexture;
+        private Texture2D _dropPromptLineTexture;
+        private Texture2D _dropPromptBarTexture;
 
         protected Texture2D ActiveIconTexture;
         protected Texture2D DisabledSlotTexture;
@@ -292,13 +294,17 @@ namespace HaCreator.MapSimulator.UI
             Texture2D previousButtonTexture,
             Texture2D nextButtonTexture,
             Texture2D confirmButtonTexture,
-            Texture2D cancelButtonTexture)
+            Texture2D cancelButtonTexture,
+            Texture2D lineTexture = null,
+            Texture2D barTexture = null)
         {
             _dropPromptFrameTexture = frameTexture;
             _dropPromptPrevButtonTexture = previousButtonTexture;
             _dropPromptNextButtonTexture = nextButtonTexture;
             _dropPromptConfirmButtonTexture = confirmButtonTexture;
             _dropPromptCancelButtonTexture = cancelButtonTexture;
+            _dropPromptLineTexture = lineTexture;
+            _dropPromptBarTexture = barTexture;
         }
 
         public void SetTooltipOrigins(Point[] tooltipOrigins)
@@ -554,8 +560,11 @@ namespace HaCreator.MapSimulator.UI
 
             string title = _mesoDropPromptVisible ? "Drop Mesos" : "Discard Count";
             string quantityText = _mesoDropPromptVisible
-                ? $"Amount: {FormatMesoDropPromptAmount()} / {_mesoDropPromptMaximum.ToString("N0", CultureInfo.InvariantCulture)}"
-                : $"Qty: {FormatDropQuantityPromptAmount()} / {_dropQuantityPromptMaximum}";
+                ? FormatMesoDropPromptAmount()
+                : FormatDropQuantityPromptAmount();
+            string limitText = _mesoDropPromptVisible
+                ? $"Max {_mesoDropPromptMaximum.ToString("N0", CultureInfo.InvariantCulture)}"
+                : $"Max {_dropQuantityPromptMaximum.ToString(CultureInfo.InvariantCulture)}";
             string detailText = _mesoDropPromptVisible
                 ? "Type amount. OK confirms, Close cancels."
                 : "Type count or use Prev/Next. OK confirms, Close cancels.";
@@ -567,18 +576,42 @@ namespace HaCreator.MapSimulator.UI
                 new Vector2(bounds.X + 18, bounds.Y + 8),
                 new Color(255, 232, 182),
                 DROP_PROMPT_TITLE_SCALE);
+
+            Rectangle separatorBounds = GetDropPromptSeparatorBounds(bounds);
+            if (_dropPromptLineTexture != null)
+            {
+                sprite.Draw(_dropPromptLineTexture, separatorBounds, Color.White);
+            }
+
+            Rectangle valueBarBounds = GetDropPromptValueBarBounds(bounds);
+            if (_dropPromptBarTexture != null)
+            {
+                sprite.Draw(_dropPromptBarTexture, valueBarBounds, Color.White);
+            }
+
+            Vector2 quantityTextSize = _font.MeasureString(quantityText) * DROP_PROMPT_BODY_SCALE;
+            Vector2 quantityTextPosition = new(
+                valueBarBounds.X + ((valueBarBounds.Width - quantityTextSize.X) * 0.5f),
+                valueBarBounds.Y + ((valueBarBounds.Height - quantityTextSize.Y) * 0.5f));
             InventoryRenderUtil.DrawOutlinedText(
                 sprite,
                 _font,
                 quantityText,
-                new Vector2(bounds.X + 14, bounds.Y + 29),
+                quantityTextPosition,
                 Color.White,
                 DROP_PROMPT_BODY_SCALE);
             InventoryRenderUtil.DrawOutlinedText(
                 sprite,
                 _font,
+                limitText,
+                new Vector2(bounds.X + 14, valueBarBounds.Bottom + 4),
+                new Color(238, 227, 204),
+                DROP_PROMPT_HINT_SCALE);
+            InventoryRenderUtil.DrawOutlinedText(
+                sprite,
+                _font,
                 detailText,
-                new Vector2(bounds.X + 10, bounds.Y + 47),
+                new Vector2(bounds.X + 10, valueBarBounds.Bottom + 18),
                 new Color(223, 214, 196),
                 DROP_PROMPT_HINT_SCALE);
 
@@ -1931,11 +1964,30 @@ namespace HaCreator.MapSimulator.UI
         {
             int width = _dropPromptFrameTexture?.Width ?? DROP_PROMPT_FRAME_FALLBACK_WIDTH;
             int height = _dropPromptFrameTexture?.Height ?? DROP_PROMPT_FRAME_FALLBACK_HEIGHT;
+            int windowWidth = CurrentFrame?.Width ?? width;
             return new Rectangle(
-                windowX + DROP_PROMPT_FRAME_OFFSET_X,
+                windowX + Math.Max(DROP_PROMPT_FRAME_OFFSET_X, (windowWidth - width) / 2),
                 windowY + DROP_PROMPT_FRAME_OFFSET_Y,
                 width,
                 height);
+        }
+
+        private Rectangle GetDropPromptSeparatorBounds(Rectangle promptBounds)
+        {
+            int width = Math.Max(1, Math.Min(_dropPromptLineTexture?.Width ?? promptBounds.Width - 24, promptBounds.Width - 24));
+            int height = _dropPromptLineTexture?.Height ?? 2;
+            int x = promptBounds.X + ((promptBounds.Width - width) / 2);
+            int y = promptBounds.Y + 22;
+            return new Rectangle(x, y, width, height);
+        }
+
+        private Rectangle GetDropPromptValueBarBounds(Rectangle promptBounds)
+        {
+            int width = _dropPromptBarTexture?.Width ?? Math.Max(96, promptBounds.Width - 34);
+            int height = _dropPromptBarTexture?.Height ?? 19;
+            int x = promptBounds.X + ((promptBounds.Width - width) / 2);
+            int y = promptBounds.Y + 28;
+            return new Rectangle(x, y, width, height);
         }
 
         private Rectangle GetDropPromptAdjustButtonBounds(Rectangle promptBounds, bool isPrevious)

@@ -5626,6 +5626,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield return linkedSkillId;
             }
 
+            foreach (int inferredSkillId in EnumerateClientSummonedUolInferredSkillIdSegments(parts, rootSkillId))
+            {
+                if (yieldedSkillIds.Add(inferredSkillId))
+                {
+                    yield return inferredSkillId;
+                }
+            }
+
             if (resolvedProperty == null
                 || (!IsClientSummonedUolLinkedSkillValueLeaf(parts)
                     && !IsClientSummonedUolLinkedSkillBranchLeaf(parts)))
@@ -5685,6 +5693,45 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || leafSegment.Equals("info", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool IsClientSummonedUolReqOrPassiveValueLeaf(string[] parts)
+        {
+            if (parts == null || parts.Length < 2)
+            {
+                return false;
+            }
+
+            string parentSegment = parts[^2];
+            return (parentSegment.Equals("req", StringComparison.OrdinalIgnoreCase)
+                    || parentSegment.Equals("psdSkill", StringComparison.OrdinalIgnoreCase))
+                   && TryParseRequiredSkillId(parts[^1], out _);
+        }
+
+        private static IEnumerable<int> EnumerateClientSummonedUolInferredSkillIdSegments(string[] parts, int rootSkillId)
+        {
+            if (parts == null || parts.Length == 0)
+            {
+                yield break;
+            }
+
+            for (int i = 2; i < parts.Length; i++)
+            {
+                if (!TryParseRequiredSkillId(parts[i], out int candidateSkillId)
+                    || candidateSkillId == rootSkillId
+                    || !LooksLikeClientSummonedUolInferredSkillId(candidateSkillId))
+                {
+                    continue;
+                }
+
+                yield return candidateSkillId;
+            }
+        }
+
+        private static bool LooksLikeClientSummonedUolInferredSkillId(int skillId)
+        {
+            // Filter out common frame or level-style numeric path segments while keeping beginner IDs.
+            return skillId >= 1000;
+        }
+
         private static IEnumerable<int> EnumerateClientSummonedUolLinkedSkillIdsFromResolvedProperty(
             string[] parts,
             WzImageProperty resolvedProperty)
@@ -5713,6 +5760,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     yield return linkedSkillId;
                 }
 
+                yield break;
+            }
+
+            if (IsClientSummonedUolReqOrPassiveValueLeaf(parts))
+            {
+                // req/* and psdSkill/* values are authored levels or toggles; linked skill ids come from the child names.
                 yield break;
             }
 

@@ -54,14 +54,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             int preferredSkillId,
             out int chargeElement)
         {
+            return TryResolveChargeElementFromTemporaryStatPayload(payload, 0, preferredSkillId, out chargeElement);
+        }
+
+        internal static bool TryResolveChargeElementFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            out int chargeElement)
+        {
             chargeElement = 0;
-            if (TryResolveChargeSkillIdFromTemporaryStatPayload(payload, 0, preferredSkillId, out int chargeSkillId)
+            if (TryResolveChargeSkillIdFromTemporaryStatPayload(payload, startOffset, preferredSkillId, out int chargeSkillId)
                 && TryGetChargeElement(chargeSkillId, out chargeElement))
             {
                 return true;
             }
 
-            return TryResolveChargeElementByKnownPayloadCandidates(payload, 0, preferredSkillId, out chargeElement);
+            return TryResolveChargeElementByKnownPayloadCandidates(payload, startOffset, preferredSkillId, out chargeElement);
         }
 
         internal static bool TryResolveChargeSkillIdFromTemporaryStatPayload(ReadOnlySpan<byte> payload, out int chargeSkillId)

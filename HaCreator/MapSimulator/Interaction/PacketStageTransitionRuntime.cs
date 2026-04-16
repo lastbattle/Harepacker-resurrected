@@ -380,12 +380,18 @@ namespace HaCreator.MapSimulator.Interaction
             out int[] commoditySerialNumbers,
             out byte[] leadingOpaqueBytes,
             out int[] leadingOpaqueInt32Values,
+            out byte[] trailingOpaqueBytes,
+            out int[] trailingOpaqueInt32Values,
+            out int logoutGiftConfigOffset,
             out string error)
         {
             predictQuitRawValue = 0;
             commoditySerialNumbers = new int[LogoutGiftEntryCount];
             leadingOpaqueBytes = Array.Empty<byte>();
             leadingOpaqueInt32Values = Array.Empty<int>();
+            trailingOpaqueBytes = Array.Empty<byte>();
+            trailingOpaqueInt32Values = Array.Empty<int>();
+            logoutGiftConfigOffset = -1;
             error = null;
             trailingPayload ??= Array.Empty<byte>();
 
@@ -397,19 +403,81 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int leadingOpaqueByteCount = trailingPayload.Length - LogoutGiftConfigByteLength;
+            int selectedOffset = -1;
+            int selectedPredictQuitRawValue = 0;
+            int[] selectedCommoditySerialNumbers = new int[LogoutGiftEntryCount];
+            for (int candidateOffset = trailingPayload.Length - LogoutGiftConfigByteLength; candidateOffset >= 0; candidateOffset--)
+            {
+                if (!TryReadLogoutGiftConfigAtOffset(
+                    trailingPayload,
+                    candidateOffset,
+                    out int candidatePredictQuitRawValue,
+                    out int[] candidateCommoditySerialNumbers))
+                {
+                    continue;
+                }
+
+                if (selectedOffset < 0)
+                {
+                    selectedOffset = candidateOffset;
+                    selectedPredictQuitRawValue = candidatePredictQuitRawValue;
+                    selectedCommoditySerialNumbers = candidateCommoditySerialNumbers;
+                }
+
+                if (IsLikelyLogoutGiftConfig(candidatePredictQuitRawValue, candidateCommoditySerialNumbers))
+                {
+                    selectedOffset = candidateOffset;
+                    selectedPredictQuitRawValue = candidatePredictQuitRawValue;
+                    selectedCommoditySerialNumbers = candidateCommoditySerialNumbers;
+                    break;
+                }
+            }
+
+            if (selectedOffset < 0)
+            {
+                error = "Character-data SetField trailing bytes were present, but no 16-byte `CWvsContext::OnSetLogoutGiftConfig` payload could be recovered.";
+                return false;
+            }
+
+            predictQuitRawValue = selectedPredictQuitRawValue;
+            commoditySerialNumbers = selectedCommoditySerialNumbers;
+            logoutGiftConfigOffset = selectedOffset;
+            int leadingOpaqueByteCount = selectedOffset;
             if (leadingOpaqueByteCount > 0)
             {
                 leadingOpaqueBytes = new byte[leadingOpaqueByteCount];
                 Buffer.BlockCopy(trailingPayload, 0, leadingOpaqueBytes, 0, leadingOpaqueByteCount);
-                if ((leadingOpaqueByteCount % sizeof(int)) == 0)
-                {
-                    leadingOpaqueInt32Values = new int[leadingOpaqueByteCount / sizeof(int)];
-                    Buffer.BlockCopy(leadingOpaqueBytes, 0, leadingOpaqueInt32Values, 0, leadingOpaqueByteCount);
-                }
+                leadingOpaqueInt32Values = DecodeOpaqueAlignedInt32Values(leadingOpaqueBytes);
             }
 
-            using MemoryStream stream = new(trailingPayload, leadingOpaqueByteCount, LogoutGiftConfigByteLength, writable: false);
+            int trailingOpaqueOffset = selectedOffset + LogoutGiftConfigByteLength;
+            int trailingOpaqueByteCount = trailingPayload.Length - trailingOpaqueOffset;
+            if (trailingOpaqueByteCount > 0)
+            {
+                trailingOpaqueBytes = new byte[trailingOpaqueByteCount];
+                Buffer.BlockCopy(trailingPayload, trailingOpaqueOffset, trailingOpaqueBytes, 0, trailingOpaqueByteCount);
+                trailingOpaqueInt32Values = DecodeOpaqueAlignedInt32Values(trailingOpaqueBytes);
+            }
+
+            return true;
+        }
+
+        private static bool TryReadLogoutGiftConfigAtOffset(
+            byte[] payload,
+            int offset,
+            out int predictQuitRawValue,
+            out int[] commoditySerialNumbers)
+        {
+            predictQuitRawValue = 0;
+            commoditySerialNumbers = new int[LogoutGiftEntryCount];
+            if (payload == null
+                || offset < 0
+                || payload.Length - offset < LogoutGiftConfigByteLength)
+            {
+                return false;
+            }
+
+            using MemoryStream stream = new(payload, offset, LogoutGiftConfigByteLength, writable: false);
             using BinaryReader reader = new(stream);
             predictQuitRawValue = reader.ReadInt32();
             for (int i = 0; i < commoditySerialNumbers.Length; i++)
@@ -418,6 +486,41 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return true;
+        }
+
+        private static bool IsLikelyLogoutGiftConfig(int predictQuitRawValue, IReadOnlyList<int> commoditySerialNumbers)
+        {
+            if (predictQuitRawValue is not 0 and not 1)
+            {
+                return false;
+            }
+
+            if (commoditySerialNumbers == null || commoditySerialNumbers.Count != LogoutGiftEntryCount)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < commoditySerialNumbers.Count; i++)
+            {
+                if (commoditySerialNumbers[i] < 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static int[] DecodeOpaqueAlignedInt32Values(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0 || (bytes.Length % sizeof(int)) != 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            int[] values = new int[bytes.Length / sizeof(int)];
+            Buffer.BlockCopy(bytes, 0, values, 0, bytes.Length);
+            return values;
         }
 
         private static bool HasAnyAvatarLookEquipment(

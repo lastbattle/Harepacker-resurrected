@@ -120,8 +120,12 @@ namespace HaCreator.MapSimulator.Character
             public string ActionName { get; init; }
             public string PersistentBodyActionName { get; init; }
             public string PersistentTamingMobActionName { get; init; }
+            public string PersistentBodyOwnerName { get; init; }
+            public string PersistentTamingMobOwnerName { get; init; }
             public string CurrentBodyActionName { get; set; }
             public string CurrentTamingMobActionName { get; set; }
+            public string CurrentBodyOwnerName { get; set; }
+            public string CurrentTamingMobOwnerName { get; set; }
             public string CharacterOneTimeActionName { get; set; }
             public string TamingMobOneTimeActionName { get; set; }
             public int BodyPreparedDurationMs { get; init; }
@@ -143,6 +147,7 @@ namespace HaCreator.MapSimulator.Character
         private sealed class AvatarActionLayerState
         {
             public string ActionName { get; init; }
+            public string ActionOwnerName { get; init; }
             public int FrameIndex { get; set; } = -1;
             public int FrameRemainingMs { get; set; }
             public int LastAnimationElapsedMs { get; set; }
@@ -152,6 +157,20 @@ namespace HaCreator.MapSimulator.Character
             public int WalkSpeed { get; init; }
             public bool HeldActionFrameDelay { get; init; }
             public bool AllowLoop { get; init; }
+        }
+
+        private sealed class ActionLayerOwnerCounterState
+        {
+            public string ActionName { get; set; }
+            public int ActionSpeedDegree { get; set; }
+            public int WalkSpeed { get; set; }
+            public bool HeldActionFrameDelay { get; set; }
+            public bool AllowLoop { get; set; }
+            public int FrameIndex { get; set; }
+            public int FrameRemainingMs { get; set; }
+            public int LastAnimationElapsedMs { get; set; }
+            public int LastClockUpdateTimeMs { get; set; } = int.MinValue;
+            public double LastCharacterPositionY { get; set; }
         }
 
         internal readonly record struct MountedActionLayerStateForTesting(
@@ -585,6 +604,14 @@ namespace HaCreator.MapSimulator.Character
         private CharacterPart _clientOwnedVehicleTamingMobPart;
         private bool _clientOwnedVehicleTamingMobActive;
         private bool _suppressAutomaticTamingMobTransition;
+        private const string AvatarPersistentActionOwnerName = "avatar.persistent";
+        private const string AvatarOneTimeActionOwnerName = "avatar.oneTime";
+        private const string MountedBodyPersistentActionOwnerName = "mounted.body.persistent";
+        private const string MountedBodyOneTimeActionOwnerName = "mounted.body.oneTime";
+        private const string MountedTamingMobPersistentActionOwnerName = "mounted.tamingMob.persistent";
+        private const string MountedTamingMobOneTimeActionOwnerName = "mounted.tamingMob.oneTime";
+        private readonly Dictionary<string, ActionLayerOwnerCounterState> _actionLayerOwnerCounters =
+            new(StringComparer.OrdinalIgnoreCase);
         private MountedActionLayerState _mountedActionLayerState;
         private string _mountedTamingMobOneTimeActionName;
         private AvatarActionLayerState _avatarActionLayerState;
@@ -2164,19 +2191,53 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            bool allowLoop = ShouldCurrentAvatarActionLayerLoop();
+            string ownerName = allowLoop
+                ? AvatarPersistentActionOwnerName
+                : AvatarOneTimeActionOwnerName;
+            if (!TryRestoreActionLayerOwnerCounter(
+                    ownerName,
+                    CurrentActionName,
+                    Assembler.PreparedActionSpeedDegree,
+                    Assembler.PreparedWalkSpeed,
+                    Assembler.HeldActionFrameDelay,
+                    allowLoop,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock restoredClock,
+                    out int lastAnimationElapsedMs,
+                    out int lastClockUpdateTimeMs,
+                    out double lastCharacterPositionY))
+            {
+                restoredClock = clock;
+                lastAnimationElapsedMs = 0;
+                lastClockUpdateTimeMs = _animationStartTime;
+                lastCharacterPositionY = Physics?.Y ?? 0d;
+            }
+
             _avatarActionLayerState = new AvatarActionLayerState
             {
                 ActionName = CurrentActionName,
-                FrameIndex = clock.FrameIndex,
-                FrameRemainingMs = clock.FrameRemainingMs,
-                LastAnimationElapsedMs = 0,
-                LastClockUpdateTimeMs = _animationStartTime,
-                LastCharacterPositionY = Physics?.Y ?? 0d,
+                ActionOwnerName = ownerName,
+                FrameIndex = restoredClock.FrameIndex,
+                FrameRemainingMs = restoredClock.FrameRemainingMs,
+                LastAnimationElapsedMs = lastAnimationElapsedMs,
+                LastClockUpdateTimeMs = lastClockUpdateTimeMs,
+                LastCharacterPositionY = lastCharacterPositionY,
                 ActionSpeedDegree = Assembler.PreparedActionSpeedDegree,
                 WalkSpeed = Assembler.PreparedWalkSpeed,
                 HeldActionFrameDelay = Assembler.HeldActionFrameDelay,
-                AllowLoop = ShouldCurrentAvatarActionLayerLoop()
+                AllowLoop = allowLoop
             };
+            StoreActionLayerOwnerCounter(
+                ownerName,
+                _avatarActionLayerState.ActionName,
+                _avatarActionLayerState.ActionSpeedDegree,
+                _avatarActionLayerState.WalkSpeed,
+                _avatarActionLayerState.HeldActionFrameDelay,
+                _avatarActionLayerState.AllowLoop,
+                restoredClock,
+                _avatarActionLayerState.LastAnimationElapsedMs,
+                _avatarActionLayerState.LastClockUpdateTimeMs,
+                _avatarActionLayerState.LastCharacterPositionY);
         }
 
         private void UpdateAvatarActionLayerFrameClock(AvatarActionLayerState avatarActionLayerState, int currentTime)
@@ -2191,6 +2252,19 @@ namespace HaCreator.MapSimulator.Character
             if (elapsedSinceLastUpdateMs <= 0)
             {
                 avatarActionLayerState.LastClockUpdateTimeMs = currentTime;
+                StoreActionLayerOwnerCounter(
+                    avatarActionLayerState.ActionOwnerName,
+                    avatarActionLayerState.ActionName,
+                    avatarActionLayerState.ActionSpeedDegree,
+                    avatarActionLayerState.WalkSpeed,
+                    avatarActionLayerState.HeldActionFrameDelay,
+                    avatarActionLayerState.AllowLoop,
+                    new AvatarActionLayerCoordinator.PreparedFrameClock(
+                        avatarActionLayerState.FrameIndex,
+                        avatarActionLayerState.FrameRemainingMs),
+                    avatarActionLayerState.LastAnimationElapsedMs,
+                    avatarActionLayerState.LastClockUpdateTimeMs,
+                    avatarActionLayerState.LastCharacterPositionY);
                 return;
             }
 
@@ -2218,6 +2292,17 @@ namespace HaCreator.MapSimulator.Character
             avatarActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
             avatarActionLayerState.LastClockUpdateTimeMs = currentTime;
             avatarActionLayerState.LastCharacterPositionY = Physics?.Y ?? avatarActionLayerState.LastCharacterPositionY;
+            StoreActionLayerOwnerCounter(
+                avatarActionLayerState.ActionOwnerName,
+                avatarActionLayerState.ActionName,
+                avatarActionLayerState.ActionSpeedDegree,
+                avatarActionLayerState.WalkSpeed,
+                avatarActionLayerState.HeldActionFrameDelay,
+                avatarActionLayerState.AllowLoop,
+                clock,
+                avatarActionLayerState.LastAnimationElapsedMs,
+                avatarActionLayerState.LastClockUpdateTimeMs,
+                avatarActionLayerState.LastCharacterPositionY);
         }
 
         private bool TryStallPositionGatedAvatarActionLayerClock(
@@ -2243,6 +2328,19 @@ namespace HaCreator.MapSimulator.Character
             avatarActionLayerState.FrameRemainingMs = 0;
             avatarActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
             avatarActionLayerState.LastClockUpdateTimeMs = currentTime;
+            StoreActionLayerOwnerCounter(
+                avatarActionLayerState.ActionOwnerName,
+                avatarActionLayerState.ActionName,
+                avatarActionLayerState.ActionSpeedDegree,
+                avatarActionLayerState.WalkSpeed,
+                avatarActionLayerState.HeldActionFrameDelay,
+                avatarActionLayerState.AllowLoop,
+                new AvatarActionLayerCoordinator.PreparedFrameClock(
+                    avatarActionLayerState.FrameIndex,
+                    avatarActionLayerState.FrameRemainingMs),
+                avatarActionLayerState.LastAnimationElapsedMs,
+                avatarActionLayerState.LastClockUpdateTimeMs,
+                avatarActionLayerState.LastCharacterPositionY);
             return true;
         }
 
@@ -2338,30 +2436,89 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            if (!TryRestoreActionLayerOwnerCounter(
+                    MountedBodyOneTimeActionOwnerName,
+                    CurrentActionName,
+                    Assembler.PreparedActionSpeedDegree,
+                    Assembler.PreparedWalkSpeed,
+                    Assembler.HeldActionFrameDelay,
+                    allowLoop: false,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock restoredBodyClock,
+                    out int restoredLastAnimationElapsedMs,
+                    out int restoredLastClockUpdateTimeMs,
+                    out double restoredLastCharacterPositionY))
+            {
+                restoredBodyClock = bodyClock;
+                restoredLastAnimationElapsedMs = 0;
+                restoredLastClockUpdateTimeMs = _animationStartTime;
+                restoredLastCharacterPositionY = Physics?.Y ?? 0d;
+            }
+
+            if (!TryRestoreActionLayerOwnerCounter(
+                    MountedTamingMobOneTimeActionOwnerName,
+                    CurrentActionName,
+                    Assembler.PreparedActionSpeedDegree,
+                    Assembler.PreparedWalkSpeed,
+                    Assembler.HeldActionFrameDelay,
+                    allowLoop: false,
+                    out AvatarActionLayerCoordinator.PreparedFrameClock restoredTamingMobClock,
+                    out _,
+                    out _,
+                    out _))
+            {
+                restoredTamingMobClock = tamingMobClock;
+            }
+
             string persistentBodyActionName = ResolveMountedTransitionPersistentBodyActionName();
             _mountedActionLayerState = new MountedActionLayerState
             {
                 ActionName = CurrentActionName,
                 PersistentBodyActionName = persistentBodyActionName,
                 PersistentTamingMobActionName = persistentBodyActionName,
+                PersistentBodyOwnerName = MountedBodyPersistentActionOwnerName,
+                PersistentTamingMobOwnerName = MountedTamingMobPersistentActionOwnerName,
                 CurrentBodyActionName = CurrentActionName,
                 CurrentTamingMobActionName = CurrentActionName,
+                CurrentBodyOwnerName = MountedBodyOneTimeActionOwnerName,
+                CurrentTamingMobOwnerName = MountedTamingMobOneTimeActionOwnerName,
                 CharacterOneTimeActionName = CurrentActionName,
                 TamingMobOneTimeActionName = CurrentActionName,
                 BodyPreparedDurationMs = bodyDuration,
                 TamingMobPreparedDurationMs = tamingMobDuration,
                 TotalPreparedDurationMs = Math.Max(bodyDuration, tamingMobDuration),
-                BodyFrameIndex = bodyClock.FrameIndex,
-                BodyFrameRemainingMs = bodyClock.FrameRemainingMs,
-                TamingMobFrameIndex = tamingMobClock.FrameIndex,
-                TamingMobFrameRemainingMs = tamingMobClock.FrameRemainingMs,
-                LastAnimationElapsedMs = 0,
-                LastClockUpdateTimeMs = _animationStartTime,
-                LastCharacterPositionY = Physics?.Y ?? 0d,
+                BodyFrameIndex = restoredBodyClock.FrameIndex,
+                BodyFrameRemainingMs = restoredBodyClock.FrameRemainingMs,
+                TamingMobFrameIndex = restoredTamingMobClock.FrameIndex,
+                TamingMobFrameRemainingMs = restoredTamingMobClock.FrameRemainingMs,
+                LastAnimationElapsedMs = restoredLastAnimationElapsedMs,
+                LastClockUpdateTimeMs = restoredLastClockUpdateTimeMs,
+                LastCharacterPositionY = restoredLastCharacterPositionY,
                 ActionSpeedDegree = Assembler.PreparedActionSpeedDegree,
                 WalkSpeed = Assembler.PreparedWalkSpeed,
                 HeldActionFrameDelay = Assembler.HeldActionFrameDelay
             };
+            StoreActionLayerOwnerCounter(
+                MountedBodyOneTimeActionOwnerName,
+                _mountedActionLayerState.CurrentBodyActionName,
+                _mountedActionLayerState.ActionSpeedDegree,
+                _mountedActionLayerState.WalkSpeed,
+                _mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: false,
+                restoredBodyClock,
+                _mountedActionLayerState.LastAnimationElapsedMs,
+                _mountedActionLayerState.LastClockUpdateTimeMs,
+                _mountedActionLayerState.LastCharacterPositionY);
+            StoreActionLayerOwnerCounter(
+                MountedTamingMobOneTimeActionOwnerName,
+                _mountedActionLayerState.CurrentTamingMobActionName,
+                _mountedActionLayerState.ActionSpeedDegree,
+                _mountedActionLayerState.WalkSpeed,
+                _mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: false,
+                restoredTamingMobClock,
+                _mountedActionLayerState.LastAnimationElapsedMs,
+                _mountedActionLayerState.LastClockUpdateTimeMs,
+                _mountedActionLayerState.LastCharacterPositionY);
             _mountedTamingMobOneTimeActionName = CurrentActionName;
         }
 
@@ -2371,6 +2528,118 @@ namespace HaCreator.MapSimulator.Character
                    && actionSpeedDegree == Assembler.PreparedActionSpeedDegree
                    && walkSpeed == Assembler.PreparedWalkSpeed
                    && heldActionFrameDelay == Assembler.HeldActionFrameDelay;
+        }
+
+        private bool TryRestoreActionLayerOwnerCounter(
+            string ownerName,
+            string actionName,
+            int actionSpeedDegree,
+            int walkSpeed,
+            bool heldActionFrameDelay,
+            bool allowLoop,
+            out AvatarActionLayerCoordinator.PreparedFrameClock clock,
+            out int lastAnimationElapsedMs,
+            out int lastClockUpdateTimeMs,
+            out double lastCharacterPositionY)
+        {
+            clock = default;
+            lastAnimationElapsedMs = 0;
+            lastClockUpdateTimeMs = int.MinValue;
+            lastCharacterPositionY = Physics?.Y ?? 0d;
+            if (string.IsNullOrWhiteSpace(ownerName)
+                || !_actionLayerOwnerCounters.TryGetValue(ownerName, out ActionLayerOwnerCounterState ownerCounter)
+                || ownerCounter == null
+                || !string.Equals(ownerCounter.ActionName, actionName, StringComparison.OrdinalIgnoreCase)
+                || ownerCounter.ActionSpeedDegree != actionSpeedDegree
+                || ownerCounter.WalkSpeed != walkSpeed
+                || ownerCounter.HeldActionFrameDelay != heldActionFrameDelay
+                || ownerCounter.AllowLoop != allowLoop)
+            {
+                return false;
+            }
+
+            clock = new AvatarActionLayerCoordinator.PreparedFrameClock(
+                ownerCounter.FrameIndex,
+                ownerCounter.FrameRemainingMs);
+            lastAnimationElapsedMs = ownerCounter.LastAnimationElapsedMs;
+            lastClockUpdateTimeMs = ownerCounter.LastClockUpdateTimeMs;
+            lastCharacterPositionY = ownerCounter.LastCharacterPositionY;
+            return true;
+        }
+
+        private void StoreActionLayerOwnerCounter(
+            string ownerName,
+            string actionName,
+            int actionSpeedDegree,
+            int walkSpeed,
+            bool heldActionFrameDelay,
+            bool allowLoop,
+            AvatarActionLayerCoordinator.PreparedFrameClock clock,
+            int lastAnimationElapsedMs,
+            int lastClockUpdateTimeMs,
+            double lastCharacterPositionY)
+        {
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return;
+            }
+
+            if (!_actionLayerOwnerCounters.TryGetValue(ownerName, out ActionLayerOwnerCounterState ownerCounter))
+            {
+                ownerCounter = new ActionLayerOwnerCounterState();
+                _actionLayerOwnerCounters[ownerName] = ownerCounter;
+            }
+
+            ownerCounter.ActionName = actionName;
+            ownerCounter.ActionSpeedDegree = actionSpeedDegree;
+            ownerCounter.WalkSpeed = walkSpeed;
+            ownerCounter.HeldActionFrameDelay = heldActionFrameDelay;
+            ownerCounter.AllowLoop = allowLoop;
+            ownerCounter.FrameIndex = clock.FrameIndex;
+            ownerCounter.FrameRemainingMs = clock.FrameRemainingMs;
+            ownerCounter.LastAnimationElapsedMs = lastAnimationElapsedMs;
+            ownerCounter.LastClockUpdateTimeMs = lastClockUpdateTimeMs;
+            ownerCounter.LastCharacterPositionY = lastCharacterPositionY;
+        }
+
+        private bool TryResolveMountedOwnerClock(
+            string ownerName,
+            int fallbackFrameIndex,
+            int fallbackFrameRemainingMs,
+            out AvatarActionLayerCoordinator.PreparedFrameClock clock)
+        {
+            clock = new AvatarActionLayerCoordinator.PreparedFrameClock(fallbackFrameIndex, fallbackFrameRemainingMs);
+            if (string.IsNullOrWhiteSpace(ownerName)
+                || !_actionLayerOwnerCounters.TryGetValue(ownerName, out ActionLayerOwnerCounterState ownerCounter)
+                || ownerCounter == null)
+            {
+                return false;
+            }
+
+            clock = new AvatarActionLayerCoordinator.PreparedFrameClock(ownerCounter.FrameIndex, ownerCounter.FrameRemainingMs);
+            return true;
+        }
+
+        private void SyncMountedActionLayerStateClockFromOwnerCounters(MountedActionLayerState mountedActionLayerState)
+        {
+            if (mountedActionLayerState == null)
+            {
+                return;
+            }
+
+            if (_actionLayerOwnerCounters.TryGetValue(mountedActionLayerState.CurrentBodyOwnerName ?? string.Empty, out ActionLayerOwnerCounterState bodyOwner)
+                && bodyOwner != null)
+            {
+                mountedActionLayerState.BodyFrameIndex = bodyOwner.FrameIndex;
+                mountedActionLayerState.BodyFrameRemainingMs = bodyOwner.FrameRemainingMs;
+            }
+
+            if (_actionLayerOwnerCounters.TryGetValue(mountedActionLayerState.CurrentTamingMobOwnerName ?? string.Empty, out ActionLayerOwnerCounterState tamingMobOwner)
+                && tamingMobOwner != null)
+            {
+                mountedActionLayerState.TamingMobFrameIndex = tamingMobOwner.FrameIndex;
+                mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobOwner.FrameRemainingMs;
+            }
         }
 
         private bool ShouldCurrentAvatarActionLayerLoop()
@@ -2386,10 +2655,37 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int animationElapsedMs = GetRenderAnimationTime(currentTime);
+            SyncMountedActionLayerStateClockFromOwnerCounters(mountedActionLayerState);
             int elapsedSinceLastUpdateMs = Math.Max(0, animationElapsedMs - mountedActionLayerState.LastAnimationElapsedMs);
             if (elapsedSinceLastUpdateMs <= 0)
             {
                 mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
+                StoreActionLayerOwnerCounter(
+                    mountedActionLayerState.CurrentBodyOwnerName,
+                    mountedActionLayerState.CurrentBodyActionName,
+                    mountedActionLayerState.ActionSpeedDegree,
+                    mountedActionLayerState.WalkSpeed,
+                    mountedActionLayerState.HeldActionFrameDelay,
+                    allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: true),
+                    new AvatarActionLayerCoordinator.PreparedFrameClock(
+                        mountedActionLayerState.BodyFrameIndex,
+                        mountedActionLayerState.BodyFrameRemainingMs),
+                    mountedActionLayerState.LastAnimationElapsedMs,
+                    mountedActionLayerState.LastClockUpdateTimeMs,
+                    mountedActionLayerState.LastCharacterPositionY);
+                StoreActionLayerOwnerCounter(
+                    mountedActionLayerState.CurrentTamingMobOwnerName,
+                    mountedActionLayerState.CurrentTamingMobActionName,
+                    mountedActionLayerState.ActionSpeedDegree,
+                    mountedActionLayerState.WalkSpeed,
+                    mountedActionLayerState.HeldActionFrameDelay,
+                    allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: false),
+                    new AvatarActionLayerCoordinator.PreparedFrameClock(
+                        mountedActionLayerState.TamingMobFrameIndex,
+                        mountedActionLayerState.TamingMobFrameRemainingMs),
+                    mountedActionLayerState.LastAnimationElapsedMs,
+                    mountedActionLayerState.LastClockUpdateTimeMs,
+                    mountedActionLayerState.LastCharacterPositionY);
                 return;
             }
 
@@ -2423,6 +2719,32 @@ namespace HaCreator.MapSimulator.Character
             mountedActionLayerState.LastAnimationElapsedMs = animationElapsedMs;
             mountedActionLayerState.LastClockUpdateTimeMs = currentTime;
             mountedActionLayerState.LastCharacterPositionY = Physics?.Y ?? mountedActionLayerState.LastCharacterPositionY;
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentBodyOwnerName,
+                mountedActionLayerState.CurrentBodyActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: true),
+                new AvatarActionLayerCoordinator.PreparedFrameClock(
+                    mountedActionLayerState.BodyFrameIndex,
+                    mountedActionLayerState.BodyFrameRemainingMs),
+                mountedActionLayerState.LastAnimationElapsedMs,
+                mountedActionLayerState.LastClockUpdateTimeMs,
+                mountedActionLayerState.LastCharacterPositionY);
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentTamingMobOwnerName,
+                mountedActionLayerState.CurrentTamingMobActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: false),
+                new AvatarActionLayerCoordinator.PreparedFrameClock(
+                    mountedActionLayerState.TamingMobFrameIndex,
+                    mountedActionLayerState.TamingMobFrameRemainingMs),
+                mountedActionLayerState.LastAnimationElapsedMs,
+                mountedActionLayerState.LastClockUpdateTimeMs,
+                mountedActionLayerState.LastCharacterPositionY);
         }
 
         private bool TryStallPositionGatedMountedActionLayerClock(
@@ -2467,12 +2789,16 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            AvatarActionLayerCoordinator.PreparedFrameClock bodyClock = new(
+            TryResolveMountedOwnerClock(
+                mountedActionLayerState.CurrentBodyOwnerName,
                 mountedActionLayerState.BodyFrameIndex,
-                mountedActionLayerState.BodyFrameRemainingMs);
-            AvatarActionLayerCoordinator.PreparedFrameClock tamingMobClock = new(
+                mountedActionLayerState.BodyFrameRemainingMs,
+                out AvatarActionLayerCoordinator.PreparedFrameClock bodyClock);
+            TryResolveMountedOwnerClock(
+                mountedActionLayerState.CurrentTamingMobOwnerName,
                 mountedActionLayerState.TamingMobFrameIndex,
-                mountedActionLayerState.TamingMobFrameRemainingMs);
+                mountedActionLayerState.TamingMobFrameRemainingMs,
+                out AvatarActionLayerCoordinator.PreparedFrameClock tamingMobClock);
 
             string currentBodyActionName = mountedActionLayerState.CurrentBodyActionName ?? mountedActionLayerState.ActionName;
             string currentTamingMobActionName = mountedActionLayerState.CurrentTamingMobActionName ?? mountedActionLayerState.ActionName;
@@ -2495,6 +2821,28 @@ namespace HaCreator.MapSimulator.Character
             mountedActionLayerState.BodyFrameRemainingMs = bodyClock.FrameRemainingMs;
             mountedActionLayerState.TamingMobFrameIndex = tamingMobClock.FrameIndex;
             mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobClock.FrameRemainingMs;
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentBodyOwnerName,
+                currentBodyActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: true),
+                bodyClock,
+                mountedActionLayerState.LastAnimationElapsedMs,
+                mountedActionLayerState.LastClockUpdateTimeMs,
+                mountedActionLayerState.LastCharacterPositionY);
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentTamingMobOwnerName,
+                currentTamingMobActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: false),
+                tamingMobClock,
+                mountedActionLayerState.LastAnimationElapsedMs,
+                mountedActionLayerState.LastClockUpdateTimeMs,
+                mountedActionLayerState.LastCharacterPositionY);
 
             if (!completedAction)
             {
@@ -2516,17 +2864,30 @@ namespace HaCreator.MapSimulator.Character
                 {
                     mountedActionLayerState.CharacterOneTimeActionName = null;
                     mountedActionLayerState.CharacterOneTimeActionFrameHeld = true;
+                    StoreActionLayerOwnerCounter(
+                        mountedActionLayerState.CurrentBodyOwnerName,
+                        currentBodyActionName,
+                        mountedActionLayerState.ActionSpeedDegree,
+                        mountedActionLayerState.WalkSpeed,
+                        mountedActionLayerState.HeldActionFrameDelay,
+                        allowLoop: false,
+                        bodyClock,
+                        mountedActionLayerState.LastAnimationElapsedMs,
+                        mountedActionLayerState.LastClockUpdateTimeMs,
+                        mountedActionLayerState.LastCharacterPositionY);
                     elapsedSinceLastUpdateMs = remainingElapsedMs;
                     return;
                 }
 
                 mountedActionLayerState.CharacterOneTimeActionName = null;
                 mountedActionLayerState.CurrentBodyActionName = persistentActionName;
+                mountedActionLayerState.CurrentBodyOwnerName = mountedActionLayerState.PersistentBodyOwnerName;
             }
             else
             {
                 mountedActionLayerState.TamingMobOneTimeActionName = null;
                 mountedActionLayerState.CurrentTamingMobActionName = persistentActionName;
+                mountedActionLayerState.CurrentTamingMobOwnerName = mountedActionLayerState.PersistentTamingMobOwnerName;
                 _mountedTamingMobOneTimeActionName = null;
             }
 
@@ -2556,6 +2917,28 @@ namespace HaCreator.MapSimulator.Character
             mountedActionLayerState.BodyFrameRemainingMs = bodyClock.FrameRemainingMs;
             mountedActionLayerState.TamingMobFrameIndex = tamingMobClock.FrameIndex;
             mountedActionLayerState.TamingMobFrameRemainingMs = tamingMobClock.FrameRemainingMs;
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentBodyOwnerName,
+                mountedActionLayerState.CurrentBodyActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: true),
+                bodyClock,
+                mountedActionLayerState.LastAnimationElapsedMs,
+                mountedActionLayerState.LastClockUpdateTimeMs,
+                mountedActionLayerState.LastCharacterPositionY);
+            StoreActionLayerOwnerCounter(
+                mountedActionLayerState.CurrentTamingMobOwnerName,
+                mountedActionLayerState.CurrentTamingMobActionName,
+                mountedActionLayerState.ActionSpeedDegree,
+                mountedActionLayerState.WalkSpeed,
+                mountedActionLayerState.HeldActionFrameDelay,
+                allowLoop: !IsMountedOneTimeLayerActive(mountedActionLayerState, bodyLayer: false),
+                tamingMobClock,
+                mountedActionLayerState.LastAnimationElapsedMs,
+                mountedActionLayerState.LastClockUpdateTimeMs,
+                mountedActionLayerState.LastCharacterPositionY);
             elapsedSinceLastUpdateMs = remainingElapsedMs;
             if (remainingElapsedMs <= 0)
             {
@@ -5816,10 +6199,23 @@ namespace HaCreator.MapSimulator.Character
             return hasLiveSourceCanvas || HasMirrorImageInsertCanvasSource(sourceBounds, composedTexture);
         }
 
-        private static bool HasMirrorImageLiveSourceCanvas(IReadOnlyList<AssembledPart> sourceParts)
+        internal static bool HasMirrorImageLiveSourceCanvas(IReadOnlyList<AssembledPart> sourceParts)
         {
-            return sourceParts != null
-                   && sourceParts.Count > 0;
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return false;
+            }
+
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                AssembledPart sourcePart = sourceParts[partIndex];
+                if (sourcePart?.Texture != null && sourcePart.IsVisible)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static int ResolveMirrorImageLastInsertedSourceSignature(

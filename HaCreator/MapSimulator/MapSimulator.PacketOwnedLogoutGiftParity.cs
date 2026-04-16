@@ -41,6 +41,8 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedLogoutGiftSelectedIndex;
         private byte[] _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
         private int[] _packetOwnedLogoutGiftLeadingOpaqueInt32Values = Array.Empty<int>();
+        private byte[] _packetOwnedLogoutGiftTrailingOpaqueBytes = Array.Empty<byte>();
+        private int[] _packetOwnedLogoutGiftTrailingOpaqueInt32Values = Array.Empty<int>();
         private PacketOwnedLogoutGiftContextField? _packetOwnedLogoutGiftPredictQuitContextField;
         private PacketOwnedLogoutGiftContextField[] _packetOwnedLogoutGiftCommodityContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
         private bool _packetOwnedLogoutGiftHasPredictQuitFlag;
@@ -277,8 +279,8 @@ namespace HaCreator.MapSimulator
                     string ignoredPayloadSuffix = payload != null && payload.Length > 0
                         ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
                         : string.Empty;
-                    string preservedTrailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                        ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
+                    string preservedTrailingSuffix = HasPacketOwnedLogoutGiftOpaqueTail()
+                        ? $" Preserved {DescribePacketOwnedLogoutGiftOpaqueTail()} around the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
                         : string.Empty;
                     string unavailableMessage = BuildPacketOwnedLogoutGiftOwnerUnavailableMessage(
                         ResolveCurrentPacketOwnedLogoutGiftOwnerAvailability(),
@@ -294,8 +296,8 @@ namespace HaCreator.MapSimulator
                     string hiddenPayloadSuffix = payload != null && payload.Length > 0
                         ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
                         : string.Empty;
-                    string hiddenTrailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                        ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
+                    string hiddenTrailingSuffix = HasPacketOwnedLogoutGiftOpaqueTail()
+                        ? $" Preserved {DescribePacketOwnedLogoutGiftOpaqueTail()} around the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
                         : string.Empty;
                     message =
                         $"CWvsContext::OnLogoutGift refreshed the instantiated logout-gift singleton using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()} while the visible chooser remained closed behind the StringPool 0x{PacketOwnedLogoutGiftCompletionStringPoolId.ToString("X", CultureInfo.InvariantCulture)} completion dialog.{hiddenTrailingSuffix}{hiddenPayloadSuffix}";
@@ -310,8 +312,8 @@ namespace HaCreator.MapSimulator
             string payloadSuffix = payload != null && payload.Length > 0
                 ? $" Ignored {payload.Length.ToString(CultureInfo.InvariantCulture)} unexpected payload byte(s) because the client bridge only refreshes the existing owner."
                 : string.Empty;
-            string trailingSuffix = _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                ? $" Preserved {DescribePacketOwnedLogoutGiftLeadingTail()} ahead of the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
+            string trailingSuffix = HasPacketOwnedLogoutGiftOpaqueTail()
+                ? $" Preserved {DescribePacketOwnedLogoutGiftOpaqueTail()} around the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit` + `m_anLogoutGiftCommoditySN[3]`)."
                 : string.Empty;
             message =
                 $"CWvsContext::OnLogoutGift refreshed the active logout-gift owner using cached commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()} after `CUILogoutGift::TryShowLogoutGiftDialog` had already surfaced it.{trailingSuffix}{payloadSuffix}";
@@ -392,6 +394,9 @@ namespace HaCreator.MapSimulator
                 out int[] commoditySerialNumbers,
                 out byte[] leadingOpaqueBytes,
                 out int[] leadingOpaqueInt32Values,
+                out byte[] trailingOpaqueBytes,
+                out int[] trailingOpaqueInt32Values,
+                out int logoutGiftConfigOffset,
                 out string decodeError))
             {
                 ResetPacketOwnedLogoutGiftRuntimeState(
@@ -408,6 +413,8 @@ namespace HaCreator.MapSimulator
 
             _packetOwnedLogoutGiftLeadingOpaqueBytes = leadingOpaqueBytes ?? Array.Empty<byte>();
             _packetOwnedLogoutGiftLeadingOpaqueInt32Values = leadingOpaqueInt32Values ?? Array.Empty<int>();
+            _packetOwnedLogoutGiftTrailingOpaqueBytes = trailingOpaqueBytes ?? Array.Empty<byte>();
+            _packetOwnedLogoutGiftTrailingOpaqueInt32Values = trailingOpaqueInt32Values ?? Array.Empty<int>();
             _packetOwnedLogoutGiftPredictQuitContextField = DecodePacketOwnedLogoutGiftPredictQuitContextField(predictQuitRawValue);
             _packetOwnedLogoutGiftCommodityContextFields = DecodePacketOwnedLogoutGiftCommodityContextFields(_packetOwnedLogoutGiftCommoditySerialNumbers);
             _packetOwnedLogoutGiftHasPredictQuitFlag = true;
@@ -415,9 +422,12 @@ namespace HaCreator.MapSimulator
             _packetOwnedLogoutGiftHasConfig = HasDecodedPacketOwnedLogoutGiftConfig(commoditySerialNumbers);
             _packetOwnedLogoutGiftSelectedIndex = ResolveFirstPacketOwnedLogoutGiftSelection();
             bool hasCommodity = HasAnyPacketOwnedLogoutGiftCommodity(commoditySerialNumbers);
+            string configOffsetSummary = logoutGiftConfigOffset > 0
+                ? $" at tail offset {logoutGiftConfigOffset.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
             _lastPacketOwnedLogoutGiftSummary = _packetOwnedLogoutGiftHasConfig
-                ? _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                    ? $"Split the character-data SetField tail into {DescribePacketOwnedLogoutGiftLeadingTail()} plus the client `CWvsContext::OnSetLogoutGiftConfig` cache (`m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and commodity SNs at dword[{PacketOwnedLogoutGiftCommodityContextDwordIndex.ToString(CultureInfo.InvariantCulture)}..{(PacketOwnedLogoutGiftCommodityContextDwordIndex + PacketOwnedLogoutGiftEntryCount - 1).ToString(CultureInfo.InvariantCulture)}]): {FormatPacketOwnedLogoutGiftCommodityList()}.{(hasCommodity ? string.Empty : " All three commodity slots are zero, but the decoded cache remains owned by the logout-gift context fields.")}"
+                ? HasPacketOwnedLogoutGiftOpaqueTail()
+                    ? $"Split the character-data SetField tail into {DescribePacketOwnedLogoutGiftOpaqueTail()} around the client `CWvsContext::OnSetLogoutGiftConfig` cache{configOffsetSummary} (`m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and commodity SNs at dword[{PacketOwnedLogoutGiftCommodityContextDwordIndex.ToString(CultureInfo.InvariantCulture)}..{(PacketOwnedLogoutGiftCommodityContextDwordIndex + PacketOwnedLogoutGiftEntryCount - 1).ToString(CultureInfo.InvariantCulture)}]): {FormatPacketOwnedLogoutGiftCommodityList()}.{(hasCommodity ? string.Empty : " All three commodity slots are zero, but the decoded cache remains owned by the logout-gift context fields.")}"
                     : hasCommodity
                         ? $"Decoded `CWvsContext::OnSetLogoutGiftConfig` from character-data SetField with `m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and commodity SNs {FormatPacketOwnedLogoutGiftCommodityList()}. Packet 432 now refreshes the dedicated owner instead of leaving the values hidden in stage payload tail bytes."
                         : $"Decoded the explicit `CWvsContext::OnSetLogoutGiftConfig` payload from SetField with `m_bPredictQuit={predictQuitRawValue.ToString(CultureInfo.InvariantCulture)}` and all three commodity slots zero; the simulator preserves the client cache as present rather than collapsing it to missing config."
@@ -463,6 +473,8 @@ namespace HaCreator.MapSimulator
                 _packetOwnedLogoutGiftSelectedIndex = 0;
                 _packetOwnedLogoutGiftLeadingOpaqueBytes = Array.Empty<byte>();
                 _packetOwnedLogoutGiftLeadingOpaqueInt32Values = Array.Empty<int>();
+                _packetOwnedLogoutGiftTrailingOpaqueBytes = Array.Empty<byte>();
+                _packetOwnedLogoutGiftTrailingOpaqueInt32Values = Array.Empty<int>();
                 _packetOwnedLogoutGiftPredictQuitContextField = null;
                 _packetOwnedLogoutGiftCommodityContextFields = Array.Empty<PacketOwnedLogoutGiftContextField>();
                 _packetOwnedLogoutGiftHasPredictQuitFlag = false;
@@ -704,26 +716,58 @@ namespace HaCreator.MapSimulator
             return itemId / 100000 == PacketOwnedLogoutGiftSpecialItemFamily;
         }
 
-        private string DescribePacketOwnedLogoutGiftLeadingTail()
+        private static string DescribePacketOwnedLogoutGiftOpaqueTailSegment(
+            byte[] opaqueBytes,
+            int[] alignedInt32Values,
+            string placementLabel)
         {
-            if (_packetOwnedLogoutGiftLeadingOpaqueBytes == null || _packetOwnedLogoutGiftLeadingOpaqueBytes.Length == 0)
+            if (opaqueBytes == null || opaqueBytes.Length == 0)
             {
-                return "no adjacent trailing bytes";
+                return string.Empty;
             }
 
-            string hex = Convert.ToHexString(_packetOwnedLogoutGiftLeadingOpaqueBytes);
-            if (_packetOwnedLogoutGiftLeadingOpaqueInt32Values == null || _packetOwnedLogoutGiftLeadingOpaqueInt32Values.Length == 0)
+            string hex = Convert.ToHexString(opaqueBytes);
+            if (alignedInt32Values == null || alignedInt32Values.Length == 0)
             {
-                return $"{_packetOwnedLogoutGiftLeadingOpaqueBytes.Length.ToString(CultureInfo.InvariantCulture)} adjacent trailing byte(s) [0x{hex}]";
+                return $"{opaqueBytes.Length.ToString(CultureInfo.InvariantCulture)} {placementLabel} opaque byte(s) [0x{hex}]";
             }
 
-            List<string> values = new(_packetOwnedLogoutGiftLeadingOpaqueInt32Values.Length);
-            foreach (int value in _packetOwnedLogoutGiftLeadingOpaqueInt32Values)
+            List<string> values = new(alignedInt32Values.Length);
+            foreach (int value in alignedInt32Values)
             {
                 values.Add(value.ToString(CultureInfo.InvariantCulture));
             }
 
-            return $"{_packetOwnedLogoutGiftLeadingOpaqueBytes.Length.ToString(CultureInfo.InvariantCulture)} adjacent pre-`CWvsContext::OnSetLogoutGiftConfig` trailing byte(s) [0x{hex}] / aligned int32 [{string.Join(", ", values)}]";
+            return $"{opaqueBytes.Length.ToString(CultureInfo.InvariantCulture)} {placementLabel} opaque byte(s) [0x{hex}] / aligned int32 [{string.Join(", ", values)}]";
+        }
+
+        private bool HasPacketOwnedLogoutGiftOpaqueTail()
+        {
+            return (_packetOwnedLogoutGiftLeadingOpaqueBytes?.Length ?? 0) > 0
+                || (_packetOwnedLogoutGiftTrailingOpaqueBytes?.Length ?? 0) > 0;
+        }
+
+        private string DescribePacketOwnedLogoutGiftOpaqueTail()
+        {
+            string leading = DescribePacketOwnedLogoutGiftOpaqueTailSegment(
+                _packetOwnedLogoutGiftLeadingOpaqueBytes,
+                _packetOwnedLogoutGiftLeadingOpaqueInt32Values,
+                "pre-`OnSetLogoutGiftConfig`");
+            string trailing = DescribePacketOwnedLogoutGiftOpaqueTailSegment(
+                _packetOwnedLogoutGiftTrailingOpaqueBytes,
+                _packetOwnedLogoutGiftTrailingOpaqueInt32Values,
+                "post-`OnSetLogoutGiftConfig`");
+            if (string.IsNullOrWhiteSpace(leading))
+            {
+                return string.IsNullOrWhiteSpace(trailing) ? "no adjacent trailing bytes" : trailing;
+            }
+
+            if (string.IsNullOrWhiteSpace(trailing))
+            {
+                return leading;
+            }
+
+            return $"{leading}; {trailing}";
         }
 
         private string BuildPacketOwnedLogoutGiftSubtitle(int entryCount)
@@ -735,8 +779,8 @@ namespace HaCreator.MapSimulator
                 ? $"CWvsContext m_bPredictQuit={(_packetOwnedLogoutGiftPredictQuitRawValue != 0 ? "true" : "false")} (TryShowLogoutGiftDialog gate) "
                 : string.Empty;
             string commodityContextSuffix = BuildPacketOwnedLogoutGiftCommodityContextSuffix();
-            return _packetOwnedLogoutGiftLeadingOpaqueBytes.Length > 0
-                ? $"{stagePrefix}{predictQuitPrefix}cached {entryCount} logout-gift slots plus {DescribePacketOwnedLogoutGiftLeadingTail()}.{commodityContextSuffix}"
+            return HasPacketOwnedLogoutGiftOpaqueTail()
+                ? $"{stagePrefix}{predictQuitPrefix}cached {entryCount} logout-gift slots plus {DescribePacketOwnedLogoutGiftOpaqueTail()}.{commodityContextSuffix}"
                 : $"{stagePrefix}{predictQuitPrefix}cached {entryCount} logout-gift commodity slot(s).{commodityContextSuffix}";
         }
 
@@ -1068,6 +1112,12 @@ namespace HaCreator.MapSimulator
             if (!string.IsNullOrWhiteSpace(leading))
             {
                 parts.Add($"pre-`OnSetLogoutGiftConfig` aligned tail int32 [{leading}]");
+            }
+
+            string trailing = DescribePacketOwnedLogoutGiftLeadingInt32Values(_packetOwnedLogoutGiftTrailingOpaqueInt32Values);
+            if (!string.IsNullOrWhiteSpace(trailing))
+            {
+                parts.Add($"post-`OnSetLogoutGiftConfig` aligned tail int32 [{trailing}]");
             }
 
             if (!string.IsNullOrWhiteSpace(predictQuit))

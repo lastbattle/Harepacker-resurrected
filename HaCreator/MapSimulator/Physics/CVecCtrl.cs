@@ -1634,6 +1634,26 @@ namespace HaCreator.MapSimulator.Physics
             }
         }
 
+        /// <summary>
+        /// Resolve the vec-ctrl attribute byte used by summon-skill cast packets.
+        /// Keeps raw byte-cast semantics and falls back to the active move-path tail
+        /// when the live attribute is still zero but the recorded path has advanced.
+        /// </summary>
+        internal byte ResolveClientSummonPacketMovePathAttributeByte()
+        {
+            int attribute = CurrentMovePathAttribute;
+            if (attribute == 0 && IsRecordingPath && _movePath.Count > 0)
+            {
+                int tailAttribute = _movePath[_movePath.Count - 1].MovePathAttribute;
+                if (tailAttribute != 0)
+                {
+                    attribute = tailAttribute;
+                }
+            }
+
+            return unchecked((byte)attribute);
+        }
+
         private static short ClampPathDuration(int durationMs)
         {
             return (short)Math.Min(short.MaxValue, Math.Max(0, durationMs));

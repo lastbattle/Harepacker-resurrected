@@ -532,7 +532,137 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            return TryResolveQuestDetailRecordTokenFromPositionalValues(recordValue, normalizedToken, out value);
+        }
+
+        private static bool TryResolveQuestDetailRecordTokenFromPositionalValues(
+            string recordValue,
+            string normalizedToken,
+            out string value)
+        {
+            value = string.Empty;
+            if (string.IsNullOrWhiteSpace(recordValue) || string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return false;
+            }
+
+            List<string> positionalValues = ParseQuestRecordPositionalValues(recordValue);
+            if (positionalValues.Count == 0)
+            {
+                return false;
+            }
+
+            if (TryResolveQuestDetailTokenPosition(normalizedToken, out int tokenIndex) &&
+                tokenIndex >= 0 &&
+                tokenIndex < positionalValues.Count)
+            {
+                value = positionalValues[tokenIndex];
+                return !string.IsNullOrWhiteSpace(value);
+            }
+
+            if (positionalValues.Count == 1 &&
+                IsSingleValueQuestDetailToken(normalizedToken))
+            {
+                value = positionalValues[0];
+                return !string.IsNullOrWhiteSpace(value);
+            }
+
             return false;
+        }
+
+        private static List<string> ParseQuestRecordPositionalValues(string recordValue)
+        {
+            var values = new List<string>();
+            if (string.IsNullOrWhiteSpace(recordValue))
+            {
+                return values;
+            }
+
+            ReadOnlySpan<char> remaining = recordValue.AsSpan();
+            while (!remaining.IsEmpty)
+            {
+                int delimiterIndex = remaining.IndexOfAny(QuestRecordTokenDelimiters);
+                ReadOnlySpan<char> entry = delimiterIndex >= 0
+                    ? remaining[..delimiterIndex]
+                    : remaining;
+                remaining = delimiterIndex >= 0
+                    ? remaining[(delimiterIndex + 1)..]
+                    : ReadOnlySpan<char>.Empty;
+
+                entry = entry.Trim();
+                if (entry.IsEmpty || entry.IndexOf('=') >= 0 || entry.IndexOf(':') >= 0)
+                {
+                    continue;
+                }
+
+                values.Add(entry.ToString());
+            }
+
+            if (values.Count == 0)
+            {
+                string trimmed = recordValue.Trim();
+                if (!string.IsNullOrWhiteSpace(trimmed) &&
+                    trimmed.IndexOf('=') < 0 &&
+                    trimmed.IndexOf(':') < 0)
+                {
+                    values.Add(trimmed);
+                }
+            }
+
+            return values;
+        }
+
+        private static bool TryResolveQuestDetailTokenPosition(string token, out int index)
+        {
+            index = -1;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            if (token.Equals("have", StringComparison.OrdinalIgnoreCase))
+            {
+                index = 0;
+                return true;
+            }
+
+            if (token.StartsWith("have", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(token.AsSpan(4), NumberStyles.Integer, CultureInfo.InvariantCulture, out int haveIndex) &&
+                haveIndex >= 0)
+            {
+                index = haveIndex;
+                return true;
+            }
+
+            index = token.ToLowerInvariant() switch
+            {
+                "cmp" => 0,
+                "vic" => 0,
+                "money" => 0,
+                "min" => 1,
+                "sec" => 2,
+                "date" => 3,
+                "rank" => 4,
+                _ => -1
+            };
+            return index >= 0;
+        }
+
+        private static bool IsSingleValueQuestDetailToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            return token.StartsWith("have", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("cmp", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("vic", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("money", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("min", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("sec", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("date", StringComparison.OrdinalIgnoreCase) ||
+                   token.Equals("rank", StringComparison.OrdinalIgnoreCase);
         }
 
         private string ResolveQuestDetailRecordTextForDialogue(int questId, string token)

@@ -2312,11 +2312,24 @@ namespace HaCreator.MapSimulator
         private string ApplyRemoteUserChatPacket(RemoteUserChatPacket packet, bool fromOutsideOfMap)
         {
             string speakerName = packet.OutsideMapCharacterName;
+            bool foundRemoteActor = false;
             if (string.IsNullOrWhiteSpace(speakerName)
                 && _remoteUserPool.TryGetActor(packet.CharacterId, out RemoteUserActor actor)
                 && !string.IsNullOrWhiteSpace(actor?.Name))
             {
                 speakerName = actor.Name;
+                foundRemoteActor = true;
+            }
+
+            if (string.IsNullOrWhiteSpace(speakerName)
+                && fromOutsideOfMap
+                && !foundRemoteActor)
+            {
+                string localPlayerName = _playerManager?.Player?.Build?.Name;
+                if (!string.IsNullOrWhiteSpace(localPlayerName))
+                {
+                    speakerName = localPlayerName.Trim();
+                }
             }
 
             if (string.IsNullOrWhiteSpace(speakerName))

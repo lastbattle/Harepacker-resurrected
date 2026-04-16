@@ -1796,7 +1796,11 @@ namespace HaCreator.MapSimulator
 
 
 
-        private bool QueueMapTransfer(int targetMapId, string targetPortalName, int targetPortalIndex = -1)
+        private bool QueueMapTransfer(
+            int targetMapId,
+            string targetPortalName,
+            int targetPortalIndex = -1,
+            string[] targetPortalNameCandidates = null)
         {
             if (targetMapId <= 0 || targetMapId == MapConstants.MaxMap || _gameState.PendingMapChange)
             {
@@ -1804,10 +1808,12 @@ namespace HaCreator.MapSimulator
             }
 
 
+            ConsumeCollisionScriptExclusiveRequestFromTransferLifecycle();
             _playerManager?.ForceStand();
             _gameState.PendingMapChange = true;
             _gameState.PendingMapId = targetMapId;
             _gameState.PendingPortalName = targetPortalName;
+            _gameState.PendingPortalNameCandidates = targetPortalNameCandidates ?? Array.Empty<string>();
             _gameState.PendingPortalIndex = targetPortalIndex;
             return true;
         }
@@ -5568,6 +5574,10 @@ namespace HaCreator.MapSimulator
         private bool TryUseInventoryItem(int itemId, InventoryType inventoryType, int currentTime)
 
         {
+            if (TryRejectOnlyPickupInventoryUse(itemId, inventoryType, currentTime))
+            {
+                return false;
+            }
 
             if (TryUseRandomMorphInventoryItem(itemId, inventoryType, currentTime))
 
@@ -5658,6 +5668,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (TryRejectOnlyPickupInventoryUse(itemId, inventoryType, currentTime))
+            {
+                return false;
+            }
+
             if (TryUseRandomMorphInventoryItem(itemId, inventoryType, currentTime, slotIndex))
             {
                 return true;
@@ -5691,6 +5706,30 @@ namespace HaCreator.MapSimulator
             }
 
             return used;
+        }
+
+        private bool TryRejectOnlyPickupInventoryUse(int itemId, InventoryType inventoryType, int currentTime)
+        {
+            if (itemId <= 0
+                || inventoryType == InventoryType.NONE
+                || !InventoryItemMetadataResolver.IsOnlyPickup(itemId))
+            {
+                return false;
+            }
+
+            string itemName = ResolvePickupItemName(itemId);
+            PushFieldRuleMessage(
+                BuildOnlyPickupInventoryUseRejectedMessage(itemName),
+                currentTime,
+                false);
+            return true;
+        }
+
+        internal static string BuildOnlyPickupInventoryUseRejectedMessage(string itemName)
+        {
+            return string.IsNullOrWhiteSpace(itemName)
+                ? "That item can only be used when picked up."
+                : $"{itemName} can only be used when picked up.";
         }
 
 
@@ -6040,11 +6079,14 @@ namespace HaCreator.MapSimulator
 
             bool hasNpcReference = InventoryItemMetadataResolver.TryResolveNpcReference(itemId, out int npcId)
                                    && npcId > 0;
+            bool hasScriptPublications = InventoryItemMetadataResolver.TryResolveSpecScriptPublications(
+                itemId,
+                out IReadOnlyList<FieldObjectScriptPublication> scriptPublications);
             bool hasScript = InventoryItemMetadataResolver.TryResolveSpecScripts(itemId, out IReadOnlyList<string> scriptNames);
             string scriptName = hasScript && scriptNames.Count > 0
                 ? scriptNames[0]
                 : null;
-            if (!hasNpcReference && !hasScript)
+            if (!hasNpcReference && !hasScript && !hasScriptPublications)
             {
                 return false;
             }
@@ -6061,7 +6103,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryOpenItemAuthoredInventoryInteraction(itemId, npcId, scriptName, scriptNames))
+            if (!TryOpenItemAuthoredInventoryInteraction(
+                    itemId,
+                    npcId,
+                    scriptName,
+                    scriptNames,
+                    scriptPublications))
             {
                 return false;
             }
@@ -6083,10 +6130,15 @@ namespace HaCreator.MapSimulator
             int itemId,
             int npcId,
             string scriptName,
-            IReadOnlyList<string> publishedItemScriptNames = null)
+            IReadOnlyList<string> publishedItemScriptNames = null,
+            IReadOnlyList<FieldObjectScriptPublication> publishedItemScriptPublications = null)
         {
             IReadOnlyList<FieldObjectScriptPublication> publishedScriptPublications =
-                BuildItemAuthoredInteractionPublishedScriptPublications(npcId, publishedItemScriptNames, scriptName);
+                BuildItemAuthoredInteractionPublishedScriptPublications(
+                    npcId,
+                    publishedItemScriptNames,
+                    scriptName,
+                    publishedItemScriptPublications);
             if (publishedScriptPublications.Count > 0)
             {
                 PublishDynamicObjectTagStatesForScriptPublications(publishedScriptPublications, currTickCount);
@@ -6160,6 +6212,7 @@ namespace HaCreator.MapSimulator
             int npcId,
             IEnumerable<string> scriptNames,
             string primaryScriptName = null,
+            IEnumerable<FieldObjectScriptPublication> additionalScriptPublications = null,
             Func<int, IReadOnlyList<FieldObjectScriptPublication>> npcScriptPublicationResolver = null)
         {
             IEnumerable<FieldObjectScriptPublication> npcScriptPublications = Array.Empty<FieldObjectScriptPublication>();
@@ -6167,6 +6220,12 @@ namespace HaCreator.MapSimulator
             {
                 npcScriptPublicationResolver ??= FieldObjectNpcScriptNameResolver.ResolvePublishedScriptPublications;
                 npcScriptPublications = npcScriptPublicationResolver(npcId) ?? Array.Empty<FieldObjectScriptPublication>();
+            }
+
+            List<FieldObjectScriptPublication> publicationCandidates = npcScriptPublications.ToList();
+            if (additionalScriptPublications != null)
+            {
+                publicationCandidates.AddRange(additionalScriptPublications);
             }
 
             List<string> additionalRawScriptNames = scriptNames?
@@ -6182,13 +6241,14 @@ namespace HaCreator.MapSimulator
             }
 
             return QuestRuntimeManager.BuildPublishedScriptPublications(
-                npcScriptPublications,
+                publicationCandidates,
                 additionalRawScriptNames.ToArray());
         }
 
         internal static IReadOnlyList<FieldObjectScriptPublication> BuildItemAuthoredInteractionPublishedScriptPublications(
             int npcId,
             string scriptName,
+            IEnumerable<FieldObjectScriptPublication> additionalScriptPublications = null,
             Func<int, IReadOnlyList<FieldObjectScriptPublication>> npcScriptPublicationResolver = null)
         {
             return BuildItemAuthoredInteractionPublishedScriptPublications(
@@ -6197,6 +6257,7 @@ namespace HaCreator.MapSimulator
                     ? Array.Empty<string>()
                     : new[] { scriptName },
                 scriptName,
+                additionalScriptPublications,
                 npcScriptPublicationResolver);
         }
 
@@ -17278,6 +17339,7 @@ namespace HaCreator.MapSimulator
                 () => _frameActiveMobs);
             _mobAttackSystem.SetPlayerHitboxAccessor(() => _playerManager?.GetPlayerHitbox() ?? Rectangle.Empty);
             _mobAttackSystem.SetPlayerGroundedAccessor(() => _playerManager?.IsPlayerOnGround() ?? true);
+            _mobAttackSystem.SetAnimationDisplayerProjectileRegistration(HandleAnimationDisplayerMobProjectileRegistration);
             LogStartupCheckpoint("MapSimulator ctor completed");
         }
 
@@ -17298,6 +17360,10 @@ namespace HaCreator.MapSimulator
             if (ShouldCaptureInitialQuizOwnerTextInput())
             {
                 HandleInitialQuizOwnerCommittedText(e.Character.ToString());
+                return;
+            }
+            if (!ShouldForwardInitialQuizOwnerInputToActiveWindow(DoesInitialQuizOwnerCaptureWindowInput()))
+            {
                 return;
             }
 
@@ -25594,11 +25660,10 @@ namespace HaCreator.MapSimulator
                         }
 
                         PlayPortalSE();
-                        _playerManager?.ForceStand();
-                            _gameState.PendingMapChange = true;
-                            _gameState.PendingMapId = targetMapId;
-                            _gameState.PendingPortalName = clickedPortal.PortalInstance.tn;
-                            _gameState.PendingPortalIndex = -1;
+                        QueueMapTransfer(
+                            targetMapId,
+                            clickedPortal.PortalInstance.tn,
+                            targetPortalIndex: -1);
                         return;
                     }
                 }
@@ -25652,11 +25717,10 @@ namespace HaCreator.MapSimulator
                     }
 
                     PlayPortalSE();
-                    _playerManager?.ForceStand();
-                            _gameState.PendingMapChange = true;
-                            _gameState.PendingMapId = clickedHiddenPortal.tm;
-                            _gameState.PendingPortalName = clickedHiddenPortal.tn;
-                            _gameState.PendingPortalIndex = -1;
+                    QueueMapTransfer(
+                        clickedHiddenPortal.tm,
+                        clickedHiddenPortal.tn,
+                        targetPortalIndex: -1);
                     return;
                 }
 
@@ -26118,7 +26182,7 @@ namespace HaCreator.MapSimulator
                 playerX,
                 playerY,
                 currentTick: currentTick);
-            DispatchReactorTouchStateChanges(touchStateChanges);
+            DispatchReactorTouchStateChanges(touchStateChanges, currentTick);
             return touchStateChanges
                 .Where(change => change.IsTouching)
                 .Select(change => change.Reactor)
@@ -26132,7 +26196,7 @@ namespace HaCreator.MapSimulator
             return unchecked(currentTick - lastCheckTick) >= ReactorCollisionCheckIntervalMs;
         }
 
-        private void DispatchReactorTouchStateChanges(IReadOnlyList<ReactorTouchStateChange> touchStateChanges)
+        private void DispatchReactorTouchStateChanges(IReadOnlyList<ReactorTouchStateChange> touchStateChanges, int currentTick = int.MinValue)
         {
             if (touchStateChanges == null || touchStateChanges.Count == 0)
             {
@@ -26146,11 +26210,11 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                DispatchReactorTouchStateChange(change);
+                DispatchReactorTouchStateChange(change, currentTick);
             }
         }
 
-        private void DispatchReactorTouchStateChange(ReactorTouchStateChange change)
+        private void DispatchReactorTouchStateChange(ReactorTouchStateChange change, int currentTick = int.MinValue)
         {
             if (!change.UsesPacketObjectId || change.ObjectId <= 0)
             {
@@ -26158,23 +26222,23 @@ namespace HaCreator.MapSimulator
             }
 
             if (_reactorPoolOfficialSessionBridge?.HasConnectedSession == true
-                && _reactorPoolOfficialSessionBridge.TrySendTouchRequest(change.ObjectId, change.IsTouching, out _))
+                && _reactorPoolOfficialSessionBridge.TrySendTouchRequest(change.ObjectId, change.IsTouching, out _, currentTick))
             {
                 return;
             }
 
             if (_reactorPoolOfficialSessionBridgeEnabled
-                && _reactorPoolOfficialSessionBridge.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _))
+                && _reactorPoolOfficialSessionBridge.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _, currentTick))
             {
                 return;
             }
 
-            if (_reactorTouchPacketOutbox.TrySendTouchRequest(change.ObjectId, change.IsTouching, out _))
+            if (_reactorTouchPacketOutbox.TrySendTouchRequest(change.ObjectId, change.IsTouching, out _, currentTick))
             {
                 return;
             }
 
-            _reactorTouchPacketOutbox.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _);
+            _reactorTouchPacketOutbox.TryQueueTouchRequest(change.ObjectId, change.IsTouching, out _, currentTick);
         }
 
 
@@ -26214,29 +26278,46 @@ namespace HaCreator.MapSimulator
                 damage: damage);
         }
 
-        private void UpsertLocalOwnedAffectedAreaFromAttack(Rectangle worldHitbox, int currentTime, int skillId)
+        private void HandleLocalAttackAreaResolved(SkillManager.LocalAttackAreaResolution resolution)
+        {
+            UpsertLocalOwnedAffectedAreaFromAttack(
+                resolution.WorldHitbox,
+                resolution.CurrentTime,
+                resolution.SkillId,
+                resolution.OwnerLane);
+        }
+
+        private void UpsertLocalOwnedAffectedAreaFromAttack(
+            Rectangle worldHitbox,
+            int currentTime,
+            int skillId,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
             if (_affectedAreaPool == null
                 || worldHitbox.Width <= 0
                 || worldHitbox.Height <= 0
-                || !TryResolveLocalOwnedAffectedAreaRuntime(skillId, out SkillData skill, out SkillLevelData levelData, out int skillLevel))
+                || !TryResolveLocalOwnedAffectedAreaRuntime(skillId, ownerLane, out SkillData skill, out SkillLevelData levelData, out int skillLevel))
             {
                 return;
             }
 
+            LocalOwnedAffectedAreaCreateMetadata createMetadata = ResolveLocalOwnedAffectedAreaCreateMetadata(
+                skill,
+                levelData,
+                ownerLane);
             int objectId = ResolveLocalOwnedAffectedAreaObjectId(skillId);
             int ownerId = Math.Max(1, _playerManager?.Player?.Build?.Id ?? 0);
             bool upserted = _affectedAreaPool.Upsert(
                 new AffectedAreaCreateInfo(
                     objectId,
-                    type: 0,
+                    type: createMetadata.Type,
                     ownerId,
                     skillId,
                     skillLevel,
                     worldHitbox,
-                    startDelayUnits: 0,
-                    elementAttribute: 0,
-                    phase: 0,
+                    startDelayUnits: createMetadata.StartDelayUnits,
+                    elementAttribute: createMetadata.ElementAttribute,
+                    phase: createMetadata.Phase,
                     AffectedAreaSourceKind.PlayerSkill),
                 currentTime);
             if (!upserted)
@@ -26252,6 +26333,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryResolveLocalOwnedAffectedAreaRuntime(
             int skillId,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane,
             out SkillData skill,
             out SkillLevelData levelData,
             out int skillLevel)
@@ -26276,17 +26358,26 @@ namespace HaCreator.MapSimulator
                 skill,
                 skillLevel,
                 preferPvpLevelData: false);
-            return IsLocalOwnedAffectedAreaCandidate(skill, levelData);
+            return IsLocalOwnedAffectedAreaCandidate(skill, levelData, ownerLane);
         }
 
-        private static bool IsLocalOwnedAffectedAreaCandidate(SkillData skill, SkillLevelData levelData)
+        internal static bool IsLocalOwnedAffectedAreaCandidate(
+            SkillData skill,
+            SkillLevelData levelData,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
         {
             if (skill == null
                 || levelData == null
+                || !IsSupportedLocalAttackAreaOwnerLane(ownerLane)
                 || skill.Type == SkillType.Summon
                 || string.Equals(skill.ZoneType, "invincible", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
+            }
+
+            if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion)
+            {
+                return skill.IsMesoExplosion;
             }
 
             bool hasAreaMetadata =
@@ -26304,6 +26395,77 @@ namespace HaCreator.MapSimulator
                    || skill.Type == SkillType.Magic
                    || skill.Type == SkillType.Debuff
                    || skill.IsMesoExplosion;
+        }
+
+        internal static bool IsSupportedLocalAttackAreaOwnerLane(SkillManager.LocalAttackAreaOwnerLane ownerLane)
+        {
+            return ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingMeleeAttack
+                   || ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingShootAttack
+                   || ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingMagicAttack
+                   || ownerLane == SkillManager.LocalAttackAreaOwnerLane.TryDoingBodyAttack
+                   || ownerLane == SkillManager.LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion;
+        }
+
+        internal readonly record struct LocalOwnedAffectedAreaCreateMetadata(
+            int Type,
+            short StartDelayUnits,
+            int ElementAttribute,
+            int Phase);
+
+        internal static LocalOwnedAffectedAreaCreateMetadata ResolveLocalOwnedAffectedAreaCreateMetadata(
+            SkillData skill,
+            SkillLevelData levelData,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
+        {
+            int type = Math.Max(0, skill?.ClientInfoType ?? 0);
+            int phase = ResolveLocalOwnedAffectedAreaPhase(skill);
+            short startDelayUnits = ResolveLocalOwnedAffectedAreaStartDelayUnits(skill, levelData, ownerLane);
+            return new LocalOwnedAffectedAreaCreateMetadata(
+                type,
+                startDelayUnits,
+                ElementAttribute: 0,
+                Phase: phase);
+        }
+
+        internal static int ResolveLocalOwnedAffectedAreaPhase(SkillData skill)
+        {
+            if (skill?.IsMesoExplosion == true)
+            {
+                return 1;
+            }
+
+            if (skill?.AreaAttack == true)
+            {
+                return 1;
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.DotType))
+            {
+                return 1;
+            }
+
+            if (string.Equals(skill?.AffectedSkillEffect, "dot", StringComparison.OrdinalIgnoreCase))
+            {
+                return 1;
+            }
+
+            return 0;
+        }
+
+        internal static short ResolveLocalOwnedAffectedAreaStartDelayUnits(
+            SkillData skill,
+            SkillLevelData levelData,
+            SkillManager.LocalAttackAreaOwnerLane ownerLane)
+        {
+            if (ownerLane == SkillManager.LocalAttackAreaOwnerLane.DoActiveSkillMesoExplosion)
+            {
+                return 0;
+            }
+
+            int delayMs = Math.Max(0, skill?.ClientDelayMs ?? 0);
+
+            int units = (delayMs + 99) / 100;
+            return (short)Math.Clamp(units, 0, short.MaxValue);
         }
 
         private int ResolveLocalOwnedAffectedAreaDurationSeconds(SkillData skill, SkillLevelData levelData, int skillLevel)
@@ -26509,6 +26671,8 @@ namespace HaCreator.MapSimulator
 
 
             UIWindowBase activeKeyboardWindow = uiWindowManager?.ActiveKeyboardWindow;
+            bool initialQuizCapturesWindowInput = DoesInitialQuizOwnerCaptureWindowInput();
+            bool initialQuizCapturesTextInput = ShouldCaptureInitialQuizOwnerTextInput();
             IReadOnlyList<UIWindowBase> windows = uiWindowManager?.Windows;
             if (windows != null)
             {
@@ -26530,13 +26694,19 @@ namespace HaCreator.MapSimulator
                 _npcInteractionOverlay?.ClearCompositionText();
             }
 
-            if (ShouldCaptureInitialQuizOwnerTextInput())
+            if (initialQuizCapturesTextInput)
             {
                 HandleInitialQuizOwnerCompositionText(compositionText);
             }
             else
             {
                 ClearInitialQuizOwnerCompositionText();
+            }
+
+            if (!ShouldForwardInitialQuizOwnerInputToActiveWindow(initialQuizCapturesWindowInput))
+            {
+                activeKeyboardWindow?.ClearCompositionText();
+                return;
             }
 
             activeKeyboardWindow?.HandleCompositionText(compositionText);
@@ -26554,6 +26724,8 @@ namespace HaCreator.MapSimulator
 
 
             UIWindowBase activeKeyboardWindow = uiWindowManager?.ActiveKeyboardWindow;
+            bool initialQuizCapturesWindowInput = DoesInitialQuizOwnerCaptureWindowInput();
+            bool initialQuizCapturesTextInput = ShouldCaptureInitialQuizOwnerTextInput();
             IReadOnlyList<UIWindowBase> windows = uiWindowManager?.Windows;
             if (windows != null)
             {
@@ -26566,13 +26738,19 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (ShouldCaptureInitialQuizOwnerTextInput())
+            if (initialQuizCapturesTextInput)
             {
                 HandleInitialQuizOwnerCompositionState(compositionState ?? ImeCompositionState.Empty);
             }
             else
             {
                 ClearInitialQuizOwnerCompositionText();
+            }
+
+            if (!ShouldForwardInitialQuizOwnerInputToActiveWindow(initialQuizCapturesWindowInput))
+            {
+                activeKeyboardWindow?.ClearCompositionText();
+                return;
             }
 
             activeKeyboardWindow?.HandleCompositionState(compositionState ?? ImeCompositionState.Empty);
@@ -26590,6 +26768,8 @@ namespace HaCreator.MapSimulator
 
 
             UIWindowBase activeKeyboardWindow = uiWindowManager?.ActiveKeyboardWindow;
+            bool initialQuizCapturesWindowInput = DoesInitialQuizOwnerCaptureWindowInput();
+            bool initialQuizCapturesTextInput = ShouldCaptureInitialQuizOwnerTextInput();
             IReadOnlyList<UIWindowBase> windows = uiWindowManager?.Windows;
             if (windows != null)
             {
@@ -26609,13 +26789,19 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (ShouldCaptureInitialQuizOwnerTextInput())
+            if (initialQuizCapturesTextInput)
             {
                 HandleInitialQuizOwnerImeCandidateList(candidateState);
             }
             else
             {
                 ClearInitialQuizOwnerImeCandidateList();
+            }
+
+            if (!ShouldForwardInitialQuizOwnerInputToActiveWindow(initialQuizCapturesWindowInput))
+            {
+                activeKeyboardWindow?.ClearImeCandidateList();
+                return;
             }
 
             activeKeyboardWindow?.HandleImeCandidateList(candidateState);
@@ -27207,6 +27393,7 @@ namespace HaCreator.MapSimulator
                     AllowsTransferField: ResolvePassiveTransferFieldRuntimeTransferAllowance(),
                     HasPendingSpecialTransfer: _specialFieldRuntime.HasPendingTransfer,
                     HasPendingPacketOwnedTransfer: HasPendingPassiveTransferFieldPacketTransferOwnership(),
+                    HasPacketOwnedTeleportRegistrationCoolingDown: IsPacketOwnedTeleportRegistrationCoolingDown(currentTime),
                     HasPendingExclusiveTransferRequest: HasPendingExclusiveTransferRequest(currentTime),
                     HasAttachedPacketOwnedDriver: _localFollowRuntime.HasAttachedDriver,
                     HasPendingSameMapTransfer: _sameMapTeleportPending,
@@ -27541,11 +27728,11 @@ namespace HaCreator.MapSimulator
                         fallbackY: temporaryPortalDestination.Y,
                         targetPortalNameCandidates: temporaryTargetPortalNameCandidates);
                     SetPendingMapSpawnTarget(temporaryPortalDestination.X, temporaryPortalDestination.Y);
-                            _gameState.PendingMapChange = true;
-                            _gameState.PendingMapId = temporaryPortalDestination.MapId;
-                            _gameState.PendingPortalName = temporaryTargetPortalName;
-                            _gameState.PendingPortalNameCandidates = temporaryTargetPortalNameCandidates ?? Array.Empty<string>();
-                            _gameState.PendingPortalIndex = temporaryTargetPortalIndex;
+                    QueueMapTransfer(
+                        temporaryPortalDestination.MapId,
+                        temporaryTargetPortalName,
+                        temporaryTargetPortalIndex,
+                        temporaryTargetPortalNameCandidates);
                 }
 
 
@@ -27760,6 +27947,20 @@ namespace HaCreator.MapSimulator
             exclusiveRequestSentTick = int.MinValue;
             exclusiveRequestPortalIndex = -1;
             exclusiveRequestDelayMs = 0;
+        }
+
+        private void ConsumeCollisionScriptExclusiveRequestFromTransferLifecycle()
+        {
+            if (!_collisionScriptExclusiveRequestSent
+                && _collisionScriptExclusiveRequestSentTick == int.MinValue
+                && _collisionScriptExclusiveRequestPortalIndex < 0
+                && _collisionScriptExclusiveRequestDelayMs <= 0)
+            {
+                return;
+            }
+
+            // CStage/CField transfer handoff teardown consumes pending portal collision-script requests.
+            ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
         }
 
         private void RefreshCollisionScriptExclusiveRequestState(int currentTime)
@@ -28116,11 +28317,11 @@ namespace HaCreator.MapSimulator
                 targetPortalName: targetPortalName,
                 targetPortalIndex: targetPortalIndex,
                 targetPortalNameCandidates: targetPortalNameCandidates);
-            _gameState.PendingMapChange = true;
-            _gameState.PendingMapId = portal.tm;
-            _gameState.PendingPortalName = targetPortalName;
-            _gameState.PendingPortalNameCandidates = targetPortalNameCandidates ?? Array.Empty<string>();
-            _gameState.PendingPortalIndex = targetPortalIndex;
+            QueueMapTransfer(
+                portal.tm,
+                targetPortalName,
+                targetPortalIndex,
+                targetPortalNameCandidates);
             RegisterPortalCollisionRequestSource(portalIndex);
             if (ShouldPlayTransferFieldPortalSound(portal.pt))
             {
@@ -29827,8 +30028,8 @@ namespace HaCreator.MapSimulator
             _playerManager.SetReactorAttackAreaHandler((worldHitbox, currentTick, skillId, damage) =>
             {
                 TriggerAttackReactors(worldHitbox, currentTick, skillId, damage);
-                UpsertLocalOwnedAffectedAreaFromAttack(worldHitbox, currentTick, skillId);
             });
+            _playerManager.SetLocalAttackAreaHandler(HandleLocalAttackAreaResolved);
             _playerManager.SetAttackHitboxHandler(HandleSpecialFieldAttackHitbox);
 
 
@@ -33413,6 +33614,7 @@ namespace HaCreator.MapSimulator
                     includeCounterText: true,
                     maskSurface: SkillManager.CooldownMaskSurface.QuickSlot);
                 renderData.MaskFrameIndex = maskFrameIndex;
+                renderData.UseQuickSlotMaskSurface = true;
                 renderData.CounterText = counterText;
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
                 renderData.TooltipCostLineMarkup = SkillCooldownTooltipText.BuildSkillTooltipMarkup(
@@ -33508,8 +33710,9 @@ namespace HaCreator.MapSimulator
                     out int maskFrameIndex,
                     out string counterText,
                     includeCounterText: true,
-                    maskSurface: SkillManager.CooldownMaskSurface.QuickSlot);
+                    maskSurface: SkillManager.CooldownMaskSurface.SkillBook);
                 renderData.MaskFrameIndex = maskFrameIndex;
+                renderData.UseQuickSlotMaskSurface = false;
                 renderData.CounterText = counterText;
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
                 renderData.TooltipCostLineMarkup = SkillCooldownTooltipText.BuildSkillTooltipMarkup(

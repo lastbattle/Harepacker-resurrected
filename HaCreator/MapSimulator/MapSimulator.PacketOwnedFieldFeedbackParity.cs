@@ -222,14 +222,16 @@ namespace HaCreator.MapSimulator
 
         private void UpdatePacketOwnedWhisperUserListLocation(string target, string locationText, byte result, int value)
         {
-            if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(locationText))
+            if (string.IsNullOrWhiteSpace(target))
             {
                 return;
             }
 
             _socialListRuntime.SetPacketWhisperLocationInfo(target, locationText);
-            ShowUtilityFeedbackMessage(
-                $"Updated packet-owned user-list location for {target.Trim()} (result={result}, value={value}).");
+            string normalizedLocation = locationText?.Trim() ?? string.Empty;
+            ShowUtilityFeedbackMessage(string.IsNullOrWhiteSpace(normalizedLocation)
+                ? $"Invalidated packet-owned user-list location for {target.Trim()} (result={result}, value={value})."
+                : $"Updated packet-owned user-list location for {target.Trim()} (result={result}, value={value}).");
         }
 
         private void ShowPacketOwnedFieldWarning(string message)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Character;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
@@ -107,36 +108,35 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
 
         private static readonly string[] ClientConfirmedMechanicVehicleVehicleIdOnlyActionNames =
-        {
-            "swingT1",
-            "swingT2",
-            "paralyze",
-            "shoot6",
-            "arrowRain",
-            "burster1",
-            "rush2",
-            "sanctuary",
-            "lasergun",
-            "tripleBlow",
-            "quadBlow",
-            "deathBlow",
-            // IDA: IsAbleTamingMobOneTimeAction admits raw action 212 for vehicle 1932016.
-            "finishBlow",
-            "cyclone",
-            "cyclone_after",
-            "doubleJump",
-            "knockback",
-            "swallow_pre",
-            "swallow_loop",
-            "swallow",
-            "flashRain",
-            "blade",
-            "mine",
-            "ride",
-            "getoff",
-            "capture",
-            "clawCut"
-        };
+            ResolveClientRawActionNames(
+                9,   // swingT1
+                10,  // swingT2
+                42,  // paralyze
+                45,  // shoot6
+                46,  // arrowRain
+                56,  // burster1
+                64,  // rush2
+                65,  // sanctuary
+                116, // blade
+                209, // tripleBlow
+                210, // quadBlow
+                211, // deathBlow
+                212, // finishBlow
+                215, // cyclone
+                216, // cyclone_after
+                217, // lasergun
+                242, // doubleJump
+                243, // knockback
+                244, // swallow_pre
+                245, // swallow_loop
+                246, // swallow
+                259, // flashRain
+                260, // clawCut
+                261, // mine
+                262, // ride
+                263, // getoff
+                264  // capture
+            );
 
         private static readonly string[] WzOnlyMechanicVehicleOneTimeActionNames =
         {
@@ -144,22 +144,22 @@ namespace HaCreator.MapSimulator.Character.Skills
         };
 
         private static readonly string[] ClientConfirmedMechanicVehicleRenderableOneTimeActionNames =
-        {
-            "gatlingshot2",
-            "drillrush",
-            "mbooster",
-            "earthslug",
-            "rpunch"
-        };
+            ResolveClientRawActionNames(
+                241, // gatlingshot2
+                248, // drillrush
+                250, // mbooster
+                255, // earthslug
+                256  // rpunch
+            );
 
         private static readonly string[] ClientConfirmedMechanicVehicleOwnerOnlyOneTimeActionNames =
-        {
-            // IDA admits raw actions 249 and 251 for vehicle id 1932016, but
-            // Character/TamingMob/01932016 does not publish these roots. Preserve
-            // the known owner without treating the names as renderable mount frames.
-            "giant",
-            "crossRoad"
-        };
+            ResolveClientRawActionNames(
+                // IDA admits raw actions 249 and 251 for vehicle id 1932016, but
+                // Character/TamingMob/01932016 does not publish these roots. Preserve
+                // the known owner without treating the names as renderable mount frames.
+                249, // giant
+                251  // crossRoad
+            );
 
         private static readonly string[] ClientConfirmedMechanicVehicleCurrentActionNames =
         {
@@ -531,6 +531,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private static string[] ResolveClientRawActionNames(params int[] rawActionCodes)
+        {
+            if (rawActionCodes == null || rawActionCodes.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var names = new List<string>(rawActionCodes.Length);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (int rawActionCode in rawActionCodes)
+            {
+                if (!CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
+                    || string.IsNullOrWhiteSpace(actionName)
+                    || !seen.Add(actionName))
+                {
+                    continue;
+                }
+
+                names.Add(actionName);
+            }
+
+            return names.ToArray();
         }
 
         internal static bool HasRideDescriptionText(SkillData skill)

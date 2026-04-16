@@ -88,6 +88,7 @@ namespace HaCreator.MapSimulator.Character
         private SoundManager _soundManager;
         private WzImage _weaponSoundImage;
         private Action<Rectangle, int, int, int> _reactorAttackAreaHandler;
+        private Action<SkillManager.LocalAttackAreaResolution> _localAttackAreaHandler;
         private PlayerMobStatusController _mobStatusController;
         private PlayerMobStatusFrameState _currentMobStatusState = PlayerMobStatusFrameState.Default;
         private Action<PlayerCharacter, Rectangle, int> _attackHitboxHandler;
@@ -280,6 +281,15 @@ namespace HaCreator.MapSimulator.Character
             if (Skills != null)
             {
                 Skills.OnAttackAreaResolved = reactorAttackAreaHandler;
+            }
+        }
+
+        internal void SetLocalAttackAreaHandler(Action<SkillManager.LocalAttackAreaResolution> localAttackAreaHandler)
+        {
+            _localAttackAreaHandler = localAttackAreaHandler;
+            if (Skills != null)
+            {
+                Skills.OnLocalAttackAreaResolved = localAttackAreaHandler;
             }
         }
 
@@ -478,6 +488,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetFootholdLookup(_findFoothold);
                 Skills.SetTamingMobLoader(Loader.LoadTamingMob);
                 Skills.OnAttackAreaResolved = _reactorAttackAreaHandler;
+                Skills.OnLocalAttackAreaResolved = _localAttackAreaHandler;
                 Skills.OnRepeatSkillModeEndRequested = HandleRepeatSkillModeEndRequested;
                 Skills.OnRepeatSkillImmediateEffectRequestReady = HandleRepeatSkillImmediateEffectRequestReady;
                 Skills.OnExternalAreaDamageSharingApplied = _remoteAffectedAreaDamageShareHandler;

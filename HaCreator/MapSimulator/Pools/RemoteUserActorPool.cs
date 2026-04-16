@@ -299,6 +299,7 @@ namespace HaCreator.MapSimulator.Pools
         private const int RemoteShadowPartnerClientBackActionOffsetYPx = 50;
         private const int RemoteShadowPartnerTransitionDurationMs = 200;
         private const int RemoteShadowPartnerAttackDelayMs = 90;
+        private const int RemoteMoreWildDamageUpSkillId = 35121010;
         private const int RemoteMovingShootNoPrepareAnimationSkillId = 33121009;
         private const int RemoteReceiveHpGaugeWidth = 46;
         private const int RemoteReceiveHpGaugeHeight = 5;
@@ -358,6 +359,10 @@ namespace HaCreator.MapSimulator.Pools
             1221004,
             15101006,
             21111005
+        };
+        private static readonly int[] RemoteMoreWildDamageUpSkillIds =
+        {
+            RemoteMoreWildDamageUpSkillId
         };
         private static readonly HashSet<int> RemotePreparedSkillUseEffectSkillIds = new()
         {
@@ -1152,7 +1157,10 @@ namespace HaCreator.MapSimulator.Pools
                 actor.FacingRight = facingRight.Value;
             }
 
-            ApplyRemotePreparedSkillRelease(actor, skillId, preparedSkillReleaseFollowUpValue);
+            if (TryApplyRemotePreparedSkillRelease(actor, skillId, preparedSkillReleaseFollowUpValue, out int releasedPreparedSkillId))
+            {
+                TryRegisterRemotePreparedSkillReleaseSkillUse(actor, releasedPreparedSkillId, currentTime);
+            }
 
             SkillData skill = null;
             if (skillId > 0 && _skillLoader != null)
@@ -2272,14 +2280,14 @@ namespace HaCreator.MapSimulator.Pools
 
             if (RemotePreparedSkillUseEffectSkillIds.Contains(skillId))
             {
-                string branchName = isHolding ? "keydown" : "prepare";
+                IReadOnlyList<string> branchNames = ResolveRemotePreparedSkillUseStartBranchNames(skillId, isHolding);
                 SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
                     actor.CharacterId,
                     skillId,
                     null,
                     actor.FacingRight,
                     currentTime,
-                    new[] { branchName }));
+                    branchNames));
             }
 
             return true;
@@ -3646,7 +3654,10 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            ApplyRemotePreparedSkillRelease(actor, packet.SkillId, preparedSkillReleaseFollowUpValue: null);
+            if (TryApplyRemotePreparedSkillRelease(actor, packet.SkillId, preparedSkillReleaseFollowUpValue: null, out int releasedPreparedSkillId))
+            {
+                TryRegisterRemotePreparedSkillReleaseSkillUse(actor, releasedPreparedSkillId, currentTime);
+            }
             actor.LastThrowGrenadeSkillId = packet.SkillId;
             actor.LastThrowGrenadeId = packet.GrenadeId;
             actor.LastThrowGrenadeTarget = new Point(packet.X, packet.Y);
@@ -3755,10 +3766,36 @@ namespace HaCreator.MapSimulator.Pools
                 + ResolveRemoteGrenadeAnimationDurationMs(explosionAnimation);
         }
 
-        public static Vector2 ResolveRemoteGrenadePositionForParity(Vector2 origin, Vector2 impact, int elapsedMs)
+        public static Vector2 ResolveRemoteGrenadePositionForParity(
+            Vector2 origin,
+            Vector2 impact,
+            int elapsedMs,
+            int flightDurationMs = 1000,
+            int dragX = 0,
+            int dragY = 0)
         {
-            float progress = Math.Max(0, elapsedMs) / 1000f;
-            return origin + (impact * progress);
+            int clampedDuration = Math.Max(1, flightDurationMs);
+            float progress = Math.Clamp(Math.Max(0, elapsedMs) / (float)clampedDuration, 0f, 1f);
+            Vector2 position = origin + (impact * progress);
+
+            if (dragY > 0 && progress > 0f && progress < 1f)
+            {
+                // Client `CUser::ThrowGrenade` writes drag values for Monster Bomb through
+                // `CGrenade::SetDragValue`, and the vec-control update bends flight away
+                // from a pure linear segment before the impact point.
+                float normalizedDragY = Math.Clamp(dragY / (float)GrenadeDragScale, 0f, 1f);
+                float arcOffset = Math.Abs(impact.Y) * normalizedDragY * (4f * progress * (1f - progress));
+                position.Y -= arcOffset;
+            }
+
+            if (dragX > 0 && progress > 0f && progress < 1f)
+            {
+                float normalizedDragX = Math.Clamp(dragX / (float)GrenadeDragScale, 0f, 1f);
+                float horizontalEase = Math.Abs(impact.X) * normalizedDragX * 0.15f * (progress * (1f - progress));
+                position.X += Math.Sign(impact.X) * horizontalEase;
+            }
+
+            return position;
         }
 
         private static int ResolveRemoteGrenadeAnimationDurationMs(SkillAnimation animation)
@@ -3824,13 +3861,14 @@ namespace HaCreator.MapSimulator.Pools
             if (actor.PreparedSkill != null
                 && RemotePreparedSkillUseEffectSkillIds.Contains(actor.PreparedSkill.SkillId))
             {
+                IReadOnlyList<string> branchNames = ResolveRemotePreparedSkillUseReleaseBranchNames(actor.PreparedSkill.SkillId);
                 SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
                     actor.CharacterId,
                     actor.PreparedSkill.SkillId,
                     null,
                     actor.FacingRight,
                     currentTime,
-                    new[] { "keydownend" }));
+                    branchNames));
             }
 
             actor.PreparedSkill = null;
@@ -7742,6 +7780,12 @@ namespace HaCreator.MapSimulator.Pools
                 auraSkillId,
                 auraSkill,
                 Environment.TickCount);
+            ResolveRemoteMoreWildDamageUpSkill(knownState, out int? moreWildDamageUpSkillId, out SkillData moreWildDamageUpSkill);
+            actor.TemporaryStatMoreWildEffect = UpdateRemoteTemporaryStatAvatarEffectState(
+                actor.TemporaryStatMoreWildEffect,
+                moreWildDamageUpSkillId,
+                moreWildDamageUpSkill,
+                Environment.TickCount);
             ResolveRemoteBarrierSkill(actor, knownState, out int? barrierSkillId, out SkillData barrierSkill);
             actor.TemporaryStatBarrierEffect = UpdateRemoteTemporaryStatAvatarEffectState(
                 actor.TemporaryStatBarrierEffect,
@@ -8172,6 +8216,13 @@ namespace HaCreator.MapSimulator.Pools
             };
         }
 
+        internal static IReadOnlyList<int> EnumerateRemoteMoreWildDamageUpSkillIds(bool hasMoreWildDamageUp)
+        {
+            return hasMoreWildDamageUp
+                ? RemoteMoreWildDamageUpSkillIds
+                : Array.Empty<int>();
+        }
+
         internal static IReadOnlyList<int> EnumerateRemoteBlessingArmorSkillIds(int jobId, int? preferredSkillId)
         {
             int resolvedPreferredSkillId = preferredSkillId.GetValueOrDefault();
@@ -8238,6 +8289,32 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             foreach (int candidateSkillId in EnumerateRemoteWeaponChargeSkillIds(actor?.Build?.Job ?? 0, resolvedChargeSkillId))
+            {
+                SkillData candidateSkill = _skillLoader.LoadSkill(candidateSkillId);
+                if (!HasRemoteTemporaryStatAvatarEffect(candidateSkill))
+                {
+                    continue;
+                }
+
+                skillId = candidateSkillId;
+                skill = candidateSkill;
+                return;
+            }
+        }
+
+        private void ResolveRemoteMoreWildDamageUpSkill(
+            RemoteUserTemporaryStatKnownState knownState,
+            out int? skillId,
+            out SkillData skill)
+        {
+            skillId = null;
+            skill = null;
+            if (_skillLoader == null)
+            {
+                return;
+            }
+
+            foreach (int candidateSkillId in EnumerateRemoteMoreWildDamageUpSkillIds(knownState.ExtendedState.HasMorewildDamageUp))
             {
                 SkillData candidateSkill = _skillLoader.LoadSkill(candidateSkillId);
                 if (!HasRemoteTemporaryStatAvatarEffect(candidateSkill))
@@ -8752,6 +8829,16 @@ namespace HaCreator.MapSimulator.Pools
                 skeletonRenderer,
                 actor,
                 actor.TemporaryStatAuraEffect,
+                frame,
+                screenX,
+                screenY,
+                currentTime,
+                drawFrontLayers);
+            DrawRemoteTemporaryStatAvatarEffectState(
+                spriteBatch,
+                skeletonRenderer,
+                actor,
+                actor.TemporaryStatMoreWildEffect,
                 frame,
                 screenX,
                 screenY,
@@ -9854,11 +9941,13 @@ namespace HaCreator.MapSimulator.Pools
                 GetActionDuration(actor.Assembler, actionName));
         }
 
-        private static void ApplyRemotePreparedSkillRelease(
+        private bool TryApplyRemotePreparedSkillRelease(
             RemoteUserActor actor,
             int skillId,
-            int? preparedSkillReleaseFollowUpValue)
+            int? preparedSkillReleaseFollowUpValue,
+            out int releasedPreparedSkillId)
         {
+            releasedPreparedSkillId = 0;
             if (actor?.PreparedSkill == null
                 || !PreparedSkillHudRules.TryResolveRemotePreparedSkillReleaseOwner(
                     skillId,
@@ -9866,10 +9955,59 @@ namespace HaCreator.MapSimulator.Pools
                     out int preparedSkillId)
                 || actor.PreparedSkill.SkillId != preparedSkillId)
             {
+                return false;
+            }
+
+            releasedPreparedSkillId = actor.PreparedSkill.SkillId;
+            actor.PreparedSkill = null;
+            return true;
+        }
+
+        private void TryRegisterRemotePreparedSkillReleaseSkillUse(
+            RemoteUserActor actor,
+            int releasedPreparedSkillId,
+            int currentTime)
+        {
+            if (actor == null
+                || releasedPreparedSkillId <= 0
+                || !RemotePreparedSkillUseEffectSkillIds.Contains(releasedPreparedSkillId))
+            {
                 return;
             }
 
-            actor.PreparedSkill = null;
+            SkillUseRegistered?.Invoke(new RemoteSkillUsePresentation(
+                actor.CharacterId,
+                releasedPreparedSkillId,
+                null,
+                actor.FacingRight,
+                currentTime,
+                ResolveRemotePreparedSkillUseReleaseBranchNames(releasedPreparedSkillId)));
+        }
+
+        private IReadOnlyList<string> ResolveRemotePreparedSkillUseStartBranchNames(int skillId, bool isHolding)
+        {
+            SkillData skill = skillId > 0 ? _skillLoader?.LoadSkill(skillId) : null;
+            string branchName = isHolding
+                ? skill?.KeydownEffect?.Name
+                : skill?.PrepareEffect?.Name;
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                branchName = isHolding ? "keydown" : "prepare";
+            }
+
+            return new[] { branchName };
+        }
+
+        private IReadOnlyList<string> ResolveRemotePreparedSkillUseReleaseBranchNames(int skillId)
+        {
+            SkillData skill = skillId > 0 ? _skillLoader?.LoadSkill(skillId) : null;
+            string branchName = skill?.KeydownEndEffect?.Name;
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                branchName = "keydownend";
+            }
+
+            return new[] { branchName };
         }
 
         private string ResolveRemoteMeleeActionName(
@@ -10070,14 +10208,24 @@ namespace HaCreator.MapSimulator.Pools
                 return knownStateChargeElement;
             }
 
+            RemoteUserTemporaryStatSnapshot temporaryStats = actor?.TemporaryStats ?? default;
+            int preferredSkillId = ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0);
             int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(
-                actor?.TemporaryStats ?? default,
-                ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0));
-            return resolvedChargeSkillId.HasValue
+                temporaryStats,
+                preferredSkillId);
+            if (resolvedChargeSkillId.HasValue
                 && AfterImageChargeSkillResolver.TryGetChargeElement(
                     resolvedChargeSkillId.Value,
-                    out int payloadChargeElement)
-                ? payloadChargeElement
+                    out int payloadChargeElement))
+            {
+                return payloadChargeElement;
+            }
+
+            return TryResolveChargeElementFromTemporaryStats(
+                temporaryStats,
+                preferredSkillId,
+                out int recoveredPayloadChargeElement)
+                ? recoveredPayloadChargeElement
                 : 0;
         }
 
@@ -10114,6 +10262,43 @@ namespace HaCreator.MapSimulator.Pools
                 out int payloadChargeSkillId)
                 ? payloadChargeSkillId
                 : null;
+        }
+
+        internal static bool TryResolveChargeElementFromTemporaryStats(
+            RemoteUserTemporaryStatSnapshot snapshot,
+            int preferredSkillId,
+            out int chargeElement)
+        {
+            if (AfterImageChargeSkillResolver.TryGetChargeElement(
+                    snapshot.KnownState.ChargeSkillId ?? 0,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            chargeElement = 0;
+            if (snapshot.RawPayload == null
+                || snapshot.RawPayload.Length < (sizeof(int) * 4) + sizeof(int))
+            {
+                return false;
+            }
+
+            if (snapshot.WeaponChargePayloadOffset >= 0
+                && snapshot.WeaponChargePayloadOffset <= snapshot.RawPayload.Length - sizeof(int)
+                && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
+                    snapshot.RawPayload,
+                    snapshot.WeaponChargePayloadOffset,
+                    preferredSkillId,
+                    out chargeElement))
+            {
+                return true;
+            }
+
+            return AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(
+                snapshot.RawPayload,
+                sizeof(int) * 4,
+                preferredSkillId,
+                out chargeElement);
         }
 
         private static int ResolvePreferredRemoteWeaponChargeSkillId(int jobId)
@@ -10523,6 +10708,7 @@ namespace HaCreator.MapSimulator.Pools
         public SkillData TemporaryStatShadowPartnerSkill { get; set; }
         public RemoteUserActorPool.RemoteShadowPartnerPresentationState ShadowPartnerPresentation { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatAuraEffect { get; set; }
+        public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatMoreWildEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatSoulArrowEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatWeaponChargeEffect { get; set; }
         public RemoteUserActorPool.RemoteTemporaryStatAvatarEffectState TemporaryStatBarrierEffect { get; set; }

@@ -321,6 +321,7 @@ namespace HaCreator.MapSimulator
             RefreshReactorPoolOfficialSessionBridgeDiscovery(currTickCount);
             EnsurePacketFieldOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
             RefreshPacketFieldOfficialSessionBridgeDiscovery(currTickCount);
+            FlushDeferredReactorTouchOwnership(currTickCount);
             DrainReactorPoolPacketInbox();
             DrainReactorPoolOfficialSessionBridge();
             DrainPacketFieldOfficialSessionBridge();

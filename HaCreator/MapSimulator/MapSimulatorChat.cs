@@ -1364,7 +1364,7 @@ namespace HaCreator.MapSimulator
             }
 
             _whisperCandidates.RemoveAt(removedIndex);
-            ResetWhisperTargetPickerAfterClientComboDelete();
+            ResetWhisperTargetPickerAfterClientComboDelete(removedIndex);
             return true;
         }
 
@@ -1378,13 +1378,18 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int removedIndex = Math.Clamp(clientRowIndex, 0, _whisperCandidates.Count - 1);
+            if (clientRowIndex < 0 || clientRowIndex >= _whisperCandidates.Count)
+            {
+                return false;
+            }
+
+            int removedIndex = clientRowIndex;
             _whisperCandidates.RemoveAt(removedIndex);
-            ResetWhisperTargetPickerAfterClientComboDelete();
+            ResetWhisperTargetPickerAfterClientComboDelete(removedIndex);
             return true;
         }
 
-        private void ResetWhisperTargetPickerAfterClientComboDelete()
+        private void ResetWhisperTargetPickerAfterClientComboDelete(int _)
         {
             _whisperTargetPickerModalFocusTarget = WhisperTargetPickerModalFocusTarget.ComboBox;
             if (_whisperCandidates.Count == 0)
@@ -2470,12 +2475,13 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (_isWhisperTargetPickerComboDropdownOpen)
+            if (key == Keys.Left || key == Keys.Right)
             {
-                return false;
+                ToggleWhisperTargetPickerModalComboDropdown();
+                return true;
             }
 
-            if (key != Keys.Left && key != Keys.Right && key != Keys.Down)
+            if (key != Keys.Down || _isWhisperTargetPickerComboDropdownOpen)
             {
                 return false;
             }

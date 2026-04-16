@@ -396,7 +396,20 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return !RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill, levelData);
+            if (RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill, levelData))
+            {
+                return false;
+            }
+
+            // Keep fallback-only local-player projection narrower than mob replay:
+            // explicit self/party-targeted area skills remain support-owned unless
+            // hostile status metadata above already classified them.
+            if (skill.Target == SkillTarget.Self || skill.Target == SkillTarget.Party)
+            {
+                return false;
+            }
+
+            return RemoteAffectedAreaSupportResolver.IsHostilePlayerAreaSkill(skill, levelData);
         }
 
         private bool TryApplyRemotePlayerSupportAffectedAreaGameplay(

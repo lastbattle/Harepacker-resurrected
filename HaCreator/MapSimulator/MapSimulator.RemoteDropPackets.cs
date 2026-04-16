@@ -311,13 +311,17 @@ namespace HaCreator.MapSimulator
             bool packetTrackedOwner = trackedPartyActorEvaluator?.Invoke(ownerId) == true;
             bool packetTrackedActor = actorId == localCharacterId
                 || trackedPartyActorEvaluator?.Invoke(actorId) == true;
-            if (packetTrackedOwner && packetTrackedActor)
+            bool legacyTrackedOwner = legacyTrackedActorEvaluator?.Invoke(ownerId) == true;
+            bool legacyTrackedActor = actorId == localCharacterId
+                || legacyTrackedActorEvaluator?.Invoke(actorId) == true;
+
+            if ((packetTrackedOwner || legacyTrackedOwner)
+                && (packetTrackedActor || legacyTrackedActor))
             {
                 return true;
             }
 
-            return legacyTrackedActorEvaluator?.Invoke(ownerId) == true
-                && (actorId == localCharacterId || legacyTrackedActorEvaluator?.Invoke(actorId) == true);
+            return false;
         }
 
         internal static bool ShouldSurfacePickupNotice(

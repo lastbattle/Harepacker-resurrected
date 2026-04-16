@@ -3657,9 +3657,12 @@ namespace HaCreator.MapSimulator.Pools
                 return data.PacketHitAnimationState;
             }
 
-            // `CReactorPool::LoadReactorLayer` rebuilds packet-owned layers from `nOldState`,
-            // which is the currently visible owner state until the handoff actually commits.
-            return ResolveRenderableReactorState(data);
+            if (data.PacketAnimationSourceState >= 0)
+            {
+                return data.PacketAnimationSourceState;
+            }
+
+            return data.VisualState;
         }
 
         internal static bool ShouldPreservePacketAnimationSourceState(ReactorRuntimeData data)

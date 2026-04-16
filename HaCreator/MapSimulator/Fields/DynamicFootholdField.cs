@@ -409,12 +409,21 @@ namespace HaCreator.MapSimulator.Fields
 
             string layerObjectAlias = BuildLayerObjectAlias(layerName, objectName);
             AddDynamicObjectAlias(aliases, layerObjectAlias);
+            AddCoordinateAliases(aliases, resolvedName, x, y);
             AddCoordinateAliases(aliases, objectKeyName, x, y);
             AddCoordinateAliases(aliases, layerObjectAlias, x, y);
 
             if (piece is int pieceValue && pieceValue >= 0)
             {
                 string pieceSuffix = pieceValue.ToString(CultureInfo.InvariantCulture);
+                if (!string.IsNullOrWhiteSpace(resolvedName))
+                {
+                    AddDynamicObjectAlias(aliases, $"{resolvedName}/{pieceSuffix}");
+                    AddDynamicObjectAlias(aliases, $"{resolvedName}/piece/{pieceSuffix}");
+                    AddCoordinateAliases(aliases, $"{resolvedName}/{pieceSuffix}", x, y);
+                    AddCoordinateAliases(aliases, $"{resolvedName}/piece/{pieceSuffix}", x, y);
+                }
+
                 if (!string.IsNullOrWhiteSpace(objectKeyName))
                 {
                     AddDynamicObjectAlias(aliases, $"{objectKeyName}/{pieceSuffix}");
@@ -439,6 +448,25 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return aliasList;
+        }
+
+        internal static IReadOnlyList<string> BuildDynamicObjectAliasCandidatesForPacketParity(
+            string resolvedName,
+            string objectKeyName,
+            string layerName,
+            string objectName,
+            int? piece,
+            int? x,
+            int? y)
+        {
+            return BuildDynamicObjectAliasCandidates(
+                resolvedName,
+                objectKeyName,
+                layerName,
+                objectName,
+                piece,
+                x,
+                y);
         }
 
         private static void AddDynamicObjectAlias(ISet<string> aliases, string candidate)

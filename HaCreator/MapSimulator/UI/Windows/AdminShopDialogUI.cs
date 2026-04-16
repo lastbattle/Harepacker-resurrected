@@ -408,6 +408,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly object CommodityCacheLock = new();
         private static Dictionary<int, AdminShopCommodityData> _bestCommodityByItemId;
         private static Dictionary<int, AdminShopCommodityData> _commodityBySerialNumber;
+        private static Dictionary<int, List<AdminShopCommodityData>> _commoditiesByItemId;
         private readonly string _windowName;
         private readonly AdminShopServiceMode _defaultMode;
         private readonly IDXObject _frameOverlay;
@@ -6977,20 +6978,25 @@ namespace HaCreator.MapSimulator.UI
 
         private static void EnsureCommodityCache()
         {
-            if (_bestCommodityByItemId != null && _commodityBySerialNumber != null)
+            if (_bestCommodityByItemId != null
+                && _commodityBySerialNumber != null
+                && _commoditiesByItemId != null)
             {
                 return;
             }
 
             lock (CommodityCacheLock)
             {
-                if (_bestCommodityByItemId != null && _commodityBySerialNumber != null)
+                if (_bestCommodityByItemId != null
+                    && _commodityBySerialNumber != null
+                    && _commoditiesByItemId != null)
                 {
                     return;
                 }
 
                 Dictionary<int, AdminShopCommodityData> bestByItemId = new();
                 Dictionary<int, AdminShopCommodityData> bySerial = new();
+                Dictionary<int, List<AdminShopCommodityData>> candidatesByItemId = new();
                 WzImage commodityImage = global::HaCreator.Program.FindImage("Etc", "Commodity.img");
                 commodityImage?.ParseImage();
                 if (commodityImage?.WzProperties != null)
@@ -7017,6 +7023,13 @@ namespace HaCreator.MapSimulator.UI
                         };
 
                         bySerial[serialNumber] = commodity;
+                        if (!candidatesByItemId.TryGetValue(itemId, out List<AdminShopCommodityData> candidates))
+                        {
+                            candidates = new List<AdminShopCommodityData>();
+                            candidatesByItemId[itemId] = candidates;
+                        }
+
+                        candidates.Add(commodity);
                         bestByItemId.TryGetValue(itemId, out AdminShopCommodityData existing);
                         if (existing == null || IsPreferredCommodity(commodity, existing))
                         {
@@ -7027,6 +7040,7 @@ namespace HaCreator.MapSimulator.UI
 
                 _bestCommodityByItemId = bestByItemId;
                 _commodityBySerialNumber = bySerial;
+                _commoditiesByItemId = candidatesByItemId;
             }
         }
 
@@ -7051,10 +7065,53 @@ namespace HaCreator.MapSimulator.UI
             out AdminShopCommodityData resolvedCommodity)
         {
             resolvedCommodity = null;
-            return commodity != null
-                && commodity.SerialNumber > 0
-                && commodity.ItemId > 0
+            if (commodity == null || commodity.ItemId <= 0)
+            {
+                return false;
+            }
+
+            if (commodity.SerialNumber > 0
                 && TryGetCommodityBySerialNumber(commodity.SerialNumber, out resolvedCommodity)
+                && resolvedCommodity != null
+                && resolvedCommodity.ItemId == commodity.ItemId)
+            {
+                return true;
+            }
+
+            EnsureCommodityCache();
+            if (_commoditiesByItemId == null
+                || !_commoditiesByItemId.TryGetValue(commodity.ItemId, out List<AdminShopCommodityData> candidates)
+                || candidates == null
+                || candidates.Count == 0)
+            {
+                return false;
+            }
+
+            List<PacketOwnedCommodityMetadataCandidate> metadataCandidates = new(candidates.Count);
+            foreach (AdminShopCommodityData candidate in candidates)
+            {
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                metadataCandidates.Add(new PacketOwnedCommodityMetadataCandidate(
+                    candidate.SerialNumber,
+                    candidate.ItemId,
+                    candidate.Price,
+                    candidate.OnSale,
+                    candidate.Count,
+                    candidate.PeriodDays,
+                    candidate.Priority));
+            }
+
+            int resolvedSerialNumber = AdminShopPacketOwnedSellTemplateParity.SelectBestPacketOwnedCommodityMetadataSerial(
+                commodity.SerialNumber,
+                commodity.ItemId,
+                commodity.Price,
+                metadataCandidates);
+            return resolvedSerialNumber > 0
+                && TryGetCommodityBySerialNumber(resolvedSerialNumber, out resolvedCommodity)
                 && resolvedCommodity != null
                 && resolvedCommodity.ItemId == commodity.ItemId;
         }

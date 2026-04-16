@@ -530,6 +530,14 @@ namespace HaCreator.MapSimulator.Character
                 ["windEffect"] = new[] { "swingT1", "swingTF" },
                 ["jShot"] = new[] { "swingT2", "swingPF", "swingOF" },
                 ["multiSniping"] = new[] { "swingT1", "swingTF", "shoot1", "shoot2" },
+                // Character/00002000.img keeps the three pole-arm raw roots as body
+                // redirects (`swingT2PoleArm -> swingT2`, `swingP1PoleArm -> swingP1`,
+                // `swingP2PoleArm -> swingP2`), while checked Morph/*.img publishes no
+                // verbatim `*PoleArm` branches. Keep these requests on the same checked
+                // swing-first, generic-melee fallback surface used by other Aran slices.
+                ["swingT2PoleArm"] = new[] { "swingT2", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["swingP1PoleArm"] = new[] { "swingP1", "swingP2", "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
+                ["swingP2PoleArm"] = new[] { "swingP2", "swingPF", "swingP1", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 // Xenon max-force rows under Character/00002000.img also stay on a
                 // narrower checked body-family order than generic melee fallback.
                 ["maxForce0"] = new[] { "swingO3" },

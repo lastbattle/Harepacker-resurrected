@@ -2020,9 +2020,14 @@ namespace HaCreator.MapSimulator.UI
                 return "Item Maker result is unavailable.";
             }
 
+            bool disassemblyMode = _pendingPacketOwnedDisassemblySlotIndex >= 0
+                || _pendingPacketOwnedRequest?.IsDisassembly == true;
             string statusMessage = packetResult.ResultCode <= 1
                 ? BuildSuccessfulPacketOwnedStatusMessage(packetResult)
-                : PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+                : PacketOwnedItemMakerResultRuntime.BuildStatusMessage(
+                    packetResult,
+                    _pendingPacketOwnedRequest,
+                    disassemblyMode);
 
             if (reconciliation.Applied
                 && (reconciliation.FailedConsumptionCount > 0 || reconciliation.FailedGrantCount > 0))
@@ -2044,7 +2049,10 @@ namespace HaCreator.MapSimulator.UI
                 return BuildPacketOwnedDisassemblyStatusMessage(packetResult);
             }
 
-            return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult, _pendingPacketOwnedRequest);
+            return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(
+                packetResult,
+                _pendingPacketOwnedRequest,
+                disassemblyMode: false);
         }
 
         private string BuildPacketOwnedDisassemblyStatusMessage(PacketOwnedItemMakerResult packetResult)
@@ -2056,7 +2064,10 @@ namespace HaCreator.MapSimulator.UI
 
             if (packetResult.ResultType == 3)
             {
-                return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
+                return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(
+                    packetResult,
+                    _pendingPacketOwnedRequest,
+                    disassemblyMode: true);
             }
 
             string sourceItemName = _pendingPacketOwnedDisassemblyItemId > 0
@@ -2067,7 +2078,10 @@ namespace HaCreator.MapSimulator.UI
                 _pendingPacketOwnedRequest);
             if (grantedItems.Count <= 0)
             {
-                return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult, _pendingPacketOwnedRequest);
+                return PacketOwnedItemMakerResultRuntime.BuildStatusMessage(
+                    packetResult,
+                    _pendingPacketOwnedRequest,
+                    disassemblyMode: true);
             }
 
             string rewardSummary = string.Join(

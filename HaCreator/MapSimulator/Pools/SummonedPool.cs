@@ -890,7 +890,14 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state);
             ArmPacketOwnedOneTimeAction(state, currentTime, state.LastSkillAction, isSkillAction: true);
-            ArmPacketOwnedSupportSuspend(state, currentTime);
+            if (ShouldArmPacketOwnedSupportSuspendForSkillAction(state.Summon, state.LastSkillAction))
+            {
+                ArmPacketOwnedSupportSuspend(state, currentTime);
+            }
+            else
+            {
+                state.Summon.SupportSuspendUntilTime = int.MinValue;
+            }
             bool hasPrepareAnimation = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
                 state.Summon.SkillData,
                 state.Summon.CurrentAnimationBranchName) > 0;
@@ -912,11 +919,12 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                PromotePacketOwnedTeslaRuntimeState(teslaState);
                 int oneTimeAction = teslaState.OneTimeAction;
                 bool oneTimeActionOwnedBySkillPacket = teslaState.OneTimeActionOwnedBySkillPacket;
                 int oneTimeActionEndTime = teslaState.OneTimeActionEndTime;
                 PacketOwnedOneTimeActionClip? oneTimeActionClip = teslaState.OneTimeActionClip;
+                byte teslaCoilState = teslaState.TeslaCoilState;
+                Point[] teslaTrianglePoints = teslaState.TeslaTrianglePoints;
                 if (!ShouldClearPacketOwnedTeslaSiblingSkillActionOwner(
                         teslaState.Summon,
                         oneTimeAction,
@@ -933,12 +941,16 @@ namespace HaCreator.MapSimulator.Pools
                     ref oneTimeActionOwnedBySkillPacket,
                     ref oneTimeActionEndTime,
                     ref oneTimeActionClip,
+                    ref teslaCoilState,
+                    ref teslaTrianglePoints,
                     currentTime,
                     TeslaCoilSkillId);
                 teslaState.OneTimeAction = oneTimeAction;
                 teslaState.OneTimeActionOwnedBySkillPacket = oneTimeActionOwnedBySkillPacket;
                 teslaState.OneTimeActionEndTime = oneTimeActionEndTime;
                 teslaState.OneTimeActionClip = oneTimeActionClip;
+                teslaState.TeslaCoilState = teslaCoilState;
+                teslaState.TeslaTrianglePoints = teslaTrianglePoints;
                 ClearPacketOwnedMobAttackHitEffects(teslaState.Summon.ObjectId);
             }
         }
@@ -972,6 +984,8 @@ namespace HaCreator.MapSimulator.Pools
             ref bool oneTimeActionOwnedBySkillPacket,
             ref int oneTimeActionEndTime,
             ref PacketOwnedOneTimeActionClip? oneTimeActionClip,
+            ref byte teslaCoilState,
+            ref Point[] teslaTrianglePoints,
             int currentTime,
             int teslaCoilSkillId)
         {
@@ -991,6 +1005,14 @@ namespace HaCreator.MapSimulator.Pools
             summon.OneTimeActionFallbackEndTime = int.MinValue;
             summon.CurrentAnimationBranchName = null;
             summon.LastAttackAnimationStartTime = int.MinValue;
+            if (summon.TeslaCoilState == 2)
+            {
+                summon.TeslaCoilState = 1;
+            }
+
+            summon.TeslaTrianglePoints = Array.Empty<Point>();
+            teslaCoilState = summon.TeslaCoilState;
+            teslaTrianglePoints = Array.Empty<Point>();
             summon.ActorState = PacketOwnedSummonUpdateRules.ResolveIdleActorState(
                 summon,
                 currentTime,
@@ -1050,6 +1072,22 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.SupportSuspendUntilTime = suspendDurationMs > 0
                 ? currentTime + suspendDurationMs
                 : int.MinValue;
+        }
+
+        internal static bool ShouldArmPacketOwnedSupportSuspendForSkillAction(ActiveSummon summon, byte normalizedSkillAction)
+        {
+            if (summon?.SkillData == null)
+            {
+                return false;
+            }
+
+            if (summon.SkillId == HealingRobotSkillId
+                && SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData))
+            {
+                return normalizedSkillAction == HealingRobotHealSkillAction;
+            }
+
+            return true;
         }
 
         internal static int ResolvePacketOwnedSupportSuspendDurationMs(
@@ -3767,15 +3805,63 @@ namespace HaCreator.MapSimulator.Pools
                 return orderedTargetIds.ToArray();
             }
 
+            List<PacketOwnedExpiryTargetCandidate> unresolvedCandidates = candidateList
+                .Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId))
+                .ToList();
             bool fallbackFacingRight = ResolvePacketOwnedExpiryFallbackFacingRight(
                 summon,
-                candidateList.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)),
+                unresolvedCandidates,
                 ownerReferenceX);
+
+            int[] findHitOrderedTargetIds = ResolvePacketOwnedExpiryFindHitMobInRectTargetOrder(
+                summon,
+                unresolvedCandidates,
+                maxTargets - orderedTargetIds.Count,
+                fallbackFacingRight);
+            foreach (int targetId in findHitOrderedTargetIds)
+            {
+                if (orderedTargetIds.Count >= maxTargets || orderedTargetIds.Contains(targetId))
+                {
+                    continue;
+                }
+
+                orderedTargetIds.Add(targetId);
+            }
+
+            if (orderedTargetIds.Count >= maxTargets)
+            {
+                return orderedTargetIds.ToArray();
+            }
+
+            int[] oppositeFacingTargetIds = ResolvePacketOwnedExpiryFindHitMobInRectTargetOrder(
+                summon,
+                unresolvedCandidates.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)),
+                maxTargets - orderedTargetIds.Count,
+                !fallbackFacingRight);
+            foreach (int targetId in oppositeFacingTargetIds)
+            {
+                if (orderedTargetIds.Count >= maxTargets || orderedTargetIds.Contains(targetId))
+                {
+                    continue;
+                }
+
+                orderedTargetIds.Add(targetId);
+            }
+
+            if (orderedTargetIds.Count >= maxTargets)
+            {
+                return orderedTargetIds.ToArray();
+            }
+
             Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon, fallbackFacingRight);
             IEnumerable<int> fallbackTargetIds = OrderPacketOwnedExpiryFallbackCandidates(
                     summon,
-                    candidateList.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)
-                                                     && IsMobHitboxInPacketOwnedSummonAttackRange(summon, summonBounds, candidate.Hitbox, fallbackFacingRight)),
+                    unresolvedCandidates.Where(candidate => !orderedTargetIds.Contains(candidate.MobObjectId)
+                                                            && IsMobHitboxInPacketOwnedSummonAttackRange(
+                                                                summon,
+                                                                summonBounds,
+                                                                candidate.Hitbox,
+                                                                fallbackFacingRight)),
                     fallbackFacingRight)
                 .Select(static candidate => candidate.MobObjectId);
 
@@ -3790,6 +3876,37 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return orderedTargetIds.ToArray();
+        }
+
+        internal static int[] ResolvePacketOwnedExpiryFindHitMobInRectTargetOrder(
+            ActiveSummon summon,
+            IEnumerable<PacketOwnedExpiryTargetCandidate> candidates,
+            int maxTargets,
+            bool facingRight)
+        {
+            if (summon?.SkillData == null || candidates == null || maxTargets <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            Rectangle summonBounds = GetPacketOwnedSummonAttackBounds(summon, facingRight);
+            if (summonBounds.IsEmpty)
+            {
+                return Array.Empty<int>();
+            }
+
+            return candidates
+                .Where(candidate => candidate.MobObjectId > 0
+                                    && !candidate.Hitbox.IsEmpty
+                                    && IsMobHitboxInPacketOwnedSummonAttackRange(
+                                        summon,
+                                        summonBounds,
+                                        candidate.Hitbox,
+                                        facingRight))
+                .Select(static candidate => candidate.MobObjectId)
+                .Distinct()
+                .Take(maxTargets)
+                .ToArray();
         }
 
         internal static IReadOnlyList<PacketOwnedExpiryTargetCandidate> OrderPacketOwnedExpiryFallbackCandidates(
@@ -5773,6 +5890,12 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
+                property = ResolvePacketMobAttackGeneralEffectRenderableProperty(property, "Mob");
+                if (property == null)
+                {
+                    continue;
+                }
+
                 List<IDXObject> frames = MapSimulatorLoader.LoadFrames(
                     texturePool,
                     property.GetLinkedWzImageProperty() ?? property,
@@ -5787,6 +5910,173 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return null;
+        }
+
+        private static WzImageProperty ResolvePacketMobAttackGeneralEffectRenderableProperty(
+            WzImageProperty property,
+            string defaultCategory)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            WzImageProperty current = property;
+            var visitedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int depth = 0; depth < 8 && current != null; depth++)
+            {
+                current = WzInfoTools.GetRealProperty(current)?.GetLinkedWzImageProperty() ?? current?.GetLinkedWzImageProperty() ?? current;
+                if (current == null)
+                {
+                    return null;
+                }
+
+                string currentPath = current.FullPath ?? string.Empty;
+                if (!visitedPaths.Add(currentPath))
+                {
+                    return current;
+                }
+
+                if (current is WzStringProperty currentPathString)
+                {
+                    string sourcePath = NormalizePacketMobAttackGeneralEffectPathToken(currentPathString.GetString());
+                    if (!TryNormalizePacketMobAttackGeneralEffectAbsolutePath(sourcePath, defaultCategory, out string normalizedSourcePath))
+                    {
+                        return null;
+                    }
+
+                    current = ResolvePacketMobAttackGeneralEffectProperty(normalizedSourcePath);
+                    continue;
+                }
+
+                if (current is WzSubProperty subProperty)
+                {
+                    string directSourcePath = TryExtractPacketMobAttackSourcePathToken(subProperty["source"]);
+                    if (!string.IsNullOrWhiteSpace(directSourcePath)
+                        && TryNormalizePacketMobAttackGeneralEffectAbsolutePath(directSourcePath, defaultCategory, out string normalizedDirectSourcePath))
+                    {
+                        current = ResolvePacketMobAttackGeneralEffectProperty(normalizedDirectSourcePath);
+                        continue;
+                    }
+
+                    string sequenceSourceRootPath = TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(subProperty, defaultCategory);
+                    if (!string.IsNullOrWhiteSpace(sequenceSourceRootPath))
+                    {
+                        current = ResolvePacketMobAttackGeneralEffectProperty(sequenceSourceRootPath);
+                        continue;
+                    }
+                }
+
+                return current;
+            }
+
+            return current;
+        }
+
+        private static string TryExtractPacketMobAttackSourcePathToken(WzImageProperty property)
+        {
+            if (property is WzStringProperty pathStringProperty)
+            {
+                return NormalizePacketMobAttackGeneralEffectPathToken(pathStringProperty.GetString());
+            }
+
+            if (property is WzSubProperty subProperty)
+            {
+                return TryExtractPacketMobAttackSourcePathToken(subProperty["source"]);
+            }
+
+            return null;
+        }
+
+        internal static string TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(
+            IReadOnlyList<string> sourcePathTokens,
+            string defaultCategory)
+        {
+            if (sourcePathTokens == null || sourcePathTokens.Count == 0)
+            {
+                return null;
+            }
+
+            var normalizedSourcePaths = new List<string>(sourcePathTokens.Count);
+            for (int i = 0; i < sourcePathTokens.Count; i++)
+            {
+                string token = NormalizePacketMobAttackGeneralEffectPathToken(sourcePathTokens[i]);
+                if (string.IsNullOrWhiteSpace(token)
+                    || !TryNormalizePacketMobAttackGeneralEffectAbsolutePath(token, defaultCategory, out string normalizedSourcePath))
+                {
+                    return null;
+                }
+
+                normalizedSourcePaths.Add(normalizedSourcePath);
+            }
+
+            if (normalizedSourcePaths.Count == 1)
+            {
+                return normalizedSourcePaths[0];
+            }
+
+            string normalizedSequenceRootPath = null;
+            for (int i = 0; i < normalizedSourcePaths.Count; i++)
+            {
+                string[] segments = normalizedSourcePaths[i]
+                    .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                if (segments.Length < 4)
+                {
+                    return null;
+                }
+
+                if (!int.TryParse(segments[^1], out _))
+                {
+                    return null;
+                }
+
+                string currentRootPath = string.Join("/", segments.Take(segments.Length - 1));
+                if (string.IsNullOrWhiteSpace(normalizedSequenceRootPath))
+                {
+                    normalizedSequenceRootPath = currentRootPath;
+                }
+                else if (!string.Equals(
+                             normalizedSequenceRootPath,
+                             currentRootPath,
+                             StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;
+                }
+            }
+
+            return normalizedSequenceRootPath;
+        }
+
+        private static string TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(
+            WzSubProperty sourceSubProperty,
+            string defaultCategory)
+        {
+            if (sourceSubProperty == null)
+            {
+                return null;
+            }
+
+            var sourcePathTokens = new List<string>();
+            for (int i = 0; ; i++)
+            {
+                WzImageProperty frameProperty = WzInfoTools.GetRealProperty(sourceSubProperty[i.ToString()]);
+                if (frameProperty == null)
+                {
+                    break;
+                }
+
+                string sourcePathToken = TryExtractPacketMobAttackSourcePathToken(frameProperty);
+                if (string.IsNullOrWhiteSpace(sourcePathToken))
+                {
+                    return null;
+                }
+
+                sourcePathTokens.Add(sourcePathToken);
+            }
+
+            return sourcePathTokens.Count == 0
+                ? null
+                : TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(sourcePathTokens, defaultCategory);
         }
 
         internal static string[] EnumeratePacketMobAttackGeneralEffectCandidateUols(
@@ -5857,7 +6147,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string[] rawTokens = effectPath
-                .Split(new[] { '|', ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                .Split(new[] { '|', ';', ',', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries);
             if (rawTokens.Length == 0)
             {
                 return Array.Empty<string>();
@@ -5904,7 +6194,54 @@ namespace HaCreator.MapSimulator.Pools
                 normalized = normalized.Substring(0, normalized.Length - 1).TrimEnd();
             }
 
+            int assignmentIndex = FindPacketMobAttackGeneralEffectPathAssignmentIndex(normalized);
+            if (assignmentIndex >= 0 && assignmentIndex + 1 < normalized.Length)
+            {
+                normalized = normalized.Substring(assignmentIndex + 1).Trim();
+            }
+
             return normalized.Trim('/');
+        }
+
+        private static int FindPacketMobAttackGeneralEffectPathAssignmentIndex(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return -1;
+            }
+
+            int equalsIndex = token.IndexOf('=');
+            if (IsPacketMobAttackGeneralEffectPathPrefixToken(token, equalsIndex))
+            {
+                return equalsIndex;
+            }
+
+            int colonIndex = token.IndexOf(':');
+            return IsPacketMobAttackGeneralEffectPathPrefixToken(token, colonIndex)
+                ? colonIndex
+                : -1;
+        }
+
+        private static bool IsPacketMobAttackGeneralEffectPathPrefixToken(string token, int delimiterIndex)
+        {
+            if (delimiterIndex <= 0 || delimiterIndex >= token.Length - 1)
+            {
+                return false;
+            }
+
+            string prefix = token.Substring(0, delimiterIndex).Trim();
+            if (prefix.Length == 0
+                || prefix.IndexOf('/') >= 0
+                || prefix.IndexOf('\\') >= 0
+                || prefix.IndexOf('.') >= 0)
+            {
+                return false;
+            }
+
+            return string.Equals(prefix, "sHit", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(prefix, "hit", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(prefix, "effect", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(prefix, "path", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumeratePacketMobAttackGeneralEffectBasePaths(
@@ -6034,6 +6371,18 @@ namespace HaCreator.MapSimulator.Pools
             if (string.IsNullOrWhiteSpace(normalizedEffectPath))
             {
                 return false;
+            }
+
+            int categoryDelimiterIndex = normalizedEffectPath.IndexOf(':');
+            if (categoryDelimiterIndex > 0
+                && categoryDelimiterIndex < normalizedEffectPath.Length - 1)
+            {
+                string prefix = normalizedEffectPath.Substring(0, categoryDelimiterIndex).Trim();
+                if (IsPacketMobAttackCategorySegment(prefix))
+                {
+                    string suffix = normalizedEffectPath.Substring(categoryDelimiterIndex + 1).TrimStart('/');
+                    normalizedEffectPath = $"{prefix}/{suffix}";
+                }
             }
 
             string[] segments = normalizedEffectPath

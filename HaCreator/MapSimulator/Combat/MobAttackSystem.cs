@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
@@ -16,6 +17,17 @@ namespace HaCreator.MapSimulator.Combat
     public sealed class MobAttackSystem
     {
         internal const int ClientAnimationDisplayerMobBulletLoadAction = 1;
+        private const string AnimationDisplayerMobCategoryPrefix = "Mob";
+
+        public readonly record struct AnimationDisplayerProjectileRegistrationRequest(
+            int MobId,
+            string AttackAction,
+            string BallUol,
+            bool HasClientMobActionFrames,
+            bool HasCanvasFrames,
+            Func<Vector2> GetPosition,
+            Func<bool> GetFacingRight,
+            int CurrentTime);
 
         private sealed class ActiveMobProjectile
         {
@@ -142,6 +154,7 @@ namespace HaCreator.MapSimulator.Combat
         private Func<bool> _playerGroundedAccessor;
         private Func<Rectangle> _playerHitboxAccessor;
         private Action<PuppetInfo, MobItem, MobAttackEntry, int> _onPuppetHit;
+        private Action<AnimationDisplayerProjectileRegistrationRequest> _onAnimationDisplayerProjectileRegistration;
 
         public void SetGroundResolver(Func<float, float, float?> groundResolver)
         {
@@ -175,6 +188,12 @@ namespace HaCreator.MapSimulator.Combat
         public void SetPlayerHitboxAccessor(Func<Rectangle> playerHitboxAccessor)
         {
             _playerHitboxAccessor = playerHitboxAccessor;
+        }
+
+        public void SetAnimationDisplayerProjectileRegistration(
+            Action<AnimationDisplayerProjectileRegistrationRequest> onProjectileRegistration)
+        {
+            _onAnimationDisplayerProjectileRegistration = onProjectileRegistration;
         }
 
         public void SetNextAttackPacketOverrides(
@@ -417,7 +436,7 @@ namespace HaCreator.MapSimulator.Combat
                     attack?.RangeRadius ?? 0,
                     attack?.BulletSpeed ?? 0);
 
-                _activeMobProjectiles.Add(new ActiveMobProjectile
+                var projectile = new ActiveMobProjectile
                 {
                     SourceMob = mobItem,
                     Attack = attack,
@@ -435,7 +454,21 @@ namespace HaCreator.MapSimulator.Combat
                     Flip = direction.X < 0f,
                     LaneIndex = i,
                     LaneCount = laneCount
-                });
+                };
+                _activeMobProjectiles.Add(projectile);
+
+                string ballUol = BuildAnimationDisplayerMobBulletEffectUol(mobItem.MobId, attack.AnimationName);
+                bool hasClientMobActionFrames = mobItem.HasActionAnimation(attack.AnimationName);
+                bool hasCanvasFrames = projectile.Frames?.Count > 0;
+                _onAnimationDisplayerProjectileRegistration?.Invoke(new AnimationDisplayerProjectileRegistrationRequest(
+                    mobItem.MobId,
+                    attack.AnimationName,
+                    ballUol,
+                    hasClientMobActionFrames,
+                    hasCanvasFrames,
+                    () => projectile.Position,
+                    () => !projectile.Flip,
+                    currentTime));
             }
         }
 
@@ -473,7 +506,7 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             List<IDXObject> warningFrames = mobItem.GetAttackWarningFrames(attack.AnimationName);
-            int triggerDelay = Math.Max(attack.Delay, attack.EffectAfter);
+            int triggerDelay = ResolveAnimationDisplayerApplyStartDelayMs(attack);
             IReadOnlyList<int> groupTargetCounts = targetGroups.ConvertAll(group => group?.Targets.Count ?? 0);
             List<int> randomDelays = packetOverrides?.RandTimeForAreaAttack != null && packetOverrides.RandTimeForAreaAttack.Count > 0
                 ? BuildAreaAttackDelaySequenceFromSlotDelays(groupTargetCounts, packetOverrides.RandTimeForAreaAttack)
@@ -524,7 +557,7 @@ namespace HaCreator.MapSimulator.Combat
             List<IDXObject> warningFrames = mobItem.GetAttackWarningFrames(attack.AnimationName);
             int areaWidth = DetermineGroundAreaWidth(mobItem, attack, warningFrames);
             int areaHeight = DetermineGroundAreaHeight(attack);
-            int triggerDelay = immediate ? 40 : Math.Max(attack.Delay, attack.EffectAfter);
+            int triggerDelay = immediate ? 40 : ResolveAnimationDisplayerApplyStartDelayMs(attack);
 
             _activeMobGroundAttacks.Add(new ActiveMobGroundAttack
             {
@@ -860,7 +893,7 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
-            int triggerTime = currentTime + Math.Max(0, Math.Max(attack.Delay, attack.EffectAfter));
+            int triggerTime = currentTime + ResolveAnimationDisplayerApplyStartDelayMs(attack);
             bool faceLeft = DetermineSourceAttackFacesLeft(mobItem, attack, playerX);
             Vector2 sourcePosition = GetSourceEffectPosition(mobItem, attack, currentTime, faceLeft);
             bool flip = !faceLeft;
@@ -1614,6 +1647,47 @@ namespace HaCreator.MapSimulator.Combat
         internal static bool ShouldRegisterAnimationDisplayerMobSwallowBullet(bool hasCanvasFrames)
         {
             return hasCanvasFrames;
+        }
+
+        internal static int ResolveAnimationDisplayerApplyStartDelayMs(MobAttackEntry attack)
+        {
+            return ResolveAnimationDisplayerApplyStartDelayMs(
+                attack?.EffectAfter ?? 0,
+                attack?.Delay ?? 0);
+        }
+
+        internal static int ResolveAnimationDisplayerApplyStartDelayMs(int effectAfterMs, int delayMs)
+        {
+            return Math.Max(0, Math.Max(effectAfterMs, delayMs));
+        }
+
+        internal static string BuildAnimationDisplayerMobBulletEffectUol(int mobId, string attackAction)
+        {
+            foreach (string candidate in EnumerateAnimationDisplayerMobBulletEffectUolCandidates(mobId, attackAction))
+            {
+                if (!string.IsNullOrWhiteSpace(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        internal static IReadOnlyList<string> EnumerateAnimationDisplayerMobBulletEffectUolCandidates(int mobId, string attackAction)
+        {
+            string normalizedAction = attackAction?.Trim();
+            if (mobId <= 0 || string.IsNullOrWhiteSpace(normalizedAction))
+            {
+                return Array.Empty<string>();
+            }
+
+            string imageName = mobId.ToString("D7", CultureInfo.InvariantCulture);
+            return new[]
+            {
+                $"{AnimationDisplayerMobCategoryPrefix}/{imageName}.img/{normalizedAction}/info/ball",
+                $"{AnimationDisplayerMobCategoryPrefix}/{imageName}.img/{normalizedAction}/ball"
+            };
         }
 
         private static Vector2 ResolveEffectNodePosition(Vector2 basePosition, MobAnimationSet.AttackEffectNode effectNode, bool flip)

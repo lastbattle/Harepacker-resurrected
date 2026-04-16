@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace HaCreator.MapSimulator
@@ -35,6 +36,10 @@ namespace HaCreator.MapSimulator
         private PacketScriptButtonVisuals _packetScriptSlideMenuRightButtonVisuals;
         private PacketScriptButtonVisuals _packetScriptSlideMenuMoveButtonVisuals;
         private PacketScriptButtonVisuals _packetScriptSlideMenuCancelButtonVisuals;
+        private IReadOnlyDictionary<int, PacketScriptButtonVisuals> _packetScriptSlideMenuType0MainButtonVisualsById =
+            new Dictionary<int, PacketScriptButtonVisuals>();
+        private IReadOnlyDictionary<int, PacketScriptButtonVisuals> _packetScriptSlideMenuType1MainButtonVisualsById =
+            new Dictionary<int, PacketScriptButtonVisuals>();
         private PacketScriptOwnerLayer _packetScriptSlideMenuType0Cover;
         private PacketScriptOwnerLayer _packetScriptSlideMenuType1Cover;
         private PacketScriptOwnerLayer _packetScriptSlideMenuType0Choice;
@@ -379,11 +384,81 @@ namespace HaCreator.MapSimulator
                 _spriteBatch.Draw(choiceFrame.Texture, position, Color.White);
             }
 
+            DrawPacketScriptSlideMenuMainChoiceButton(snapshot, selectionBounds);
+
             if (snapshot.Mode == 0 && _packetScriptSlideMenuType0Recommend?.Texture != null)
             {
                 Vector2 position = new(ownerBounds.Right - _packetScriptSlideMenuType0Recommend.Texture.Width - 16 - _packetScriptSlideMenuType0Recommend.Origin.X, ownerBounds.Y + 18 - _packetScriptSlideMenuType0Recommend.Origin.Y);
                 _spriteBatch.Draw(_packetScriptSlideMenuType0Recommend.Texture, position, Color.White);
             }
+        }
+
+        private void DrawPacketScriptSlideMenuMainChoiceButton(PacketScriptDedicatedOwnerSnapshot snapshot, Rectangle selectionBounds)
+        {
+            PacketScriptButtonVisuals choiceVisuals = ResolvePacketScriptSlideMenuMainChoiceVisuals(snapshot);
+            if (choiceVisuals == null || selectionBounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            bool enabled = snapshot?.Choices != null &&
+                           snapshot.SelectedChoiceIndex >= 0 &&
+                           snapshot.SelectedChoiceIndex < snapshot.Choices.Count;
+            MouseState mouseState = Mouse.GetState();
+            bool hovered = enabled && selectionBounds.Contains(mouseState.Position);
+            bool pressed = hovered && mouseState.LeftButton == ButtonState.Pressed;
+            PacketScriptButtonFrame frame = !enabled
+                ? choiceVisuals.ResolveFrame(PacketScriptOwnerButtonVisualState.Disabled)
+                : pressed
+                    ? choiceVisuals.ResolveFrame(PacketScriptOwnerButtonVisualState.Pressed)
+                    : hovered
+                        ? choiceVisuals.ResolveFrame(PacketScriptOwnerButtonVisualState.Hover)
+                        : choiceVisuals.ResolveFocusedFrame();
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            Rectangle drawBounds = new(
+                selectionBounds.Center.X - (frame.Texture.Width / 2),
+                selectionBounds.Center.Y - (frame.Texture.Height / 2),
+                frame.Texture.Width,
+                frame.Texture.Height);
+            _spriteBatch.Draw(frame.Texture, drawBounds, Color.White);
+        }
+
+        private PacketScriptButtonVisuals ResolvePacketScriptSlideMenuMainChoiceVisuals(PacketScriptDedicatedOwnerSnapshot snapshot)
+        {
+            IReadOnlyDictionary<int, PacketScriptButtonVisuals> visualsById = snapshot?.Mode == 0
+                ? _packetScriptSlideMenuType0MainButtonVisualsById
+                : _packetScriptSlideMenuType1MainButtonVisualsById;
+            if (visualsById == null || visualsById.Count == 0)
+            {
+                return null;
+            }
+
+            if (snapshot?.Choices != null &&
+                snapshot.SelectedChoiceIndex >= 0 &&
+                snapshot.SelectedChoiceIndex < snapshot.Choices.Count)
+            {
+                NpcInteractionChoice selectedChoice = snapshot.Choices[snapshot.SelectedChoiceIndex];
+                if (selectedChoice?.SubmissionNumericValue is int selectionId &&
+                    visualsById.TryGetValue(selectionId, out PacketScriptButtonVisuals bySelectionId))
+                {
+                    return bySelectionId;
+                }
+            }
+
+            if (snapshot?.SelectedChoiceIndex >= 0 &&
+                visualsById.TryGetValue(snapshot.SelectedChoiceIndex, out PacketScriptButtonVisuals byIndex))
+            {
+                return byIndex;
+            }
+
+            return visualsById
+                .OrderBy(static entry => entry.Key)
+                .Select(static entry => entry.Value)
+                .FirstOrDefault(static value => value != null);
         }
 
         private void DrawPacketScriptDedicatedOwnerButton(
@@ -769,11 +844,53 @@ namespace HaCreator.MapSimulator
             _packetScriptSlideMenuCancelButtonVisuals = LoadPacketScriptButtonVisuals(
                 slideType0Preferred?["BtCancle"] as WzSubProperty ?? slideType1Preferred?["BtCancle"] as WzSubProperty,
                 slideType0Fallback?["BtCancle"] as WzSubProperty ?? slideType1Fallback?["BtCancle"] as WzSubProperty);
+            _packetScriptSlideMenuType0MainButtonVisualsById = LoadPacketScriptButtonVisualMap(
+                slideType0Preferred?["BtMain"] as WzSubProperty,
+                slideType0Fallback?["BtMain"] as WzSubProperty);
+            _packetScriptSlideMenuType1MainButtonVisualsById = LoadPacketScriptButtonVisualMap(
+                slideType1Preferred?["BtMain"] as WzSubProperty,
+                slideType1Fallback?["BtMain"] as WzSubProperty);
             _packetScriptSlideMenuType0Cover = LoadPacketScriptOwnerLayer((slideType0Preferred?["Cover"] ?? slideType0Fallback?["Cover"]) as WzCanvasProperty);
             _packetScriptSlideMenuType1Cover = LoadPacketScriptOwnerLayer((slideType1Preferred?["Cover"] ?? slideType1Fallback?["Cover"]) as WzCanvasProperty);
             _packetScriptSlideMenuType0Choice = LoadPacketScriptOwnerLayer((slideType0Preferred?["Choice"] ?? slideType0Fallback?["Choice"]) as WzCanvasProperty);
             _packetScriptSlideMenuType1Choice = LoadPacketScriptOwnerLayer((slideType1Preferred?["Choice"] ?? slideType1Fallback?["Choice"]) as WzCanvasProperty);
             _packetScriptSlideMenuType0Recommend = LoadPacketScriptOwnerLayer((slideType0Preferred?["Recommend"] ?? slideType0Fallback?["Recommend"]) as WzCanvasProperty);
+        }
+
+        private IReadOnlyDictionary<int, PacketScriptButtonVisuals> LoadPacketScriptButtonVisualMap(WzSubProperty preferred, WzSubProperty fallback)
+        {
+            SortedDictionary<int, PacketScriptButtonVisuals> visualsById = new();
+            foreach (WzImageProperty property in preferred?.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (property is not WzSubProperty preferredChild || !int.TryParse(preferredChild.Name, out int id))
+                {
+                    continue;
+                }
+
+                PacketScriptButtonVisuals visuals = LoadPacketScriptButtonVisuals(preferredChild, fallback?[preferredChild.Name] as WzSubProperty);
+                if (visuals != null)
+                {
+                    visualsById[id] = visuals;
+                }
+            }
+
+            foreach (WzImageProperty property in fallback?.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (property is not WzSubProperty fallbackChild || !int.TryParse(fallbackChild.Name, out int id) || visualsById.ContainsKey(id))
+                {
+                    continue;
+                }
+
+                PacketScriptButtonVisuals visuals = LoadPacketScriptButtonVisuals(preferred?[fallbackChild.Name] as WzSubProperty, fallbackChild);
+                if (visuals != null)
+                {
+                    visualsById[id] = visuals;
+                }
+            }
+
+            return visualsById.Count > 0
+                ? visualsById
+                : new Dictionary<int, PacketScriptButtonVisuals>();
         }
 
         private PacketScriptOwnerLayer LoadPacketScriptOwnerLayer(WzCanvasProperty canvas)
