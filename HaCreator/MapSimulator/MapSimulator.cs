@@ -74,6 +74,8 @@ namespace HaCreator.MapSimulator
         private const int PetAutoSpeechLowHpAlertCooldownMs = 60000;
         private const int PetAutoSpeechPotionFailureMaxRepeats = 3;
         private const int MobFearEffectPulseCount = 5;
+        private const int LocalPlayerAffectedAreaObjectIdBase = 1700000000;
+        private const int LocalPlayerAffectedAreaObjectIdMax = 1799999999;
         public int mapShiftX = 0;
         public int mapShiftY = 0;
         public Point minimapPos;
@@ -453,6 +455,8 @@ namespace HaCreator.MapSimulator
         private readonly LimitedViewField _limitedViewField = new LimitedViewField();
         private bool _limitedViewFieldInitialized;
         private AffectedAreaPool _affectedAreaPool;
+        private readonly Dictionary<int, int> _localOwnedAffectedAreaObjectIdsBySkillId = new();
+        private int _nextLocalOwnedAffectedAreaObjectId = LocalPlayerAffectedAreaObjectIdBase;
         private readonly RemoteAffectedAreaPacketRuntime _remoteAffectedAreaPacketRuntime = new();
         private readonly RemoteDropPacketRuntime _remoteDropPacketRuntime = new();
         private int _mobFearEffectExpireTick = int.MinValue;
@@ -26210,6 +26214,190 @@ namespace HaCreator.MapSimulator
                 damage: damage);
         }
 
+        private void UpsertLocalOwnedAffectedAreaFromAttack(Rectangle worldHitbox, int currentTime, int skillId)
+        {
+            if (_affectedAreaPool == null
+                || worldHitbox.Width <= 0
+                || worldHitbox.Height <= 0
+                || !TryResolveLocalOwnedAffectedAreaRuntime(skillId, out SkillData skill, out SkillLevelData levelData, out int skillLevel))
+            {
+                return;
+            }
+
+            int objectId = ResolveLocalOwnedAffectedAreaObjectId(skillId);
+            int ownerId = Math.Max(1, _playerManager?.Player?.Build?.Id ?? 0);
+            bool upserted = _affectedAreaPool.Upsert(
+                new AffectedAreaCreateInfo(
+                    objectId,
+                    type: 0,
+                    ownerId,
+                    skillId,
+                    skillLevel,
+                    worldHitbox,
+                    startDelayUnits: 0,
+                    elementAttribute: 0,
+                    phase: 0,
+                    AffectedAreaSourceKind.PlayerSkill),
+                currentTime);
+            if (!upserted)
+            {
+                return;
+            }
+
+            if (ResolveLocalOwnedAffectedAreaDurationSeconds(skill, levelData, skillLevel) <= 0)
+            {
+                _affectedAreaPool.Remove(objectId, currentTime);
+            }
+        }
+
+        private bool TryResolveLocalOwnedAffectedAreaRuntime(
+            int skillId,
+            out SkillData skill,
+            out SkillLevelData levelData,
+            out int skillLevel)
+        {
+            skill = null;
+            levelData = null;
+            skillLevel = 0;
+
+            if (skillId <= 0 || _playerManager?.SkillLoader == null || _playerManager?.Skills == null)
+            {
+                return false;
+            }
+
+            skill = _playerManager.SkillLoader.LoadSkill(skillId);
+            if (skill == null)
+            {
+                return false;
+            }
+
+            skillLevel = Math.Max(1, _playerManager.Skills.GetSkillLevel(skillId));
+            levelData = RemoteAffectedAreaSupportResolver.ResolveRemoteAffectedAreaSkillLevel(
+                skill,
+                skillLevel,
+                preferPvpLevelData: false);
+            return IsLocalOwnedAffectedAreaCandidate(skill, levelData);
+        }
+
+        private static bool IsLocalOwnedAffectedAreaCandidate(SkillData skill, SkillLevelData levelData)
+        {
+            if (skill == null
+                || levelData == null
+                || skill.Type == SkillType.Summon
+                || string.Equals(skill.ZoneType, "invincible", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            bool hasAreaMetadata =
+                skill.IsMesoExplosion
+                || skill.AreaAttack
+                || !string.IsNullOrWhiteSpace(skill.AffectedSkillEffect)
+                || !string.IsNullOrWhiteSpace(skill.DotType)
+                || RemoteAffectedAreaSupportResolver.HasHostileMobGameplay(skill, levelData);
+            if (!hasAreaMetadata)
+            {
+                return false;
+            }
+
+            return skill.Type == SkillType.Attack
+                   || skill.Type == SkillType.Magic
+                   || skill.Type == SkillType.Debuff
+                   || skill.IsMesoExplosion;
+        }
+
+        private int ResolveLocalOwnedAffectedAreaDurationSeconds(SkillData skill, SkillLevelData levelData, int skillLevel)
+        {
+            if (skill == null || levelData == null)
+            {
+                return 0;
+            }
+
+            SkillLoader skillLoader = _playerManager?.SkillLoader;
+            Func<int, SkillData> loadLinkedSkill = skillLoader == null
+                ? null
+                : skillId => skillLoader.LoadSkill(skillId);
+            Func<SkillData, int, SkillLevelData> resolveLevelData = (linkedSkill, linkedSkillLevel) =>
+                RemoteAffectedAreaSupportResolver.ResolveRemoteAffectedAreaSkillLevel(
+                    linkedSkill,
+                    linkedSkillLevel,
+                    preferPvpLevelData: false);
+            AffectedAreaPool.PlayerSkillAreaMetadata metadata = AffectedAreaPool.ResolvePlayerSkillAreaMetadata(
+                skill,
+                levelData,
+                loadLinkedSkill,
+                affectedSkillId => skillLoader?.FindAffectedSkillParentIds(affectedSkillId) ?? Array.Empty<int>(),
+                dummySkillId => skillLoader?.FindDummySkillParentIds(dummySkillId) ?? Array.Empty<int>(),
+                resolveLevelData,
+                skillLevel);
+            return metadata.DurationSeconds;
+        }
+
+        private int ResolveLocalOwnedAffectedAreaObjectId(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return 0;
+            }
+
+            if (_localOwnedAffectedAreaObjectIdsBySkillId.TryGetValue(skillId, out int existingObjectId))
+            {
+                return existingObjectId;
+            }
+
+            if (_nextLocalOwnedAffectedAreaObjectId < LocalPlayerAffectedAreaObjectIdBase
+                || _nextLocalOwnedAffectedAreaObjectId > LocalPlayerAffectedAreaObjectIdMax)
+            {
+                _nextLocalOwnedAffectedAreaObjectId = LocalPlayerAffectedAreaObjectIdBase;
+            }
+
+            int allocatedObjectId = _nextLocalOwnedAffectedAreaObjectId++;
+            _localOwnedAffectedAreaObjectIdsBySkillId[skillId] = allocatedObjectId;
+            return allocatedObjectId;
+        }
+
+        private void RemoveLocalOwnedAffectedAreasByCancelRequest(int requestedSkillId, int currentTime)
+        {
+            if (requestedSkillId <= 0
+                || _affectedAreaPool == null
+                || _localOwnedAffectedAreaObjectIdsBySkillId.Count == 0)
+            {
+                return;
+            }
+
+            SkillLoader skillLoader = _playerManager?.SkillLoader;
+            IReadOnlyList<SkillData> skillCatalog = _playerManager?.Skills?.GetAllSkills()?.ToArray()
+                ?? Array.Empty<SkillData>();
+            List<int> removedSkillIds = null;
+
+            foreach ((int activeSkillId, int objectId) in _localOwnedAffectedAreaObjectIdsBySkillId)
+            {
+                bool matchesCancelRequest = ClientSkillCancelResolver.DoesClientCancelMatchSkillId(
+                    activeSkillId,
+                    requestedSkillId,
+                    skillId => skillLoader?.LoadSkill(skillId),
+                    skillCatalog);
+                if (!matchesCancelRequest)
+                {
+                    continue;
+                }
+
+                _affectedAreaPool.Remove(objectId, currentTime);
+                removedSkillIds ??= new List<int>();
+                removedSkillIds.Add(activeSkillId);
+            }
+
+            if (removedSkillIds == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < removedSkillIds.Count; i++)
+            {
+                _localOwnedAffectedAreaObjectIdsBySkillId.Remove(removedSkillIds[i]);
+            }
+        }
+
 
         private void UpdateReactorRuntime(int currentTick, float deltaSeconds)
         {
@@ -28841,10 +29029,75 @@ namespace HaCreator.MapSimulator
 
         private void ApplyEntryScriptDynamicObjectTagStates(int currentTickCount, bool includeFirstUserEnterScript)
         {
+            IReadOnlyList<FieldObjectScriptPublication> publishedScriptPublications =
+                BuildEntryOwnedFieldScriptPublications(includeFirstUserEnterScript);
+            bool publishedViaPublications =
+                PublishDynamicObjectTagStatesForScriptPublications(publishedScriptPublications, currentTickCount);
+            if (publishedViaPublications)
+            {
+                return;
+            }
+
             foreach (string scriptName in EnumerateEntryOwnedFieldScripts(includeFirstUserEnterScript))
             {
                 PublishOrScheduleDynamicObjectTagStateForScriptName(scriptName, currentTickCount, delayMs: 0);
             }
+        }
+
+        private IReadOnlyList<FieldObjectScriptPublication> BuildEntryOwnedFieldScriptPublications(
+            bool includeFirstUserEnterScript)
+        {
+            if (_mapBoard?.MapInfo == null)
+            {
+                return Array.Empty<FieldObjectScriptPublication>();
+            }
+
+            var publicationCandidates = new List<FieldObjectScriptPublication>();
+            var additionalRawScriptNames = new List<string>();
+            WzImageProperty infoProperty = _mapBoard.MapInfo.Image?["info"];
+
+            static void AddPublicationCandidates(
+                ICollection<FieldObjectScriptPublication> publicationCandidates,
+                WzImageProperty property)
+            {
+                if (publicationCandidates == null || property == null)
+                {
+                    return;
+                }
+
+                IReadOnlyList<FieldObjectScriptPublication> parsedPublications =
+                    FieldObjectScriptPublicationParser.Parse(property);
+                for (int i = 0; i < parsedPublications.Count; i++)
+                {
+                    publicationCandidates.Add(parsedPublications[i]);
+                }
+            }
+
+            static void AddRawScriptName(ICollection<string> scriptNames, string scriptName)
+            {
+                if (scriptNames == null || string.IsNullOrWhiteSpace(scriptName))
+                {
+                    return;
+                }
+
+                scriptNames.Add(scriptName.Trim());
+            }
+
+            AddPublicationCandidates(publicationCandidates, infoProperty?["onUserEnter"]);
+            AddRawScriptName(additionalRawScriptNames, _mapBoard.MapInfo.onUserEnter);
+
+            if (includeFirstUserEnterScript)
+            {
+                AddPublicationCandidates(publicationCandidates, infoProperty?["onFirstUserEnter"]);
+                AddRawScriptName(additionalRawScriptNames, _mapBoard.MapInfo.onFirstUserEnter);
+            }
+
+            AddPublicationCandidates(publicationCandidates, infoProperty?["fieldScript"]);
+            AddRawScriptName(additionalRawScriptNames, infoProperty?["fieldScript"]?.GetString());
+
+            return QuestRuntimeManager.BuildPublishedScriptPublications(
+                publicationCandidates,
+                additionalRawScriptNames.ToArray());
         }
 
 
@@ -29439,7 +29692,10 @@ namespace HaCreator.MapSimulator
             {
                 _playerManager.OnRepeatSkillModeEndEffectRequestReady = DispatchRepeatSkillModeEndEffectRequest;
                 _playerManager.Skills.OnClientSkillCancelRequested = (cancelSkillId, _, currentTime) =>
+                {
+                    RemoveLocalOwnedAffectedAreasByCancelRequest(cancelSkillId, currentTime);
                     _summonedPool.TryCancelLocalOwnerSummonsBySkillRequest(cancelSkillId, currentTime);
+                };
                 _playerManager.Skills.OnSg88ManualAttackRequested = request =>
                 {
                     _summonedOfficialSessionBridge.TrackSg88ManualAttackRequest(
@@ -29528,9 +29784,22 @@ namespace HaCreator.MapSimulator
                         "0x119-target-cover");
                 }
             };
+            _summonedPool.OnLocalOwnerSelfDestructAttackResolved = request =>
+            {
+                if (_playerManager == null)
+                {
+                    return;
+                }
+
+                TryRouteLocalPacketOwnedSelfDestructAttackToRuntime(
+                    request,
+                    _playerManager.TryApplyPacketOwnedSelfDestructSummonAttack);
+            };
             Debug.WriteLine($"[Player] PlayerManager initialized with Character.wz: {characterWz != null}, Skill.wz: {skillWz != null}");
 
             _affectedAreaPool = new AffectedAreaPool(_playerManager.SkillLoader, _playerManager.GetMobSkillEffectLoader(), GraphicsDevice);
+            _localOwnedAffectedAreaObjectIdsBySkillId.Clear();
+            _nextLocalOwnedAffectedAreaObjectId = LocalPlayerAffectedAreaObjectIdBase;
 
             _playerManager.SetAffectedAreaPool(_affectedAreaPool);
             _playerManager.SetRemoteAffectedAreaDamageBlockEvaluator(IsRemoteAffectedAreaProtectionActive);
@@ -29555,7 +29824,11 @@ namespace HaCreator.MapSimulator
             _playerManager.SetCurrentMapIdProvider(() => _mapBoard?.MapInfo?.id ?? -1);
             _playerManager.SetCurrentMapInfoProvider(() => _mapBoard?.MapInfo);
             _playerManager.SetDragonQuestInfoStateProvider(() => _questRuntime.GetDragonQuestInfoState(_playerManager?.Player?.Build));
-            _playerManager.SetReactorAttackAreaHandler(TriggerAttackReactors);
+            _playerManager.SetReactorAttackAreaHandler((worldHitbox, currentTick, skillId, damage) =>
+            {
+                TriggerAttackReactors(worldHitbox, currentTick, skillId, damage);
+                UpsertLocalOwnedAffectedAreaFromAttack(worldHitbox, currentTick, skillId);
+            });
             _playerManager.SetAttackHitboxHandler(HandleSpecialFieldAttackHitbox);
 
 
@@ -31552,6 +31825,7 @@ namespace HaCreator.MapSimulator
         public void ClearRemoteAffectedAreas()
         {
             _affectedAreaPool?.Clear();
+            _localOwnedAffectedAreaObjectIdsBySkillId.Clear();
             _remoteAffectedAreaMonsterCarnivalOwnerTeams.Clear();
             _remoteAffectedAreaLocalPlayerTickTimes.Clear();
         }
@@ -33132,7 +33406,12 @@ namespace HaCreator.MapSimulator
                 renderData.IconTexture = skill?.IconTexture;
                 renderData.RemainingMs = cooldownState.RemainingMs;
                 renderData.DurationMs = cooldownState.DurationMs;
-                SkillManager.TryResolveCooldownMaskVisualState(cooldownState, out int maskFrameIndex, out string counterText);
+                SkillManager.TryResolveCooldownMaskVisualState(
+                    cooldownState,
+                    out int maskFrameIndex,
+                    out string counterText,
+                    includeCounterText: true,
+                    maskSurface: SkillManager.CooldownMaskSurface.QuickSlot);
                 renderData.MaskFrameIndex = maskFrameIndex;
                 renderData.CounterText = counterText;
                 renderData.TooltipStateText = cooldownState.TooltipStateText;
@@ -33224,7 +33503,12 @@ namespace HaCreator.MapSimulator
                 renderData.IconTexture = skill?.IconTexture ?? skill?.Icon?.Texture;
                 renderData.RemainingMs = cooldownState.RemainingMs;
                 renderData.DurationMs = cooldownState.DurationMs;
-                SkillManager.TryResolveCooldownMaskVisualState(cooldownState, out int maskFrameIndex, out string counterText);
+                SkillManager.TryResolveCooldownMaskVisualState(
+                    cooldownState,
+                    out int maskFrameIndex,
+                    out string counterText,
+                    includeCounterText: true,
+                    maskSurface: SkillManager.CooldownMaskSurface.QuickSlot);
                 renderData.MaskFrameIndex = maskFrameIndex;
                 renderData.CounterText = counterText;
                 renderData.TooltipStateText = cooldownState.TooltipStateText;

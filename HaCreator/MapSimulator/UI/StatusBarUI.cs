@@ -1320,7 +1320,9 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            float remainingProgress = SkillManager.ResolveCooldownMaskFallbackFillRatio(frameIndex);
+            float remainingProgress = SkillManager.ResolveCooldownMaskFallbackFillRatio(
+                frameIndex,
+                SkillManager.CooldownMaskSurface.QuickSlot);
             int overlayHeight = Math.Clamp((int)Math.Ceiling(iconRect.Height * remainingProgress), 0, iconRect.Height);
             if (overlayHeight <= 0)
             {

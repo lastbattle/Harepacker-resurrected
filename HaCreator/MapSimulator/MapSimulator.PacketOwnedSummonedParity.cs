@@ -340,6 +340,34 @@ namespace HaCreator.MapSimulator
             return routedCount;
         }
 
+        internal static bool TryRouteLocalPacketOwnedSelfDestructAttackToRuntime(
+            PacketOwnedSelfDestructAttackRequest request,
+            Func<PacketOwnedSelfDestructAttackRequest, bool> tryApplyPacketOwnedSelfDestructAttack)
+        {
+            if (request.SkillId <= 0
+                || request.TargetMobIds == null
+                || request.TargetMobIds.Count == 0
+                || tryApplyPacketOwnedSelfDestructAttack == null)
+            {
+                return false;
+            }
+
+            int[] resolvedTargetMobIds = request.TargetMobIds
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray();
+            if (resolvedTargetMobIds.Length == 0)
+            {
+                return false;
+            }
+
+            var normalizedRequest = request with
+            {
+                TargetMobIds = resolvedTargetMobIds
+            };
+            return tryApplyPacketOwnedSelfDestructAttack(normalizedRequest);
+        }
+
         private ChatCommandHandler.CommandResult HandlePacketOwnedSummonedCommand(string[] args)
         {
             if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))

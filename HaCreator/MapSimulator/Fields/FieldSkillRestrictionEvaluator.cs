@@ -67,14 +67,6 @@ namespace HaCreator.MapSimulator.Fields
             3120010
         };
 
-        private static readonly HashSet<int> ClientFacingIrregularFirstJobRoots = new HashSet<int>
-        {
-            501,
-            2001,
-            2002,
-            3001
-        };
-
         private static readonly HashSet<int> ClientDojoOrBalrogOnlySkillIds = new HashSet<int>
         {
             1009,
@@ -656,48 +648,42 @@ namespace HaCreator.MapSimulator.Fields
 
         private static int GetClientJobClassGrade(int jobId)
         {
-            // WZ noSkill/class entries are authored as advancement tiers, not full job ids.
+            // Client evidence:
+            // get_skill_class -> get_job_level(nSkillID / 10000).
+            // Mirror get_job_level so noSkill/class matches Field::SkillInfo::IsSkill.
             jobId = Math.Abs(jobId);
             if (jobId < 100)
             {
                 return 0;
             }
 
-            if (ClientFacingIrregularFirstJobRoots.Contains(jobId))
+            if (jobId % 100 == 0 || jobId == 2001)
             {
                 return 1;
             }
 
-            if (jobId >= 430 && jobId <= 434)
+            int advancementSeed;
+            if (jobId / 10 == 43)
             {
-                // Dual Blade roots advance through 430, 431, 432, 433, 434.
-                // The client-facing noSkill/class surface still uses the small
-                // advancement tiers 1-4 rather than those full irregular job ids.
-                return Math.Min(4, (jobId - 430) + 1);
+                advancementSeed = (jobId - 430) / 2;
+            }
+            else
+            {
+                advancementSeed = jobId % 10;
             }
 
-            if (jobId >= 2200 && jobId <= 2218)
+            int classGrade = advancementSeed + 2;
+            if (classGrade < 2)
             {
-                if (jobId == 2200)
-                {
-                    return 1;
-                }
-
-                if (jobId == 2210)
-                {
-                    return 2;
-                }
-
-                return Math.Min(10, (jobId - 2210) + 2);
+                return 0;
             }
 
-            if (jobId % 100 == 0)
+            if (classGrade <= 4)
             {
-                return 1;
+                return classGrade;
             }
 
-            int branchGrade = (jobId % 10) + 2;
-            return branchGrade >= 2 && branchGrade <= 4 ? branchGrade : 0;
+            return classGrade <= 10 && IsEvanJobId(jobId) ? classGrade : 0;
         }
 
         private static bool IsMysticDoorSkill(SkillData skill)

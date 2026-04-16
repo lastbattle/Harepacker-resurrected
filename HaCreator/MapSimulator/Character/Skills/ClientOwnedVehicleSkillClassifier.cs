@@ -120,6 +120,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             "tripleBlow",
             "quadBlow",
             "deathBlow",
+            // IDA: IsAbleTamingMobOneTimeAction admits raw action 212 for vehicle 1932016.
+            "finishBlow",
             "cyclone",
             "cyclone_after",
             "doubleJump",

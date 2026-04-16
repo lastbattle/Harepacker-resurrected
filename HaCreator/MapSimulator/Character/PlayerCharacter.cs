@@ -3164,7 +3164,11 @@ namespace HaCreator.MapSimulator.Character
             System.Diagnostics.Debug.WriteLine($"[TriggerSkillAnimation] actionName={actionName}, CurrentAction={CurrentActionName}, State={State}");
         }
 
-        public void BeginSustainedSkillAnimation(string actionName, int skillId = 0, int currentTime = int.MinValue)
+        public void BeginSustainedSkillAnimation(
+            string actionName,
+            int skillId = 0,
+            int currentTime = int.MinValue,
+            bool playEffectiveWeaponSfx = false)
         {
             if (string.IsNullOrEmpty(actionName))
                 actionName = "attack1";
@@ -3196,6 +3200,11 @@ namespace HaCreator.MapSimulator.Character
             SyncAssemblerActionLayerContext();
             RefreshAvatarActionLayerState();
             ClearMountedActionLayerState();
+
+            if (playEffectiveWeaponSfx && !isSameAction)
+            {
+                PlayEffectiveWeaponSfx();
+            }
         }
 
         public void EndSustainedSkillAnimation()
@@ -5420,7 +5429,10 @@ namespace HaCreator.MapSimulator.Character
                     preparedLayer.Parts?.Count ?? 0))
                 {
                     preparedLayer.RenderLayer = renderLayer;
-                    ApplyMirrorImagePreparedLayerClientProperties(preparedLayer, renderLayer);
+                    ApplyMirrorImagePreparedLayerClientProperties(
+                        preparedLayer,
+                        renderLayer,
+                        recreatesLayerObject: false);
                     return preparedLayer;
                 }
 
@@ -5469,7 +5481,10 @@ namespace HaCreator.MapSimulator.Character
                     currentTime,
                     hasSourceCanvas);
                 preparedLayer.PreparedFacingRight = facingRight;
-                ApplyMirrorImagePreparedLayerClientProperties(preparedLayer, renderLayer);
+                ApplyMirrorImagePreparedLayerClientProperties(
+                    preparedLayer,
+                    renderLayer,
+                    recreatesLayerObject: false);
                 return preparedLayer;
             }
 
@@ -5520,7 +5535,10 @@ namespace HaCreator.MapSimulator.Character
                 preparedLayer.PreparedTargetOffsetPx,
                 !preservesExistingLayerObject,
                 ResolveMirrorImageTargetOffsetForCurrentState());
-            ApplyMirrorImagePreparedLayerClientProperties(preparedLayer, renderLayer);
+            ApplyMirrorImagePreparedLayerClientProperties(
+                preparedLayer,
+                renderLayer,
+                recreatesLayerObject: !preservesExistingLayerObject);
             ApplyMirrorImageInsertCanvasMetadata(
                 preparedLayer,
                 sourceSignature,
@@ -5606,7 +5624,8 @@ namespace HaCreator.MapSimulator.Character
 
         private void ApplyMirrorImagePreparedLayerClientProperties(
             MirrorImagePreparedSourceLayer preparedLayer,
-            AvatarRenderLayer renderLayer)
+            AvatarRenderLayer renderLayer,
+            bool recreatesLayerObject = false)
         {
             if (preparedLayer == null)
             {
@@ -5615,7 +5634,11 @@ namespace HaCreator.MapSimulator.Character
 
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.PreparedLayerZ = ResolveMirrorImagePreparedLayerZ();
-            preparedLayer.PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilter(ResolveMirrorImageAvatarScalePercent());
+            preparedLayer.PreparedLayerFilter = ResolveMirrorImagePreparedLayerFilterForPreparedLayer(
+                preparedLayer.PreparedLayerFilter,
+                preparedLayer.PreparedLayerObjectId,
+                recreatesLayerObject,
+                ResolveMirrorImageAvatarScalePercent());
             preparedLayer.PreparedLayerColor = ResolveMirrorImagePreparedLayerColor();
         }
 
@@ -5629,6 +5652,20 @@ namespace HaCreator.MapSimulator.Character
             return scalePercent == MirrorImageClientDefaultScalePercent
                 ? MirrorImageClientDefaultLayerFilter
                 : MirrorImageClientScaledLayerFilter;
+        }
+
+        internal static int ResolveMirrorImagePreparedLayerFilterForPreparedLayer(
+            int existingLayerFilter,
+            int preparedLayerObjectId,
+            bool recreatesLayerObject,
+            int scalePercent)
+        {
+            if (!recreatesLayerObject && preparedLayerObjectId > 0)
+            {
+                return existingLayerFilter;
+            }
+
+            return ResolveMirrorImagePreparedLayerFilter(scalePercent);
         }
 
         internal int ResolveMirrorImageAvatarScalePercent()

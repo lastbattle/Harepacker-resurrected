@@ -720,6 +720,7 @@ namespace HaCreator.MapSimulator.Character
         private static readonly HashSet<string> ClientWzBackedPostV95PhysicalWeaponActionNames =
             new(StringComparer.OrdinalIgnoreCase)
             {
+                "flamesplash",
                 "speedDualShot",
                 "jShot",
                 "dualVulcanPrep",
@@ -728,7 +729,14 @@ namespace HaCreator.MapSimulator.Character
                 "swiftShot",
                 "cannonSmash",
                 "giganticBackstep",
+                "cannonJump",
+                "rushBoom",
+                "counterCannon",
                 "cannonSlam",
+                "noiseWave_pre",
+                "noiseWave_ing",
+                "noiseWave",
+                "superCannon",
                 "cannonSpike"
             };
 

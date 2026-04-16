@@ -137,6 +137,15 @@ namespace HaCreator.MapSimulator.Character
                 ["ninjastorm"] = new[] { "shoot1", "shoot2", "shootF" },
                 ["vampire"] = new[] { "shoot1", "shoot2", "shootF" },
                 ["smokeshell"] = new[] { "alert", "stand1", "stand2" },
+                // Mounted helper rows currently recover concrete piece plans for these
+                // actions in v95, but keep explicit alias fallback so other data sets
+                // still resolve onto authored `special/*` branches when those rows are absent.
+                ["rain"] = new[] { "shoot1", "shoot2", "shootF" },
+                ["paralyze"] = new[] { "shoot1", "shoot2", "shootF" },
+                ["shoot6"] = new[] { "shoot1", "shoot2", "shootF" },
+                ["arrowRain"] = new[] { "shoot1", "shoot2", "shootF" },
+                ["arrowEruption"] = new[] { "shoot1", "shoot2", "shootF" },
+                ["chargeBlow"] = new[] { "stabO1", "stabO2", "stabOF" },
                 // Client raw actions still include broader attack families such as the
                 // dual-blade, polearm, and crossbow-specific aliases below. Shadow
                 // Partner only authors the generic `special/*` families, so keep
@@ -499,6 +508,12 @@ namespace HaCreator.MapSimulator.Character
         {
             // The remaining synthesized rows still collapse directly onto one authored
             // helper branch without a recovered multi-piece action row of their own.
+            "rain",
+            "paralyze",
+            "shoot6",
+            "arrowRain",
+            "arrowEruption",
+            "chargeBlow"
         };
 
         private static readonly HashSet<string> GenericHelperSurfaceActionNames = new(StringComparer.OrdinalIgnoreCase)
@@ -1324,7 +1339,7 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            foreach (string resolvedActionName in EnumerateActionSpecificAliasCandidates(actionName))
+            foreach (string resolvedActionName in EnumerateLoaderRemappedActionCandidates(actionName))
             {
                 if (!actionAnimations.TryGetValue(resolvedActionName, out SkillAnimation authoredAnimation)
                     || authoredAnimation?.Frames == null
@@ -1359,6 +1374,26 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return null;
+        }
+
+        private static IEnumerable<string> EnumerateLoaderRemappedActionCandidates(string actionName)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string candidate in EnumerateActionSpecificAliasCandidates(actionName))
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+
+            foreach (string candidate in EnumerateHeuristicAttackAliases(actionName, PlayerState.Attacking, weaponType: null))
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
         }
 
         public static Point ResolveClientTargetOffset(

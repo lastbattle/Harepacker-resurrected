@@ -3552,6 +3552,16 @@ namespace HaCreator.MapSimulator
                 player.Position.Y - feetOffset + snapshotBounds.Top);
             Func<bool> getFlip = () => player.FacingRight;
             Vector2 fallbackPosition = getPosition();
+            Func<int, List<IDXObject>> snapshotFrameFactory = sampleTime =>
+            {
+                return TryCreatePacketOwnedActiveEffectMotionBlurFramesAtSampleTime(
+                    player,
+                    sampleTime,
+                    definition.DelayMs,
+                    out List<IDXObject> sampledFrames)
+                    ? sampledFrames
+                    : null;
+            };
             _packetOwnedActiveEffectMotionBlurId = _animationEffects.RegisterMotionBlurAnimation(
                 frames,
                 getPosition,
@@ -3564,7 +3574,8 @@ namespace HaCreator.MapSimulator
                 currentTime,
                 durationMs: PacketOwnedActiveEffectMotionBlurOwnerDurationMs,
                 follow: definition.Follow,
-                ownsFrameTextures: true);
+                ownsFrameTextures: true,
+                snapshotFrameFactory: snapshotFrameFactory);
             if (_packetOwnedActiveEffectMotionBlurId < 0)
             {
                 message = "Motion blur owner registration failed.";
@@ -3672,6 +3683,24 @@ namespace HaCreator.MapSimulator
                 new DXObject(0, 0, renderTarget, Math.Max(1, frameDelayMs))
             };
             return true;
+        }
+
+        private bool TryCreatePacketOwnedActiveEffectMotionBlurFramesAtSampleTime(
+            PlayerCharacter player,
+            int sampleTime,
+            int frameDelayMs,
+            out List<IDXObject> frames)
+        {
+            frames = null;
+            return TryCreatePacketOwnedActiveEffectMotionBlurFrame(
+                player,
+                sampleTime,
+                frameDelayMs,
+                out frames,
+                out _,
+                out _,
+                out _,
+                out _);
         }
 
         private string DescribePacketOwnedEmotionOutboundDispatch(

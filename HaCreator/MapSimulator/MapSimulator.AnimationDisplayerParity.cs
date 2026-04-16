@@ -2235,25 +2235,44 @@ namespace HaCreator.MapSimulator
             SkillData requestedEffectSkill,
             SkillData sourceSkill)
         {
-            if (requestedEffectSkill != null)
+            return ResolveAnimationDisplayerLocalRequestBranchSkillIdForTesting(
+                effectSkillId,
+                sourceSkillId,
+                requestedEffectSkillExists: requestedEffectSkill != null,
+                sourceSkillExists: sourceSkill != null,
+                hasExplicitRequestedBranches: request?.BranchNames?.Count > 0);
+        }
+
+        internal static int ResolveAnimationDisplayerLocalRequestBranchSkillIdForTesting(
+            int effectSkillId,
+            int sourceSkillId,
+            bool requestedEffectSkillExists,
+            bool sourceSkillExists,
+            bool hasExplicitRequestedBranches)
+        {
+            if (requestedEffectSkillExists)
             {
                 return effectSkillId;
             }
 
-            if (sourceSkill == null || sourceSkillId <= 0)
+            if (!sourceSkillExists || sourceSkillId <= 0)
             {
                 return effectSkillId;
             }
 
-            // `CUserLocal::OnKeyDownSkillEnd` can issue `SendSkillEffectRequest` with
-            // client effect ids (`35000001`, `35100009`) that are not authored as skill
-            // nodes in v95 exports; the visual branch remains on the source keydown skill.
-            if (request?.BranchNames != null && request.BranchNames.Count > 0)
+            if (hasExplicitRequestedBranches)
             {
+                // `CUserLocal::OnKeyDownSkillEnd` can issue `SendSkillEffectRequest` with
+                // client effect ids (`35000001`, `35100009`) that are not authored as skill
+                // nodes in v95 exports; the visual branch remains on the source keydown skill.
                 return sourceSkillId;
             }
 
-            return effectSkillId;
+            // Other local `CUser::ShowSkillEffect` request ids can also be packet/client-only
+            // shims (for example repeat/timeout and recovery ids) with no mounted skill node.
+            // Keep branch ownership on the source skill in the same shared seam so authored
+            // `effect*` branches continue to resolve through `Effect_SkillUse`.
+            return sourceSkillId;
         }
 
         private SkillCastInfo BuildAnimationDisplayerLocalSkillUseRequest(
@@ -3916,8 +3935,7 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            AssembledFrame frame = actor.Assembler?.GetFrameAtTime(actor.ActionName, currTickCount)
-                ?? actor.Assembler?.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currTickCount);
+            AssembledFrame frame = actor.GetFrameAtTimeForRendering(currTickCount);
             return ResolveAnimationDisplayerOwnerBodyOrigin(actor.Position, frame);
         }
 
@@ -3934,8 +3952,7 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            AssembledFrame frame = actor.Assembler?.GetFrameAtTime(actor.ActionName, currTickCount)
-                ?? actor.Assembler?.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currTickCount);
+            AssembledFrame frame = actor.GetFrameAtTimeForRendering(currTickCount);
             return ResolveAnimationDisplayerOwnerMapPoint(actor.Position, actor.FacingRight, frame, mapPointName);
         }
 

@@ -546,10 +546,12 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalState? existingState = _remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState existingStateValue)
                 ? existingStateValue
                 : null;
+            int? preferredSourceMapId = ResolveRemoteTownPortalPreferredSourceMapId(packet.OwnerCharacterId, currentMapId, existingState);
             if (destination.HasValue)
             {
                 RememberRemoteTownPortalFieldMetadata(packet.OwnerCharacterId, currentMapId, packet.X, packet.Y, destination.Value, currentTime);
                 AdoptPendingRemoteTownPortalOwnerFieldObservations(packet.OwnerCharacterId, destination.Value.MapId);
+                preferredSourceMapId = ResolveRemoteTownPortalPreferredSourceMapId(packet.OwnerCharacterId, currentMapId, existingState);
             }
 
             RemoteTownPortalResolvedDestination? resolvedDestination = ResolveRemoteTownPortalDestination(
@@ -559,7 +561,7 @@ namespace HaCreator.MapSimulator.Fields
                 existingState);
             bool resolvedFromWzFallback = false;
             if (!resolvedDestination.HasValue
-                && TryResolveRemoteTownPortalWzFallbackDestination(currentMapId, out RemoteTownPortalResolvedDestination fallbackDestination))
+                && TryResolveRemoteTownPortalWzFallbackDestination(currentMapId, preferredSourceMapId, out RemoteTownPortalResolvedDestination fallbackDestination))
             {
                 resolvedDestination = fallbackDestination;
                 resolvedFromWzFallback = true;
@@ -1476,6 +1478,27 @@ namespace HaCreator.MapSimulator.Fields
                 preferredSourceMapId);
         }
 
+        private int? ResolveRemoteTownPortalPreferredSourceMapId(
+            uint ownerCharacterId,
+            int currentMapId,
+            RemoteTownPortalState? existingState)
+        {
+            RemoteTownPortalOwnerTownKey key = new(ownerCharacterId, currentMapId);
+            RemoteTownPortalFieldMetadata? metadata = _remoteTownPortalFieldMetadata.TryGetValue(key, out RemoteTownPortalFieldMetadata metadataValue)
+                ? metadataValue
+                : null;
+            if (!TryResolvePreferredRemoteTownPortalSourceMapId(
+                    key,
+                    existingState,
+                    metadata,
+                    out RemoteTownPortalOwnerFieldObservation? ownerObservation))
+            {
+                return null;
+            }
+
+            return ownerObservation?.SourceMapId ?? metadata?.SourceMapId;
+        }
+
         private bool TryResolvePreferredRemoteTownPortalSourceMapId(
             RemoteTownPortalOwnerTownKey key,
             RemoteTownPortalState? existingState,
@@ -1610,9 +1633,19 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool TryResolveRemoteTownPortalWzFallbackDestination(
             int townMapId,
+            int? preferredSourceMapId,
             out RemoteTownPortalResolvedDestination destination)
         {
             destination = default;
+            if (preferredSourceMapId.HasValue
+                && TryResolveRemoteTownPortalPreferredWzFallbackDestination(
+                    townMapId,
+                    preferredSourceMapId.Value,
+                    out destination))
+            {
+                return true;
+            }
+
             if (!TryResolveUniqueRemoteTownPortalWzFallbackSourceMap(townMapId, out int sourceMapId)
                 || !TryResolveRemoteTownPortalSourceFallbackPosition(sourceMapId, out float sourceX, out float sourceY))
             {
@@ -1620,6 +1653,25 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             destination = new RemoteTownPortalResolvedDestination(sourceMapId, sourceX, sourceY);
+            return true;
+        }
+
+        private static bool TryResolveRemoteTownPortalPreferredWzFallbackDestination(
+            int townMapId,
+            int preferredSourceMapId,
+            out RemoteTownPortalResolvedDestination destination)
+        {
+            destination = default;
+            if (preferredSourceMapId <= 0
+                || preferredSourceMapId == townMapId
+                || !TryResolveRemoteTownPortalTownMapForSourceMap(preferredSourceMapId, out int configuredTownMapId)
+                || configuredTownMapId != townMapId
+                || !TryResolveRemoteTownPortalSourceFallbackPosition(preferredSourceMapId, out float sourceX, out float sourceY))
+            {
+                return false;
+            }
+
+            destination = new RemoteTownPortalResolvedDestination(preferredSourceMapId, sourceX, sourceY);
             return true;
         }
 
@@ -3401,6 +3453,31 @@ namespace HaCreator.MapSimulator.Fields
                 selected.Value.SourceMapId,
                 selected.Value.SourceX,
                 selected.Value.SourceY);
+        }
+
+        internal static RemoteTownPortalResolvedDestination? ResolveRemoteTownPortalWzFallbackDestinationWithPreferredSourceForTesting(
+            int townMapId,
+            bool hasPreferredSourceMap,
+            int preferredSourceMapId,
+            bool preferredSourceResolvesToTownMap,
+            bool preferredSourceHasPosition,
+            float preferredSourceX,
+            float preferredSourceY,
+            params (int SourceMapId, int ReturnMapId, int ForcedReturnMapId, bool HasSourcePosition, float SourceX, float SourceY)[] candidates)
+        {
+            if (hasPreferredSourceMap
+                && preferredSourceMapId > 0
+                && preferredSourceMapId != townMapId
+                && preferredSourceResolvesToTownMap
+                && preferredSourceHasPosition)
+            {
+                return new RemoteTownPortalResolvedDestination(
+                    preferredSourceMapId,
+                    preferredSourceX,
+                    preferredSourceY);
+            }
+
+            return ResolveUniqueRemoteTownPortalWzFallbackDestinationForTesting(townMapId, candidates);
         }
 
         internal static bool IsRemoteTownPortalSourceFallbackStartPortalForTesting(int? portalTypeId, string portalName)

@@ -383,17 +383,18 @@ namespace HaCreator.MapSimulator.UI
             string pressedWhisperTarget,
             string hoveredWhisperTarget)
         {
-            return pressedWhisperPickerCandidate
-                && !string.IsNullOrWhiteSpace(pressedWhisperTarget)
-                && !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
+            // Client CCtrlComboBoxSelect::OnMouseButton commits on left-release row hit
+            // (msg 514) without requiring a prior pressed-row capture.
+            return !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
         }
 
         internal static bool ShouldDeleteHoveredWhisperPickerCandidateOnRightRelease(
             string pressedWhisperTarget,
             string hoveredWhisperTarget)
         {
-            return !string.IsNullOrWhiteSpace(pressedWhisperTarget)
-                && !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
+            // Client CCtrlComboBoxSelect::OnMouseButton deletes on right-release row hit
+            // (msg 517) using the release row index directly.
+            return !string.IsNullOrWhiteSpace(hoveredWhisperTarget);
         }
 
         internal static bool ShouldConsumeWhisperPickerPointerCapture(

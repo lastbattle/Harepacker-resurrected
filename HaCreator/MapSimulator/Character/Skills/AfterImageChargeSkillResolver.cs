@@ -55,8 +55,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             out int chargeElement)
         {
             chargeElement = 0;
-            return TryResolveChargeSkillIdFromTemporaryStatPayload(payload, 0, preferredSkillId, out int chargeSkillId)
-                && TryGetChargeElement(chargeSkillId, out chargeElement);
+            if (TryResolveChargeSkillIdFromTemporaryStatPayload(payload, 0, preferredSkillId, out int chargeSkillId)
+                && TryGetChargeElement(chargeSkillId, out chargeElement))
+            {
+                return true;
+            }
+
+            return TryResolveChargeElementByKnownPayloadCandidates(payload, 0, preferredSkillId, out chargeElement);
         }
 
         internal static bool TryResolveChargeSkillIdFromTemporaryStatPayload(ReadOnlySpan<byte> payload, out int chargeSkillId)
@@ -122,6 +127,61 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             chargeSkillId = matchedChargeSkillId;
             return chargeSkillId > 0;
+        }
+
+        private static bool TryResolveChargeElementByKnownPayloadCandidates(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            out int chargeElement)
+        {
+            chargeElement = 0;
+            if (payload.Length < sizeof(int)
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int))
+            {
+                return false;
+            }
+
+            int alignedStartOffset = startOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
+            int matchedChargeElement = 0;
+            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
+            {
+                int candidateSkillId = payload[offset]
+                    | (payload[offset + 1] << 8)
+                    | (payload[offset + 2] << 16)
+                    | (payload[offset + 3] << 24);
+                if (!IsKnownChargeSkillId(candidateSkillId)
+                    || !TryGetChargeElement(candidateSkillId, out int candidateElement))
+                {
+                    continue;
+                }
+
+                if (preferredSkillId > 0 && candidateSkillId == preferredSkillId)
+                {
+                    chargeElement = candidateElement;
+                    return true;
+                }
+
+                if (matchedChargeElement == 0)
+                {
+                    matchedChargeElement = candidateElement;
+                    continue;
+                }
+
+                if (matchedChargeElement != candidateElement)
+                {
+                    return false;
+                }
+            }
+
+            chargeElement = matchedChargeElement;
+            return chargeElement > 0;
         }
     }
 }

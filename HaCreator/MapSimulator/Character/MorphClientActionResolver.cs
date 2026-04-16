@@ -592,6 +592,13 @@ namespace HaCreator.MapSimulator.Character
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedMovementMorphFallbackAliases =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
+                // Client raw locomotion names still include walk/stand variants (`walk1`,
+                // `walk2`, `stand1`, `stand2`) while checked Morph/*.img templates
+                // publish those surfaces as `walk` and `stand`.
+                ["walk1"] = new[] { "walk", "move", "stand" },
+                ["walk2"] = new[] { "walk", "move", "stand" },
+                ["stand1"] = new[] { "stand", "walk" },
+                ["stand2"] = new[] { "stand", "walk" },
                 // Skill/2002.img/skill/20020111 still publishes the raw action `fastest`
                 // with flag-only morph metadata; the suffix-resolved Morph/0111.img
                 // movement surface publishes no verbatim `fastest` branch.
@@ -603,7 +610,19 @@ namespace HaCreator.MapSimulator.Character
                 // The client morph action table carries the dual-blade dash pair, but
                 // the checked morph images publish no verbatim `tornadoDash*` roots.
                 ["tornadoDash"] = new[] { "fly", "jump", "stand" },
-                ["tornadoDashStop"] = new[] { "fly", "jump", "stand" }
+                ["tornadoDashStop"] = new[] { "fly", "jump", "stand" },
+                // Client raw action code 87 remains `dash` and Character/00002000.img
+                // still redirects that branch through `walk1`, while checked Morph/*.img
+                // keeps no verbatim `dash` root.
+                ["dash"] = new[] { "walk", "move", "stand" },
+                // Character/00002000.img still publishes the `ghost*` raw movement
+                // family (`ghostwalk`, `ghostjump`, `ghostladder`, `ghostrope`,
+                // `ghostfly`) while Morph/*.img publishes only generic locomotion roots.
+                ["ghostwalk"] = new[] { "walk", "move", "stand" },
+                ["ghostjump"] = new[] { "jump", "stand" },
+                ["ghostladder"] = new[] { "ladder", "ladder2", "stand" },
+                ["ghostrope"] = new[] { "rope", "rope2", "stand" },
+                ["ghostfly"] = new[] { "fly", "fly2", "jump", "stand" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedPostureMorphFallbackAliases =
@@ -695,6 +714,13 @@ namespace HaCreator.MapSimulator.Character
                 // branches for either name.
                 ["alert8"] = new[] { "jump", "alert" },
                 ["giant"] = new[] { "sit" },
+                // Character/00002000.img also keeps `heal`, `ghoststand`, `ghostsit`,
+                // and `ghostproneStab` as client raw roots while checked Morph/*.img
+                // publishes no verbatim branches for those names.
+                ["heal"] = new[] { "stand", "alert" },
+                ["ghoststand"] = new[] { "stand", "alert" },
+                ["ghostsit"] = new[] { "sit", "stand" },
+                ["ghostproneStab"] = new[] { "proneStab", "prone", "sit" },
                 ["proneStab_jaguar"] = new[] { "sit" },
                 ["herbalism_jaguar"] = new[] { "sit" },
                 ["mining_jaguar"] = new[] { "sit" },

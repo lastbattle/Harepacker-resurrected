@@ -761,7 +761,8 @@ namespace HaCreator.MapSimulator.UI
                 cooldownState,
                 out frameIndex,
                 out remainingText,
-                includeCounterText: false);
+                includeCounterText: false,
+                maskSurface: SkillManager.CooldownMaskSurface.QuickSlot);
         }
 
         private void DrawHoveredItemTooltip(SpriteBatch sprite, int renderWidth, int renderHeight, int absoluteSlotIndex)
@@ -962,7 +963,9 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            float remainingProgress = SkillManager.ResolveCooldownMaskFallbackFillRatio(frameIndex);
+            float remainingProgress = SkillManager.ResolveCooldownMaskFallbackFillRatio(
+                frameIndex,
+                SkillManager.CooldownMaskSurface.QuickSlot);
             int overlayHeight = (int)Math.Ceiling(SLOT_SIZE * remainingProgress);
             if (overlayHeight <= 0)
             {

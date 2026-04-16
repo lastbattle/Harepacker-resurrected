@@ -154,6 +154,7 @@ namespace HaCreator.MapSimulator.Pools
             public int LastHitTime { get; set; } = int.MinValue;
             public int LastHitDamage { get; set; }
             public int OneTimeAction { get; set; }
+            public bool OneTimeActionOwnedBySkillPacket { get; set; }
             public int OneTimeActionEndTime { get; set; } = int.MinValue;
             public PacketOwnedOneTimeActionClip? OneTimeActionClip { get; set; }
             public int LastCompletedAttackLayerRefreshStartTime { get; set; } = int.MinValue;
@@ -913,25 +914,62 @@ namespace HaCreator.MapSimulator.Pools
 
                 PromotePacketOwnedTeslaRuntimeState(teslaState);
                 int oneTimeAction = teslaState.OneTimeAction;
+                bool oneTimeActionOwnedBySkillPacket = teslaState.OneTimeActionOwnedBySkillPacket;
                 int oneTimeActionEndTime = teslaState.OneTimeActionEndTime;
                 PacketOwnedOneTimeActionClip? oneTimeActionClip = teslaState.OneTimeActionClip;
+                if (!ShouldClearPacketOwnedTeslaSiblingSkillActionOwner(
+                        teslaState.Summon,
+                        oneTimeAction,
+                        oneTimeActionOwnedBySkillPacket,
+                        oneTimeActionClip,
+                        TeslaCoilSkillId))
+                {
+                    continue;
+                }
+
                 ClearPacketOwnedTeslaSiblingSkillActionOwner(
                     teslaState.Summon,
                     ref oneTimeAction,
+                    ref oneTimeActionOwnedBySkillPacket,
                     ref oneTimeActionEndTime,
                     ref oneTimeActionClip,
                     currentTime,
                     TeslaCoilSkillId);
                 teslaState.OneTimeAction = oneTimeAction;
+                teslaState.OneTimeActionOwnedBySkillPacket = oneTimeActionOwnedBySkillPacket;
                 teslaState.OneTimeActionEndTime = oneTimeActionEndTime;
                 teslaState.OneTimeActionClip = oneTimeActionClip;
                 ClearPacketOwnedMobAttackHitEffects(teslaState.Summon.ObjectId);
             }
         }
 
+        internal static bool ShouldClearPacketOwnedTeslaSiblingSkillActionOwner(
+            ActiveSummon summon,
+            int oneTimeAction,
+            bool oneTimeActionOwnedBySkillPacket,
+            PacketOwnedOneTimeActionClip? oneTimeActionClip,
+            int teslaCoilSkillId)
+        {
+            if (summon?.SkillId != teslaCoilSkillId)
+            {
+                return false;
+            }
+
+            if (!oneTimeActionOwnedBySkillPacket)
+            {
+                return false;
+            }
+
+            return oneTimeAction > 0
+                   || oneTimeActionClip.HasValue
+                   || summon.OneTimeActionFallbackAnimation?.Frames.Count > 0
+                   || summon.OneTimeActionFallbackActionCode > 0;
+        }
+
         internal static void ClearPacketOwnedTeslaSiblingSkillActionOwner(
             ActiveSummon summon,
             ref int oneTimeAction,
+            ref bool oneTimeActionOwnedBySkillPacket,
             ref int oneTimeActionEndTime,
             ref PacketOwnedOneTimeActionClip? oneTimeActionClip,
             int currentTime,
@@ -943,6 +981,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             oneTimeAction = 0;
+            oneTimeActionOwnedBySkillPacket = false;
             oneTimeActionEndTime = int.MinValue;
             oneTimeActionClip = null;
             summon.OneTimeActionFallbackAnimation = null;
@@ -1098,6 +1137,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             state.OneTimeAction = normalizedAction;
+            state.OneTimeActionOwnedBySkillPacket = isSkillAction;
             state.OneTimeActionEndTime = currentTime + duration;
             state.Summon.OneTimeActionFallbackAnimation = actionAnimation;
             state.Summon.OneTimeActionFallbackActionCode = normalizedAction;
@@ -1183,6 +1223,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             state.OneTimeAction = 0;
+            state.OneTimeActionOwnedBySkillPacket = false;
             state.OneTimeActionEndTime = int.MinValue;
             state.OneTimeActionClip = null;
             state.Summon.OneTimeActionFallbackAnimation = null;
@@ -2245,6 +2286,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 state.OneTimeAction = 0;
+                state.OneTimeActionOwnedBySkillPacket = false;
                 state.OneTimeActionEndTime = int.MinValue;
                 state.OneTimeActionClip = null;
                 state.Summon.OneTimeActionFallbackAnimation = null;
@@ -5758,26 +5800,39 @@ namespace HaCreator.MapSimulator.Pools
                 return Array.Empty<string>();
             }
 
-            var candidates = new List<string>();
-            if (TryNormalizePacketMobAttackGeneralEffectAbsolutePath(normalizedEffectPath, "Mob", out string absoluteCandidate))
+            string[] effectPathTokens = EnumeratePacketMobAttackGeneralEffectPathTokens(normalizedEffectPath);
+            if (effectPathTokens.Length == 0)
             {
-                candidates.Add(absoluteCandidate);
+                return Array.Empty<string>();
             }
-            AddEmbeddedPacketMobAttackGeneralEffectAbsoluteCandidates(
-                candidates,
-                normalizedEffectPath,
-                "Mob");
 
+            var candidates = new List<string>();
             string normalizedTemplateId = mobTemplateId?.Trim();
             if (!string.IsNullOrWhiteSpace(normalizedTemplateId))
             {
                 normalizedTemplateId = normalizedTemplateId.PadLeft(7, '0');
             }
-            if (!string.IsNullOrWhiteSpace(normalizedTemplateId))
+            for (int tokenIndex = 0; tokenIndex < effectPathTokens.Length; tokenIndex++)
             {
+                string effectPathToken = effectPathTokens[tokenIndex];
+                if (TryNormalizePacketMobAttackGeneralEffectAbsolutePath(effectPathToken, "Mob", out string absoluteCandidate))
+                {
+                    candidates.Add(absoluteCandidate);
+                }
+
+                AddEmbeddedPacketMobAttackGeneralEffectAbsoluteCandidates(
+                    candidates,
+                    effectPathToken,
+                    "Mob");
+
+                if (string.IsNullOrWhiteSpace(normalizedTemplateId))
+                {
+                    continue;
+                }
+
                 foreach (string basePath in EnumeratePacketMobAttackGeneralEffectBasePaths(normalizedTemplateId, attackAction))
                 {
-                    if (TryCombinePacketMobAttackGeneralEffectPath(basePath, normalizedEffectPath, out string combinedCandidate))
+                    if (TryCombinePacketMobAttackGeneralEffectPath(basePath, effectPathToken, out string combinedCandidate))
                     {
                         candidates.Add(combinedCandidate);
                         AddEmbeddedPacketMobAttackGeneralEffectAbsoluteCandidates(
@@ -5792,6 +5847,64 @@ namespace HaCreator.MapSimulator.Pools
                 .Where(static candidate => !string.IsNullOrWhiteSpace(candidate))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        internal static string[] EnumeratePacketMobAttackGeneralEffectPathTokens(string effectPath)
+        {
+            if (string.IsNullOrWhiteSpace(effectPath))
+            {
+                return Array.Empty<string>();
+            }
+
+            string[] rawTokens = effectPath
+                .Split(new[] { '|', ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (rawTokens.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            var normalizedTokens = new List<string>(rawTokens.Length);
+            for (int i = 0; i < rawTokens.Length; i++)
+            {
+                string token = NormalizePacketMobAttackGeneralEffectPathToken(rawTokens[i]);
+                if (!string.IsNullOrWhiteSpace(token))
+                {
+                    normalizedTokens.Add(token);
+                }
+            }
+
+            return normalizedTokens
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static string NormalizePacketMobAttackGeneralEffectPathToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
+
+            string normalized = token.Trim().Replace('\\', '/');
+            normalized = normalized.Trim('"', '\'');
+            normalized = normalized.Trim();
+            while (normalized.Length > 0
+                   && (normalized[0] == '('
+                       || normalized[0] == '['
+                       || normalized[0] == '{'))
+            {
+                normalized = normalized.Substring(1).TrimStart();
+            }
+
+            while (normalized.Length > 0
+                   && (normalized[^1] == ')'
+                       || normalized[^1] == ']'
+                       || normalized[^1] == '}'))
+            {
+                normalized = normalized.Substring(0, normalized.Length - 1).TrimEnd();
+            }
+
+            return normalized.Trim('/');
         }
 
         private static IEnumerable<string> EnumeratePacketMobAttackGeneralEffectBasePaths(
@@ -6000,17 +6113,44 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             var normalizedSegments = new List<string> { categorySegment.Trim(), normalizedImageSegment };
-            foreach (string segment in propertySegments ?? Enumerable.Empty<string>())
-            {
-                if (!string.IsNullOrWhiteSpace(segment))
-                {
-                    normalizedSegments.Add(segment.Trim());
-                }
-            }
-
-            return normalizedSegments.Count >= 3
+            return TryNormalizePacketMobAttackPropertySegments(propertySegments, normalizedSegments)
                 ? string.Join("/", normalizedSegments)
                 : null;
+        }
+
+        private static bool TryNormalizePacketMobAttackPropertySegments(
+            IEnumerable<string> propertySegments,
+            List<string> normalizedSegments)
+        {
+            if (normalizedSegments == null || normalizedSegments.Count < 2)
+            {
+                return false;
+            }
+
+            foreach (string segment in propertySegments ?? Enumerable.Empty<string>())
+            {
+                string trimmedSegment = segment?.Trim();
+                if (string.IsNullOrWhiteSpace(trimmedSegment)
+                    || string.Equals(trimmedSegment, ".", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (string.Equals(trimmedSegment, "..", StringComparison.Ordinal))
+                {
+                    if (normalizedSegments.Count <= 2)
+                    {
+                        return false;
+                    }
+
+                    normalizedSegments.RemoveAt(normalizedSegments.Count - 1);
+                    continue;
+                }
+
+                normalizedSegments.Add(trimmedSegment);
+            }
+
+            return normalizedSegments.Count >= 3;
         }
 
         private static bool IsPacketMobAttackCategorySegment(string segment)

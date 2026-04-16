@@ -1304,6 +1304,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             || HasAnimationFrames(StopEffect)
             || HasAnimationFrames(StopSecondaryEffect)
             || HasAnimationFrames(HitEffect)
+            || HasAnimationFrames(AffectedEffect)
+            || HasAnimationFrames(AffectedSecondaryEffect)
+            || HasAnimationFrames(SpecialAffectedEffect)
+            || HasPersistentAvatarEffect
             || HasAnimationFrames(SummonSpawnAnimation)
             || HasAnimationFrames(SummonAnimation)
             || HasAnimationFrames(SummonAttackPrepareAnimation)
@@ -2122,6 +2126,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool FacingRight { get; set; }
         public int? StopTime { get; set; }
         public int LastAfterimageUpdateTime { get; set; } = int.MinValue;
+        public int NextAfterimageRepeatLayerId { get; set; } = 1;
         public List<ProjectileAfterimageLayer> AfterimageLayers { get; } = new();
 
         public bool CanDrawMainAnimation(int currentTime)
@@ -2135,18 +2140,24 @@ namespace HaCreator.MapSimulator.Character.Skills
 
     public sealed class ProjectileAfterimageLayer
     {
+        public int RepeatLayerObjectId { get; init; }
+        public int ParentRepeatLayerObjectId { get; init; }
         public SkillFrame Frame { get; init; }
         public Vector2 Position { get; init; }
         public Rectangle WorldBounds { get; init; }
         public Point LayerOrigin { get; init; }
         public Point LayerLeftTop { get; init; }
         public Point LayerRightBottom { get; init; }
+        public Vector2 OriginShiftStart { get; init; }
+        public Vector2 OriginShiftEnd { get; init; }
         public bool ClockwiseBounds { get; init; }
         public bool Flip { get; init; }
         public int StartTime { get; init; }
         public int Duration { get; init; }
         public int AlphaStart { get; init; }
         public int AlphaEnd { get; init; }
+        public int AlphaVectorStart { get; init; }
+        public int AlphaVectorEnd { get; init; }
         public float FrameAlphaMultiplier { get; init; } = 1f;
 
         public bool IsExpired(int currentTime)
@@ -2156,15 +2167,40 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public float ResolveAlpha(int currentTime)
         {
-            float progress = MathHelper.Clamp(
+            float progress = ResolveProgress(currentTime);
+            int alphaStart = ResolveAlphaVectorStart();
+            int alphaEnd = ResolveAlphaVectorEnd();
+
+            return MathHelper.Lerp(
+                Math.Clamp(alphaStart, 0, 255),
+                Math.Clamp(alphaEnd, 0, 255),
+                progress) / 255f * MathHelper.Clamp(FrameAlphaMultiplier, 0f, 1f);
+        }
+
+        public Vector2 ResolveOrigin(int currentTime)
+        {
+            float progress = ResolveProgress(currentTime);
+            Vector2 origin = new(LayerOrigin.X, LayerOrigin.Y);
+            Vector2 shift = Vector2.Lerp(OriginShiftStart, OriginShiftEnd, progress);
+            return origin + shift;
+        }
+
+        private float ResolveProgress(int currentTime)
+        {
+            return MathHelper.Clamp(
                 (currentTime - StartTime) / (float)Math.Max(1, Duration),
                 0f,
                 1f);
+        }
 
-            return MathHelper.Lerp(
-                Math.Clamp(AlphaStart, 0, 255),
-                Math.Clamp(AlphaEnd, 0, 255),
-                progress) / 255f * MathHelper.Clamp(FrameAlphaMultiplier, 0f, 1f);
+        private int ResolveAlphaVectorStart()
+        {
+            return AlphaVectorStart > 0 ? AlphaVectorStart : AlphaStart;
+        }
+
+        private int ResolveAlphaVectorEnd()
+        {
+            return AlphaVectorEnd > 0 || AlphaEnd <= 0 ? AlphaVectorEnd : AlphaEnd;
         }
     }
 

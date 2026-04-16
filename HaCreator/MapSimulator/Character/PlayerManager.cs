@@ -1523,6 +1523,11 @@ namespace HaCreator.MapSimulator.Character
                 out resolvedRequestedAt) == true;
         }
 
+        public bool TryApplyPacketOwnedSelfDestructSummonAttack(PacketOwnedSelfDestructAttackRequest request)
+        {
+            return Skills?.TryApplyPacketOwnedSelfDestructSummonAttack(request) == true;
+        }
+
         private void TryAcknowledgePendingRepeatSkillModeEnd(int currentTime)
         {
             if (Skills == null || _pendingRepeatSkillModeEndRequestTime == int.MinValue)

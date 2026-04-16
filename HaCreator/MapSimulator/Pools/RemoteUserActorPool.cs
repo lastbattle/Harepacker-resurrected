@@ -2639,8 +2639,15 @@ namespace HaCreator.MapSimulator.Pools
                 return ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f);
             }
 
-            AssembledFrame frame = actor.Assembler.GetFrameAtTime(actor.ActionName, currentTime)
-                ?? actor.Assembler.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currentTime);
+            if (TryResolveRemoteHitMobAttackAttachToOwnerForParity(packet, out bool attachToOwner)
+                && attachToOwner)
+            {
+                // Client `CUserRemote::OnHit` uses the owner vec-control attachment path
+                // when `MobAttackInfo::bHitAttach` is enabled.
+                return ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f);
+            }
+
+            AssembledFrame frame = actor.GetFrameAtTimeForRendering(currentTime);
             if (frame == null)
             {
                 return ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f);
@@ -2658,6 +2665,84 @@ namespace HaCreator.MapSimulator.Pools
                 worldBottomExclusive,
                 randomSeed);
             return randomPoint.ToVector2();
+        }
+
+        internal static bool TryResolveRemoteHitMobAttackAttachToOwnerForParity(
+            RemoteUserHitPacket packet,
+            out bool attachToOwner)
+        {
+            attachToOwner = false;
+            int mobTemplateId = packet.MobTemplateId.GetValueOrDefault();
+            int attackNumber = packet.AttackIndex + 1;
+            if (mobTemplateId <= 0 || attackNumber <= 0)
+            {
+                return false;
+            }
+
+            if (TryResolveMobAttackHitAttachToOwnerForTemplate(mobTemplateId, attackNumber, out attachToOwner))
+            {
+                return true;
+            }
+
+            if (!TryResolveLinkedMobTemplateId(mobTemplateId, out int linkedMobTemplateId)
+                || linkedMobTemplateId == mobTemplateId)
+            {
+                return false;
+            }
+
+            return TryResolveMobAttackHitAttachToOwnerForTemplate(linkedMobTemplateId, attackNumber, out attachToOwner);
+        }
+
+        private static bool TryResolveMobAttackHitAttachToOwnerForTemplate(
+            int mobTemplateId,
+            int attackNumber,
+            out bool attachToOwner)
+        {
+            attachToOwner = false;
+            if (mobTemplateId <= 0 || attackNumber <= 0)
+            {
+                return false;
+            }
+
+            WzImage mobImage = TryFindMobImage(mobTemplateId);
+            if (mobImage == null)
+            {
+                return false;
+            }
+
+            WzImageProperty hitNode = WzInfoTools.GetRealProperty(mobImage[$"attack{attackNumber}"]?["info"]?["hit"]);
+            if (hitNode == null)
+            {
+                return false;
+            }
+
+            attachToOwner = ResolveMobAttackHitAttachToOwnerFromHitNodeForParity(hitNode);
+            return true;
+        }
+
+        internal static bool ResolveMobAttackHitAttachToOwnerFromHitNodeForParity(WzImageProperty hitNode)
+        {
+            if (hitNode == null)
+            {
+                return false;
+            }
+
+            WzImageProperty resolvedHitNode = WzInfoTools.GetRealProperty(hitNode);
+            int? explicitAttach = GetWzIntValue(
+                WzInfoTools.GetRealProperty(resolvedHitNode?["attach"])
+                ?? WzInfoTools.GetRealProperty(resolvedHitNode?["bHitAttach"])
+                ?? WzInfoTools.GetRealProperty(resolvedHitNode?["hitAttach"]));
+            if (explicitAttach.HasValue)
+            {
+                return explicitAttach.Value > 0;
+            }
+
+            int? facingAttach = GetWzIntValue(
+                WzInfoTools.GetRealProperty(resolvedHitNode?["attachfacing"])
+                ?? WzInfoTools.GetRealProperty(resolvedHitNode?["bFacingAttach"])
+                ?? WzInfoTools.GetRealProperty(resolvedHitNode?["bFacingAttatch"])
+                ?? WzInfoTools.GetRealProperty(resolvedHitNode?["facingAttach"]));
+            return facingAttach.GetValueOrDefault() > 0;
         }
 
         internal static Point ResolveRemoteHitBodyRectRandomPointForParity(
@@ -4104,8 +4189,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private static Vector2 ResolveStandardWorldAnchor(RemoteUserActor actor, int currentTime, float verticalOffset)
         {
-            AssembledFrame frame = actor.Assembler?.GetFrameAtTime(actor.ActionName, currentTime)
-                ?? actor.Assembler?.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currentTime);
+            AssembledFrame frame = actor?.GetFrameAtTimeForRendering(currentTime);
             if (frame != null)
             {
                 float topY = actor.Position.Y - frame.FeetOffset + frame.Bounds.Top;
@@ -4129,8 +4213,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            AssembledFrame ownerFrame = actor.Assembler?.GetFrameAtTime(actor.ActionName, currentTime)
-                ?? actor.Assembler?.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currentTime);
+            AssembledFrame ownerFrame = actor?.GetFrameAtTimeForRendering(currentTime);
             float ownerBodyOriginY = ownerFrame != null
                 ? actor.Position.Y - ownerFrame.FeetOffset
                 : actor.Position.Y;
@@ -4971,8 +5054,7 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = 0; i < visibleActors.Count; i++)
             {
                 RemoteUserActor actor = visibleActors[i];
-                AssembledFrame frame = actor.Assembler.GetFrameAtTime(actor.ActionName, tickCount)
-                    ?? actor.Assembler.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), tickCount);
+                AssembledFrame frame = actor.GetFrameAtTimeForRendering(tickCount);
                 if (frame == null)
                 {
                     continue;
@@ -10489,6 +10571,18 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        public AssembledFrame GetFrameAtTimeForRendering(int currentTime)
+        {
+            if (Assembler == null)
+            {
+                return null;
+            }
+
+            SyncAssemblerActionLayerContext();
+            return Assembler.GetFrameAtTime(ActionName, currentTime)
+                ?? Assembler.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currentTime);
+        }
+
         public void ApplyMeleeAfterImage(
             int skillId,
             string actionName,
@@ -10593,6 +10687,19 @@ namespace HaCreator.MapSimulator.Pools
             {
                 BeginMeleeAfterImageFade(currentTime);
             }
+        }
+
+        private void SyncAssemblerActionLayerContext()
+        {
+            if (Assembler == null)
+            {
+                return;
+            }
+
+            Assembler.PreparedActionSpeedDegree = Build?.GetEffectiveWeaponAttackSpeed() ?? 6;
+            Assembler.PreparedWalkSpeed = (int)Math.Round(Build?.Speed ?? 100f);
+            Assembler.HeldActionFrameDelay = false;
+            Assembler.CurrentFacingRight = FacingRight;
         }
 
         public void ClearMeleeAfterImage()
