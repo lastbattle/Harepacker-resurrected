@@ -62,7 +62,6 @@ namespace HaCreator.GUI
             bgPanelHost.Height = newHeight;
             bgBlackBorderPanelHost.Height = Math.Min(250, newHeight);
             commonPanelHost.Height = newHeight;
-            objectViewerPanelHostDocked.Height = newHeight;
         }
 
         private void HaEditor2_Loaded(object sender, RoutedEventArgs e)
