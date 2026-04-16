@@ -10,7 +10,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         ActivePetRuntime = 0,
         AuthoritativeCharacterData = 1,
-        LiveCashInventory = 2
+        LiveCashInventory = 2,
+        PacketPayloadFallback = 3
     }
 
     internal static class PacketScriptPetSelectionSnapshotResolver

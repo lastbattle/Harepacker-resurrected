@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])#?", RegexOptions.Compiled);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex MalformedPunctuationTagRegex = new(@"#(?<punct>!)#?", RegexOptions.Compiled);
         private static readonly Regex LiteralWordHashRegex = new(@"#(?=[A-Z][A-Za-z]+\b)", RegexOptions.Compiled);
 
         public static string Format(string text, NpcDialogueFormattingContext context = null)
@@ -109,6 +110,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = CurrentQuestRecordRegex.Replace(formatted, match => ResolveActiveQuestRecordText(context));
             formatted = StyleTagRegex.Replace(formatted, string.Empty);
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
+            formatted = MalformedPunctuationTagRegex.Replace(formatted, "${punct}");
             formatted = LiteralWordHashRegex.Replace(formatted, string.Empty);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
 

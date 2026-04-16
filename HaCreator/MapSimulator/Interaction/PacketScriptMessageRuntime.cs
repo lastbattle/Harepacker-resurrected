@@ -625,15 +625,21 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 bool exceptionExists = isPetAll && reader.ReadByte() != 0;
-                List<long> petSerialNumbers = new(count);
+                List<PacketScriptPetPacketEntry> petPacketEntries = new(count);
                 for (int i = 0; i < count; i++)
                 {
-                    petSerialNumbers.Add(reader.ReadInt64());
-                    _ = reader.ReadByte();
+                    long petSerialNumber = reader.ReadInt64();
+                    byte packetSlotHint = reader.ReadByte();
+                    petPacketEntries.Add(new PacketScriptPetPacketEntry(petSerialNumber, packetSlotHint));
                 }
 
-                List<PacketScriptPetSelectionCandidate> selectablePets = FilterSelectablePets(petSerialNumbers, resolveSelectablePet);
-                int droppedSerialCount = petSerialNumbers.Count - selectablePets.Count;
+                bool allowPacketFallback = !string.IsNullOrWhiteSpace(rawText);
+                List<PacketScriptPetSelectionCandidate> selectablePets = FilterSelectablePets(
+                    petPacketEntries,
+                    resolveSelectablePet,
+                    allowPacketFallback,
+                    out int droppedSerialCount,
+                    out int packetFallbackCount);
 
                 bool implicitFallbackOnly = ShouldAutoClosePetClientPacket(isPetAll, count, exceptionExists);
                 if (implicitFallbackOnly)
@@ -699,6 +705,14 @@ namespace HaCreator.MapSimulator.Interaction
                 string resolutionDetails = droppedSerialCount > 0
                     ? $"Skipped {droppedSerialCount} packet serial entr{(droppedSerialCount == 1 ? "y" : "ies")} that did not resolve to selectable pets on the current runtime branch."
                     : null;
+                if (packetFallbackCount > 0)
+                {
+                    string fallbackDetails =
+                        $"Used packet serial fallback for {packetFallbackCount} entr{(packetFallbackCount == 1 ? "y" : "ies")} that could not be mapped through active pets or CharacterData cash inventory ownership.";
+                    resolutionDetails = string.IsNullOrWhiteSpace(resolutionDetails)
+                        ? fallbackDetails
+                        : $"{resolutionDetails}\n{fallbackDetails}";
+                }
                 string entryText = BuildPetSelectionEntryText(rawText, optionDetails, resolutionDetails, isPetAll, exceptionExists);
                 result = CreateDecodedResult(
                     CreatePetSelectionEntry(
@@ -793,26 +807,48 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private static List<PacketScriptPetSelectionCandidate> FilterSelectablePets(
-            IReadOnlyList<long> petSerialNumbers,
-            Func<long, PacketScriptPetSelectionCandidate> resolveSelectablePet)
+            IReadOnlyList<PacketScriptPetPacketEntry> packetPetEntries,
+            Func<long, PacketScriptPetSelectionCandidate> resolveSelectablePet,
+            bool allowPacketFallback,
+            out int droppedSerialCount,
+            out int packetFallbackCount)
         {
             List<PacketScriptPetSelectionCandidate> selectable = new();
-            if (petSerialNumbers == null)
+            droppedSerialCount = 0;
+            packetFallbackCount = 0;
+            if (packetPetEntries == null)
             {
                 return selectable;
             }
 
-            for (int i = 0; i < petSerialNumbers.Count; i++)
+            HashSet<long> seenPetSerialNumbers = new();
+            for (int i = 0; i < packetPetEntries.Count; i++)
             {
-                long serialNumber = petSerialNumbers[i];
+                PacketScriptPetPacketEntry packetEntry = packetPetEntries[i];
+                long serialNumber = packetEntry.PetSerialNumber;
                 if (serialNumber <= 0)
                 {
+                    droppedSerialCount++;
+                    continue;
+                }
+
+                if (!seenPetSerialNumbers.Add(serialNumber))
+                {
+                    droppedSerialCount++;
                     continue;
                 }
 
                 PacketScriptPetSelectionCandidate selectablePet = resolveSelectablePet?.Invoke(serialNumber);
                 if (selectablePet == null)
                 {
+                    if (!allowPacketFallback)
+                    {
+                        droppedSerialCount++;
+                        continue;
+                    }
+
+                    selectable.Add(CreatePacketFallbackPetCandidate(serialNumber, packetEntry.CashSlotHint));
+                    packetFallbackCount++;
                     continue;
                 }
 
@@ -820,6 +856,21 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return selectable;
+        }
+
+        private static PacketScriptPetSelectionCandidate CreatePacketFallbackPetCandidate(long petSerialNumber, byte packetSlotHint)
+        {
+            short cashSlotHint = packetSlotHint > 0 ? (short)packetSlotHint : (short)0;
+            string displayName = cashSlotHint > 0
+                ? $"Pet in cash slot {cashSlotHint}"
+                : $"Pet SN {petSerialNumber}";
+            return new PacketScriptPetSelectionCandidate(
+                petSerialNumber,
+                SlotIndex: -1,
+                ItemId: 0,
+                DisplayName: displayName,
+                Source: PacketScriptPetSelectionSource.PacketPayloadFallback,
+                InventoryPosition: cashSlotHint);
         }
 
         private static string BuildPetItemChoiceLabel(int itemId, int index)
@@ -1299,6 +1350,8 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketScriptPetSelectionSource.LiveCashInventory => "cash slot ?",
                 PacketScriptPetSelectionSource.AuthoritativeCharacterData when pet.InventoryPosition > 0 => $"cash slot {pet.InventoryPosition}",
                 PacketScriptPetSelectionSource.AuthoritativeCharacterData => "cash slot ?",
+                PacketScriptPetSelectionSource.PacketPayloadFallback when pet.InventoryPosition > 0 => $"cash slot {pet.InventoryPosition}",
+                PacketScriptPetSelectionSource.PacketPayloadFallback => "packet serial",
                 _ => pet.SlotIndex >= 0 ? $"slot {pet.SlotIndex + 1}" : "slot ?"
             };
             return $"{name} ({slotText}, SN {pet.PetSerialNumber})";
@@ -1321,6 +1374,8 @@ namespace HaCreator.MapSimulator.Interaction
                 PacketScriptPetSelectionSource.LiveCashInventory => "unknown cash slot",
                 PacketScriptPetSelectionSource.AuthoritativeCharacterData when pet.InventoryPosition > 0 => $"cash slot {pet.InventoryPosition}",
                 PacketScriptPetSelectionSource.AuthoritativeCharacterData => "unknown cash slot",
+                PacketScriptPetSelectionSource.PacketPayloadFallback when pet.InventoryPosition > 0 => $"cash slot {pet.InventoryPosition}",
+                PacketScriptPetSelectionSource.PacketPayloadFallback => "packet serial",
                 _ => pet.SlotIndex >= 0 ? $"slot {pet.SlotIndex + 1}" : "unknown slot"
             };
             return $"{name} on {slotText} with cash serial {pet.PetSerialNumber} ({itemText}).";
@@ -1775,6 +1830,7 @@ namespace HaCreator.MapSimulator.Interaction
             int SpeakerNpcId);
 
         private sealed record SlideMenuOption(int SelectionId, string Label);
+        private sealed record PacketScriptPetPacketEntry(long PetSerialNumber, byte CashSlotHint);
 
         private sealed record PacketScriptSpeaker(int SpeakerTypeId, int TemplateId, int NpcId, string DisplayName);
 

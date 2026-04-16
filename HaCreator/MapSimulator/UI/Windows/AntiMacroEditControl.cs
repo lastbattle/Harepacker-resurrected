@@ -174,6 +174,7 @@ namespace HaCreator.MapSimulator.UI
         public bool HasFocus { get; private set; }
         public bool IsSelectingWithMouse => _mouseSelecting;
         public string Text => _inputText;
+        public ImeCandidateListState CandidateListState => _candidateListState;
 
         public void SetFont(SpriteFont font)
         {
@@ -376,6 +377,41 @@ namespace HaCreator.MapSimulator.UI
         public void ClearImeCandidateList()
         {
             _candidateListState = ImeCandidateListState.Empty;
+        }
+
+        public int ResolveImeCandidateIndexFromMouse(Rectangle ownerBounds, int mouseX, int mouseY)
+        {
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return -1;
+            }
+
+            Rectangle inputBounds = GetBounds(ownerBounds);
+            Rectangle bounds = GetImeCandidateWindowBounds(_pixelTexture.GraphicsDevice.Viewport, inputBounds);
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return -1;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            if (count <= 0)
+            {
+                return -1;
+            }
+
+            int rowHeight = Math.Max(_font.LineSpacing + 1, 16);
+            int cellWidth = Math.Max(1, (bounds.Width - 4) / count);
+            int localIndex = SkillMacroImeCandidateWindowLayout.HitTestCandidate(
+                bounds,
+                new Point(mouseX, mouseY),
+                _candidateListState.Vertical,
+                count,
+                rowHeight,
+                cellWidth);
+            return localIndex >= 0
+                ? start + localIndex
+                : -1;
         }
 
         public void HandleKeyboardInput(KeyboardState keyboardState, KeyboardState previousKeyboardState)

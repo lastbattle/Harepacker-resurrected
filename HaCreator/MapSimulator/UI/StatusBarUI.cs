@@ -255,8 +255,6 @@ namespace HaCreator.MapSimulator.UI {
         private const int TOOLTIP_ICON_GAP = 8;
         private const int TOOLTIP_TITLE_GAP = 8;
         private const int TOOLTIP_SECTION_GAP = 6;
-        private const int TOOLTIP_OFFSET_X = 12;
-        private const int TOOLTIP_OFFSET_Y = -4;
         private const int PREPARED_SKILL_LABEL_GAP = 6;
         // Preserve the existing default bar placement by treating the WZ origin
         // as the HUD anchor and remapping each skin's top-left from that anchor.
@@ -1300,7 +1298,8 @@ namespace HaCreator.MapSimulator.UI {
                 BuildCooldownTooltipSecondaryLineMarkup(cooldownEntry),
                 SanitizeTooltipText(cooldownEntry.Description),
                 cooldownEntry.IconTexture,
-                useClientSkillLayout: true);
+                useClientSkillLayout: true,
+                anchorOwner: SkillTooltipAnchorOwner.StatusBarCooldownTray);
         }
 
         private void DrawCooldownMask(SpriteBatch sprite, Rectangle iconRect, int frameIndex)
@@ -1471,7 +1470,8 @@ namespace HaCreator.MapSimulator.UI {
             string secondaryLine,
             string description,
             Texture2D iconTexture,
-            bool useClientSkillLayout)
+            bool useClientSkillLayout,
+            SkillTooltipAnchorOwner anchorOwner = SkillTooltipAnchorOwner.LegacyPanel)
         {
             int tooltipWidth = useClientSkillLayout
                 ? SkillTooltipFrameLayout.ClientTooltipWidth
@@ -1533,7 +1533,7 @@ namespace HaCreator.MapSimulator.UI {
                     SkillTooltipFrameLayout.ClientTooltipBaseHeight,
                     (int)Math.Ceiling(Math.Max(baseContentY + BUFF_ICON_SIZE, baseContentY + iconBlockHeight) + TOOLTIP_PADDING))
                 : (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
-            Point tooltipAnchor = new Point(anchorPoint.X + TOOLTIP_OFFSET_X, anchorPoint.Y + TOOLTIP_OFFSET_Y);
+            Point tooltipAnchor = SkillTooltipFrameLayout.ResolveTooltipAnchorFromCursor(anchorPoint, anchorOwner);
             Rectangle tooltipRect = ResolveTooltipRect(
                 tooltipAnchor,
                 tooltipWidth,

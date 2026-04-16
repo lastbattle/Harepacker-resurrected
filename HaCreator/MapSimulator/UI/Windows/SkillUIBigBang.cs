@@ -80,7 +80,6 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_ICON_GAP = 8;
         private const int TOOLTIP_TITLE_GAP = 8;
         private const int TOOLTIP_SECTION_GAP = 6;
-        private const int HOVER_TOOLTIP_CURSOR_GAP = 20;
         private const float COOLDOWN_TEXT_SCALE = 0.55f;
         private const int CLIENT_TOOLTIP_WIDTH = SkillTooltipFrameLayout.ClientTooltipWidth;
         private const int CLIENT_TOOLTIP_BASE_HEIGHT = SkillTooltipFrameLayout.ClientTooltipBaseHeight;
@@ -1322,7 +1321,9 @@ namespace HaCreator.MapSimulator.UI
                 CLIENT_TOOLTIP_BASE_HEIGHT,
                 (int)Math.Ceiling(Math.Max(iconBottom, textBottom) + TOOLTIP_PADDING));
 
-            Point anchorPoint = new Point(_lastMousePosition.X, _lastMousePosition.Y + HOVER_TOOLTIP_CURSOR_GAP);
+            Point anchorPoint = SkillTooltipFrameLayout.ResolveTooltipAnchorFromCursor(
+                _lastMousePosition,
+                SkillTooltipAnchorOwner.SkillBook);
             Rectangle backgroundRect = ResolveTooltipRect(
                 anchorPoint,
                 tooltipWidth,

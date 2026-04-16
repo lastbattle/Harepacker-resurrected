@@ -95,7 +95,8 @@ namespace HaCreator.MapSimulator.Pools
             int CharacterId,
             string SoundPath,
             string DefaultImageName,
-            int CurrentTime);
+            int CurrentTime,
+            Vector2? WorldOrigin = null);
         public readonly record struct RemoteStringEffectPresentation(
             int CharacterId,
             byte EffectType,
@@ -2428,12 +2429,13 @@ namespace HaCreator.MapSimulator.Pools
             if (TryResolveRemoteHitMobAttackEffectPath(packet, out string mobAttackEffectPath))
             {
                 bool usesAuthoredHitNode = TryResolveAuthoredMobAttackHitEffectPath(packet, out _);
+                Vector2 mobAttackEffectAnchor = ResolveRemoteHitMobAttackEffectAnchorForParity(actor, packet, currentTime);
                 MobAttackHitEffectRegistered?.Invoke(new RemoteMobAttackHitPresentation(
                     packet.CharacterId,
                     packet.MobTemplateId.Value,
                     packet.AttackIndex,
                     mobAttackEffectPath,
-                    ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f),
+                    mobAttackEffectAnchor,
                     !packet.MobHitFacingLeft,
                     currentTime,
                     usesAuthoredHitNode));
@@ -2443,11 +2445,12 @@ namespace HaCreator.MapSimulator.Pools
                     packet.AttackIndex);
                 if (!string.IsNullOrWhiteSpace(mobAttackSoundDescriptor))
                 {
-                    ClientSoundRegistered?.Invoke(new RemoteClientSoundPresentation(
+                    RegisterClientSoundPresentation(
                         packet.CharacterId,
                         mobAttackSoundDescriptor,
                         "Mob.img",
-                        currentTime));
+                        currentTime,
+                        mobAttackEffectAnchor);
                 }
             }
 
@@ -2619,6 +2622,82 @@ namespace HaCreator.MapSimulator.Pools
                 packet.MobTemplateId.Value,
                 attackNumber);
             return true;
+        }
+
+        internal static Vector2 ResolveRemoteHitMobAttackEffectAnchorForParity(
+            RemoteUserActor actor,
+            RemoteUserHitPacket packet,
+            int currentTime)
+        {
+            if (actor == null)
+            {
+                return Vector2.Zero;
+            }
+
+            if (actor.Assembler == null)
+            {
+                return ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f);
+            }
+
+            AssembledFrame frame = actor.Assembler.GetFrameAtTime(actor.ActionName, currentTime)
+                ?? actor.Assembler.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), currentTime);
+            if (frame == null)
+            {
+                return ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f);
+            }
+
+            int worldLeft = (int)MathF.Round(actor.Position.X + frame.Bounds.Left);
+            int worldTop = (int)MathF.Round(actor.Position.Y - frame.FeetOffset + frame.Bounds.Top);
+            int worldRightExclusive = Math.Max(worldLeft + 1, worldLeft + frame.Bounds.Width);
+            int worldBottomExclusive = Math.Max(worldTop + 1, worldTop + frame.Bounds.Height);
+            int randomSeed = ResolveRemoteHitMobAttackAnchorSeed(packet, currentTime, actor.CharacterId);
+            Point randomPoint = ResolveRemoteHitBodyRectRandomPointForParity(
+                worldLeft,
+                worldTop,
+                worldRightExclusive,
+                worldBottomExclusive,
+                randomSeed);
+            return randomPoint.ToVector2();
+        }
+
+        internal static Point ResolveRemoteHitBodyRectRandomPointForParity(
+            int leftInclusive,
+            int topInclusive,
+            int rightExclusive,
+            int bottomExclusive,
+            int randomSeed)
+        {
+            int width = Math.Max(1, rightExclusive - leftInclusive);
+            int height = Math.Max(1, bottomExclusive - topInclusive);
+            int randomX = leftInclusive + ResolveRemoteHitRandomOffsetForParity(randomSeed ^ unchecked((int)0x9E3779B9u), width);
+            int randomY = topInclusive + ResolveRemoteHitRandomOffsetForParity(randomSeed ^ unchecked((int)0x85EBCA77u), height);
+            return new Point(randomX, randomY);
+        }
+
+        private static int ResolveRemoteHitRandomOffsetForParity(int seed, int span)
+        {
+            if (span <= 1)
+            {
+                return 0;
+            }
+
+            uint state = unchecked((uint)seed);
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            return (int)(state % (uint)span);
+        }
+
+        private static int ResolveRemoteHitMobAttackAnchorSeed(RemoteUserHitPacket packet, int currentTime, int characterId)
+        {
+            unchecked
+            {
+                return (packet.MobTemplateId.GetValueOrDefault() * 397)
+                    ^ (packet.AttackIndex * 131)
+                    ^ (packet.Damage * 17)
+                    ^ (characterId * 31)
+                    ^ currentTime;
+            }
         }
 
         public static string BuildRemoteMobAttackHitSoundDescriptorForParity(int mobTemplateId, sbyte attackIndex)
@@ -3288,7 +3367,8 @@ namespace HaCreator.MapSimulator.Pools
             int characterId,
             string soundPath,
             string defaultImageName,
-            int currentTime)
+            int currentTime,
+            Vector2? worldOrigin = null)
         {
             if (string.IsNullOrWhiteSpace(soundPath))
             {
@@ -3299,7 +3379,8 @@ namespace HaCreator.MapSimulator.Pools
                 characterId,
                 soundPath,
                 defaultImageName,
-                currentTime));
+                currentTime,
+                worldOrigin));
         }
 
         private static string ResolveRemoteSoundDescriptor(int stringPoolId, string fallbackDescriptor)
@@ -8789,6 +8870,13 @@ namespace HaCreator.MapSimulator.Pools
             {
                 if (!underFaceDrawn && i == underFaceInsertionIndex)
                 {
+                    DrawRemoteShadowPartner(
+                        spriteBatch,
+                        skeletonRenderer,
+                        actor,
+                        screenX,
+                        screenY,
+                        currentTime);
                     DrawRemoteTemporaryStatAvatarEffects(
                         spriteBatch,
                         skeletonRenderer,
@@ -8807,13 +8895,6 @@ namespace HaCreator.MapSimulator.Pools
                         screenY,
                         currentTime,
                         drawFrontLayers: false);
-                    DrawRemoteShadowPartner(
-                        spriteBatch,
-                        skeletonRenderer,
-                        actor,
-                        screenX,
-                        screenY,
-                        currentTime);
                     underFaceDrawn = true;
                 }
 
@@ -8822,6 +8903,13 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!underFaceDrawn)
             {
+                DrawRemoteShadowPartner(
+                    spriteBatch,
+                    skeletonRenderer,
+                    actor,
+                    screenX,
+                    screenY,
+                    currentTime);
                 DrawRemoteTemporaryStatAvatarEffects(
                     spriteBatch,
                     skeletonRenderer,
@@ -8840,13 +8928,6 @@ namespace HaCreator.MapSimulator.Pools
                     screenY,
                     currentTime,
                     drawFrontLayers: false);
-                DrawRemoteShadowPartner(
-                    spriteBatch,
-                    skeletonRenderer,
-                    actor,
-                    screenX,
-                    screenY,
-                    currentTime);
             }
         }
 
@@ -9110,7 +9191,10 @@ namespace HaCreator.MapSimulator.Pools
                     {
                         presentation.PendingActionName = resolvedObservedAction;
                         presentation.PendingPlaybackAnimation = resolvedObservedPlayback;
-                        presentation.PendingActionReadyTime = currentTime + ResolveRemoteShadowPartnerAttackDelayMs(actor, resolvedObservedAction);
+                        presentation.PendingActionReadyTime = currentTime + ResolveRemoteShadowPartnerAttackDelayMs(
+                            actor,
+                            resolvedObservedAction,
+                            resolvedObservedPlayback);
                         presentation.PendingFacingRight = actor.FacingRight;
                         presentation.PendingForceReplay = true;
                     }
@@ -9343,11 +9427,15 @@ namespace HaCreator.MapSimulator.Pools
             return !ShadowPartnerClientActionResolver.IsPlaybackComplete(presentation.CurrentPlaybackAnimation, elapsedTime);
         }
 
-        private static int ResolveRemoteShadowPartnerAttackDelayMs(RemoteUserActor actor, string actionName)
+        private static int ResolveRemoteShadowPartnerAttackDelayMs(
+            RemoteUserActor actor,
+            string actionName,
+            SkillAnimation playbackAnimation = null)
         {
             return ShadowPartnerClientActionResolver.ResolveAttackDelayMs(
                 actor?.TemporaryStatShadowPartnerSkill?.ShadowPartnerActionAnimations,
                 actionName,
+                playbackAnimation,
                 RemoteShadowPartnerAttackDelayMs);
         }
 

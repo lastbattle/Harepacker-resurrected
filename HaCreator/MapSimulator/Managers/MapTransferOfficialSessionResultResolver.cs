@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.Managers
                 MapTransferRuntimeResultType.DeleteApplied => MapTransferRuntimeRequestType.Delete,
                 _ => null
             };
+            expectedType ??= InferRequestTypeFromFailureResultCode(authoritativeResponse.PacketResultCode);
 
             int bookFallbackIndex = -1;
             int typeFallbackIndex = -1;
@@ -89,6 +90,19 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return typeFallbackIndex >= 0 ? typeFallbackIndex : bookFallbackIndex;
+        }
+
+        private static MapTransferRuntimeRequestType? InferRequestTypeFromFailureResultCode(
+            MapTransferRuntimePacketResultCode packetResultCode)
+        {
+            return packetResultCode switch
+            {
+                MapTransferRuntimePacketResultCode.NoEmptySlot => MapTransferRuntimeRequestType.Register,
+                MapTransferRuntimePacketResultCode.AlreadyRegistered => MapTransferRuntimeRequestType.Register,
+                MapTransferRuntimePacketResultCode.CannotSaveDestination => MapTransferRuntimeRequestType.Register,
+                MapTransferRuntimePacketResultCode.OfficialFailure11 => MapTransferRuntimeRequestType.Register,
+                _ => null
+            };
         }
 
         private static bool MatchesAuthoritativeFieldList(

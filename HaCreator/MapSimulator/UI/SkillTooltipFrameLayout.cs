@@ -4,6 +4,14 @@ using System;
 
 namespace HaCreator.MapSimulator.UI
 {
+    internal enum SkillTooltipAnchorOwner
+    {
+        LegacyPanel,
+        SkillBook,
+        QuickSlot,
+        StatusBarCooldownTray
+    }
+
     internal static class SkillTooltipFrameLayout
     {
         internal readonly record struct FrameGeometry(int Width, int Height, Point Origin);
@@ -17,6 +25,11 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientTooltipTextY = 32;
         internal const int ClientTooltipRightPadding = 20;
         internal static readonly Color PlainTooltipBackgroundColor = new(0, 0, 0, 235);
+        private const int LegacyTooltipOffsetX = 12;
+        private const int LegacyTooltipOffsetY = -4;
+        private const int SkillBookCursorYOffset = 20;
+        private const int QuickSlotCursorYOffset = 20;
+        private const int StatusBarCooldownTrayCursorYOffset = -128;
         private const int MountedSkillTooltipFrameWidth = 193;
         private const int MountedSkillTooltipFrameHeight = 102;
 
@@ -49,6 +62,20 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return fallbackOrigin;
+        }
+
+        internal static Point ResolveTooltipAnchorFromCursor(Point cursorPosition, SkillTooltipAnchorOwner owner)
+        {
+            // v95 client evidence:
+            // - CUISkill::OnMouseMove and CUIKeyConfig::OnMouseMove call SetToolTip_Skill at (mouseX, mouseY + 20).
+            // - CUIStatusBar::OnMouseMove calls SetToolTip_Skill at (mouseX, mouseY - 128) for shortcut tray entries.
+            return owner switch
+            {
+                SkillTooltipAnchorOwner.SkillBook => new Point(cursorPosition.X, cursorPosition.Y + SkillBookCursorYOffset),
+                SkillTooltipAnchorOwner.QuickSlot => new Point(cursorPosition.X, cursorPosition.Y + QuickSlotCursorYOffset),
+                SkillTooltipAnchorOwner.StatusBarCooldownTray => new Point(cursorPosition.X, cursorPosition.Y + StatusBarCooldownTrayCursorYOffset),
+                _ => new Point(cursorPosition.X + LegacyTooltipOffsetX, cursorPosition.Y + LegacyTooltipOffsetY)
+            };
         }
 
         internal static Rectangle ResolveTooltipRect(

@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator
     {
         private const int RemoteAffectedAreaFallbackTickMs = 1000;
         private readonly Dictionary<int, Fields.MonsterCarnivalTeam> _remoteAffectedAreaMonsterCarnivalOwnerTeams = new();
+        private readonly Dictionary<int, int> _remoteAffectedAreaLocalPlayerTickTimes = new();
 
         private readonly record struct RemoteAffectedAreaSkillRuntime(
             SkillData Skill,
@@ -141,6 +142,9 @@ namespace HaCreator.MapSimulator
             var activeProjectedSupportAreaIds = _playerManager?.Skills != null
                 ? new System.Collections.Generic.HashSet<int>()
                 : null;
+            var activeAreaIdsForLocalPlayerTicks = _remoteAffectedAreaLocalPlayerTickTimes.Count > 0
+                ? new System.Collections.Generic.HashSet<int>()
+                : null;
 
             foreach (ActiveAffectedArea area in _affectedAreaPool.ActiveAreas.ToArray())
             {
@@ -148,6 +152,8 @@ namespace HaCreator.MapSimulator
                 {
                     continue;
                 }
+
+                activeAreaIdsForLocalPlayerTicks?.Add(area.ObjectId);
 
                 switch (area.SourceKind)
                 {
@@ -164,6 +170,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            PruneRemoteAffectedAreaLocalPlayerTickTimes(activeAreaIdsForLocalPlayerTicks);
             _playerManager?.Skills?.SyncExternalAreaSupportBuffs(activeProjectedSupportAreaIds, currentTime);
         }
 
@@ -231,9 +238,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            RemoteAffectedAreaSkillRuntime[] localPlayerHostileSkillRuntimes =
+                FilterRemoteAffectedAreaLocalPlayerHostileSkillRuntimes(hostileSkillRuntimes);
             PlayerCharacter player = _playerManager?.Player;
             bool canAffectLocalPlayer =
-                player != null
+                localPlayerHostileSkillRuntimes.Length > 0
+                && player != null
                 && player.IsAlive
                 && area.Contains(player.X, player.Y)
                 && IsAffectedAreaOwnerEnemyInPvpContext(area.OwnerId);
@@ -250,6 +260,16 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            if (canAffectLocalPlayer)
+            {
+                int localHostileTickIntervalMs = ResolveRemoteAffectedAreaHostileTickIntervalMs(
+                    localPlayerHostileSkillRuntimes.Select(static runtime => runtime.LevelData));
+                canAffectLocalPlayer = TryBeginRemoteAffectedAreaLocalPlayerTick(
+                    area.ObjectId,
+                    currentTime,
+                    localHostileTickIntervalMs);
+            }
+
             SkillManager skillManager = _playerManager?.Skills;
             if (skillManager == null && canAffectLocalPlayer)
             {
@@ -258,7 +278,7 @@ namespace HaCreator.MapSimulator
 
             if (canAffectLocalPlayer)
             {
-                ApplyRemoteHostileAffectedAreaToLocalPlayer(hostileSkillRuntimes, currentTime);
+                ApplyRemoteHostileAffectedAreaToLocalPlayer(localPlayerHostileSkillRuntimes, currentTime);
             }
 
             if (!canAffectMobs || skillManager == null)
@@ -285,6 +305,98 @@ namespace HaCreator.MapSimulator
                         fallbackDamage);
                 }
             }
+        }
+
+        private bool TryBeginRemoteAffectedAreaLocalPlayerTick(
+            int areaObjectId,
+            int currentTime,
+            int intervalMs)
+        {
+            if (areaObjectId <= 0)
+            {
+                return false;
+            }
+
+            int normalizedIntervalMs = Math.Max(100, intervalMs);
+            if (_remoteAffectedAreaLocalPlayerTickTimes.TryGetValue(areaObjectId, out int nextTickTime)
+                && currentTime < nextTickTime)
+            {
+                return false;
+            }
+
+            _remoteAffectedAreaLocalPlayerTickTimes[areaObjectId] = currentTime + normalizedIntervalMs;
+            return true;
+        }
+
+        private void PruneRemoteAffectedAreaLocalPlayerTickTimes(System.Collections.Generic.ISet<int> activeAreaIds)
+        {
+            if (_remoteAffectedAreaLocalPlayerTickTimes.Count == 0)
+            {
+                return;
+            }
+
+            if (activeAreaIds == null || activeAreaIds.Count == 0)
+            {
+                _remoteAffectedAreaLocalPlayerTickTimes.Clear();
+                return;
+            }
+
+            foreach (int areaObjectId in _remoteAffectedAreaLocalPlayerTickTimes.Keys.ToArray())
+            {
+                if (activeAreaIds.Contains(areaObjectId))
+                {
+                    continue;
+                }
+
+                _remoteAffectedAreaLocalPlayerTickTimes.Remove(areaObjectId);
+            }
+        }
+
+        private static RemoteAffectedAreaSkillRuntime[] FilterRemoteAffectedAreaLocalPlayerHostileSkillRuntimes(
+            RemoteAffectedAreaSkillRuntime[] hostileSkillRuntimes)
+        {
+            if (hostileSkillRuntimes == null || hostileSkillRuntimes.Length == 0)
+            {
+                return Array.Empty<RemoteAffectedAreaSkillRuntime>();
+            }
+
+            var filtered = new System.Collections.Generic.List<RemoteAffectedAreaSkillRuntime>(hostileSkillRuntimes.Length);
+            for (int i = 0; i < hostileSkillRuntimes.Length; i++)
+            {
+                RemoteAffectedAreaSkillRuntime runtime = hostileSkillRuntimes[i];
+                if (!CanRemoteAffectedAreaHostileRuntimeAffectLocalPlayer(runtime.Skill, runtime.LevelData))
+                {
+                    continue;
+                }
+
+                filtered.Add(runtime);
+            }
+
+            return filtered.Count > 0
+                ? filtered.ToArray()
+                : Array.Empty<RemoteAffectedAreaSkillRuntime>();
+        }
+
+        internal static bool CanRemoteAffectedAreaHostileRuntimeAffectLocalPlayer(
+            SkillData skill,
+            SkillLevelData levelData)
+        {
+            if (skill == null || levelData == null)
+            {
+                return false;
+            }
+
+            if (RemoteAffectedAreaSupportResolver.ResolveHostilePlayerAreaStatuses(skill, levelData).Count > 0)
+            {
+                return true;
+            }
+
+            if (ResolveRemoteAffectedAreaFallbackDamage(skill, levelData) <= 0)
+            {
+                return false;
+            }
+
+            return !RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill, levelData);
         }
 
         private bool TryApplyRemotePlayerSupportAffectedAreaGameplay(

@@ -363,6 +363,7 @@ namespace HaCreator.MapSimulator
             UpdatePacketOwnedTutorRuntime(currTickCount);
             UpdatePacketOwnedBattleshipCooldownLifecycle(currTickCount);
             SyncClientOwnedTutorialTutorOwner(currTickCount);
+            UpdateItemUpgradeOwnerState();
             UpdateVegaSpellOwnerState();
             UpdatePacketOwnedRadioSchedule(currTickCount);
             UpdateUtilityAudioMix(currTickCount);
@@ -1442,7 +1443,7 @@ namespace HaCreator.MapSimulator
                                 {
                                     _pendingCrossMapTeleportTarget = null;
                                     _packetOwnedTeleportRequestActive = false;
-                                    ClearCollisionScriptExclusiveRequestSent();
+                                    ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
                                 }
 
 

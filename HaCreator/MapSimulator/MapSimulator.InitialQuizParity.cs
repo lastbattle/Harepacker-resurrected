@@ -219,6 +219,7 @@ namespace HaCreator.MapSimulator
             Point cursor = new(mouseState.X, mouseState.Y);
             _initialQuizOwnerHoveringOkButton = okButtonBounds.Contains(cursor);
             bool showInput = ShouldShowInitialQuizOwnerInput(snapshot.RemainingMs);
+            AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
 
             bool leftPressed = mouseState.LeftButton == ButtonState.Pressed;
             bool justPressed = leftPressed && previousMouseState.LeftButton == ButtonState.Released;
@@ -226,6 +227,14 @@ namespace HaCreator.MapSimulator
 
             if (justPressed)
             {
+                if (showInput
+                    && _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input
+                    && TrySelectInitialQuizOwnerImeCandidateFromMouse(editControl, ownerBounds, cursor))
+                {
+                    _initialQuizOwnerCursorBlinkStartedAt = currentTickCount;
+                    return true;
+                }
+
                 if (_initialQuizOwnerHoveringOkButton)
                 {
                     _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.OkButton;
@@ -235,7 +244,6 @@ namespace HaCreator.MapSimulator
                 {
                     _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.Input;
                     _initialQuizOwnerPressedOkButton = false;
-                    AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
                     if (editControl != null)
                     {
                         editControl.BeginSelectionAtMouseX(cursor.X, ownerBounds);
@@ -261,7 +269,7 @@ namespace HaCreator.MapSimulator
             }
             if (justReleased)
             {
-                EnsureInitialQuizOwnerEditControl()?.EndMouseSelection();
+                editControl?.EndMouseSelection();
                 bool confirm = ShouldSubmitInitialQuizOwnerOkButtonRelease(
                     _initialQuizOwnerPressedOkButton,
                     _initialQuizOwnerHoveringOkButton,
@@ -274,7 +282,6 @@ namespace HaCreator.MapSimulator
             }
             else if (leftPressed && showInput && _initialQuizOwnerFocusTarget == InitialQuizOwnerFocusTarget.Input)
             {
-                AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
                 if (editControl?.IsSelectingWithMouse == true)
                 {
                     editControl.UpdateSelectionAtMouseX(cursor.X, ownerBounds);
@@ -283,7 +290,7 @@ namespace HaCreator.MapSimulator
             }
             else if (!leftPressed)
             {
-                EnsureInitialQuizOwnerEditControl()?.EndMouseSelection();
+                editControl?.EndMouseSelection();
                 _initialQuizOwnerPressedOkButton = false;
             }
 
@@ -333,6 +340,14 @@ namespace HaCreator.MapSimulator
             }
 
             AntiMacroEditControl editControl = EnsureInitialQuizOwnerEditControl();
+            if (TryDispatchInitialQuizOwnerImeCandidateSelection(
+                    editControl?.CandidateListState ?? ImeCandidateListState.Empty,
+                    newKeyboardState,
+                    oldKeyboardState))
+            {
+                return true;
+            }
+
             editControl?.SetFocus(true);
             editControl?.HandleKeyboardInput(newKeyboardState, oldKeyboardState);
             SyncInitialQuizOwnerLegacyInputStateFromEditControl();
@@ -836,6 +851,76 @@ namespace HaCreator.MapSimulator
         private void ClearInitialQuizOwnerImeCandidateList()
         {
             _initialQuizOwnerEditControl?.ClearImeCandidateList();
+        }
+
+        private bool TrySelectInitialQuizOwnerImeCandidateFromMouse(AntiMacroEditControl editControl, Rectangle ownerBounds, Point cursor)
+        {
+            if (editControl == null)
+            {
+                return false;
+            }
+
+            int candidateIndex = editControl.ResolveImeCandidateIndexFromMouse(ownerBounds, cursor.X, cursor.Y);
+            if (candidateIndex < 0)
+            {
+                return false;
+            }
+
+            return TrySelectInitialQuizImeCandidate(editControl.CandidateListState?.ListIndex ?? -1, candidateIndex);
+        }
+
+        private bool TryDispatchInitialQuizOwnerImeCandidateSelection(
+            ImeCandidateListState candidateState,
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState)
+        {
+            return TryResolveInitialQuizOwnerImeCandidateSelection(
+                       candidateState,
+                       newKeyboardState,
+                       oldKeyboardState,
+                       out int listIndex,
+                       out int candidateIndex)
+                   && TrySelectInitialQuizImeCandidate(listIndex, candidateIndex);
+        }
+
+        internal static bool TryResolveInitialQuizOwnerImeCandidateSelection(
+            ImeCandidateListState candidateState,
+            KeyboardState newKeyboardState,
+            KeyboardState oldKeyboardState,
+            out int listIndex,
+            out int candidateIndex)
+        {
+            listIndex = candidateState?.ListIndex ?? -1;
+            candidateIndex = -1;
+            if (candidateState == null || !candidateState.HasCandidates || listIndex < 0)
+            {
+                return false;
+            }
+
+            bool WasPressed(KeyboardState currentState, Keys key)
+            {
+                return currentState.IsKeyDown(key) && oldKeyboardState.IsKeyUp(key);
+            }
+
+            candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveVisibleCandidateIndexFromKeyboard(
+                candidateState,
+                newKeyboardState,
+                WasPressed);
+            if (candidateIndex < 0)
+            {
+                candidateIndex = SkillMacroImeCandidateWindowLayout.ResolveAdjacentCandidateIndexFromKeyboard(
+                    candidateState,
+                    newKeyboardState,
+                    WasPressed);
+            }
+
+            return candidateIndex >= 0;
+        }
+
+        private bool TrySelectInitialQuizImeCandidate(int listIndex, int candidateIndex)
+        {
+            return Window != null
+                && WindowsImeCandidateSelectionBridge.TrySelectCandidate(Window.Handle, listIndex, candidateIndex);
         }
 
         private void DrawInitialQuizOwnerAnimationFrame(Rectangle ownerBounds, int currentTickCount)

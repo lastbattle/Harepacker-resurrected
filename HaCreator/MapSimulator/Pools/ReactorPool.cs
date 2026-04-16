@@ -2733,17 +2733,17 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
+                bool hasPacketName = !string.IsNullOrWhiteSpace(name);
+                bool hasAuthoredName = !string.IsNullOrWhiteSpace(reactor.ReactorInstance.Name);
+                bool hasExactNameMatch = hasPacketName
+                    && hasAuthoredName
+                    && string.Equals(reactor.ReactorInstance.Name, name, StringComparison.OrdinalIgnoreCase);
                 candidates.Add(new PacketEnterAuthoredReactorCandidate(
                     i,
                     IsLocallyTouchedReactor(index: i, data),
                     IsImmediateLocalUserTouchCandidate(reactor, data, currentTick, localPlayerX, localPlayerY),
-                    string.Equals(
-                        reactor.ReactorInstance.Name ?? string.Empty,
-                        name ?? string.Empty,
-                        StringComparison.OrdinalIgnoreCase),
-                    !string.IsNullOrWhiteSpace(name)
-                        && !string.IsNullOrWhiteSpace(reactor.ReactorInstance.Name)
-                        && string.Equals(reactor.ReactorInstance.Name, name, StringComparison.OrdinalIgnoreCase),
+                    hasExactNameMatch,
+                    hasExactNameMatch,
                     data.VisualState));
             }
 
@@ -3650,6 +3650,11 @@ namespace HaCreator.MapSimulator.Pools
             if (data == null)
             {
                 return 0;
+            }
+
+            if (data.PacketHitAnimationState >= 0)
+            {
+                return data.PacketHitAnimationState;
             }
 
             // `CReactorPool::LoadReactorLayer` rebuilds packet-owned layers from `nOldState`,

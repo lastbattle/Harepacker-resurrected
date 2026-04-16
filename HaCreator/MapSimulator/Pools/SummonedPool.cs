@@ -3763,7 +3763,41 @@ namespace HaCreator.MapSimulator.Pools
             return candidates
                 .Where(candidate => candidate.MobObjectId > 0
                                     && !candidate.Hitbox.IsEmpty)
+                .Select(candidate => new
+                {
+                    Candidate = candidate,
+                    SortKey = BuildPacketOwnedExpiryFallbackSortKey(summon, candidate, facingRight)
+                })
+                .OrderBy(entry => entry.SortKey.PreferredSideRank)
+                .ThenBy(entry => entry.SortKey.ForwardPenaltyDistance)
+                .ThenBy(entry => entry.SortKey.AreaDistance)
+                .ThenBy(entry => entry.SortKey.VerticalDistance)
+                .ThenBy(entry => entry.Candidate.MobObjectId)
+                .Select(static entry => entry.Candidate)
                 .ToArray();
+        }
+
+        private static PacketOwnedExpiryFallbackSortKey BuildPacketOwnedExpiryFallbackSortKey(
+            ActiveSummon summon,
+            PacketOwnedExpiryTargetCandidate candidate,
+            bool facingRight)
+        {
+            float centerX = candidate.Hitbox.Left + (candidate.Hitbox.Width * 0.5f);
+            float centerY = candidate.Hitbox.Top + (candidate.Hitbox.Height * 0.5f);
+            float deltaX = centerX - summon.PositionX;
+            float deltaY = centerY - summon.PositionY;
+            float areaDistance = (deltaX * deltaX) + (deltaY * deltaY);
+            float verticalDistance = MathF.Abs(deltaY);
+            bool isPreferredSide = facingRight ? deltaX >= 0f : deltaX <= 0f;
+            float forwardPenaltyDistance = isPreferredSide
+                ? MathF.Abs(deltaX)
+                : MathF.Abs(deltaX) + 100000f;
+
+            return new PacketOwnedExpiryFallbackSortKey(
+                isPreferredSide ? 0 : 1,
+                forwardPenaltyDistance,
+                areaDistance,
+                verticalDistance);
         }
 
         private static bool IsCandidateInEitherPacketOwnedSummonAttackRange(
@@ -3993,6 +4027,12 @@ namespace HaCreator.MapSimulator.Pools
             public static PacketOwnedExpiryFacingScore Empty { get; } =
                 new(0, float.MaxValue, float.MaxValue);
         }
+
+        private readonly record struct PacketOwnedExpiryFallbackSortKey(
+            int PreferredSideRank,
+            float ForwardPenaltyDistance,
+            float AreaDistance,
+            float VerticalDistance);
 
         private static IReadOnlyList<int> ResolvePacketOwnedExpiryPreferredTargetMobIds(PacketOwnedSummonState state)
         {
@@ -4918,8 +4958,28 @@ namespace HaCreator.MapSimulator.Pools
             MobAnimationSet.AttackHitEffectEntry liveHitEffectEntry = mob?.GetAttackHitEffectEntry(
                 attackAction,
                 currentMobAttackFrameIndex);
+            string fallbackTemplateId = ResolvePacketMobAttackFallbackTemplateId(mobTemplateId, mob);
+            bool hasLiveAttackInfoHitPath = !string.IsNullOrWhiteSpace(liveAttackData?.HitEffectPath);
+            MobAnimationSet.AttackHitEffectEntry liveAttackInfoHitEffectEntry = hasLiveAttackInfoHitPath
+                ? ResolvePacketMobAttackGeneralEffectEntry(
+                    liveAttackData,
+                    fallbackTemplateId,
+                    attackAction,
+                    texturePool,
+                    graphicsDevice)
+                : null;
             if (mobTemplateId is not int resolvedMobTemplateId || resolvedMobTemplateId <= 0)
             {
+                if (liveAttackInfoHitEffectEntry?.Frames?.Count > 0)
+                {
+                    return SelectPacketMobAttackFeedbackPresentation(
+                        liveAttackInfo,
+                        liveHitEffectEntry: null,
+                        templateAttackInfo: null,
+                        templateHitEffectEntry: liveAttackInfoHitEffectEntry,
+                        templateCharDamSoundKey: null);
+                }
+
                 return SelectPacketMobAttackFeedbackPresentation(
                     liveAttackInfo,
                     liveHitEffectEntry,
@@ -4935,8 +4995,10 @@ namespace HaCreator.MapSimulator.Pools
             MobAnimationSet templateAnimationSet = null;
             MobAnimationSet.AttackInfoMetadata templateAttackInfo = null;
             bool hasTemplateAttackInfoHitPath = !string.IsNullOrWhiteSpace(templateAttackData?.HitEffectPath);
-            bool hasTemplateAttackDataHitAttach = templateAttackData?.HasHitAttach == true;
-            if (needsTemplateAttackInfo || !hasLiveHitFrames || hasTemplateAttackInfoHitPath || hasTemplateAttackDataHitAttach)
+            bool hasTemplateAttackDataOverrides = templateAttackData?.HasHitAttach == true
+                                                 || templateAttackData?.HasFacingAttach == true
+                                                 || templateAttackData?.HasHitAfter == true;
+            if (needsTemplateAttackInfo || !hasLiveHitFrames || hasTemplateAttackInfoHitPath || hasTemplateAttackDataOverrides)
             {
                 templateAnimationSet = LifeLoader.CreateMobAttackPresentationSet(
                     texturePool,
@@ -4966,6 +5028,21 @@ namespace HaCreator.MapSimulator.Pools
                         soundManager,
                         resolvedMobTemplateId.ToString(),
                         damageSoundIndex));
+            }
+
+            if (!hasLiveHitFrames && liveAttackInfoHitEffectEntry?.Frames?.Count > 0)
+            {
+                return SelectPacketMobAttackFeedbackPresentation(
+                    liveAttackInfo,
+                    null,
+                    templateAttackInfo,
+                    liveAttackInfoHitEffectEntry,
+                    templateCharDamSoundKey: needsTemplateSoundKey
+                        ? LifeLoader.ResolveMobCharDamSoundKey(
+                            soundManager,
+                            resolvedMobTemplateId.ToString(),
+                            damageSoundIndex)
+                        : null);
             }
 
             if (hasLiveHitFrames)
@@ -5452,29 +5529,95 @@ namespace HaCreator.MapSimulator.Pools
             MobAnimationSet.AttackInfoMetadata attackInfo,
             MobAttackData attackData)
         {
-            if (attackData?.HasHitAttach != true)
+            if (attackData == null)
+            {
+                return attackInfo;
+            }
+
+            bool hasHitAttach = attackData.HasHitAttach;
+            bool hasFacingAttach = attackData.HasFacingAttach;
+            bool hasHitAfter = attackData.HasHitAfter;
+            if (!hasHitAttach && !hasFacingAttach && !hasHitAfter)
             {
                 return attackInfo;
             }
 
             if (attackInfo == null)
             {
-                return new MobAnimationSet.AttackInfoMetadata
+                var metadata = new MobAnimationSet.AttackInfoMetadata();
+                if (hasHitAttach)
                 {
-                    HitAttach = attackData.HitAttach,
-                    HasHitAttachMetadata = true
-                };
+                    metadata.HitAttach = attackData.HitAttach;
+                    metadata.HasHitAttachMetadata = true;
+                }
+
+                if (hasFacingAttach)
+                {
+                    metadata.FacingAttach = attackData.FacingAttach;
+                    metadata.HasFacingAttachMetadata = true;
+                    if (!hasHitAttach)
+                    {
+                        metadata.HitAttach = attackData.FacingAttach;
+                        metadata.HasHitAttachMetadata = true;
+                    }
+                }
+
+                if (hasHitAfter)
+                {
+                    metadata.HitAfterMs = Math.Max(0, attackData.HitAfterMs);
+                    metadata.HasHitAfterMetadata = true;
+                }
+
+                return metadata;
             }
 
-            if (attackInfo.HitAttach == attackData.HitAttach && attackInfo.HasHitAttachMetadata)
+            bool changesHitAttach = hasHitAttach
+                                    && (!attackInfo.HasHitAttachMetadata || attackInfo.HitAttach != attackData.HitAttach);
+            bool changesFacingAttach = hasFacingAttach
+                                       && (!attackInfo.HasFacingAttachMetadata || attackInfo.FacingAttach != attackData.FacingAttach);
+            int normalizedHitAfterMs = Math.Max(0, attackData.HitAfterMs);
+            bool changesHitAfter = hasHitAfter
+                                   && (!attackInfo.HasHitAfterMetadata || attackInfo.HitAfterMs != normalizedHitAfterMs);
+            if (!changesHitAttach && !changesFacingAttach && !changesHitAfter)
             {
                 return attackInfo;
             }
 
             MobAnimationSet.AttackInfoMetadata clone = CloneAttackInfoMetadata(attackInfo);
-            clone.HitAttach = attackData.HitAttach;
-            clone.HasHitAttachMetadata = true;
+            if (hasHitAttach)
+            {
+                clone.HitAttach = attackData.HitAttach;
+                clone.HasHitAttachMetadata = true;
+            }
+
+            if (hasFacingAttach)
+            {
+                clone.FacingAttach = attackData.FacingAttach;
+                clone.HasFacingAttachMetadata = true;
+                if (!hasHitAttach)
+                {
+                    clone.HitAttach = attackData.FacingAttach;
+                    clone.HasHitAttachMetadata = true;
+                }
+            }
+
+            if (hasHitAfter)
+            {
+                clone.HitAfterMs = normalizedHitAfterMs;
+                clone.HasHitAfterMetadata = true;
+            }
+
             return clone;
+        }
+
+        private static string ResolvePacketMobAttackFallbackTemplateId(int? packetMobTemplateId, MobItem mob)
+        {
+            if (packetMobTemplateId is int templateId && templateId > 0)
+            {
+                return templateId.ToString();
+            }
+
+            return mob?.MobInstance?.MobInfo?.ID;
         }
 
         private static MobAttackData ResolvePacketMobAttackData(int mobTemplateId, string attackAction)
@@ -5620,6 +5763,10 @@ namespace HaCreator.MapSimulator.Pools
             {
                 candidates.Add(absoluteCandidate);
             }
+            AddEmbeddedPacketMobAttackGeneralEffectAbsoluteCandidates(
+                candidates,
+                normalizedEffectPath,
+                "Mob");
 
             string normalizedTemplateId = mobTemplateId?.Trim();
             if (!string.IsNullOrWhiteSpace(normalizedTemplateId))
@@ -5633,6 +5780,10 @@ namespace HaCreator.MapSimulator.Pools
                     if (TryCombinePacketMobAttackGeneralEffectPath(basePath, normalizedEffectPath, out string combinedCandidate))
                     {
                         candidates.Add(combinedCandidate);
+                        AddEmbeddedPacketMobAttackGeneralEffectAbsoluteCandidates(
+                            candidates,
+                            combinedCandidate,
+                            "Mob");
                     }
                 }
             }
@@ -5660,6 +5811,8 @@ namespace HaCreator.MapSimulator.Pools
 
             yield return $"Mob/{normalizedTemplateId}.img/{attackAction}";
             yield return $"Mob/{normalizedTemplateId}.img/{attackAction}/info";
+            yield return $"Mob/{normalizedTemplateId}.img/{attackAction}/hit";
+            yield return $"Mob/{normalizedTemplateId}.img/{attackAction}/info/hit";
         }
 
         private static bool TryCombinePacketMobAttackGeneralEffectPath(
@@ -5720,6 +5873,42 @@ namespace HaCreator.MapSimulator.Pools
 
             combinedPath = string.Join("/", combinedSegments);
             return true;
+        }
+
+        private static void AddEmbeddedPacketMobAttackGeneralEffectAbsoluteCandidates(
+            List<string> candidates,
+            string path,
+            string defaultCategory)
+        {
+            if (candidates == null || string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+
+            string[] segments = path
+                .Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length < 3)
+            {
+                return;
+            }
+
+            for (int i = 1; i < segments.Length - 2; i++)
+            {
+                if (!IsPacketMobAttackCategorySegment(segments[i]))
+                {
+                    continue;
+                }
+
+                string embeddedPath = string.Join("/", segments.Skip(i));
+                if (TryNormalizePacketMobAttackGeneralEffectAbsolutePath(
+                        embeddedPath,
+                        defaultCategory,
+                        out string absoluteCandidate))
+                {
+                    candidates.Add(absoluteCandidate);
+                }
+            }
         }
 
         private static bool TryNormalizePacketMobAttackGeneralEffectAbsolutePath(

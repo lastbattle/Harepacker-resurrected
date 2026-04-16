@@ -746,6 +746,11 @@ namespace HaCreator.MapSimulator.UI
                 : _packetOwnedAdminShopSession.BuildTransportSummary();
         }
 
+        internal void RecordPacketOwnedAdminShopInboundPacket(int packetType, string source)
+        {
+            _packetOwnedAdminShopSession.RecordInboundPacket(packetType, source);
+        }
+
         internal void RecordPacketOwnedAdminShopOwnerSurfaceShown()
         {
             if (!_packetOwnedAdminShopSession.HasObservableState)

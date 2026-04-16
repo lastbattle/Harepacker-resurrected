@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int FollowCharacterPromptPacketType = 1022;
         public const int FollowCharacterClientPacketType = 193;
         public const int SitResultPacketType = 231;
+        public const int ActiveEffectItemPacketType = 220;
         public const int EmotionPacketType = 232;
         public const int TeleportClientPacketType = 234;
         public const int MessageClientPacketType = 38;
@@ -133,6 +134,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestAlarmTitleTooltipPacketType = 1043;
         public const int ClassCompetitionRemotePagePacketType = 1044;
         public const int QuestAlarmRegistrationSyncPacketType = 1045;
+        public const int ItemUpgradeResultPacketType = 1046;
         public const int ConsumeCashItemUseRequestPacketType = 0x55;
         public const int VegaLaunchPacketType = 1031;
         public const int VegaResultClientPacketType = 429;
@@ -562,6 +564,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onemotion", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = EmotionPacketType;
+                return true;
+            }
+
+            if (token.Equals("activeeffect", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("activeeffectitem", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("setactiveeffectitem", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onsetactiveeffectitem", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ActiveEffectItemPacketType;
                 return true;
             }
 
@@ -1082,6 +1093,15 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("itemupgrade", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemupgraderesult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemupgraderes", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemupgraderesultpacket", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ItemUpgradeResultPacketType;
+                return true;
+            }
+
             if (token.Equals("petconsumehp", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("petconsumeitem", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("petautohp", StringComparison.OrdinalIgnoreCase))
@@ -1135,6 +1155,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == SetStandAloneModeClientPacketType
                 || packetType == FollowCharacterClientPacketType
                 || packetType == SitResultPacketType
+                || packetType == ActiveEffectItemPacketType
                 || packetType == TeleportClientPacketType
                 || packetType == EmotionPacketType
                 || packetType == InventoryOperationClientPacketType
@@ -1204,6 +1225,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == RandomMorphRequestAckPacketType
                 || packetType == QuestAlarmTitleTooltipPacketType
                 || packetType == QuestAlarmRegistrationSyncPacketType
+                || packetType == ItemUpgradeResultPacketType
                 || packetType == ClassCompetitionRemotePagePacketType;
         }
 
@@ -1316,6 +1338,7 @@ namespace HaCreator.MapSimulator.Managers
             return packetType switch
             {
                 SitResultPacketType => "OnSitResult(231)",
+                ActiveEffectItemPacketType => "OnSetActiveEffectItem(220)",
                 EmotionPacketType => "OnEmotion(232)",
                 TeleportClientPacketType => "OnTeleport(234)",
                 MessageClientPacketType => "OnMessage(38)",
@@ -1413,6 +1436,7 @@ namespace HaCreator.MapSimulator.Managers
                 RandomMorphRequestAckPacketType => "RandomMorphRequestAck(1042)",
                 QuestAlarmTitleTooltipPacketType => "QuestAlarmTitleTooltip(1043)",
                 QuestAlarmRegistrationSyncPacketType => "QuestAlarmRegistrationSync(1045)",
+                ItemUpgradeResultPacketType => "ItemUpgradeResult(1046)",
                 ClassCompetitionRemotePagePacketType => "ClassCompetitionRemotePage(1044)",
                 _ => $"packet {packetType}"
             };

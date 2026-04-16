@@ -568,7 +568,7 @@ namespace HaCreator.MapSimulator.Effects
                             ? "counter"
                             : authoredName.Equals("resist", StringComparison.OrdinalIgnoreCase)
                                 ? "resist"
-                                : authoredName;
+                                : "Miss";
         }
 
         internal static string FormatDamageValue(int damage)

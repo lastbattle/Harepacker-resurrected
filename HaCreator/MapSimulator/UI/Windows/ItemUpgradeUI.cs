@@ -205,6 +205,7 @@ namespace HaCreator.MapSimulator.UI
         private ItemUpgradeAttemptResult _presentationResult;
         private VisualThemeKind? _lockedThemeKind;
         private ProductionEnhancementAnimationDisplayer _productionEnhancementAnimationDisplayer;
+        private bool _packetOwnedRequestPending;
 
         public ItemUpgradeUI(IDXObject frame)
             : base(frame)
@@ -212,6 +213,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.ItemUpgrade;
+        public Func<ItemUpgradeOwnerRequest, bool> StartUpgradeRequested { get; set; }
 
         public override CharacterBuild CharacterBuild
         {
@@ -412,7 +414,7 @@ namespace HaCreator.MapSimulator.UI
             ClampSelection();
             RefreshVisualTheme();
 
-            if (_presentationState == WindowPresentationState.Casting)
+            if (_presentationState == WindowPresentationState.Casting && !_packetOwnedRequestPending)
             {
                 _presentationElapsedMs += (int)gameTime.ElapsedGameTime.TotalMilliseconds;
                 if (_presentationElapsedMs >= Math.Max(_presentationDurationMs, 1))
@@ -587,32 +589,153 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            EnhancementConsumable preparedConsumable = TryResolveCurrentConsumable(out _) ? ResolveCurrentConsumable() : null;
-            VisualThemeKind presentationThemeKind = preparedConsumable != null
-                ? ResolveVisualThemeKind(preparedConsumable.Definition)
-                : ResolveCurrentVisualThemeKind();
+            if (StartUpgradeRequested != null)
+            {
+                if (!TryCreatePreparedUpgradeOwnerRequest(out ItemUpgradeOwnerRequest ownerRequest, out ItemUpgradeAttemptResult validationResult))
+                {
+                    _statusMessage = validationResult.StatusMessage;
+                    _lastUpgradeSucceeded = validationResult.Success;
+                    return;
+                }
 
-            ItemUpgradeAttemptResult result = TryApplyPreparedUpgrade();
-            if (preparedConsumable?.EffectType == ConsumableEffectType.Hammer &&
-                result.Success.HasValue)
-            {
-                _productionEnhancementAnimationDisplayer?.PlayViciousHammerResult(Environment.TickCount);
-            }
-            else if (result.Success.HasValue &&
-                ShouldUseSharedItemUpgradeAnimation(preparedConsumable))
-            {
-                _productionEnhancementAnimationDisplayer?.PlayItemUpgradeResult(
-                    result.Success.Value,
-                    enchantSkillBranch: true,
-                    currentTimeMs: Environment.TickCount);
+                if (StartUpgradeRequested(ownerRequest))
+                {
+                    return;
+                }
             }
 
-            if (preparedConsumable?.EffectType == ConsumableEffectType.Cube &&
-                result.Success.HasValue &&
-                TryStartThemePresentation(presentationThemeKind, result))
+            ApplyPreparedUpgradeWithPresentation(
+                forcedConsumableInventoryType: null,
+                forcedConsumableSlotIndex: null,
+                forcedModifierInventoryType: null,
+                forcedModifierSlotIndex: null,
+                forcedSuccess: null);
+        }
+
+        public void SetPacketOwnedRequestPending(string statusMessage)
+        {
+            _packetOwnedRequestPending = true;
+            _presentationState = WindowPresentationState.Casting;
+            _presentationElapsedMs = 0;
+            _presentationDurationMs = int.MaxValue;
+            _presentationUsesSharedOverlay = false;
+            _presentationResult = default;
+            _statusMessage = string.IsNullOrWhiteSpace(statusMessage)
+                ? "Enhancement request sent. Waiting for packet-owned result."
+                : statusMessage;
+            _lastUpgradeSucceeded = null;
+            UpdateButtonStates();
+        }
+
+        public bool TryCreatePreparedUpgradeOwnerRequest(
+            out ItemUpgradeOwnerRequest request,
+            out ItemUpgradeAttemptResult validationResult)
+        {
+            request = default;
+            validationResult = default;
+
+            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
+            if (candidates.Count == 0)
             {
-                return;
+                _statusMessage = "No equipped item can be upgraded.";
+                _lastUpgradeSucceeded = null;
+                validationResult = new ItemUpgradeAttemptResult(null, _statusMessage, 0);
+                return false;
             }
+
+            if (_inventory == null)
+            {
+                _statusMessage = "Inventory runtime is unavailable.";
+                _lastUpgradeSucceeded = false;
+                validationResult = new ItemUpgradeAttemptResult(false, _statusMessage, 0);
+                return false;
+            }
+
+            KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
+            CharacterPart selectedPart = selection.Value;
+            UpgradeState state = GetOrCreateState(selection.Key, selectedPart);
+            EnhancementConsumable consumable = ResolveConsumable(state, selectedPart);
+            if (consumable == null)
+            {
+                _statusMessage = _preferredModifierItemId.HasValue
+                    ? "No compatible enhancement scroll is available for the selected modifier."
+                    : "No enhancement scrolls are available in inventory.";
+                _lastUpgradeSucceeded = false;
+                validationResult = new ItemUpgradeAttemptResult(false, _statusMessage, 0);
+                return false;
+            }
+
+            if (!TryFindPreparedConsumableSlot(consumable, out int consumableSlotIndex))
+            {
+                _statusMessage = $"{consumable.Name} could not be consumed from inventory.";
+                _lastUpgradeSucceeded = false;
+                validationResult = new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId);
+                return false;
+            }
+
+            EnhancementConsumable modifier = ResolveModifier(consumable);
+            int? modifierSlotIndex = null;
+            InventoryType? modifierInventoryType = null;
+            if (modifier != null)
+            {
+                if (!TryFindPreparedConsumableSlot(modifier, out int resolvedModifierSlotIndex))
+                {
+                    _statusMessage = $"{modifier.Name} could not be consumed from inventory.";
+                    _lastUpgradeSucceeded = false;
+                    validationResult = new ItemUpgradeAttemptResult(false, _statusMessage, consumable.ItemId, modifier.ItemId);
+                    return false;
+                }
+
+                modifierSlotIndex = resolvedModifierSlotIndex;
+                modifierInventoryType = modifier.InventoryType;
+            }
+
+            validationResult = TryApplyPreparedUpgradeCore(
+                consumable.InventoryType,
+                consumableSlotIndex,
+                modifierInventoryType,
+                modifierSlotIndex,
+                forcedSuccess: true,
+                previewOnly: true);
+            if (validationResult.Success != true)
+            {
+                _statusMessage = validationResult.StatusMessage;
+                _lastUpgradeSucceeded = validationResult.Success;
+                return false;
+            }
+
+            request = new ItemUpgradeOwnerRequest(
+                selection.Key,
+                selectedPart?.ItemId ?? 0,
+                ResolveItemName(selectedPart),
+                consumable.ItemId,
+                consumable.Name,
+                consumable.InventoryType,
+                consumableSlotIndex,
+                modifier?.ItemId ?? 0,
+                modifier?.Name,
+                modifierInventoryType,
+                modifierSlotIndex,
+                consumable.EffectType == ConsumableEffectType.Cube,
+                consumable.EffectType == ConsumableEffectType.Hammer);
+            return true;
+        }
+
+        public ItemUpgradeAttemptResult ApplyPacketOwnedPreparedUpgradeResultAtSlots(
+            InventoryType consumableInventoryType,
+            int consumableSlotIndex,
+            InventoryType? modifierInventoryType,
+            int? modifierSlotIndex,
+            bool? forcedSuccess)
+        {
+            _packetOwnedRequestPending = false;
+            _presentationState = WindowPresentationState.Idle;
+            return ApplyPreparedUpgradeWithPresentation(
+                consumableInventoryType,
+                consumableSlotIndex,
+                modifierInventoryType,
+                modifierSlotIndex,
+                forcedSuccess);
         }
 
         private static bool ShouldUseSharedItemUpgradeAnimation(EnhancementConsumable consumable)
@@ -667,6 +790,51 @@ namespace HaCreator.MapSimulator.UI
                 modifierSlotIndex,
                 forcedSuccess: null,
                 previewOnly: true);
+        }
+
+        private ItemUpgradeAttemptResult ApplyPreparedUpgradeWithPresentation(
+            InventoryType? forcedConsumableInventoryType,
+            int? forcedConsumableSlotIndex,
+            InventoryType? forcedModifierInventoryType,
+            int? forcedModifierSlotIndex,
+            bool? forcedSuccess)
+        {
+            EnhancementConsumable preparedConsumable = TryResolveCurrentConsumable(out _)
+                ? ResolveCurrentConsumable()
+                : null;
+            VisualThemeKind presentationThemeKind = preparedConsumable != null
+                ? ResolveVisualThemeKind(preparedConsumable.Definition)
+                : ResolveCurrentVisualThemeKind();
+            ItemUpgradeAttemptResult result = TryApplyPreparedUpgradeCore(
+                forcedConsumableInventoryType,
+                forcedConsumableSlotIndex,
+                forcedModifierInventoryType,
+                forcedModifierSlotIndex,
+                forcedSuccess,
+                previewOnly: false);
+
+            if (preparedConsumable?.EffectType == ConsumableEffectType.Hammer &&
+                result.Success.HasValue)
+            {
+                _productionEnhancementAnimationDisplayer?.PlayViciousHammerResult(Environment.TickCount);
+            }
+            else if (result.Success.HasValue &&
+                     ShouldUseSharedItemUpgradeAnimation(preparedConsumable))
+            {
+                _productionEnhancementAnimationDisplayer?.PlayItemUpgradeResult(
+                    result.Success.Value,
+                    enchantSkillBranch: true,
+                    currentTimeMs: Environment.TickCount);
+            }
+
+            if (preparedConsumable?.EffectType == ConsumableEffectType.Cube &&
+                result.Success.HasValue &&
+                TryStartThemePresentation(presentationThemeKind, result))
+            {
+                return result;
+            }
+
+            return result;
         }
 
         private ItemUpgradeAttemptResult TryApplyPreparedUpgradeCore(
@@ -925,6 +1093,30 @@ namespace HaCreator.MapSimulator.UI
 
             if (_inventory.TryConsumeItem(consumable.InventoryType, consumable.ItemId, 1))
             {
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryFindPreparedConsumableSlot(EnhancementConsumable consumable, out int slotIndex)
+        {
+            slotIndex = -1;
+            if (_inventory == null || consumable == null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = _inventory.GetSlots(consumable.InventoryType);
+            for (int i = 0; i < slots.Count; i++)
+            {
+                InventorySlotData slot = slots[i];
+                if (slot.ItemId != consumable.ItemId || slot.Quantity <= 0)
+                {
+                    continue;
+                }
+
+                slotIndex = i;
                 return true;
             }
 
@@ -1773,6 +1965,7 @@ namespace HaCreator.MapSimulator.UI
             _presentationResult = default;
             _lockedThemeKind = null;
             _lastUpgradeSucceeded = null;
+            _packetOwnedRequestPending = false;
         }
 
         private string BuildReadyStatusMessage()
@@ -3839,6 +4032,54 @@ namespace HaCreator.MapSimulator.UI
             public string StatusMessage { get; }
             public int ConsumableItemId { get; }
             public int ModifierItemId { get; }
+        }
+
+        public readonly struct ItemUpgradeOwnerRequest
+        {
+            public ItemUpgradeOwnerRequest(
+                EquipSlot slot,
+                int equipItemId,
+                string equipName,
+                int consumableItemId,
+                string consumableName,
+                InventoryType consumableInventoryType,
+                int consumableSlotIndex,
+                int modifierItemId,
+                string modifierName,
+                InventoryType? modifierInventoryType,
+                int? modifierSlotIndex,
+                bool usesCubeTheme,
+                bool usesHammerAnimation)
+            {
+                Slot = slot;
+                EquipItemId = equipItemId;
+                EquipName = string.IsNullOrWhiteSpace(equipName) ? "Equipment" : equipName;
+                ConsumableItemId = consumableItemId;
+                ConsumableName = string.IsNullOrWhiteSpace(consumableName) ? "Enhancement item" : consumableName;
+                ConsumableInventoryType = consumableInventoryType;
+                ConsumableSlotIndex = consumableSlotIndex;
+                ModifierItemId = modifierItemId;
+                ModifierName = modifierName;
+                ModifierInventoryType = modifierInventoryType;
+                ModifierSlotIndex = modifierSlotIndex;
+                UsesCubeTheme = usesCubeTheme;
+                UsesHammerAnimation = usesHammerAnimation;
+            }
+
+            public EquipSlot Slot { get; }
+            public int EquipItemId { get; }
+            public string EquipName { get; }
+            public int ConsumableItemId { get; }
+            public string ConsumableName { get; }
+            public InventoryType ConsumableInventoryType { get; }
+            public int ConsumableSlotIndex { get; }
+            public int ModifierItemId { get; }
+            public string ModifierName { get; }
+            public InventoryType? ModifierInventoryType { get; }
+            public int? ModifierSlotIndex { get; }
+            public bool UsesCubeTheme { get; }
+            public bool UsesHammerAnimation { get; }
+            public bool HasModifier => ModifierItemId > 0;
         }
 
         public enum VisualThemeKind

@@ -2096,6 +2096,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Vector2 TargetPoint { get; init; }
         public int Z { get; init; }
         public string EffectUol { get; init; }
+        public int WeaponCode { get; init; }
         public int WeaponItemId { get; init; }
         public int BulletItemId { get; init; }
         public int BulletUseItemId { get; init; }

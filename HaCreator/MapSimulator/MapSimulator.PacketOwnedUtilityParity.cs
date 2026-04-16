@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator
         private const string PacketOwnedTimeBombSkillDescriptionMarker = "explosion occurs 3 seconds after the charm is activated";
         private const int PacketOwnedCurrentExJablinSkillId = 4120010;
         private const string PacketOwnedExJablinSkillDescriptionMarker = "the next attack will always be a Critical Attack";
+        private const int PacketOwnedActiveEffectMotionBlurOwnerDurationMs = 600000;
         private const int PacketOwnedBaseTimeBombHitPeriodMs = 1500;
         private const int PacketOwnedTimeBombInvincibilityOptionType = 52;
         private const string PacketOwnedTimeBombInvincibilityDurationTemplate = "Invincible for #time more seconds after getting attacked.";
@@ -225,6 +226,8 @@ namespace HaCreator.MapSimulator
         private PacketOwnedBattleshipDurabilityPresentationState _packetOwnedBattleshipDurabilityPresentation;
         private int _packetQuestGuideQuestId;
         private int _packetOwnedUtilityRequestTick = int.MinValue;
+        private int _packetOwnedActiveEffectItemId;
+        private int _packetOwnedActiveEffectMotionBlurId = -1;
         private int _lastDeliveryQuestId;
         private int _lastDeliveryItemId;
         private QuestDetailDeliveryType _lastPacketOwnedDeliveryType;
@@ -2077,6 +2080,24 @@ namespace HaCreator.MapSimulator
                 _localUtilityPacketOutbox.TryQueueOutboundPacket);
         }
 
+        private void DispatchSg88FirstUseRequest(PacketOwnedSg88FirstUseRequest request)
+        {
+            if (request.Opcode <= 0 || request.Payload == null || request.Payload.Length == 0)
+            {
+                return;
+            }
+
+            MechanicAuthorityTransportPlanner.DispatchRequest(
+                request.RequestTime,
+                request.Opcode,
+                request.Payload,
+                _localUtilityOfficialSessionBridgeEnabled,
+                _localUtilityOfficialSessionBridge.TrySendOutboundPacket,
+                _localUtilityPacketOutbox.TrySendOutboundPacket,
+                _localUtilityOfficialSessionBridge.TryQueueOutboundPacket,
+                _localUtilityPacketOutbox.TryQueueOutboundPacket);
+        }
+
         private void EnsureLocalUtilityPacketInboxState(bool shouldRun)
         {
             if (!shouldRun || !_localUtilityPacketInboxEnabled)
@@ -2177,7 +2198,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                bool applied = TryApplyPacketOwnedAdminShopPacket(message.PacketType, message.Payload, out string detail);
+                bool applied = TryApplyPacketOwnedAdminShopPacket(message.PacketType, message.Payload, out string detail, message.Source);
                 _adminShopPacketInbox.RecordDispatchResult(message, applied, detail);
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
@@ -2837,6 +2858,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.EmotionPacketType:
                     return TryApplyPacketOwnedEmotionPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.ActiveEffectItemPacketType:
+                    return TryApplyPacketOwnedActiveEffectItemPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.MesoGiveSucceededPacketType:
                     return TryApplyPacketOwnedMesoGiveSucceededPayload(payload, out message);
 
@@ -2931,6 +2955,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.Sg88ManualAttackConfirmPacketType:
                     return TryApplyPacketOwnedSg88ManualAttackConfirmPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.InventoryOperationClientPacketType:
+                    return TryApplyPacketOwnedInventoryOperationForMechanicPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.MechanicEquipStatePacketType:
                     return TryApplyPacketOwnedMechanicEquipPayload(payload, out message);
 
@@ -2953,6 +2980,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.VegaResultClientPacketType:
                     return TryApplyPacketOwnedVegaResultPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.ItemUpgradeResultPacketType:
+                    return TryApplyPacketOwnedItemUpgradeResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.PetConsumeResultPacketType:
                     if (ShouldHandlePacketOwned1026AsPetConsumeResult(payload))
@@ -3011,7 +3041,7 @@ namespace HaCreator.MapSimulator
                 case 421:
                 case 422:
                 case 423:
-                    return TryApplyPacketOwnedNpcUtilityPacket(packetType, payload, out message);
+                    return TryApplyPacketOwnedNpcUtilityPacket(packetType, payload, out message, source);
 
                 default:
                     message = $"Unsupported local utility packet type {packetType}.";
@@ -3199,6 +3229,89 @@ namespace HaCreator.MapSimulator
                 out message);
         }
 
+        private bool TryApplyPacketOwnedActiveEffectItemPayload(byte[] payload, out string message)
+        {
+            message = null;
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null)
+            {
+                message = "Packet-owned active-effect-item routing requires an initialized local player.";
+                return false;
+            }
+
+            if (!TryDecodePacketOwnedActiveEffectItemPayload(payload, out int itemId, out message))
+            {
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            int currentTick = Environment.TickCount;
+            _packetOwnedActiveEffectItemId = Math.Max(0, itemId);
+            ClearPacketOwnedActiveEffectItemMotionBlurOwner();
+
+            if (itemId <= 0)
+            {
+                player.TryApplyPacketOwnedEmotion(
+                    emotionId: 0,
+                    durationMs: 0,
+                    byItemOption: false,
+                    currentTick,
+                    out _);
+                message = "Cleared packet-owned active-effect-item owner state and motion-blur owner.";
+                return true;
+            }
+
+            bool hasEmotionSelection = PacketOwnedAvatarEmotionResolver.TryResolveItemEmotion(
+                itemId,
+                currentTick,
+                out PacketOwnedAvatarEmotionSelection selection,
+                out bool byItemOption,
+                out string emotionResolveError);
+            bool emotionApplied = false;
+            string emotionMessage = null;
+            if (hasEmotionSelection)
+            {
+                emotionApplied = player.TryApplyPacketOwnedEmotion(
+                    selection.EmotionId,
+                    durationMs: 0,
+                    byItemOption,
+                    currentTick,
+                    out emotionMessage);
+            }
+
+            bool hasMotionBlur = ActiveEffectItemMotionBlurResolver.TryResolve(
+                itemId,
+                out ActiveEffectItemMotionBlurDefinition motionBlurDefinition,
+                out string motionBlurResolveError);
+            string motionBlurMessage = null;
+            bool motionBlurApplied = false;
+            if (hasMotionBlur)
+            {
+                motionBlurApplied = TryRegisterPacketOwnedActiveEffectItemMotionBlur(
+                    player,
+                    motionBlurDefinition,
+                    currentTick,
+                    out motionBlurMessage);
+            }
+
+            if (!hasEmotionSelection && !hasMotionBlur)
+            {
+                message = $"Active-effect item {itemId} did not resolve packet-owned emotion or spectrum motion-blur metadata. Emotion: {emotionResolveError} MotionBlur: {motionBlurResolveError}";
+                return true;
+            }
+
+            string emotionSummary = hasEmotionSelection
+                ? (emotionApplied ? emotionMessage : $"Resolved emotion '{selection.EmotionName}' ({selection.EmotionId}) but could not apply it.")
+                : $"No packet-owned emotion mapping ({emotionResolveError}).";
+            string motionBlurSummary = hasMotionBlur
+                ? (motionBlurApplied
+                    ? $"Registered spectrum motion blur delay={motionBlurDefinition.DelayMs}, interval={motionBlurDefinition.IntervalMs}, alpha={motionBlurDefinition.Alpha}, follow={(motionBlurDefinition.Follow ? 1 : 0)}."
+                    : $"Spectrum metadata resolved but could not register motion blur ({motionBlurMessage}).")
+                : $"No spectrum motion-blur metadata ({motionBlurResolveError}).";
+            message = $"Applied packet-owned active-effect item {itemId}. {emotionSummary} {motionBlurSummary}";
+            return true;
+        }
+
         private bool TryApplyPacketOwnedRandomEmotionPayload(byte[] payload, out string message)
         {
             message = null;
@@ -3320,6 +3433,41 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        internal static bool TryDecodePacketOwnedActiveEffectItemPayload(
+            byte[] payload,
+            out int itemId,
+            out string message)
+        {
+            itemId = 0;
+            message = null;
+
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                message = "Active-effect-item payload must contain an item id Int32 value.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                itemId = reader.ReadInt32();
+
+                if (stream.Position != stream.Length)
+                {
+                    message = $"Active-effect-item payload has {stream.Length - stream.Position} trailing byte(s).";
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                message = $"Active-effect-item payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
         internal static bool TryDecodePacketOwnedRandomEmotionPayload(
             byte[] payload,
             out int areaBuffItemId,
@@ -3353,6 +3501,177 @@ namespace HaCreator.MapSimulator
                 message = $"Random-emotion payload could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        private void ClearPacketOwnedActiveEffectItemMotionBlurOwner()
+        {
+            if (_packetOwnedActiveEffectMotionBlurId < 0)
+            {
+                return;
+            }
+
+            _animationEffects?.RemoveMotionBlurAnimation(_packetOwnedActiveEffectMotionBlurId);
+            _packetOwnedActiveEffectMotionBlurId = -1;
+        }
+
+        private bool TryRegisterPacketOwnedActiveEffectItemMotionBlur(
+            PlayerCharacter player,
+            ActiveEffectItemMotionBlurDefinition definition,
+            int currentTime,
+            out string message)
+        {
+            message = null;
+            if (!definition.IsValid)
+            {
+                message = "Active-effect-item motion-blur definition is not valid.";
+                return false;
+            }
+
+            if (_animationEffects == null)
+            {
+                message = "Animation effects runtime is unavailable.";
+                return false;
+            }
+
+            if (!TryCreatePacketOwnedActiveEffectMotionBlurFrame(
+                    player,
+                    currentTime,
+                    definition.DelayMs,
+                    out List<IDXObject> frames,
+                    out Rectangle snapshotBounds,
+                    out int feetOffset,
+                    out bool snapshotFacingRight,
+                    out string captureError))
+            {
+                message = captureError ?? "Could not capture active-effect-item motion-blur frame.";
+                return false;
+            }
+
+            Func<Vector2> getPosition = () => new Vector2(
+                player.Position.X + snapshotBounds.Left,
+                player.Position.Y - feetOffset + snapshotBounds.Top);
+            Func<bool> getFlip = () => player.FacingRight;
+            Vector2 fallbackPosition = getPosition();
+            _packetOwnedActiveEffectMotionBlurId = _animationEffects.RegisterMotionBlurAnimation(
+                frames,
+                getPosition,
+                getFlip,
+                fallbackPosition,
+                snapshotFacingRight,
+                delayMs: 0,
+                intervalMs: definition.IntervalMs,
+                alpha: definition.Alpha,
+                currentTime,
+                durationMs: PacketOwnedActiveEffectMotionBlurOwnerDurationMs,
+                follow: definition.Follow,
+                ownsFrameTextures: true);
+            if (_packetOwnedActiveEffectMotionBlurId < 0)
+            {
+                message = "Motion blur owner registration failed.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryCreatePacketOwnedActiveEffectMotionBlurFrame(
+            PlayerCharacter player,
+            int currentTime,
+            int frameDelayMs,
+            out List<IDXObject> frames,
+            out Rectangle frameBounds,
+            out int feetOffset,
+            out bool facingRight,
+            out string message)
+        {
+            frames = null;
+            frameBounds = Rectangle.Empty;
+            feetOffset = 0;
+            facingRight = true;
+            message = null;
+
+            if (player == null)
+            {
+                message = "Local player is not initialized.";
+                return false;
+            }
+
+            if (GraphicsDevice == null)
+            {
+                message = "Graphics device is unavailable.";
+                return false;
+            }
+
+            AssembledFrame frame = player.TryGetCurrentFrame(currentTime);
+            if (frame == null || frame.Parts == null || frame.Parts.Count == 0)
+            {
+                message = "Current local avatar frame is unavailable.";
+                return false;
+            }
+
+            if (frame.Bounds.Width <= 0 || frame.Bounds.Height <= 0)
+            {
+                message = "Current local avatar frame has empty bounds.";
+                return false;
+            }
+
+            RenderTargetBinding[] previousTargets = GraphicsDevice.GetRenderTargets();
+            Viewport previousViewport = GraphicsDevice.Viewport;
+            var renderTarget = new RenderTarget2D(
+                GraphicsDevice,
+                frame.Bounds.Width,
+                frame.Bounds.Height,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None);
+            try
+            {
+                GraphicsDevice.SetRenderTarget(renderTarget);
+                GraphicsDevice.Clear(Color.Transparent);
+                using var spriteBatch = new SpriteBatch(GraphicsDevice);
+                spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+                for (int partIndex = 0; partIndex < frame.Parts.Count; partIndex++)
+                {
+                    AssembledPart part = frame.Parts[partIndex];
+                    if (part?.Texture == null || !part.IsVisible)
+                    {
+                        continue;
+                    }
+
+                    int drawX = part.OffsetX - frame.Bounds.Left;
+                    int drawY = part.OffsetY - frame.Bounds.Top;
+                    part.Texture.DrawBackground(spriteBatch, _skeletonMeshRenderer, null, drawX, drawY, Color.White, false, null);
+                }
+
+                spriteBatch.End();
+            }
+            catch
+            {
+                renderTarget.Dispose();
+                throw;
+            }
+            finally
+            {
+                if (previousTargets.Length > 0)
+                {
+                    GraphicsDevice.SetRenderTargets(previousTargets);
+                }
+                else
+                {
+                    GraphicsDevice.SetRenderTarget(null);
+                }
+
+                GraphicsDevice.Viewport = previousViewport;
+            }
+
+            frameBounds = frame.Bounds;
+            feetOffset = frame.FeetOffset;
+            facingRight = player.FacingRight;
+            frames = new List<IDXObject>
+            {
+                new DXObject(0, 0, renderTarget, Math.Max(1, frameDelayMs))
+            };
+            return true;
         }
 
         private string DescribePacketOwnedEmotionOutboundDispatch(
@@ -11552,6 +11871,17 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyPacketOwnedInventoryOperationForMechanicPayload(byte[] payload, out string message)
+        {
+            if (!TryQueueMechanicAuthorityResultFromInventoryOperationPayload(payload, out message))
+            {
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            return true;
+        }
+
         private bool TryResolvePacketOwnedTutorDisplayState(
             out TutorVariantSnapshot displayVariant,
             out PacketOwnedTutorDisplayOwner displayOwner)
@@ -14856,7 +15186,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                    "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|minimaponoff|radioctx|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|193|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|couple|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv] [accept|complete|none]|classcompetition|skillguide|radioctx <status|left|right|on|off|1|0|reset>|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|classcompetitionauth|skillguide|hiretutor|tutormsg|minimaponoff|radioctx|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|232|242|243|250|251|252|255|256|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|1035> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+                    "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|activeeffect|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|minimaponoff|radioctx|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|193|220|231|232|242|243|246|247|250|251|252|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|couple|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv] [accept|complete|none]|classcompetition|skillguide|radioctx <status|left|right|on|off|1|0|reset>|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|activeeffect|emotion|randomemotion|questresult|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|classcompetitionauth|skillguide|hiretutor|tutormsg|minimaponoff|radioctx|antimacro|apspevent|directionmode|standalone|follow|followfail|193|220|231|232|242|243|250|251|252|255|256|258|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1020|1021|1035> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
             }
         }
 
@@ -14971,7 +15301,7 @@ namespace HaCreator.MapSimulator
                 int port = LocalUtilityPacketInboxManager.DefaultPort;
                 if (args.Length > offset + 1 && (!int.TryParse(args[offset + 1], out port) || port <= 0 || port > ushort.MaxValue))
                 {
-                return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|minimaponoff|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|242|243|246|247|250|251|252|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1018|1023|1025|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
+                return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|activeeffect|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|minimaponoff|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|220|231|232|242|243|246|247|250|251|252|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1018|1023|1025|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
                 }
 
                 _localUtilityPacketInboxConfiguredPort = port;
@@ -15002,7 +15332,7 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Error(
-                $"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|teleport|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|234|242|243|246|247|250|251|252|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1018|1020|1021|1023|1025|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
+                    $"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|teleport|activeeffect|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|repeatskillmodeend|tanksiegeend|sg88manual|summonattackconfirm|hpdec|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|220|231|232|234|242|243|246|247|250|251|252|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|291|1011|1012|1013|1014|1018|1020|1021|1023|1025|classcompetition|classcompetitionauth|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityPacketCommand(string[] args, bool rawHex)
@@ -15211,8 +15541,8 @@ namespace HaCreator.MapSimulator
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                ? "Usage: /localutility packetraw <sitresult|teleport|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> <hex>"
-                : "Usage: /localutility packet <sitresult|teleport|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> [payloadhex=..|payloadb64=..]");
+                ? "Usage: /localutility packetraw <sitresult|teleport|activeeffect|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|220|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> <hex>"
+                : "Usage: /localutility packet <sitresult|teleport|activeeffect|emotion|randomemotion|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|damagemeter|passivemove|timebomb|vengeance|exjablin|mechanicequip|hpdec|notice|chat|eventalarm|eventcalendar|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|repairresult|repairdurabilityresult|repairreply|193|220|231|232|234|242|243|246|247|250|251|252|255|256|258|259|260|261|262|263|264|265|266|267|268|269|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022|1023|1025|1031|1032> [payloadhex=..|payloadb64=..]");
             }
 
             return applied

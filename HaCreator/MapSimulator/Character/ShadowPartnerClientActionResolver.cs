@@ -1031,6 +1031,18 @@ namespace HaCreator.MapSimulator.Character
                    && IsSupportedRawActionName(actionName, supportedRawActionNames);
         }
 
+        internal static bool IsFamilyGatedMountedAliasActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName)
+                || !SupportedRawActionCanonicalNames.TryGetValue(actionName, out string canonicalActionName)
+                || string.IsNullOrWhiteSpace(canonicalActionName))
+            {
+                return false;
+            }
+
+            return !string.Equals(actionName, canonicalActionName, StringComparison.OrdinalIgnoreCase);
+        }
+
         internal static IEnumerable<string> EnumerateClientInitializedShadowPartnerRawActionNames()
         {
             for (int rawActionCode = 0;
@@ -1339,7 +1351,8 @@ namespace HaCreator.MapSimulator.Character
                     Loop = playbackAnimation.Loop,
                     Origin = playbackAnimation.Origin,
                     ZOrder = playbackAnimation.ZOrder,
-                    PositionCode = playbackAnimation.PositionCode
+                    PositionCode = playbackAnimation.PositionCode,
+                    ClientEventDelayMs = playbackAnimation.ClientEventDelayMs
                 };
                 remappedAnimation.CalculateDuration();
                 return remappedAnimation;
@@ -1429,13 +1442,21 @@ namespace HaCreator.MapSimulator.Character
         public static int ResolveAttackDelayMs(
             IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
             string actionName,
+            SkillAnimation playbackAnimation,
             int defaultDelayMs)
         {
-            if (actionAnimations != null
-                && !string.IsNullOrWhiteSpace(actionName)
-                && actionAnimations.TryGetValue(actionName, out SkillAnimation animation)
-                && animation?.Frames != null
-                && animation.Frames.Count > 0)
+            SkillAnimation animation = playbackAnimation;
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                if (actionAnimations != null
+                    && !string.IsNullOrWhiteSpace(actionName)
+                    && actionAnimations.TryGetValue(actionName, out SkillAnimation resolvedAnimation))
+                {
+                    animation = resolvedAnimation;
+                }
+            }
+
+            if (animation?.Frames != null && animation.Frames.Count > 0)
             {
                 if (animation.ClientEventDelayMs.GetValueOrDefault() > 0)
                 {
@@ -1450,6 +1471,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return defaultDelayMs;
+        }
+
+        public static int ResolveAttackDelayMs(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string actionName,
+            int defaultDelayMs)
+        {
+            return ResolveAttackDelayMs(actionAnimations, actionName, null, defaultDelayMs);
         }
 
         public static bool TryGetPlaybackFrameAtTime(

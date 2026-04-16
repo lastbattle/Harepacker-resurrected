@@ -322,11 +322,22 @@ namespace HaCreator.MapSimulator.Character
                 // while Character/00002000.img backs that sequence with shoot2 frames
                 // and Morph/*.img publishes only generic shoot-family branches.
                 ["capture"] = new[] { "shoot2", "shoot1", "shootF" },
-                // The first profession create rows use the same shoot2 body surface;
-                // later create2/create3/create4 rows are direct canvases in WZ and are
-                // intentionally not widened here without a client-side merge rule.
+                // The first profession create rows use the same shoot2 body surface.
                 ["create0"] = new[] { "shoot2", "shoot1", "shootF" },
                 ["create1"] = new[] { "shoot2", "shoot1", "shootF" },
+                // Character/00002000.img keeps create2/create3/create4 as body-owned
+                // authored frames (plus *_s/*_f single-frame tails) while Morph/*.img
+                // still publishes no verbatim create* roots. Keep them on the same
+                // checked shoot-family fallback surface as create0/create1.
+                ["create2"] = new[] { "shoot2", "shoot1", "shootF" },
+                ["create2_s"] = new[] { "shoot2", "shoot1", "shootF" },
+                ["create2_f"] = new[] { "shoot2", "shoot1", "shootF" },
+                ["create3"] = new[] { "shoot2", "shoot1", "shootF" },
+                ["create3_s"] = new[] { "shoot2", "shoot1", "shootF" },
+                ["create3_f"] = new[] { "shoot2", "shoot1", "shootF" },
+                ["create4"] = new[] { "shoot2", "shoot1", "shootF" },
+                ["create4_s"] = new[] { "shoot2", "shoot1", "shootF" },
+                ["create4_f"] = new[] { "shoot2", "shoot1", "shootF" },
                 // Mercedes `strikeDual` skill rows still request the raw action name,
                 // while Character/00002000.img backs it with shoot-family frames before
                 // mixed swing/stab backstops and Morph/*.img publishes only generic
@@ -674,6 +685,16 @@ namespace HaCreator.MapSimulator.Character
                 ["getoff"] = new[] { "sit", "jump", "swingPF", "alert", "stand2" },
                 ["ride2"] = new[] { "alert", "swingPF", "jump", "swingOF", "sit" },
                 ["getoff2"] = new[] { "sit", "jump", "swingOF", "swingPF", "alert" },
+                // Character/00002000.img also publishes the later mount pair as body-action
+                // redirects (`ride3 -> stand1/alert/fly`, `getoff3 -> fly/alert`) while
+                // checked Morph/*.img still exposes no verbatim `ride3` / `getoff3` roots.
+                ["ride3"] = new[] { "stand1", "alert", "fly" },
+                ["getoff3"] = new[] { "fly", "alert" },
+                // The same body row keeps raw `alert8` authored as a jump redirect and
+                // raw `giant` authored as a sit redirect, with no dedicated Morph/*.img
+                // branches for either name.
+                ["alert8"] = new[] { "jump", "alert" },
+                ["giant"] = new[] { "sit" },
                 ["proneStab_jaguar"] = new[] { "sit" },
                 ["herbalism_jaguar"] = new[] { "sit" },
                 ["mining_jaguar"] = new[] { "sit" },

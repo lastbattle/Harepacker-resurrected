@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,6 +24,7 @@ namespace HaCreator.MapSimulator.UI
             || OpenCount > 0
             || CloseCount > 0
             || ResultCount > 0
+            || InboundPacketCount > 0
             || BlockedByOwnerCount > 0
             || NpcTemplateId > 0
             || DecodedItemCount > 0
@@ -36,6 +38,13 @@ namespace HaCreator.MapSimulator.UI
         public int CloseCount { get; private set; }
         public int BlockedByOwnerCount { get; private set; }
         public int ResultCount { get; private set; }
+        public int InboundPacketCount { get; private set; }
+        public int InboundOpenPacketCount { get; private set; }
+        public int InboundResultPacketCount { get; private set; }
+        public int InboundFromOfficialSessionCount { get; private set; }
+        public int InboundFromLocalUtilityCount { get; private set; }
+        public int InboundFromAdminShopInboxCount { get; private set; }
+        public int LastInboundPacketType { get; private set; } = -1;
         public int LastSubtype { get; private set; } = -1;
         public int LastResultCode { get; private set; } = -1;
         public bool LastResultHadResultCode { get; private set; }
@@ -43,6 +52,7 @@ namespace HaCreator.MapSimulator.UI
         public byte[] LastOutboundPayload { get; private set; } = Array.Empty<byte>();
         public string LastNotice { get; private set; } = string.Empty;
         public string LastOutboundSummary { get; private set; } = string.Empty;
+        public string LastInboundSource { get; private set; } = string.Empty;
         public string LastOwnerState { get; private set; } = string.Empty;
         public bool LastCloseOpenedWishlist { get; private set; }
         public bool AskItemWishlist { get; private set; }
@@ -83,6 +93,35 @@ namespace HaCreator.MapSimulator.UI
             LastOwnerState = ownerState ?? string.Empty;
             LastCloseOpenedWishlist = false;
             ClearPendingWishlistRegister();
+        }
+
+        public void RecordInboundPacket(int packetType, string source)
+        {
+            InboundPacketCount++;
+            if (packetType == LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType)
+            {
+                InboundOpenPacketCount++;
+            }
+            else if (packetType == LocalUtilityPacketInboxManager.AdminShopResultClientPacketType)
+            {
+                InboundResultPacketCount++;
+            }
+
+            LastInboundPacketType = packetType;
+            LastInboundSource = NormalizeInboundSource(source);
+            if (IsOfficialSessionSource(source))
+            {
+                InboundFromOfficialSessionCount++;
+                return;
+            }
+
+            if (IsAdminShopInboxSource(source))
+            {
+                InboundFromAdminShopInboxCount++;
+                return;
+            }
+
+            InboundFromLocalUtilityCount++;
         }
 
         public void RejectOpen(
@@ -299,6 +338,14 @@ namespace HaCreator.MapSimulator.UI
                 WouldDisconnect ? "1" : "0",
                 OpenCount,
                 ResultCount,
+                InboundPacketCount,
+                InboundOpenPacketCount,
+                InboundResultPacketCount,
+                InboundFromOfficialSessionCount,
+                InboundFromLocalUtilityCount,
+                InboundFromAdminShopInboxCount,
+                LastInboundPacketType,
+                LastInboundSource ?? string.Empty,
                 BlockedByOwnerCount,
                 NpcTemplateId,
                 DecodedItemCount,
@@ -332,6 +379,9 @@ namespace HaCreator.MapSimulator.UI
             string resultText = ResultCount > 0
                 ? $"result {ResultCount}"
                 : "result 0";
+            string inboundText = InboundPacketCount > 0
+                ? $", inbound {InboundPacketCount} (open {InboundOpenPacketCount}, result {InboundResultPacketCount})"
+                : string.Empty;
             string closeText = CloseCount > 0
                 ? $", close {CloseCount}"
                 : string.Empty;
@@ -351,7 +401,7 @@ namespace HaCreator.MapSimulator.UI
             string pendingText = HasPendingWishlistRegister
                 ? $", pending {DescribePendingWishlistRegister()}"
                 : string.Empty;
-            return $"{packetText}, {resultText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}";
+            return $"{packetText}, {resultText}{inboundText}{closeText}, {phaseText}, {wishlistText}, {npcText}, {rowText}, {resultStateText}{pendingText}";
         }
 
         public IReadOnlyList<string> BuildWishlistSearchStateDetailLines()
@@ -366,13 +416,16 @@ namespace HaCreator.MapSimulator.UI
             string blockedText = BlockedByOwnerCount > 0
                 ? $", blocked {BlockedByOwnerCount}"
                 : string.Empty;
+            string inboundText = InboundPacketCount > 0
+                ? $", inbound {InboundPacketCount}"
+                : string.Empty;
             string tailText = TrailingByteCount > 0
                 ? $", tail {TrailingByteCount} byte(s)"
                 : string.Empty;
             string resultTailText = ResultTrailingByteCount > 0
                 ? $", result tail {ResultTrailingByteCount} byte(s)"
                 : string.Empty;
-            lines.Add($"{visibilityText}, {DescribeDisconnectHazard()}{blockedText}{tailText}{resultTailText}");
+            lines.Add($"{visibilityText}, {DescribeDisconnectHazard()}{blockedText}{inboundText}{tailText}{resultTailText}");
 
             string phaseText = DescribeWishlistSearchPhase();
             if (!string.IsNullOrWhiteSpace(LastNotice))
@@ -394,7 +447,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                lines.Add(BuildTransportSummary());
+                lines.Add($"{BuildTransportSummary()} {DescribeInboundSourceSummary()}");
             }
 
             if (HasPendingWishlistRegister && lines.Count < 3)
@@ -438,6 +491,9 @@ namespace HaCreator.MapSimulator.UI
             string closeText = CloseCount > 0
                 ? $", close={CloseCount}{(LastCloseOpenedWishlist ? " via wishlist prompt" : string.Empty)}"
                 : string.Empty;
+            string ingressText = InboundPacketCount > 0
+                ? $", ingress packets={InboundPacketCount} (open={InboundOpenPacketCount}, result={InboundResultPacketCount}; official={InboundFromOfficialSessionCount}, local={InboundFromLocalUtilityCount}, admin-inbox={InboundFromAdminShopInboxCount})"
+                : string.Empty;
             string visibilityText = DescribeOwnerVisibility();
             string ownerText = string.IsNullOrWhiteSpace(LastOwnerState)
                 ? "owner state unresolved"
@@ -445,8 +501,9 @@ namespace HaCreator.MapSimulator.UI
             string blockedText = BlockedByOwnerCount > 0
                 ? $", blocked opens {BlockedByOwnerCount}"
                 : string.Empty;
+            string inboundSourceText = DescribeInboundSourceSummary();
 
-            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}), packets open={OpenCount}/result={ResultCount}{closeText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}, {visibilityText}, {ownerText}{blockedText}";
+            return $"Packet-owned admin shop: {npcText}, {wishlistText}, open rows {DecodedItemCount} (buy {buyRowCount}, sell {sellRowCount}{trailingText}{resultTrailingText}), packets open={OpenCount}/result={ResultCount}{closeText}{ingressText}, {resultText}, {transportText}, {disconnectText}{waitText}{pendingWishlistText}, {visibilityText}, {ownerText}{blockedText}, {inboundSourceText}";
         }
 
         private string DescribeLastResultState()
@@ -507,6 +564,43 @@ namespace HaCreator.MapSimulator.UI
             return IsActive
                 ? "service idle"
                 : "service closed";
+        }
+
+        private static string NormalizeInboundSource(string source)
+        {
+            return string.IsNullOrWhiteSpace(source)
+                ? "unresolved"
+                : source.Trim();
+        }
+
+        private static bool IsOfficialSessionSource(string source)
+        {
+            return !string.IsNullOrWhiteSpace(source)
+                && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsAdminShopInboxSource(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return false;
+            }
+
+            string normalized = source.Trim();
+            return normalized.StartsWith("admin-shop", StringComparison.OrdinalIgnoreCase)
+                || normalized.IndexOf("adminshop", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private string DescribeInboundSourceSummary()
+        {
+            string packetLabel = LastInboundPacketType switch
+            {
+                LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType => "open(367)",
+                LocalUtilityPacketInboxManager.AdminShopResultClientPacketType => "result(366)",
+                >= 0 => $"packet {LastInboundPacketType}",
+                _ => "packet unresolved"
+            };
+            return $"last ingress {packetLabel} from {LastInboundSource}.";
         }
 
         private string DescribePendingWishlistRegister()

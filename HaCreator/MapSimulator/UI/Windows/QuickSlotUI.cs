@@ -31,8 +31,6 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_ICON_GAP = 8;
         private const int TOOLTIP_TITLE_GAP = 8;
         private const int TOOLTIP_SECTION_GAP = 6;
-        private const int TOOLTIP_OFFSET_X = 12;
-        private const int TOOLTIP_OFFSET_Y = -4;
         private const float COOLDOWN_TEXT_SCALE = 0.7f;
 
         // Bar types for switching between different hotkey groups
@@ -641,8 +639,7 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || _isDragging || _hoveredSlot < 0)
                 return;
 
-            Rectangle hoveredSlotRect = ResolveSlotBounds(_hoveredSlot);
-            Point tooltipAnchor = ResolveTooltipAnchor(hoveredSlotRect);
+            Point tooltipAnchor = ResolveTooltipAnchor(_lastMousePosition);
 
             int absoluteSlotIndex = SlotOffset + _hoveredSlot;
             int macroIndex = _skillManager?.GetHotkeyMacroIndex(absoluteSlotIndex) ?? -1;
@@ -773,8 +770,7 @@ namespace HaCreator.MapSimulator.UI
             if (itemId <= 0)
                 return;
 
-            Rectangle hoveredSlotRect = ResolveSlotBounds(_hoveredSlot);
-            Point tooltipAnchor = ResolveTooltipAnchor(hoveredSlotRect);
+            Point tooltipAnchor = ResolveTooltipAnchor(_lastMousePosition);
 
             int itemCount = _skillManager.GetHotkeyItemCount(absoluteSlotIndex);
             InventoryType inventoryType = _skillManager.GetHotkeyItemInventoryType(absoluteSlotIndex);
@@ -898,8 +894,7 @@ namespace HaCreator.MapSimulator.UI
             if (macro == null)
                 return;
 
-            Rectangle hoveredSlotRect = ResolveSlotBounds(_hoveredSlot);
-            Point tooltipAnchor = ResolveTooltipAnchor(hoveredSlotRect);
+            Point tooltipAnchor = ResolveTooltipAnchor(_lastMousePosition);
 
             int tooltipWidth = ResolveTooltipWidth();
             string[] wrappedTitle = WrapTooltipText(SanitizeFontText(macro.Name), tooltipWidth - (TOOLTIP_PADDING * 2));
@@ -984,24 +979,11 @@ namespace HaCreator.MapSimulator.UI
             return SkillTooltipFrameLayout.ClientTooltipWidth;
         }
 
-        private Rectangle ResolveSlotBounds(int slotIndex)
+        internal static Point ResolveTooltipAnchor(Point mousePosition)
         {
-            int contentX = Position.X + 5;
-            int contentY = Position.Y + 5;
-            int slotsPerRow = _currentBar == BAR_FUNCTION ? 6 : SLOTS_PER_ROW;
-            int rowHeight = SLOT_SIZE + SLOT_PADDING + 12;
-            int row = slotIndex / slotsPerRow;
-            int col = slotIndex % slotsPerRow;
-            return new Rectangle(
-                contentX + col * (SLOT_SIZE + SLOT_PADDING),
-                contentY + row * rowHeight,
-                SLOT_SIZE,
-                SLOT_SIZE);
-        }
-
-        internal static Point ResolveTooltipAnchor(Rectangle slotRect)
-        {
-            return new Point(slotRect.Right + TOOLTIP_OFFSET_X, slotRect.Bottom + TOOLTIP_OFFSET_Y);
+            return SkillTooltipFrameLayout.ResolveTooltipAnchorFromCursor(
+                mousePosition,
+                SkillTooltipAnchorOwner.QuickSlot);
         }
 
         private Rectangle ResolveTooltipRect(

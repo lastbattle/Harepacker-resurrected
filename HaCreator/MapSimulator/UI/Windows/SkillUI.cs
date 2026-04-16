@@ -74,7 +74,6 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_TITLE_GAP = 8;
         private const int TOOLTIP_SECTION_GAP = 6;
         private const int TOOLTIP_ANCHOR_GAP = 8;
-        private const int HOVER_TOOLTIP_CURSOR_GAP = 20;
         private const float COOLDOWN_TEXT_SCALE = 0.55f;
         private const int CLIENT_TOOLTIP_WIDTH = SkillTooltipFrameLayout.ClientTooltipWidth;
         private const int CLIENT_TOOLTIP_BASE_HEIGHT = SkillTooltipFrameLayout.ClientTooltipBaseHeight;
@@ -1132,7 +1131,9 @@ namespace HaCreator.MapSimulator.UI
                         GetSpUpButtonBounds(_hoveredSpUpSkillIndex - _scrollOffset).Left,
                         GetSpUpButtonBounds(_hoveredSpUpSkillIndex - _scrollOffset).Bottom),
                 2 => new Point(GetSkillPointBounds().Right, GetSkillPointBounds().Top),
-                _ => new Point(_lastMousePosition.X, _lastMousePosition.Y + HOVER_TOOLTIP_CURSOR_GAP)
+                _ => SkillTooltipFrameLayout.ResolveTooltipAnchorFromCursor(
+                    _lastMousePosition,
+                    SkillTooltipAnchorOwner.SkillBook)
             };
 
             Rectangle tooltipRect = ResolveTooltipRect(
@@ -1383,7 +1384,9 @@ namespace HaCreator.MapSimulator.UI
             int tooltipHeight = Math.Max(
                 CLIENT_TOOLTIP_BASE_HEIGHT,
                 (int)Math.Ceiling(Math.Max(iconBottom, textBottom) + TOOLTIP_PADDING));
-            Point anchorPoint = new Point(_lastMousePosition.X, _lastMousePosition.Y + HOVER_TOOLTIP_CURSOR_GAP);
+            Point anchorPoint = SkillTooltipFrameLayout.ResolveTooltipAnchorFromCursor(
+                _lastMousePosition,
+                SkillTooltipAnchorOwner.SkillBook);
             Rectangle backgroundRect = ResolveTooltipRect(
                 anchorPoint,
                 tooltipWidth,

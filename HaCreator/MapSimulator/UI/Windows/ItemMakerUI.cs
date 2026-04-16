@@ -1303,7 +1303,13 @@ namespace HaCreator.MapSimulator.UI
         private bool TryCreatePacketOwnedCraftResult(PacketOwnedItemMakerResult packetResult, out ItemMakerCraftResult result)
         {
             result = null;
-            if (!ShouldTreatPacketOwnedResultAsCraftProgress(packetResult, _pendingPacketOwnedDisassemblySlotIndex >= 0))
+            bool hasPendingDisassemblyRequest = _pendingPacketOwnedRequest?.IsDisassembly == true
+                || _pendingPacketOwnedDisassemblySlotIndex >= 0;
+            bool hasPendingCraftRequest = _pendingPacketOwnedRequest != null && !_pendingPacketOwnedRequest.IsDisassembly;
+            if (!ShouldTreatPacketOwnedResultAsCraftProgress(
+                    packetResult,
+                    hasPendingCraftRequest,
+                    hasPendingDisassemblyRequest))
             {
                 return false;
             }
@@ -1467,10 +1473,12 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldTreatPacketOwnedResultAsCraftProgress(
             PacketOwnedItemMakerResult packetResult,
+            bool hasPendingCraftRequest,
             bool hasPendingDisassemblyRequest)
         {
             return packetResult != null
                    && packetResult.ResultCode <= 1
+                   && hasPendingCraftRequest
                    && !hasPendingDisassemblyRequest
                    && !packetResult.RepresentsDisassemblyResult;
         }

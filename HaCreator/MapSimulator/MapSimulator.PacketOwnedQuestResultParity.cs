@@ -519,29 +519,39 @@ namespace HaCreator.MapSimulator
                     closeKind);
             PacketQuestResultSubtype10ContinuationDisposition continuationDisposition =
                 PacketQuestResultClientSemantics.ResolveSubtype10ContinuationDisposition(closeKind);
-            if (continuationDisposition == PacketQuestResultSubtype10ContinuationDisposition.Continue)
+            // CUserLocal::OnQuestResult always runs the post-branch tail after subtype 10
+            // modal return, regardless of DoModal result. Only StartQuest continuation is
+            // gated by the Next/OK return value (0x2001).
+            DispatchPendingPacketOwnedQuestResultNotice();
+            ApplyPendingPacketOwnedQuestResultFadeCleanup(_pendingPacketOwnedQuestResultContinuationQuestId);
+            if (!TryArmPendingPacketOwnedQuestResultFollowUpFromTrailingPayload(out string error))
             {
-                DispatchPendingPacketOwnedQuestResultNotice();
-                ApplyPendingPacketOwnedQuestResultFadeCleanup(_pendingPacketOwnedQuestResultContinuationQuestId);
-                if (!TryArmPendingPacketOwnedQuestResultFollowUpFromTrailingPayload(out string error))
-                {
-                    _chat?.AddSystemMessage(error, currTickCount);
-                    ClearPendingPacketOwnedQuestResultContinuation();
-                    return;
-                }
+                _chat?.AddSystemMessage(error, currTickCount);
+            }
 
+            if (continuationDisposition == PacketQuestResultSubtype10ContinuationDisposition.Continue &&
+                _pendingPacketOwnedQuestResultFollowUpReady)
+            {
                 _pendingPacketOwnedQuestResultContinuationQuestId = 0;
-                if (!_pendingPacketOwnedQuestResultFollowUpReady)
-                {
-                    DispatchPendingPacketOwnedQuestAvailabilityRefresh(availabilityRefreshDisposition);
-                }
-
                 return;
             }
 
-            if (availabilityRefreshDisposition == PacketQuestResultAvailabilityRefreshDisposition.Abandon)
+            if (availabilityRefreshDisposition == PacketQuestResultAvailabilityRefreshDisposition.AfterModalContinuation)
+            {
+                DispatchPendingPacketOwnedQuestAvailabilityRefresh(availabilityRefreshDisposition);
+            }
+            else if (availabilityRefreshDisposition == PacketQuestResultAvailabilityRefreshDisposition.Abandon)
             {
                 ClearPendingPacketOwnedQuestResultAvailabilityRefresh();
+            }
+
+            if (_pendingPacketOwnedQuestResultFollowUpQuestId.HasValue &&
+                continuationDisposition != PacketQuestResultSubtype10ContinuationDisposition.Continue)
+            {
+                _pendingPacketOwnedQuestResultFollowUpQuestId = null;
+                _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = 0;
+                _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
+                _pendingPacketOwnedQuestResultFollowUpReady = false;
             }
 
             ClearPendingPacketOwnedQuestResultContinuation();

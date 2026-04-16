@@ -2802,7 +2802,7 @@ namespace HaCreator.MapSimulator.Pools
                 return new Vector2(packet.StartX, packet.StartY);
             }
 
-            return new Vector2(packet.TargetX, packet.TargetY - 40f);
+            return new Vector2(packet.TargetX, packet.TargetY);
         }
 
         private static bool IsOwnershipWindowActive(DropItem drop, int currentTime)

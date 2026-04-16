@@ -33,6 +33,8 @@ namespace HaCreator.MapSimulator
             if (packetType == 141
                 && PacketStageTransitionRuntime.TryDecodeOfficialSetFieldPayload(payload, out PacketSetFieldPacket setFieldPacket, out _))
             {
+                // `CStage::OnSetField` consumes the prior field interaction request lifecycle.
+                ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
                 UpdateRemoteDropPacketServerClockFromSetField(setFieldPacket);
                 UpdatePacketOwnedFollowRequestOptionFromSetField(setFieldPacket);
                 UpdatePacketOwnedAuthoritativeCharacterDataFromSetField(setFieldPacket);
@@ -48,8 +50,9 @@ namespace HaCreator.MapSimulator
                 out message);
         }
 
-        private bool TryRelayLoginOwnedStageTransitionPacket(LoginPacketType packetType, string[] args, out string message)
+        private bool TryRelayLoginOwnedStageTransitionPacket(LoginPacketType packetType, string[] args, out bool applied, out string message)
         {
+            applied = false;
             message = null;
             if (!TryResolveLoginOwnedStageTransitionPacketType(packetType, out int stagePacketType))
             {
@@ -84,7 +87,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            bool applied = TryApplyPacketOwnedStageTransitionPacket(stagePacketType, payload, out string detail);
+            applied = TryApplyPacketOwnedStageTransitionPacket(stagePacketType, payload, out string detail);
             message = string.IsNullOrWhiteSpace(detail)
                 ? $"CLogin::OnPacket forwarded {packetType} to the stage-transition runtime."
                 : $"CLogin::OnPacket forwarded {packetType} to the stage-transition runtime. {detail}";

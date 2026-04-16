@@ -848,7 +848,7 @@ namespace HaCreator.MapSimulator.Interaction
                             return true;
                         }
 
-                        callbacks?.AddClientChatMessage?.Invoke($"[System] {resolved}", queuedTransfer ? 7 : 12, null);
+                        callbacks?.AddClientChatMessage?.Invoke(resolved, 1, null);
                         _statusMessage = queuedTransfer
                             ? $"Applied packet-owned whisper chase response for {target} and queued map transfer."
                             : $"Applied packet-owned whisper location response for {target}.";

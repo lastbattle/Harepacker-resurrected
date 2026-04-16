@@ -391,33 +391,39 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            string spineAnimation = InfoTool.GetString(property["spineAni"]);
-            bool animated = InfoTool.GetBool(property["ani"]);
+            WzImageProperty backImgInfo = property["backImgInfo"];
+            string spineAnimation = ReadStringWithFallback(property, "spineAni", backImgInfo);
+            bool animated = ReadBoolWithFallback(property, "ani", defaultValue: false, backImgInfo);
             BackgroundInfoType infoType = !string.IsNullOrWhiteSpace(spineAnimation)
                 ? BackgroundInfoType.Spine
                 : animated
                     ? BackgroundInfoType.Animation
                     : BackgroundInfoType.Background;
             MapleBool flipValue = InfoTool.GetOptionalBool(property["f"]);
+            if (!flipValue.HasValue)
+            {
+                flipValue = InfoTool.GetOptionalBool(backImgInfo?["f"]);
+            }
+            WzImageProperty frontProperty = property["front"] ?? backImgInfo?["front"];
             entries.Add(new ContextOwnedStageBackImageEntry(
                 backgroundSet.Trim(),
                 number.ToString(CultureInfo.InvariantCulture),
                 infoType,
-                ReadClientInt(property, StageBackXStringPoolId, "x"),
-                ReadClientInt(property, StageBackYStringPoolId, "y"),
-                ReadClientInt(property, StageBackAbsRxStringPoolId, "absRX", 1),
-                ReadClientInt(property, StageBackAbsRyStringPoolId, "absRY", 1),
-                ReadClientInt(property, MapBackCxStringPoolId, "cx"),
-                ReadClientInt(property, MapBackCyStringPoolId, "cy"),
-                Math.Clamp(ReadClientInt(property, MapBackAlphaStringPoolId, "a", 255), 0, 255),
-                (BackgroundType)ReadClientInt(property, MapBackTypeStringPoolId, "type"),
-                property["front"] == null ? front : InfoTool.GetBool(property["front"]),
+                ReadClientInt(property, StageBackXStringPoolId, "x", secondaryProperty: backImgInfo),
+                ReadClientInt(property, StageBackYStringPoolId, "y", secondaryProperty: backImgInfo),
+                ReadClientInt(property, StageBackAbsRxStringPoolId, "absRX", 1, backImgInfo),
+                ReadClientInt(property, StageBackAbsRyStringPoolId, "absRY", 1, backImgInfo),
+                ReadClientInt(property, MapBackCxStringPoolId, "cx", secondaryProperty: backImgInfo),
+                ReadClientInt(property, MapBackCyStringPoolId, "cy", secondaryProperty: backImgInfo),
+                Math.Clamp(ReadClientInt(property, MapBackAlphaStringPoolId, "a", 255, backImgInfo), 0, 255),
+                (BackgroundType)ReadClientInt(property, MapBackTypeStringPoolId, "type", secondaryProperty: backImgInfo),
+                frontProperty == null ? front : InfoTool.GetBool(frontProperty),
                 flipValue.HasValue && flipValue.Value,
-                InfoTool.GetInt(property["page"]),
-                InfoTool.GetInt(property["screenMode"], 0),
-                InfoTool.GetInt(property["z"]),
+                ReadIntWithFallback(property, "page", defaultValue: 0, backImgInfo),
+                ReadIntWithFallback(property, "screenMode", defaultValue: 0, backImgInfo),
+                ReadIntWithFallback(property, "z", defaultValue: 0, backImgInfo),
                 spineAnimation,
-                InfoTool.GetBool(property["spineRandomStart"])));
+                ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo)));
             return true;
         }
 
@@ -429,15 +435,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            string backgroundSet = ReadClientString(property, MapBackBackgroundSetStringPoolId, "bS");
-            string number = ResolveBackgroundNumber(property);
+            WzImageProperty backImgInfo = property["backImgInfo"];
+            string backgroundSet = ReadClientString(property, MapBackBackgroundSetStringPoolId, "bS", backImgInfo);
+            string number = ResolveBackgroundNumber(property) ?? ResolveBackgroundNumber(backImgInfo);
             if (string.IsNullOrWhiteSpace(backgroundSet) || string.IsNullOrWhiteSpace(number))
             {
                 return false;
             }
 
-            string spineAnimation = InfoTool.GetString(property["spineAni"]);
-            bool animated = InfoTool.GetBool(property["ani"]);
+            string spineAnimation = ReadStringWithFallback(property, "spineAni", backImgInfo);
+            bool animated = ReadBoolWithFallback(property, "ani", defaultValue: false, backImgInfo);
             BackgroundInfoType infoType = !string.IsNullOrWhiteSpace(spineAnimation)
                 ? BackgroundInfoType.Spine
                 : animated
@@ -445,31 +452,35 @@ namespace HaCreator.MapSimulator.Interaction
                     : BackgroundInfoType.Background;
 
             MapleBool flipValue = InfoTool.GetOptionalBool(property["f"]);
+            if (!flipValue.HasValue)
+            {
+                flipValue = InfoTool.GetOptionalBool(backImgInfo?["f"]);
+            }
             entry = new ContextOwnedStageBackImageEntry(
                 backgroundSet,
                 number,
                 infoType,
-                ReadClientInt(property, StageBackXStringPoolId, "x"),
-                ReadClientInt(property, StageBackYStringPoolId, "y"),
-                ReadClientInt(property, MapBackRxStringPoolId, "rx"),
-                ReadClientInt(property, MapBackRyStringPoolId, "ry"),
-                ReadClientInt(property, MapBackCxStringPoolId, "cx"),
-                ReadClientInt(property, MapBackCyStringPoolId, "cy"),
-                Math.Clamp(ReadClientInt(property, MapBackAlphaStringPoolId, "a", 255), 0, 255),
-                (BackgroundType)ReadClientInt(property, MapBackTypeStringPoolId, "type"),
-                InfoTool.GetBool(property["front"]),
+                ReadClientInt(property, StageBackXStringPoolId, "x", secondaryProperty: backImgInfo),
+                ReadClientInt(property, StageBackYStringPoolId, "y", secondaryProperty: backImgInfo),
+                ReadClientInt(property, MapBackRxStringPoolId, "rx", secondaryProperty: backImgInfo),
+                ReadClientInt(property, MapBackRyStringPoolId, "ry", secondaryProperty: backImgInfo),
+                ReadClientInt(property, MapBackCxStringPoolId, "cx", secondaryProperty: backImgInfo),
+                ReadClientInt(property, MapBackCyStringPoolId, "cy", secondaryProperty: backImgInfo),
+                Math.Clamp(ReadClientInt(property, MapBackAlphaStringPoolId, "a", 255, backImgInfo), 0, 255),
+                (BackgroundType)ReadClientInt(property, MapBackTypeStringPoolId, "type", secondaryProperty: backImgInfo),
+                ReadBoolWithFallback(property, "front", defaultValue: false, backImgInfo),
                 flipValue.HasValue && flipValue.Value,
-                InfoTool.GetInt(property["page"]),
-                InfoTool.GetInt(property["screenMode"], 0),
-                InfoTool.GetInt(property["z"]),
+                ReadIntWithFallback(property, "page", defaultValue: 0, backImgInfo),
+                ReadIntWithFallback(property, "screenMode", defaultValue: 0, backImgInfo),
+                ReadIntWithFallback(property, "z", defaultValue: 0, backImgInfo),
                 spineAnimation,
-                InfoTool.GetBool(property["spineRandomStart"]));
+                ReadBoolWithFallback(property, "spineRandomStart", defaultValue: false, backImgInfo));
             return true;
         }
 
         private static string ResolveBackgroundNumber(WzImageProperty property)
         {
-            if (property["no"] == null)
+            if (property?["no"] == null)
             {
                 return null;
             }
@@ -484,14 +495,50 @@ namespace HaCreator.MapSimulator.Interaction
             WzImageProperty property,
             int stringPoolId,
             string fallbackName,
-            int defaultValue = 0)
+            int defaultValue = 0,
+            WzImageProperty secondaryProperty = null)
         {
-            return InfoTool.GetInt(property[ResolveClientPropertyName(stringPoolId, fallbackName)], defaultValue);
+            string propertyName = ResolveClientPropertyName(stringPoolId, fallbackName);
+            return InfoTool.GetInt(property?[propertyName] ?? secondaryProperty?[propertyName], defaultValue);
         }
 
-        private static string ReadClientString(WzImageProperty property, int stringPoolId, string fallbackName)
+        private static string ReadClientString(
+            WzImageProperty property,
+            int stringPoolId,
+            string fallbackName,
+            WzImageProperty secondaryProperty = null)
         {
-            return InfoTool.GetString(property[ResolveClientPropertyName(stringPoolId, fallbackName)]);
+            string propertyName = ResolveClientPropertyName(stringPoolId, fallbackName);
+            return InfoTool.GetString(property?[propertyName] ?? secondaryProperty?[propertyName]);
+        }
+
+        private static int ReadIntWithFallback(
+            WzImageProperty property,
+            string name,
+            int defaultValue = 0,
+            WzImageProperty secondaryProperty = null)
+        {
+            return InfoTool.GetInt(property?[name] ?? secondaryProperty?[name], defaultValue);
+        }
+
+        private static string ReadStringWithFallback(
+            WzImageProperty property,
+            string name,
+            WzImageProperty secondaryProperty = null)
+        {
+            return InfoTool.GetString(property?[name] ?? secondaryProperty?[name]);
+        }
+
+        private static bool ReadBoolWithFallback(
+            WzImageProperty property,
+            string name,
+            bool defaultValue = false,
+            WzImageProperty secondaryProperty = null)
+        {
+            WzImageProperty sourceProperty = property?[name] ?? secondaryProperty?[name];
+            return sourceProperty == null
+                ? defaultValue
+                : InfoTool.GetBool(sourceProperty);
         }
 
         private static string ResolveClientPropertyName(int stringPoolId, string fallbackName)

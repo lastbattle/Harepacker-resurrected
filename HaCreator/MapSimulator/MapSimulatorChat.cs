@@ -2470,6 +2470,11 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (_isWhisperTargetPickerComboDropdownOpen)
+            {
+                return false;
+            }
+
             if (key != Keys.Left && key != Keys.Right && key != Keys.Down)
             {
                 return false;

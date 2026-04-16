@@ -488,7 +488,9 @@ namespace HaCreator.MapSimulator.Animation
             int intervalMs,
             byte alpha,
             int currentTimeMs,
-            int durationMs)
+            int durationMs,
+            bool follow,
+            bool ownsFrameTextures = false)
         {
             if (!HasFrames(frames))
             {
@@ -496,9 +498,38 @@ namespace HaCreator.MapSimulator.Animation
             }
 
             var animation = new SecondaryMotionBlurAnimation();
-            animation.Initialize(frames, getOwnerPosition, getOwnerFlip, fallbackPosition, fallbackFlip, delayMs, intervalMs, alpha, currentTimeMs, durationMs);
+            animation.Initialize(
+                frames,
+                getOwnerPosition,
+                getOwnerFlip,
+                fallbackPosition,
+                fallbackFlip,
+                delayMs,
+                intervalMs,
+                alpha,
+                currentTimeMs,
+                durationMs,
+                follow,
+                ownsFrameTextures);
             _secondaryMotionBlurAnimations.Add(animation);
             return animation.Id;
+        }
+
+        public bool RemoveMotionBlurAnimation(int id)
+        {
+            for (int i = _secondaryMotionBlurAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_secondaryMotionBlurAnimations[i].Id != id)
+                {
+                    continue;
+                }
+
+                _secondaryMotionBlurAnimations[i].Dispose();
+                _secondaryMotionBlurAnimations.RemoveAt(i);
+                return true;
+            }
+
+            return false;
         }
 
         public int RegisterSecondaryChainLightningAnimation(
@@ -892,6 +923,7 @@ namespace HaCreator.MapSimulator.Animation
             {
                 if (!_secondaryMotionBlurAnimations[i].Update(currentTimeMs))
                 {
+                    _secondaryMotionBlurAnimations[i].Dispose();
                     _secondaryMotionBlurAnimations.RemoveAt(i);
                 }
             }
@@ -1017,6 +1049,10 @@ namespace HaCreator.MapSimulator.Animation
             _secondaryPrepareAnimations.Clear();
             _secondaryFootholdAnimations.Clear();
             _secondaryHookChainAnimations.Clear();
+            for (int i = 0; i < _secondaryMotionBlurAnimations.Count; i++)
+            {
+                _secondaryMotionBlurAnimations[i].Dispose();
+            }
             _secondaryMotionBlurAnimations.Clear();
             _secondaryChainSegmentAnimations.Clear();
         }
@@ -1068,6 +1104,10 @@ namespace HaCreator.MapSimulator.Animation
             _secondaryPrepareAnimations.Clear();
             _secondaryFootholdAnimations.Clear();
             _secondaryHookChainAnimations.Clear();
+            for (int i = 0; i < _secondaryMotionBlurAnimations.Count; i++)
+            {
+                _secondaryMotionBlurAnimations[i].Dispose();
+            }
             _secondaryMotionBlurAnimations.Clear();
             _secondaryChainSegmentAnimations.Clear();
         }
@@ -1685,16 +1725,32 @@ namespace HaCreator.MapSimulator.Animation
         private int _intervalMs;
         private byte _alpha;
         private int _lastUpdateTime;
+        private bool _follow;
+        private bool _ownsFrameTextures;
 
         public int Id { get; } = SecondarySkillAnimationIdSource.NextId();
 
-        public void Initialize(List<IDXObject> frames, Func<Vector2> getOwnerPosition, Func<bool> getOwnerFlip, Vector2 fallbackPosition, bool fallbackFlip, int delayMs, int intervalMs, byte alpha, int currentTimeMs, int durationMs)
+        public void Initialize(
+            List<IDXObject> frames,
+            Func<Vector2> getOwnerPosition,
+            Func<bool> getOwnerFlip,
+            Vector2 fallbackPosition,
+            bool fallbackFlip,
+            int delayMs,
+            int intervalMs,
+            byte alpha,
+            int currentTimeMs,
+            int durationMs,
+            bool follow,
+            bool ownsFrameTextures)
         {
             _frames = frames;
             _positionResolver = getOwnerPosition;
             _flipResolver = getOwnerFlip;
             _fallbackPosition = fallbackPosition;
             _fallbackFlip = fallbackFlip;
+            _follow = follow;
+            _ownsFrameTextures = ownsFrameTextures;
             _nextUpdateTime = currentTimeMs + Math.Max(0, delayMs);
             _lastUpdateTime = currentTimeMs;
             _endTime = currentTimeMs + Math.Max(1, durationMs);
@@ -1719,10 +1775,54 @@ namespace HaCreator.MapSimulator.Animation
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
         {
             int currentTime = _lastUpdateTime;
+            Color tint = new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, _alpha);
+            Vector2 ownerPosition = _positionResolver?.Invoke() ?? _fallbackPosition;
+            bool ownerFlip = _flipResolver?.Invoke() ?? _fallbackFlip;
             foreach ((Vector2 position, bool flip, int startTime) in _snapshots)
             {
                 int frameIndex = ResolveFrameIndex(_frames, Math.Max(0, currentTime - startTime), loop: false);
-                DrawFrame(_frames, frameIndex, spriteBatch, skeletonRenderer, gameTime, position, flip, mapShiftX, mapShiftY);
+                if (_frames == null || frameIndex < 0 || frameIndex >= _frames.Count)
+                {
+                    continue;
+                }
+
+                IDXObject frame = _frames[frameIndex];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                Vector2 drawPosition = _follow ? ownerPosition : position;
+                bool drawFlip = _follow ? ownerFlip : flip;
+                int drawShiftX = -(int)MathF.Round(drawPosition.X) - mapShiftX;
+                int drawShiftY = -(int)MathF.Round(drawPosition.Y) - mapShiftY;
+                frame.DrawBackground(
+                    spriteBatch,
+                    skeletonRenderer,
+                    gameTime,
+                    frame.X - drawShiftX,
+                    frame.Y - drawShiftY,
+                    tint,
+                    drawFlip,
+                    null);
+            }
+        }
+
+        public void Dispose()
+        {
+            if (!_ownsFrameTextures || _frames == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _frames.Count; i++)
+            {
+                if (_frames[i] is DXObject dxObject
+                    && dxObject.Texture != null
+                    && !dxObject.Texture.IsDisposed)
+                {
+                    dxObject.Texture.Dispose();
+                }
             }
         }
     }

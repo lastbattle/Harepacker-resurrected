@@ -14,6 +14,15 @@ namespace HaCreator.MapSimulator.Character
         internal const string ClientTamingMobHeadOriginMapPoint = "clientTamingMobHeadOrigin";
         internal const string ClientTamingMobMuzzleOriginMapPoint = "clientTamingMobMuzzleOrigin";
         private const int MechanicTankModeSkillId = 35121005;
+        private static readonly HashSet<string> ClientOriginMapPointNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ClientBodyOriginMapPoint,
+            ClientFaceOriginMapPoint,
+            ClientMuzzleOriginMapPoint,
+            ClientTamingMobNavelOriginMapPoint,
+            ClientTamingMobHeadOriginMapPoint,
+            ClientTamingMobMuzzleOriginMapPoint
+        };
 
         private static readonly IReadOnlyDictionary<int, int> MechanicTankOneTimeActionRewrites =
             new Dictionary<int, int>
@@ -487,6 +496,21 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return rawActionCode is 45 or 46 or 129 or 130;
+        }
+
+        internal static bool IsClientOriginMapPointName(string mapPointName)
+        {
+            return !string.IsNullOrWhiteSpace(mapPointName)
+                   && ClientOriginMapPointNames.Contains(mapPointName);
+        }
+
+        internal static int ResolveWorldMapPointX(string mapPointName, int worldOriginX, bool facingRight, int localMapPointX)
+        {
+            return worldOriginX + (IsClientOriginMapPointName(mapPointName)
+                ? localMapPointX
+                : facingRight
+                    ? localMapPointX
+                    : -localMapPointX);
         }
 
         private static bool IsExplicitMountedTransitionActionName(string actionName)

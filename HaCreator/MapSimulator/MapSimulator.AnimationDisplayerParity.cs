@@ -78,6 +78,37 @@ namespace HaCreator.MapSimulator
             (300, 2),
             (200, 1)
         };
+        private static readonly EquipSlot[] AnimationDisplayerFollowCandidateEquipSlots =
+        {
+            EquipSlot.Cap,
+            EquipSlot.FaceAccessory,
+            EquipSlot.EyeAccessory,
+            EquipSlot.Earrings,
+            EquipSlot.Coat,
+            EquipSlot.Longcoat,
+            EquipSlot.Pants,
+            EquipSlot.Shoes,
+            EquipSlot.Glove,
+            EquipSlot.Shield,
+            EquipSlot.Weapon,
+            EquipSlot.Ring1,
+            EquipSlot.Ring2,
+            EquipSlot.Ring3,
+            EquipSlot.Ring4,
+            EquipSlot.Pendant,
+            EquipSlot.Saddle,
+            EquipSlot.Cape,
+            EquipSlot.Medal,
+            EquipSlot.Belt,
+            EquipSlot.Shoulder,
+            EquipSlot.Pocket,
+            EquipSlot.Badge,
+            EquipSlot.Pendant2,
+            EquipSlot.TamingMobAccessory,
+            EquipSlot.Android,
+            EquipSlot.AndroidHeart,
+            EquipSlot.TamingMob
+        };
 
         private readonly Dictionary<string, List<IDXObject>> _animationDisplayerEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, List<List<IDXObject>>> _animationDisplayerSkillUseEffectCache = new(StringComparer.OrdinalIgnoreCase);
@@ -141,9 +172,13 @@ namespace HaCreator.MapSimulator
             public float Radius { get; init; }
             public int ZOrder { get; init; }
             public EquipSlot SourceEquipSlot { get; init; }
+            public int ClientEquipIndex { get; init; }
         }
 
-        private readonly record struct AnimationDisplayerFollowEquipmentCandidate(int ItemId, EquipSlot Slot);
+        private readonly record struct AnimationDisplayerFollowEquipmentCandidate(
+            int ItemId,
+            EquipSlot Slot,
+            int ClientEquipIndex);
 
         private readonly record struct AnimationDisplayerSkillUseBranchRequest(
             string BranchName,
@@ -2163,14 +2198,21 @@ namespace HaCreator.MapSimulator
 
             int effectSkillId = request.EffectSkillId;
             int sourceSkillId = request.SourceSkillId;
-            SkillData effectSkill = _playerManager?.Skills?.GetSkillData(effectSkillId)
-                                   ?? _playerManager?.Skills?.GetSkillData(sourceSkillId);
+            SkillData requestedEffectSkill = _playerManager?.Skills?.GetSkillData(effectSkillId);
+            SkillData sourceSkill = _playerManager?.Skills?.GetSkillData(sourceSkillId);
+            SkillData effectSkill = requestedEffectSkill ?? sourceSkill;
+            int branchSkillId = ResolveAnimationDisplayerLocalRequestBranchSkillId(
+                effectSkillId,
+                sourceSkillId,
+                request,
+                requestedEffectSkill,
+                sourceSkill);
             PlayerCharacter localPlayer = _playerManager?.Player;
             int localCharacterId = localPlayer?.Build?.Id ?? 0;
             Vector2 casterPosition = request.WorldOrigin ?? new Vector2(localPlayer?.X ?? 0f, localPlayer?.Y ?? 0f);
             bool facingRight = localPlayer?.FacingRight ?? true;
             SkillCastInfo castInfo = BuildAnimationDisplayerLocalSkillUseRequest(
-                effectSkillId,
+                branchSkillId,
                 effectSkill,
                 request.RequestTime > 0 ? request.RequestTime : currTickCount,
                 effectSkill?.Effect,
@@ -2184,6 +2226,34 @@ namespace HaCreator.MapSimulator
             castInfo.FacingRight = facingRight;
             castInfo.DelayRateOverride = request.DelayRateOverride;
             return TryRegisterAnimationDisplayerSkillUse(castInfo);
+        }
+
+        private int ResolveAnimationDisplayerLocalRequestBranchSkillId(
+            int effectSkillId,
+            int sourceSkillId,
+            SkillUseEffectRequest request,
+            SkillData requestedEffectSkill,
+            SkillData sourceSkill)
+        {
+            if (requestedEffectSkill != null)
+            {
+                return effectSkillId;
+            }
+
+            if (sourceSkill == null || sourceSkillId <= 0)
+            {
+                return effectSkillId;
+            }
+
+            // `CUserLocal::OnKeyDownSkillEnd` can issue `SendSkillEffectRequest` with
+            // client effect ids (`35000001`, `35100009`) that are not authored as skill
+            // nodes in v95 exports; the visual branch remains on the source keydown skill.
+            if (request?.BranchNames != null && request.BranchNames.Count > 0)
+            {
+                return sourceSkillId;
+            }
+
+            return effectSkillId;
         }
 
         private SkillCastInfo BuildAnimationDisplayerLocalSkillUseRequest(
@@ -3439,7 +3509,10 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                AnimationDisplayerFollowEquipmentDefinition loadedDefinition = LoadAnimationDisplayerFollowEquipmentDefinition(candidate.ItemId, candidate.Slot);
+                AnimationDisplayerFollowEquipmentDefinition loadedDefinition = LoadAnimationDisplayerFollowEquipmentDefinition(
+                    candidate.ItemId,
+                    candidate.Slot,
+                    candidate.ClientEquipIndex);
                 _animationDisplayerFollowEquipmentCache[cacheKey] = loadedDefinition;
                 if (loadedDefinition != null)
                 {
@@ -3457,55 +3530,27 @@ namespace HaCreator.MapSimulator
                 yield break;
             }
 
-            EquipSlot[] slots =
-            {
-                EquipSlot.Cap,
-                EquipSlot.FaceAccessory,
-                EquipSlot.EyeAccessory,
-                EquipSlot.Earrings,
-                EquipSlot.Coat,
-                EquipSlot.Longcoat,
-                EquipSlot.Pants,
-                EquipSlot.Shoes,
-                EquipSlot.Glove,
-                EquipSlot.Shield,
-                EquipSlot.Weapon,
-                EquipSlot.Ring1,
-                EquipSlot.Ring2,
-                EquipSlot.Ring3,
-                EquipSlot.Ring4,
-                EquipSlot.Pendant,
-                EquipSlot.Saddle,
-                EquipSlot.Cape,
-                EquipSlot.Medal,
-                EquipSlot.Belt,
-                EquipSlot.Shoulder,
-                EquipSlot.Pocket,
-                EquipSlot.Badge,
-                EquipSlot.Pendant2,
-                EquipSlot.TamingMobAccessory,
-                EquipSlot.Android,
-                EquipSlot.AndroidHeart,
-                EquipSlot.TamingMob
-            };
             var seenItemIds = new HashSet<int>();
 
-            for (int i = 0; i < slots.Length; i++)
+            for (int i = 0; i < AnimationDisplayerFollowCandidateEquipSlots.Length; i++)
             {
-                EquipSlot slot = slots[i];
+                EquipSlot slot = AnimationDisplayerFollowCandidateEquipSlots[i];
                 if (build.Equipment.TryGetValue(slot, out CharacterPart visiblePart) && visiblePart?.ItemId > 0 && seenItemIds.Add(visiblePart.ItemId))
                 {
-                    yield return new AnimationDisplayerFollowEquipmentCandidate(visiblePart.ItemId, slot);
+                    yield return new AnimationDisplayerFollowEquipmentCandidate(visiblePart.ItemId, slot, i);
                 }
 
                 if (build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart) && hiddenPart?.ItemId > 0 && seenItemIds.Add(hiddenPart.ItemId))
                 {
-                    yield return new AnimationDisplayerFollowEquipmentCandidate(hiddenPart.ItemId, slot);
+                    yield return new AnimationDisplayerFollowEquipmentCandidate(hiddenPart.ItemId, slot, i);
                 }
             }
         }
 
-        private AnimationDisplayerFollowEquipmentDefinition LoadAnimationDisplayerFollowEquipmentDefinition(int itemId, EquipSlot sourceEquipSlot)
+        private AnimationDisplayerFollowEquipmentDefinition LoadAnimationDisplayerFollowEquipmentDefinition(
+            int itemId,
+            EquipSlot sourceEquipSlot,
+            int clientEquipIndex)
         {
             WzSubProperty effectProperty = ResolveAnimationDisplayerFollowEquipmentProperty(itemId);
             if (effectProperty == null)
@@ -3537,6 +3582,9 @@ namespace HaCreator.MapSimulator
             {
                 ItemId = itemId,
                 SourceEquipSlot = sourceEquipSlot,
+                ClientEquipIndex = clientEquipIndex >= 0
+                    ? clientEquipIndex
+                    : ResolveAnimationDisplayerFollowClientEquipIndex(sourceEquipSlot),
                 EffectUol = effectUol,
                 EffectFrameVariants = effectFrameVariants,
                 GenerationPoints = generationPoints,
@@ -3750,14 +3798,26 @@ namespace HaCreator.MapSimulator
             return authoredZ ?? 0;
         }
 
-        internal static bool ResolveAnimationDisplayerFollowOriginUsesFace(EquipSlot sourceEquipSlot, bool usesRelativeEmission)
+        internal static int ResolveAnimationDisplayerFollowClientEquipIndex(EquipSlot sourceEquipSlot)
+        {
+            for (int index = 0; index < AnimationDisplayerFollowCandidateEquipSlots.Length; index++)
+            {
+                if (AnimationDisplayerFollowCandidateEquipSlots[index] == sourceEquipSlot)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        internal static bool ResolveAnimationDisplayerFollowOriginUsesFace(int clientEquipIndex, bool usesRelativeEmission)
         {
             if (usesRelativeEmission)
             {
                 return true;
             }
 
-            int clientEquipIndex = (int)sourceEquipSlot;
             return clientEquipIndex is 0 or 1 or 2 or 3 or 4 or 9 or 12 or 13 or 15 or 16;
         }
 
@@ -3786,7 +3846,11 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            int worldX = (int)Math.Round(ownerPosition.X) + (facingRight ? localPoint.X : -localPoint.X);
+            int worldX = AvatarActionLayerCoordinator.ResolveWorldMapPointX(
+                mapPointName,
+                (int)Math.Round(ownerPosition.X),
+                facingRight,
+                localPoint.X);
             int worldY = (int)Math.Round(ownerPosition.Y) - frame.FeetOffset + localPoint.Y;
             return new Point(worldX, worldY);
         }
@@ -3808,8 +3872,11 @@ namespace HaCreator.MapSimulator
 
             return () =>
             {
+                int resolvedClientEquipIndex = followDefinition.ClientEquipIndex >= 0
+                    ? followDefinition.ClientEquipIndex
+                    : ResolveAnimationDisplayerFollowClientEquipIndex(followDefinition.SourceEquipSlot);
                 bool useFaceOrigin = ResolveAnimationDisplayerFollowOriginUsesFace(
-                    followDefinition.SourceEquipSlot,
+                    resolvedClientEquipIndex,
                     followDefinition.UsesRelativeEmission);
                 if (useFaceOrigin)
                 {

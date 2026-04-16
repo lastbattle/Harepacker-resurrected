@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator.Companions
     internal static class MechanicEquipmentPacketParity
     {
         internal const int ClientChangeSlotPositionRequestOpcode = 77;
+        internal const int ClientInventoryOperationPacketType = 28;
         internal const byte ClientEquipInventoryType = 1;
         internal const ushort ClientChangeSlotPositionCountAll = 0xFFFF;
 
@@ -115,6 +116,119 @@ namespace HaCreator.MapSimulator.Companions
         internal static ushort ToClientEquipPosition(int bodyPart)
         {
             return unchecked((ushort)-bodyPart);
+        }
+
+        internal static bool TryRecognizeClientInventoryOperationCompletion(
+            EquipmentChangeRequest request,
+            IReadOnlyList<byte> payload,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null)
+            {
+                rejectReason = "Mechanic equipment request is missing.";
+                return false;
+            }
+
+            bool isInventoryToMechanicRequest =
+                request.Kind == EquipmentChangeRequestKind.InventoryToCompanion
+                && request.TargetCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                && request.TargetMechanicSlot.HasValue;
+            bool isMechanicToInventoryRequest =
+                request.Kind == EquipmentChangeRequestKind.CompanionToInventory
+                && request.SourceCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                && request.SourceMechanicSlot.HasValue;
+            if (!isInventoryToMechanicRequest && !isMechanicToInventoryRequest)
+            {
+                rejectReason = "Only mechanic equip-in or drag-back-out requests can be recognized from inventory-operation payloads.";
+                return false;
+            }
+
+            if (payload == null || payload.Count < sizeof(byte) * 2)
+            {
+                rejectReason = "Inventory-operation payload is missing the exclusive-reset and operation-count bytes.";
+                return false;
+            }
+
+            try
+            {
+                byte[] buffer = payload as byte[] ?? new List<byte>(payload).ToArray();
+                using MemoryStream stream = new(buffer, writable: false);
+                using BinaryReader reader = new(stream);
+                _ = reader.ReadByte(); // bExclRequestSent reset marker
+                int operationCount = reader.ReadByte();
+                if (operationCount <= 0)
+                {
+                    rejectReason = "Inventory-operation payload did not include any item move operation.";
+                    return false;
+                }
+
+                for (int i = 0; i < operationCount; i++)
+                {
+                    if (stream.Length - stream.Position < sizeof(byte) * 2 + sizeof(short))
+                    {
+                        rejectReason = "Inventory-operation payload ended before a full operation header could be decoded.";
+                        return false;
+                    }
+
+                    byte operationMode = reader.ReadByte();
+                    byte inventoryType = reader.ReadByte();
+                    short fromPosition = reader.ReadInt16();
+                    switch (operationMode)
+                    {
+                        case 2:
+                        {
+                            if (stream.Length - stream.Position < sizeof(short))
+                            {
+                                rejectReason = "Inventory-operation swap entry is truncated.";
+                                return false;
+                            }
+
+                            short toPosition = reader.ReadInt16();
+                            if (TryMatchesMechanicInventoryOperationSwap(request, inventoryType, fromPosition, toPosition, out rejectReason))
+                            {
+                                return true;
+                            }
+
+                            break;
+                        }
+                        case 1:
+                            if (stream.Length - stream.Position < sizeof(short))
+                            {
+                                rejectReason = "Inventory-operation quantity update entry is truncated.";
+                                return false;
+                            }
+
+                            _ = reader.ReadInt16();
+                            break;
+                        case 3:
+                            break;
+                        case 4:
+                            if (stream.Length - stream.Position < sizeof(int))
+                            {
+                                rejectReason = "Inventory-operation consume-item entry is truncated.";
+                                return false;
+                            }
+
+                            _ = reader.ReadInt32();
+                            break;
+                        case 0:
+                            rejectReason = "Inventory-operation add-slot entries are not recovered for mechanic completion matching.";
+                            return false;
+                        default:
+                            rejectReason = $"Inventory-operation mode {operationMode} is unsupported for mechanic completion matching.";
+                            return false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                rejectReason = $"Inventory-operation payload could not be decoded: {ex.Message}";
+                return false;
+            }
+
+            rejectReason = "Inventory-operation payload did not include a mechanic swap matching the active request.";
+            return false;
         }
 
         internal static bool TryRecognizeObservedLiveBridgeEquipInCompletion(
@@ -746,6 +860,69 @@ namespace HaCreator.MapSimulator.Companions
         {
             decodedPayload = default;
             errorMessage = message;
+            return false;
+        }
+
+        private static bool TryMatchesMechanicInventoryOperationSwap(
+            EquipmentChangeRequest request,
+            byte inventoryType,
+            short sourcePosition,
+            short targetPosition,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request.Kind == EquipmentChangeRequestKind.InventoryToCompanion)
+            {
+                if (inventoryType != ClientEquipInventoryType)
+                {
+                    rejectReason = "Mechanic equip-in inventory-operation swap did not target the equip inventory.";
+                    return false;
+                }
+
+                if (request.SourceInventoryIndex < 0 || !request.TargetMechanicSlot.HasValue)
+                {
+                    rejectReason = "Mechanic equip-in request is missing source slot or target mechanic slot metadata.";
+                    return false;
+                }
+
+                short expectedSourcePosition = (short)(request.SourceInventoryIndex + 1);
+                short expectedTargetPosition =
+                    unchecked((short)-MechanicEquipmentSlotMap.GetBodyPart(request.TargetMechanicSlot.Value));
+                if (sourcePosition != expectedSourcePosition || targetPosition != expectedTargetPosition)
+                {
+                    rejectReason = "Inventory-operation swap did not match the requested equip-in source/target positions.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (request.Kind == EquipmentChangeRequestKind.CompanionToInventory)
+            {
+                if (!request.SourceMechanicSlot.HasValue)
+                {
+                    rejectReason = "Mechanic drag-back-out request is missing source mechanic slot metadata.";
+                    return false;
+                }
+
+                short expectedSourcePosition =
+                    unchecked((short)-MechanicEquipmentSlotMap.GetBodyPart(request.SourceMechanicSlot.Value));
+                if (sourcePosition != expectedSourcePosition)
+                {
+                    rejectReason = "Inventory-operation swap did not originate from the requested mechanic source slot.";
+                    return false;
+                }
+
+                if (targetPosition <= 0)
+                {
+                    rejectReason = "Inventory-operation swap did not land in a positive inventory slot.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            rejectReason = "Unsupported mechanic request kind for inventory-operation swap matching.";
             return false;
         }
     }

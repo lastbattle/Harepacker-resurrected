@@ -286,9 +286,21 @@ namespace HaCreator.MapSimulator
             string defaultImageName = string.IsNullOrWhiteSpace(presentation.DefaultImageName)
                 ? "UI.img"
                 : presentation.DefaultImageName;
+            float volumeScale = 1f;
+            if (presentation.WorldOrigin.HasValue)
+            {
+                Vector2 origin = presentation.WorldOrigin.Value;
+                Vector2? localPlayerPosition = _playerManager?.Player?.Position;
+                volumeScale = ResolvePacketOwnedSummonSoundVolumeScale(
+                    localPlayerPosition,
+                    (int)MathF.Round(origin.X),
+                    (int)MathF.Round(origin.Y));
+            }
+
             TryPlayPacketOwnedWzSound(
                 presentation.SoundPath,
                 defaultImageName,
+                volumeScale,
                 out _,
                 out _);
         }

@@ -136,6 +136,13 @@ namespace HaCreator.MapSimulator.Fields
             return hasClientOwnedOneTimeAction && hasPassiveTransferFieldPortalCollision;
         }
 
+        public static bool ShouldClearQueuedRetryOnChairGetUp(
+            bool hasPendingRequest,
+            bool consumedChairGetUpBranch)
+        {
+            return hasPendingRequest && consumedChairGetUpBranch;
+        }
+
         public static bool CanReplayHandleUpKeyDown(PassiveTransferFieldReplayState state)
         {
             return state.HasOneTimeActionCompleted

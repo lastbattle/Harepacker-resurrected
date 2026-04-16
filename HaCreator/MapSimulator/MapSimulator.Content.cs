@@ -1104,6 +1104,7 @@ namespace HaCreator.MapSimulator
                 itemUpgradeWindow.CharacterBuild = _playerManager.Player.Build;
                 itemUpgradeWindow.SetFont(_fontChat);
                 itemUpgradeWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                WireItemUpgradeOwnerCallbacks(itemUpgradeWindow);
                 if (uiWindowManager.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
                 {
                     vegaSpellWindow.CharacterBuild = _playerManager.Player.Build;
@@ -1379,7 +1380,7 @@ namespace HaCreator.MapSimulator
             if (!preserveCrossMapTeleportRequest)
             {
                 _packetOwnedTeleportRequestActive = false;
-                ClearCollisionScriptExclusiveRequestSent();
+                ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
                 _packetOwnedTeleportRequestCompletedAt = int.MinValue;
                 _lastPacketOwnedTeleportPortalRequestTick = int.MinValue;
                 _lastPacketOwnedTeleportPortalIndex = -1;
@@ -1911,6 +1912,7 @@ namespace HaCreator.MapSimulator
                 itemUpgradeWindow.CharacterBuild = _playerManager.Player.Build;
                 itemUpgradeWindow.SetFont(_fontChat);
                 itemUpgradeWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                WireItemUpgradeOwnerCallbacks(itemUpgradeWindow);
                 if (uiWindowManager.GetWindow(MapSimulatorWindowNames.VegaSpell) is VegaSpellUI vegaSpellWindow)
                 {
                     vegaSpellWindow.CharacterBuild = _playerManager.Player.Build;

@@ -292,6 +292,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<WhisperPickerButtonHitRegion> _whisperPickerButtonHitRegions = new List<WhisperPickerButtonHitRegion>();
         private bool _isDraggingWhisperPickerDropdownScrollThumb;
         private int _whisperPickerDropdownScrollThumbDragOffsetY;
+        private WhisperPickerDropdownScrollRepeatAction _whisperPickerDropdownScrollRepeatAction = WhisperPickerDropdownScrollRepeatAction.None;
+        private int _whisperPickerDropdownScrollRepeatStartTick = int.MinValue;
+        private int _whisperPickerDropdownScrollRepeatLastTick = int.MinValue;
 
         internal const float ClientChatTextFontPixelSize = 11f;
         internal const int ClientChatTextFontFaceStringPoolId = 0x1A25;
@@ -310,6 +313,8 @@ namespace HaCreator.MapSimulator.UI
         private const int WhisperPickerRowPadding = 4;
         private const int WhisperPickerFramePadding = 3;
         private const int WhisperPickerModalHeaderGap = 10;
+        private const int WhisperPickerDropdownScrollRepeatInitialDelayMs = 400;
+        private const int WhisperPickerDropdownScrollRepeatIntervalMs = 60;
         private Point _pointNotificationAnchor = new Point(512, 60);
         private Vector2 _chatTargetLabelPos = new Vector2(17, 7);
         private Vector2 _chatEnterPos = new Vector2(4, 2);
@@ -352,6 +357,15 @@ namespace HaCreator.MapSimulator.UI
             Next = 1,
             Confirm = 2,
             Close = 3
+        }
+
+        private enum WhisperPickerDropdownScrollRepeatAction
+        {
+            None = 0,
+            StepPrevious = 1,
+            StepNext = 2,
+            PagePrevious = 3,
+            PageNext = 4
         }
 
         internal static bool ShouldCloseWhisperPickerDropdownOnOutsidePress(bool isDropdownOpen, bool hoveredInteractiveElement)
@@ -407,6 +421,29 @@ namespace HaCreator.MapSimulator.UI
                 || !chatState.IsWhisperTargetPickerActive
                 || chatState.WhisperTargetPickerPresentation != MapSimulatorChat.WhisperTargetPickerPresentation.Modal
                 || !chatState.IsWhisperTargetPickerComboDropdownOpen;
+        }
+
+        internal static bool ShouldTriggerWhisperPickerDropdownScrollAutoRepeat(
+            int heldElapsedMs,
+            int sinceLastRepeatMs,
+            int initialDelayMs = WhisperPickerDropdownScrollRepeatInitialDelayMs,
+            int repeatIntervalMs = WhisperPickerDropdownScrollRepeatIntervalMs)
+        {
+            if (heldElapsedMs < Math.Max(0, initialDelayMs))
+            {
+                return false;
+            }
+
+            return sinceLastRepeatMs >= Math.Max(1, repeatIntervalMs);
+        }
+
+        internal static bool ShouldContinueWhisperPickerDropdownTrackRepeat(
+            bool repeatBackward,
+            int mouseY,
+            int thumbTop,
+            int thumbBottom)
+        {
+            return repeatBackward ? mouseY < thumbTop : mouseY >= thumbBottom;
         }
 
         /// <summary>
@@ -868,18 +905,21 @@ namespace HaCreator.MapSimulator.UI
             if (!HasTextRenderer())
             {
                 _isDraggingWhisperPickerDropdownScrollThumb = false;
+                ResetWhisperPickerDropdownScrollRepeatCapture();
                 return;
             }
 
             if (chatState == null)
             {
                 _isDraggingWhisperPickerDropdownScrollThumb = false;
+                ResetWhisperPickerDropdownScrollRepeatCapture();
                 return;
             }
 
             if (ShouldClearWhisperPickerDropdownScrollThumbCapture(chatState))
             {
                 _isDraggingWhisperPickerDropdownScrollThumb = false;
+                ResetWhisperPickerDropdownScrollRepeatCapture();
             }
 
             DrawChatTargetLabel(sprite, chatState.TargetType);
@@ -1562,6 +1602,10 @@ namespace HaCreator.MapSimulator.UI
 
             bool prevEnabled = firstVisibleIndex > 0;
             bool nextEnabled = firstVisibleIndex < maxScrollOffset;
+            bool prevPressed = mouseState.LeftButton == ButtonState.Pressed
+                && _whisperPickerDropdownScrollRepeatAction == WhisperPickerDropdownScrollRepeatAction.StepPrevious;
+            bool nextPressed = mouseState.LeftButton == ButtonState.Pressed
+                && _whisperPickerDropdownScrollRepeatAction == WhisperPickerDropdownScrollRepeatAction.StepNext;
             DrawWhisperPickerDropdownScrollbarArrow(
                 sprite,
                 prevBounds,
@@ -1569,7 +1613,7 @@ namespace HaCreator.MapSimulator.UI
                 _whisperPickerDropdownScrollbarSkin?.PrevDisabled,
                 prevEnabled,
                 mouseState,
-                pressed: false);
+                pressed: prevPressed);
             DrawWhisperPickerDropdownScrollbarArrow(
                 sprite,
                 nextBounds,
@@ -1577,7 +1621,7 @@ namespace HaCreator.MapSimulator.UI
                 _whisperPickerDropdownScrollbarSkin?.NextDisabled,
                 nextEnabled,
                 mouseState,
-                pressed: false);
+                pressed: nextPressed);
 
             Texture2D thumbTexture = ResolveWhisperPickerDropdownScrollbarStateTexture(
                 _whisperPickerDropdownScrollbarSkin?.ThumbStates,
@@ -2522,6 +2566,17 @@ namespace HaCreator.MapSimulator.UI
                 && _previousLeftButtonState == ButtonState.Released;
             bool isRelease = mouseState.LeftButton == ButtonState.Released
                 && _previousLeftButtonState == ButtonState.Pressed;
+
+            if (!_whisperPickerDropdownScrollBarBounds.HasValue)
+            {
+                if (isRelease)
+                {
+                    ResetWhisperPickerDropdownScrollRepeatCapture();
+                }
+
+                return false;
+            }
+
             if (_isDraggingWhisperPickerDropdownScrollThumb)
             {
                 if (ShouldKeepWhisperPickerDropdownScrollThumbCapture(
@@ -2550,7 +2605,12 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (!isPressStarted || !_whisperPickerDropdownScrollBarBounds.HasValue)
+            if (TryHandleWhisperPickerDropdownScrollbarAutoRepeat(mouseState, isRelease))
+            {
+                return true;
+            }
+
+            if (!isPressStarted)
             {
                 return false;
             }
@@ -2561,6 +2621,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            ResetWhisperPickerDropdownScrollRepeatCapture();
             WhisperTargetPickerModalComboFocusRequested?.Invoke();
             if (_whisperPickerDropdownScrollThumbBounds?.Contains(mousePosition) == true)
             {
@@ -2571,13 +2632,21 @@ namespace HaCreator.MapSimulator.UI
 
             if (_whisperPickerDropdownScrollPrevBounds?.Contains(mousePosition) == true)
             {
-                WhisperTargetPickerModalComboDropdownScrollRequested?.Invoke(-1);
+                StartWhisperPickerDropdownScrollRepeatCapture(
+                    WhisperPickerDropdownScrollRepeatAction.StepPrevious);
+                PerformWhisperPickerDropdownScrollRepeatAction(
+                    _whisperPickerDropdownScrollRepeatAction,
+                    mousePosition.Y);
                 return true;
             }
 
             if (_whisperPickerDropdownScrollNextBounds?.Contains(mousePosition) == true)
             {
-                WhisperTargetPickerModalComboDropdownScrollRequested?.Invoke(1);
+                StartWhisperPickerDropdownScrollRepeatCapture(
+                    WhisperPickerDropdownScrollRepeatAction.StepNext);
+                PerformWhisperPickerDropdownScrollRepeatAction(
+                    _whisperPickerDropdownScrollRepeatAction,
+                    mousePosition.Y);
                 return true;
             }
 
@@ -2585,17 +2654,141 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (mouseState.Y < _whisperPickerDropdownScrollThumbBounds.Value.Y)
                 {
-                    WhisperTargetPickerModalComboDropdownPageRequested?.Invoke(-1);
+                    StartWhisperPickerDropdownScrollRepeatCapture(
+                        WhisperPickerDropdownScrollRepeatAction.PagePrevious);
+                    PerformWhisperPickerDropdownScrollRepeatAction(
+                        _whisperPickerDropdownScrollRepeatAction,
+                        mousePosition.Y);
                 }
                 else if (mouseState.Y >= _whisperPickerDropdownScrollThumbBounds.Value.Bottom)
                 {
-                    WhisperTargetPickerModalComboDropdownPageRequested?.Invoke(1);
+                    StartWhisperPickerDropdownScrollRepeatCapture(
+                        WhisperPickerDropdownScrollRepeatAction.PageNext);
+                    PerformWhisperPickerDropdownScrollRepeatAction(
+                        _whisperPickerDropdownScrollRepeatAction,
+                        mousePosition.Y);
                 }
 
                 return true;
             }
 
             return isRelease;
+        }
+
+        private bool TryHandleWhisperPickerDropdownScrollbarAutoRepeat(MouseState mouseState, bool isRelease)
+        {
+            if (_whisperPickerDropdownScrollRepeatAction == WhisperPickerDropdownScrollRepeatAction.None)
+            {
+                if (isRelease)
+                {
+                    ResetWhisperPickerDropdownScrollRepeatCapture();
+                }
+
+                return false;
+            }
+
+            if (isRelease || mouseState.LeftButton != ButtonState.Pressed)
+            {
+                ResetWhisperPickerDropdownScrollRepeatCapture();
+                return true;
+            }
+
+            if (!ShouldContinueWhisperPickerDropdownScrollRepeatAction(mouseState))
+            {
+                ResetWhisperPickerDropdownScrollRepeatCapture();
+                return true;
+            }
+
+            int currentTick = Environment.TickCount;
+            int heldElapsedMs = unchecked(currentTick - _whisperPickerDropdownScrollRepeatStartTick);
+            int sinceLastRepeatMs = unchecked(currentTick - _whisperPickerDropdownScrollRepeatLastTick);
+            if (ShouldTriggerWhisperPickerDropdownScrollAutoRepeat(
+                    heldElapsedMs,
+                    sinceLastRepeatMs))
+            {
+                PerformWhisperPickerDropdownScrollRepeatAction(
+                    _whisperPickerDropdownScrollRepeatAction,
+                    mouseState.Y);
+                _whisperPickerDropdownScrollRepeatLastTick = currentTick;
+            }
+
+            return true;
+        }
+
+        private bool ShouldContinueWhisperPickerDropdownScrollRepeatAction(MouseState mouseState)
+        {
+            if (_whisperPickerDropdownScrollRepeatAction == WhisperPickerDropdownScrollRepeatAction.PagePrevious
+                || _whisperPickerDropdownScrollRepeatAction == WhisperPickerDropdownScrollRepeatAction.PageNext)
+            {
+                if (!_whisperPickerDropdownScrollThumbBounds.HasValue)
+                {
+                    return false;
+                }
+
+                return ShouldContinueWhisperPickerDropdownTrackRepeat(
+                    repeatBackward: _whisperPickerDropdownScrollRepeatAction == WhisperPickerDropdownScrollRepeatAction.PagePrevious,
+                    mouseState.Y,
+                    _whisperPickerDropdownScrollThumbBounds.Value.Y,
+                    _whisperPickerDropdownScrollThumbBounds.Value.Bottom);
+            }
+
+            return true;
+        }
+
+        private void StartWhisperPickerDropdownScrollRepeatCapture(
+            WhisperPickerDropdownScrollRepeatAction action)
+        {
+            _whisperPickerDropdownScrollRepeatAction = action;
+            int currentTick = Environment.TickCount;
+            _whisperPickerDropdownScrollRepeatStartTick = currentTick;
+            _whisperPickerDropdownScrollRepeatLastTick = currentTick;
+        }
+
+        private void ResetWhisperPickerDropdownScrollRepeatCapture()
+        {
+            _whisperPickerDropdownScrollRepeatAction = WhisperPickerDropdownScrollRepeatAction.None;
+            _whisperPickerDropdownScrollRepeatStartTick = int.MinValue;
+            _whisperPickerDropdownScrollRepeatLastTick = int.MinValue;
+        }
+
+        private void PerformWhisperPickerDropdownScrollRepeatAction(
+            WhisperPickerDropdownScrollRepeatAction action,
+            int mouseY)
+        {
+            WhisperTargetPickerModalComboFocusRequested?.Invoke();
+            switch (action)
+            {
+                case WhisperPickerDropdownScrollRepeatAction.StepPrevious:
+                    WhisperTargetPickerModalComboDropdownScrollRequested?.Invoke(-1);
+                    break;
+                case WhisperPickerDropdownScrollRepeatAction.StepNext:
+                    WhisperTargetPickerModalComboDropdownScrollRequested?.Invoke(1);
+                    break;
+                case WhisperPickerDropdownScrollRepeatAction.PagePrevious:
+                    if (_whisperPickerDropdownScrollThumbBounds.HasValue
+                        && mouseY < _whisperPickerDropdownScrollThumbBounds.Value.Y)
+                    {
+                        WhisperTargetPickerModalComboDropdownPageRequested?.Invoke(-1);
+                    }
+                    else
+                    {
+                        ResetWhisperPickerDropdownScrollRepeatCapture();
+                    }
+
+                    break;
+                case WhisperPickerDropdownScrollRepeatAction.PageNext:
+                    if (_whisperPickerDropdownScrollThumbBounds.HasValue
+                        && mouseY >= _whisperPickerDropdownScrollThumbBounds.Value.Bottom)
+                    {
+                        WhisperTargetPickerModalComboDropdownPageRequested?.Invoke(1);
+                    }
+                    else
+                    {
+                        ResetWhisperPickerDropdownScrollRepeatCapture();
+                    }
+
+                    break;
+            }
         }
 
         private WhisperTargetHitRegion FindWhisperTargetHitRegion(int mouseX, int mouseY)

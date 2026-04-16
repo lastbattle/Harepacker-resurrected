@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int PageIceChargeSkillId = 1211006;
         private const int PageLightningChargeSkillId = 1211008;
         private const int PaladinHolyChargeSkillId = 1221004;
+        private const int PaladinSanctuarySkillId = 1221011;
         private const int ThunderBreakerLightningChargeSkillId = 15101006;
         private const int AranIceChargeSkillId = 21111005;
         private static readonly int[] KnownChargeSkillIds =
@@ -17,7 +18,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             PageFireChargeSkillId,
             PageLightningChargeSkillId,
             ThunderBreakerLightningChargeSkillId,
-            PaladinHolyChargeSkillId
+            PaladinHolyChargeSkillId,
+            PaladinSanctuarySkillId
         };
 
         public static bool TryGetChargeElement(int skillId, out int chargeElement)
@@ -30,6 +32,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 PageLightningChargeSkillId => 3,
                 ThunderBreakerLightningChargeSkillId => 3,
                 PaladinHolyChargeSkillId => 5,
+                PaladinSanctuarySkillId => 5,
                 _ => 0
             };
 

@@ -6081,11 +6081,11 @@ namespace HaCreator.MapSimulator
             string scriptName,
             IReadOnlyList<string> publishedItemScriptNames = null)
         {
-            IReadOnlyList<string> publishedScriptNames =
-                BuildItemAuthoredInteractionPublishedScriptNames(npcId, publishedItemScriptNames, scriptName);
-            if (publishedScriptNames.Count > 0)
+            IReadOnlyList<FieldObjectScriptPublication> publishedScriptPublications =
+                BuildItemAuthoredInteractionPublishedScriptPublications(npcId, publishedItemScriptNames, scriptName);
+            if (publishedScriptPublications.Count > 0)
             {
-                PublishDynamicObjectTagStatesForScriptNames(publishedScriptNames, currTickCount);
+                PublishDynamicObjectTagStatesForScriptPublications(publishedScriptPublications, currTickCount);
             }
 
             NpcItem npcPreview = CreateNpcPreview(npcId, includeTooltips: false);
@@ -6150,6 +6150,50 @@ namespace HaCreator.MapSimulator
             return QuestRuntimeManager.BuildPublishedScriptNames(
                 npcScriptNames,
                 additionalRawScriptNames.ToArray());
+        }
+
+        internal static IReadOnlyList<FieldObjectScriptPublication> BuildItemAuthoredInteractionPublishedScriptPublications(
+            int npcId,
+            IEnumerable<string> scriptNames,
+            string primaryScriptName = null,
+            Func<int, IReadOnlyList<FieldObjectScriptPublication>> npcScriptPublicationResolver = null)
+        {
+            IEnumerable<FieldObjectScriptPublication> npcScriptPublications = Array.Empty<FieldObjectScriptPublication>();
+            if (npcId > 0)
+            {
+                npcScriptPublicationResolver ??= FieldObjectNpcScriptNameResolver.ResolvePublishedScriptPublications;
+                npcScriptPublications = npcScriptPublicationResolver(npcId) ?? Array.Empty<FieldObjectScriptPublication>();
+            }
+
+            List<string> additionalRawScriptNames = scriptNames?
+                .Where(script => !string.IsNullOrWhiteSpace(script))
+                .Select(script => script.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+                ?? new List<string>();
+            if (!string.IsNullOrWhiteSpace(primaryScriptName)
+                && !additionalRawScriptNames.Contains(primaryScriptName, StringComparer.OrdinalIgnoreCase))
+            {
+                additionalRawScriptNames.Add(primaryScriptName.Trim());
+            }
+
+            return QuestRuntimeManager.BuildPublishedScriptPublications(
+                npcScriptPublications,
+                additionalRawScriptNames.ToArray());
+        }
+
+        internal static IReadOnlyList<FieldObjectScriptPublication> BuildItemAuthoredInteractionPublishedScriptPublications(
+            int npcId,
+            string scriptName,
+            Func<int, IReadOnlyList<FieldObjectScriptPublication>> npcScriptPublicationResolver = null)
+        {
+            return BuildItemAuthoredInteractionPublishedScriptPublications(
+                npcId,
+                string.IsNullOrWhiteSpace(scriptName)
+                    ? Array.Empty<string>()
+                    : new[] { scriptName },
+                scriptName,
+                npcScriptPublicationResolver);
         }
 
         internal static IReadOnlyList<string> BuildItemAuthoredInteractionPublishedScriptNames(
@@ -26850,13 +26894,20 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            StopSkillMacroForHandleUpKeyDown();
+
             if (ShouldHandleFreshUpKeyDownAsChairGetUp(_playerManager?.Player))
             {
+                if (PassiveTransferFieldReadinessEvaluator.ShouldClearQueuedRetryOnChairGetUp(
+                        _passiveTransferRequestPending,
+                        consumedChairGetUpBranch: true))
+                {
+                    ClearPassiveTransferRequest();
+                }
+
                 _playerManager?.Player?.ApplyPacketOwnedChairStandCorrection();
                 return;
             }
-
-            StopSkillMacroForHandleUpKeyDown();
 
 
             if (CanReplayPassiveTransferFieldUpKeyPath(currentTime) && _playerManager.Player?.CanMove == true)
@@ -27495,9 +27546,32 @@ namespace HaCreator.MapSimulator
             _collisionScriptExclusiveRequestDelayMs = Math.Max(0, portalDelayMs);
         }
 
-        private void ClearCollisionScriptExclusiveRequestSent()
+        private void ClearCollisionScriptExclusiveRequestSent(bool preserveCooldown = true)
         {
-            _collisionScriptExclusiveRequestSent = false;
+            ApplyCollisionScriptExclusiveRequestClear(
+                preserveCooldown,
+                ref _collisionScriptExclusiveRequestSent,
+                ref _collisionScriptExclusiveRequestSentTick,
+                ref _collisionScriptExclusiveRequestPortalIndex,
+                ref _collisionScriptExclusiveRequestDelayMs);
+        }
+
+        internal static void ApplyCollisionScriptExclusiveRequestClear(
+            bool preserveCooldown,
+            ref bool exclusiveRequestSent,
+            ref int exclusiveRequestSentTick,
+            ref int exclusiveRequestPortalIndex,
+            ref int exclusiveRequestDelayMs)
+        {
+            exclusiveRequestSent = false;
+            if (preserveCooldown)
+            {
+                return;
+            }
+
+            exclusiveRequestSentTick = int.MinValue;
+            exclusiveRequestPortalIndex = -1;
+            exclusiveRequestDelayMs = 0;
         }
 
         private void RefreshCollisionScriptExclusiveRequestState(int currentTime)
@@ -29045,6 +29119,14 @@ namespace HaCreator.MapSimulator
             }
 
             NpcItem npc = preferredNpc ?? FindNpcById(npcTemplateId);
+            IReadOnlyList<FieldObjectScriptPublication> publishedScriptPublications = npc != null
+                ? FieldObjectNpcScriptNameResolver.ResolvePublishedScriptPublications(npc.NpcInstance)
+                : FieldObjectNpcScriptNameResolver.ResolvePublishedScriptPublications(npcTemplateId);
+            if (PublishDynamicObjectTagStatesForScriptPublications(publishedScriptPublications, currentTickCount))
+            {
+                return true;
+            }
+
             IReadOnlyList<string> publishedScriptNames = npc != null
                 ? FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(npc.NpcInstance)
                 : FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(npcTemplateId);
@@ -29119,6 +29201,32 @@ namespace HaCreator.MapSimulator
 
             return publishedAny;
 
+        }
+
+        private bool PublishDynamicObjectTagStatesForScriptPublications(
+            IEnumerable<FieldObjectScriptPublication> scriptPublications,
+            int currentTickCount)
+        {
+            if (scriptPublications == null)
+            {
+                return false;
+            }
+
+            bool publishedAny = false;
+            foreach (FieldObjectScriptPublication publication in scriptPublications)
+            {
+                if (publication == null || string.IsNullOrWhiteSpace(publication.ScriptName))
+                {
+                    continue;
+                }
+
+                publishedAny |= PublishOrScheduleDynamicObjectTagStateForScriptName(
+                    publication.ScriptName,
+                    currentTickCount,
+                    publication.DelayMs);
+            }
+
+            return publishedAny;
         }
 
 
@@ -29351,6 +29459,7 @@ namespace HaCreator.MapSimulator
                             out _);
                     }
                 };
+                _playerManager.Skills.OnSg88FirstUseRequestReady = DispatchSg88FirstUseRequest;
                 _playerManager.Skills.OnTeslaCoilAttackRequested = request =>
                 {
                     _summonedOfficialSessionBridge.TrackTeslaCoilAttackRequest(
@@ -30872,7 +30981,12 @@ namespace HaCreator.MapSimulator
                 RefreshQuestUiState();
                 SelectQuestInActiveWindow(_activeQuestDetailQuestId);
                 UpdateQuestDetailWindow();
-                PublishDynamicObjectTagStatesForScriptNames(result.PublishedScriptNames, currTickCount);
+                bool publishedViaPublications =
+                    PublishDynamicObjectTagStatesForScriptPublications(result.PublishedScriptPublications, currTickCount);
+                if (!publishedViaPublications)
+                {
+                    PublishDynamicObjectTagStatesForScriptNames(result.PublishedScriptNames, currTickCount);
+                }
             }
         }
 
@@ -30901,7 +31015,12 @@ namespace HaCreator.MapSimulator
                 SelectQuestInActiveWindow(result.PreferredQuestId ?? questId);
                 UpdateQuestDetailWindow();
 
-                PublishDynamicObjectTagStatesForScriptNames(result.PublishedScriptNames, currTickCount);
+                bool publishedViaPublications =
+                    PublishDynamicObjectTagStatesForScriptPublications(result.PublishedScriptPublications, currTickCount);
+                if (!publishedViaPublications)
+                {
+                    PublishDynamicObjectTagStatesForScriptNames(result.PublishedScriptNames, currTickCount);
+                }
                 ShowNpcQuestFeedback(result, currTickCount);
 
                 if (_activeNpcInteractionNpc != null)
@@ -31434,6 +31553,7 @@ namespace HaCreator.MapSimulator
         {
             _affectedAreaPool?.Clear();
             _remoteAffectedAreaMonsterCarnivalOwnerTeams.Clear();
+            _remoteAffectedAreaLocalPlayerTickTimes.Clear();
         }
 
 
@@ -32360,6 +32480,8 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            MirrorClientMesoDropRequestEcho(request.Amount);
+
             int ownerId = _playerManager.Player.Build?.Id ?? 0;
             _dropPool.SpawnMesoDrop(
                 _playerManager.Player.X,
@@ -32370,6 +32492,46 @@ namespace HaCreator.MapSimulator
             PlayDropItemSE();
             message = $"Dropped {request.Amount.ToString("N0", CultureInfo.InvariantCulture)} mesos.";
             return true;
+        }
+
+        private void MirrorClientMesoDropRequestEcho(int amount)
+        {
+            if (amount <= 0)
+            {
+                return;
+            }
+
+            byte[] payload = FieldDropRequestEvaluator.BuildClientMesoDropRequestPayload(Environment.TickCount, amount);
+            StampPacketOwnedUtilityRequestState();
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                FieldDropRequestEvaluator.ClientDropMoneyRequestOpcode,
+                payload,
+                out _))
+            {
+                return;
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                FieldDropRequestEvaluator.ClientDropMoneyRequestOpcode,
+                payload,
+                out _))
+            {
+                return;
+            }
+
+            if (_localUtilityOfficialSessionBridgeEnabled
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    FieldDropRequestEvaluator.ClientDropMoneyRequestOpcode,
+                    payload,
+                    out _))
+            {
+                return;
+            }
+
+            _localUtilityPacketOutbox.TryQueueOutboundPacket(
+                FieldDropRequestEvaluator.ClientDropMoneyRequestOpcode,
+                payload,
+                out _);
         }
 
         private static bool ShouldTrackFieldConsumeItemCooldown(
@@ -37716,14 +37878,17 @@ namespace HaCreator.MapSimulator
             }
 
             DispatchLoginRuntimePacket(message.PacketType, out _);
-            if (TryRelayLoginOwnedStageTransitionPacket(message.PacketType, args, out string stageTransitionMessage) &&
-                !string.IsNullOrWhiteSpace(stageTransitionMessage))
+            if (TryRelayLoginOwnedStageTransitionPacket(message.PacketType, args, out bool stageTransitionApplied, out string stageTransitionMessage))
             {
-                _loginRuntime.OverrideLastEventSummary(stageTransitionMessage);
-                _loginTitleStatusMessage = stageTransitionMessage;
-                if (_chat != null)
+                _loginRuntime.RecordForwardedStageTransitionResult(message.PacketType, stageTransitionApplied, stageTransitionMessage);
+                if (!string.IsNullOrWhiteSpace(stageTransitionMessage))
                 {
-                    _chat.AddSystemMessage(stageTransitionMessage, currTickCount);
+                    _loginRuntime.OverrideLastEventSummary(stageTransitionMessage);
+                    _loginTitleStatusMessage = stageTransitionMessage;
+                    if (_chat != null)
+                    {
+                        _chat.AddSystemMessage(stageTransitionMessage, currTickCount);
+                    }
                 }
             }
 

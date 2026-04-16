@@ -4734,11 +4734,12 @@ namespace HaCreator.MapSimulator.Character
             if (!underFaceDrawn)
             {
                 drawUnderFaceOverlay?.Invoke();
+                DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
+                shadowPartnerDrawn = true;
                 DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, frame, screenX, screenY, tint);
                 underFaceDrawn = true;
             }
-
-            if (!shadowPartnerDrawn)
+            else if (!shadowPartnerDrawn)
             {
                 DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
                 shadowPartnerDrawn = true;
@@ -5210,6 +5211,7 @@ namespace HaCreator.MapSimulator.Character
             _activeMirrorImage.PreparedActionName = null;
             _activeMirrorImage.PreparedFrameIndex = -1;
             _activeMirrorImage.PreparedFeetOffset = 0;
+            _activeMirrorImage.NextPreparedLayerObjectId = ResolveMirrorImageNextPreparedLayerObjectIdAfterRelease();
             DisposeMirrorImagePreparedSourceLayers(_activeMirrorImage.PreparedSourceLayers);
             _activeMirrorImage.PreparedSourceLayers = CreateEmptyMirrorImagePreparedSourceLayers();
         }
@@ -5729,6 +5731,11 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return Math.Max(1, nextLayerObjectId);
+        }
+
+        internal static int ResolveMirrorImageNextPreparedLayerObjectIdAfterRelease()
+        {
+            return 1;
         }
 
         internal static bool ShouldAdvanceMirrorImagePreparedLayerObjectId(
@@ -6687,7 +6694,9 @@ namespace HaCreator.MapSimulator.Character
                             _activeShadowPartner.ActionAnimations,
                             delayedAttackAction,
                             playerActionName);
-                        _activeShadowPartner.PendingActionReadyTime = currentTime + ResolveShadowPartnerAttackDelayMs(delayedAttackAction);
+                        _activeShadowPartner.PendingActionReadyTime = currentTime + ResolveShadowPartnerAttackDelayMs(
+                            delayedAttackAction,
+                            _activeShadowPartner.PendingPlaybackAnimation);
                         _activeShadowPartner.PendingFacingRight = FacingRight;
                         _activeShadowPartner.PendingForceReplay = true;
                     }
@@ -6813,11 +6822,12 @@ namespace HaCreator.MapSimulator.Character
                 StringComparison.OrdinalIgnoreCase);
         }
 
-        private int ResolveShadowPartnerAttackDelayMs(string actionName)
+        private int ResolveShadowPartnerAttackDelayMs(string actionName, SkillAnimation playbackAnimation = null)
         {
             return ShadowPartnerClientActionResolver.ResolveAttackDelayMs(
                 _activeShadowPartner?.ActionAnimations,
                 actionName,
+                playbackAnimation,
                 ShadowPartnerAttackDelayMs);
         }
 
@@ -8718,7 +8728,11 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            int worldX = (int)X + (FacingRight ? localPoint.X : -localPoint.X);
+            int worldX = AvatarActionLayerCoordinator.ResolveWorldMapPointX(
+                mapPointName,
+                (int)X,
+                FacingRight,
+                localPoint.X);
             int worldY = (int)Y - frame.FeetOffset + localPoint.Y;
             return new Point(worldX, worldY);
         }

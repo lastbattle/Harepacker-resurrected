@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator
         private string _lastPacketOwnedBattleRecordOutboundSummary;
         private bool _packetOwnedStoreBankGetAllPromptActive;
 
-        private bool TryApplyPacketOwnedNpcUtilityPacket(int packetType, byte[] payload, out string message)
+        private bool TryApplyPacketOwnedNpcUtilityPacket(int packetType, byte[] payload, out string message, string source = null)
         {
             message = null;
             payload ??= Array.Empty<byte>();
@@ -33,7 +33,7 @@ namespace HaCreator.MapSimulator
             {
                 case LocalUtilityPacketInboxManager.AdminShopResultClientPacketType:
                 case LocalUtilityPacketInboxManager.AdminShopOpenClientPacketType:
-                    return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out message);
+                    return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out message, source);
 
                 case 364:
                 case 365:
@@ -333,7 +333,7 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error(payloadError ?? "Usage: /adminshop packet <366|367|result|open> [payloadhex=..|payloadb64=..]");
             }
 
-            return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out string message)
+            return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out string message, "admin-shop-command")
                 ? ChatCommandHandler.CommandResult.Ok(message)
                 : ChatCommandHandler.CommandResult.Error(message);
         }
@@ -350,12 +350,12 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error(decodeError ?? "Usage: /adminshop packetclientraw <hex>");
             }
 
-            return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out string message)
+            return TryApplyPacketOwnedAdminShopPacket(packetType, payload, out string message, "admin-shop-client-raw")
                 ? ChatCommandHandler.CommandResult.Ok($"Applied admin-shop client opcode {packetType}. {message}")
                 : ChatCommandHandler.CommandResult.Error(message);
         }
 
-        private bool TryApplyPacketOwnedAdminShopPacket(int packetType, byte[] payload, out string message)
+        private bool TryApplyPacketOwnedAdminShopPacket(int packetType, byte[] payload, out string message, string source = null)
         {
             message = "Packet-owned admin-shop owner is unavailable.";
             payload ??= Array.Empty<byte>();
@@ -364,6 +364,8 @@ namespace HaCreator.MapSimulator
             {
                 return false;
             }
+
+            adminShopWindow.RecordPacketOwnedAdminShopInboundPacket(packetType, source);
 
             if (packetType == 367)
             {

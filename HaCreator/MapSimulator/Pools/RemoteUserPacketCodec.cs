@@ -172,6 +172,9 @@ namespace HaCreator.MapSimulator.Pools
         bool HasDarkAura,
         bool HasBlueAura,
         bool HasYellowAura,
+        int? DarkAuraValue,
+        int? BlueAuraValue,
+        int? YellowAuraValue,
         bool HasBlessingArmor,
         RemoteUserTemporaryStatExtendedState ExtendedState = default)
     {
@@ -202,16 +205,44 @@ namespace HaCreator.MapSimulator.Pools
             || HasDarkAura
             || HasBlueAura
             || HasYellowAura
+            || DarkAuraValue.HasValue
+            || BlueAuraValue.HasValue
+            || YellowAuraValue.HasValue
             || HasBlessingArmor
             || ExtendedState.HasAnyKnownState;
 
         public bool IsHiddenLikeClient => HasDarkSight || HasWindWalk || GhostId.HasValue;
 
         public int? ActiveAuraSkillId =>
-            HasYellowAura ? YellowAuraSkillId
-            : HasBlueAura ? BlueAuraSkillId
-            : HasDarkAura ? DarkAuraSkillId
-            : null;
+            ResolveAuraSkillId(HasYellowAura, YellowAuraValue, YellowAuraSkillId, AdvancedYellowAuraSkillId)
+            ?? ResolveAuraSkillId(HasBlueAura, BlueAuraValue, BlueAuraSkillId, AdvancedBlueAuraSkillId)
+            ?? ResolveAuraSkillId(HasDarkAura, DarkAuraValue, DarkAuraSkillId, AdvancedDarkAuraSkillId);
+
+        private static int? ResolveAuraSkillId(
+            bool hasAura,
+            int? auraValue,
+            int baseSkillId,
+            int advancedSkillId)
+        {
+            if (!hasAura)
+            {
+                return null;
+            }
+
+            int resolvedValue = auraValue.GetValueOrDefault();
+            return resolvedValue switch
+            {
+                DarkAuraSkillId => DarkAuraSkillId,
+                BlueAuraSkillId => BlueAuraSkillId,
+                YellowAuraSkillId => YellowAuraSkillId,
+                AdvancedBlueAuraSkillId => AdvancedBlueAuraSkillId,
+                AdvancedDarkAuraSkillId => AdvancedDarkAuraSkillId,
+                AdvancedYellowAuraSkillId => AdvancedYellowAuraSkillId,
+                _ => resolvedValue > 0 && resolvedValue == advancedSkillId
+                    ? advancedSkillId
+                    : baseSkillId
+            };
+        }
 
         public int? ResolveBlessingArmorSkillId(int jobId) =>
             !HasBlessingArmor
@@ -2636,13 +2667,88 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string normalized = markerName.Trim().Replace('\\', '/');
-            int separatorIndex = normalized.LastIndexOf('/');
-            if (separatorIndex >= 0)
+            if (normalized.Length == 0)
             {
-                normalized = normalized[(separatorIndex + 1)..];
+                return string.Empty;
             }
 
-            return normalized.Trim().ToLowerInvariant();
+            string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            for (int i = 0; i < segments.Length; i++)
+            {
+                if (!string.Equals(segments[i], "DefaultHelper", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                for (int j = i + 1; j < segments.Length; j++)
+                {
+                    string candidate = NormalizeHelperMarkerNameSegment(segments[j]);
+                    if (candidate.Length == 0 || IsNumericHelperMarkerPathSegment(candidate))
+                    {
+                        continue;
+                    }
+
+                    return candidate;
+                }
+            }
+
+            for (int i = segments.Length - 1; i >= 0; i--)
+            {
+                string candidate = NormalizeHelperMarkerNameSegment(segments[i]);
+                if (candidate.Length == 0)
+                {
+                    continue;
+                }
+
+                if (IsNumericHelperMarkerPathSegment(candidate))
+                {
+                    continue;
+                }
+
+                return candidate;
+            }
+
+            return string.Empty;
+        }
+
+        private static string NormalizeHelperMarkerNameSegment(string segment)
+        {
+            string candidate = segment?.Trim();
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                return string.Empty;
+            }
+
+            int extensionSeparatorIndex = candidate.LastIndexOf('.');
+            if (extensionSeparatorIndex > 0)
+            {
+                candidate = candidate[..extensionSeparatorIndex];
+            }
+
+            return candidate.Trim().ToLowerInvariant();
+        }
+
+        private static bool IsNumericHelperMarkerPathSegment(string segment)
+        {
+            if (string.IsNullOrWhiteSpace(segment))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < segment.Length; i++)
+            {
+                if (!char.IsDigit(segment[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool TryParseNamedHelper(ReadOnlySpan<byte> payload, out RemoteUserHelperPacket packet, out string error)
@@ -2914,6 +3020,9 @@ namespace HaCreator.MapSimulator.Pools
             bool hasDarkAura = false;
             bool hasBlueAura = false;
             bool hasYellowAura = false;
+            int? darkAuraValue = null;
+            int? blueAuraValue = null;
+            int? yellowAuraValue = null;
             bool hasBlessingArmor = false;
             int weaponChargeMetadataOffset = -1;
             int? attractValue = null;
@@ -3169,19 +3278,19 @@ namespace HaCreator.MapSimulator.Pools
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DarkAura))
                 {
                     hasDarkAura = true;
-                    reader.ReadInt32();
+                    darkAuraValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.BlueAura))
                 {
                     hasBlueAura = true;
-                    reader.ReadInt32();
+                    blueAuraValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.YellowAura))
                 {
                     hasYellowAura = true;
-                    reader.ReadInt32();
+                    yellowAuraValue = reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.BlessingArmor))
@@ -3232,6 +3341,9 @@ namespace HaCreator.MapSimulator.Pools
                 hasDarkAura,
                 hasBlueAura,
                 hasYellowAura,
+                darkAuraValue,
+                blueAuraValue,
+                yellowAuraValue,
                 hasBlessingArmor,
                 new RemoteUserTemporaryStatExtendedState(
                     attractValue,
@@ -3365,6 +3477,9 @@ namespace HaCreator.MapSimulator.Pools
                 knownState.HasDarkAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DarkAura),
                 knownState.HasBlueAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.BlueAura),
                 knownState.HasYellowAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.YellowAura),
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DarkAura) ? knownState.DarkAuraValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.BlueAura) ? knownState.BlueAuraValue : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.YellowAura) ? knownState.YellowAuraValue : null,
                 knownState.HasBlessingArmor && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.BlessingArmor),
                 maskedExtendedState);
 

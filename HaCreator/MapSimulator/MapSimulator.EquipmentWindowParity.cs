@@ -381,10 +381,13 @@ namespace HaCreator.MapSimulator
             MechanicAuthorityTransportOutcome outcome)
         {
             return request != null
-                && request.Kind == EquipmentChangeRequestKind.InventoryToCompanion
-                && request.TargetCompanionKind == EquipmentChangeCompanionKind.Mechanic
-                && request.SourceInventoryType == InventoryType.EQUIP
-                && request.TargetMechanicSlot.HasValue
+                && (request.Kind == EquipmentChangeRequestKind.InventoryToCompanion
+                    && request.TargetCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                    && request.SourceInventoryType == InventoryType.EQUIP
+                    && request.TargetMechanicSlot.HasValue
+                    || request.Kind == EquipmentChangeRequestKind.CompanionToInventory
+                    && request.SourceCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                    && request.SourceMechanicSlot.HasValue)
                 && outcome.Accepted
                 && outcome.Route == MechanicAuthorityTransportRoute.LiveBridge;
         }
@@ -1742,6 +1745,59 @@ namespace HaCreator.MapSimulator
                 pendingEnvelope.Request.RequestId,
                 pendingEnvelope.Request.RequestedAtTick,
                 observedResult,
+                out message);
+        }
+
+        private bool TryQueueMechanicAuthorityResultFromInventoryOperationPayload(
+            byte[] payload,
+            out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length == 0)
+            {
+                message = "Inventory-operation payload is empty.";
+                return false;
+            }
+
+            PendingEquipmentChangeEnvelope pendingEnvelope = null;
+            foreach (PendingEquipmentChangeEnvelope envelope in _pendingEquipmentChangeRequests.Values)
+            {
+                if (envelope?.Request == null
+                    || !envelope.AwaitingMechanicPacketAuthority
+                    || !envelope.AllowObservedLiveMechanicRecovery
+                    || !IsMechanicEquipmentRequest(envelope.Request))
+                {
+                    continue;
+                }
+
+                pendingEnvelope = envelope;
+                break;
+            }
+
+            if (pendingEnvelope?.Request == null)
+            {
+                message = "Inventory-operation payload did not match an active mechanic packet-owned request.";
+                return false;
+            }
+
+            if (!MechanicEquipmentPacketParity.TryRecognizeClientInventoryOperationCompletion(
+                    pendingEnvelope.Request,
+                    payload,
+                    out string rejectReason))
+            {
+                message = rejectReason;
+                return false;
+            }
+
+            return TryQueuePacketOwnedMechanicAuthorityResult(
+                new MechanicEquipPacketPayload(
+                    MechanicEquipPacketPayloadMode.AuthorityResult,
+                    null,
+                    0,
+                    null,
+                    pendingEnvelope.Request.RequestId,
+                    pendingEnvelope.Request.RequestedAtTick,
+                    AuthorityResultKind: MechanicEquipAuthorityResultKind.LocalRequestAccept),
                 out message);
         }
 
