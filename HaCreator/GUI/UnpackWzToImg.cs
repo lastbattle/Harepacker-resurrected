@@ -1,5 +1,8 @@
 using Footholds;
+using HaSharedLibrary.GUI;
+using HaSharedLibrary.Util;
 using MapleLib;
+using MapleLib.Configuration;
 using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Serializer;
@@ -20,8 +23,10 @@ namespace HaCreator.GUI
 {
     public partial class UnpackWzToImg : Form
     {
+        private const int AutoDetectEncryptionSelection = -1;
         private CancellationTokenSource _cancellationTokenSource;
         private bool _isExtracting;
+        private bool _isUpdatingEncryptionSelections;
         private readonly WzExtractionService _extractionService;
 
         /// <summary>
@@ -40,6 +45,9 @@ namespace HaCreator.GUI
 
             // Setup log listbox for copy functionality
             SetupLogListBoxCopySupport();
+
+            versionBox.SelectedIndexChanged += VersionBox_SelectedIndexChanged;
+            comboBox_writeEncryption.SelectedIndexChanged += ComboBox_writeEncryption_SelectedIndexChanged;
         }
 
         /// <summary>
@@ -123,7 +131,19 @@ namespace HaCreator.GUI
         /// </summary>
         private void Initialization_Load(object sender, EventArgs e)
         {
-            versionBox.SelectedIndex = ApplicationSettings.MapleVersionIndex;
+            _isUpdatingEncryptionSelections = true;
+            PopulateReadEncryptionOptions();
+            PopulateWriteEncryptionOptions();
+
+            int savedIndex = ApplicationSettings.MapleVersionIndex;
+            if (savedIndex < 0 || savedIndex >= versionBox.Items.Count)
+            {
+                // Default to BMS (IV {0,0,0,0}) for consistent import/export data across versions/localizations.
+                savedIndex = 2;
+            }
+            versionBox.SelectedIndex = savedIndex;
+            comboBox_writeEncryption.SelectedIndex = 2;
+            _isUpdatingEncryptionSelections = false;
 
             // Leave path empty - user must select export location
             textBox_path.Text = string.Empty;
@@ -209,6 +229,139 @@ namespace HaCreator.GUI
             button_unpack.Enabled = pathValid && versionValid && hasSelectedFiles && hasMapleStoryPath;
         }
 
+        private static List<EncryptionSelectionItem> BuildEncryptionOptions(bool includeAutoDetect)
+        {
+            var configManager = new ConfigurationManager();
+            configManager.Load();
+            string customName = configManager.ApplicationSettings?.MapleVersion_CustomEncryptionName ?? "Default";
+
+            var keys = WzEncryptionOptionsFactory.CreateEncryptionKeys(customName);
+            var options = keys.Select(key => new EncryptionSelectionItem(key.Name, key.MapleVersion)).ToList();
+
+            if (includeAutoDetect)
+            {
+                options.Add(new EncryptionSelectionItem("Auto-Detect", AutoDetectEncryptionSelection));
+            }
+
+            return options;
+        }
+
+        private void PopulateReadEncryptionOptions()
+        {
+            versionBox.Items.Clear();
+            versionBox.Items.AddRange(BuildEncryptionOptions(includeAutoDetect: true).ToArray());
+        }
+
+        private void PopulateWriteEncryptionOptions()
+        {
+            comboBox_writeEncryption.Items.Clear();
+            comboBox_writeEncryption.Items.AddRange(BuildEncryptionOptions(includeAutoDetect: false).ToArray());
+        }
+
+        private void VersionBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (_isUpdatingEncryptionSelections || versionBox.SelectedItem is not EncryptionSelectionItem item)
+            {
+                return;
+            }
+
+            if (item.Encryption == WzMapleVersion.CUSTOM && !item.IsAutoDetect)
+            {
+                ShowCustomEncryptionEditor();
+                RefreshEncryptionSelections(versionBox, comboBox_writeEncryption);
+            }
+        }
+
+        private void ComboBox_writeEncryption_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (_isUpdatingEncryptionSelections || comboBox_writeEncryption.SelectedItem is not EncryptionSelectionItem item)
+            {
+                return;
+            }
+
+            if (item.Encryption == WzMapleVersion.CUSTOM)
+            {
+                ShowCustomEncryptionEditor();
+                RefreshEncryptionSelections(versionBox, comboBox_writeEncryption);
+            }
+        }
+
+        private void ShowCustomEncryptionEditor()
+        {
+            using var customWzInputBox = new SharedCustomWzEncryptionInputBox();
+            customWzInputBox.ShowDialog(this);
+            ConfigureCustomEncryptionFromSettings();
+        }
+
+        private void RefreshEncryptionSelections(object readSelectionSource, object writeSelectionSource)
+        {
+            int readSelection = (readSelectionSource as ComboBox)?.SelectedIndex ?? versionBox.SelectedIndex;
+            int writeSelection = (writeSelectionSource as ComboBox)?.SelectedIndex ?? comboBox_writeEncryption.SelectedIndex;
+
+            _isUpdatingEncryptionSelections = true;
+            PopulateReadEncryptionOptions();
+            PopulateWriteEncryptionOptions();
+
+            versionBox.SelectedIndex = ResolveSelectionIndex(versionBox, readSelection, includeAutoDetect: true);
+            comboBox_writeEncryption.SelectedIndex = ResolveSelectionIndex(comboBox_writeEncryption, writeSelection, includeAutoDetect: false);
+            _isUpdatingEncryptionSelections = false;
+        }
+
+        private static int ResolveSelectionIndex(ComboBox comboBox, int previousIndex, bool includeAutoDetect)
+        {
+            if (previousIndex >= 0 && previousIndex < comboBox.Items.Count)
+            {
+                return previousIndex;
+            }
+
+            for (int i = 0; i < comboBox.Items.Count; i++)
+            {
+                if (comboBox.Items[i] is EncryptionSelectionItem item &&
+                    item.Encryption == WzMapleVersion.CUSTOM &&
+                    (!item.IsAutoDetect || includeAutoDetect))
+                {
+                    return i;
+                }
+            }
+
+            return includeAutoDetect ? 0 : 2;
+        }
+
+        private bool TryGetSelectedReadEncryption(out WzMapleVersion encryption)
+        {
+            encryption = WzMapleVersion.BMS;
+            if (versionBox.SelectedItem is not EncryptionSelectionItem item)
+            {
+                return true;
+            }
+
+            if (item.IsAutoDetect)
+            {
+                return false;
+            }
+
+            encryption = item.Encryption;
+            return true;
+        }
+
+        private WzMapleVersion GetSelectedWriteEncryption()
+        {
+            if (comboBox_writeEncryption.SelectedItem is EncryptionSelectionItem item)
+            {
+                return item.Encryption;
+            }
+
+            // Default output encryption stays BMS (IV {0,0,0,0}) for consistency.
+            return WzMapleVersion.BMS;
+        }
+
+        private static void ConfigureCustomEncryptionFromSettings()
+        {
+            var configManager = new ConfigurationManager();
+            configManager.Load();
+            configManager.SetCustomWzUserKeyFromConfig();
+        }
+
         /// <summary>
         /// On unpack/cancel button click
         /// </summary>
@@ -236,14 +389,13 @@ namespace HaCreator.GUI
                 ApplicationSettings.MapleStoryClientLocalisation = (int)comboBox_localisation.SelectedValue;
 
                 WzMapleVersion mapleVer;
-                int selectedIndex = versionBox.SelectedIndex;
+                bool useAutoDetect = !TryGetSelectedReadEncryption(out mapleVer);
+                WzMapleVersion writeEncryption = GetSelectedWriteEncryption();
 
                 // Detect if 64-bit format
                 bool is64Bit = WzFileManager.Detect64BitDirectoryWzFileFormat(_mapleStoryPath);
 
-                // Map dropdown index to WzMapleVersion
-                // Index 0: GMS, 1: EMS/MSEA/KMS, 2: BMS/JMS, 3: Auto-Detect
-                if (selectedIndex == 3) // Auto-Detect
+                if (useAutoDetect)
                 {
                     string baseWzPath = null;
 
@@ -287,14 +439,22 @@ namespace HaCreator.GUI
                     }
                     else
                     {
-                        mapleVer = WzMapleVersion.BMS; // Default to BMS if detection fails
+                        // Default to BMS (IV {0,0,0,0}) for consistent cross-version IMG filesystem data.
+                        mapleVer = WzMapleVersion.BMS;
                         listBox_log.Items.Add($"Could not auto-detect, defaulting to: {mapleVer}");
                     }
                 }
                 else
                 {
-                    // Direct mapping: 0=GMS, 1=EMS, 2=BMS
-                    mapleVer = (WzMapleVersion)selectedIndex;
+                    if (mapleVer == WzMapleVersion.CUSTOM)
+                    {
+                        ConfigureCustomEncryptionFromSettings();
+                    }
+                }
+
+                if (writeEncryption == WzMapleVersion.CUSTOM)
+                {
+                    ConfigureCustomEncryptionFromSettings();
                 }
 
                 string outputFolder = textBox_path.Text;
@@ -364,7 +524,8 @@ namespace HaCreator.GUI
                     selectedCategories,
                     resolveLinks: true,
                     _cancellationTokenSource.Token,
-                    progress);
+                    progress,
+                    writeEncryption);
 
                 // Show result
                 if (extractionResult.Success)
@@ -630,17 +791,16 @@ namespace HaCreator.GUI
 
                 try
                 {
-                    // Auto-detect encryption for beta Data.wz
-                    WzMapleVersion encryption = WzMapleVersion.BMS;
-                    int selectedIndex = versionBox.SelectedIndex;
-                    if (selectedIndex >= 0 && selectedIndex < 3)
-                    {
-                        encryption = (WzMapleVersion)selectedIndex;
-                    }
-                    else
+                    WzMapleVersion encryption;
+                    bool useAutoDetect = !TryGetSelectedReadEncryption(out encryption);
+                    if (useAutoDetect)
                     {
                         // Try auto-detect
                         encryption = MapleLib.WzLib.Util.WzTool.DetectMapleVersion(dataWzPath, out _);
+                    }
+                    else if (encryption == WzMapleVersion.CUSTOM)
+                    {
+                        ConfigureCustomEncryptionFromSettings();
                     }
 
                     using (var wzFile = new WzFile(dataWzPath, encryption))
@@ -851,6 +1011,30 @@ namespace HaCreator.GUI
 
             public override string ToString() => DisplayName;
         }
+
+        private class EncryptionSelectionItem
+        {
+            public string DisplayName { get; }
+            public WzMapleVersion Encryption { get; }
+            public int Sentinel { get; }
+            public bool IsAutoDetect => Sentinel == AutoDetectEncryptionSelection;
+
+            public EncryptionSelectionItem(string displayName, WzMapleVersion encryption)
+            {
+                DisplayName = displayName;
+                Encryption = encryption;
+                Sentinel = 0;
+            }
+
+            public EncryptionSelectionItem(string displayName, int sentinel)
+            {
+                DisplayName = displayName;
+                Encryption = WzMapleVersion.BMS;
+                Sentinel = sentinel;
+            }
+
+            public override string ToString() => DisplayName;
+        }
         #endregion
 
         #region Helpers
@@ -911,3 +1095,4 @@ namespace HaCreator.GUI
         #endregion
     }
 }
+

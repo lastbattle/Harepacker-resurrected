@@ -1,4 +1,5 @@
-﻿using MapleLib.WzLib;
+using MapleLib.Configuration;
+using MapleLib.WzLib;
 using System;
 using System.Drawing;
 using System.Windows.Forms;
@@ -13,7 +14,8 @@ namespace HaRepacker.GUI.Interaction
             bool result = form.ShowDialog() == DialogResult.OK;
 
             if (result)
-                MapleVersionEncryptionSelected = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(form.comboBox_wzEncryptionType.SelectedIndex);
+                MapleVersionEncryptionSelected = (form.comboBox_wzEncryptionType.SelectedItem as EncryptionKey)?.MapleVersion
+                    ?? WzMapleVersion.BMS;
             else
                 MapleVersionEncryptionSelected = WzMapleVersion.BMS; // default
 
@@ -26,7 +28,7 @@ namespace HaRepacker.GUI.Interaction
             DialogResult = DialogResult.Cancel;
             Text = title;
 
-            MainForm.AddWzEncryptionTypesToComboBox(comboBox_wzEncryptionType);
+            WzEncryptionUiShared.Populate(comboBox_wzEncryptionType);
             comboBox_wzEncryptionType.SelectedIndex = MainForm.GetIndexByWzMapleVersion(Program.ConfigurationManager.ApplicationSettings.MapleVersion);
 
             // Localization
@@ -67,3 +69,5 @@ namespace HaRepacker.GUI.Interaction
         }
     }
 }
+
+

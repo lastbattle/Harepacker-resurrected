@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -184,15 +184,6 @@ Please provide valid values before confirming.</value>
   </data>
   <data name="ApngFilter" xml:space="preserve">
     <value>Animated Portable Network Graphics (*.png)</value>
-  </data>
-  <data name="EncTypeGMS" xml:space="preserve">
-    <value>GMS (old)</value>
-  </data>
-  <data name="EncTypeMSEA" xml:space="preserve">
-    <value>MSEA/ EMS /Taiwan (old)</value>
-  </data>
-  <data name="EncTypeNone" xml:space="preserve">
-    <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
   </data>
   <data name="EnterValidInput" xml:space="preserve">
     <value>Please enter valid input</value>
@@ -457,12 +448,6 @@ Click "Yes" to download the new version.</value>
   </data>
   <data name="ExecutingAssemblyError" xml:space="preserve">
     <value>This is only available under the x86 version of HaRepacker, please get the alternative version.</value>
-  </data>
-  <data name="EncTypeCustom" xml:space="preserve">
-    <value>Use custom encryption key ({0})</value>
-  </data>
-  <data name="EncTypeGenerate" xml:space="preserve">
-    <value>Bruteforce AES key (Generate)</value>
   </data>
   <data name="RelativeTime_DaysAgo" xml:space="preserve">
     <value>{0} day(s) ago</value>

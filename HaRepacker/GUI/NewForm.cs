@@ -21,7 +21,7 @@ namespace HaRepacker.GUI
             this._mainPanel = panel;
             InitializeComponent();
 
-            MainForm.AddWzEncryptionTypesToComboBox(encryptionBox);
+            WzEncryptionUiShared.Populate(encryptionBox);
             SetWzEncryptionBoxSelectionByWzMapleVersion();
             defaultVersionIndex = encryptionBox.SelectedIndex;
 
