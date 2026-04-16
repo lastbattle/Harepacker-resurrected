@@ -1,22 +1,14 @@
-﻿using HaCreator.GUI.EditorPanels;
+using HaCreator.GUI.EditorPanels;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Input;
+using MapleLib.Helpers;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Forms;
-using System.Windows.Forms.Integration;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 namespace HaCreator.GUI
 {
@@ -27,6 +19,8 @@ namespace HaCreator.GUI
     {
         private InputHandler handler;
         public HaCreatorStateManager hcsm;
+        private bool _isObjectViewerInitialized;
+        private string _mapLoadErrorsLogFilePath;
 
         public HaEditor()
         {
@@ -68,6 +62,7 @@ namespace HaCreator.GUI
             bgPanelHost.Height = newHeight;
             bgBlackBorderPanelHost.Height = Math.Min(250, newHeight);
             commonPanelHost.Height = newHeight;
+            objectViewerPanelHostDocked.Height = newHeight;
         }
 
         private void HaEditor2_Loaded(object sender, RoutedEventArgs e)
@@ -141,7 +136,7 @@ namespace HaCreator.GUI
                 // Use Dispatcher to ensure window is fully loaded before showing Object Viewer
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    ObjectViewerWindow.ShowWindow(hcsm, this, isManualOpen: false);
+                    ShowObjectViewerDocked(isManualOpen: false);
                 }), System.Windows.Threading.DispatcherPriority.Loaded);
             }
         }
@@ -174,7 +169,7 @@ namespace HaCreator.GUI
             // Close all AI Map Editor popups
             AIMapEditWindow.CloseAll();
 
-            // Close Object Viewer window
+            // Close any fallback floating tool windows
             ObjectViewerWindow.ForceClose();
             MapLoadErrorsWindow.ForceClose();
 
@@ -182,18 +177,100 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// Opens the Object Viewer floating window
+        /// Handles tool-window tab focus changes.
         /// </summary>
-        private void BtnObjectViewer_Click(object sender, RoutedEventArgs e)
+        private void ToolWindowsTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (multiBoard?.SelectedBoard == null)
+            if (!IsLoaded || hcsm == null)
             {
-                System.Windows.MessageBox.Show("No map is currently loaded.", "Object Viewer",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            ObjectViewerWindow.ShowWindow(hcsm, this);
+            if (Equals(toolWindowsTabControl.SelectedItem, objectViewerTabItem))
+            {
+                ShowObjectViewerDocked(isManualOpen: false);
+            }
+        }
+
+        public void ShowObjectViewerDocked(bool isManualOpen = true)
+        {
+            if (multiBoard?.SelectedBoard == null)
+            {
+                if (isManualOpen)
+                {
+                    System.Windows.MessageBox.Show("No map is currently loaded.", "Object Viewer",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+
+                return;
+            }
+
+            if (isManualOpen)
+            {
+                ApplicationSettings.ShowObjectViewerOnLoad = true;
+            }
+
+            if (!_isObjectViewerInitialized)
+            {
+                objectViewerPanelDocked.Initialize(hcsm);
+                _isObjectViewerInitialized = true;
+            }
+
+            objectViewerPanelDocked.OnBoardChanged(hcsm.MultiBoard.SelectedBoard);
+            toolWindowsTabControl.SelectedItem = objectViewerTabItem;
+        }
+
+        public void ShowMapLoadErrors(
+            string mapIdentifier,
+            IReadOnlyDictionary<ErrorLevel, List<Error>> errorSnapshot,
+            string logFilePath)
+        {
+            if (errorSnapshot == null || errorSnapshot.Count == 0)
+            {
+                return;
+            }
+
+            _mapLoadErrorsLogFilePath = logFilePath;
+            mapLoadErrorsSummaryTextBlock.Text = MapLoadErrorsWindow.BuildSummaryText(mapIdentifier, errorSnapshot);
+            mapLoadErrorsTextBox.Text = MapLoadErrorsWindow.BuildErrorText(errorSnapshot);
+            mapLoadErrorsTextBox.ScrollToHome();
+            mapLoadErrorsLogPathTextBlock.Text = string.IsNullOrEmpty(logFilePath)
+                ? string.Empty
+                : $"Saved to: {Path.GetFileName(logFilePath)}";
+            mapLoadErrorsOpenLogButton.IsEnabled = !string.IsNullOrEmpty(logFilePath) && File.Exists(logFilePath);
+            toolWindowsTabControl.SelectedItem = mapLoadErrorsTabItem;
+        }
+
+        private void MapLoadErrorsClearButton_Click(object sender, RoutedEventArgs e)
+        {
+            _mapLoadErrorsLogFilePath = null;
+            mapLoadErrorsSummaryTextBlock.Text = string.Empty;
+            mapLoadErrorsTextBox.Text = string.Empty;
+            mapLoadErrorsLogPathTextBlock.Text = string.Empty;
+            mapLoadErrorsOpenLogButton.IsEnabled = false;
+            toolWindowsTabControl.SelectedItem = toolboxTabItem;
+        }
+
+        private void MapLoadErrorsCopyButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!string.IsNullOrWhiteSpace(mapLoadErrorsTextBox.Text))
+            {
+                Clipboard.SetText(mapLoadErrorsTextBox.Text);
+            }
+        }
+
+        private void MapLoadErrorsOpenLogButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_mapLoadErrorsLogFilePath) || !File.Exists(_mapLoadErrorsLogFilePath))
+            {
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = _mapLoadErrorsLogFilePath,
+                UseShellExecute = true
+            });
         }
 
         private void Expander_Expanded(object sender, RoutedEventArgs e)

@@ -46,6 +46,11 @@ namespace HaCreator.GUI
                 return;
             }
 
+            if (TryShowDocked(owner, mapIdentifier, errorSnapshot, logFilePath))
+            {
+                return;
+            }
+
             var window = Instance;
             window.Owner = owner;
             window.LoadErrors(mapIdentifier, errorSnapshot, logFilePath);
@@ -85,7 +90,7 @@ namespace HaCreator.GUI
             string logFilePath)
         {
             _logFilePath = logFilePath;
-            summaryTextBlock.Text = BuildSummary(mapIdentifier, errorSnapshot);
+            summaryTextBlock.Text = BuildSummaryText(mapIdentifier, errorSnapshot);
             errorsTextBox.Text = BuildErrorText(errorSnapshot);
             errorsTextBox.ScrollToHome();
             logPathTextBlock.Text = string.IsNullOrEmpty(logFilePath)
@@ -94,7 +99,7 @@ namespace HaCreator.GUI
             openLogButton.IsEnabled = !string.IsNullOrEmpty(logFilePath) && File.Exists(logFilePath);
         }
 
-        private static string BuildSummary(
+        internal static string BuildSummaryText(
             string mapIdentifier,
             IReadOnlyDictionary<ErrorLevel, List<Error>> errorSnapshot)
         {
@@ -103,7 +108,7 @@ namespace HaCreator.GUI
             return $"HaCreator loaded {mapLabel} with {totalErrors} issue(s). Missing objects, tiles, or other assets are listed below.";
         }
 
-        private static string BuildErrorText(IReadOnlyDictionary<ErrorLevel, List<Error>> errorSnapshot)
+        internal static string BuildErrorText(IReadOnlyDictionary<ErrorLevel, List<Error>> errorSnapshot)
         {
             var sb = new StringBuilder();
 
@@ -157,6 +162,22 @@ namespace HaCreator.GUI
             return owner is HaEditor editor &&
                    editor.hcsm?.MultiBoard != null &&
                    !editor.hcsm.MultiBoard.DeviceReady;
+        }
+
+        private static bool TryShowDocked(
+            Window owner,
+            string mapIdentifier,
+            IReadOnlyDictionary<ErrorLevel, List<Error>> errorSnapshot,
+            string logFilePath)
+        {
+            HaEditor editor = owner as HaEditor ?? Program.HaEditorWindow;
+            if (editor == null || !editor.IsLoaded)
+            {
+                return false;
+            }
+
+            editor.ShowMapLoadErrors(mapIdentifier, errorSnapshot, logFilePath);
+            return true;
         }
     }
 }
