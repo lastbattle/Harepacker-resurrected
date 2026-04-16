@@ -679,9 +679,6 @@ namespace HaCreator.MapSimulator.Character
             Physics = new CVecCtrl();
             _observedTamingMobPart = GetEquippedTamingMobPart();
             UpdateAssemblerAvatarOverride();
-
-            // Preload common animations
-            Assembler.PreloadStandardAnimations();
         }
 
         /// <summary>
@@ -697,7 +694,6 @@ namespace HaCreator.MapSimulator.Character
             {
                 Assembler = new CharacterAssembler(build);
                 UpdateAssemblerAvatarOverride();
-                Assembler.PreloadStandardAnimations();
                 _observedTamingMobPart = GetEquippedTamingMobPart();
             }
             // If build is null, we're a placeholder - just track position

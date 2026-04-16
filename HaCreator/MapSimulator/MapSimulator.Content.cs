@@ -371,12 +371,15 @@ namespace HaCreator.MapSimulator
                     RegisterQuestGatedMapObject(mapItem, tileObj, questGatedMapObjects);
                     mapObjects[tileObj.LayerNumber].Add(mapItem);
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Tile task loaded {_mapBoard.BoardItems.TileObjs.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             // Background
             Task t_Background = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 foreach (BackgroundInstance background in _mapBoard.BoardItems.BackBackgrounds)
                 {
                     WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
@@ -395,12 +398,15 @@ namespace HaCreator.MapSimulator
                     if (bgItem != null)
                         backgrounds_front.Add(bgItem);
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Background task loaded {_mapBoard.BoardItems.BackBackgrounds.Count + _mapBoard.BoardItems.FrontBackgrounds.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             // Reactors
             Task t_reactor = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 foreach (ReactorInstance reactor in _mapBoard.BoardItems.Reactors)
                 {
                     //WzImage imageProperty = (WzImage)NPCWZFile[reactorInfo.ID + ".img"];
@@ -410,12 +416,16 @@ namespace HaCreator.MapSimulator
                     if (reactorItem != null)
                         mapObjects_Reactors.Add(reactorItem);
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Reactor task loaded {_mapBoard.BoardItems.Reactors.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             // NPCs
             Task t_npc = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
+                int loadedCount = 0;
                 foreach (NpcInstance npc in _mapBoard.BoardItems.NPCs)
                 {
                     //WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
@@ -434,14 +444,21 @@ namespace HaCreator.MapSimulator
                         _questRuntime.GetCurrentState,
                         questId => _questRuntime.TryGetQuestRecordValue(questId, out string value) ? value : string.Empty);
                     if (npcItem != null)
+                    {
                         mapObjects_NPCs.Add(npcItem);
+                        loadedCount++;
+                    }
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] NPC task loaded {loadedCount}/{_mapBoard.BoardItems.NPCs.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             // Mobs
             Task t_mobs = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
+                int loadedCount = 0;
                 foreach (MobInstance mob in _mapBoard.BoardItems.Mobs)
                 {
                     //WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
@@ -456,9 +473,10 @@ namespace HaCreator.MapSimulator
 
 
                     mapObjects_Mobs.Add(npcItem);
-
+                    loadedCount++;
                 }
-
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Mob task loaded {loadedCount}/{_mapBoard.BoardItems.Mobs.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
@@ -466,6 +484,8 @@ namespace HaCreator.MapSimulator
             // Portals
             Task t_portal = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
+                int loadedCount = 0;
                 WzSubProperty portalParent = (WzSubProperty) mapHelperImage["portal"];
 
 
@@ -479,14 +499,20 @@ namespace HaCreator.MapSimulator
                 {
                     PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(_texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, usedProps);
                     if (portalItem != null)
+                    {
                         mapObjects_Portal.Add(portalItem);
+                        loadedCount++;
+                    }
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Portal task loaded {loadedCount}/{_mapBoard.BoardItems.Portals.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             // Tooltips
             Task t_tooltips = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 WzSubProperty farmFrameParent = (WzSubProperty) uiToolTipImage?["Item"]?["FarmFrame"]; // not exist before V update.
                 foreach (ToolTipInstance tooltip in _mapBoard.BoardItems.ToolTips)
                 {
@@ -496,7 +522,8 @@ namespace HaCreator.MapSimulator
                     mapObjects_tooltips.Add(item);
 
                 }
-
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Tooltip task loaded {_mapBoard.BoardItems.ToolTips.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
@@ -504,14 +531,18 @@ namespace HaCreator.MapSimulator
             // Cursor
             Task t_cursor = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 WzImageProperty cursorImageProperty = (WzImageProperty)uiBasicImage["Cursor"];
                 this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps, false);
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Cursor task finished in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             // Minimap
             Task t_minimap = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 if (!_gameState.IsLoginMap && !_mapBoard.MapInfo.hideMinimap && !_gameState.IsCashShopMap)
                 {
                     miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _mapBoard.MapInfo.strMapName, _mapBoard.MapInfo.strStreetName, soundUIImage, _gameState.IsBigBangUpdate);
@@ -521,11 +552,14 @@ namespace HaCreator.MapSimulator
                         miniMapUi?.EnsureCollapsed();
                     }
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Minimap task finished in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             // Statusbar
             Task t_statusBar = Task.Run(() => {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 if (!_gameState.IsLoginMap && !_gameState.IsCashShopMap) {
                     Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, uiBasicImage, uiBuffIconImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _renderParams, soundUIImage, _gameState.IsBigBangUpdate);
                     if (statusBar != null) {
@@ -533,6 +567,8 @@ namespace HaCreator.MapSimulator
                         statusBarChatUI = statusBar.Item2;
                     }
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Status bar task finished in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
@@ -595,19 +631,25 @@ namespace HaCreator.MapSimulator
                 }
                 else
                 {
+                    Stopwatch uiWindowCreationStopwatch = Stopwatch.StartNew();
                     uiWindowManager = UIWindowLoader.CreateUIWindowManager(
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
                         skillWzFile, stringWzFile, uiMapleTvImage,
                         GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate, storageAccountLabel: BuildStorageAccountLabel(), storageAccountKey: BuildStorageAccountKey());
-                    UIWindowLoader.RegisterGuildBbsWindow(
-                        uiWindowManager,
-                        uiGuildBbsImage,
-                        uiBasicImage,
-                        soundUIImage,
-                        GraphicsDevice,
-                        new Point(
-                            Math.Max(24, (_renderParams.RenderWidth / 2) - 367),
-                            Math.Max(24, (_renderParams.RenderHeight / 2) - 263)));
+                    uiWindowCreationStopwatch.Stop();
+                    Debug.WriteLine($"[MapLoad] UIWindowLoader.CreateUIWindowManager finished in {uiWindowCreationStopwatch.ElapsedMilliseconds} ms");
+
+                    uiWindowManager.RegisterLazyWindow(
+                        MapSimulatorWindowNames.GuildBbs,
+                        manager => UIWindowLoader.RegisterGuildBbsWindow(
+                            manager,
+                            uiGuildBbsImage,
+                            uiBasicImage,
+                            soundUIImage,
+                            GraphicsDevice,
+                            new Point(
+                                Math.Max(24, (_renderParams.RenderWidth / 2) - 367),
+                                Math.Max(24, (_renderParams.RenderHeight / 2) - 263))));
                 }
             }
 
@@ -752,7 +794,10 @@ namespace HaCreator.MapSimulator
 
 
 
+            Stopwatch initializePlayerManagerStopwatch = Stopwatch.StartNew();
             InitializePlayerManager(spawnX, spawnY);
+            initializePlayerManagerStopwatch.Stop();
+            Debug.WriteLine($"[Startup] InitializePlayerManager finished in {initializePlayerManagerStopwatch.ElapsedMilliseconds} ms");
 
             if (!_gameState.IsLoginMap)
 
@@ -909,6 +954,7 @@ namespace HaCreator.MapSimulator
 
             _pickupNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width, Height);
 
+            Stopwatch startupOverlayAssetStopwatch = Stopwatch.StartNew();
             _skillCooldownNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width, Height);
             LoadSkillCooldownNoticeUiFrame();
             _packetOwnedHudNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width, Height);
@@ -916,6 +962,8 @@ namespace HaCreator.MapSimulator
             LoadPacketOwnedLocalOverlayAssets();
             LoadPacketOwnedComboAssets();
             LoadPacketOwnedTutorAssets();
+            startupOverlayAssetStopwatch.Stop();
+            Debug.WriteLine($"[Startup] Overlay/HUD asset initialization finished in {startupOverlayAssetStopwatch.ElapsedMilliseconds} ms");
 
 
             _temporaryPortalField = new TemporaryPortalField(_texturePool, _DxDeviceManager.GraphicsDevice);
@@ -933,10 +981,13 @@ namespace HaCreator.MapSimulator
             // Load damage number sprites from Effect.wz/BasicEff.img
             // This enables authentic MapleStory digit sprites for damage numbers
             var basicEffImage = Program.FindImage("Effect", "BasicEff.img");
+            Stopwatch combatEffectAssetStopwatch = Stopwatch.StartNew();
             if (basicEffImage != null)
             {
                 _combatEffects.LoadDamageNumbersFromWz(basicEffImage);
             }
+            combatEffectAssetStopwatch.Stop();
+            Debug.WriteLine($"[Startup] Combat effect asset initialization finished in {combatEffectAssetStopwatch.ElapsedMilliseconds} ms");
 
 
             // Initialize status bar character stats display

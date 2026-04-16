@@ -2302,15 +2302,6 @@ namespace HaCreator.MapSimulator.Character
             PreloadAnimation(CharacterAction.Fly);
             PreloadAnimation(CharacterAction.Prone);
             PreloadAnimation(CharacterAction.Alert);
-
-            // Preload attack animations
-            PreloadAnimation(CharacterAction.SwingO1);
-            PreloadAnimation(CharacterAction.SwingO2);
-            PreloadAnimation(CharacterAction.SwingO3);
-            PreloadAnimation(CharacterAction.StabO1);
-            PreloadAnimation(CharacterAction.StabO2);
-            PreloadAnimation(CharacterAction.Shoot1);
-            PreloadAnimation(CharacterAction.ProneStab);
         }
 
         #endregion

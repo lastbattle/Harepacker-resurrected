@@ -23,6 +23,7 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterLoader
     {
+        private const bool EnableAnimationFallbackDiagnostics = false;
         private const int DefaultWizetHatId = 1002140;
         private const int DefaultWizetSuitId = 1042003;
         private const int DefaultWizetPantsId = 1062007;
@@ -68,6 +69,8 @@ namespace HaCreator.MapSimulator.Character
         private readonly WzFile _characterWz;
         private readonly GraphicsDevice _device;
         private readonly TexturePool _texturePool;
+        private readonly Dictionary<string, WzImage> _characterImageCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, CharacterAnimation> _animationCache = new(StringComparer.OrdinalIgnoreCase);
 
         // Cache for loaded parts
         private readonly Dictionary<int, BodyPart> _bodyCache = new();
@@ -188,16 +191,27 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         private WzImage GetCharacterImage(string imgName)
         {
+            if (string.IsNullOrWhiteSpace(imgName))
+            {
+                return null;
+            }
+
+            if (_characterImageCache.TryGetValue(imgName, out WzImage cachedImage))
+            {
+                return cachedImage;
+            }
+
+            WzImage resolvedImage = null;
+
             // Try WzFile first if available
             if (_characterWz?.WzDirectory != null)
             {
-                var img = _characterWz.WzDirectory[imgName] as WzImage;
-                if (img != null)
-                    return img;
+                resolvedImage = _characterWz.WzDirectory[imgName] as WzImage;
             }
 
-            // Fall back to Program.FindImage (works with .img file loading)
-            return Program.FindImage("Character", imgName);
+            resolvedImage ??= Program.FindImage("Character", imgName);
+            _characterImageCache[imgName] = resolvedImage;
+            return resolvedImage;
         }
 
         #region Body/Head Loading
@@ -228,7 +242,7 @@ namespace HaCreator.MapSimulator.Character
                 IsHead = false
             };
 
-            LoadPartAnimations(body, imgNode as WzImage);
+            LoadPartAnimations(body, imgNode as WzImage, includeAttackActions: false);
             _bodyCache[bodyId] = body;
             return body;
         }
@@ -259,7 +273,7 @@ namespace HaCreator.MapSimulator.Character
                 IsHead = true
             };
 
-            LoadPartAnimations(head, imgNode as WzImage);
+            LoadPartAnimations(head, imgNode as WzImage, includeAttackActions: false);
             _bodyCache[headId] = head;
             return head;
         }
@@ -1863,26 +1877,16 @@ namespace HaCreator.MapSimulator.Character
             {
                 // First get the Character directory
                 var charDirObj = Program.FindWzObject("Character", "");
-                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Character dir lookup: {charDirObj?.GetType().Name ?? "NULL"}");
 
                 // Then get Face subdirectory from it
                 if (charDirObj is MapleLib.Img.VirtualWzDirectory virtualCharDir)
                 {
                     // Get Face subdirectory
                     var faceSubDir = virtualCharDir["Face"];
-                    System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Face subdir: {faceSubDir?.GetType().Name ?? "NULL"}");
 
                     if (faceSubDir is MapleLib.Img.VirtualWzDirectory virtualFaceDir)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Face VirtualDir path: {virtualFaceDir.FilesystemPath}");
-                        System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Face VirtualDir has {virtualFaceDir.WzImages.Count} images:");
-                        foreach (var img in virtualFaceDir.WzImages.Take(5))
-                        {
-                            System.Diagnostics.Debug.WriteLine($"  - {img.Name}");
-                        }
-
                         imgNode = virtualFaceDir[imgName] as WzImage;
-                        System.Diagnostics.Debug.WriteLine($"[CharacterLoader] VirtualFaceDir[{imgName}] = {imgNode?.Name ?? "NULL"}");
                     }
                 }
                 else if (charDirObj is WzDirectory charWzDir)
@@ -1921,29 +1925,6 @@ namespace HaCreator.MapSimulator.Character
 
             img.ParseImage();
 
-            // Debug: show top-level nodes in face image
-            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Face image nodes:");
-            foreach (var prop in img.WzProperties)
-            {
-                System.Diagnostics.Debug.WriteLine($"  - {prop.Name} ({prop.GetType().Name})");
-                // Show subnodes for first expression
-                if (prop is WzSubProperty subProp && prop.Name == "default")
-                {
-                    foreach (var child in subProp.WzProperties)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"    - {child.Name} ({child.GetType().Name})");
-                        // Show one more level
-                        if (child is WzSubProperty childSub)
-                        {
-                            foreach (var grandchild in childSub.WzProperties)
-                            {
-                                System.Diagnostics.Debug.WriteLine($"      - {grandchild.Name} ({grandchild.GetType().Name})");
-                            }
-                        }
-                    }
-                }
-            }
-
             // Standard expressions
             string[] expressions = { "default", "blink", "hit", "smile", "troubled", "cry", "angry", "bewildered", "stunned", "oops" };
 
@@ -1957,7 +1938,6 @@ namespace HaCreator.MapSimulator.Character
                     {
                         anim.ActionName = expr;
                         face.Expressions[expr] = anim;
-                        System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Face expression '{expr}' loaded with {anim.Frames.Count} frames");
                     }
                 }
             }
@@ -2105,22 +2085,16 @@ namespace HaCreator.MapSimulator.Character
             // Fall back - try to load hair image directly
             if (imgNode == null)
             {
-                // Try direct image lookup via Program.FindImage
-                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Trying direct Hair lookup: Hair/{imgName}");
                 imgNode = Program.FindImage("Character", $"Hair/{imgName}");
 
                 if (imgNode == null)
                 {
-                    // Try ImgFileSystemManager directly if available
                     var dataSource = Program.DataSource;
                     if (dataSource != null)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Trying DataSource for Hair...");
                         imgNode = dataSource.GetImage("Character", $"Hair/{imgName}");
                     }
                 }
-
-                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Hair lookup result: {imgNode?.Name ?? "NULL"}");
             }
 
             System.Diagnostics.Debug.WriteLine($"[CharacterLoader] LoadHair id={hairId}, found={imgNode != null}");
@@ -2151,7 +2125,7 @@ namespace HaCreator.MapSimulator.Character
             // Load regular hair animations - include attack animations for proper character posing
             var allActions = BuildEagerActionLoadOrder(
                 BuildAvailableActionSet(img.WzProperties.Select(prop => prop.Name)),
-                includeAttackActions: true);
+                includeAttackActions: false);
             foreach (var action in allActions)
             {
                 var actionNode = img[action];
@@ -2280,7 +2254,7 @@ namespace HaCreator.MapSimulator.Character
                     Slot = slot
                 };
 
-                LoadPartAnimations(part, imageEntry.ActionSourceRoot);
+                LoadPartAnimations(part, imageEntry.ActionSourceRoot, includeAttackActions: false);
             }
 
             if (part != null)
@@ -2319,12 +2293,6 @@ namespace HaCreator.MapSimulator.Character
 
             img.ParseImage();
 
-            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] LoadWeapon id={itemId}, img nodes:");
-            foreach (var prop in img.WzProperties)
-            {
-                System.Diagnostics.Debug.WriteLine($"  - {prop.Name} ({prop.GetType().Name})");
-            }
-
             // Load weapon info
             var info = img["info"];
             if (info != null)
@@ -2339,13 +2307,10 @@ namespace HaCreator.MapSimulator.Character
                 weapon.WeaponType = ResolveWeaponType(itemId);
                 weapon.AfterImageType = metadata?.WeaponAfterImageType;
                 weapon.IsTwoHanded = GetIntValue(info["twoHanded"]) == 1;
-                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon info: attackSpeed={weapon.AttackSpeed}, walk={weapon.WalkFrameCount}, stand={weapon.StandFrameCount}, attack={weapon.AttackFrameCount}, PAD={weapon.Attack}, twoHanded={weapon.IsTwoHanded}");
             }
 
             // Load animations - weapon structure is action/frame/weapon (e.g., stand1/0/weapon)
             LoadWeaponAnimations(weapon, imageEntry?.ActionSourceRoot ?? img);
-
-            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon loaded with {weapon.Animations.Count} animations");
 
             return weapon;
         }
@@ -2358,10 +2323,13 @@ namespace HaCreator.MapSimulator.Character
         {
             if (weapon == null || actionSourceRoot == null) return;
 
-            // Combine standard and attack actions
+            HashSet<string> availableActions = BuildAvailableActionSet(EnumerateChildProperties(actionSourceRoot).Select(prop => prop.Name));
+            weapon.AvailableAnimations = availableActions;
+            weapon.AnimationResolver = actionName => LoadWeaponAnimationForAction(actionSourceRoot, actionName);
+
             var allActions = BuildEagerActionLoadOrder(
-                BuildAvailableActionSet(EnumerateChildProperties(actionSourceRoot).Select(prop => prop.Name)),
-                includeAttackActions: true);
+                availableActions,
+                includeAttackActions: false);
 
             foreach (var action in allActions)
             {
@@ -2374,9 +2342,38 @@ namespace HaCreator.MapSimulator.Character
                     anim.ActionName = action;
                     anim.Action = CharacterPart.ParseActionString(action);
                     weapon.Animations[action] = anim;
-                    System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon action '{action}' loaded with {anim.Frames.Count} frames");
                 }
             }
+        }
+
+        private CharacterAnimation LoadWeaponAnimationForAction(WzObject actionSourceRoot, string actionName)
+        {
+            if (actionSourceRoot == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return null;
+            }
+
+            string cacheKey = $"weapon::{actionSourceRoot.FullPath ?? actionSourceRoot.Name ?? "<unknown>"}::{actionName}";
+            if (_animationCache.TryGetValue(cacheKey, out CharacterAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
+            WzImageProperty actionNode = GetChildProperty(actionSourceRoot, actionName);
+            if (actionNode == null)
+            {
+                return null;
+            }
+
+            CharacterAnimation animation = LoadWeaponAnimation(actionNode, actionName);
+            if (animation != null && animation.Frames.Count > 0)
+            {
+                animation.ActionName = actionName;
+                animation.Action = CharacterPart.ParseActionString(actionName);
+                _animationCache[cacheKey] = animation;
+            }
+
+            return animation;
         }
 
         /// <summary>
@@ -2390,17 +2387,6 @@ namespace HaCreator.MapSimulator.Character
 
             if (actionNode is WzSubProperty actionSub)
             {
-                // Debug first frame structure
-                var frame0 = actionSub["0"];
-                if (frame0 is WzSubProperty frame0Sub)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon {actionName}/0 nodes:");
-                    foreach (var child in frame0Sub.WzProperties)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"    - {child.Name} ({child.GetType().Name})");
-                    }
-                }
-
                 // Try numbered frames (action/0/weapon, action/1/weapon, etc.)
                 for (int i = 0; i < 100; i++)
                 {
@@ -2528,7 +2514,6 @@ namespace HaCreator.MapSimulator.Character
             }
 
             frame.Z = zLayer;
-            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Weapon frame {frameName} (action={actionName}) z-layer: {zLayer}");
 
             return frame;
         }
@@ -2934,6 +2919,11 @@ namespace HaCreator.MapSimulator.Character
         [Conditional("DEBUG")]
         private void LogAnimationFallbackOnce(string fallbackKey, WzSubProperty firstFrame, WzObject resolvedUolTarget)
         {
+            if (!EnableAnimationFallbackDiagnostics)
+            {
+                return;
+            }
+
             if (string.IsNullOrWhiteSpace(fallbackKey) || !_loggedAnimationFallbackKeys.Add(fallbackKey))
             {
                 return;
@@ -2953,6 +2943,12 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
+            string cacheKey = $"part::{actionSourceRoot.FullPath ?? actionSourceRoot.Name ?? "<unknown>"}::{actionName}";
+            if (_animationCache.TryGetValue(cacheKey, out CharacterAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
             WzImageProperty actionNode = GetChildProperty(actionSourceRoot, actionName);
             if (actionNode == null)
             {
@@ -2964,6 +2960,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 animation.ActionName = actionName;
                 animation.Action = CharacterPart.ParseActionString(actionName);
+                _animationCache[cacheKey] = animation;
             }
 
             return animation;
@@ -3216,14 +3213,22 @@ namespace HaCreator.MapSimulator.Character
             }
 
             string imgName = itemId.ToString("D8") + ".img";
+            string cacheKey = $"{folder}/{imgName}";
+            if (_characterImageCache.TryGetValue(cacheKey, out WzImage cachedImage))
+            {
+                return cachedImage;
+            }
 
             var equipDir = _characterWz?.WzDirectory?[folder];
             if (equipDir?[imgName] is WzImage directImage)
             {
+                _characterImageCache[cacheKey] = directImage;
                 return directImage;
             }
 
-            return Program.FindImage("Character", $"{folder}/{imgName}");
+            WzImage resolvedImage = Program.FindImage("Character", $"{folder}/{imgName}");
+            _characterImageCache[cacheKey] = resolvedImage;
+            return resolvedImage;
         }
 
         internal static int ResolveClientWeeklyVariantIndex(DayOfWeek dayOfWeek)

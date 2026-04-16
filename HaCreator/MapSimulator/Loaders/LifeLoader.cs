@@ -73,6 +73,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobActionAssets>>> _cachedMobActionAssetsByDevice = new();
         private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobAttackAssets>>> _cachedMobAttackAssetsByDevice = new();
         private static readonly ConcurrentDictionary<string, Lazy<MobImgEntry>> _cachedMobImgEntries = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, byte> _missingMobSoundIds = new(StringComparer.Ordinal);
         private sealed class CachedDoomMobAssets
         {
             public MobAnimationSet AnimationSet { get; init; }
@@ -795,7 +796,10 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty mobSounds = mobSoundImage[mobId.PadLeft(7, '0')] as WzSubProperty;
             if (mobSounds == null)
             {
-                System.Diagnostics.Debug.WriteLine($"[LifeLoader] LoadMobSounds: Mob '{mobId}' not found in Mob.img. Available: {string.Join(", ", mobSoundImage.WzProperties?.Take(10).Select(p => p.Name) ?? new string[0])}...");
+                if (_missingMobSoundIds.TryAdd(mobId, 0))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[LifeLoader] LoadMobSounds: Mob '{mobId}' not found in Mob.img. Available: {string.Join(", ", mobSoundImage.WzProperties?.Take(10).Select(p => p.Name) ?? new string[0])}...");
+                }
                 return;
             }
 

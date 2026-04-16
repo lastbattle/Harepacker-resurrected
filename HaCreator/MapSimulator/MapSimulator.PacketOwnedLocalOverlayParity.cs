@@ -141,6 +141,7 @@ namespace HaCreator.MapSimulator
         private readonly LocalOverlayBalloonState _packetOwnedBalloonState = new();
         private readonly LocalOverlayPacketInboxManager _localOverlayPacketInbox = new();
         private readonly Dictionary<string, Texture2D> _packetOwnedBalloonInlineUiCanvasCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _failedUiCanvasTextureKeys = new(StringComparer.OrdinalIgnoreCase);
         private FieldHazardPetAutoConsumeRequest? _pendingFieldHazardPetAutoConsumeRequest;
         private LocalOverlayBalloonSkin _packetOwnedBalloonSkin;
         private bool _localOverlayPacketInboxEnabled = EnablePacketConnectionsByDefault;

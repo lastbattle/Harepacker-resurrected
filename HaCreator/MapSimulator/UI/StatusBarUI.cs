@@ -1028,10 +1028,12 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawHoveredBuffTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
-            if (!HasStatusBarTextRenderer() || !TryGetHoveredBuffEntry(out StatusBarBuffRenderData buffEntry, out Rectangle iconRect))
+            if (!HasStatusBarTextRenderer() || !TryGetHoveredBuffEntry(out StatusBarBuffRenderData buffEntry, out _))
             {
                 return;
             }
+
+            Point mousePosition = Mouse.GetState().Position;
 
             IReadOnlyList<string> temporaryStatDisplayNames = buffEntry.TemporaryStatDisplayNames != null
                 && buffEntry.TemporaryStatDisplayNames.Count > 0
@@ -1052,7 +1054,7 @@ namespace HaCreator.MapSimulator.UI {
 
             DrawStatusBarSkillTooltip(
                 sprite,
-                iconRect,
+                mousePosition,
                 renderWidth,
                 renderHeight,
                 SanitizeTooltipText(buffEntry.SkillName),
@@ -1281,14 +1283,16 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawHoveredCooldownTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
-            if (!HasStatusBarTextRenderer() || !TryGetHoveredCooldownEntry(out StatusBarCooldownRenderData cooldownEntry, out Rectangle iconRect))
+            if (!HasStatusBarTextRenderer() || !TryGetHoveredCooldownEntry(out StatusBarCooldownRenderData cooldownEntry, out _))
             {
                 return;
             }
 
+            Point mousePosition = Mouse.GetState().Position;
+
             DrawStatusBarSkillTooltip(
                 sprite,
-                iconRect,
+                mousePosition,
                 renderWidth,
                 renderHeight,
                 SanitizeTooltipText(cooldownEntry.SkillName),
@@ -1459,7 +1463,7 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawStatusBarSkillTooltip(
             SpriteBatch sprite,
-            Rectangle anchorRect,
+            Point anchorPoint,
             int renderWidth,
             int renderHeight,
             string title,
@@ -1529,7 +1533,7 @@ namespace HaCreator.MapSimulator.UI {
                     SkillTooltipFrameLayout.ClientTooltipBaseHeight,
                     (int)Math.Ceiling(Math.Max(baseContentY + BUFF_ICON_SIZE, baseContentY + iconBlockHeight) + TOOLTIP_PADDING))
                 : (int)Math.Ceiling((TOOLTIP_PADDING * 2) + titleHeight + TOOLTIP_TITLE_GAP + iconBlockHeight);
-            Point tooltipAnchor = new Point(anchorRect.Right + TOOLTIP_OFFSET_X, anchorRect.Bottom + TOOLTIP_OFFSET_Y);
+            Point tooltipAnchor = new Point(anchorPoint.X + TOOLTIP_OFFSET_X, anchorPoint.Y + TOOLTIP_OFFSET_Y);
             Rectangle tooltipRect = ResolveTooltipRect(
                 tooltipAnchor,
                 tooltipWidth,

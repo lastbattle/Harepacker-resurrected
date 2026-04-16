@@ -890,6 +890,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private List<SkillData> _availableSkills = new();
         private int _skillRecordChangeBatchDepth;
         private bool _skillRecordChangedDuringBatch;
+        private bool _hotkeyRevalidationDeferredDuringBatch;
 
         // Hotkeys - supports 28 total slots:
         // 0-7: Primary slots (Skill1-8)
@@ -1301,7 +1302,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _skillLevels[skillId] = level;
             }
 
-            RevalidateHotkeys();
+            if (_skillRecordChangeBatchDepth > 0)
+            {
+                _hotkeyRevalidationDeferredDuringBatch = true;
+            }
+            else
+            {
+                RevalidateHotkeys();
+            }
+
             if (changed)
             {
                 NotifySkillRecordsChanged();
@@ -1327,7 +1336,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
 
             _skillRecordChangeBatchDepth--;
-            if (_skillRecordChangeBatchDepth == 0 && _skillRecordChangedDuringBatch)
+            if (_skillRecordChangeBatchDepth != 0)
+                return;
+
+            if (_hotkeyRevalidationDeferredDuringBatch)
+            {
+                _hotkeyRevalidationDeferredDuringBatch = false;
+                RevalidateHotkeys();
+            }
+
+            if (_skillRecordChangedDuringBatch)
             {
                 _skillRecordChangedDuringBatch = false;
                 SkillRecordsChanged?.Invoke();
@@ -4617,7 +4635,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 return false;
             }
-
 
             if (ClientOwnedVehicleSkillClassifier.IsKnownClientOwnedVehicleCurrentActionName(
                     mountPart.ItemId,
@@ -19005,18 +19022,34 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             SkillData skill = GetSkillData(skillId);
             SkillAnimation animation = skill?.ZoneAnimation;
-            if (animation?.Frames.Count <= 0)
+            if (animation?.Frames == null || animation.Frames.Count == 0)
             {
                 return;
             }
 
+            if (!animation.TryGetTextureFrames(out List<IDXObject> frames)
+                || !AnimationEffects.HasFrames(frames))
+            {
+                return;
+            }
+
+            int updateIntervalMs = 120;
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                if (animation.Frames[i] != null)
+                {
+                    updateIntervalMs = Math.Max(60, animation.Frames[i].Delay);
+                    break;
+                }
+            }
+
             int durationMs = ResolveSecondaryFootholdDurationMs(skill);
             _animationEffects.RegisterFootholdAnimation(
-                animation.ToTextureFrames(),
+                frames,
                 worldHitbox,
                 tStartDelay: 0,
                 tDuration: durationMs,
-                updateIntervalMs: Math.Max(60, animation.Frames[0]?.Delay ?? 120),
+                updateIntervalMs,
                 currentTime,
                 randomPosition: true);
         }
@@ -20354,30 +20387,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return skill;
             }
 
-            ResolveLoopingAvatarEffectPlanes(
-                CreateLoopingAvatarEffect(skill.AffectedEffect),
-                CreateLoopingAvatarEffect(skill.AffectedSecondaryEffect),
-                out SkillAnimation overlayAnimation,
-                out SkillAnimation overlaySecondaryAnimation,
-                out SkillAnimation underFaceAnimation,
-                out SkillAnimation underFaceSecondaryAnimation);
-
-            if (overlayAnimation != null
-                || overlaySecondaryAnimation != null
-                || underFaceAnimation != null
-                || underFaceSecondaryAnimation != null)
-            {
-                return new SkillData
-                {
-                    SkillId = skill.SkillId,
-                    AvatarOverlayEffect = overlayAnimation,
-                    AvatarOverlaySecondaryEffect = overlaySecondaryAnimation,
-                    AvatarUnderFaceEffect = underFaceAnimation,
-                    AvatarUnderFaceSecondaryEffect = underFaceSecondaryAnimation,
-                    HideAvatarEffectOnRotateAction = skill.HideAvatarEffectOnRotateAction
-                };
-            }
-
             if (!UsesEffectToAvatarLayerBuffFallback(skill))
             {
                 return skill;
@@ -20397,10 +20406,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             bool usesSwallowFallback = UsesSwallowBuffAvatarEffectFallback(skill);
-            overlayAnimation = null;
-            overlaySecondaryAnimation = null;
-            underFaceAnimation = null;
-            underFaceSecondaryAnimation = null;
+            SkillAnimation overlayAnimation = null;
+            SkillAnimation overlaySecondaryAnimation = null;
+            SkillAnimation underFaceAnimation = null;
+            SkillAnimation underFaceSecondaryAnimation = null;
 
             if (usesSwallowFallback)
             {
@@ -24341,8 +24350,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || description.Contains("your mech");
         }
 
-        public void LearnAllNonHiddenSkills()
+        public void LearnAllNonHiddenSkills(int defaultLevel = 1)
         {
+            int resolvedDefaultLevel = Math.Max(1, defaultLevel);
             BeginSkillRecordChangeBatch();
             try
             {
@@ -24351,7 +24361,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     if (skill == null || skill.Invisible || skill.SuppressesStandaloneActiveCast)
                         continue;
 
-                    SetSkillLevel(skill.SkillId, Math.Max(1, skill.MaxLevel));
+                    SetSkillLevel(skill.SkillId, Math.Min(Math.Max(1, skill.MaxLevel), resolvedDefaultLevel));
                 }
             }
             finally

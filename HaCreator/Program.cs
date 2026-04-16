@@ -15,6 +15,7 @@ using HaCreator.Wz;
 using HaSharedLibrary;
 using MapleLib;
 using MapleLib.Img;
+using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator
 {
@@ -210,6 +211,7 @@ namespace HaCreator
             InfoManager = new WzInformationManager();
             SettingsManager = new WzSettingsManager(GetLocalSettingsPath(), typeof(UserSettings), typeof(ApplicationSettings));
             SettingsManager.LoadSettings();
+            WzCanvasProperty.ExternalImageResolver = ResolveImageByFullPath;
 
             // Initialize StartupManager for IMG filesystem support
             StartupManager = new StartupManager();
@@ -238,6 +240,183 @@ namespace HaCreator
             {
                 WzManager.Dispose();
             }
+        }
+
+        private static WzImage ResolveImageByFullPath(string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                return null;
+            }
+
+            if (DataSource != null)
+            {
+                foreach (string candidatePath in GetCandidateCategoryRootedImagePaths(relativePath))
+                {
+                    WzImage candidateImage = DataSource.GetImageByPath(candidatePath);
+                    if (candidateImage != null)
+                    {
+                        return candidateImage;
+                    }
+                }
+
+                return null;
+            }
+
+            string normalizedPath = NormalizeCategoryRootedImagePath(relativePath.Replace('\\', '/').Trim('/'));
+            int firstSeparator = normalizedPath.IndexOf('/');
+            if (firstSeparator <= 0)
+            {
+                return null;
+            }
+
+            string category = normalizedPath.Substring(0, firstSeparator);
+            string imagePath = normalizedPath.Substring(firstSeparator + 1);
+            return FindWzObjectByPath(category, imagePath) as WzImage;
+        }
+
+        private static WzObject FindWzObjectByPath(string category, string relativePath)
+        {
+            if (WzManager == null || string.IsNullOrWhiteSpace(category) || string.IsNullOrWhiteSpace(relativePath))
+            {
+                return null;
+            }
+
+            string normalizedPath = NormalizeCategoryRelativePath(category, relativePath.Replace('\\', '/').Trim('/'));
+            string[] segments = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return null;
+            }
+
+            IEnumerable<WzDirectory> roots = WzManager.GetWzDirectoriesFromBase(category.ToLower());
+            foreach (WzDirectory root in roots)
+            {
+                WzObject current = root;
+                bool resolved = true;
+                foreach (string segment in segments)
+                {
+                    current = current?[segment];
+                    if (current == null)
+                    {
+                        resolved = false;
+                        break;
+                    }
+                }
+
+                if (resolved)
+                {
+                    return current;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<string> GetCandidateCategoryRootedImagePaths(string relativePath)
+        {
+            string originalPath = relativePath.Replace('\\', '/').Trim('/');
+            if (string.IsNullOrWhiteSpace(originalPath))
+            {
+                yield break;
+            }
+
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (yielded.Add(originalPath))
+            {
+                yield return originalPath;
+            }
+
+            string normalizedPath = NormalizeCategoryRootedImagePath(originalPath);
+            if (yielded.Add(normalizedPath))
+            {
+                yield return normalizedPath;
+            }
+
+            string withoutCanvasDirectory = originalPath.Replace("/_Canvas/", "/", StringComparison.OrdinalIgnoreCase);
+            if (!string.Equals(withoutCanvasDirectory, originalPath, StringComparison.OrdinalIgnoreCase))
+            {
+                if (yielded.Add(withoutCanvasDirectory))
+                {
+                    yield return withoutCanvasDirectory;
+                }
+
+                string normalizedWithoutCanvas = NormalizeCategoryRootedImagePath(withoutCanvasDirectory);
+                if (yielded.Add(normalizedWithoutCanvas))
+                {
+                    yield return normalizedWithoutCanvas;
+                }
+            }
+
+            int separatorIndex = originalPath.IndexOf('/');
+            if (separatorIndex > 0)
+            {
+                string category = originalPath.Substring(0, separatorIndex);
+                string remainder = originalPath.Substring(separatorIndex + 1);
+                if (!string.IsNullOrWhiteSpace(remainder))
+                {
+                    string categoryRelative = NormalizeCategoryRelativePath(category, remainder);
+                    string categoryRelativeCandidate = $"{category}/{categoryRelative}";
+                    if (yielded.Add(categoryRelativeCandidate))
+                    {
+                        yield return categoryRelativeCandidate;
+                    }
+
+                    string doubledCategoryCandidate = $"{category}/{category}/{categoryRelative}";
+                    if (yielded.Add(doubledCategoryCandidate))
+                    {
+                        yield return doubledCategoryCandidate;
+                    }
+
+                    string categoryRelativeWithoutCanvas = categoryRelative.Replace("/_Canvas/", "/", StringComparison.OrdinalIgnoreCase);
+                    if (!string.Equals(categoryRelativeWithoutCanvas, categoryRelative, StringComparison.OrdinalIgnoreCase))
+                    {
+                        string categoryRelativeWithoutCanvasCandidate = $"{category}/{categoryRelativeWithoutCanvas}";
+                        if (yielded.Add(categoryRelativeWithoutCanvasCandidate))
+                        {
+                            yield return categoryRelativeWithoutCanvasCandidate;
+                        }
+
+                        string doubledCategoryWithoutCanvasCandidate = $"{category}/{category}/{categoryRelativeWithoutCanvas}";
+                        if (yielded.Add(doubledCategoryWithoutCanvasCandidate))
+                        {
+                            yield return doubledCategoryWithoutCanvasCandidate;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static string NormalizeCategoryRootedImagePath(string relativePath)
+        {
+            string normalizedPath = relativePath.Replace('\\', '/').Trim('/');
+            int separatorIndex = normalizedPath.IndexOf('/');
+            if (separatorIndex <= 0)
+            {
+                return normalizedPath;
+            }
+
+            string category = normalizedPath.Substring(0, separatorIndex);
+            string remainder = normalizedPath.Substring(separatorIndex + 1);
+            return string.IsNullOrEmpty(remainder)
+                ? category
+                : category + "/" + NormalizeCategoryRelativePath(category, remainder);
+        }
+
+        private static string NormalizeCategoryRelativePath(string category, string relativePath)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                return string.Empty;
+            }
+
+            string normalizedPath = relativePath.Replace('\\', '/').Trim('/');
+            if (normalizedPath.StartsWith(category + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedPath = normalizedPath.Substring(category.Length + 1);
+            }
+
+            return normalizedPath;
         }
 
         /// <summary>

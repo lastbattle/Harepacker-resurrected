@@ -789,8 +789,9 @@ namespace HaCreator.MapSimulator.Loaders
         private static void EnsureSkillRootLoaded(SkillUIBigBang skillWindow, int skillRootId, GraphicsDevice device)
         {
             int tabIndex = GetSkillTabFromJobId(skillRootId);
+            HashSet<int> aliasRootIds = GetSkillBookAliasesForJob(skillRootId).ToHashSet();
             bool hasLoadedCurrentRoot = skillWindow.TryGetDisplayedSkillRootId(tabIndex, out int displayedSkillRootId)
-                && displayedSkillRootId == skillRootId
+                && aliasRootIds.Contains(displayedSkillRootId)
                 && skillWindow.GetLoadedSkillCount(tabIndex) > 0;
 
             if (!hasLoadedCurrentRoot)
@@ -889,8 +890,9 @@ namespace HaCreator.MapSimulator.Loaders
         private static void EnsureSkillRootLoaded(SkillUI skillWindow, int skillRootId, GraphicsDevice device)
         {
             int tabIndex = GetSkillTabFromJobId(skillRootId);
+            HashSet<int> aliasRootIds = GetSkillBookAliasesForJob(skillRootId).ToHashSet();
             bool hasLoadedCurrentRoot = skillWindow.TryGetDisplayedSkillRootId(tabIndex, out int displayedSkillRootId)
-                && displayedSkillRootId == skillRootId
+                && aliasRootIds.Contains(displayedSkillRootId)
                 && skillWindow.GetLoadedSkillCount(tabIndex) > 0;
 
             Dictionary<int, SkillDisplayData> skillMap = null;

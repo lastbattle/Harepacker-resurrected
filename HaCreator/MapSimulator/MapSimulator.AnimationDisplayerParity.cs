@@ -1229,11 +1229,27 @@ namespace HaCreator.MapSimulator
             var frames = new List<IDXObject>(animation.Frames.Count);
             for (int i = 0; i < animation.Frames.Count; i++)
             {
-                IDXObject texture = animation.Frames[i]?.Texture;
-                if (texture != null)
+                SkillFrame skillFrame = animation.Frames[i];
+                IDXObject texture = skillFrame?.Texture;
+                if (texture == null)
                 {
-                    frames.Add(texture);
+                    continue;
                 }
+
+                if (texture.Texture != null)
+                {
+                    frames.Add(new DXObject(
+                        -skillFrame.Origin.X,
+                        -skillFrame.Origin.Y,
+                        texture.Texture,
+                        skillFrame.Delay)
+                    {
+                        Tag = texture.Tag
+                    });
+                    continue;
+                }
+
+                frames.Add(texture);
             }
 
             return frames.Count > 0 ? frames : null;
@@ -2022,13 +2038,20 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            IReadOnlyList<string> requestedBranchNames =
+                BuildAnimationDisplayerBuffAppliedRequestedBranchNames(buff.SkillData);
+            if (requestedBranchNames == null || requestedBranchNames.Count == 0)
+            {
+                return;
+            }
+
             SkillCastInfo castInfo = BuildAnimationDisplayerLocalSkillUseRequest(
                 buff.SkillData.SkillId,
                 buff.SkillData,
                 buff.StartTime,
-                buff.SkillData.AffectedEffect,
-                buff.SkillData.AffectedSecondaryEffect,
-                requestedBranchNames: BuildAnimationDisplayerBuffAppliedRequestedBranchNames(buff.SkillData));
+                effectAnimation: null,
+                secondaryEffectAnimation: null,
+                requestedBranchNames: requestedBranchNames);
             TryRegisterAnimationDisplayerSkillUse(castInfo);
         }
 
@@ -2659,62 +2682,6 @@ namespace HaCreator.MapSimulator
             return animation;
         }
 
-        private static SkillAnimation ApplyAnimationDisplayerOriginOffset(SkillAnimation animation, Point originOffset)
-        {
-            if (animation?.Frames == null || animation.Frames.Count == 0 || originOffset == Point.Zero)
-            {
-                return animation;
-            }
-
-            var shiftedFrames = new List<SkillFrame>(animation.Frames.Count);
-            for (int i = 0; i < animation.Frames.Count; i++)
-            {
-                SkillFrame frame = animation.Frames[i];
-                if (frame == null)
-                {
-                    continue;
-                }
-
-                var shiftedOrigin = new Point(
-                    frame.Origin.X - originOffset.X,
-                    frame.Origin.Y - originOffset.Y);
-                shiftedFrames.Add(new SkillFrame
-                {
-                    Texture = frame.Texture,
-                    Origin = shiftedOrigin,
-                    Delay = frame.Delay,
-                    Bounds = new Rectangle(
-                        -shiftedOrigin.X,
-                        -shiftedOrigin.Y,
-                        frame.Bounds.Width,
-                        frame.Bounds.Height),
-                    Flip = frame.Flip,
-                    Z = frame.Z,
-                    AlphaStart = frame.AlphaStart,
-                    AlphaEnd = frame.AlphaEnd,
-                    ZoomStart = frame.ZoomStart,
-                    ZoomEnd = frame.ZoomEnd
-                });
-            }
-
-            if (shiftedFrames.Count == 0)
-            {
-                return null;
-            }
-
-            SkillAnimation shiftedAnimation = new()
-            {
-                Name = animation.Name,
-                Frames = shiftedFrames,
-                Loop = animation.Loop,
-                Origin = new Point(animation.Origin.X - originOffset.X, animation.Origin.Y - originOffset.Y),
-                ZOrder = animation.ZOrder,
-                PositionCode = animation.PositionCode
-            };
-            shiftedAnimation.CalculateDuration();
-            return shiftedAnimation;
-        }
-
         private static int? TryResolveAnimationDisplayerSkillUsePositionCode(WzImageProperty property)
         {
             if (property == null)
@@ -2791,6 +2758,62 @@ namespace HaCreator.MapSimulator
             };
             scaledAnimation.CalculateDuration();
             return scaledAnimation;
+        }
+
+        private static SkillAnimation ApplyAnimationDisplayerOriginOffset(SkillAnimation animation, Point originOffset)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0 || originOffset == Point.Zero)
+            {
+                return animation;
+            }
+
+            var shiftedFrames = new List<SkillFrame>(animation.Frames.Count);
+            for (int i = 0; i < animation.Frames.Count; i++)
+            {
+                SkillFrame frame = animation.Frames[i];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                var shiftedOrigin = new Point(
+                    frame.Origin.X - originOffset.X,
+                    frame.Origin.Y - originOffset.Y);
+                shiftedFrames.Add(new SkillFrame
+                {
+                    Texture = frame.Texture,
+                    Origin = shiftedOrigin,
+                    Delay = frame.Delay,
+                    Bounds = new Rectangle(
+                        -shiftedOrigin.X,
+                        -shiftedOrigin.Y,
+                        frame.Bounds.Width,
+                        frame.Bounds.Height),
+                    Flip = frame.Flip,
+                    Z = frame.Z,
+                    AlphaStart = frame.AlphaStart,
+                    AlphaEnd = frame.AlphaEnd,
+                    ZoomStart = frame.ZoomStart,
+                    ZoomEnd = frame.ZoomEnd
+                });
+            }
+
+            if (shiftedFrames.Count == 0)
+            {
+                return null;
+            }
+
+            SkillAnimation shiftedAnimation = new()
+            {
+                Name = animation.Name,
+                Frames = shiftedFrames,
+                Loop = animation.Loop,
+                Origin = new Point(animation.Origin.X - originOffset.X, animation.Origin.Y - originOffset.Y),
+                ZOrder = animation.ZOrder,
+                PositionCode = animation.PositionCode
+            };
+            shiftedAnimation.CalculateDuration();
+            return shiftedAnimation;
         }
 
         private static int BuildAnimationDisplayerSkillUseAvatarEffectRegistrationKey(
@@ -2958,11 +2981,11 @@ namespace HaCreator.MapSimulator
                         castInfo.FollowOwnerFacing,
                         castInfo.FollowOwnerPosition);
                 }
-            }
 
-            if (seen.Count > 0)
-            {
-                yield break;
+                if (seen.Count > 0)
+                {
+                    yield break;
+                }
             }
 
             foreach (string branchName in EnumerateAnimationDisplayerSkillUseBranchNames(castInfo))
@@ -3064,10 +3087,10 @@ namespace HaCreator.MapSimulator
         internal static IReadOnlyList<string> BuildAnimationDisplayerBuffAppliedRequestedBranchNames(SkillData skillData)
         {
             List<string> resolvedBranchNames = null;
-            TryAddAnimationDisplayerRequestedBranchName(skillData?.AffectedEffect?.Name, ref resolvedBranchNames);
-            TryAddAnimationDisplayerRequestedBranchName(skillData?.AffectedSecondaryEffect?.Name, ref resolvedBranchNames);
             TryAddAnimationDisplayerRequestedBranchName(skillData?.SpecialAffectedEffect?.Name, ref resolvedBranchNames);
-            return resolvedBranchNames;
+            return resolvedBranchNames != null
+                ? (IReadOnlyList<string>)resolvedBranchNames
+                : Array.Empty<string>();
         }
 
         private static void TryAddAnimationDisplayerRequestedBranchName(

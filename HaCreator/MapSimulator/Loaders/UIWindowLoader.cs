@@ -2478,31 +2478,44 @@ namespace HaCreator.MapSimulator.Loaders
             SimulatorStorageRuntime storageRuntime = new SimulatorStorageRuntime(initialAccountLabel: storageAccountLabel, initialAccountKey: storageAccountKey);
 
 
-            MapTransferUI mapTransfer = CreateMapTransferWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
-            if (mapTransfer != null)
-            {
-                manager.RegisterCustomWindow(mapTransfer);
-            }
-
-
-            TrunkUI trunk = CreateTrunkWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, manager.InventoryWindow as InventoryUI, storageRuntime);
-            if (trunk != null)
-            {
-                manager.RegisterCustomWindow(trunk);
-                if (storageRuntime.GetUsedSlotCount() == 0 &&
-                    storageRuntime.GetMesoCount() <= 0 &&
-                    storageRuntime.GetSlotLimit() == 24)
+            manager.RegisterLazyWindow(
+                MapSimulatorWindowNames.MapTransfer,
+                m =>
                 {
-                    SeedStarterTrunkInventory(storageRuntime);
-                }
-            }
+                    MapTransferUI mapTransfer = CreateMapTransferWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
+                    if (mapTransfer != null)
+                    {
+                        m.RegisterCustomWindow(mapTransfer);
+                    }
+                });
 
+            manager.RegisterLazyWindow(
+                MapSimulatorWindowNames.Trunk,
+                m =>
+                {
+                    TrunkUI trunk = CreateTrunkWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, m.InventoryWindow as InventoryUI, storageRuntime);
+                    if (trunk != null)
+                    {
+                        m.RegisterCustomWindow(trunk);
+                        if (storageRuntime.GetUsedSlotCount() == 0 &&
+                            storageRuntime.GetMesoCount() <= 0 &&
+                            storageRuntime.GetSlotLimit() == 24)
+                        {
+                            SeedStarterTrunkInventory(storageRuntime);
+                        }
+                    }
+                });
 
-            WorldMapUI worldMap = CreateWorldMapWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
-            if (worldMap != null)
-            {
-                manager.RegisterCustomWindow(worldMap);
-            }
+            manager.RegisterLazyWindow(
+                MapSimulatorWindowNames.WorldMap,
+                m =>
+                {
+                    WorldMapUI worldMap = CreateWorldMapWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight);
+                    if (worldMap != null)
+                    {
+                        m.RegisterCustomWindow(worldMap);
+                    }
+                });
             SoftKeyboardUI softKeyboard = CreateSoftKeyboardWindow(uiWindow1Image, device, screenWidth, screenHeight);
             if (softKeyboard != null)
             {
@@ -2575,7 +2588,18 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
 
-            RegisterChannelSelectionWindows(manager, null, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight);
+            manager.RegisterLazyWindow(
+                MapSimulatorWindowNames.WorldSelect,
+                m => RegisterChannelSelectionWindows(m, null, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight));
+            manager.RegisterLazyWindow(
+                MapSimulatorWindowNames.RecommendWorld,
+                m => RegisterChannelSelectionWindows(m, null, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight));
+            manager.RegisterLazyWindow(
+                MapSimulatorWindowNames.ChannelSelect,
+                m => RegisterChannelSelectionWindows(m, null, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight));
+            manager.RegisterLazyWindow(
+                MapSimulatorWindowNames.ChannelShift,
+                m => RegisterChannelSelectionWindows(m, null, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight));
 
 
 
@@ -2587,113 +2611,46 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-            RegisterAdminShopWishListWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 3), y + cascade));
-            RegisterCashAvatarPreviewWindow(manager, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 8), y + cascade));
-            RegisterAdminShopWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.CashShop, AdminShopServiceMode.CashShop,
-                new Point(x + cascade, y + cascade),
-                storageRuntime);
-            RegisterCashServiceStageWindow(manager, device, MapSimulatorWindowNames.CashShopStage, CashServiceWindowStageKind.CashShop,
-                new Point(x + cascade, y + cascade));
-            ConfigureCashGachaponAnimationDisplayer(manager, device);
-            RegisterCashShopStageChildWindows(manager, basicImage, soundUIImage, device,
-                new Point(x + cascade, y + cascade));
-            RegisterCashServiceModalOwnerWindows(manager, uiWindow1Image, uiWindow2Image, device, screenWidth, screenHeight);
-            RegisterAdminShopWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.Mts, AdminShopServiceMode.Mts,
-                new Point(x + (cascade * 2), y + (cascade * 2)),
-                storageRuntime);
-            RegisterCashServiceStageWindow(manager, device, MapSimulatorWindowNames.MtsStatus, CashServiceWindowStageKind.ItemTradingCenter,
-                new Point(x + (cascade * 2), y + (cascade * 2)));
-            RegisterItcStageChildWindows(manager, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 2), y + (cascade * 2)));
-            RegisterSocialListWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 2), y + (cascade * 5)));
-            RegisterFamilyChartWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 3), y + (cascade * 5)));
-            RegisterMessengerWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 3), y + (cascade * 3)));
-            RegisterEngagementProposalWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 4), y + (cascade * 3)));
-            RegisterWeddingInvitationWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 5), y + (cascade * 3)));
-            RegisterWeddingWishListWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 6), y + (cascade * 3)));
-            RegisterMapleTvWindow(manager, uiWindow1Image, mapleTvImage, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 4), y + (cascade * 2)));
-            RegisterItemMakerWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 5), y + (cascade * 5)));
-            RegisterBookCollectionWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 6), y + (cascade * 5)));
-            RegisterItemUpgradeWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 6), y + (cascade * 6)));
-            RegisterVegaSpellWindow(manager, uiWindow1Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 7), y + (cascade * 6)));
-            RegisterMemoMailboxWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 7), y + (cascade * 4)));
-            RegisterQuestTimerWindows(manager, device);
-            RegisterPacketOwnedRewardResultNoticeWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 6), y + (cascade * 2)));
-            RegisterRandomMesoBagWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 7), y + (cascade * 2)));
-            RegisterRandomMorphWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 7), y + (cascade * 3)));
-            RegisterQuestDeliveryWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 6), y + (cascade * 3)));
-            RegisterQuestRewardRaiseWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 6), y + (cascade * 3)));
-            RegisterReviveConfirmationWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 7), y + (cascade * 3)));
-            RegisterRepairDurabilityWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-
-                new Point(x + (cascade * 6), y + (cascade * 4)));
-            RegisterQuestAlarmWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-
-                new Point(x + (cascade * 8), y + (cascade * 8)));
-
-            RegisterClassCompetitionWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-
-                new Point(x + (cascade * 5), y + (cascade * 2)));
-            RegisterPacketOwnedNpcShopWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 2), y + (cascade * 6)));
-            RegisterPacketOwnedStoreBankWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 3), y + (cascade * 6)));
-            RegisterPacketOwnedBattleRecordWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 4), y + (cascade * 6)));
-            RegisterKeyConfigWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 4), y + (cascade * 4)));
-            RegisterOptionMenuWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 5), y + cascade));
-            RegisterRankingWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 6), y + (cascade * 2)));
-            RegisterEventWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 7), y + cascade));
-            RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.MedalQuestInfo,
-                "Medal",
-                "Packet-owned medal key owner routed from the raw KeyConfig palette id 26.",
-                sourcePropertyName: null,
-                new Point(x + (cascade * 8), y + (cascade * 2)));
-            RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.ItemPot,
-                "Item Pot",
-                "Packet-owned item-pot key owner routed from the raw KeyConfig palette id 30.",
-                sourcePropertyName: "itemPot",
-                new Point(x + (cascade * 8), y + (cascade * 3)));
-            RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                MapSimulatorWindowNames.MagicWheel,
-                "Magic Wheel",
-                "Packet-owned magic-wheel key owner routed from the raw KeyConfig palette id 32.",
-                sourcePropertyName: "RollingGachaphone",
-                new Point(x + (cascade * 8), y + (cascade * 4)));
-            RegisterRadioWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 6), y + (cascade * 4)));
-            RegisterDragonBoxWindow(manager, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 8), y + (cascade * 3)));
-            RegisterAccountMoreInfoWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
-                new Point(x + (cascade * 7), y + (cascade * 4)));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.AdminShopWishList, m => RegisterAdminShopWishListWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 3), y + cascade)));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.CashAvatarPreview, m => RegisterCashAvatarPreviewWindow(m, basicImage, soundUIImage, device, new Point(x + (cascade * 8), y + cascade)));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.CashShop, m => RegisterAdminShopWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulatorWindowNames.CashShop, AdminShopServiceMode.CashShop, new Point(x + cascade, y + cascade), storageRuntime));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.CashShopStage, m => RegisterCashServiceStageWindow(m, device, MapSimulatorWindowNames.CashShopStage, CashServiceWindowStageKind.CashShop, new Point(x + cascade, y + cascade)));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.Mts, m => RegisterAdminShopWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulatorWindowNames.Mts, AdminShopServiceMode.Mts, new Point(x + (cascade * 2), y + (cascade * 2)), storageRuntime));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.MtsStatus, m => RegisterCashServiceStageWindow(m, device, MapSimulatorWindowNames.MtsStatus, CashServiceWindowStageKind.ItemTradingCenter, new Point(x + (cascade * 2), y + (cascade * 2))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.SocialList, m => RegisterSocialListWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 2), y + (cascade * 5))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.FamilyChart, m => RegisterFamilyChartWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 3), y + (cascade * 5))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.Messenger, m => RegisterMessengerWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 3), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.EngagementProposal, m => RegisterEngagementProposalWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 4), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.WeddingInvitation, m => RegisterWeddingInvitationWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 5), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.WeddingWishList, m => RegisterWeddingWishListWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.MapleTv, m => RegisterMapleTvWindow(m, uiWindow1Image, mapleTvImage, basicImage, soundUIImage, device, new Point(x + (cascade * 4), y + (cascade * 2))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.ItemMaker, m => RegisterItemMakerWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 5), y + (cascade * 5))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.BookCollection, m => RegisterBookCollectionWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 5))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.ItemUpgrade, m => RegisterItemUpgradeWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 6))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.VegaSpell, m => RegisterVegaSpellWindow(m, uiWindow1Image, basicImage, soundUIImage, device, new Point(x + (cascade * 7), y + (cascade * 6))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.MemoMailbox, m => RegisterMemoMailboxWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 7), y + (cascade * 4))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice, m => RegisterPacketOwnedRewardResultNoticeWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 2))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.RandomMesoBag, m => RegisterRandomMesoBagWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 7), y + (cascade * 2))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.RandomMorph, m => RegisterRandomMorphWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 7), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.QuestDelivery, m => RegisterQuestDeliveryWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.QuestRewardRaise, m => RegisterQuestRewardRaiseWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.Revive, m => RegisterReviveConfirmationWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 7), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.RepairDurability, m => RegisterRepairDurabilityWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 4))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.QuestAlarm, m => RegisterQuestAlarmWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 8), y + (cascade * 8))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.ClassCompetition, m => RegisterClassCompetitionWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 5), y + (cascade * 2))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.NpcShop, m => RegisterPacketOwnedNpcShopWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 2), y + (cascade * 6))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.StoreBank, m => RegisterPacketOwnedStoreBankWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 3), y + (cascade * 6))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.BattleRecord, m => RegisterPacketOwnedBattleRecordWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 4), y + (cascade * 6))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.KeyConfig, m => RegisterKeyConfigWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 4), y + (cascade * 4))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.OptionMenu, m => RegisterOptionMenuWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 5), y + cascade)));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.Ranking, m => RegisterRankingWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 2))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.Event, m => RegisterEventWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 7), y + cascade)));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.MedalQuestInfo, m => RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulatorWindowNames.MedalQuestInfo, "Medal", "Packet-owned medal key owner routed from the raw KeyConfig palette id 26.", null, new Point(x + (cascade * 8), y + (cascade * 2))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.ItemPot, m => RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulatorWindowNames.ItemPot, "Item Pot", "Packet-owned item-pot key owner routed from the raw KeyConfig palette id 30.", "itemPot", new Point(x + (cascade * 8), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.MagicWheel, m => RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulatorWindowNames.MagicWheel, "Magic Wheel", "Packet-owned magic-wheel key owner routed from the raw KeyConfig palette id 32.", "RollingGachaphone", new Point(x + (cascade * 8), y + (cascade * 4))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.Radio, m => RegisterRadioWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 4))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.DragonBox, m => RegisterDragonBoxWindow(m, basicImage, soundUIImage, device, new Point(x + (cascade * 8), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.AccountMoreInfo, m => RegisterAccountMoreInfoWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 7), y + (cascade * 4))));
         }
 
         private static void RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(
@@ -2753,11 +2710,11 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-            RegisterSocialRoomWindow(manager, CreateMiniRoomWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x, y)));
-            RegisterSocialRoomWindow(manager, CreatePersonalShopWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + cascade, y + cascade)));
-            RegisterSocialRoomWindow(manager, CreateEntrustedShopWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 2), y + (cascade * 2))));
-            RegisterSocialRoomWindow(manager, CreateTradingRoomWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 3), y + (cascade * 3))));
-            RegisterSocialRoomWindow(manager, CreateCashTradingRoomWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 4), y + (cascade * 4))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.MiniRoom, m => RegisterSocialRoomWindow(m, CreateMiniRoomWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x, y))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.PersonalShop, m => RegisterSocialRoomWindow(m, CreatePersonalShopWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + cascade, y + cascade))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.EntrustedShop, m => RegisterSocialRoomWindow(m, CreateEntrustedShopWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 2), y + (cascade * 2)))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.TradingRoom, m => RegisterSocialRoomWindow(m, CreateTradingRoomWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 3), y + (cascade * 3)))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.CashTradingRoom, m => RegisterSocialRoomWindow(m, CreateCashTradingRoomWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 4), y + (cascade * 4)))));
         }
 
 

@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.UI
         #region Fields
         private readonly List<UIWindowBase> windows = new List<UIWindowBase>();
         private readonly Dictionary<string, UIWindowBase> windowsByName = new Dictionary<string, UIWindowBase>();
+        private readonly Dictionary<string, Action<UIWindowManager>> lazyWindowRegistrars = new Dictionary<string, Action<UIWindowManager>>(StringComparer.Ordinal);
         private readonly ProductionEnhancementAnimationDisplayer _productionEnhancementAnimationDisplayer = new();
 
         // Individual window references for quick access (UIWindowBase for polymorphic pre-BB/post-BB support)
@@ -220,6 +221,21 @@ namespace HaCreator.MapSimulator.UI
             RegisterWindow(window);
         }
 
+        public void RegisterLazyWindow(string windowName, Action<UIWindowManager> registrar)
+        {
+            if (string.IsNullOrWhiteSpace(windowName) || registrar == null)
+            {
+                return;
+            }
+
+            if (windowsByName.ContainsKey(windowName))
+            {
+                return;
+            }
+
+            lazyWindowRegistrars[windowName] = registrar;
+        }
+
         public bool RemoveWindow(string windowName)
         {
             return windowsByName.TryGetValue(windowName, out UIWindowBase window) && RemoveWindow(window);
@@ -272,6 +288,7 @@ namespace HaCreator.MapSimulator.UI
             window.BeforeShow = HandleBeforeShowWindow;
             windows.Add(window);
             windowsByName[window.WindowName] = window;
+            lazyWindowRegistrars.Remove(window.WindowName);
         }
 
         private void HandleBeforeShowWindow(UIWindowBase window)
@@ -351,7 +368,8 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void ToggleWindow(string windowName, int tickCount)
         {
-            if (windowsByName.TryGetValue(windowName, out var window))
+            if (EnsureWindowRegistered(windowName) &&
+                windowsByName.TryGetValue(windowName, out var window))
             {
                 window.ToggleVisibility(tickCount);
 
@@ -367,7 +385,8 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void ShowWindow(string windowName)
         {
-            if (windowsByName.TryGetValue(windowName, out var window))
+            if (EnsureWindowRegistered(windowName) &&
+                windowsByName.TryGetValue(windowName, out var window))
             {
                 ShowWindow(window);
             }
@@ -499,6 +518,28 @@ namespace HaCreator.MapSimulator.UI
         public UIWindowBase GetWindow(string windowName)
         {
             return windowsByName.TryGetValue(windowName, out var window) ? window : null;
+        }
+
+        private bool EnsureWindowRegistered(string windowName)
+        {
+            if (string.IsNullOrWhiteSpace(windowName))
+            {
+                return false;
+            }
+
+            if (windowsByName.ContainsKey(windowName))
+            {
+                return true;
+            }
+
+            if (!lazyWindowRegistrars.TryGetValue(windowName, out Action<UIWindowManager> registrar))
+            {
+                return false;
+            }
+
+            lazyWindowRegistrars.Remove(windowName);
+            registrar(this);
+            return windowsByName.ContainsKey(windowName);
         }
         #endregion
 

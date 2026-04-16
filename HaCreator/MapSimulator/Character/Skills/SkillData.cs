@@ -325,6 +325,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             return textures.Count > 0 ? textures : null;
         }
 
+        public bool TryGetTextureFrames(out List<IDXObject> textures)
+        {
+            textures = ToTextureFrames();
+            return textures != null && textures.Count > 0;
+        }
+
         public void CalculateDuration()
         {
             TotalDuration = 0;
@@ -1076,6 +1082,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public const int MirrorImageSkillId = 4331002;
 
         public int SkillId { get; set; }
+        internal bool PresentationDataLoaded { get; set; }
         public string Name { get; set; }
         public string Description { get; set; }
         public string DescriptionHints { get; set; }

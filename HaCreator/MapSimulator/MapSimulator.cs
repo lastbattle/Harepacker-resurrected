@@ -67,7 +67,8 @@ namespace HaCreator.MapSimulator
     {
         private const int DefaultLowHpWarningThresholdPercent = 20;
         private const int DefaultLowMpWarningThresholdPercent = 20;
-        private const bool EnablePacketConnectionsByDefault = false;
+        private const bool EnableOfflineClientMode = true;
+        private const bool EnablePacketConnectionsByDefault = !EnableOfflineClientMode;
         private const int ReactorCollisionCheckIntervalMs = 1000;
         private const int PetAutoSpeechPreLevelReminderCooldownMs = 420000;
         private const int PetAutoSpeechLowHpAlertCooldownMs = 60000;
@@ -277,6 +278,7 @@ namespace HaCreator.MapSimulator
         private readonly StatusBarPreparedSkillRenderData _preparedSkillWorldCache = new();
         private int _preparedSkillStatusBarCacheTime = int.MinValue;
         private int _preparedSkillWorldCacheTime = int.MinValue;
+        private const int DefaultSimulatorSkillPointsPerTab = 100;
 
 
         // Audio
@@ -607,6 +609,7 @@ namespace HaCreator.MapSimulator
         private bool _startupFirstUpdateLogged;
         private bool _startupFirstDrawLogged;
         private bool _startupPlayableLogged;
+        private bool _suppressSkillWindowRefresh;
 
 
 
@@ -29620,12 +29623,6 @@ namespace HaCreator.MapSimulator
             }
 
 
-            if (_playerManager?.Player?.Build != null)
-            {
-                RefreshSkillWindowForJob(_playerManager.Player.Build.Job);
-            }
-
-
             _playerManager.Combat.OnPickupAttemptFailed = HandlePickupAttemptFailed;
 
             _playerManager.Combat.EvaluatePickupAvailability = EvaluatePickupAvailability;
@@ -29962,22 +29959,25 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.SkillWindow is SkillUI skillWindowClassic)
             {
-                UIWindowLoader.LoadSkillsForJob(
-                    skillWindowClassic,
-                    _playerManager.Player?.Build?.Job ?? 0,
-                    GraphicsDevice,
-                    _playerManager.Skills.GetLearnedSkillRecordIds(),
-                    _playerManager.Player?.Build?.SubJob ?? 0);
-
-                skillWindowClassic.SetSkillManager(_playerManager.Skills);
-                skillWindowClassic.SetCharacterLevel(_playerManager.Player?.Level ?? 1);
-                skillWindowClassic.SetCharacterJob(_playerManager.Player?.Build?.Job ?? 0, _playerManager.Player?.Build?.SubJob ?? 0);
-                skillWindowClassic.OnSkillInvoked = skillId =>
+                _suppressSkillWindowRefresh = true;
+                try
                 {
-                    _playerManager.Skills.TryCastSkill(skillId, currTickCount);
-                };
-                skillWindowClassic.OnSkillLevelUpRequested = TryHandleSkillUiLevelUp;
-                RefreshVisibleSkillRootsFromCurrentRecords();
+                    RefreshOrLoadSkillWindow(skillWindowClassic);
+
+                    skillWindowClassic.SetSkillManager(_playerManager.Skills);
+                    skillWindowClassic.SetCharacterLevel(_playerManager.Player?.Level ?? 1);
+                    skillWindowClassic.SetCharacterJob(_playerManager.Player?.Build?.Job ?? 0, _playerManager.Player?.Build?.SubJob ?? 0);
+                    skillWindowClassic.OnSkillInvoked = skillId =>
+                    {
+                        _playerManager.Skills.TryCastSkill(skillId, currTickCount);
+                    };
+                    skillWindowClassic.OnSkillLevelUpRequested = TryHandleSkillUiLevelUp;
+                }
+                finally
+                {
+                    _suppressSkillWindowRefresh = false;
+                }
+
                 return;
             }
 
@@ -29988,45 +29988,229 @@ namespace HaCreator.MapSimulator
 
 
 
-            UIWindowLoader.LoadSkillsForJob(
-                skillWindow,
-                _playerManager.Player?.Build?.Job ?? 0,
-                GraphicsDevice,
-                _playerManager.Skills.GetLearnedSkillRecordIds(),
-                _playerManager.Player?.Build?.SubJob ?? 0);
-
-            skillWindow.SetSkillManager(_playerManager.Skills);
-            skillWindow.SetCharacterLevel(_playerManager.Player?.Level ?? 1);
-            skillWindow.SetCharacterJob(_playerManager.Player?.Build?.Job ?? 0, _playerManager.Player?.Build?.SubJob ?? 0);
-            skillWindow.OnSkillInvoked = skillId =>
+            _suppressSkillWindowRefresh = true;
+            try
             {
-                _playerManager.Skills.TryCastSkill(skillId, currTickCount);
-            };
-            skillWindow.OnSkillLevelUpRequested = TryHandleSkillUiLevelUp;
-            skillWindow.OnRideRequested = () =>
+                RefreshOrLoadSkillWindow(skillWindow);
+
+                skillWindow.SetSkillManager(_playerManager.Skills);
+                skillWindow.SetCharacterLevel(_playerManager.Player?.Level ?? 1);
+                skillWindow.SetCharacterJob(_playerManager.Player?.Build?.Job ?? 0, _playerManager.Player?.Build?.SubJob ?? 0);
+                skillWindow.OnSkillInvoked = skillId =>
+                {
+                    _playerManager.Skills.TryCastSkill(skillId, currTickCount);
+                };
+                skillWindow.OnSkillLevelUpRequested = TryHandleSkillUiLevelUp;
+                skillWindow.OnRideRequested = () =>
+                {
+                    ShowCharacterInfoWindow("ride");
+                };
+                skillWindow.OnGuildSkillRequested = () =>
+                {
+                    if (!_socialListRuntime.BuildGuildSkillUiContext(_playerManager.Player?.Build).HasGuildMembership)
+                        return;
+
+
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.GuildSkill) is not GuildSkillWindow)
+
+                        return;
+
+
+
+                    WireGuildSkillWindowData();
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.GuildSkill);
+                };
+                RefreshSkillWindowShortcutState();
+            }
+            finally
             {
-                ShowCharacterInfoWindow("ride");
-            };
-            skillWindow.OnGuildSkillRequested = () =>
+                _suppressSkillWindowRefresh = false;
+            }
+        }
+
+        private void RefreshOrLoadSkillWindow(SkillUIBigBang skillWindow)
+        {
+            if (skillWindow == null || _playerManager?.Skills == null)
             {
-                if (!_socialListRuntime.BuildGuildSkillUiContext(_playerManager.Player?.Build).HasGuildMembership)
-                    return;
+                return;
+            }
 
+            int jobId = _playerManager.Player?.Build?.Job ?? 0;
+            int subJob = _playerManager.Player?.Build?.SubJob ?? 0;
+            IEnumerable<int> learnedSkillIds = _playerManager.Skills.GetLearnedSkillRecordIds();
 
-                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.GuildSkill) is not GuildSkillWindow)
+            if (IsSkillWindowLoadedForCurrentJob(skillWindow, jobId))
+            {
+                UIWindowLoader.RefreshVisibleSkillRootsFromCurrentRecords(
+                    skillWindow,
+                    jobId,
+                    GraphicsDevice,
+                    learnedSkillIds,
+                    subJob);
+            }
+            else
+            {
+                UIWindowLoader.LoadSkillsForJob(
+                    skillWindow,
+                    jobId,
+                    GraphicsDevice,
+                    learnedSkillIds,
+                    subJob);
+            }
 
-                    return;
+            SynchronizeSkillWindowState(skillWindow);
+        }
 
+        private void RefreshOrLoadSkillWindow(SkillUI skillWindow)
+        {
+            if (skillWindow == null || _playerManager?.Skills == null)
+            {
+                return;
+            }
 
+            int jobId = _playerManager.Player?.Build?.Job ?? 0;
+            int subJob = _playerManager.Player?.Build?.SubJob ?? 0;
+            IEnumerable<int> learnedSkillIds = _playerManager.Skills.GetLearnedSkillRecordIds();
 
-                WireGuildSkillWindowData();
-                ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.GuildSkill);
+            if (IsSkillWindowLoadedForCurrentJob(skillWindow, jobId))
+            {
+                UIWindowLoader.RefreshVisibleSkillRootsFromCurrentRecords(
+                    skillWindow,
+                    jobId,
+                    GraphicsDevice,
+                    learnedSkillIds,
+                    subJob);
+            }
+            else
+            {
+                UIWindowLoader.LoadSkillsForJob(
+                    skillWindow,
+                    jobId,
+                    GraphicsDevice,
+                    learnedSkillIds,
+                    subJob);
+            }
+
+            SynchronizeSkillWindowState(skillWindow);
+        }
+
+        private Dictionary<int, SkillData> BuildSkillDataByIdLookup()
+        {
+            if (_playerManager?.Skills == null)
+            {
+                return new Dictionary<int, SkillData>();
+            }
+
+            return _playerManager.Skills
+                .GetAllSkills()
+                .Where(skill => skill != null)
+                .GroupBy(skill => skill.SkillId)
+                .ToDictionary(group => group.Key, group => group.First());
+        }
+
+        private void SynchronizeSkillWindowState(SkillUIBigBang skillWindow)
+        {
+            if (skillWindow == null || _playerManager?.Skills == null)
+            {
+                return;
+            }
+
+            Dictionary<int, SkillData> skillDataById = BuildSkillDataByIdLookup();
+            skillWindow.SynchronizeLoadedSkillLevels(
+                skillId => _playerManager.Skills.GetSkillLevel(skillId),
+                skillId => skillDataById.TryGetValue(skillId, out SkillData skillData)
+                    ? skillData.MaxLevel
+                    : 0);
+            skillWindow.RecalculateSkillPointsFromCurrentLevels();
+            for (int tab = 0; tab <= 6; tab++)
+            {
+                skillWindow.SetSkillPoints(tab, DefaultSimulatorSkillPointsPerTab);
+            }
+        }
+
+        private void SynchronizeSkillWindowState(SkillUI skillWindow)
+        {
+            if (skillWindow == null || _playerManager?.Skills == null)
+            {
+                return;
+            }
+
+            Dictionary<int, SkillData> skillDataById = BuildSkillDataByIdLookup();
+            skillWindow.SynchronizeLoadedSkillLevels(
+                skillId => _playerManager.Skills.GetSkillLevel(skillId),
+                skillId => skillDataById.TryGetValue(skillId, out SkillData skillData)
+                    ? skillData.MaxLevel
+                    : 0);
+            skillWindow.RecalculateSkillPointsFromCurrentLevels();
+            for (int tab = 0; tab <= 6; tab++)
+            {
+                skillWindow.SetSkillPoints(tab, DefaultSimulatorSkillPointsPerTab);
+            }
+        }
+
+        private static bool IsSkillWindowLoadedForCurrentJob(SkillUIBigBang skillWindow, int jobId)
+        {
+            if (skillWindow == null)
+            {
+                return false;
+            }
+
+            int tabIndex = GetSkillWindowTabIndexForJob(jobId);
+            return skillWindow.TryGetDisplayedSkillRootId(tabIndex, out int displayedSkillRootId)
+                   && displayedSkillRootId == jobId
+                   && skillWindow.GetLoadedSkillCount(tabIndex) > 0;
+        }
+
+        private static bool IsSkillWindowLoadedForCurrentJob(SkillUI skillWindow, int jobId)
+        {
+            if (skillWindow == null)
+            {
+                return false;
+            }
+
+            int tabIndex = GetSkillWindowTabIndexForJob(jobId);
+            return skillWindow.TryGetDisplayedSkillRootId(tabIndex, out int displayedSkillRootId)
+                   && displayedSkillRootId == jobId
+                   && skillWindow.GetLoadedSkillCount(tabIndex) > 0;
+        }
+
+        private static int GetSkillWindowTabIndexForJob(int jobId)
+        {
+            if (jobId <= 0)
+            {
+                return 0;
+            }
+
+            if (jobId >= 800 && jobId < 1000)
+            {
+                return 1;
+            }
+
+            if (jobId is >= 430 and <= 434)
+            {
+                return jobId switch
+                {
+                    430 => 2,
+                    431 => 3,
+                    432 => 4,
+                    433 => 5,
+                    434 => 6,
+                    _ => 1
+                };
+            }
+
+            if (jobId % 100 == 0)
+            {
+                return 1;
+            }
+
+            return jobId % 10 switch
+            {
+                0 => 2,
+                1 => 3,
+                2 => 4,
+                _ => 1
             };
-            RefreshSkillWindowShortcutState();
-            // Keep initial Big Bang skill-window binding on the same client-shaped
-            // visible-root rebuild seam used for live skill-record mutations.
-            RefreshVisibleSkillRootsFromCurrentRecords();
-
         }
 
         private void RefreshVisibleSkillRootsFromCurrentRecords()
@@ -30040,12 +30224,6 @@ namespace HaCreator.MapSimulator
 
             CharacterBuild build = _playerManager.Player.Build;
 
-            Dictionary<int, SkillData> skillDataById = _playerManager.Skills
-                .GetAllSkills()
-                .Where(skill => skill != null)
-                .GroupBy(skill => skill.SkillId)
-                .ToDictionary(group => group.Key, group => group.First());
-
             if (uiWindowManager.SkillWindow is SkillUIBigBang skillWindow)
             {
                 UIWindowLoader.RefreshVisibleSkillRootsFromCurrentRecords(
@@ -30055,12 +30233,7 @@ namespace HaCreator.MapSimulator
                     _playerManager.Skills.GetLearnedSkillRecordIds(),
                     build.SubJob);
 
-                skillWindow.SynchronizeLoadedSkillLevels(
-                    skillId => _playerManager.Skills.GetSkillLevel(skillId),
-                    skillId => skillDataById.TryGetValue(skillId, out SkillData skillData)
-                        ? skillData.MaxLevel
-                        : 0);
-                skillWindow.RecalculateSkillPointsFromCurrentLevels();
+                SynchronizeSkillWindowState(skillWindow);
             }
             else if (uiWindowManager.SkillWindow is SkillUI legacySkillWindow)
             {
@@ -30071,12 +30244,7 @@ namespace HaCreator.MapSimulator
                     _playerManager.Skills.GetLearnedSkillRecordIds(),
                     build.SubJob);
 
-                legacySkillWindow.SynchronizeLoadedSkillLevels(
-                    skillId => _playerManager.Skills.GetSkillLevel(skillId),
-                    skillId => skillDataById.TryGetValue(skillId, out SkillData skillData)
-                        ? skillData.MaxLevel
-                        : 0);
-                legacySkillWindow.RecalculateSkillPointsFromCurrentLevels();
+                SynchronizeSkillWindowState(legacySkillWindow);
             }
 
             ApplyQuestGrantedSkillPointBonuses();
@@ -30084,6 +30252,11 @@ namespace HaCreator.MapSimulator
 
         private void HandleSkillRecordsChanged()
         {
+            if (_suppressSkillWindowRefresh)
+            {
+                return;
+            }
+
             RefreshVisibleSkillRootsFromCurrentRecords();
         }
 
@@ -31588,8 +31761,75 @@ namespace HaCreator.MapSimulator
 
         private Texture2D LoadUiCanvasTexture(WzCanvasProperty canvasProperty)
         {
-            return canvasProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(GraphicsDevice);
+            if (canvasProperty == null)
+            {
+                return null;
+            }
 
+            string textureKey = ResolveUiCanvasTextureCacheKey(canvasProperty);
+            if (!string.IsNullOrEmpty(textureKey))
+            {
+                if (_failedUiCanvasTextureKeys.Contains(textureKey))
+                {
+                    return null;
+                }
+
+                Texture2D cachedTexture = _texturePool?.GetTexture(textureKey);
+                if (cachedTexture != null && !cachedTexture.IsDisposed)
+                {
+                    return cachedTexture;
+                }
+            }
+
+            System.Drawing.Bitmap bitmap = null;
+            try
+            {
+                bitmap = canvasProperty.GetLinkedWzCanvasBitmap();
+            }
+            catch (Exception ex)
+            {
+                if (!string.IsNullOrEmpty(textureKey))
+                {
+                    _failedUiCanvasTextureKeys.Add(textureKey);
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[MapSimulator] UI canvas texture load failed for {textureKey ?? canvasProperty.FullPath}: {ex.Message}");
+                return null;
+            }
+
+            if (bitmap == null)
+            {
+                if (!string.IsNullOrEmpty(textureKey))
+                {
+                    _failedUiCanvasTextureKeys.Add(textureKey);
+                }
+
+                return null;
+            }
+
+            Texture2D texture = bitmap.ToTexture2DAndDispose(GraphicsDevice);
+            if (texture != null && !texture.IsDisposed && !string.IsNullOrEmpty(textureKey))
+            {
+                _texturePool?.AddTextureToPool(textureKey, texture);
+            }
+
+            return texture;
+        }
+
+        private static string ResolveUiCanvasTextureCacheKey(WzCanvasProperty canvasProperty)
+        {
+            if (canvasProperty == null)
+            {
+                return null;
+            }
+
+            WzImageProperty linkedProperty = canvasProperty.GetLinkedWzImageProperty();
+            if (linkedProperty != null)
+            {
+                return linkedProperty.FullPath;
+            }
+
+            return canvasProperty.FullPath;
         }
 
 

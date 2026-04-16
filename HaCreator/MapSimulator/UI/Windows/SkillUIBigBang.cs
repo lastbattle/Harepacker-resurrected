@@ -2296,7 +2296,23 @@ namespace HaCreator.MapSimulator.UI
             if (skillsByTab.TryGetValue(tab, out var skills))
             {
                 int beforeCount = skills.Count;
-                skills.AddRange(skillDataList);
+                foreach (SkillDisplayData skill in skillDataList ?? Enumerable.Empty<SkillDisplayData>())
+                {
+                    if (skill == null)
+                    {
+                        continue;
+                    }
+
+                    int existingIndex = skills.FindIndex(existing => existing?.SkillId == skill.SkillId);
+                    if (existingIndex >= 0)
+                    {
+                        skills[existingIndex] = skill;
+                    }
+                    else
+                    {
+                        skills.Add(skill);
+                    }
+                }
                 System.Diagnostics.Debug.WriteLine($"[SkillUIBigBang] Added skills to tab {tab}: was {beforeCount}, now {skills.Count}");
             }
         }

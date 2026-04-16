@@ -201,9 +201,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillData LoadSkill(int skillId)
         {
             if (_skillCache.TryGetValue(skillId, out var cached))
+            {
+                EnsureSkillPresentationLoaded(cached);
                 return cached;
+            }
 
-            var skill = LoadSkillInternal(skillId);
+            var skill = LoadSkillInternal(skillId, includePresentation: true);
             if (skill != null)
             {
                 _skillCache[skillId] = skill;
@@ -401,27 +404,53 @@ namespace HaCreator.MapSimulator.Character.Skills
             return result;
         }
 
-        private SkillData LoadSkillInternal(int skillId)
+        private SkillData LoadSkillMetadata(int skillId)
         {
-            // Skill.wz structure: Skill.wz/[jobId].img/skill/[skillId]
-            // Job ID is skillId / 10000
+            if (_skillCache.TryGetValue(skillId, out SkillData cachedSkill))
+            {
+                return cachedSkill;
+            }
+
+            SkillData skill = LoadSkillInternal(skillId, includePresentation: false);
+            if (skill != null)
+            {
+                _skillCache[skillId] = skill;
+            }
+
+            return skill;
+        }
+
+        private void EnsureSkillPresentationLoaded(SkillData skill)
+        {
+            if (skill == null || skill.PresentationDataLoaded)
+            {
+                return;
+            }
+
+            if (!TryGetSkillNode(skill.SkillId, out WzImageProperty skillNode))
+            {
+                return;
+            }
+
+            ParseSkillAnimations(skill, skillNode);
+            LoadSkillIcon(skill, skillNode);
+            skill.PresentationDataLoaded = true;
+        }
+
+        private SkillData LoadSkillInternal(int skillId, bool includePresentation)
+        {
+            if (!TryGetSkillNode(skillId, out WzImageProperty skillNode))
+            {
+                return null;
+            }
+
             int jobId = skillId / 10000;
-            string imgName = $"{jobId}.img";
-
-            var jobImg = GetSkillImage(imgName);
-            if (jobImg == null)
-                return null;
-
-            jobImg.ParseImage();
-
-            var skillNode = jobImg["skill"]?[skillId.ToString()];
-            if (skillNode == null)
-                return null;
 
             var skill = new SkillData
             {
                 SkillId = skillId,
-                Job = jobId
+                Job = jobId,
+                PresentationDataLoaded = false
             };
 
             LoadSkillStrings(skill);
@@ -432,12 +461,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             // Parse level data
             ParseSkillLevels(skill, skillNode);
 
-            // Parse animations
-            ParseSkillAnimations(skill, skillNode);
             FinalizeMovementClassification(skill);
 
-            // Load icon
-            LoadSkillIcon(skill, skillNode);
+            if (includePresentation)
+            {
+                ParseSkillAnimations(skill, skillNode);
+                LoadSkillIcon(skill, skillNode);
+                skill.PresentationDataLoaded = true;
+            }
 
             return skill;
         }
@@ -6531,7 +6562,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (!int.TryParse(child.Name, out int skillId))
                     continue;
 
-                var skill = LoadSkill(skillId);
+                var skill = LoadSkillMetadata(skillId);
                 if (skill != null)
                 {
                     book.Skills[skillId] = skill;

@@ -450,12 +450,22 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public void CreatePlayerFromBuild(CharacterBuild build)
         {
+            var createPlayerStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            var initializePlayerStopwatch = System.Diagnostics.Stopwatch.StartNew();
             InitializePlayer(new PlayerCharacter(_device, _texturePool, build));
+            initializePlayerStopwatch.Stop();
+            System.Diagnostics.Debug.WriteLine($"[PlayerManager] InitializePlayer(new PlayerCharacter(...)) completed in {initializePlayerStopwatch.ElapsedMilliseconds} ms");
+
+            var ensureDefaultsStopwatch = System.Diagnostics.Stopwatch.StartNew();
             CompanionEquipment.EnsureDefaults(Loader, build);
+            ensureDefaultsStopwatch.Stop();
+            System.Diagnostics.Debug.WriteLine($"[PlayerManager] CompanionEquipment.EnsureDefaults completed in {ensureDefaultsStopwatch.ElapsedMilliseconds} ms");
 
             // Create SkillManager if we have a SkillLoader
             if (SkillLoader != null)
             {
+                var skillManagerSetupStopwatch = System.Diagnostics.Stopwatch.StartNew();
                 Skills = new SkillManager(SkillLoader, Player);
                 _pendingRepeatSkillModeEndSkillId = 0;
                 _pendingRepeatSkillModeEndReturnSkillId = 0;
@@ -477,12 +487,23 @@ namespace HaCreator.MapSimulator.Character
                 build.SkillMasteryProvider = () => Skills.GetMastery(build.GetWeapon());
 
                 // Keep only the player's current job path resident at startup.
+                var loadSkillsStopwatch = System.Diagnostics.Stopwatch.StartNew();
                 Skills.LoadSkillsForJob(build.Job);
+                loadSkillsStopwatch.Stop();
+                System.Diagnostics.Debug.WriteLine($"[PlayerManager] Skills.LoadSkillsForJob completed in {loadSkillsStopwatch.ElapsedMilliseconds} ms");
+
+                var learnSkillsStopwatch = System.Diagnostics.Stopwatch.StartNew();
                 Skills.LearnAllNonHiddenSkills();
+                learnSkillsStopwatch.Stop();
+                System.Diagnostics.Debug.WriteLine($"[PlayerManager] Skills.LearnAllNonHiddenSkills completed in {learnSkillsStopwatch.ElapsedMilliseconds} ms");
+
+                skillManagerSetupStopwatch.Stop();
+                System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager setup completed in {skillManagerSetupStopwatch.ElapsedMilliseconds} ms");
 
                 System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created for job path {build.Job}");
             }
 
+            var postSkillSetupStopwatch = System.Diagnostics.Stopwatch.StartNew();
             Dragon.SetDragonFuryVisibleProvider(() => HasClientOwnedDragonFuryEffect(Skills));
 
             _mobStatusController = new PlayerMobStatusController(Player, Skills, TeleportToSpawn);
@@ -579,6 +600,9 @@ namespace HaCreator.MapSimulator.Character
             // Set spawn position and snap to foothold
             TeleportTo(_spawnPoint.X, _spawnPoint.Y);
             Pets.EnsureDefaultPetActive(Player);
+            postSkillSetupStopwatch.Stop();
+            System.Diagnostics.Debug.WriteLine($"[PlayerManager] Post-skill player wiring completed in {postSkillSetupStopwatch.ElapsedMilliseconds} ms");
+
         }
 
         private void InitializePlayer(PlayerCharacter player)
@@ -694,6 +718,7 @@ namespace HaCreator.MapSimulator.Character
                         currentTime);
                 }
             };
+
         }
 
         private void ApplyPlayerMobSkillStatus(int skillId, int skillLevel, int currentTime, float sourceX, bool applyRuntimeStatus)
@@ -788,13 +813,19 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            System.Diagnostics.Stopwatch loadBuildStopwatch = System.Diagnostics.Stopwatch.StartNew();
             var build = Loader.LoadDefaultMale();
+            loadBuildStopwatch.Stop();
             System.Diagnostics.Debug.WriteLine($"[PlayerManager] LoadDefaultMale returned: {build != null}");
+            System.Diagnostics.Debug.WriteLine($"[PlayerManager] LoadDefaultMale completed in {loadBuildStopwatch.ElapsedMilliseconds} ms");
             if (build == null)
                 return false;
 
+            System.Diagnostics.Stopwatch createPlayerStopwatch = System.Diagnostics.Stopwatch.StartNew();
             CreatePlayerFromBuild(build);
+            createPlayerStopwatch.Stop();
             System.Diagnostics.Debug.WriteLine($"[PlayerManager] Player created from build");
+            System.Diagnostics.Debug.WriteLine($"[PlayerManager] CreatePlayerFromBuild completed in {createPlayerStopwatch.ElapsedMilliseconds} ms");
             return true;
         }
 

@@ -20,6 +20,10 @@ namespace HaCreator.MapSimulator.Loaders
     /// </summary>
     public static class SkillDataLoader
     {
+        private static readonly object SkillDisplayCacheLock = new();
+        private static readonly Dictionary<int, List<SkillDisplayData>> SkillDisplayCacheByJob = new();
+        private static readonly HashSet<int> MissingSkillBooks = new();
+
         public readonly struct RecommendedSkillEntry
         {
             public RecommendedSkillEntry(int spentSpThreshold, int skillId)
@@ -67,6 +71,19 @@ namespace HaCreator.MapSimulator.Loaders
         /// <returns>List of skill display data</returns>
         public static List<SkillDisplayData> LoadSkillsForJob(int jobId, GraphicsDevice device)
         {
+            lock (SkillDisplayCacheLock)
+            {
+                if (MissingSkillBooks.Contains(jobId))
+                {
+                    return new List<SkillDisplayData>();
+                }
+
+                if (SkillDisplayCacheByJob.TryGetValue(jobId, out List<SkillDisplayData> cachedSkills))
+                {
+                    return new List<SkillDisplayData>(cachedSkills);
+                }
+            }
+
             List<SkillDisplayData> skills = new List<SkillDisplayData>();
 
             // Get skill image name for this job
@@ -82,6 +99,10 @@ namespace HaCreator.MapSimulator.Loaders
             if (skillImage == null)
             {
                 Debug.WriteLine($"[SkillDataLoader] Failed to load Skill/{skillImageName}");
+                lock (SkillDisplayCacheLock)
+                {
+                    MissingSkillBooks.Add(jobId);
+                }
                 return skills;
             }
 
@@ -122,7 +143,12 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             Debug.WriteLine($"[SkillDataLoader] Total skills loaded for job {jobId}: {skills.Count}");
-            return skills;
+            lock (SkillDisplayCacheLock)
+            {
+                SkillDisplayCacheByJob[jobId] = new List<SkillDisplayData>(skills);
+            }
+
+            return new List<SkillDisplayData>(skills);
         }
 
         public static List<SkillDisplayData> LoadGuildSkills(GraphicsDevice device)

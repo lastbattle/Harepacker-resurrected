@@ -1317,7 +1317,8 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || _isDragging || _hoveredSkillIndex < 0)
                 return;
 
-            if (!skillsByTab.TryGetValue(_currentTab, out var skills) || _hoveredSkillIndex >= skills.Count)
+            var skills = CurrentSkills;
+            if (_hoveredSkillIndex >= skills.Count)
                 return;
 
             SkillDisplayData skill = skills[_hoveredSkillIndex];
