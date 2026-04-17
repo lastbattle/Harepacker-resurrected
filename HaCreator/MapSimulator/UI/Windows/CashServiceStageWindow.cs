@@ -1851,20 +1851,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _ = reader.ReadByte();
-            string requestedName = TryReadMapleString(reader, out string decodedName)
-                ? SanitizePacketString(decodedName, "requested name")
-                : string.Empty;
-            PacketCatalogEntry embeddedCashItemInfoEntry = TryReadOptionalCashItemInfoPacketEntry(
-                reader,
-                "Name-change packet body",
-                "CCashShop name-change",
-                "Renamed");
+            long payloadStart = stream.Position;
+            bool usedClientBodyShape = TryReadOptionalCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot);
+            string requestedName = string.Empty;
+            PacketCatalogEntry embeddedCashItemInfoEntry = null;
+            if (usedClientBodyShape)
+            {
+                embeddedCashItemInfoEntry = BuildCashItemInfoPacketEntry(snapshot, "Name-change packet body", "CCSWnd_Locker", "Renamed");
+                UpsertCashLockerPacketEntry(embeddedCashItemInfoEntry);
+                _cashLockerItemCount = Math.Max(_cashLockerPacketEntries.Count, _cashLockerItemCount + 1);
+                TryReadOptionalMapleString(reader, out string decodedTrailingName);
+                requestedName = SanitizePacketString(decodedTrailingName, string.Empty);
+            }
+            else
+            {
+                stream.Position = payloadStart;
+                if (TryReadMapleString(reader, out string decodedName))
+                {
+                    requestedName = SanitizePacketString(decodedName, "requested name");
+                }
+
+                embeddedCashItemInfoEntry = TryReadOptionalCashItemInfoPacketEntry(
+                    reader,
+                    "Name-change packet body",
+                    "CCashShop name-change",
+                    "Renamed");
+            }
+
             _cashNameChangeLastSummary = string.IsNullOrWhiteSpace(requestedName)
                 ? "Name-change purchase completed inside the dedicated Cash Shop stage."
                 : $"Name-change purchase completed for {requestedName}.";
             if (embeddedCashItemInfoEntry != null)
             {
                 _cashNameChangeLastSummary += $" Embedded {embeddedCashItemInfoEntry.PacketFieldSummary}.";
+                AppendCashPacketCatalogEntry("Packet rename", "Name", ClonePacketCatalogEntry(embeddedCashItemInfoEntry, "Renamed"));
             }
 
             AppendCashPacketCatalogEntry("Packet rename", "Name", new PacketCatalogEntry
@@ -1896,23 +1916,52 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _ = reader.ReadByte();
-            int worldId = stream.Length - stream.Position >= sizeof(int)
-                ? Math.Max(0, reader.ReadInt32())
-                : 0;
-            string targetName = TryReadMapleString(reader, out string decodedName)
-                ? SanitizePacketString(decodedName, "transfer target")
-                : string.Empty;
-            PacketCatalogEntry embeddedCashItemInfoEntry = TryReadOptionalCashItemInfoPacketEntry(
-                reader,
-                "Transfer-world packet body",
-                "CCashShop transfer-world",
-                "Transferred");
+            long payloadStart = stream.Position;
+            int worldId = 0;
+            string targetName = string.Empty;
+            PacketCatalogEntry embeddedCashItemInfoEntry = null;
+            if (TryReadOptionalCashItemInfoPacketSnapshot(reader, out CashItemInfoPacketSnapshot snapshot))
+            {
+                embeddedCashItemInfoEntry = BuildCashItemInfoPacketEntry(snapshot, "Transfer-world packet body", "CCSWnd_Locker", "Transferred");
+                UpsertCashLockerPacketEntry(embeddedCashItemInfoEntry);
+                _cashLockerItemCount = Math.Max(_cashLockerPacketEntries.Count, _cashLockerItemCount + 1);
+                if (stream.Length - stream.Position >= sizeof(int))
+                {
+                    worldId = Math.Max(0, reader.ReadInt32());
+                }
+
+                if (TryReadOptionalMapleString(reader, out string decodedTrailingName))
+                {
+                    targetName = SanitizePacketString(decodedTrailingName, "transfer target");
+                }
+            }
+            else
+            {
+                stream.Position = payloadStart;
+                if (stream.Length - stream.Position >= sizeof(int))
+                {
+                    worldId = Math.Max(0, reader.ReadInt32());
+                }
+
+                if (TryReadMapleString(reader, out string decodedName))
+                {
+                    targetName = SanitizePacketString(decodedName, "transfer target");
+                }
+
+                embeddedCashItemInfoEntry = TryReadOptionalCashItemInfoPacketEntry(
+                    reader,
+                    "Transfer-world packet body",
+                    "CCashShop transfer-world",
+                    "Transferred");
+            }
+
             _cashTransferWorldLastSummary = worldId > 0 || !string.IsNullOrWhiteSpace(targetName)
                 ? $"Transfer-world purchase completed{(worldId > 0 ? $" for world {worldId.ToString(CultureInfo.InvariantCulture)}" : string.Empty)}{(!string.IsNullOrWhiteSpace(targetName) ? $" on {targetName}" : string.Empty)}."
                 : "Transfer-world purchase completed inside the dedicated Cash Shop stage.";
             if (embeddedCashItemInfoEntry != null)
             {
                 _cashTransferWorldLastSummary += $" Embedded {embeddedCashItemInfoEntry.PacketFieldSummary}.";
+                AppendCashPacketCatalogEntry("Packet transfer", "Transfer", ClonePacketCatalogEntry(embeddedCashItemInfoEntry, "Transferred"));
             }
 
             AppendCashPacketCatalogEntry("Packet transfer", "Transfer", new PacketCatalogEntry
@@ -3242,6 +3291,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             value = Encoding.ASCII.GetString(reader.ReadBytes(length)).TrimEnd('\0', ' ');
+            return true;
+        }
+
+        private static bool TryReadOptionalMapleString(BinaryReader reader, out string value)
+        {
+            value = string.Empty;
+            if (reader?.BaseStream == null)
+            {
+                return false;
+            }
+
+            Stream stream = reader.BaseStream;
+            long initialPosition = stream.Position;
+            if (!TryReadMapleString(reader, out string decoded))
+            {
+                stream.Position = initialPosition;
+                return false;
+            }
+
+            value = decoded;
             return true;
         }
 

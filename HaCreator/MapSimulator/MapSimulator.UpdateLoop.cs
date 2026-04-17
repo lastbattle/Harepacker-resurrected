@@ -156,6 +156,7 @@ namespace HaCreator.MapSimulator
                     isWindowActive && ShouldForwardInitialQuizOwnerInputToActiveWindow(initialQuizCapturesWindowInputForUiUpdate));
                 SyncFriendGroupPopupWindowState();
                 ProcessPendingRepairDurabilityRequest();
+                ProcessPendingMonsterBookRegistrationRequest();
             }
 
 
@@ -218,6 +219,7 @@ namespace HaCreator.MapSimulator
                 EnsureExpeditionIntermediaryPacketInboxState(shouldRun: false);
                 EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: false);
                 EnsureSocialListOfficialSessionBridgeState(shouldRun: false);
+                EnsureFamilyOfficialSessionBridgeState(shouldRun: false);
                 EnsureEngagementProposalInboxState(shouldRun: false);
                 EnsureStageTransitionPacketInboxState(shouldRun: false);
                 EnsureReactorPoolPacketInboxState(shouldRun: false);
@@ -352,6 +354,8 @@ namespace HaCreator.MapSimulator
             RefreshExpeditionIntermediaryOfficialSessionBridgeDiscovery(currTickCount);
             EnsureSocialListOfficialSessionBridgeState(shouldRun: true);
             RefreshSocialListOfficialSessionBridgeDiscovery(currTickCount);
+            EnsureFamilyOfficialSessionBridgeState(shouldRun: true);
+            RefreshFamilyOfficialSessionBridgeDiscovery(currTickCount);
             DrainLocalUtilityPacketInbox();
             DrainAdminShopPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
@@ -361,6 +365,7 @@ namespace HaCreator.MapSimulator
             DrainExpeditionIntermediaryPacketInbox();
             DrainExpeditionIntermediaryOfficialSessionBridge();
             DrainSocialListOfficialSessionBridge();
+            DrainFamilyOfficialSessionBridge();
             EnsureMapTransferOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
             RefreshMapTransferOfficialSessionBridgeDiscovery(currTickCount);
             DrainMapTransferOfficialSessionBridge();

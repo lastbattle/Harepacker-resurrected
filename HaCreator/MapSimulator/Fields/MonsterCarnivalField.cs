@@ -1263,6 +1263,32 @@ namespace HaCreator.MapSimulator.Fields
                 new[] { 0x1027 });
         }
 
+        private void OnReviveEnter(MonsterCarnivalTeam localTeam, int tickCount)
+        {
+            if (!_isVisible)
+            {
+                return;
+            }
+
+            ClearRoundState();
+            RecreateClientOwnedUiWindowStateForEnter();
+            _enteredField = true;
+            _localTeam = localTeam;
+            RegisterKnownCharacterTeam(_localCharacterName, _localTeam);
+            _uiWindowState.ApplyEnter(localTeam, 0, 0, 0, 0, 0, 0);
+
+            string ownerLabel = _definition?.ClientOwnerLabel ?? "CField_MonsterCarnivalRevive";
+            ShowStatus(
+                $"{ownerLabel}::OnEnter decoded team byte {(int)localTeam} ({FormatTeam(localTeam)}) and refreshed the local guild name tag ownership seam.",
+                tickCount);
+            SetVariantSessionPhase(
+                MonsterCarnivalVariantSessionPhase.MemberState,
+                $"{ownerLabel}::OnEnter decoded the revive team byte and refreshed local guild-name ownership.");
+            RecordRecoveredClientOwnerAction(
+                $"{ownerLabel}::OnEnter decoded team byte {(int)localTeam}, updated CUserLocal team slot, and called CUserLocal::RedrawGuildNameTag without creating CUIMonsterCarnival.",
+                Array.Empty<int>());
+        }
+
         public void UpdateTeamCp(
             int personalCp,
             int personalTotalCp,
@@ -1675,20 +1701,28 @@ namespace HaCreator.MapSimulator.Fields
                 switch (packetType)
                 {
                     case MonsterCarnivalPacketType.Enter:
-                        OnEnter((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
-
-                        for (int i = 0; i < (_definition?.MobEntries.Count ?? 0); i++)
+                        if (_definition?.IsReviveMode == true)
                         {
-                            int count = reader.ReadByte();
-                            MonsterCarnivalEntry entry = _definition.MobEntries[i];
-                            SetEntryCount(_mobSpellCounts, entry.Id, count);
-                            ReconcileSummonedMobStates(entry, count);
+                            OnReviveEnter((MonsterCarnivalTeam)reader.ReadByte(), currentTimeMs);
+                        }
+                        else
+                        {
+                            OnEnter((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
+
+                            for (int i = 0; i < (_definition?.MobEntries.Count ?? 0); i++)
+                            {
+                                int count = reader.ReadByte();
+                                MonsterCarnivalEntry entry = _definition.MobEntries[i];
+                                SetEntryCount(_mobSpellCounts, entry.Id, count);
+                                ReconcileSummonedMobStates(entry, count);
+                            }
+
+                            RefreshClientOwnedUiWindowSpellState();
+                            RecordRecoveredClientOwnerAction(
+                                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter -> CUIMonsterCarnival::InsertSpelledData(activeRows={_uiWindowState.ActiveSpelledMobRows}, activeMobs={_uiWindowState.ActiveSpelledMobCount}, preview={_uiWindowState.ActiveSpelledMobPreview}).",
+                                Array.Empty<int>());
                         }
 
-                        RefreshClientOwnedUiWindowSpellState();
-                        RecordRecoveredClientOwnerAction(
-                            $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter -> CUIMonsterCarnival::InsertSpelledData(activeRows={_uiWindowState.ActiveSpelledMobRows}, activeMobs={_uiWindowState.ActiveSpelledMobCount}, preview={_uiWindowState.ActiveSpelledMobPreview}).",
-                            Array.Empty<int>());
                         RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         EnsurePacketConsumed(stream, "enter");
                         return true;
@@ -1775,20 +1809,28 @@ namespace HaCreator.MapSimulator.Fields
                 switch ((MonsterCarnivalRawPacketType)packetType)
                 {
                     case MonsterCarnivalRawPacketType.Enter:
-                        OnEnter((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
-
-                        for (int i = 0; i < (_definition?.MobEntries.Count ?? 0); i++)
+                        if (_definition?.IsReviveMode == true)
                         {
-                            int count = reader.ReadByte();
-                            MonsterCarnivalEntry entry = _definition.MobEntries[i];
-                            SetEntryCount(_mobSpellCounts, entry.Id, count);
-                            ReconcileSummonedMobStates(entry, count);
+                            OnReviveEnter((MonsterCarnivalTeam)reader.ReadByte(), currentTimeMs);
+                        }
+                        else
+                        {
+                            OnEnter((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
+
+                            for (int i = 0; i < (_definition?.MobEntries.Count ?? 0); i++)
+                            {
+                                int count = reader.ReadByte();
+                                MonsterCarnivalEntry entry = _definition.MobEntries[i];
+                                SetEntryCount(_mobSpellCounts, entry.Id, count);
+                                ReconcileSummonedMobStates(entry, count);
+                            }
+
+                            RefreshClientOwnedUiWindowSpellState();
+                            RecordRecoveredClientOwnerAction(
+                                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter -> CUIMonsterCarnival::InsertSpelledData(activeRows={_uiWindowState.ActiveSpelledMobRows}, activeMobs={_uiWindowState.ActiveSpelledMobCount}, preview={_uiWindowState.ActiveSpelledMobPreview}).",
+                                Array.Empty<int>());
                         }
 
-                        RefreshClientOwnedUiWindowSpellState();
-                        RecordRecoveredClientOwnerAction(
-                            $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter -> CUIMonsterCarnival::InsertSpelledData(activeRows={_uiWindowState.ActiveSpelledMobRows}, activeMobs={_uiWindowState.ActiveSpelledMobCount}, preview={_uiWindowState.ActiveSpelledMobPreview}).",
-                            Array.Empty<int>());
                         RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
                         EnsurePacketConsumed(stream, "raw-enter");
                         return true;
@@ -3196,13 +3238,17 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            if (definition.IsWaitingRoom)
+            if (definition.IsWaitingRoom || definition.IsReviveMode)
             {
                 _uiWindowState.CaptureWrapperOnlySurface(
                     definition.ClientOwnerLabel,
-                    $"{definition.ClientOwnerLabel} stayed on monsterCarnival/mapType={definition.MapType} without creating the shared Carnival HUD.");
+                    definition.IsReviveMode
+                        ? $"{definition.ClientOwnerLabel} decodes a single team byte in OnEnter and redraws CUserLocal name-tag ownership without creating CUIMonsterCarnival."
+                        : $"{definition.ClientOwnerLabel} stayed on monsterCarnival/mapType={definition.MapType} without creating the shared Carnival HUD.");
                 RecordClientOwnerAction(
-                    $"{definition.ClientOwnerLabel}::Init stayed on the waiting-room wrapper seam without creating the shared Carnival HUD.",
+                    definition.IsReviveMode
+                        ? $"{definition.ClientOwnerLabel}::Init stayed on the revive wrapper seam where OnEnter only updates local team ownership without creating CUIMonsterCarnival."
+                        : $"{definition.ClientOwnerLabel}::Init stayed on the waiting-room wrapper seam without creating the shared Carnival HUD.",
                     Array.Empty<int>());
                 return;
             }
@@ -3223,11 +3269,13 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            if (_definition.IsWaitingRoom)
+            if (_definition.IsWaitingRoom || _definition.IsReviveMode)
             {
                 _uiWindowState.CaptureWrapperOnlySurface(
                     _definition.ClientOwnerLabel,
-                    $"{_definition.ClientOwnerLabel} remained on the waiting-room lobby seam during enter and did not create the shared Carnival HUD.");
+                    _definition.IsReviveMode
+                        ? $"{_definition.ClientOwnerLabel} stayed on the revive wrapper seam during enter and did not create CUIMonsterCarnival."
+                        : $"{_definition.ClientOwnerLabel} remained on the waiting-room lobby seam during enter and did not create the shared Carnival HUD.");
                 return;
             }
 

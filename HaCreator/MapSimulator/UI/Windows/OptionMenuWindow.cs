@@ -2285,9 +2285,12 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
+            // Client evidence: CUIJoyPad::OnCreate and CUIJoyPad::SetDefault both cap combo entries to
+            // zmin(12, m_nJoyBtnNum), where m_nJoyBtnNum is detected per connected pad.
+            int detectedButtonCount = PlayerInput.GetDetectedConfigurableGamepadButtonCount(session.GamepadIndex, InputAction.Jump);
             return Math.Min(
                 JoypadClientSelectableButtonCount,
-                PlayerInput.GetConfigurableGamepadButtons(InputAction.Jump).Count);
+                detectedButtonCount);
         }
 
         private static void CopyJoypadSession(JoypadSessionSnapshot source, JoypadSessionSnapshot destination)

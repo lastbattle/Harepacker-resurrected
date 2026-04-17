@@ -750,30 +750,6 @@ namespace HaCreator.MapSimulator.Interaction
             return periodKeywords;
         }
 
-        private static void ApplyAffectedMapAugmentations(
-            Dictionary<string, ContextOwnedStageThemeCatalogEntry> themes,
-            Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> affectedMapsByFieldId)
-        {
-            foreach (ContextOwnedStageThemeCatalogEntry theme in themes.Values)
-            {
-                foreach (ContextOwnedStagePeriodCatalogEntry period in theme.Periods)
-                {
-                    foreach ((int fieldId, IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries) in affectedMapsByFieldId)
-                    {
-                        if (MatchesAffectedMapEntries(
-                            entries,
-                            period,
-                            questStateProvider: null,
-                            elapsedStagePeriodMilliseconds: 0,
-                            ignoreRandomTimeGate: true))
-                        {
-                            period.AffectedMapIds.Add(fieldId);
-                        }
-                    }
-                }
-            }
-        }
-
         private static bool MatchesAffectedMapEntries(
             IReadOnlyList<ContextOwnedStageAffectedMapEntry> entries,
             ContextOwnedStagePeriodCatalogEntry period,
@@ -856,7 +832,6 @@ namespace HaCreator.MapSimulator.Interaction
             Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>> affectedMapsByFieldId = stageAffectedMapRoot != null
                 ? BuildAffectedMapCatalog(stageAffectedMapRoot.WzProperties.OfType<WzImageProperty>())
                 : new Dictionary<int, IReadOnlyList<ContextOwnedStageAffectedMapEntry>>();
-            ApplyAffectedMapAugmentations(themes, affectedMapsByFieldId);
             return new ContextOwnedStageSystemCatalog(themes, affectedMapsByFieldId);
         }
 

@@ -428,15 +428,9 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     byte[] inferencePayload = rawPacket.Skip(sizeof(ushort)).ToArray();
-                    if (!IsOfficialTutorLocalOpcodeCoveredByV95OwnerTable(opcode))
-                    {
-                        LastStatus = $"Ignored CUserPool local-user opcode {opcode}: recovered v95 CUserLocal::OnPacket tutor ownership is limited to opcodes {V95HireTutorLocalOpcode}/{V95TutorMsgLocalOpcode}. {OfficialRemoteOwnerEvidence}";
-                        return false;
-                    }
-
                     if (!TryInferInboundRemoteTutorPacketTypeFromV95TutorOwnerTableNoLock(opcode, inferencePayload, out packetType, out string inferenceReason))
                     {
-                        LastStatus = $"Ignored CUserPool local-user opcode {opcode}: payload did not match the exact recovered tutor-owner wrapper for opcode {opcode}. {OfficialRemoteOwnerEvidence}";
+                        LastStatus = $"Ignored CUserPool local-user opcode {opcode}: payload did not match an exact remote tutor-owner wrapper. {OfficialRemoteOwnerEvidence}";
                         return false;
                     }
 
@@ -489,41 +483,58 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            if (opcode == V95HireTutorLocalOpcode)
-            {
-                if (!HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorHirePayload(
-                        payload,
-                        out int hireCharacterId,
-                        out bool enabled,
-                        out _))
-                {
-                    return false;
-                }
+            bool opcodeMatchesKnownHireCase = opcode == V95HireTutorLocalOpcode;
+            bool opcodeMatchesKnownMessageCase = opcode == V95TutorMsgLocalOpcode;
+            bool hirePayloadMatches = HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorHirePayload(
+                payload,
+                out int hireCharacterId,
+                out bool enabled,
+                out _);
+            bool messagePayloadMatches = HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorMessagePayload(
+                payload,
+                out int messageCharacterId,
+                out bool indexedPayload,
+                out int messageIndex,
+                out int durationMs,
+                out string text,
+                out int width,
+                out _);
 
+            if (hirePayloadMatches && messagePayloadMatches)
+            {
+                reason = $"opcode {opcode} payload matched both OnHireTutor and OnTutorMsg wrappers";
+                return false;
+            }
+
+            if (opcodeMatchesKnownHireCase && hirePayloadMatches)
+            {
                 packetType = (int)Pools.RemoteUserPacketType.UserTutorHire;
                 reason = $"v95 CUserLocal::OnPacket case {V95HireTutorLocalOpcode} -> OnHireTutor exact remote wrapper for character {hireCharacterId}, enabled={enabled}";
                 return true;
             }
 
-            if (opcode == V95TutorMsgLocalOpcode)
+            if (opcodeMatchesKnownMessageCase && messagePayloadMatches)
             {
-                if (!HaCreator.MapSimulator.MapSimulator.TryDecodeRemotePacketOwnedTutorMessagePayload(
-                        payload,
-                        out int messageCharacterId,
-                        out bool indexedPayload,
-                        out int messageIndex,
-                        out int durationMs,
-                        out string text,
-                        out int width,
-                        out _))
-                {
-                    return false;
-                }
-
                 packetType = (int)Pools.RemoteUserPacketType.UserTutorMessage;
                 reason = indexedPayload
                     ? $"v95 CUserLocal::OnPacket case {V95TutorMsgLocalOpcode} -> OnTutorMsg exact remote indexed-wrapper for character {messageCharacterId}, index={messageIndex}, duration={durationMs}"
                     : $"v95 CUserLocal::OnPacket case {V95TutorMsgLocalOpcode} -> OnTutorMsg exact remote text-wrapper for character {messageCharacterId}, width={width}, duration={durationMs}, textLength={text?.Length ?? 0}";
+                return true;
+            }
+
+            if (hirePayloadMatches)
+            {
+                packetType = (int)Pools.RemoteUserPacketType.UserTutorHire;
+                reason = $"recovered CUserPool local-user opcode {opcode} inferred as OnHireTutor by exact remote wrapper shape for character {hireCharacterId}, enabled={enabled}";
+                return true;
+            }
+
+            if (messagePayloadMatches)
+            {
+                packetType = (int)Pools.RemoteUserPacketType.UserTutorMessage;
+                reason = indexedPayload
+                    ? $"recovered CUserPool local-user opcode {opcode} inferred as OnTutorMsg indexed wrapper for character {messageCharacterId}, index={messageIndex}, duration={durationMs}"
+                    : $"recovered CUserPool local-user opcode {opcode} inferred as OnTutorMsg text wrapper for character {messageCharacterId}, width={width}, duration={durationMs}, textLength={text?.Length ?? 0}";
                 return true;
             }
 

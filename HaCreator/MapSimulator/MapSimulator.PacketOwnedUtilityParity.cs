@@ -3456,26 +3456,16 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedMesoGiveSucceededPayload(byte[] payload, out string message)
         {
             message = null;
-            if (payload == null || payload.Length < sizeof(int))
+            if (!PacketOwnedRewardResultRuntime.TryDecodeMesoGiveSucceeded(payload, out uint mesoAmount, out string decodeError))
             {
-                message = "Meso-give success payload must contain the mesos amount.";
-                return false;
-            }
-
-            using var stream = new MemoryStream(payload, writable: false);
-            using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
-            int mesoAmount = reader.ReadInt32();
-            if (stream.Position != stream.Length)
-            {
-                message = $"Meso-give success payload has {stream.Length - stream.Position} trailing byte(s).";
+                message = decodeError ?? "Meso-give success payload could not be decoded.";
                 return false;
             }
 
             StampPacketOwnedUtilityRequestState();
-            uint normalizedMesoAmount = mesoAmount < 0 ? 0u : (uint)mesoAmount;
-            string noticeText = PacketOwnedRewardResultRuntime.FormatMesoGiveSucceededText(normalizedMesoAmount);
+            string noticeText = PacketOwnedRewardResultRuntime.FormatMesoGiveSucceededText(mesoAmount);
             ShowPacketOwnedRewardResultNotice(noticeText);
-            message = $"Applied packet-owned meso-give success for {normalizedMesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner.";
+            message = $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner.";
             return true;
         }
 
@@ -3506,7 +3496,7 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             PacketOwnedRandomMesoBagPresentation presentation = PacketOwnedRewardResultRuntime.CreateRandomMesoBagPresentation(result.Rank, result.MesoAmount);
-            _chat?.AddClientChatMessage(presentation.ChatLineText, currTickCount, 12);
+            _chat?.AddClientChatMessage(presentation.ChatLineText, currTickCount, presentation.ChatMessageType);
             ShowPacketOwnedRandomMesoBagWindow(presentation);
             if (!string.IsNullOrWhiteSpace(presentation.SoundDescriptor)
                 && !TryPlayPacketOwnedWzSound(presentation.SoundDescriptor, "Item.img", out _, out _))
@@ -3910,6 +3900,7 @@ namespace HaCreator.MapSimulator
                 currentTime,
                 durationMs: PacketOwnedActiveEffectMotionBlurOwnerDurationMs,
                 follow: definition.Follow,
+                snapshotRetentionMs: definition.DelayMs,
                 ownsFrameTextures: true,
                 snapshotFrameFactory: snapshotFrameFactory);
             if (_packetOwnedActiveEffectMotionBlurId < 0)
@@ -5698,6 +5689,12 @@ namespace HaCreator.MapSimulator
                 case "decline":
                 case "no":
                     return TryMirrorMessengerIncomingInviteRejectClientSeam(argument, out message);
+                case "q":
+                case "quit":
+                case "leave":
+                case "exit":
+                case "close":
+                    return TryMirrorMessengerLeaveClientRequest(out message);
                 default:
                     return false;
             }
@@ -12351,7 +12348,7 @@ namespace HaCreator.MapSimulator
         {
             bool consumedCollisionScriptReset = TryConsumeCollisionScriptExclusiveResetFromInventoryOperationPayload(payload);
             string collisionScriptResetMessage = consumedCollisionScriptReset
-                ? "Inventory-operation payload consumed the client bExclRequestSent reset marker and cleared collision-script exclusive-request state."
+                ? "Inventory-operation payload consumed the client bExclRequestSent reset marker and cleared collision-script/transfer exclusive-request state."
                 : null;
             if (TryApplyPendingLocalItemDropInventoryOperationPayload(payload, out message))
             {
@@ -12416,6 +12413,7 @@ namespace HaCreator.MapSimulator
             }
 
             ClearCollisionScriptExclusiveRequestSent(preserveCooldown: false);
+            ClearTransferFieldExclusiveRequestSent(preserveCooldown: false);
             return true;
         }
 

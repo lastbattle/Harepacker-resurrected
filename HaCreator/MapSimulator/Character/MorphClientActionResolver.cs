@@ -225,6 +225,10 @@ namespace HaCreator.MapSimulator.Character
                     "icePanic",
                     "icemanAttack"
                 },
+                // Character/00002000.img keeps `paralyze` on explicit body redirects
+                // (`swingO3`, then `stabO2`) and Morph/*.img still publishes no
+                // verbatim `paralyze` branch.
+                ["paralyze"] = new[] { "swingO3", "stabO2", "shootF", "shoot2", "shoot1" },
                 // Evan skill rows in Skill/2200.img and Skill/2210.img through
                 // Skill/2218.img still publish these raw spell and dragon roots.
                 // Character/00002000.img keeps their body rows on explicit redirect
@@ -315,6 +319,7 @@ namespace HaCreator.MapSimulator.Character
                 // owner as raw names, while Character/00002000.img backs them with
                 // ordinary shoot frames plus late swing backstops and Morph/*.img only
                 // publishes generic shoot roots for the same surface.
+                ["shoot6"] = new[] { "shootF", "shoot2", "shoot1" },
                 ["speedDualShot"] = new[] { "shoot1", "swingT2" },
                 ["shootDb1"] = new[] { "shoot1", "swingP2" },
                 // Beginner capture skill rows still request the raw `capture` action,
@@ -560,7 +565,11 @@ namespace HaCreator.MapSimulator.Character
                 ["flashBang"] = new[] { "swingO3", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["monsterBombPrepare"] = new[] { "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab" },
                 ["monsterBombThrow"] = new[] { "swingOF", "swingO1", "swingPF", "swingT1", "swingT3", "stabO1", "stabO2", "proneStab", "alert" },
-                ["darkChain"] = new[] { "swingO3", "swingO2", "stabO1", "swingT1", "swingT3", "stabO2", "proneStab" },
+                // Battle Mage dark-chain body rows in Character/00002000.img still
+                // start on `swingO3 -> swingO2 -> stabO1`; keep that checked order
+                // first, then preserve broader stab/swing backstops for templates that
+                // do not publish the complete O-family surface.
+                ["darkChain"] = new[] { "swingO3", "swingO2", "stabO1", "stabO2", "proneStab", "swingT1", "swingT3" },
                 ["darkLightning"] = new[] { "swingO2", "stabO1", "stabO2" },
                 ["swingT2Giant"] = new[] { "alert", "stabO2" },
                 // Profession gather rows are authored as body-action redirects in
@@ -600,7 +609,10 @@ namespace HaCreator.MapSimulator.Character
                 ["cannonJump"] = new[] { "jump" },
                 // The client morph action table also carries `spiritJump`; current
                 // Morph/*.img surfaces publish generic jump instead of that raw root.
-                ["spiritJump"] = new[] { "jump" }
+                ["spiritJump"] = new[] { "jump" },
+                // Character/00002000.img keeps `slayerDoubleJump` on `jump`, while
+                // Morph/*.img still has no verbatim slayer branch.
+                ["slayerDoubleJump"] = new[] { "jump" }
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedMovementMorphFallbackAliases =

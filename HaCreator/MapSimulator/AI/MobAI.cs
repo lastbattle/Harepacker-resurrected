@@ -1220,6 +1220,11 @@ namespace HaCreator.MapSimulator.AI
 
             UpdateAngerGaugeFullChargeEffectInterval(attack);
             int repeatIntervalMs = _runtimeAngerGaugeFullChargeEffectIntervalMs;
+            if (!_hasSpecialAttackFullChargeEffectOwnerTiming || repeatIntervalMs <= 0)
+            {
+                return false;
+            }
+
             if (repeatIntervalMs > 0
                 && _fullChargeEffectStartTime != int.MinValue
                 && currentTick < _fullChargeEffectStartTime + repeatIntervalMs)
@@ -2411,9 +2416,9 @@ namespace HaCreator.MapSimulator.AI
 
         private void UpdateAngerGaugeFullChargeEffectInterval(MobAttackEntry attack)
         {
-            if (attack?.IsSpecialAttack == true && attack.AttackAfter > 0)
+            if (attack?.IsSpecialAttack == true)
             {
-                _runtimeAngerGaugeFullChargeEffectIntervalMs = attack.AttackAfter;
+                _runtimeAngerGaugeFullChargeEffectIntervalMs = Math.Max(0, attack.AttackAfter);
             }
         }
         #endregion

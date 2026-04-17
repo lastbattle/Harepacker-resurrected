@@ -1182,7 +1182,7 @@ namespace HaCreator.MapSimulator.Pools
                 skill = _skillLoader.LoadSkill(skillId);
             }
 
-            int chargeElement = ResolveRemoteAfterImageChargeElement(actor, chargeSkillId, skillId);
+            int chargeElement = ResolveRemoteAfterImageChargeElement(actor, chargeSkillId, skillId, skill);
             string resolvedActionName = ResolveRemoteMeleeActionName(
                 actor,
                 skill,
@@ -2721,10 +2721,13 @@ namespace HaCreator.MapSimulator.Pools
                 return ResolveStandardWorldAnchor(actor, currentTime, verticalOffset: 24f);
             }
 
-            int worldLeft = (int)MathF.Round(actor.Position.X + frame.Bounds.Left);
-            int worldTop = (int)MathF.Round(actor.Position.Y - frame.FeetOffset + frame.Bounds.Top);
-            int worldRightExclusive = Math.Max(worldLeft + 1, worldLeft + frame.Bounds.Width);
-            int worldBottomExclusive = Math.Max(worldTop + 1, worldTop + frame.Bounds.Height);
+            Rectangle sampledBodyRect = TryResolveRemoteHitBodyRectForParity(frame, out Rectangle bodyRect)
+                ? bodyRect
+                : frame.Bounds;
+            int worldLeft = (int)MathF.Round(actor.Position.X + sampledBodyRect.Left);
+            int worldTop = (int)MathF.Round(actor.Position.Y - frame.FeetOffset + sampledBodyRect.Top);
+            int worldRightExclusive = Math.Max(worldLeft + 1, worldLeft + sampledBodyRect.Width);
+            int worldBottomExclusive = Math.Max(worldTop + 1, worldTop + sampledBodyRect.Height);
             int randomSeed = ResolveRemoteHitMobAttackAnchorSeed(packet, currentTime, actor.CharacterId);
             Point randomPoint = ResolveRemoteHitBodyRectRandomPointForParity(
                 worldLeft,
@@ -2811,6 +2814,75 @@ namespace HaCreator.MapSimulator.Pools
                 ?? WzInfoTools.GetRealProperty(resolvedHitNode?["bFacingAttatch"])
                 ?? WzInfoTools.GetRealProperty(resolvedHitNode?["facingAttach"]));
             return facingAttach.GetValueOrDefault() > 0;
+        }
+
+        internal static bool TryResolveRemoteHitBodyRectForParity(AssembledFrame frame, out Rectangle bodyRect)
+        {
+            bodyRect = Rectangle.Empty;
+            if (frame?.Parts == null || frame.Parts.Count == 0)
+            {
+                return false;
+            }
+
+            int minX = int.MaxValue;
+            int minY = int.MaxValue;
+            int maxX = int.MinValue;
+            int maxY = int.MinValue;
+            bool foundPart = false;
+            for (int i = 0; i < frame.Parts.Count; i++)
+            {
+                AssembledPart part = frame.Parts[i];
+                if (!ShouldIncludeRemoteHitBodyRectPartForParity(part))
+                {
+                    continue;
+                }
+
+                int width = Math.Max(0, part.Texture.Width);
+                int height = Math.Max(0, part.Texture.Height);
+                if (width <= 0 || height <= 0)
+                {
+                    continue;
+                }
+
+                int left = part.OffsetX;
+                int top = part.OffsetY;
+                int right = left + width;
+                int bottom = top + height;
+                minX = Math.Min(minX, left);
+                minY = Math.Min(minY, top);
+                maxX = Math.Max(maxX, right);
+                maxY = Math.Max(maxY, bottom);
+                foundPart = true;
+            }
+
+            if (!foundPart || maxX <= minX || maxY <= minY)
+            {
+                return false;
+            }
+
+            bodyRect = new Rectangle(minX, minY, maxX - minX, maxY - minY);
+            return true;
+        }
+
+        private static bool ShouldIncludeRemoteHitBodyRectPartForParity(AssembledPart part)
+        {
+            if (part?.Texture == null || part.SourcePortableChairLayer != null)
+            {
+                return false;
+            }
+
+            return part.PartType switch
+            {
+                CharacterPartType.PortableChair => false,
+                CharacterPartType.Weapon => false,
+                CharacterPartType.WeaponOverGlove => false,
+                CharacterPartType.WeaponOverHand => false,
+                CharacterPartType.WeaponOverBody => false,
+                CharacterPartType.WeaponBelowArm => false,
+                CharacterPartType.Shield => false,
+                CharacterPartType.Cape => false,
+                _ => true
+            };
         }
 
         internal static Point ResolveRemoteHitBodyRectRandomPointForParity(
@@ -8850,14 +8922,22 @@ namespace HaCreator.MapSimulator.Pools
                 || !TryCreateRemoteTemporaryStatAvatarEffectState(
                     skillId.Value,
                     skill,
-                    existingState?.AnimationStartTime ?? currentTime,
+                    currentTime,
                     out RemoteTemporaryStatAvatarEffectState nextState))
             {
                 return null;
             }
 
-            return existingState?.SkillId == skillId.Value
-                ? new RemoteTemporaryStatAvatarEffectState
+            if (existingState?.SkillId == skillId.Value)
+            {
+                if (!reseedTimelineFromPacket)
+                {
+                    // Mirror `CUser::UpdateAr01Effect` ownership: keep the current layer object
+                    // alive while the same skill remains active and no packet-owned reseed applies.
+                    return existingState;
+                }
+
+                return new RemoteTemporaryStatAvatarEffectState
                 {
                     SkillId = nextState.SkillId,
                     Skill = nextState.Skill,
@@ -8871,8 +8951,25 @@ namespace HaCreator.MapSimulator.Pools
                         existingState.AnimationStartTime,
                         nextState.AnimationStartTime,
                         reseedTimelineFromPacket)
-                }
-                : nextState;
+                };
+            }
+
+            return nextState;
+        }
+
+        internal static RemoteTemporaryStatAvatarEffectState UpdateRemoteTemporaryStatAvatarEffectStateForTesting(
+            RemoteTemporaryStatAvatarEffectState existingState,
+            int? skillId,
+            SkillData skill,
+            int currentTime,
+            bool reseedTimelineFromPacket)
+        {
+            return UpdateRemoteTemporaryStatAvatarEffectState(
+                existingState,
+                skillId,
+                skill,
+                currentTime,
+                reseedTimelineFromPacket);
         }
 
         internal static bool TryCreateRemoteTemporaryStatAvatarEffectState(
@@ -10667,7 +10764,11 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private static int ResolveRemoteAfterImageChargeElement(RemoteUserActor actor, int chargeSkillId, int skillId)
+        private static int ResolveRemoteAfterImageChargeElement(
+            RemoteUserActor actor,
+            int chargeSkillId,
+            int skillId,
+            SkillData skill)
         {
             if (AfterImageChargeSkillResolver.TryGetChargeElement(chargeSkillId, out int explicitChargeElement))
             {
@@ -10682,9 +10783,10 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             RemoteUserTemporaryStatSnapshot temporaryStats = actor?.TemporaryStats ?? default;
-            int preferredSkillId = AfterImageChargeSkillResolver.IsKnownChargeSkillId(skillId)
-                ? skillId
-                : ResolvePreferredRemoteWeaponChargeSkillId(actor?.Build?.Job ?? 0);
+            int preferredSkillId = ResolvePreferredRemoteAfterImageChargeSkillId(
+                actor?.Build?.Job ?? 0,
+                skillId,
+                skill?.ElementAttributeToken);
             int? resolvedChargeSkillId = ResolveChargeSkillIdFromTemporaryStats(
                 temporaryStats,
                 preferredSkillId);
@@ -10794,6 +10896,40 @@ namespace HaCreator.MapSimulator.Pools
                 sizeof(int) * 4,
                 preferredSkillId,
                 out chargeElement);
+        }
+
+        internal static int ResolvePreferredRemoteAfterImageChargeSkillId(
+            int jobId,
+            int skillId,
+            string skillElementAttributeToken)
+        {
+            if (AfterImageChargeSkillResolver.IsKnownChargeSkillId(skillId))
+            {
+                return skillId;
+            }
+
+            if (AfterImageChargeSkillResolver.TryResolveChargeElementFromElementAttributeToken(
+                    skillElementAttributeToken,
+                    out int preferredChargeElement))
+            {
+                foreach (int candidateSkillId in EnumerateRemoteWeaponChargeSkillIds(jobId, preferredSkillId: null))
+                {
+                    if (AfterImageChargeSkillResolver.TryGetChargeElement(candidateSkillId, out int candidateChargeElement)
+                        && candidateChargeElement == preferredChargeElement)
+                    {
+                        return candidateSkillId;
+                    }
+                }
+
+                if (AfterImageChargeSkillResolver.TryGetRepresentativeChargeSkillIdForElement(
+                        preferredChargeElement,
+                        out int representativeSkillId))
+                {
+                    return representativeSkillId;
+                }
+            }
+
+            return ResolvePreferredRemoteWeaponChargeSkillId(jobId);
         }
 
         private static int ResolvePreferredRemoteWeaponChargeSkillId(int jobId)

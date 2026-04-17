@@ -175,7 +175,7 @@ namespace HaCreator.MapSimulator
         internal static bool TryEncodeLegacyEquippedPosition(EquipSlot slot, out int encodedPosition)
         {
             int legacySlotPosition = (int)slot;
-            if (legacySlotPosition > 0 && legacySlotPosition <= 59)
+            if (legacySlotPosition >= 0 && legacySlotPosition <= 59)
             {
                 encodedPosition = -legacySlotPosition;
                 return true;
@@ -669,7 +669,7 @@ namespace HaCreator.MapSimulator
 
         private static bool LooksLikeEncodedSlotPosition(int encodedSlotPosition)
         {
-            return encodedSlotPosition is >= 1 and <= 255
+            return encodedSlotPosition is >= 0 and <= 255
                 || encodedSlotPosition is <= -1 and >= -255;
         }
 

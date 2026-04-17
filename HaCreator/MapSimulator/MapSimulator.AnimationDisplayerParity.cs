@@ -122,6 +122,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<string, List<AnimationDisplayerSkillUseAvatarEffectVariant>> _animationDisplayerSkillUseAvatarEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<(int ItemId, EquipSlot Slot), AnimationDisplayerFollowEquipmentDefinition> _animationDisplayerFollowEquipmentCache = new();
         private readonly Dictionary<int, List<int>> _animationDisplayerFollowAnimationIds = new();
+        private readonly Dictionary<int, int> _animationDisplayerFollowRegistrationSignatures = new();
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
         private readonly List<AnimationDisplayerRemoteGrenadeActor> _animationDisplayerRemoteGrenadeActors = new();
         private int _animationDisplayerLocalQuestDeliveryItemId;
@@ -912,6 +913,12 @@ namespace HaCreator.MapSimulator
 
             string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
             string effectUol = ResolveAnimationDisplayerCombatFeedbackEffectUol(resolvedSpecialTextName, colorType);
+            if (string.IsNullOrWhiteSpace(effectUol))
+            {
+                message = $"Unsupported combat-feedback color type {(int)colorType}.";
+                return false;
+            }
+
             if (!TryGetAnimationDisplayerFrames(
                     $"combatfeedback:{colorType}:{resolvedSpecialTextName}",
                     effectUol,
@@ -1015,9 +1022,15 @@ namespace HaCreator.MapSimulator
             }
 
             string effectUol = ResolveAnimationDisplayerSquibEffectUol(variant);
-            if (!TryGetAnimationDisplayerFrames($"squib:{effectUol}", effectUol, out List<IDXObject> frames))
+            string visualEffectUol = ResolveAnimationDisplayerSquibVisualEffectUol(
+                effectUol,
+                ResolveAnimationDisplayerProperty);
+            if (!TryGetAnimationDisplayerFrames(
+                    $"squib:{effectUol}:{visualEffectUol}",
+                    visualEffectUol,
+                    out List<IDXObject> frames))
             {
-                message = $"Squib animation frames could not be loaded from {effectUol}.";
+                message = $"Squib animation frames could not be loaded from {visualEffectUol}.";
                 return false;
             }
 
@@ -1030,7 +1043,7 @@ namespace HaCreator.MapSimulator
                 fallbackPosition.Y,
                 fallbackFlip: false,
                 currentTime);
-            message = $"Registered squib animation-displayer layer from {effectUol}.";
+            message = $"Registered squib animation-displayer layer from {visualEffectUol}.";
             return true;
         }
 
@@ -1096,8 +1109,12 @@ namespace HaCreator.MapSimulator
 
         internal static string ResolveAnimationDisplayerCombatFeedbackEffectUol(string specialTextName, DamageColorType colorType)
         {
+            if (!DamageNumberRenderer.IsSupportedColorType(colorType))
+            {
+                return null;
+            }
+
             string resolvedSpecialTextName = DamageNumberRenderer.ResolveSpecialTextName(specialTextName);
-            _ = colorType;
             return CombineAnimationDisplayerEffectUol(
                 AnimationDisplayerRedCombatFeedbackEffectBaseUol,
                 resolvedSpecialTextName);
@@ -1120,6 +1137,98 @@ namespace HaCreator.MapSimulator
             return variant == 2
                 ? AnimationDisplayerSquibEffect2Uol
                 : AnimationDisplayerSquibEffectUol;
+        }
+
+        internal static string ResolveAnimationDisplayerSquibVisualEffectUol(
+            string effectUol,
+            Func<string, WzImageProperty> propertyResolver)
+        {
+            string normalizedEffectUol = NormalizeRemotePacketOwnedStringEffectUol(effectUol);
+            if (string.IsNullOrWhiteSpace(normalizedEffectUol))
+            {
+                return null;
+            }
+
+            Func<string, WzImageProperty> resolver = propertyResolver ?? ResolveAnimationDisplayerPropertyStatic;
+            WzImageProperty rootProperty = WzInfoTools.GetRealProperty(resolver(normalizedEffectUol));
+            if (rootProperty == null || rootProperty is WzCanvasProperty)
+            {
+                return normalizedEffectUol;
+            }
+
+            if (rootProperty is not WzSubProperty rootSubProperty)
+            {
+                return normalizedEffectUol;
+            }
+
+            int childCount = rootSubProperty.WzProperties?.Count ?? 0;
+            for (int index = 0; index < childCount; index++)
+            {
+                WzImageProperty child = WzInfoTools.GetRealProperty(
+                    rootSubProperty[index.ToString(CultureInfo.InvariantCulture)]);
+                string visualPath = NormalizeRemotePacketOwnedStringEffectUol(child?["visual"]?.GetString());
+                if (!string.IsNullOrWhiteSpace(visualPath))
+                {
+                    return visualPath;
+                }
+            }
+
+            if (resolver($"{normalizedEffectUol}/0") != null)
+            {
+                return $"{normalizedEffectUol}/0";
+            }
+
+            return normalizedEffectUol;
+        }
+
+        internal static bool TryResolveAnimationDisplayerSquibVariantFromEffectUol(string effectUol, out int variant)
+        {
+            variant = 0;
+            string normalizedEffectUol = NormalizeRemotePacketOwnedStringEffectUol(effectUol);
+            if (string.IsNullOrWhiteSpace(normalizedEffectUol))
+            {
+                return false;
+            }
+
+            if (normalizedEffectUol.IndexOf("/Flame/SquibEffect2", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                variant = 2;
+                return true;
+            }
+
+            if (normalizedEffectUol.IndexOf("/Flame/SquibEffect", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                variant = 1;
+                return true;
+            }
+
+            return false;
+        }
+
+        internal static bool TryResolveAnimationDisplayerTransformedOnLadderFromEffectUol(
+            string effectUol,
+            out bool onLadder)
+        {
+            onLadder = false;
+            string normalizedEffectUol = NormalizeRemotePacketOwnedStringEffectUol(effectUol);
+            if (string.IsNullOrWhiteSpace(normalizedEffectUol))
+            {
+                return false;
+            }
+
+            if (normalizedEffectUol.IndexOf("/TransformOnLadder", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                onLadder = true;
+                return true;
+            }
+
+            if (normalizedEffectUol.EndsWith("/Transform", StringComparison.OrdinalIgnoreCase)
+                || normalizedEffectUol.IndexOf("/Transform/", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            return false;
         }
 
         internal static string ResolveAnimationDisplayerTransformedEffectUol(bool onLadder)
@@ -1811,10 +1920,13 @@ namespace HaCreator.MapSimulator
 
             if (followIds.Count == 0)
             {
+                _animationDisplayerFollowRegistrationSignatures.Remove(registrationKey);
                 return false;
             }
 
             _animationDisplayerFollowAnimationIds[registrationKey] = followIds;
+            _animationDisplayerFollowRegistrationSignatures[registrationKey] =
+                ResolveAnimationDisplayerFollowCandidateSignature(ownerCharacterId);
             return true;
         }
 
@@ -2125,8 +2237,17 @@ namespace HaCreator.MapSimulator
             }
 
             string effectUol = NormalizeRemotePacketOwnedStringEffectUol(presentation.EffectPath);
-            if (string.IsNullOrWhiteSpace(effectUol)
-                || !TryLoadRemotePacketOwnedStringEffectFrames(effectUol, out List<IDXObject> frames))
+            if (string.IsNullOrWhiteSpace(effectUol))
+            {
+                return;
+            }
+
+            if (TryRegisterAnimationDisplayerRemoteUtilityOwnerEffect(presentation, actor, effectUol))
+            {
+                return;
+            }
+
+            if (!TryLoadRemotePacketOwnedStringEffectFrames(effectUol, out List<IDXObject> frames))
             {
                 return;
             }
@@ -2164,6 +2285,46 @@ namespace HaCreator.MapSimulator
                 fallbackPosition.Y,
                 fallbackFacingRight,
                 presentation.CurrentTime);
+        }
+
+        private bool TryRegisterAnimationDisplayerRemoteUtilityOwnerEffect(
+            RemoteUserActorPool.RemoteStringEffectPresentation presentation,
+            RemoteUserActor actor,
+            string effectUol)
+        {
+            Vector2 fallbackPosition = actor.Position;
+            Func<Vector2> getPosition = () =>
+            {
+                if (_remoteUserPool?.TryGetActor(presentation.CharacterId, out RemoteUserActor liveActor) == true
+                    && liveActor != null)
+                {
+                    return liveActor.Position;
+                }
+
+                return fallbackPosition;
+            };
+
+            if (TryResolveAnimationDisplayerSquibVariantFromEffectUol(effectUol, out int squibVariant))
+            {
+                return TryRegisterAnimationDisplayerSquib(
+                    presentation.CharacterId,
+                    getPosition,
+                    squibVariant,
+                    presentation.CurrentTime,
+                    out _);
+            }
+
+            if (TryResolveAnimationDisplayerTransformedOnLadderFromEffectUol(effectUol, out bool transformedOnLadder))
+            {
+                return TryRegisterAnimationDisplayerTransformed(
+                    presentation.CharacterId,
+                    getPosition,
+                    transformedOnLadder,
+                    presentation.CurrentTime,
+                    out _);
+            }
+
+            return false;
         }
 
         private void HandleRemoteMobAttackHitEffect(RemoteUserActorPool.RemoteMobAttackHitPresentation presentation)
@@ -4005,6 +4166,44 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        internal static int BuildAnimationDisplayerFollowCandidateSignature(
+            IEnumerable<AnimationDisplayerFollowEquipmentCandidate> candidates)
+        {
+            if (candidates == null)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                int signature = 17;
+                foreach (AnimationDisplayerFollowEquipmentCandidate candidate in candidates)
+                {
+                    signature = (signature * 31) + candidate.ItemId;
+                    signature = (signature * 31) + (int)candidate.Slot;
+                    signature = (signature * 31) + candidate.ClientEquipIndex;
+                }
+
+                return signature;
+            }
+        }
+
+        private int ResolveAnimationDisplayerFollowCandidateSignature(int ownerCharacterId)
+        {
+            CharacterBuild build = null;
+            if (_playerManager?.Player?.Build?.Id == ownerCharacterId)
+            {
+                build = _playerManager.Player.Build;
+            }
+            else if (_remoteUserPool?.TryGetActor(ownerCharacterId, out RemoteUserActor actor) == true)
+            {
+                build = actor?.Build;
+            }
+
+            return BuildAnimationDisplayerFollowCandidateSignature(
+                EnumerateAnimationDisplayerFollowEquipmentCandidates(build));
+        }
+
         private AnimationDisplayerFollowEquipmentDefinition LoadAnimationDisplayerFollowEquipmentDefinition(
             int itemId,
             EquipSlot sourceEquipSlot,
@@ -5068,6 +5267,7 @@ namespace HaCreator.MapSimulator
             }
 
             _animationDisplayerFollowAnimationIds.Clear();
+            _animationDisplayerFollowRegistrationSignatures.Clear();
             _packetOwnedAnimationDisplayerFollowDriverId = 0;
         }
 
@@ -5095,6 +5295,7 @@ namespace HaCreator.MapSimulator
 
                 _animationDisplayerFollowAnimationIds.Remove(registrationKey);
             }
+            _animationDisplayerFollowRegistrationSignatures.Remove(registrationKey);
 
             if (registrationKey < 0
                 && (registrationKey & AnimationDisplayerPacketOwnedFollowRegistrationMask) == AnimationDisplayerPacketOwnedFollowRegistrationMask)
@@ -5123,8 +5324,11 @@ namespace HaCreator.MapSimulator
             }
 
             int attachedDriverId = _localFollowRuntime.AttachedDriverId;
+            int currentFollowSignature = ResolveAnimationDisplayerFollowCandidateSignature(localCharacterId);
             if (_packetOwnedAnimationDisplayerFollowDriverId == attachedDriverId
-                && HasAnimationDisplayerFollowRegistration(registrationKey))
+                && HasAnimationDisplayerFollowRegistration(registrationKey)
+                && _animationDisplayerFollowRegistrationSignatures.TryGetValue(registrationKey, out int activeFollowSignature)
+                && activeFollowSignature == currentFollowSignature)
             {
                 return;
             }

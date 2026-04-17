@@ -31,6 +31,12 @@ namespace HaCreator.MapSimulator
             return !officialSessionBridgeHoldsOwnership && !transportHasConnectedClients;
         }
 
+        internal static bool ShouldFallbackGuildBossPulleyTransport(
+            bool officialSessionBridgeHoldsOwnership)
+        {
+            return !officialSessionBridgeHoldsOwnership;
+        }
+
         private bool HoldsGuildBossOfficialSessionBridgeOwnership()
         {
             return HasGuildBossOfficialSessionBridgeOwnership(

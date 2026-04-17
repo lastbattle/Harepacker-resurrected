@@ -57,6 +57,13 @@ namespace HaCreator.MapSimulator.Fields
             IReadOnlyList<WzImageProperty> children = property.WzProperties;
             if (children == null || children.Count == 0)
             {
+                if (ShouldTreatPropertyNameAsScriptAlias(property.Name)
+                    && IsBooleanLikeStateLeaf(property))
+                {
+                    Append(property.Name, inheritedDelayMs, publications, seenPublications);
+                    return;
+                }
+
                 Append(property.GetString(), inheritedDelayMs, publications, seenPublications);
                 return;
             }
@@ -331,6 +338,53 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return null;
+        }
+
+        private static bool IsBooleanLikeStateLeaf(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return false;
+            }
+
+            return property switch
+            {
+                WzIntProperty intProperty => intProperty.Value is 0 or 1,
+                WzShortProperty shortProperty => shortProperty.Value is 0 or 1,
+                WzLongProperty longProperty => longProperty.Value is 0L or 1L,
+                WzFloatProperty floatProperty => Math.Abs(floatProperty.Value) < float.Epsilon || Math.Abs(floatProperty.Value - 1f) < float.Epsilon,
+                WzDoubleProperty doubleProperty => Math.Abs(doubleProperty.Value) < double.Epsilon || Math.Abs(doubleProperty.Value - 1d) < double.Epsilon,
+                WzStringProperty stringProperty => IsBooleanLikeStateText(stringProperty.Value),
+                _ => IsBooleanLikeStateText(property.GetString())
+            };
+        }
+
+        private static bool IsBooleanLikeStateText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            if (bool.TryParse(value, out _))
+            {
+                return true;
+            }
+
+            switch (value.Trim().ToLowerInvariant())
+            {
+                case "1":
+                case "0":
+                case "on":
+                case "off":
+                case "show":
+                case "hide":
+                case "visible":
+                case "hidden":
+                    return true;
+                default:
+                    return false;
+            }
         }
     }
 }

@@ -18,7 +18,8 @@ namespace HaCreator.MapSimulator.Character
             bool Flip = false,
             Point? Move = null,
             int RotationDegrees = 0,
-            bool IsSyntheticMirroredTailPiece = false);
+            bool IsSyntheticMirroredTailPiece = false,
+            bool IsClientActionManInitPiece = false);
 
         private static readonly string[] SwingHeuristicFragments =
         {
@@ -390,6 +391,7 @@ namespace HaCreator.MapSimulator.Character
             "brandish1",
             "brandish2",
             "chainlightning",
+            "chargeBlow",
             "blast",
             "straight",
             "handgun",
@@ -1340,20 +1342,57 @@ namespace HaCreator.MapSimulator.Character
                 return 0;
             }
 
+            bool hasClientActionManInitPieces = false;
+            bool hasSyntheticMirroredTail = false;
             int eventDelayMs = 0;
             foreach (ShadowPartnerActionPiece piece in piecePlan)
             {
+                hasClientActionManInitPieces |= piece.IsClientActionManInitPiece;
+                hasSyntheticMirroredTail |= piece.IsSyntheticMirroredTailPiece;
                 if (piece.IsSyntheticMirroredTailPiece
-                    || !piece.DelayOverrideMs.HasValue
-                    || piece.DelayOverrideMs.Value >= 0)
+                    || !piece.DelayOverrideMs.HasValue)
                 {
                     continue;
                 }
 
-                eventDelayMs += Math.Abs(piece.DelayOverrideMs.Value);
+                if (piece.DelayOverrideMs.Value < 0)
+                {
+                    eventDelayMs += Math.Abs(piece.DelayOverrideMs.Value);
+                }
             }
 
-            return eventDelayMs;
+            if (eventDelayMs > 0)
+            {
+                return eventDelayMs;
+            }
+
+            if (!hasClientActionManInitPieces || hasSyntheticMirroredTail)
+            {
+                return 0;
+            }
+
+            int totalDelayMs = 0;
+            int lastFrameDelayMs = 0;
+            bool hasResolvedFrameDelay = false;
+            foreach (ShadowPartnerActionPiece piece in piecePlan)
+            {
+                if (piece.IsSyntheticMirroredTailPiece || !piece.DelayOverrideMs.HasValue)
+                {
+                    continue;
+                }
+
+                int resolvedDelay = ResolvePlaybackFrameDurationMs(piece.DelayOverrideMs.Value);
+                totalDelayMs += resolvedDelay;
+                lastFrameDelayMs = resolvedDelay;
+                hasResolvedFrameDelay = true;
+            }
+
+            if (!hasResolvedFrameDelay)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, totalDelayMs - lastFrameDelayMs);
         }
 
         internal static bool ShouldLoopShadowPartnerAction(string actionName)

@@ -1289,6 +1289,43 @@ namespace HaCreator.MapSimulator.Character.Skills
             return routedCount;
         }
 
+        internal static int RouteExpiredRepeatSustainTimerBatchToClientCancel(
+            IReadOnlyList<ClientSkillTimerExpiration> expirations,
+            Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds,
+            Func<int, int, bool> requestClientSkillCancel)
+        {
+            if (expirations == null
+                || expirations.Count == 0
+                || requestClientSkillCancel == null)
+            {
+                return 0;
+            }
+
+            int routedCount = 0;
+            HashSet<int> routedCancelFamilies = new();
+            foreach (ClientSkillTimerExpiration expiration in expirations)
+            {
+                if (expiration.SkillId <= 0
+                    || !string.Equals(expiration.Source, ClientTimerSourceRepeatSustainEnd, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                int cancelFamilyKey = ResolveClientCancelFamilyBatchKey(expiration.SkillId, resolveCancelRequestSkillIds);
+                if (!routedCancelFamilies.Add(cancelFamilyKey))
+                {
+                    continue;
+                }
+
+                if (requestClientSkillCancel(expiration.SkillId, expiration.ExpireTime))
+                {
+                    routedCount++;
+                }
+            }
+
+            return routedCount;
+        }
+
         internal static int ResolveClientCancelFamilyBatchKey(int skillId, Func<int, IReadOnlyList<int>> resolveCancelRequestSkillIds)
         {
             if (skillId <= 0)
@@ -2217,6 +2254,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private int _clientVehicleValidCount;
         private int _clientVehicleValidStartTime = int.MinValue;
         private readonly Dictionary<int, int> _recentOwnerAttackTargetTimes = new();
+        private readonly HashSet<int> _activeRepeatSustainTimerCancelFamilyKeys = new();
 
         /// <summary>
         /// Queue a skill for execution (used by skill macros)
@@ -3232,6 +3270,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             out PassiveVehicleTemporaryStatState state)
         {
             return _passiveVehicleTemporaryStatStates.TryGetValue(skillId, out state);
+        }
+
+        internal bool HasPassiveVehicleTemporaryStatObjectForParity(int skillId)
+        {
+            return _passiveVehicleTemporaryStatStates.TryGetValue(skillId, out PassiveVehicleTemporaryStatState state)
+                   && state?.HasTemporaryObject == true;
         }
 
         private void ClearCooldownPresentationState(int skillId)
@@ -5104,6 +5148,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int requestedAt = currentTime;
             OnRepeatSkillImmediateEffectRequestReady?.Invoke(skill.SkillId, requestedAt, request);
+            OnClientSkillEffectRequested?.Invoke(CreateClientLocalShowSkillEffectRequest(
+                effectSkillId,
+                skill.SkillId,
+                currentTime,
+                branchNames: ResolveClientLocalShowSkillEffectRequestedBranchNames(
+                    effectSkillId,
+                    skill)));
             ClearRepeatSkillSustain();
             _player.ClearSkillAvatarTransform(skill.SkillId);
             ClearSkillMount(skill.SkillId);
@@ -5433,11 +5484,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             RepeatSkillSustainState sustain = _activeRepeatSkillSustain;
+            bool emitTimeoutEffect = _activeRepeatSustainTimerCancelFamilyKeys.Contains(
+                ResolveClientCancelFamilyBatchKey(sustain.SkillId, ResolveClientCancelRequestSkillIds));
             CancelClientSkillTimers(sustain.SkillId, ClientTimerSourceRepeatSustainEnd);
 
             if (sustain.SkillId == RepeatSkillTankSiegeId && sustain.ReturnSkillId > 0)
             {
-                BeginPendingTankSiegeModeEndRequest(sustain, currentTime, emitTimeoutEffect: false);
+                BeginPendingTankSiegeModeEndRequest(sustain, currentTime, emitTimeoutEffect);
                 return true;
             }
 
@@ -5449,8 +5502,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 RemoveSummon(summon, cancelTimer: true);
             }
 
-            CompleteRepeatSkillSustainTeardown(sustain, currentTime, emitTimeoutEffect: false);
+            CompleteRepeatSkillSustainTeardown(sustain, currentTime, emitTimeoutEffect);
             return true;
+        }
+
+        private bool RequestClientSkillCancelFromRepeatSustainTimer(int skillId, int currentTime)
+        {
+            int cancelFamilyKey = ResolveClientCancelFamilyBatchKey(skillId, ResolveClientCancelRequestSkillIds);
+            bool contextAdded = cancelFamilyKey > 0 && _activeRepeatSustainTimerCancelFamilyKeys.Add(cancelFamilyKey);
+            try
+            {
+                return RequestClientSkillCancel(skillId, currentTime);
+            }
+            finally
+            {
+                if (contextAdded)
+                {
+                    _activeRepeatSustainTimerCancelFamilyKeys.Remove(cancelFamilyKey);
+                }
+            }
         }
 
         private void CompleteRepeatSkillSustainTeardown(RepeatSkillSustainState sustain, int currentTime, bool emitTimeoutEffect)
@@ -7324,6 +7394,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (TryResolveMovingShootAttackActionTypeFromCurrentAction(
                     currentActionName,
                     currentRawActionCode,
+                    currentWeaponType,
                     out int currentActionType))
             {
                 return currentActionType;
@@ -7422,6 +7493,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static bool TryResolveMovingShootAttackActionTypeFromCurrentAction(
             string currentActionName,
             int? currentRawActionCode,
+            string currentWeaponType,
             out int attackActionType)
         {
             attackActionType = default;
@@ -7460,10 +7532,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                     attackActionType = 9;
                     return true;
                 case ClientRandomMovingShootActionFamily.PostV95Shoot:
-                    attackActionType = MovingShootAttackActionTypeShoot;
-                    return true;
                 case ClientRandomMovingShootActionFamily.PostV95Melee:
-                    attackActionType = MovingShootAttackActionTypeMelee;
+                    if (TryResolveWzBackedMovingShootAttackActionTypeFromWeaponType(currentWeaponType, out int postV95AttackActionType))
+                    {
+                        // Preserve post-v95 owner ids (11/12) when current-action fallback
+                        // resolves a post-v95 family and explicit weapon metadata was missing.
+                        attackActionType = postV95AttackActionType;
+                        return true;
+                    }
+
+                    attackActionType = actionFamily == ClientRandomMovingShootActionFamily.PostV95Shoot
+                        ? MovingShootAttackActionTypeShoot
+                        : MovingShootAttackActionTypeMelee;
                     return true;
                 case ClientRandomMovingShootActionFamily.OneHandedStab:
                 case ClientRandomMovingShootActionFamily.TwoHandedStab:
@@ -7704,13 +7784,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return (null, null);
             }
 
+            IReadOnlyCollection<string> resolvedPublishedActionNames =
+                ResolveQueuedMovingShootPostV95PublishedActionNames(
+                    skill,
+                    queuedAttackActionType,
+                    publishedWeaponActionNames);
+
             var mappedCandidates = EnumerateQueuedMovingShootEntryMappedActionCandidates(
                     skill,
                     queuedAttackActionType,
                     currentActionName,
                     currentRawActionCode,
                     currentWeaponType,
-                    publishedWeaponActionNames)
+                    resolvedPublishedActionNames)
                 .ToArray();
             if (mappedCandidates.Length > 0)
             {
@@ -7767,6 +7853,74 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return (currentActionName, currentRawActionCode);
+        }
+
+        private static IReadOnlyCollection<string> ResolveQueuedMovingShootPostV95PublishedActionNames(
+            SkillData skill,
+            int? queuedAttackActionType,
+            IReadOnlyCollection<string> publishedWeaponActionNames)
+        {
+            if (!queuedAttackActionType.HasValue
+                || queuedAttackActionType.Value is not (MovingShootAttackActionTypeDoubleBowgun or MovingShootAttackActionTypeCannon))
+            {
+                return publishedWeaponActionNames ?? EmptyPublishedMovingShootActionNames;
+            }
+
+            publishedWeaponActionNames ??= EmptyPublishedMovingShootActionNames;
+            if (publishedWeaponActionNames.Count > 0
+                && publishedWeaponActionNames.Any(IsClientPostV95WeaponAttackActionName))
+            {
+                return publishedWeaponActionNames;
+            }
+
+            var mergedPublishedActionNames = new HashSet<string>(publishedWeaponActionNames, StringComparer.OrdinalIgnoreCase);
+            foreach (string actionName in EnumerateQueuedMovingShootSkillPublishedPostV95ActionNames(skill))
+            {
+                mergedPublishedActionNames.Add(actionName);
+            }
+
+            return mergedPublishedActionNames.Count > 0
+                ? mergedPublishedActionNames
+                : publishedWeaponActionNames;
+        }
+
+        private static IEnumerable<string> EnumerateQueuedMovingShootSkillPublishedPostV95ActionNames(SkillData skill)
+        {
+            if (skill?.ActionNames != null)
+            {
+                foreach (string actionName in skill.ActionNames)
+                {
+                    if (!string.IsNullOrWhiteSpace(actionName)
+                        && IsClientPostV95WeaponAttackActionName(actionName))
+                    {
+                        yield return actionName;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.ActionName)
+                && IsClientPostV95WeaponAttackActionName(skill.ActionName))
+            {
+                yield return skill.ActionName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.PrepareActionName)
+                && IsClientPostV95WeaponAttackActionName(skill.PrepareActionName))
+            {
+                yield return skill.PrepareActionName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.KeydownActionName)
+                && IsClientPostV95WeaponAttackActionName(skill.KeydownActionName))
+            {
+                yield return skill.KeydownActionName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.KeydownEndActionName)
+                && IsClientPostV95WeaponAttackActionName(skill.KeydownEndActionName))
+            {
+                yield return skill.KeydownEndActionName;
+            }
         }
 
         private static bool IsUnsupportedMovingShootEntryAttackActionType(int? queuedAttackActionType)
@@ -7879,6 +8033,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 yield break;
             }
 
+            string preferredActionName = NormalizeDeferredMovingShootActionOwnerName(
+                currentActionName,
+                currentRawActionCode);
+
             // Keep client-like precedence by selecting the first non-empty family surface.
             // Cannon rows can publish mixed shoot/melee roots, so allow a second pass on
             // the opposite post-v95 family when the preferred side has no usable candidate.
@@ -7887,7 +8045,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                          primaryFamily))
             {
                 (string ActionName, int RawActionCode)[] familyCandidates =
-                    EnumerateClientRandomMovingShootActionFamilyActions(actionFamily, publishedWeaponActionNames)
+                    EnumerateClientRandomMovingShootActionFamilyActions(
+                            actionFamily,
+                            publishedWeaponActionNames,
+                            preferredActionName)
                         .ToArray();
                 if (familyCandidates.Length == 0)
                 {
@@ -7905,7 +8066,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static IEnumerable<(string ActionName, int RawActionCode)> EnumerateClientRandomMovingShootActionFamilyActions(
             ClientRandomMovingShootActionFamily actionFamily,
-            IReadOnlyCollection<string> publishedWeaponActionNames = null)
+            IReadOnlyCollection<string> publishedWeaponActionNames = null,
+            string preferredActionName = null)
         {
             string[] actionNames = actionFamily switch
             {
@@ -7930,8 +8092,25 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             publishedWeaponActionNames ??= EmptyPublishedMovingShootActionNames;
             bool filterByPublishedActions = publishedWeaponActionNames.Count > 0;
+            bool preferredActionWasYielded = false;
+            if (!string.IsNullOrWhiteSpace(preferredActionName)
+                && actionNames.Contains(preferredActionName, StringComparer.OrdinalIgnoreCase)
+                && (!filterByPublishedActions
+                    || publishedWeaponActionNames.Contains(preferredActionName, StringComparer.OrdinalIgnoreCase))
+                && CharacterPart.TryGetClientRawActionCode(preferredActionName, out int preferredRawActionCode))
+            {
+                yield return (preferredActionName, preferredRawActionCode);
+                preferredActionWasYielded = true;
+            }
+
             foreach (string actionName in actionNames)
             {
+                if (preferredActionWasYielded
+                    && string.Equals(actionName, preferredActionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 if (filterByPublishedActions
                     && !publishedWeaponActionNames.Contains(actionName, StringComparer.OrdinalIgnoreCase))
                 {
@@ -7996,6 +8175,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                 (MovingShootAttackActionTypeCannon, "cannon") => true,
                 _ => false
             };
+        }
+
+        private static bool TryResolveWzBackedMovingShootAttackActionTypeFromWeaponType(
+            string currentWeaponType,
+            out int attackActionType)
+        {
+            attackActionType = default;
+            string normalizedWeaponType = currentWeaponType?.Trim().ToLowerInvariant();
+            switch (normalizedWeaponType)
+            {
+                case "double bowgun":
+                    attackActionType = MovingShootAttackActionTypeDoubleBowgun;
+                    return true;
+                case "cannon":
+                    attackActionType = MovingShootAttackActionTypeCannon;
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static ClientRandomMovingShootActionFamily ResolveClientRandomMovingShootActionFamily(
@@ -10501,6 +10699,33 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int countLimit = Math.Max(0, ResolveMovingShootAntiRepeatCountLimit(skill));
+            if (!ShouldCarryDeferredMovingShootAntiRepeatState(
+                    skill.SkillId,
+                    pending.ActionName,
+                    pending.RawActionCode,
+                    pending.AttackActionType,
+                    pending.ActionSpeed,
+                    _lastDeferredMovingShootExecution.SkillId,
+                    _lastDeferredMovingShootExecution.ActionName,
+                    _lastDeferredMovingShootExecution.RawActionCode,
+                    _lastDeferredMovingShootExecution.AttackActionType,
+                    _lastDeferredMovingShootExecution.ActionSpeed))
+            {
+                _lastDeferredMovingShootExecution = new DeferredMovingShootExecutionState
+                {
+                    SkillId = skill.SkillId,
+                    ExecuteTime = pending.ExecuteTime,
+                    LiveWorldPosition = ResolveDeferredMovingShootLiveWorldPosition(),
+                    ActionName = pending.ActionName,
+                    RawActionCode = pending.RawActionCode,
+                    AttackActionType = pending.AttackActionType,
+                    ActionSpeed = pending.ActionSpeed,
+                    RepeatCount = 0,
+                    CountLimit = countLimit
+                };
+                return false;
+            }
+
             Point liveWorldPosition = ResolveDeferredMovingShootLiveWorldPosition();
             bool canExecute = TryPassClientMovingShootAntiRepeat(
                 _lastDeferredMovingShootExecution.LiveWorldPosition,
@@ -10561,6 +10786,40 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return queuedValue.Value == previousValue.Value;
+        }
+
+        internal static bool ShouldCarryDeferredMovingShootAntiRepeatState(
+            int queuedSkillId,
+            string queuedActionName,
+            int? queuedRawActionCode,
+            int? queuedAttackActionType,
+            int? queuedActionSpeed,
+            int previousSkillId,
+            string previousActionName,
+            int? previousRawActionCode,
+            int? previousAttackActionType,
+            int? previousActionSpeed)
+        {
+            if (queuedSkillId <= 0 || previousSkillId <= 0 || queuedSkillId != previousSkillId)
+            {
+                return false;
+            }
+
+            if (!MatchesDeferredMovingShootActionOwner(
+                    queuedActionName,
+                    queuedRawActionCode,
+                    previousActionName,
+                    previousRawActionCode))
+            {
+                return false;
+            }
+
+            if (!MatchesDeferredMovingShootExecutionMetadata(queuedAttackActionType, previousAttackActionType))
+            {
+                return false;
+            }
+
+            return MatchesDeferredMovingShootExecutionMetadata(queuedActionSpeed, previousActionSpeed);
         }
 
         internal static bool MatchesDeferredMovingShootActionOwner(
@@ -10766,6 +11025,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             projectile.FallbackShootPointYOffset = fallbackShootPointYOffset;
             projectile.OwnerX = refreshedOrigin.X;
             projectile.OwnerY = refreshedOrigin.Y;
+            projectile.QueuedFollowUpSourceMicroOffsetSnapshot =
+                IsFiniteQueuedFollowUpSourceMicroOffset(preservedOwnerRelativeOffset)
+                    ? preservedOwnerRelativeOffset
+                    : null;
             projectile.X = refreshedOrigin.X + preservedOwnerRelativeOffset.X;
             projectile.Y = projectileBaseY + preservedOwnerRelativeOffset.Y;
             projectile.PreviousX = projectile.X;
@@ -13606,7 +13869,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool ShouldRegisterMagicBulletAnimation(string ballUol)
         {
-            return !string.IsNullOrEmpty(ballUol);
+            return !string.IsNullOrWhiteSpace(ballUol);
         }
 
         internal static Vector2 ResolveBulletAnimationSourcePoint(ActiveProjectile projectile)
@@ -13657,6 +13920,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (projectile == null)
             {
                 return Vector2.Zero;
+            }
+
+            if (projectile.QueuedFollowUpSourceMicroOffsetSnapshot is Vector2 queuedSnapshot
+                && IsFiniteQueuedFollowUpSourceMicroOffset(queuedSnapshot))
+            {
+                return queuedSnapshot;
             }
 
             Vector2 ownerRelativeOffset = ResolveQueuedProjectileOwnerRelativeLaunchOffset(projectile);
@@ -16144,8 +16413,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int currentTime,
             IReadOnlyList<ActiveSummon> externalSupportSummons)
         {
-            Rectangle playerHitbox = _player?.GetHitbox() ?? Rectangle.Empty;
-            if (!CanAttemptSitdownHealingPoll(_player?.State ?? PlayerState.Standing, playerHitbox))
+            Rectangle playerBodyRect = ResolveSitdownHealingLocalPlayerBodyRect(currentTime);
+            if (!CanAttemptSitdownHealingPoll(_player?.State ?? PlayerState.Standing, playerBodyRect))
             {
                 return;
             }
@@ -18153,8 +18422,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         private bool ProcessSummonHealSupport(ActiveSummon summon, int currentTime)
         {
             Rectangle supportBounds = GetSummonHealSupportBounds(summon);
-            Rectangle playerHitbox = _player.GetHitbox();
             bool isSitdownHealingRobot = SummonRuntimeRules.IsSitdownHealingSupportSummon(summon?.SkillData);
+            Rectangle playerHitbox = isSitdownHealingRobot
+                ? ResolveSitdownHealingLocalPlayerBodyRect(currentTime)
+                : _player.GetHitbox();
             if (isSitdownHealingRobot
                 && (supportBounds.IsEmpty || playerHitbox.IsEmpty))
             {
@@ -19544,6 +19815,32 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return playerState == PlayerState.Sitting
                    && !playerHitbox.IsEmpty;
+        }
+
+        private Rectangle ResolveSitdownHealingLocalPlayerBodyRect(int currentTime)
+        {
+            return _player == null
+                ? Rectangle.Empty
+                : ResolveSitdownHealingLocalPlayerBodyRect(
+                    _player.TryGetCurrentBodyOrigin(currentTime),
+                    _player.TryGetCurrentFrameBounds(currentTime));
+        }
+
+        internal static Rectangle ResolveSitdownHealingLocalPlayerBodyRect(
+            Point? bodyOrigin,
+            Rectangle? frameBounds)
+        {
+            if (!bodyOrigin.HasValue || !frameBounds.HasValue || frameBounds.Value.IsEmpty)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle localBounds = frameBounds.Value;
+            return new Rectangle(
+                bodyOrigin.Value.X + localBounds.X,
+                bodyOrigin.Value.Y + localBounds.Y,
+                localBounds.Width,
+                localBounds.Height);
         }
 
         internal static ActiveSummon SelectPreferredSitdownHealingPollSummonForTesting(
@@ -24045,6 +24342,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             TrackIfMissing(temporaryStats, ContainsAny(combinedText, "power guard"), PowerGuardBuffLabel);
             TrackIfMissing(temporaryStats, ContainsAny(combinedText, "meso guard"), MesoGuardBuffLabel);
             TrackIfMissing(temporaryStats, ContainsAny(combinedText, "combo barrier"), ComboBarrierBuffLabel);
+            bool hasWaterShieldPlaceholderProfile = hasLevelData
+                && levelData.X > 0
+                && levelData.Y <= 0
+                && levelData.Z <= 0
+                && levelData.AbnormalStatusResistance > 0
+                && levelData.ElementalResistance > 0
+                && HasAuthoredTemporaryStatProperty(levelData, "x")
+                && HasAuthoredTemporaryStatProperty(levelData, "asrR")
+                && HasAuthoredTemporaryStatProperty(levelData, "terR");
+            TrackIfMissing(temporaryStats, hasWaterShieldPlaceholderProfile, DamageReductionBuffLabel);
 
             bool isHaste = ContainsAny(combinedText, "haste");
             TrackIfMissing(temporaryStats, isHaste, "Speed");
@@ -24734,12 +25041,32 @@ namespace HaCreator.MapSimulator.Character.Skills
                                                     && (mentions("weapon")
                                                         || mentions("weapons")));
             bool mentionsOneHandedBluntAndAxe = mentions("one handed blunt and axe");
+            bool mentionsOneHanded = mentions("one handed") || mentions("1h");
+            bool mentionsTwoHanded = mentions("two handed") || mentions("2h");
             bool mentionsSwordAndAxe = mentions("swords and axes");
             bool mentionsSwordAndBlunt = mentions("swords and blunt");
             bool mentionsSpearAndPolearm = mentions("spears and polearms");
             bool mentionsStaffOnly = mentions("staff mastery");
             bool mentionsWandOnly = mentions("wand mastery");
             bool mentionsGenericSpellMastery = mentions("spell mastery") || mentions("magic mastery");
+
+            // Keep one-handed-only mastery wording from leaking onto two-handed warrior families,
+            // and vice versa, when Skill.img surfaces both generic mastery text and broad family tokens.
+            if (weaponCode is 40 or 41 or 42)
+            {
+                if (mentionsOneHanded && !mentionsTwoHanded)
+                {
+                    return false;
+                }
+            }
+            else if (weaponCode is 30 or 31 or 32)
+            {
+                if (mentionsTwoHanded && !mentionsOneHanded)
+                {
+                    return false;
+                }
+            }
+
             bool mentionsFamilyWithGenericWeaponMastery(params string[] familyTokens)
             {
                 if (!mentionsGenericWeaponMastery || familyTokens == null)
@@ -26584,6 +26911,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .ToArray();
 
             OnClientSkillTimersExpiredBatch?.Invoke(expirations);
+            RouteExpiredRepeatSustainTimerBatchToClientCancel(
+                expirations,
+                ResolveClientCancelRequestSkillIds,
+                RequestClientSkillCancelFromRepeatSustainTimer);
             RouteExpiredCycloneTimerBatchToClientCancel(
                 expirations,
                 ResolveClientCancelRequestSkillIds,
@@ -26608,6 +26939,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 OnClientSkillTimerExpired?.Invoke(timer.SkillId, timer.Source);
                 if (string.Equals(timer.Source, ClientTimerSourceSummonExpire, StringComparison.Ordinal)
                     && timer.TimerKey > 0)
+                {
+                    continue;
+                }
+
+                if (string.Equals(timer.Source, ClientTimerSourceRepeatSustainEnd, StringComparison.Ordinal))
                 {
                     continue;
                 }

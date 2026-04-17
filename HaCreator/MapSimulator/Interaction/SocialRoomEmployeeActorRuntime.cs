@@ -41,6 +41,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const float DetailScale = 0.42f;
         private const float NameTagScale = 0.5f;
         private const int ClientEmployeeActionRandomModulo = 50;
+        private const int ClientEmployeeDefaultFrameDelayMs = 180;
+        private const int MaxEmployeeActionCacheEntries = 512;
 
         private static readonly Color SignHeadlineColor = new(255, 242, 176);
         private static readonly Color SignDetailColor = new(244, 244, 244);
@@ -76,12 +78,14 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, EmployeeActionCatalog> _cashActionCatalogCache = new();
         private readonly Dictionary<int, NameTagAssets> _cashEmployeeNameTagCache = new();
         private readonly HashSet<int> _cashEmployeeNameTagMissingTemplates = new();
-        private readonly Dictionary<uint, List<IDXObject>> _cashActionCache = new();
+        private readonly Dictionary<uint, EmployeeActionCacheEntry> _cashActionCache = new();
+        private readonly Dictionary<string, uint> _cashActionKeyByName = new(StringComparer.Ordinal);
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
         private MiniRoomBalloonAssets _miniRoomBalloonAssets;
         private NameTagAssets _defaultNameTagAssets;
         private NameTagAssets _activeNameTagAssets;
+        private int _employeeActionCacheAccessStamp;
 
         private NpcItem _activeActor;
         private SocialRoomFieldActorSnapshot _activeSnapshot;
@@ -734,9 +738,22 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             uint cacheKey = BuildEmployeeActionCacheKey(templateId, actionEntry.ClientActionIndex);
-            if (_cashActionCache.TryGetValue(cacheKey, out List<IDXObject> cachedFrames))
+            string actionCacheAlias = BuildEmployeeActionCacheAlias(templateId, actionEntry.ActionName);
+
+            if (_cashActionCache.TryGetValue(cacheKey, out EmployeeActionCacheEntry cachedEntry)
+                && string.Equals(cachedEntry.ActionName, actionEntry.ActionName, StringComparison.Ordinal))
             {
-                return cachedFrames;
+                TouchEmployeeActionCacheEntry(cacheKey, cachedEntry, actionCacheAlias);
+                return cachedEntry.Frames;
+            }
+
+            if (_cashActionKeyByName.TryGetValue(actionCacheAlias, out uint aliasedCacheKey)
+                && _cashActionCache.TryGetValue(aliasedCacheKey, out EmployeeActionCacheEntry aliasedEntry)
+                && string.Equals(aliasedEntry.ActionName, actionEntry.ActionName, StringComparison.Ordinal))
+            {
+                TouchEmployeeActionCacheEntry(aliasedCacheKey, aliasedEntry, actionCacheAlias);
+                _cashActionCache[cacheKey] = aliasedEntry;
+                return aliasedEntry.Frames;
             }
 
             var frames = new List<IDXObject>();
@@ -748,15 +765,18 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                IDXObject frame = CreateEmployeeFrame(texturePool, canvas, device, defaultDelay: 180);
+                IDXObject frame = CreateEmployeeFrame(texturePool, canvas, device, defaultDelay: ClientEmployeeDefaultFrameDelayMs);
                 if (frame != null)
                 {
                     frames.Add(frame);
                 }
             }
 
-            _cashActionCache[cacheKey] = frames;
-            return frames;
+            EmployeeActionCacheEntry entry = new(actionEntry.ActionName, frames, ++_employeeActionCacheAccessStamp);
+            _cashActionCache[cacheKey] = entry;
+            _cashActionKeyByName[actionCacheAlias] = cacheKey;
+            TrimEmployeeActionCacheIfNeeded();
+            return entry.Frames;
         }
 
         internal static uint BuildEmployeeActionCacheKeyForTesting(int templateId, int actionIndex)
@@ -772,6 +792,56 @@ namespace HaCreator.MapSimulator.Interaction
         private static uint BuildEmployeeActionCacheKey(int templateId, int actionIndex)
         {
             return ((uint)Math.Max(0, templateId) << 8) | (uint)Math.Max(0, actionIndex);
+        }
+
+        private static string BuildEmployeeActionCacheAlias(int templateId, string actionName)
+        {
+            return $"{Math.Max(0, templateId)}:{NormalizeActionName(actionName)}";
+        }
+
+        private void TouchEmployeeActionCacheEntry(uint cacheKey, EmployeeActionCacheEntry entry, string actionCacheAlias)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            entry.LastAccessStamp = ++_employeeActionCacheAccessStamp;
+            _cashActionCache[cacheKey] = entry;
+            if (!string.IsNullOrWhiteSpace(actionCacheAlias))
+            {
+                _cashActionKeyByName[actionCacheAlias] = cacheKey;
+            }
+        }
+
+        private void TrimEmployeeActionCacheIfNeeded()
+        {
+            if (_cashActionCache.Count <= MaxEmployeeActionCacheEntries)
+            {
+                return;
+            }
+
+            int removeCount = Math.Max(1, _cashActionCache.Count - MaxEmployeeActionCacheEntries);
+            KeyValuePair<uint, EmployeeActionCacheEntry>[] toRemove = _cashActionCache
+                .OrderBy(pair => pair.Value?.LastAccessStamp ?? int.MinValue)
+                .ThenBy(pair => pair.Key)
+                .Take(removeCount)
+                .ToArray();
+
+            for (int i = 0; i < toRemove.Length; i++)
+            {
+                KeyValuePair<uint, EmployeeActionCacheEntry> pair = toRemove[i];
+                _cashActionCache.Remove(pair.Key);
+
+                string alias = BuildEmployeeActionCacheAlias(
+                    (int)(pair.Key >> 8),
+                    pair.Value?.ActionName);
+                if (_cashActionKeyByName.TryGetValue(alias, out uint aliasKey)
+                    && aliasKey == pair.Key)
+                {
+                    _cashActionKeyByName.Remove(alias);
+                }
+            }
         }
 
         private static WzCanvasProperty ResolveCanvasProperty(WzImageProperty property)
@@ -1889,6 +1959,20 @@ namespace HaCreator.MapSimulator.Interaction
                 internal int ClientActionIndex { get; }
                 internal WzImageProperty ActionProperty { get; }
             }
+        }
+
+        private sealed class EmployeeActionCacheEntry
+        {
+            internal EmployeeActionCacheEntry(string actionName, List<IDXObject> frames, int lastAccessStamp)
+            {
+                ActionName = NormalizeActionName(actionName);
+                Frames = frames ?? new List<IDXObject>();
+                LastAccessStamp = lastAccessStamp;
+            }
+
+            internal string ActionName { get; }
+            internal List<IDXObject> Frames { get; }
+            internal int LastAccessStamp { get; set; }
         }
 
         private sealed class MiniRoomBalloonAssets

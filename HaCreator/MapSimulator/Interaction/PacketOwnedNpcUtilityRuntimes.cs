@@ -1625,9 +1625,17 @@ namespace HaCreator.MapSimulator.Interaction
                         return true;
                     }
 
-                    if (payload.Length < 1 + (sizeof(int) * 2))
+                    if (!HasPendingFeeCalculationRequest || _pendingFeeCalculationOwnerRowIndex <= 0)
                     {
-                        message = "Store-bank packet 370 subtype 36 requires passing-day and fee integers.";
+                        StatusMessage = "CStoreBankDlg ignored packet 370 subtype 36 because no selected-row SendCalculateFeeRequest owner state is pending.";
+                        AppendNote(StatusMessage);
+                        message = StatusMessage;
+                        return true;
+                    }
+
+                    if (payload.Length != 1 + (sizeof(int) * 2))
+                    {
+                        message = "Store-bank packet 370 subtype 36 requires exactly passing-day and fee integers.";
                         return false;
                     }
 

@@ -106,6 +106,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             "Skill.wz/",
             "wz/Skill/"
         };
+        private const string ClientSummonedUolEmbeddedImagePathSuffix = ".img/";
+        private const string ClientSummonedUolEmbeddedMountedSkillPathPrefix = "skill/";
 
         private static readonly string[] PersistentAvatarEffectBranches =
         {
@@ -2924,7 +2926,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     pieceNode["delay"] != null ? GetInt(pieceNode, "delay") : ShadowPartnerClientActionResolver.ClientActionManInitDefaultPieceDelayMs,
                     GetInt(pieceNode, "flip") != 0,
                     GetVector(pieceNode, "move"),
-                    GetInt(pieceNode, "rotate")));
+                    GetInt(pieceNode, "rotate"),
+                    IsSyntheticMirroredTailPiece: false,
+                    IsClientActionManInitPiece: true));
             }
 
             if (pieces.Count == 0 && ShadowPartnerClientActionResolver.IsClientActionPieceNode(pieceOwnerNode))
@@ -2936,7 +2940,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     pieceOwnerNode["delay"] != null ? GetInt(pieceOwnerNode, "delay") : ShadowPartnerClientActionResolver.ClientActionManInitDefaultPieceDelayMs,
                     GetInt(pieceOwnerNode, "flip") != 0,
                     GetVector(pieceOwnerNode, "move"),
-                    GetInt(pieceOwnerNode, "rotate")));
+                    GetInt(pieceOwnerNode, "rotate"),
+                    IsSyntheticMirroredTailPiece: false,
+                    IsClientActionManInitPiece: true));
             }
 
             if (pieces.Count == 0)
@@ -2974,7 +2980,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     sourcePiece.Flip,
                     sourcePiece.Move,
                     sourcePiece.RotationDegrees,
-                    IsSyntheticMirroredTailPiece: true));
+                    IsSyntheticMirroredTailPiece: true,
+                    IsClientActionManInitPiece: sourcePiece.IsClientActionManInitPiece));
             }
         }
 
@@ -5934,7 +5941,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             yield return value;
-            foreach (string token in value.Split(new[] { '&', '|', ',', ';', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries))
+            foreach (string token in value.Split(new[] { '&', '|', ',', ';', '=', '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 string trimmedToken = ExtractEmbeddedClientSummonedUolPathToken(token);
                 if (!string.IsNullOrWhiteSpace(trimmedToken))
@@ -5982,7 +5989,96 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            int imagePathIndex = FindClientSummonedUolEmbeddedImagePathIndex(value);
+            if (imagePathIndex >= 0 && (skillPrefixIndex < 0 || imagePathIndex < skillPrefixIndex))
+            {
+                skillPrefixIndex = imagePathIndex;
+            }
+
+            int mountedSkillPathIndex = FindClientSummonedUolEmbeddedMountedSkillPathIndex(value);
+            if (mountedSkillPathIndex >= 0 && (skillPrefixIndex < 0 || mountedSkillPathIndex < skillPrefixIndex))
+            {
+                skillPrefixIndex = mountedSkillPathIndex;
+            }
+
             return skillPrefixIndex;
+        }
+
+        private static int FindClientSummonedUolEmbeddedImagePathIndex(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return -1;
+            }
+
+            int searchStart = 0;
+            while (searchStart < value.Length)
+            {
+                int imagePathSuffixIndex = value.IndexOf(
+                    ClientSummonedUolEmbeddedImagePathSuffix,
+                    searchStart,
+                    StringComparison.OrdinalIgnoreCase);
+                if (imagePathSuffixIndex < 0)
+                {
+                    return -1;
+                }
+
+                int imageNameEnd = imagePathSuffixIndex;
+                int imageNameStart = imageNameEnd - 1;
+                while (imageNameStart >= 0 && char.IsDigit(value[imageNameStart]))
+                {
+                    imageNameStart--;
+                }
+
+                imageNameStart++;
+                if (imageNameStart < imageNameEnd
+                    && int.TryParse(value.Substring(imageNameStart, imageNameEnd - imageNameStart), NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                {
+                    return imageNameStart;
+                }
+
+                searchStart = imagePathSuffixIndex + ClientSummonedUolEmbeddedImagePathSuffix.Length;
+            }
+
+            return -1;
+        }
+
+        private static int FindClientSummonedUolEmbeddedMountedSkillPathIndex(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return -1;
+            }
+
+            int searchStart = 0;
+            while (searchStart < value.Length)
+            {
+                int mountedSkillPathIndex = value.IndexOf(
+                    ClientSummonedUolEmbeddedMountedSkillPathPrefix,
+                    searchStart,
+                    StringComparison.OrdinalIgnoreCase);
+                if (mountedSkillPathIndex < 0)
+                {
+                    return -1;
+                }
+
+                int skillIdStart = mountedSkillPathIndex + ClientSummonedUolEmbeddedMountedSkillPathPrefix.Length;
+                int skillIdEnd = skillIdStart;
+                while (skillIdEnd < value.Length && char.IsDigit(value[skillIdEnd]))
+                {
+                    skillIdEnd++;
+                }
+
+                if (skillIdEnd > skillIdStart
+                    && int.TryParse(value.Substring(skillIdStart, skillIdEnd - skillIdStart), NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                {
+                    return mountedSkillPathIndex;
+                }
+
+                searchStart = mountedSkillPathIndex + ClientSummonedUolEmbeddedMountedSkillPathPrefix.Length;
+            }
+
+            return -1;
         }
 
         private static IEnumerable<int> EnumerateLinkedSkillIdsFromChildNames(WzImageProperty property)
@@ -6418,14 +6514,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             string canonical = value.ToString(CultureInfo.InvariantCulture);
             yield return canonical;
 
-            if (canonical.Length < 7)
+            for (int width = 2; width <= 8; width++)
             {
-                yield return value.ToString("D7", CultureInfo.InvariantCulture);
-            }
-
-            if (canonical.Length < 8)
-            {
-                yield return value.ToString("D8", CultureInfo.InvariantCulture);
+                if (canonical.Length < width)
+                {
+                    yield return value.ToString($"D{width}", CultureInfo.InvariantCulture);
+                }
             }
         }
 

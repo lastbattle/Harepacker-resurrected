@@ -90,7 +90,8 @@ namespace HaCreator.MapSimulator.Managers
             string Source,
             int ObservedAt,
             int? BoundSg88SummonObjectId,
-            int? BoundSg88RequestedAt);
+            int? BoundSg88RequestedAt,
+            PacketOwnedSg88FirstUseRequest? DecodedSg88FirstUseRequest);
         internal readonly record struct Sg88ManualAttackRequestPacketTemplate(
             int Opcode,
             byte[] RawPacket,
@@ -215,7 +216,7 @@ namespace HaCreator.MapSimulator.Managers
                     + string.Join(
                         Environment.NewLine,
                         entries.Select(entry =>
-                            $"opcode=0x{entry.Opcode:X} payloadLen={entry.PayloadLength} observedAt={entry.ObservedAt} source={entry.Source}{FormatBoundSg88Request(entry)} payloadHex={entry.PayloadHex}"));
+                            $"opcode=0x{entry.Opcode:X} payloadLen={entry.PayloadLength} observedAt={entry.ObservedAt} source={entry.Source}{FormatBoundSg88Request(entry)}{FormatObservedSg88FirstUse(entry)} payloadHex={entry.PayloadHex}"));
             }
         }
 
@@ -1144,8 +1145,24 @@ namespace HaCreator.MapSimulator.Managers
                 string.IsNullOrWhiteSpace(source) ? "unknown-source" : source.Trim(),
                 Environment.TickCount,
                 null,
-                null);
+                null,
+                TryDecodeObservedSg88FirstUse(opcode, rawPacket));
             return true;
+        }
+
+        private static PacketOwnedSg88FirstUseRequest? TryDecodeObservedSg88FirstUse(int opcode, byte[] rawPacket)
+        {
+            if (opcode != PacketOwnedMechanicRepeatSkillRuntime.Sg88FirstUseSummonOpcode)
+            {
+                return null;
+            }
+
+            return PacketOwnedMechanicRepeatSkillRuntime.TryDecodeSg88FirstUseRawPacket(
+                rawPacket,
+                out PacketOwnedSg88FirstUseRequest request,
+                out _)
+                ? request
+                : null;
         }
 
         private OutboundPacketTrace TryBindSg88ManualAttackCapture(OutboundPacketTrace trace)
@@ -1454,6 +1471,17 @@ namespace HaCreator.MapSimulator.Managers
             return trace.BoundSg88SummonObjectId.HasValue && trace.BoundSg88RequestedAt.HasValue
                 ? $" sg88Summon={trace.BoundSg88SummonObjectId.Value} sg88RequestedAt={trace.BoundSg88RequestedAt.Value}"
                 : string.Empty;
+        }
+
+        private static string FormatObservedSg88FirstUse(OutboundPacketTrace trace)
+        {
+            if (!trace.DecodedSg88FirstUseRequest.HasValue)
+            {
+                return string.Empty;
+            }
+
+            PacketOwnedSg88FirstUseRequest decoded = trace.DecodedSg88FirstUseRequest.Value;
+            return $" sg88FirstUse(requestedAt={decoded.RequestTime},skill={decoded.SkillId},level={decoded.SkillLevel},x={decoded.X},y={decoded.Y},moveLowBit={decoded.MoveActionLowBit},vecCtrl={decoded.VecCtrlState})";
         }
 
         private static string FormatObservedPacketList(IReadOnlyList<OutboundPacketTrace> observedPackets, OutboundPacketTrace? requestPacket)

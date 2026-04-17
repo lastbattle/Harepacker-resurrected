@@ -136,6 +136,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int WhisperHiddenFieldStringPoolId = 0x9E;
         private const int WhisperUserListFormatStringPoolId = 0x2D7;
         private const int WhisperUserListNotFoundStringPoolId = 0x1A2D;
+        private const int WhisperUserListHiddenFieldStringPoolId = 0x18E0;
         private const int IncomingWhisperSameChannelStringPoolId = 0x72E;
         private const int IncomingWhisperOtherChannelStringPoolId = 0x72F;
         private const int OutgoingWhisperLogStringPoolId = 0x730;
@@ -173,6 +174,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const string WhisperHiddenFieldFallback = "{0} is in a hidden field.";
         private const string WhisperUserListEntryFallback = "{0}: {1}";
         private const string WhisperUserListNotFoundFallback = "Not found.";
+        private const string WhisperUserListHiddenFieldFallback = "Hidden field.";
         private const string IncomingWhisperSameChannelFallback = "{0}: {1}";
         private const string IncomingWhisperOtherChannelFallback = "{0} ({1}): {2}";
         private const string OutgoingWhisperLogFallback = "> {0}: {1}";
@@ -1699,8 +1701,8 @@ namespace HaCreator.MapSimulator.Interaction
                         if (!HasWhisperTransferTarget(value, callbacks))
                         {
                             string hiddenText = MapleStoryStringPool.GetOrFallback(
-                                WhisperHiddenFieldStringPoolId,
-                                string.Format(CultureInfo.InvariantCulture, WhisperHiddenFieldFallback, normalizedTarget));
+                                WhisperUserListHiddenFieldStringPoolId,
+                                WhisperUserListHiddenFieldFallback);
                             text = FormatWhisperUserListText(normalizedTarget, hiddenText);
                             return true;
                         }
@@ -1722,16 +1724,10 @@ namespace HaCreator.MapSimulator.Interaction
                             : FormatWhisperUserListText(normalizedTarget, channelName.Trim());
                         return true;
                     case 4:
-                        text = FormatWhisperStringPoolText(
-                            WhisperLocationUnavailableStringPoolId,
-                            WhisperLocationUnavailableFallback,
-                            normalizedTarget);
+                        text = string.Empty;
                         return true;
                     default:
-                        text = FormatWhisperStringPoolText(
-                            WhisperLocationUnavailableStringPoolId,
-                            WhisperLocationUnavailableFallback,
-                            normalizedTarget);
+                        text = string.Empty;
                         return true;
                 }
             }

@@ -1,9 +1,11 @@
 using Microsoft.Xna.Framework.Input;
+using HaCreator.MapSimulator.Character.Skills;
 
 namespace HaCreator.MapSimulator.UI
 {
     internal static class SkillMacroOwnerKeyHandler
     {
+        internal const int ClientForwardedPrimarySlotKeyCount = 8;
         internal const int ClientForwardedFunctionKeyCount = 12;
         internal const int ClientForwardedCtrlSlotKeyCount = 8;
 
@@ -25,15 +27,45 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
-        internal static bool TryGetClientForwardedCtrlSlotIndex(Keys key, out int ctrlSlotIndex)
+        internal static bool TryGetClientForwardedPrimarySlotIndex(Keys key, out int primarySlotIndex)
         {
             if (key >= Keys.D1 && key <= Keys.D8)
             {
-                ctrlSlotIndex = key - Keys.D1;
+                primarySlotIndex = key - Keys.D1;
+                return true;
+            }
+
+            primarySlotIndex = -1;
+            return false;
+        }
+
+        internal static bool TryGetClientForwardedCtrlSlotIndex(Keys key, out int ctrlSlotIndex)
+        {
+            if (TryGetClientForwardedPrimarySlotIndex(key, out ctrlSlotIndex))
+            {
                 return true;
             }
 
             ctrlSlotIndex = -1;
+            return false;
+        }
+
+        internal static bool TryResolveClientForwardedNonFunctionHotkeySlot(Keys key, bool controlHeld, out int hotkeySlot)
+        {
+            if (controlHeld
+                && TryGetClientForwardedCtrlSlotIndex(key, out int ctrlSlotIndex))
+            {
+                hotkeySlot = SkillManager.CTRL_SLOT_OFFSET + ctrlSlotIndex;
+                return true;
+            }
+
+            if (TryGetClientForwardedPrimarySlotIndex(key, out int primarySlotIndex))
+            {
+                hotkeySlot = primarySlotIndex;
+                return true;
+            }
+
+            hotkeySlot = -1;
             return false;
         }
 

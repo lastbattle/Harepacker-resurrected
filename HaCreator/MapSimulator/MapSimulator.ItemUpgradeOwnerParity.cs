@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using System;
 using System.Buffers.Binary;
+using System.Globalization;
 
 namespace HaCreator.MapSimulator
 {
@@ -11,10 +12,13 @@ namespace HaCreator.MapSimulator
         private const int ItemUpgradeOwnerResultApplyDelayMs = 50;
         private const int ItemUpgradeOwnerExclusiveRequestCooldownMs = 500;
         private const int ItemUpgradeOwnerRequestPayloadLength = sizeof(int) * 3;
+        private const int ItemUpgradeResultReasonPayloadLength = sizeof(byte) + sizeof(int);
+        private const int ItemUpgradeResultOutcomePayloadLength = sizeof(byte) + (sizeof(int) * 2);
         private const byte ItemUpgradePacketResultCodeFail = 0;
         private const byte ItemUpgradePacketResultCodeSuccess = 1;
         private const byte ItemUpgradePacketResultCodeClientNoUpgradeSlot = 65;
         private const byte ItemUpgradePacketResultCodeClientRejected = 66;
+        private const int ItemUpgradeClientBusyResultFallbackValue = 9;
 
         private bool _itemUpgradeOwnerRequestSent;
         private int _itemUpgradeOwnerRequestSentTick = int.MinValue;
@@ -49,7 +53,7 @@ namespace HaCreator.MapSimulator
         {
             if (HasActiveItemUpgradeOwnerRequestBlock(currTickCount))
             {
-                string busyNotice = ResolveItemUpgradeBusyNotice();
+                string busyNotice = ResolveItemUpgradeBusyNotice(ItemUpgradeClientBusyResultFallbackValue);
                 ShowUtilityFeedbackMessage(busyNotice);
                 if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow)
                 {
@@ -88,7 +92,7 @@ namespace HaCreator.MapSimulator
                 RequestItemToken = requestItemToken,
                 RequestSlotPosition = requestSlotPosition
             };
-            _itemUpgradeOwnerRequestSent = true;
+            MarkItemUpgradeOwnerRequestSent();
             StampPacketOwnedUtilityRequestState();
 
             string payloadHex = Convert.ToHexString(encodedRequestPayload);
@@ -146,26 +150,42 @@ namespace HaCreator.MapSimulator
             }
 
             ShowUtilityFeedbackMessage(statusMessage);
-            _itemUpgradeOwnerRequestSent = false;
-            _itemUpgradeOwnerRequestSentTick = currTickCount;
+            if (_itemUpgradeOwnerRequestSent)
+            {
+                ClearItemUpgradeOwnerRequestState(currTickCount);
+            }
         }
 
         private bool TryApplyPacketOwnedItemUpgradeResultPayload(byte[] payload, out string message)
         {
             message = null;
-            if (_pendingItemUpgradeOwnerRequest == null)
-            {
-                message = "No pending item-upgrade request is waiting for a packet-owned result.";
-                return false;
-            }
-
             if (!TryDecodeItemUpgradeResultPayload(payload, out byte resultCode))
             {
                 message = "Packet-owned item-upgrade result payload is empty.";
                 return false;
             }
 
-            if (TryResolveItemUpgradePacketOwnedNoticeOnlyResult(payload, resultCode, out string noticeMessage))
+            bool hasReasonCode = TryDecodeItemUpgradeResultReasonCode(payload, out int reasonCode);
+            bool hasOutcomeState = TryDecodeItemUpgradeResultOutcomeState(
+                payload,
+                out int packetResultValue,
+                out _);
+
+            // CUIItemUpgrade::OnItemUpgradeResult clears request-sent and stamps the
+            // exclusive resend timer immediately when the result packet arrives.
+            ClearItemUpgradeOwnerRequestState(currTickCount);
+
+            if (_pendingItemUpgradeOwnerRequest == null)
+            {
+                message = $"Observed packet-owned item-upgrade result code {resultCode}, but no pending request is waiting for it.";
+                return true;
+            }
+
+            if (TryResolveItemUpgradePacketOwnedNoticeOnlyResult(
+                    resultCode,
+                    hasReasonCode ? reasonCode : (int?)null,
+                    hasOutcomeState ? packetResultValue : (int?)null,
+                    out string noticeMessage))
             {
                 _pendingItemUpgradeOwnerRequest.ForcedSuccess = null;
                 _pendingItemUpgradeOwnerRequest.SuppressUpgradeApply = true;
@@ -193,6 +213,17 @@ namespace HaCreator.MapSimulator
                 ? $"Queued packet-owned item-upgrade success result code {resultCode}."
                 : $"Queued packet-owned item-upgrade fail result code {resultCode}.";
             return true;
+        }
+
+        private void MarkItemUpgradeOwnerRequestSent()
+        {
+            _itemUpgradeOwnerRequestSent = true;
+        }
+
+        private void ClearItemUpgradeOwnerRequestState(int currentTick)
+        {
+            _itemUpgradeOwnerRequestSent = false;
+            _itemUpgradeOwnerRequestSentTick = currentTick;
         }
 
         private bool HasActiveItemUpgradeOwnerRequestBlock(int currentTick)
@@ -234,12 +265,29 @@ namespace HaCreator.MapSimulator
         private static bool TryDecodeItemUpgradeResultReasonCode(byte[] payload, out int reasonCode)
         {
             reasonCode = 0;
-            if (payload == null || payload.Length < (sizeof(byte) + sizeof(int)))
+            if (payload == null || payload.Length < ItemUpgradeResultReasonPayloadLength)
             {
                 return false;
             }
 
             reasonCode = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte), sizeof(int)));
+            return true;
+        }
+
+        private static bool TryDecodeItemUpgradeResultOutcomeState(
+            byte[] payload,
+            out int packetResultValue,
+            out int packetUpgradeState)
+        {
+            packetResultValue = 0;
+            packetUpgradeState = 0;
+            if (payload == null || payload.Length < ItemUpgradeResultOutcomePayloadLength)
+            {
+                return false;
+            }
+
+            packetResultValue = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte), sizeof(int)));
+            packetUpgradeState = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte) + sizeof(int), sizeof(int)));
             return true;
         }
 
@@ -304,6 +352,14 @@ namespace HaCreator.MapSimulator
             return TryDecodeItemUpgradeResultPayload(payload, out resultCode);
         }
 
+        internal static bool TryDecodeItemUpgradeResultOutcomeStateForTests(
+            byte[] payload,
+            out int packetResultValue,
+            out int packetUpgradeState)
+        {
+            return TryDecodeItemUpgradeResultOutcomeState(payload, out packetResultValue, out packetUpgradeState);
+        }
+
         internal static byte[] BuildItemUpgradeRequestPayloadForTests(int itemToken, int slotPosition, int updateTick)
         {
             return BuildItemUpgradeRequestPayload(itemToken, slotPosition, updateTick);
@@ -334,12 +390,24 @@ namespace HaCreator.MapSimulator
             byte resultCode,
             out string message)
         {
+            int? reasonCode = TryDecodeItemUpgradeResultReasonCode(payload, out int decodedReasonCode)
+                ? decodedReasonCode
+                : (int?)null;
+            return TryResolveItemUpgradePacketOwnedNoticeOnlyResult(resultCode, reasonCode, resultValue: null, out message);
+        }
+
+        private static bool TryResolveItemUpgradePacketOwnedNoticeOnlyResult(
+            byte resultCode,
+            int? reasonCode,
+            int? resultValue,
+            out string message)
+        {
             message = null;
             if (resultCode == ItemUpgradePacketResultCodeClientNoUpgradeSlot)
             {
-                if (TryDecodeItemUpgradeResultReasonCode(payload, out int noSlotReasonCode) && noSlotReasonCode != 0)
+                if (reasonCode.GetValueOrDefault() != 0)
                 {
-                    message = ResolveItemUpgradeBusyNotice();
+                    message = ResolveItemUpgradeBusyNotice(resultValue ?? ItemUpgradeClientBusyResultFallbackValue);
                 }
                 else
                 {
@@ -354,18 +422,18 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryDecodeItemUpgradeResultReasonCode(payload, out int reasonCode))
+            if (!reasonCode.HasValue)
             {
                 message = ResolveItemUpgradeBlockedStateNotice();
                 return true;
             }
 
-            message = reasonCode switch
+            message = reasonCode.Value switch
             {
                 1 => ResolveItemUpgradeSelectionRequiredNotice(),
                 2 => ResolveItemUpgradeIncompatibleSelectionNotice(),
                 3 => ResolveItemUpgradeNoUpgradeSlotNotice(),
-                _ => ResolveItemUpgradeBusyNotice()
+                _ => ResolveItemUpgradeBusyNotice(resultValue ?? ItemUpgradeClientBusyResultFallbackValue)
             };
             return true;
         }
@@ -378,9 +446,12 @@ namespace HaCreator.MapSimulator
             return TryResolveItemUpgradePacketOwnedNoticeOnlyResult(payload, resultCode, out message);
         }
 
-        private static string ResolveItemUpgradeBusyNotice()
+        private static string ResolveItemUpgradeBusyNotice(int resultValue)
         {
-            return ResolveItemUpgradeStringPoolNotice(0x1A86, "An enhancement request is already in progress.");
+            return ResolveItemUpgradeFormattedStringPoolNotice(
+                0x1A86,
+                resultValue,
+                "An enhancement request is already in progress.");
         }
 
         private static string ResolveItemUpgradeBlockedStateNotice()
@@ -412,6 +483,32 @@ namespace HaCreator.MapSimulator
             }
 
             return text;
+        }
+
+        private static string ResolveItemUpgradeFormattedStringPoolNotice(
+            int stringPoolId,
+            int argument,
+            string fallback)
+        {
+            string compositeFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallback,
+                maxPlaceholderCount: 1,
+                out _);
+            if (string.IsNullOrWhiteSpace(compositeFormat))
+            {
+                return fallback;
+            }
+
+            try
+            {
+                string resolved = string.Format(CultureInfo.InvariantCulture, compositeFormat, argument);
+                return string.IsNullOrWhiteSpace(resolved) ? fallback : resolved;
+            }
+            catch (FormatException)
+            {
+                return fallback;
+            }
         }
     }
 }

@@ -2222,15 +2222,70 @@ namespace HaCreator.MapSimulator
         private MonsterBookSnapshot ApplyActiveMonsterBookRegistration(int mobId, bool registered)
         {
             UserInfoUI.UserInfoActionContext context = ResolveBookCollectionActionContext();
+            if (context.IsRemoteTarget)
+            {
+                ShowUtilityFeedbackMessage("Monster Book register/release remains unavailable while inspecting a remote target.");
+                return BuildActiveMonsterBookSnapshot();
+            }
+
+            if (_pendingMonsterBookRegistrationRequest != null)
+            {
+                ShowUtilityFeedbackMessage("A Monster Book register/release request is already awaiting a packet-owned result.");
+                return BuildActiveMonsterBookSnapshot();
+            }
+
             var ownerIdentity = ResolveMonsterBookOwnerIdentity(
                 context,
                 _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build);
-            return _monsterBookManager.SetRegisteredCard(
+            MonsterBookSnapshot snapshot = _monsterBookManager.GetSnapshot(
+                ownerIdentity.Build,
+                ownerIdentity.CharacterId,
+                ownerIdentity.CharacterName);
+            if (mobId <= 0)
+            {
+                return snapshot;
+            }
+
+            MonsterBookCardSnapshot targetCard = snapshot.Grades?
+                .SelectMany(grade => grade?.Pages ?? Array.Empty<MonsterBookPageSnapshot>())
+                .SelectMany(page => page?.Cards ?? Array.Empty<MonsterBookCardSnapshot>())
+                .FirstOrDefault(card => card?.MobId == mobId);
+            if (targetCard?.IsDiscovered != true)
+            {
+                return snapshot;
+            }
+
+            if (registered && targetCard.IsRegistered)
+            {
+                return snapshot;
+            }
+
+            if (!registered && !targetCard.IsRegistered)
+            {
+                return snapshot;
+            }
+
+            int responseDelayMs;
+            string requestSummary = DispatchMonsterBookRegistrationRequest(
                 ownerIdentity.Build,
                 ownerIdentity.CharacterId,
                 ownerIdentity.CharacterName,
                 mobId,
-                registered);
+                registered,
+                out responseDelayMs);
+            _pendingMonsterBookRegistrationRequest = new PendingMonsterBookRegistrationRequest
+            {
+                Build = ownerIdentity.Build,
+                CharacterId = ownerIdentity.CharacterId,
+                CharacterName = ownerIdentity.CharacterName,
+                MobId = mobId,
+                Registered = registered,
+                SentTick = Environment.TickCount64,
+                ResponseDelayMs = responseDelayMs,
+                RequestSummary = requestSummary
+            };
+            ShowUtilityFeedbackMessage(requestSummary);
+            return snapshot;
         }
 
 
@@ -20943,7 +20998,8 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            return ShouldAutoConsumePickedUpItem(itemId)
+            return InventoryItemMetadataResolver.IsConsumedOnPickup(itemId)
+                   || ShouldAutoConsumePickedUpItem(itemId)
                    || InventoryItemMetadataResolver.ShouldAutoRunOnPickupInteraction(itemId);
         }
 
@@ -21151,6 +21207,14 @@ namespace HaCreator.MapSimulator
             return consumeOnUse
                 ? Math.Max(0, normalizedQuantity - 1)
                 : normalizedQuantity;
+        }
+
+        internal static bool ShouldBurnUnsupportedConsumeOnPickupRemainder(
+            bool consumedOnPickup,
+            bool autoConsumeHandled,
+            bool autoRunHandled)
+        {
+            return consumedOnPickup && !autoConsumeHandled && !autoRunHandled;
         }
 
 
@@ -21778,6 +21842,7 @@ namespace HaCreator.MapSimulator
             {
                 int itemId = int.TryParse(drop.ItemId, out int parsedItemId) ? parsedItemId : 0;
                 bool consumeOnPickupMonsterCard = _monsterBookManager.IsConsumeOnPickupCardItem(itemId);
+                bool consumedOnPickupMetadata = !consumeOnPickupMonsterCard && InventoryItemMetadataResolver.IsConsumedOnPickup(itemId);
                 bool autoConsumePickedUpItem = !consumeOnPickupMonsterCard && ShouldAutoConsumePickedUpItem(itemId);
                 bool autoRunPickedUpItem = !consumeOnPickupMonsterCard
                                            && !autoConsumePickedUpItem
@@ -21832,6 +21897,14 @@ namespace HaCreator.MapSimulator
                     {
                         AddItemToInventoryWindow(drop.ItemId, remainderQuantity);
                     }
+                }
+                else if (ShouldBurnUnsupportedConsumeOnPickupRemainder(
+                             consumedOnPickupMetadata,
+                             autoConsumePickedUpItem,
+                             autoRunPickedUpItem))
+                {
+                    // Keep consumeOnPickup rows pickup-owned even when the simulator does not
+                    // model their authored effect family yet.
                 }
                 else if (!autoHandlePickedUpItem || !TryApplyPickedUpItemRuntime(itemId, currentTime))
                 {
@@ -21888,7 +21961,18 @@ namespace HaCreator.MapSimulator
             Pools.DropType dropType = contextDrop?.Type ?? Pools.DropType.Item;
             int quantity = contextDrop != null ? Math.Max(1, contextDrop.Quantity) : 1;
             int mesoAmount = contextDrop?.MesoAmount ?? 0;
-            string recentActorName = ResolveRecentPickupActorName(result.RecentPickup);
+            Pools.RecentPickupRecord recentPickup = result.RecentPickup;
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (result.FailureReason == Pools.DropPickupFailureReason.Unavailable
+                && !ShouldTreatRecentPickupAsRemotePreemption(
+                    recentPickup,
+                    localCharacterId,
+                    IsLocalPetRuntimeId))
+            {
+                recentPickup = null;
+            }
+
+            string recentActorName = ResolveRecentPickupActorName(recentPickup);
             PickupNoticeMessagePair messagePair = PickupNoticeTextFormatter.FormatFailure(
                 result.FailureReason,
                 itemName,
@@ -21897,7 +21981,7 @@ namespace HaCreator.MapSimulator
                 mesoAmount,
                 pickedByPet,
                 sourceName,
-                result.RecentPickup,
+                recentPickup,
                 recentActorName,
                 ResolvePickupNoticeItemName);
 
@@ -21911,6 +21995,27 @@ namespace HaCreator.MapSimulator
                 messagePair,
                 currentTime,
                 PickupNoticeTextFormatter.ResolveFailureScreenType(result.FailureReason));
+        }
+
+        internal static bool ShouldTreatRecentPickupAsRemotePreemption(
+            Pools.RecentPickupRecord recentPickup,
+            int localCharacterId,
+            Func<int, bool> localPetRuntimeIdEvaluator)
+        {
+            if (recentPickup == null)
+            {
+                return false;
+            }
+
+            return recentPickup.ActorKind switch
+            {
+                Pools.DropPickupActorKind.Player => localCharacterId <= 0 || recentPickup.PickerId != localCharacterId,
+                Pools.DropPickupActorKind.Pet => recentPickup.PickerId > 0
+                    && (localPetRuntimeIdEvaluator?.Invoke(recentPickup.PickerId) != true),
+                Pools.DropPickupActorKind.Mob => true,
+                Pools.DropPickupActorKind.Other => true,
+                _ => true
+            };
         }
 
 
@@ -22102,6 +22207,24 @@ namespace HaCreator.MapSimulator
                     : FormatOtherPickupActorLabel(recentPickup.PickerId),
                 _ => null
             };
+        }
+
+        private bool IsLocalPetRuntimeId(int runtimeId)
+        {
+            if (runtimeId <= 0 || _playerManager?.Pets?.ActivePets == null)
+            {
+                return false;
+            }
+
+            foreach (PetRuntime pet in _playerManager.Pets.ActivePets)
+            {
+                if (pet?.RuntimeId == runtimeId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private bool TrySurfaceRecentRemoteDropPickupNotice(
@@ -26295,8 +26418,10 @@ namespace HaCreator.MapSimulator
 
             {
 
-                bool allowLocalPreview = !_coconutPacketInbox.HasConnectedClients
-                    && !_coconutOfficialSessionBridge.HasConnectedSession;
+                bool officialSessionBridgeHoldsOwnership = _coconutOfficialSessionBridge.HoldsLiveSessionOwnership;
+                bool allowLocalPreview = ShouldAllowLocalCoconutAttackPreview(
+                    officialSessionBridgeHoldsOwnership,
+                    _coconutPacketInbox.HasConnectedClients);
                 if (coconut.TryHandleNormalAttack(worldHitbox, currentTick, skillId: skillId, allowLocalPreview: allowLocalPreview))
                 {
                     FlushPendingCoconutAttackRequests();
@@ -26325,6 +26450,13 @@ namespace HaCreator.MapSimulator
                 resolution.CurrentTime,
                 resolution.SkillId,
                 resolution.OwnerLane);
+        }
+
+        internal static bool ShouldAllowLocalCoconutAttackPreview(
+            bool officialSessionBridgeHoldsOwnership,
+            bool transportHasConnectedClients)
+        {
+            return !officialSessionBridgeHoldsOwnership && !transportHasConnectedClients;
         }
 
         private void UpsertLocalOwnedAffectedAreaFromAttack(
@@ -26410,6 +26542,7 @@ namespace HaCreator.MapSimulator
                 || levelData == null
                 || !IsSupportedLocalAttackAreaOwnerLane(ownerLane)
                 || skill.Type == SkillType.Summon
+                || IsClientSummonInfoType(skill.ClientInfoType)
                 || string.Equals(skill.ZoneType, "invincible", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
@@ -26533,18 +26666,38 @@ namespace HaCreator.MapSimulator
 
             int resolvedMask = 0;
             string token = skill.ElementAttributeToken ?? string.Empty;
-            for (int i = 0; i < token.Length; i++)
+            if (string.IsNullOrWhiteSpace(token))
             {
-                resolvedMask |= char.ToLowerInvariant(token[i]) switch
+                return 0;
+            }
+
+            string[] parts = token.Split(new[] { ',', '|', '&', ' ', '/', '\\', ';', ':' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+            {
+                parts = new[] { token };
+            }
+
+            for (int partIndex = 0; partIndex < parts.Length; partIndex++)
+            {
+                string part = parts[partIndex]?.Trim();
+                if (string.IsNullOrWhiteSpace(part))
                 {
-                    'f' => 1,
-                    'i' => 2,
-                    'l' => 4,
-                    's' => 8,
-                    'h' => 16,
-                    'd' => 32,
-                    _ => 0
-                };
+                    continue;
+                }
+
+                if (TryResolveLocalOwnedElementToken(part, out int partMask))
+                {
+                    resolvedMask |= partMask;
+                    continue;
+                }
+
+                for (int i = 0; i < part.Length; i++)
+                {
+                    if (TryResolveLocalOwnedElementToken(part[i].ToString(), out int charMask))
+                    {
+                        resolvedMask |= charMask;
+                    }
+                }
             }
 
             return resolvedMask;
@@ -26581,17 +26734,24 @@ namespace HaCreator.MapSimulator
             }
 
             return skill.Projectile == null
+                   && !skill.UsesAffectedSkillBodyAttack
                    && skill.AttackType != SkillAttackType.Ranged
                    && skill.AttackType != SkillAttackType.Magic
                    && !skill.IsMagicDamageSkill
-                   && skill.ClientInfoType != 2
-                   && skill.ClientInfoType != 10
-                   && skill.ClientInfoType != 52;
+                   && !IsClientShootInfoType(skill.ClientInfoType)
+                   && !IsClientMagicInfoType(skill.ClientInfoType);
         }
 
         private static bool IsClientShootLaneAreaCompatible(SkillData skill)
         {
             if (skill == null)
+            {
+                return false;
+            }
+
+            if (IsClientMagicInfoType(skill.ClientInfoType)
+                || skill.AttackType == SkillAttackType.Magic
+                || skill.IsMagicDamageSkill)
             {
                 return false;
             }
@@ -26603,8 +26763,7 @@ namespace HaCreator.MapSimulator
 
             return skill.Projectile != null
                    || skill.AttackType == SkillAttackType.Ranged
-                   || skill.ClientInfoType == 2
-                   || skill.ClientInfoType == 52;
+                   || IsClientShootInfoType(skill.ClientInfoType);
         }
 
         private static bool IsClientMagicLaneAreaCompatible(SkillData skill)
@@ -26616,7 +26775,7 @@ namespace HaCreator.MapSimulator
 
             return skill.AttackType == SkillAttackType.Magic
                    || skill.IsMagicDamageSkill
-                   || skill.ClientInfoType == 10
+                   || IsClientMagicInfoType(skill.ClientInfoType)
                    || (skill.ClientInfoType == 32 && skill.IsMassSpell);
         }
 
@@ -26635,13 +26794,55 @@ namespace HaCreator.MapSimulator
 
             return skill.UsesAffectedSkillBodyAttack
                    || ContainsBodyAttackMetadata(skill.AffectedSkillEffect)
-                   || (skill.AreaAttack && (skill.ClientInfoType == 1 || !string.IsNullOrWhiteSpace(skill.AffectedSkillEffect)));
+                   || (skill.AreaAttack && (IsClientBodyInfoType(skill.ClientInfoType) || !string.IsNullOrWhiteSpace(skill.AffectedSkillEffect)));
         }
 
         private static bool ContainsBodyAttackMetadata(string affectedSkillEffect)
         {
             return !string.IsNullOrWhiteSpace(affectedSkillEffect)
                    && affectedSkillEffect.IndexOf("bodyAttack", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsClientShootInfoType(int infoType)
+        {
+            return infoType == 2 || infoType == 52;
+        }
+
+        private static bool IsClientMagicInfoType(int infoType)
+        {
+            return infoType == 10;
+        }
+
+        private static bool IsClientBodyInfoType(int infoType)
+        {
+            return infoType == 1;
+        }
+
+        private static bool IsClientSummonInfoType(int infoType)
+        {
+            return infoType == 33;
+        }
+
+        private static bool TryResolveLocalOwnedElementToken(string token, out int mask)
+        {
+            mask = token.Trim().ToLowerInvariant() switch
+            {
+                "f" => 1,
+                "fire" => 1,
+                "i" => 2,
+                "ice" => 2,
+                "l" => 4,
+                "lightning" => 4,
+                "s" => 8,
+                "poison" => 8,
+                "h" => 16,
+                "holy" => 16,
+                "d" => 32,
+                "dark" => 32,
+                _ => 0
+            };
+
+            return mask != 0;
         }
 
         private int ResolveLocalOwnedAffectedAreaDurationSeconds(SkillData skill, SkillLevelData levelData, int skillLevel)
@@ -26863,7 +27064,16 @@ namespace HaCreator.MapSimulator
 
             if (_npcInteractionOverlay?.CapturesKeyboardInput == true)
             {
-                _npcInteractionOverlay.HandleCompositionText(compositionText);
+                if (ShouldForwardInitialQuizOwnerImeToNpcOverlay(
+                        initialQuizCapturesWindowInput,
+                        npcOverlayCapturesKeyboardInput: true))
+                {
+                    _npcInteractionOverlay.HandleCompositionText(compositionText);
+                }
+                else
+                {
+                    _npcInteractionOverlay.ClearCompositionText();
+                }
             }
             else
             {
@@ -27572,7 +27782,7 @@ namespace HaCreator.MapSimulator
                     HasPendingRequest: _passiveTransferRequestPending,
                     HasOneTimeActionCompleted: player?.HasActivePassiveTransferFieldOneTimeAction() != true,
                     HasReadyFieldInterface: player?.HasActivePassiveTransferFieldOneTimeAction() != true
-                                            && ResolvePassiveTransferFieldReadyState(currentTime, requirePortalCollision: false),
+                                            && ResolvePassiveTransferFieldReadyState(currentTime),
                     HasCollidingTransferPortal: hasCollidingTransferPortal,
                     HasLiveFieldInterface: hasLiveFieldInterface,
                     HasPendingMapChange: _gameState.PendingMapChange,
@@ -28021,7 +28231,13 @@ namespace HaCreator.MapSimulator
         private bool CanSendCollisionScriptPortalRequest(PortalInstance portal, int portalIndex, int currentTime)
         {
             RefreshCollisionScriptExclusiveRequestState(currentTime);
-            if (portal == null || _collisionScriptExclusiveRequestSent)
+            if (portal == null
+                || _collisionScriptExclusiveRequestSent
+                || ShouldBlockCollisionScriptPortalSendFromTransferExclusiveRequest(
+                    _transferFieldExclusiveRequestSent,
+                    _transferFieldExclusiveRequestSentTick,
+                    currentTime,
+                    TRANSFER_FIELD_REQUEST_EXCLUSIVE_COOLDOWN_MS))
             {
                 return false;
             }
@@ -28538,17 +28754,44 @@ namespace HaCreator.MapSimulator
 
         private bool CanSendTransferFieldRequest(int currentTime)
         {
-            return !PassiveTransferFieldReadinessEvaluator.IsExclusiveTransferRequestInFlight(
+            return !IsTransferFieldExclusiveRequestInFlight(currentTime);
+        }
+
+        private bool IsTransferFieldExclusiveRequestInFlight(int currentTime)
+        {
+            return PassiveTransferFieldReadinessEvaluator.IsExclusiveTransferRequestInFlight(
                 _transferFieldExclusiveRequestSent,
                 _transferFieldExclusiveRequestSentTick,
                 currentTime,
                 TRANSFER_FIELD_REQUEST_EXCLUSIVE_COOLDOWN_MS);
         }
 
+        internal static bool ShouldBlockCollisionScriptPortalSendFromTransferExclusiveRequest(
+            bool transferExclusiveRequestSent,
+            int transferExclusiveRequestSentTick,
+            int currentTime,
+            int cooldownMs)
+        {
+            return PassiveTransferFieldReadinessEvaluator.IsExclusiveTransferRequestInFlight(
+                transferExclusiveRequestSent,
+                transferExclusiveRequestSentTick,
+                currentTime,
+                cooldownMs);
+        }
+
         private void SetTransferFieldExclusiveRequestSent(int currentTime)
         {
             _transferFieldExclusiveRequestSent = true;
             _transferFieldExclusiveRequestSentTick = currentTime;
+        }
+
+        private void ClearTransferFieldExclusiveRequestSent(bool preserveCooldown = true)
+        {
+            _transferFieldExclusiveRequestSent = false;
+            if (!preserveCooldown)
+            {
+                _transferFieldExclusiveRequestSentTick = int.MinValue;
+            }
         }
 
         private void RegisterPortalCollisionRequestSource(int portalIndex)
@@ -31557,16 +31800,37 @@ namespace HaCreator.MapSimulator
                 };
             }
 
+            QuestDemandItemQueryState detailItemQueryState = null;
+            bool hasDetailItemQuery = reference.Kind == QuestDetailInlineReferenceKind.Item &&
+                                      _activeQuestDetailQuestId > 0 &&
+                                      _questRuntime.TryBuildQuestDemandItemQuery(_activeQuestDetailQuestId, out detailItemQueryState) &&
+                                      detailItemQueryState != null;
+
             if (reference.Kind == QuestDetailInlineReferenceKind.Item &&
-                _activeQuestDetailQuestId > 0 &&
-                _questRuntime.TryBuildQuestDemandItemQuery(_activeQuestDetailQuestId, out QuestDemandItemQueryState itemQueryState) &&
-                itemQueryState != null)
+                _activeQuestDetailQuestId > 0)
             {
-                return new QuestWindowActionResult
+                QuestWindowDetailState detailState = GetQuestWindowDetailStateWithPacketState(_activeQuestDetailQuestId);
+                if (detailState?.TargetItemId == reference.TargetId &&
+                    detailState.DeliveryType != QuestDetailDeliveryType.None)
                 {
-                    QuestId = _activeQuestDetailQuestId,
-                    Messages = new[] { LaunchQuestDemandItemQuery(itemQueryState, reference.TargetId) }
-                };
+                    bool completionPhase = detailState.DeliveryType == QuestDetailDeliveryType.Complete;
+                    return HandleQuestDeliveryLocalHandoff(
+                        _activeQuestDetailQuestId,
+                        completionPhase,
+                        sourceContext: $"quest-detail inline demand-item {(completionPhase ? "completion" : "accept")} handoff",
+                        localHandoff: () => ApplyDeliveryQuestLaunch(_activeQuestDetailQuestId, detailState.TargetItemId.GetValueOrDefault(), Array.Empty<int>()));
+                }
+
+                if (hasDetailItemQuery &&
+                    detailItemQueryState.VisibleItemIds != null &&
+                    detailItemQueryState.VisibleItemIds.Contains(reference.TargetId))
+                {
+                    return new QuestWindowActionResult
+                    {
+                        QuestId = _activeQuestDetailQuestId,
+                        Messages = new[] { LaunchQuestDemandItemQuery(detailItemQueryState, reference.TargetId) }
+                    };
+                }
             }
 
             int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
@@ -31592,9 +31856,38 @@ namespace HaCreator.MapSimulator
                     label = ResolveQuestDetailInlineMapName(reference);
                     break;
                 case QuestDetailInlineReferenceKind.Item:
-                    mapIds = currentMapId > 0 ? new[] { currentMapId } : Array.Empty<int>();
+                    mapIds = ResolveQuestDemandQueryMapIds(reference.TargetId, fallbackMapId: 0);
+                    if ((mapIds == null || mapIds.Count == 0) &&
+                        hasDetailItemQuery &&
+                        detailItemQueryState.VisibleItemMapIds != null &&
+                        detailItemQueryState.VisibleItemMapIds.TryGetValue(reference.TargetId, out IReadOnlyList<int> runtimeMapIds) &&
+                        runtimeMapIds != null &&
+                        runtimeMapIds.Count > 0)
+                    {
+                        mapIds = runtimeMapIds;
+                    }
+
+                    if ((mapIds == null || mapIds.Count == 0) &&
+                        _activeQuestDetailQuestId > 0 &&
+                        _questRuntime.TryGetQuestWorldMapTarget(_activeQuestDetailQuestId, _playerManager?.Player?.Build, out QuestWorldMapTarget inlineTarget) &&
+                        inlineTarget?.Kind == QuestWorldMapTargetKind.Item &&
+                        inlineTarget.EntityId == reference.TargetId)
+                    {
+                        mapIds = inlineTarget.MapIds?.Count > 0
+                            ? inlineTarget.MapIds
+                            : (inlineTarget.MapId > 0 ? new[] { inlineTarget.MapId } : Array.Empty<int>());
+                    }
+
                     resultKind = WorldMapUI.SearchResultKind.Item;
                     label = ResolveQuestDetailInlineItemName(reference);
+                    if ((mapIds == null || mapIds.Count == 0) &&
+                        hasDetailItemQuery &&
+                        detailItemQueryState.HiddenItemCount > 0 &&
+                        !string.IsNullOrWhiteSpace(detailItemQueryState.FallbackNpcName))
+                    {
+                        resultKind = WorldMapUI.SearchResultKind.Npc;
+                        label = detailItemQueryState.FallbackNpcName;
+                    }
                     break;
                 default:
                     return new QuestWindowActionResult
@@ -32293,6 +32586,7 @@ namespace HaCreator.MapSimulator
         {
             _affectedAreaPool?.Clear();
             _localOwnedAffectedAreaObjectIdsBySkillId.Clear();
+            _remoteAffectedAreaBattlefieldOwnerTeams.Clear();
             _remoteAffectedAreaMonsterCarnivalOwnerTeams.Clear();
             _remoteAffectedAreaOwnerNames.Clear();
             _remoteAffectedAreaLocalPlayerTickTimes.Clear();

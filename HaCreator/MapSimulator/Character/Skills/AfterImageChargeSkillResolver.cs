@@ -44,6 +44,52 @@ namespace HaCreator.MapSimulator.Character.Skills
             return Array.IndexOf(KnownChargeSkillIds, skillId) >= 0;
         }
 
+        internal static bool TryResolveChargeElementFromElementAttributeToken(
+            string elementAttributeToken,
+            out int chargeElement)
+        {
+            chargeElement = 0;
+            if (string.IsNullOrWhiteSpace(elementAttributeToken))
+            {
+                return false;
+            }
+
+            foreach (char token in elementAttributeToken.Trim())
+            {
+                chargeElement = char.ToLowerInvariant(token) switch
+                {
+                    'i' => 1,
+                    'f' => 2,
+                    's' => 3,
+                    'h' => 5,
+                    _ => 0
+                };
+
+                if (chargeElement > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool TryGetRepresentativeChargeSkillIdForElement(
+            int chargeElement,
+            out int chargeSkillId)
+        {
+            chargeSkillId = chargeElement switch
+            {
+                1 => PageIceChargeSkillId,
+                2 => PageFireChargeSkillId,
+                3 => PageLightningChargeSkillId,
+                5 => PaladinHolyChargeSkillId,
+                _ => 0
+            };
+
+            return chargeSkillId > 0;
+        }
+
         internal static bool TryResolveChargeElementFromTemporaryStatPayload(ReadOnlySpan<byte> payload, out int chargeElement)
         {
             return TryResolveChargeElementFromTemporaryStatPayload(payload, 0, out chargeElement);

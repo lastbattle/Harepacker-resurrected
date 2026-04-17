@@ -168,7 +168,13 @@ namespace HaCreator.MapSimulator.Fields
                 byte[] buffer = payload as byte[] ?? new List<byte>(payload).ToArray();
                 using MemoryStream stream = new(buffer, writable: false);
                 using BinaryReader reader = new(stream);
-                _ = reader.ReadByte(); // bExclRequestSent reset marker
+                byte exclusiveRequestResetMarker = reader.ReadByte(); // bExclRequestSent reset marker
+                if (exclusiveRequestResetMarker == 0)
+                {
+                    status = "Inventory-operation payload did not carry the client bExclRequestSent reset marker for the local discard request.";
+                    return LocalItemDropInventoryOperationResultKind.NoMatch;
+                }
+
                 int operationCount = reader.ReadByte();
                 if (operationCount <= 0)
                 {

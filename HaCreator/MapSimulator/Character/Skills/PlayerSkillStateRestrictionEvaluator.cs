@@ -438,7 +438,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return true;
             }
 
-            if (skill.CasterMove
+            if (skill.ClientInfoType == 40
+                && skill.CasterMove
                 && skill.AvailableInJumpingState
                 && UsesBoundJumpActionProfile(skill))
             {
@@ -446,6 +447,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        internal static bool UsesBoundJumpStateGateForParity(SkillData skill)
+        {
+            return UsesBoundJumpStateGate(skill);
         }
 
         private static bool UsesHighestJumpStateGate(SkillData skill)

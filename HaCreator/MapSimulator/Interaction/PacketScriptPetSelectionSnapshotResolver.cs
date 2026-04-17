@@ -161,6 +161,38 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
+        internal static PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate ResolveLiveInventoryCandidateBySlotHint(
+            IReadOnlyList<InventorySlotData> liveCashSlots,
+            long petSerialNumber,
+            byte packetSlotHint)
+        {
+            if (liveCashSlots == null || petSerialNumber <= 0 || packetSlotHint <= 0)
+            {
+                return null;
+            }
+
+            int liveIndex = packetSlotHint - 1;
+            if (liveIndex < 0 || liveIndex >= liveCashSlots.Count)
+            {
+                return null;
+            }
+
+            InventorySlotData slot = liveCashSlots[liveIndex];
+            if (slot == null || !IsPetCashItem(slot.ItemId))
+            {
+                return null;
+            }
+
+            string displayName = ResolveLiveInventoryDisplayName(slot.ItemId, slot.ItemName, packetSlotHint);
+            return new PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate(
+                petSerialNumber,
+                liveIndex,
+                slot.ItemId,
+                displayName,
+                PacketScriptPetSelectionSource.LiveCashInventory,
+                packetSlotHint);
+        }
+
         private static bool IsPetCashItem(int itemId)
         {
             return itemId > 0 && itemId / 10000 == 500;

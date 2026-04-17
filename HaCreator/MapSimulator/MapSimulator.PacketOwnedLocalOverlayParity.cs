@@ -77,6 +77,7 @@ namespace HaCreator.MapSimulator
             int Slot,
             int ItemId,
             int RequestIndex,
+            bool HasRequestIndex,
             string Detail);
         private readonly record struct FieldHazardPetAutoConsumeTarget(
             int PetSlotIndex,
@@ -4388,7 +4389,7 @@ namespace HaCreator.MapSimulator
                     "Pet-consume result targeted slot={0}, item={1}, requestIndex={2}, but the pending field-hazard request is slot={3}, item={4}, requestIndex={5}.",
                     result.Slot,
                     result.ItemId,
-                    result.RequestIndex,
+                    DescribeFieldHazardPetConsumeRequestIndexForDiagnostics(result.HasRequestIndex, result.RequestIndex),
                     request.InventoryClientSlotIndex,
                     request.Candidate.ItemId,
                     request.RequestIndex);
@@ -4513,7 +4514,14 @@ namespace HaCreator.MapSimulator
                 detail = Encoding.Default.GetString(payload, offset, detailLength);
             }
 
-            result = new FieldHazardPetConsumeInboundResult(kind, slot, itemId, requestIndex, detail);
+            bool hasRequestIndex = requestIndex >= 0;
+            result = new FieldHazardPetConsumeInboundResult(
+                kind,
+                slot,
+                itemId,
+                requestIndex,
+                hasRequestIndex,
+                detail);
             return true;
         }
 
@@ -4523,12 +4531,32 @@ namespace HaCreator.MapSimulator
             int expectedRequestIndex,
             FieldHazardPetConsumeInboundResult result)
         {
-            return expectedSlot > 0
-                && expectedItemId > 0
-                && expectedRequestIndex >= 0
-                && result.Slot == expectedSlot
-                && result.ItemId == expectedItemId
-                && result.RequestIndex == expectedRequestIndex;
+            if (expectedSlot <= 0 || expectedItemId <= 0)
+            {
+                return false;
+            }
+
+            if (result.Slot != expectedSlot || result.ItemId != expectedItemId)
+            {
+                return false;
+            }
+
+            if (result.HasRequestIndex)
+            {
+                return expectedRequestIndex >= 0
+                    && result.RequestIndex == expectedRequestIndex;
+            }
+
+            // The live HP-dec-by-field row always uses index 0 in TryConsumePetHP.
+            // Accept missing request-index targeting only for that client-authored path.
+            return expectedRequestIndex == FieldHazardPetAutoConsumeDefaultRequestIndex;
+        }
+
+        private static string DescribeFieldHazardPetConsumeRequestIndexForDiagnostics(bool hasRequestIndex, int requestIndex)
+        {
+            return hasRequestIndex
+                ? requestIndex.ToString(CultureInfo.InvariantCulture)
+                : "n/a";
         }
 
         internal static bool ShouldHandlePacketOwned1026AsPetConsumeResult(bool hasPendingFieldHazardRequest, byte[] payload)

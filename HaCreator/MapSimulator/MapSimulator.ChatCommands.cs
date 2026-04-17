@@ -7301,7 +7301,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|attach <remotePort> [processName|pid] [localPort]|attachproxy <listenPort|0> <remotePort> [processName|pid] [localPort]|start <listenPort|0> <serverHost> <serverPort>|startauto <listenPort|0> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|context|inc|result>|unmap <opcode|all>|stop]]");
                 });
 
 
@@ -7667,7 +7667,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Guild BBS runtime",
 
-                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|packet <authority|cash|board> <payloadhex=..|payloadb64=..>|packetraw <authority|cash|board> <hex>|packet clear <authority|cash|board|all>]",
+                "/guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|packet <authority|cash|board> <payloadhex=..|payloadb64=..>|packetraw <authority|cash|board> <hex>|packetclientraw [authority|cash|board] <opcode-framed-hex>|packet session [status|discover <remotePort> [inboundOpcode] [processName|pid] [localPort]|historyin [count]|clearhistoryin|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|packet clear <authority|cash|board|all>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -7849,7 +7849,12 @@ namespace HaCreator.MapSimulator
                         case "packet":
                             if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet <authority|cash|board|clear> [...]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packet <authority|cash|board|session|clear> [...]");
+                            }
+
+                            if (string.Equals(args[1], "session", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return HandleGuildBbsSessionCommand(args.Skip(2).ToArray());
                             }
 
                             if (string.Equals(args[1], "clear", StringComparison.OrdinalIgnoreCase))
@@ -7936,10 +7941,17 @@ namespace HaCreator.MapSimulator
                             }
 
                             return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packetraw <authority|cash|board> <hex bytes>");
+                        case "packetclientraw":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs packetclientraw [authority|cash|board] <opcode-framed-hex>");
+                            }
+
+                            return HandleGuildBbsClientRawPacketCommand(args.Skip(1).ToArray());
 
                         default:
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|packet <authority|cash|board> <payloadhex=..|payloadb64=..>|packetraw <authority|cash|board> <hex>|packet clear <authority|cash|board|all>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildbbs [open|status|write|edit|register|cancel|notice|reply|replydelete|delete|select <threadId>|title <text>|body <text>|replytext <text>|threadpage <prev|next>|commentpage <prev|next>|preview <register|comment|list|delete|deleteseq|replydelete [visibleIndex]|replydeleteseq [visibleIndex]|submit|reply>|packet <authority|cash|board> <payloadhex=..|payloadb64=..>|packetraw <authority|cash|board> <hex>|packetclientraw [authority|cash|board] <opcode-framed-hex>|packet session [status|discover <remotePort> [inboundOpcode] [processName|pid] [localPort]|historyin [count]|clearhistoryin|start <listenPort> <serverHost> <serverPort> [inboundOpcode]|startauto <listenPort> <remotePort> [inboundOpcode] [processName|pid] [localPort]|stop]|packet clear <authority|cash|board|all>]");
                     }
 
                 });

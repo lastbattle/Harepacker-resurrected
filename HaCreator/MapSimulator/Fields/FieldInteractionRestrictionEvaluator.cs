@@ -545,7 +545,10 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
             if (!string.IsNullOrWhiteSpace(entryRestrictionMessage))
             {
-                return MapTransferRuntimePacketResultCode.OfficialFailure11;
+                return context.HasValue &&
+                       IsEntryRestrictionRequestRejectedForMapTransfer(mapInfo, context.Value)
+                    ? MapTransferRuntimePacketResultCode.OfficialFailure11
+                    : MapTransferRuntimePacketResultCode.CannotSaveDestination;
             }
 
             string transferRestrictionMessage = GetTransferRestrictionMessage(mapInfo.fieldLimit);
@@ -562,6 +565,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return null;
+        }
+
+        private static bool IsEntryRestrictionRequestRejectedForMapTransfer(
+            MapInfo mapInfo,
+            FieldEntryRestrictionContext context)
+        {
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            int requiredLevel = mapInfo.lvLimit ?? 0;
+            return requiredLevel > 0 && context.PlayerLevel < requiredLevel;
         }
 
         private static bool IsPortalScrollItem(InventoryType inventoryType, int itemId)

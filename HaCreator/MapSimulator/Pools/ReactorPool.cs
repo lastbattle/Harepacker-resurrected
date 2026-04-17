@@ -165,6 +165,7 @@ namespace HaCreator.MapSimulator.Pools
 
     internal readonly record struct PacketEnterAuthoredReactorCandidate(
         int Index,
+        bool IsPacketNamePresent,
         bool IsLocallyTouched,
         bool ContainsCurrentLocalUserPosition,
         bool MatchesPacketName,
@@ -2743,11 +2744,13 @@ namespace HaCreator.MapSimulator.Pools
                 bool hasExactNameMatch = hasPacketName
                     && hasAuthoredName
                     && string.Equals(reactor.ReactorInstance.Name, name, StringComparison.OrdinalIgnoreCase);
+                bool matchesPacketNameWhenPresent = !hasPacketName || hasExactNameMatch;
                 candidates.Add(new PacketEnterAuthoredReactorCandidate(
                     i,
+                    hasPacketName,
                     IsLocallyTouchedReactor(index: i, data),
                     IsImmediateLocalUserTouchCandidate(reactor, data, currentTick, localPlayerX, localPlayerY),
-                    hasExactNameMatch,
+                    matchesPacketNameWhenPresent,
                     hasExactNameMatch,
                     data.VisualState));
             }
@@ -2909,13 +2912,22 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            bool packetNameWasPresent = candidates[0].IsPacketNamePresent;
+            if (packetNameWasPresent && !candidates.Any(static candidate => candidate.MatchesPacketName))
+            {
+                // Keep packet-enter ownership conservative when the packet carries a
+                // name but none of the authored candidates can satisfy it.
+                return false;
+            }
+
             PacketEnterAuthoredReactorCandidate first = candidates[0];
             bool firstStateMatches = first.VisualState == initialState;
 
             for (int i = 1; i < candidates.Count; i++)
             {
                 PacketEnterAuthoredReactorCandidate candidate = candidates[i];
-                if (candidate.MatchesPacketName != first.MatchesPacketName
+                if (candidate.IsPacketNamePresent != first.IsPacketNamePresent
+                    || candidate.MatchesPacketName != first.MatchesPacketName
                     || candidate.HasExactNameMatch != first.HasExactNameMatch
                     || candidate.ContainsCurrentLocalUserPosition != first.ContainsCurrentLocalUserPosition
                     || candidate.IsLocallyTouched != first.IsLocallyTouched
@@ -3697,7 +3709,9 @@ namespace HaCreator.MapSimulator.Pools
             {
                 packetAnimationSourceState = data.PacketAnimationSourceState >= 0
                     ? data.PacketAnimationSourceState
-                    : data.PacketHitAnimationState;
+                    : data.VisualState >= 0
+                        ? data.VisualState
+                        : data.PacketHitAnimationState;
                 packetHitAnimationState = data.PacketHitAnimationState;
                 return;
             }

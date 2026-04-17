@@ -476,6 +476,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 assistType,
                 branchName,
                 isSelfDestructAction);
+
+            if (actionCode == PacketSkillActionHealingRobotHeal
+                && IsSitdownHealingSupportSummon(skill)
+                && assistType == SummonAssistType.Support)
+            {
+                return EncodeHealingRobotSkillAction(actionCode, facingRight);
+            }
+
             return EncodeSummonedActionFacingBit(actionCode, facingRight);
         }
 
@@ -490,6 +498,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             return facingRight
                 ? normalizedActionCode
                 : normalizedActionCode | 0x80;
+        }
+
+        private static int EncodeHealingRobotSkillAction(int actionCode, bool facingRight)
+        {
+            int normalizedActionCode = actionCode & 0x7F;
+            byte moveAction = (byte)(facingRight ? 0 : 1);
+            // Client `CSummoned::TryDoingHealingRobot` sends `(moveAction << 7) | 13`.
+            return (moveAction << 7) | normalizedActionCode;
         }
 
         private static int ResolveHealingRobotLocalSupportActionCode(

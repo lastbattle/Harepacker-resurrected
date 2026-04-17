@@ -86,6 +86,13 @@ namespace HaCreator.MapSimulator
             return mode is PacketOwnedAntiMacroDestroyMode or PacketOwnedAntiMacroResultMode;
         }
 
+        internal static bool IsPacketOwnedAntiMacroSubmitTerminalMode(int mode)
+        {
+            return mode is PacketOwnedAntiMacroDestroyMode
+                or PacketOwnedAntiMacroResultMode
+                or PacketOwnedAntiMacroNoticeMode;
+        }
+
         internal static bool IsPacketOwnedAntiMacroUserBranchMode(int mode)
         {
             return mode is PacketOwnedAntiMacroScreenshotReportMode
@@ -620,6 +627,16 @@ namespace HaCreator.MapSimulator
                 && source.StartsWith("official-session:", StringComparison.OrdinalIgnoreCase);
         }
 
+        internal static bool ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
+            int mode,
+            bool wasAwaitingResult,
+            string source)
+        {
+            return wasAwaitingResult
+                && IsPacketOwnedAntiMacroAuthoritativeResultSource(source)
+                && IsPacketOwnedAntiMacroSubmitTerminalMode(mode);
+        }
+
         internal static int ResolvePacketOwnedAntiMacroRoundTripLatencyMs(int submittedTick, int resultTick)
         {
             if (submittedTick == int.MinValue || resultTick == int.MinValue)
@@ -1110,13 +1127,18 @@ namespace HaCreator.MapSimulator
 
                 if (IsPacketOwnedAntiMacroCloseResultMode(mode))
                 {
-                    bool authoritativeRoundTrip = IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource)
-                        && wasAwaitingResult;
+                    bool authoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
+                        mode,
+                        wasAwaitingResult,
+                        resolvedSource);
                     message = AppendPacketOwnedAntiMacroResultSourceSummary(
                         ApplyPacketOwnedAntiMacroCloseResult(mode, antiMacroType),
                         payload,
                         resolvedSource,
-                        authoritativeRoundTrip);
+                        authoritativeRoundTrip,
+                        awaitingTerminalResult: IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource)
+                            && wasAwaitingResult
+                            && !authoritativeRoundTrip);
                     return true;
                 }
 
@@ -1125,21 +1147,33 @@ namespace HaCreator.MapSimulator
                     string userName = reader.BaseStream.Position < reader.BaseStream.Length
                         ? ReadPacketOwnedMapleString(reader)
                         : string.Empty;
-                    bool authoritativeRoundTrip = IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource)
-                        && wasAwaitingResult;
+                    bool authoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
+                        mode,
+                        wasAwaitingResult,
+                        resolvedSource);
                     message = AppendPacketOwnedAntiMacroResultSourceSummary(
                         ApplyPacketOwnedAntiMacroUserBranch(mode, antiMacroType, userName),
                         payload,
                         resolvedSource,
-                        authoritativeRoundTrip);
+                        authoritativeRoundTrip,
+                        awaitingTerminalResult: IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource)
+                            && wasAwaitingResult
+                            && !authoritativeRoundTrip);
                     return true;
                 }
 
+                bool noticeAuthoritativeRoundTrip = ShouldCompletePacketOwnedAntiMacroAuthoritativeRoundTrip(
+                    mode,
+                    wasAwaitingResult,
+                    resolvedSource);
                 message = AppendPacketOwnedAntiMacroResultSourceSummary(
                     ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType),
                     payload,
                     resolvedSource,
-                    IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource) && wasAwaitingResult);
+                    noticeAuthoritativeRoundTrip,
+                    awaitingTerminalResult: IsPacketOwnedAntiMacroAuthoritativeResultSource(resolvedSource)
+                        && wasAwaitingResult
+                        && !noticeAuthoritativeRoundTrip);
                 return true;
             }
             catch (Exception ex)
@@ -1252,7 +1286,8 @@ namespace HaCreator.MapSimulator
             string summary,
             IReadOnlyList<byte> payload,
             string source,
-            bool authoritativeRoundTrip)
+            bool authoritativeRoundTrip,
+            bool awaitingTerminalResult = false)
         {
             _lastPacketOwnedAntiMacroResultSource = source ?? string.Empty;
             _lastPacketOwnedAntiMacroAuthoritativeRoundTrip = authoritativeRoundTrip;
@@ -1277,7 +1312,9 @@ namespace HaCreator.MapSimulator
             }
             else
             {
-                sourceSummary = $" Result arrived from {source}.";
+                sourceSummary = awaitingTerminalResult
+                    ? $" Result arrived from {source}; submit parity is still awaiting a terminal anti-macro result mode (7/9/11)."
+                    : $" Result arrived from {source}.";
             }
 
             _lastPacketOwnedAntiMacroSummary = $"{summary}{sourceSummary}";

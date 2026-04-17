@@ -998,12 +998,14 @@ namespace HaCreator.MapSimulator.Effects
                 centerX,
                 centerTop,
                 layer?.CanvasWidth ?? visual?.CanvasWidth ?? 0);
+            PreparedDamageNumberCompositionTrace compositionTrace = visual?.CompositionTrace ?? CreateEmptyCompositionTrace();
             PreparedSpriteDrawInfo? criticalBanner = visual?.CriticalBannerSprite;
             DamageNumberAnimationTimeline timeline = layer?.Timeline ?? ResolveAnimationTimeline();
             Point criticalBannerOffset = criticalBanner is PreparedSpriteDrawInfo banner
                 ? new Point(banner.DrawOffsetX, banner.DrawOffsetY)
                 : Point.Zero;
-            bool hasCriticalBanner = criticalBanner.HasValue;
+            bool hasCriticalBanner = criticalBanner.HasValue
+                && compositionTrace.KeepsCriticalBannerOnSeparateLayer;
             CanvasLayerRecoveredLayerSettings recoveredLayerSettings = ResolveRecoveredLayerSettings();
             CanvasLayerInsertDescriptor[] insertDescriptors = OneTimeCanvasLayerAnimation.BuildInsertDescriptors(
                 timeline.HoldDurationMs,
@@ -1026,7 +1028,7 @@ namespace HaCreator.MapSimulator.Effects
                 timeline,
                 criticalBannerOffset,
                 hasCriticalBanner,
-                visual?.CompositionTrace ?? CreateEmptyCompositionTrace(),
+                compositionTrace,
                 insertDescriptors,
                 new PreparedOneTimeCanvasLayerRegistration(
                     placement.Left,
@@ -1110,6 +1112,11 @@ namespace HaCreator.MapSimulator.Effects
             string overlaySpriteName = overlaySprite.HasValue
                 ? overlaySprite.Value.SpriteName
                 : null;
+            bool keepsOverlayOnSeparateLayer = compositionTrace.KeepsCriticalBannerOnSeparateLayer
+                && overlaySprite.HasValue;
+            int overlayLayerPositionOffsetY = keepsOverlayOnSeparateLayer
+                ? DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y
+                : 0;
 
             return new CanvasLayerRecoveredOwnerTrace(
                 visual.DamageStringPoolId,
@@ -1117,11 +1124,11 @@ namespace HaCreator.MapSimulator.Effects
                 compositionTrace.CanvasSettings,
                 preparedSources,
                 temporaryCanvasOperations,
-                compositionTrace.KeepsCriticalBannerOnSeparateLayer,
-                compositionTrace.CriticalBannerLayerCanvasPath,
-                overlaySpriteName,
-                overlayOffset,
-                DamageNumberConstants.CRITICAL_EFFECT_OFFSET_Y);
+                keepsOverlayOnSeparateLayer,
+                keepsOverlayOnSeparateLayer ? compositionTrace.CriticalBannerLayerCanvasPath : null,
+                keepsOverlayOnSeparateLayer ? overlaySpriteName : null,
+                keepsOverlayOnSeparateLayer ? overlayOffset : Point.Zero,
+                overlayLayerPositionOffsetY);
         }
 
         internal static CanvasLayerRecoveredLayerSettings ResolveRecoveredLayerSettings()

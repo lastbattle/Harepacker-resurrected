@@ -812,12 +812,11 @@ namespace HaCreator.MapSimulator
 
         private bool IsPacketOwnedLogoutGiftFieldStageActive()
         {
-            if (_gameState?.IsLoginMap == true || _gameState?.IsCashShopMap == true)
-            {
-                return false;
-            }
-
-            return !HasVisiblePacketOwnedLogoutGiftNonFieldStage();
+            return ResolvePacketOwnedLogoutGiftFieldStageActive(
+                _gameState?.IsLoginMap == true,
+                _gameState?.IsCashShopMap == true,
+                IsPacketOwnedLogoutGiftStageWindowVisible(MapSimulatorWindowNames.CashShopStage),
+                IsPacketOwnedLogoutGiftStageWindowVisible(MapSimulatorWindowNames.MtsStatus));
         }
 
         private bool HasVisiblePacketOwnedLogoutGiftNonFieldStage()
@@ -1039,6 +1038,20 @@ namespace HaCreator.MapSimulator
             }
 
             return PacketOwnedLogoutGiftOwnerAvailability.Available;
+        }
+
+        internal static bool ResolvePacketOwnedLogoutGiftFieldStageActive(
+            bool isLoginMap,
+            bool isCashShopMap,
+            bool isCashShopStageVisible,
+            bool isMtsStageVisible)
+        {
+            if (isLoginMap || isCashShopMap)
+            {
+                return false;
+            }
+
+            return !isCashShopStageVisible && !isMtsStageVisible;
         }
 
         internal static string DescribePacketOwnedLogoutGiftLeadingInt32Values(IReadOnlyList<int> leadingOpaqueInt32Values)

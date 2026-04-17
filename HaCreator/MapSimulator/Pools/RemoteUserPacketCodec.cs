@@ -575,6 +575,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private const int HelperNumericPayloadLength = sizeof(int) + sizeof(byte) + sizeof(byte);
         private const int HelperNamedPayloadMinimumLength = sizeof(int) + sizeof(byte) + sizeof(byte);
+        private const int HelperMapleStringNamedPayloadMinimumLength = sizeof(int) + sizeof(ushort) + sizeof(byte);
         private const byte HelperMarkerClearValue = byte.MaxValue;
 
         private const int OfficialEnterFieldSuffixLength = sizeof(int) * 6 + sizeof(short) * 2 + sizeof(byte);
@@ -1106,18 +1107,18 @@ namespace HaCreator.MapSimulator.Pools
         {
             packet = default;
             error = null;
-            if (payload.Length != sizeof(int) * 2)
+            if (!TryParseOptionalItemPacket(
+                    payload,
+                    "official portable-chair",
+                    out int characterId,
+                    out int? itemId,
+                    out error,
+                    out int? pairCharacterId))
             {
-                error = $"Remote user official portable-chair packet expects 8 bytes but received {payload.Length}.";
                 return false;
             }
 
-            if (!TryParseOptionalItemPacket(payload, "official portable-chair", out int characterId, out int? itemId, out error, out int? _))
-            {
-                return false;
-            }
-
-            packet = new RemoteUserPortableChairPacket(characterId, itemId, PairCharacterId: null);
+            packet = new RemoteUserPortableChairPacket(characterId, itemId, pairCharacterId);
             return true;
         }
 
@@ -1320,12 +1321,6 @@ namespace HaCreator.MapSimulator.Pools
                 if (characterId <= 0)
                 {
                     error = $"Remote user hit packet character ID {characterId} is invalid.";
-                    return false;
-                }
-
-                if (hpDelta == -1 && skillId.GetValueOrDefault() <= 0)
-                {
-                    error = "Remote user hit packet skill-effect branch must include a positive skill ID.";
                     return false;
                 }
 
@@ -2638,21 +2633,39 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             byte[] nameBytes = Encoding.UTF8.GetBytes(normalizedName);
-            if (nameBytes.Length > byte.MaxValue)
+            if (nameBytes.Length <= byte.MaxValue)
             {
-                error = "Remote user helper marker names must fit in an 8-bit packet string.";
+                payload = new byte[sizeof(int) + sizeof(byte) + nameBytes.Length + sizeof(byte)];
+                payload[0] = (byte)characterId;
+                payload[1] = (byte)(characterId >> 8);
+                payload[2] = (byte)(characterId >> 16);
+                payload[3] = (byte)(characterId >> 24);
+                payload[4] = (byte)nameBytes.Length;
+                if (nameBytes.Length > 0)
+                {
+                    Buffer.BlockCopy(nameBytes, 0, payload, 5, nameBytes.Length);
+                }
+
+                payload[^1] = showDirectionOverlay ? (byte)1 : (byte)0;
+                return true;
+            }
+
+            if (nameBytes.Length > ushort.MaxValue)
+            {
+                error = "Remote user helper marker names must fit in a 16-bit packet string.";
                 return false;
             }
 
-            payload = new byte[sizeof(int) + sizeof(byte) + nameBytes.Length + sizeof(byte)];
+            payload = new byte[sizeof(int) + sizeof(ushort) + nameBytes.Length + sizeof(byte)];
             payload[0] = (byte)characterId;
             payload[1] = (byte)(characterId >> 8);
             payload[2] = (byte)(characterId >> 16);
             payload[3] = (byte)(characterId >> 24);
             payload[4] = (byte)nameBytes.Length;
+            payload[5] = (byte)(nameBytes.Length >> 8);
             if (nameBytes.Length > 0)
             {
-                Buffer.BlockCopy(nameBytes, 0, payload, 5, nameBytes.Length);
+                Buffer.BlockCopy(nameBytes, 0, payload, 6, nameBytes.Length);
             }
 
             payload[^1] = showDirectionOverlay ? (byte)1 : (byte)0;
@@ -2790,16 +2803,37 @@ namespace HaCreator.MapSimulator.Pools
                 | (payload[1] << 8)
                 | (payload[2] << 16)
                 | (payload[3] << 24);
-            int nameLength = payload[4];
-            if (payload.Length != sizeof(int) + sizeof(byte) + nameLength + sizeof(byte))
+
+            int nameStartIndex;
+            int nameLength;
+            bool uses8BitLengthPayload = payload.Length >= HelperNamedPayloadMinimumLength
+                && payload.Length == sizeof(int) + sizeof(byte) + payload[4] + sizeof(byte);
+            if (uses8BitLengthPayload)
             {
-                error = $"Remote user named helper packet length {payload.Length} does not match its {nameLength}-byte marker name.";
+                nameLength = payload[4];
+                nameStartIndex = 5;
+            }
+            else if (payload.Length >= HelperMapleStringNamedPayloadMinimumLength)
+            {
+                int mapleStringLength = payload[4] | (payload[5] << 8);
+                if (payload.Length != sizeof(int) + sizeof(ushort) + mapleStringLength + sizeof(byte))
+                {
+                    error = $"Remote user named helper packet length {payload.Length} does not match its marker name length.";
+                    return false;
+                }
+
+                nameLength = mapleStringLength;
+                nameStartIndex = 6;
+            }
+            else
+            {
+                error = $"Remote user named helper packet length {payload.Length} does not match its marker name length.";
                 return false;
             }
 
             string markerName = nameLength == 0
                 ? "clear"
-                : Encoding.UTF8.GetString(payload.Slice(5, nameLength));
+                : Encoding.UTF8.GetString(payload.Slice(nameStartIndex, nameLength));
             if (!TryResolveHelperMarkerName(markerName, out MinimapUI.HelperMarkerType? markerType))
             {
                 error = $"Remote user helper marker '{markerName}' is not recognized.";

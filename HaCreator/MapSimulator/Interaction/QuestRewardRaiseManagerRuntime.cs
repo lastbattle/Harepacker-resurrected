@@ -45,9 +45,9 @@ namespace HaCreator.MapSimulator.Interaction
                 ?? retainedState?.DisplayMode
                 ?? snapshot?.DisplayMode
                 ?? windowMode;
-            int ownerItemId = Math.Max(0, prompt.OwnerContext?.OwnerItemId ?? retainedState?.OwnerItemId ?? snapshot?.OwnerItemId ?? 0);
-            int qrData = prompt.OwnerContext?.InitialQrData ?? retainedState?.QrData ?? snapshot?.QrData ?? 0;
-            int maxDropCount = Math.Max(1, prompt.OwnerContext?.MaxDropCount ?? retainedState?.MaxDropCount ?? snapshot?.MaxDropCount ?? 1);
+            int ownerItemId = ResolveOpenOwnerItemId(prompt, retainedState, snapshot);
+            int qrData = ResolveOpenQrData(prompt, retainedState, snapshot);
+            int maxDropCount = ResolveOpenMaxDropCount(prompt, retainedState, snapshot);
             bool reuseObservedOwnerState = ShouldReuseObservedOwnerState(snapshot);
             Point windowPosition = defaultPosition;
             if (ActiveRaise != null
@@ -428,6 +428,42 @@ namespace HaCreator.MapSimulator.Interaction
                 || retainedState.AwaitingOwnerDestroyAck
                 || !string.IsNullOrWhiteSpace(retainedState.LastInboundSummary)
                 || !string.IsNullOrWhiteSpace(retainedState.OpenDispatchSummary);
+        }
+
+        private static int ResolveOpenOwnerItemId(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState retainedState,
+            QuestRewardRaiseOwnerSnapshot snapshot)
+        {
+            int ownerContextOwnerItemId = Math.Max(0, prompt?.OwnerContext?.OwnerItemId ?? 0);
+            int observedOwnerItemId = Math.Max(0, retainedState?.OwnerItemId ?? snapshot?.OwnerItemId ?? 0);
+            return ownerContextOwnerItemId > 0
+                ? ownerContextOwnerItemId
+                : observedOwnerItemId;
+        }
+
+        private static int ResolveOpenQrData(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState retainedState,
+            QuestRewardRaiseOwnerSnapshot snapshot)
+        {
+            int ownerContextQrData = prompt?.OwnerContext?.InitialQrData ?? 0;
+            if (ownerContextQrData != 0)
+            {
+                return ownerContextQrData;
+            }
+
+            return retainedState?.QrData ?? snapshot?.QrData ?? ownerContextQrData;
+        }
+
+        private static int ResolveOpenMaxDropCount(
+            QuestRewardChoicePrompt prompt,
+            QuestRewardRaiseState retainedState,
+            QuestRewardRaiseOwnerSnapshot snapshot)
+        {
+            int ownerContextMaxDropCount = Math.Max(1, prompt?.OwnerContext?.MaxDropCount ?? 1);
+            int observedMaxDropCount = Math.Max(1, retainedState?.MaxDropCount ?? snapshot?.MaxDropCount ?? 1);
+            return Math.Max(ownerContextMaxDropCount, observedMaxDropCount);
         }
 
         private int ResolveOpenManagerSessionId(

@@ -28,10 +28,12 @@ namespace HaCreator.MapSimulator.UI
             int ExtraPartCount);
 
         private const int MaxNotices = 3;
-        private const int DisplayDurationMs = 2200;
-        private const int FadeDurationMs = 260;
-        private const int SlideSpeed = 480;
-        private const float SpawnSlideOffset = 18f;
+        // Client evidence: CUIStatusBar::FloatNotice passes 0x1388 to SetItemMsg,
+        // and CUIStatusBar::Update expires m_dwItemMsg/m_dwFloatNotice directly.
+        // Keep cooldown notices on the same fixed-duration, no-fade expiration seam.
+        private const int ClientNoticeDurationMs = 5000;
+        private const int SlideSpeed = 0;
+        private const float SpawnSlideOffset = 0f;
         // The packet-owned top-center HUD notices use the client's 800x578 anchor at 44px.
         // Cooldown notices share that same top-center seam more closely than the older 42px guess.
         private const int TopMargin = 44;
@@ -291,7 +293,7 @@ namespace HaCreator.MapSimulator.UI
                 if (Math.Abs(offsetDelta) > 0.1f)
                 {
                     float step = SlideSpeed * deltaSeconds;
-                    if (Math.Abs(offsetDelta) <= step)
+                    if (step <= 0f || Math.Abs(offsetDelta) <= step)
                     {
                         notice.YOffset = notice.TargetYOffset;
                     }
@@ -301,14 +303,8 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
 
-                if (elapsed <= DisplayDurationMs)
-                {
-                    notice.Alpha = 1f;
-                    continue;
-                }
-
-                int fadeElapsed = elapsed - DisplayDurationMs;
-                if (fadeElapsed >= FadeDurationMs)
+                int noticeDurationMs = ResolveNoticeDurationForClientParity(notice.Type);
+                if (elapsed >= noticeDurationMs)
                 {
                     notice.IsExpired = true;
                     _notices.RemoveAt(i);
@@ -316,7 +312,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                notice.Alpha = 1f - (fadeElapsed / (float)FadeDurationMs);
+                notice.Alpha = 1f;
             }
         }
 
@@ -494,6 +490,11 @@ namespace HaCreator.MapSimulator.UI
         internal static int ResolveTopMarginForClientParity(int screenHeight)
         {
             return TopMargin;
+        }
+
+        internal static int ResolveNoticeDurationForClientParity(SkillCooldownNoticeType type)
+        {
+            return ClientNoticeDurationMs;
         }
 
         private void DrawTiledNoticeCenter(SpriteBatch spriteBatch, int x, int startY, int centerHeight, Color color)

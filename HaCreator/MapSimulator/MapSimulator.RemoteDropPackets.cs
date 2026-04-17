@@ -307,7 +307,10 @@ namespace HaCreator.MapSimulator
             if (localPartyId > 0 && ownerId == localPartyId)
             {
                 return actorId == localCharacterId
-                    || trackedPartyActorEvaluator?.Invoke(actorId) == true;
+                    || actorId == localPartyId
+                    || trackedPartyActorEvaluator?.Invoke(actorId) == true
+                    || legacyTrackedActorEvaluator?.Invoke(actorId) == true
+                    || observedPartyAnchorEvaluator?.Invoke(actorId) == true;
             }
 
             if (ownerId == actorId)

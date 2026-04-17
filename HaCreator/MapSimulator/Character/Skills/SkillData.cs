@@ -2283,6 +2283,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool ForceCritical { get; set; }
         public bool IsQueuedFinalAttack { get; set; }
         public bool IsQueuedSparkAttack { get; set; }
+        public Vector2? QueuedFollowUpSourceMicroOffsetSnapshot { get; set; }
         public int PresentationBulletIndex { get; set; }
         public int PresentationBulletCount { get; set; } = 1;
         public int ClientActionSpeedDegree { get; set; }

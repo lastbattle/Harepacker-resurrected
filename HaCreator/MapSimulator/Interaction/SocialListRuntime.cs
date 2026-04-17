@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<SocialListTab, bool> _packetOwnedRosterByTab = new();
         private readonly Dictionary<SocialListTab, string> _lastPacketSyncSummaryByTab = new();
         private readonly Dictionary<SocialListTab, string> _lastPendingRequestByTab = new();
+        private readonly Dictionary<string, PacketWhisperFindPresenceState> _packetWhisperFindPresenceByName = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<SocialTrackedEntrySnapshot> _trackedEntriesBuffer = new();
         private readonly List<SocialEntryState> _filteredFriendEntriesBuffer = new();
         private readonly SocialListSnapshot _snapshotBuffer = new();
@@ -139,7 +140,7 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        internal void SetPacketWhisperLocationInfo(string characterName, string locationInfo)
+        internal void SetPacketWhisperLocationInfo(string characterName, string locationInfo, byte result = 1, int value = 0)
         {
             string normalizedName = string.IsNullOrWhiteSpace(characterName)
                 ? string.Empty
@@ -155,12 +156,143 @@ namespace HaCreator.MapSimulator.Interaction
             if (normalizedLocation.Length == 0)
             {
                 _packetWhisperLocationInfo = string.Empty;
+                _packetWhisperFindPresenceByName.Remove(normalizedName);
                 _lastPacketSyncSummaryByTab[SocialListTab.Friend] = $"Packet whisper find invalidated user-list location for {normalizedName}.";
                 return;
             }
 
             _packetWhisperLocationInfo = normalizedLocation;
+
+            if (result == 2 || result == 4)
+            {
+                _packetWhisperFindPresenceByName.Remove(normalizedName);
+            }
+            else
+            {
+                PacketWhisperFindPresenceState state = _packetWhisperFindPresenceByName.TryGetValue(normalizedName, out PacketWhisperFindPresenceState existingState)
+                    ? existingState
+                    : new PacketWhisperFindPresenceState();
+
+                state.IsDiscoverable = result == 1 || result == 3;
+                string detailText = ExtractPacketWhisperFindDetailText(normalizedName, normalizedLocation);
+                if (result == 1)
+                {
+                    if (!TryParsePacketWhisperFindChannel(detailText, out int detailChannel))
+                    {
+                        if (!string.IsNullOrWhiteSpace(detailText))
+                        {
+                            state.LocationSummary = detailText;
+                        }
+                    }
+                    else
+                    {
+                        state.Channel = detailChannel;
+                    }
+                }
+                else if (result == 3)
+                {
+                    state.Channel = value > 0
+                        ? value
+                        : TryParsePacketWhisperFindChannel(detailText, out int detailChannel) ? detailChannel : state.Channel;
+                }
+
+                _packetWhisperFindPresenceByName[normalizedName] = state;
+            }
+
             _lastPacketSyncSummaryByTab[SocialListTab.Friend] = $"Packet whisper find updated user-list location for {normalizedName}.";
+        }
+
+        internal bool TryResolvePacketWhisperFindPresence(string characterName, out string locationSummary, out int channel)
+        {
+            locationSummary = "Location unknown";
+            channel = 0;
+            if (string.IsNullOrWhiteSpace(characterName))
+            {
+                return false;
+            }
+
+            string resolvedName = characterName.Trim();
+            if (!_packetWhisperFindPresenceByName.TryGetValue(resolvedName, out PacketWhisperFindPresenceState state)
+                || state == null
+                || !state.IsDiscoverable)
+            {
+                return false;
+            }
+
+            locationSummary = string.IsNullOrWhiteSpace(state.LocationSummary)
+                ? "Location unknown"
+                : state.LocationSummary.Trim();
+            channel = Math.Max(0, state.Channel);
+            return true;
+        }
+
+        internal static string ExtractPacketWhisperFindDetailTextForTest(string characterName, string locationInfo)
+        {
+            return ExtractPacketWhisperFindDetailText(characterName, locationInfo);
+        }
+
+        internal static bool TryParsePacketWhisperFindChannelForTest(string detailText, out int channel)
+        {
+            return TryParsePacketWhisperFindChannel(detailText, out channel);
+        }
+
+        private static string ExtractPacketWhisperFindDetailText(string characterName, string locationInfo)
+        {
+            if (string.IsNullOrWhiteSpace(locationInfo))
+            {
+                return string.Empty;
+            }
+
+            string normalizedLocation = locationInfo.Trim();
+            int separatorIndex = normalizedLocation.IndexOf(':');
+            if (separatorIndex <= 0)
+            {
+                return normalizedLocation;
+            }
+
+            string prefix = normalizedLocation[..separatorIndex].Trim();
+            if (!string.IsNullOrWhiteSpace(characterName)
+                && !string.Equals(prefix, characterName.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return normalizedLocation;
+            }
+
+            return normalizedLocation[(separatorIndex + 1)..].Trim();
+        }
+
+        private static bool TryParsePacketWhisperFindChannel(string detailText, out int channel)
+        {
+            channel = 0;
+            if (string.IsNullOrWhiteSpace(detailText))
+            {
+                return false;
+            }
+
+            string normalized = detailText.Trim();
+            int chIndex = normalized.IndexOf("ch", StringComparison.OrdinalIgnoreCase);
+            if (chIndex < 0)
+            {
+                return false;
+            }
+
+            int digitStart = chIndex + 2;
+            while (digitStart < normalized.Length && !char.IsDigit(normalized[digitStart]))
+            {
+                digitStart++;
+            }
+
+            if (digitStart >= normalized.Length)
+            {
+                return false;
+            }
+
+            int digitEnd = digitStart;
+            while (digitEnd < normalized.Length && char.IsDigit(normalized[digitEnd]))
+            {
+                digitEnd++;
+            }
+
+            return int.TryParse(normalized[digitStart..digitEnd], out channel) && channel > 0;
         }
 
         internal void UpdateLocalContext(CharacterBuild build, string locationSummary, int channel)
@@ -1943,6 +2075,13 @@ namespace HaCreator.MapSimulator.Interaction
             public bool IsBlocked { get; }
             public int? MemberId { get; init; }
             public bool IsLocalPlayer { get; init; }
+        }
+
+        private sealed class PacketWhisperFindPresenceState
+        {
+            public string LocationSummary { get; set; } = string.Empty;
+            public int Channel { get; set; }
+            public bool IsDiscoverable { get; set; }
         }
     }
 

@@ -488,6 +488,7 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             int durationMs,
             bool follow,
+            int snapshotRetentionMs = 0,
             bool ownsFrameTextures = false,
             Func<int, List<IDXObject>> snapshotFrameFactory = null)
         {
@@ -509,6 +510,7 @@ namespace HaCreator.MapSimulator.Animation
                 currentTimeMs,
                 durationMs,
                 follow,
+                snapshotRetentionMs,
                 ownsFrameTextures,
                 snapshotFrameFactory);
             _secondaryMotionBlurAnimations.Add(animation);
@@ -1741,6 +1743,7 @@ namespace HaCreator.MapSimulator.Animation
         private int _endTime;
         private int _intervalMs;
         private byte _alpha;
+        private int _snapshotRetentionMs;
         private int _lastUpdateTime;
         private bool _follow;
         private bool _ownsFrameTextures;
@@ -1776,6 +1779,7 @@ namespace HaCreator.MapSimulator.Animation
             int currentTimeMs,
             int durationMs,
             bool follow,
+            int snapshotRetentionMs,
             bool ownsFrameTextures,
             Func<int, List<IDXObject>> snapshotFrameFactory)
         {
@@ -1792,6 +1796,7 @@ namespace HaCreator.MapSimulator.Animation
             _endTime = currentTimeMs + Math.Max(1, durationMs);
             _intervalMs = Math.Max(16, intervalMs);
             _alpha = alpha;
+            _snapshotRetentionMs = Math.Max(0, snapshotRetentionMs);
             _terminationRequested = false;
         }
 
@@ -1821,8 +1826,8 @@ namespace HaCreator.MapSimulator.Animation
             for (int i = _snapshots.Count - 1; i >= 0; i--)
             {
                 MotionBlurSnapshot snapshot = _snapshots[i];
-                int frameDuration = ResolveFramesDuration(snapshot.Frames);
-                if (frameDuration <= 0 || currentTimeMs - snapshot.StartTime >= frameDuration)
+                int retentionMs = ResolveSnapshotRetentionMs(snapshot);
+                if (retentionMs <= 0 || currentTimeMs - snapshot.StartTime >= retentionMs)
                 {
                     DisposeFrameListIfOwned(snapshot.Frames);
                     _snapshots.RemoveAt(i);
@@ -1847,11 +1852,19 @@ namespace HaCreator.MapSimulator.Animation
         public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
         {
             int currentTime = _lastUpdateTime;
-            Color tint = new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, _alpha);
             Vector2 ownerPosition = _positionResolver?.Invoke() ?? _fallbackPosition;
             bool ownerFlip = _flipResolver?.Invoke() ?? _fallbackFlip;
             foreach (MotionBlurSnapshot snapshot in _snapshots)
             {
+                byte snapshotAlpha = ResolveSnapshotAlpha(
+                    ageMs: Math.Max(0, currentTime - snapshot.StartTime),
+                    retentionMs: ResolveSnapshotRetentionMs(snapshot),
+                    baseAlpha: _alpha);
+                if (snapshotAlpha == 0)
+                {
+                    continue;
+                }
+
                 List<IDXObject> frames = snapshot.Frames;
                 int frameIndex = ResolveFrameIndex(frames, Math.Max(0, currentTime - snapshot.StartTime), loop: false);
                 if (frames == null || frameIndex < 0 || frameIndex >= frames.Count)
@@ -1869,6 +1882,7 @@ namespace HaCreator.MapSimulator.Animation
                 bool drawFlip = _follow ? ownerFlip : snapshot.Flip;
                 int drawShiftX = -(int)MathF.Round(drawPosition.X) - mapShiftX;
                 int drawShiftY = -(int)MathF.Round(drawPosition.Y) - mapShiftY;
+                Color tint = new Color(byte.MaxValue, byte.MaxValue, byte.MaxValue, snapshotAlpha);
                 frame.DrawBackground(
                     spriteBatch,
                     skeletonRenderer,
@@ -1879,6 +1893,27 @@ namespace HaCreator.MapSimulator.Animation
                     drawFlip,
                     null);
             }
+        }
+
+        internal static byte ResolveSnapshotAlpha(int ageMs, int retentionMs, byte baseAlpha)
+        {
+            if (baseAlpha == 0)
+            {
+                return 0;
+            }
+
+            if (retentionMs <= 0)
+            {
+                return baseAlpha;
+            }
+
+            if (ageMs >= retentionMs)
+            {
+                return 0;
+            }
+
+            float progress = MathHelper.Clamp((float)ageMs / retentionMs, 0f, 1f);
+            return (byte)Math.Clamp((int)MathF.Round(baseAlpha * (1f - progress)), 0, byte.MaxValue);
         }
 
         public void Dispose()
@@ -1915,6 +1950,16 @@ namespace HaCreator.MapSimulator.Animation
                     dxObject.Texture.Dispose();
                 }
             }
+        }
+
+        private int ResolveSnapshotRetentionMs(MotionBlurSnapshot snapshot)
+        {
+            if (_snapshotRetentionMs > 0)
+            {
+                return _snapshotRetentionMs;
+            }
+
+            return ResolveFramesDuration(snapshot.Frames);
         }
 
         private void DisposeFallbackFramesIfOwned()

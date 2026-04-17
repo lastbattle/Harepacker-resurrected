@@ -87,6 +87,41 @@ namespace HaCreator.MapSimulator.Managers
             result = null;
             error = null;
 
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Maker-session payload must include at least the Int32 session flags.";
+                return false;
+            }
+
+            IReadOnlyList<PacketOwnedPayloadEnvelopeRuntime.Candidate> decodeCandidates =
+                PacketOwnedPayloadEnvelopeRuntime.EnumerateDecodeCandidates(payload, (ushort)PacketType);
+            if (decodeCandidates.Count == 0)
+            {
+                error = "Maker-session payload must include at least the Int32 session flags.";
+                return false;
+            }
+
+            string firstDecodeError = null;
+            for (int i = 0; i < decodeCandidates.Count; i++)
+            {
+                PacketOwnedPayloadEnvelopeRuntime.Candidate candidate = decodeCandidates[i];
+                if (TryDecodeCore(candidate.Payload, out result, out error))
+                {
+                    return true;
+                }
+
+                firstDecodeError ??= error;
+            }
+
+            error = firstDecodeError ?? error ?? "Maker-session payload could not be decoded.";
+            return false;
+        }
+
+        private static bool TryDecodeCore(byte[] payload, out PacketOwnedItemMakerSession result, out string error)
+        {
+            result = null;
+            error = null;
+
             if (payload == null || payload.Length < sizeof(int))
             {
                 error = "Maker-session payload must include at least the Int32 session flags.";

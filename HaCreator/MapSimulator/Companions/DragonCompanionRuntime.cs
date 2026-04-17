@@ -236,14 +236,21 @@ namespace HaCreator.MapSimulator.Companions
         {
             _ownerPhaseContextProvider = ownerPhaseActionAlphaProvider == null
                 ? null
-                : () => ownerPhaseActionAlphaProvider() is int ownerPhaseAlpha
-                    ? new OwnerPhaseContext(hasLocalUser: true, ownerMatchesLocalPhase: false, ownerPhaseAlpha)
-                    : OwnerPhaseContext.NoLocalUser;
+                : () => ResolveLegacyOwnerPhaseContext(ownerPhaseActionAlphaProvider());
         }
 
         internal void SetOwnerPhaseContextProvider(Func<OwnerPhaseContext> ownerPhaseContextProvider)
         {
             _ownerPhaseContextProvider = ownerPhaseContextProvider;
+        }
+
+        internal static OwnerPhaseContext ResolveLegacyOwnerPhaseContext(int? ownerPhaseAlpha)
+        {
+            // Legacy callers only provided alpha, not local-user phase identity. Treat that as
+            // unknown local-user context so we do not incorrectly force the mismatch clamp path.
+            return ownerPhaseAlpha.HasValue
+                ? new OwnerPhaseContext(hasLocalUser: false, ownerMatchesLocalPhase: false, ownerPhaseAlpha.Value)
+                : OwnerPhaseContext.NoLocalUser;
         }
 
         public void Update(PlayerCharacter owner, int currentTime)

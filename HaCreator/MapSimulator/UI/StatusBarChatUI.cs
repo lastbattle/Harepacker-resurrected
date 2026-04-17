@@ -412,6 +412,12 @@ namespace HaCreator.MapSimulator.UI
                 || pressedWhisperPickerComboToggle;
         }
 
+        internal static int ResolveWhisperPickerClientComboDeleteIndex(int firstVisibleIndex, int visibleRowIndex)
+        {
+            // Client CCtrlComboBoxSelect::OnMouseButton resolves delete row index as (ry / 16 + scrollbar curPos).
+            return firstVisibleIndex + visibleRowIndex;
+        }
+
         internal static bool ShouldKeepWhisperPickerDropdownScrollThumbCapture(
             bool wasDraggingScrollThumb,
             ButtonState leftButtonState)
@@ -1382,7 +1388,7 @@ namespace HaCreator.MapSimulator.UI
                         sprite,
                         rowBounds,
                         candidateText,
-                        i,
+                        ResolveWhisperPickerClientComboDeleteIndex(firstVisibleIndex, i),
                         isSelected: candidateIndex == chatState.WhisperTargetPickerSelectionIndex,
                         registerHitRegion: true,
                         mouseState: mouseState);

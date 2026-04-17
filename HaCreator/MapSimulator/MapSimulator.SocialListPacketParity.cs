@@ -17,13 +17,15 @@ namespace HaCreator.MapSimulator
         private int _socialListOfficialSessionBridgeConfiguredRemotePort;
         private string _socialListOfficialSessionBridgeConfiguredProcessSelector;
         private int? _socialListOfficialSessionBridgeConfiguredLocalPort;
+        private ushort _socialListOfficialSessionBridgeConfiguredFriendResultOpcode = SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode;
+        private ushort _socialListOfficialSessionBridgeConfiguredPartyResultOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
         private ushort _socialListOfficialSessionBridgeConfiguredGuildResultOpcode;
         private ushort _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode;
         private const int SocialListOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
         private int _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt;
 
         private const string SocialListPacketPayloadUsage =
-            "Usage: /sociallist packet [status|session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> <opcode>|stop]|clientraw <hex>|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|friendresult <payloadhex=..|payloadb64=..>|partyresult <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|guildskillresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>|guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>]";
+            "Usage: /sociallist packet [status|session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n] [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|start <listenPort> <remoteHost> <remotePort> <opcode> [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|stop]|clientraw <hex>|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|friendresult <payloadhex=..|payloadb64=..>|partyresult <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|guildskillresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [level=n] [remain=m] [fund=mesos] [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>|guilddialog <status|balance [mesos]|approve [summary]|reject [summary]>]";
         private const string SocialListPacketRawUsage =
             "Usage: /sociallist packetraw <friend|party|guild|alliance|blacklist|guildauth|allianceauth|guildui|friendresult|partyresult|guildresult|guildskillresult|allianceresult|clientresult> <hex>";
 
@@ -198,17 +200,16 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult ApplySocialListClientResultRawPacket(byte[] rawPacket)
         {
-            ushort guildResultOpcode = _socialListOfficialSessionBridgeConfiguredGuildResultOpcode > 0
-                ? _socialListOfficialSessionBridgeConfiguredGuildResultOpcode
-                : SocialListOfficialSessionBridgeManager.ClientGuildResultOpcode;
-            ushort allianceResultOpcode = _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode > 0
-                ? _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode
-                : SocialListOfficialSessionBridgeManager.ClientAllianceResultOpcode;
+            ResolveConfiguredSocialListResultOpcodes(
+                out ushort friendResultOpcode,
+                out ushort partyResultOpcode,
+                out ushort guildResultOpcode,
+                out ushort allianceResultOpcode);
 
             if (!SocialListPacketCodec.TryParseOpcodeFramedClientResult(
                     rawPacket,
-                    SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode,
-                    SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode,
+                    friendResultOpcode,
+                    partyResultOpcode,
                     guildResultOpcode,
                     allianceResultOpcode,
                     out SocialListClientResultOpcodeKind kind,
@@ -267,6 +268,12 @@ namespace HaCreator.MapSimulator
         {
             string enabledText = _socialListOfficialSessionBridgeEnabled ? "enabled" : "disabled";
             string modeText = _socialListOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string friendOpcodeText = _socialListOfficialSessionBridgeConfiguredFriendResultOpcode > 0
+                ? _socialListOfficialSessionBridgeConfiguredFriendResultOpcode.ToString()
+                : "unset";
+            string partyOpcodeText = _socialListOfficialSessionBridgeConfiguredPartyResultOpcode > 0
+                ? _socialListOfficialSessionBridgeConfiguredPartyResultOpcode.ToString()
+                : "unset";
             string guildOpcodeText = _socialListOfficialSessionBridgeConfiguredGuildResultOpcode > 0
                 ? _socialListOfficialSessionBridgeConfiguredGuildResultOpcode.ToString()
                 : "unset";
@@ -284,7 +291,7 @@ namespace HaCreator.MapSimulator
             string listeningText = _socialListOfficialSessionBridge.IsRunning
                 ? $"listening on 127.0.0.1:{_socialListOfficialSessionBridge.ListenPort}"
                 : $"configured for 127.0.0.1:{_socialListOfficialSessionBridgeConfiguredListenPort}";
-            return $"Social-list session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, friend-result opcode {SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode}, party-result opcode {SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode}, guild-result opcode {guildOpcodeText}, alliance-result opcode {allianceOpcodeText}. {_socialListOfficialSessionBridge.DescribeStatus()}";
+            return $"Social-list session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, friend-result opcode {friendOpcodeText}, party-result opcode {partyOpcodeText}, guild-result opcode {guildOpcodeText}, alliance-result opcode {allianceOpcodeText}. {_socialListOfficialSessionBridge.DescribeStatus()}";
         }
 
         private void EnsureSocialListOfficialSessionBridgeState(bool shouldRun)
@@ -301,6 +308,8 @@ namespace HaCreator.MapSimulator
 
             if (_socialListOfficialSessionBridgeConfiguredListenPort <= 0
                 || _socialListOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue
+                || _socialListOfficialSessionBridgeConfiguredFriendResultOpcode == 0
+                || _socialListOfficialSessionBridgeConfiguredPartyResultOpcode == 0
                 || _socialListOfficialSessionBridgeConfiguredGuildResultOpcode == 0)
             {
                 if (_socialListOfficialSessionBridge.IsRunning)
@@ -327,8 +336,8 @@ namespace HaCreator.MapSimulator
                 _socialListOfficialSessionBridge.TryRefreshFromDiscovery(
                     _socialListOfficialSessionBridgeConfiguredListenPort,
                     _socialListOfficialSessionBridgeConfiguredRemotePort,
-                    SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode,
-                    SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode,
+                    _socialListOfficialSessionBridgeConfiguredFriendResultOpcode,
+                    _socialListOfficialSessionBridgeConfiguredPartyResultOpcode,
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
                     _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode,
                     _socialListOfficialSessionBridgeConfiguredProcessSelector,
@@ -352,6 +361,8 @@ namespace HaCreator.MapSimulator
             if (_socialListOfficialSessionBridge.IsRunning
                 && _socialListOfficialSessionBridge.ListenPort == _socialListOfficialSessionBridgeConfiguredListenPort
                 && _socialListOfficialSessionBridge.RemotePort == _socialListOfficialSessionBridgeConfiguredRemotePort
+                && _socialListOfficialSessionBridge.FriendResultOpcode == _socialListOfficialSessionBridgeConfiguredFriendResultOpcode
+                && _socialListOfficialSessionBridge.PartyResultOpcode == _socialListOfficialSessionBridgeConfiguredPartyResultOpcode
                 && _socialListOfficialSessionBridge.GuildResultOpcode == _socialListOfficialSessionBridgeConfiguredGuildResultOpcode
                 && string.Equals(_socialListOfficialSessionBridge.RemoteHost, _socialListOfficialSessionBridgeConfiguredRemoteHost, StringComparison.OrdinalIgnoreCase))
             {
@@ -367,8 +378,8 @@ namespace HaCreator.MapSimulator
                 _socialListOfficialSessionBridgeConfiguredListenPort,
                 _socialListOfficialSessionBridgeConfiguredRemoteHost,
                 _socialListOfficialSessionBridgeConfiguredRemotePort,
-                SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode,
-                SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode,
+                _socialListOfficialSessionBridgeConfiguredFriendResultOpcode,
+                _socialListOfficialSessionBridgeConfiguredPartyResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode);
         }
@@ -378,6 +389,8 @@ namespace HaCreator.MapSimulator
             if (!_socialListOfficialSessionBridgeEnabled
                 || !_socialListOfficialSessionBridgeUseDiscovery
                 || _socialListOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _socialListOfficialSessionBridgeConfiguredFriendResultOpcode == 0
+                || _socialListOfficialSessionBridgeConfiguredPartyResultOpcode == 0
                 || _socialListOfficialSessionBridgeConfiguredGuildResultOpcode == 0
                 || _socialListOfficialSessionBridge.HasAttachedClient
                 || currentTickCount < _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt)
@@ -390,8 +403,8 @@ namespace HaCreator.MapSimulator
             _socialListOfficialSessionBridge.TryRefreshFromDiscovery(
                 _socialListOfficialSessionBridgeConfiguredListenPort,
                 _socialListOfficialSessionBridgeConfiguredRemotePort,
-                SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode,
-                SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode,
+                _socialListOfficialSessionBridgeConfiguredFriendResultOpcode,
+                _socialListOfficialSessionBridgeConfiguredPartyResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredGuildResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode,
                 _socialListOfficialSessionBridgeConfiguredProcessSelector,
@@ -506,9 +519,9 @@ namespace HaCreator.MapSimulator
                     if (args.Length < 3
                         || !int.TryParse(args[1], out int discoverRemotePort)
                         || discoverRemotePort <= 0
-                        || !TryParseSocialListOpcode(args[2], out ushort discoverOpcode))
+                        || !TryParseSocialListOpcode(args[2], out ushort discoverOpcodeDefault))
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n] [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]");
                     }
 
                     int discoverListenPort = SocialListOfficialSessionBridgeManager.DefaultListenPort;
@@ -519,6 +532,10 @@ namespace HaCreator.MapSimulator
 
                     string discoverProcessSelector = null;
                     int? discoverLocalPort = null;
+                    ushort discoverFriendOpcode = SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode;
+                    ushort discoverPartyOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
+                    ushort discoverGuildOpcode = discoverOpcodeDefault;
+                    ushort discoverAllianceOpcode = discoverOpcodeDefault;
                     for (int i = 3; i < args.Length; i++)
                     {
                         if (args[i].StartsWith("process=", StringComparison.OrdinalIgnoreCase))
@@ -530,6 +547,16 @@ namespace HaCreator.MapSimulator
                         {
                             discoverLocalPort = parsedLocalPort;
                         }
+                        else if (!TryApplySocialListOpcodeOverrideToken(
+                                     args[i],
+                                     ref discoverFriendOpcode,
+                                     ref discoverPartyOpcode,
+                                     ref discoverGuildOpcode,
+                                     ref discoverAllianceOpcode,
+                                     out string opcodeOverrideError))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(opcodeOverrideError);
+                        }
                     }
 
                     _socialListOfficialSessionBridgeEnabled = true;
@@ -539,16 +566,18 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredRemotePort = discoverRemotePort;
                     _socialListOfficialSessionBridgeConfiguredProcessSelector = discoverProcessSelector;
                     _socialListOfficialSessionBridgeConfiguredLocalPort = discoverLocalPort;
-                    _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = discoverOpcode;
-                    _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = discoverOpcode;
+                    _socialListOfficialSessionBridgeConfiguredFriendResultOpcode = discoverFriendOpcode;
+                    _socialListOfficialSessionBridgeConfiguredPartyResultOpcode = discoverPartyOpcode;
+                    _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = discoverGuildOpcode;
+                    _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = discoverAllianceOpcode;
                     _nextSocialListOfficialSessionBridgeDiscoveryRefreshAt = 0;
                     return _socialListOfficialSessionBridge.TryRefreshFromDiscovery(
                         discoverListenPort,
                         discoverRemotePort,
-                        SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode,
-                        SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode,
-                        discoverOpcode,
-                        discoverOpcode,
+                        discoverFriendOpcode,
+                        discoverPartyOpcode,
+                        discoverGuildOpcode,
+                        discoverAllianceOpcode,
                         discoverProcessSelector,
                         discoverLocalPort,
                         out string discoverStatus)
@@ -561,9 +590,27 @@ namespace HaCreator.MapSimulator
                         || listenPort <= 0
                         || !int.TryParse(args[3], out int remotePort)
                         || remotePort <= 0
-                        || !TryParseSocialListOpcode(args[4], out ushort startOpcode))
+                        || !TryParseSocialListOpcode(args[4], out ushort startOpcodeDefault))
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session start <listenPort> <remoteHost> <remotePort> <opcode>");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session start <listenPort> <remoteHost> <remotePort> <opcode> [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]");
+                    }
+
+                    ushort startFriendOpcode = SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode;
+                    ushort startPartyOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
+                    ushort startGuildOpcode = startOpcodeDefault;
+                    ushort startAllianceOpcode = startOpcodeDefault;
+                    for (int i = 5; i < args.Length; i++)
+                    {
+                        if (!TryApplySocialListOpcodeOverrideToken(
+                                args[i],
+                                ref startFriendOpcode,
+                                ref startPartyOpcode,
+                                ref startGuildOpcode,
+                                ref startAllianceOpcode,
+                                out string opcodeOverrideError))
+                        {
+                            return ChatCommandHandler.CommandResult.Error(opcodeOverrideError);
+                        }
                     }
 
                     _socialListOfficialSessionBridgeEnabled = true;
@@ -573,8 +620,10 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredRemotePort = remotePort;
                     _socialListOfficialSessionBridgeConfiguredProcessSelector = null;
                     _socialListOfficialSessionBridgeConfiguredLocalPort = null;
-                    _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = startOpcode;
-                    _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = startOpcode;
+                    _socialListOfficialSessionBridgeConfiguredFriendResultOpcode = startFriendOpcode;
+                    _socialListOfficialSessionBridgeConfiguredPartyResultOpcode = startPartyOpcode;
+                    _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = startGuildOpcode;
+                    _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = startAllianceOpcode;
                     EnsureSocialListOfficialSessionBridgeState(shouldRun: true);
                     return ChatCommandHandler.CommandResult.Ok(DescribeSocialListOfficialSessionBridgeStatus());
 
@@ -584,14 +633,105 @@ namespace HaCreator.MapSimulator
                     _socialListOfficialSessionBridgeConfiguredRemotePort = 0;
                     _socialListOfficialSessionBridgeConfiguredProcessSelector = null;
                     _socialListOfficialSessionBridgeConfiguredLocalPort = null;
+                    _socialListOfficialSessionBridgeConfiguredFriendResultOpcode = SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode;
+                    _socialListOfficialSessionBridgeConfiguredPartyResultOpcode = SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
                     _socialListOfficialSessionBridgeConfiguredGuildResultOpcode = 0;
                     _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode = 0;
                     _socialListOfficialSessionBridge.Stop();
                     return ChatCommandHandler.CommandResult.Ok(DescribeSocialListOfficialSessionBridgeStatus());
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|start <listenPort> <remoteHost> <remotePort> <opcode>|stop]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet session [status|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n] [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|start <listenPort> <remoteHost> <remotePort> <opcode> [friendOpcode=n] [partyOpcode=n] [guildOpcode=n] [allianceOpcode=n]|stop]");
             }
+        }
+
+        private void ResolveConfiguredSocialListResultOpcodes(
+            out ushort friendResultOpcode,
+            out ushort partyResultOpcode,
+            out ushort guildResultOpcode,
+            out ushort allianceResultOpcode)
+        {
+            friendResultOpcode = _socialListOfficialSessionBridgeConfiguredFriendResultOpcode > 0
+                ? _socialListOfficialSessionBridgeConfiguredFriendResultOpcode
+                : SocialListOfficialSessionBridgeManager.ClientFriendResultOpcode;
+            partyResultOpcode = _socialListOfficialSessionBridgeConfiguredPartyResultOpcode > 0
+                ? _socialListOfficialSessionBridgeConfiguredPartyResultOpcode
+                : SocialListOfficialSessionBridgeManager.ClientPartyResultOpcode;
+            guildResultOpcode = _socialListOfficialSessionBridgeConfiguredGuildResultOpcode > 0
+                ? _socialListOfficialSessionBridgeConfiguredGuildResultOpcode
+                : SocialListOfficialSessionBridgeManager.ClientGuildResultOpcode;
+            allianceResultOpcode = _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode > 0
+                ? _socialListOfficialSessionBridgeConfiguredAllianceResultOpcode
+                : SocialListOfficialSessionBridgeManager.ClientAllianceResultOpcode;
+        }
+
+        private static bool TryApplySocialListOpcodeOverrideToken(
+            string token,
+            ref ushort friendResultOpcode,
+            ref ushort partyResultOpcode,
+            ref ushort guildResultOpcode,
+            ref ushort allianceResultOpcode,
+            out string error)
+        {
+            error = null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return true;
+            }
+
+            if (!TrySplitSocialListOpcodeOverride(token, out string key, out string value))
+            {
+                return true;
+            }
+
+            if (!TryParseSocialListOpcode(value, out ushort parsedOpcode))
+            {
+                error = $"Invalid social-list session opcode override '{token}'.";
+                return false;
+            }
+
+            switch (key.ToLowerInvariant())
+            {
+                case "friendopcode":
+                case "friend":
+                    friendResultOpcode = parsedOpcode;
+                    return true;
+                case "partyopcode":
+                case "party":
+                    partyResultOpcode = parsedOpcode;
+                    return true;
+                case "guildopcode":
+                case "guild":
+                    guildResultOpcode = parsedOpcode;
+                    return true;
+                case "allianceopcode":
+                case "alliance":
+                    allianceResultOpcode = parsedOpcode;
+                    return true;
+                default:
+                    error = $"Unsupported social-list session opcode override key '{key}' in '{token}'.";
+                    return false;
+            }
+        }
+
+        private static bool TrySplitSocialListOpcodeOverride(string token, out string key, out string value)
+        {
+            key = null;
+            value = null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            int separatorIndex = token.IndexOf('=');
+            if (separatorIndex <= 0 || separatorIndex >= token.Length - 1)
+            {
+                return false;
+            }
+
+            key = token[..separatorIndex].Trim();
+            value = token[(separatorIndex + 1)..].Trim();
+            return !string.IsNullOrWhiteSpace(key);
         }
     }
 }

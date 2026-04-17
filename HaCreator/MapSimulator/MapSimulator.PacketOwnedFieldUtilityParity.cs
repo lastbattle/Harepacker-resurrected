@@ -731,20 +731,30 @@ namespace HaCreator.MapSimulator
             HashSet<int> consumedCachedEntryIndices = hasLiveRuntimePlatforms ? null : new();
             for (int i = 0; i < snapshotCount; i++)
             {
-                if (TryBuildPacketOwnedLiveFootholdSnapshotEntry(i, out PacketFieldUtilityFootholdEntry liveEntry))
+                if (TryBuildPacketOwnedLiveFootholdSnapshotEntry(
+                    i,
+                    allowPacketCacheNameFallback: false,
+                    out PacketFieldUtilityFootholdEntry liveEntry))
                 {
                     entries.Add(liveEntry);
                     continue;
                 }
 
                 if (!hasLiveRuntimePlatforms
-                    && TryBuildPacketOwnedCachedFootholdSnapshotEntry(i, consumedCachedEntryIndices, out PacketFieldUtilityFootholdEntry cachedEntry))
+                    && TryBuildPacketOwnedCachedFootholdSnapshotEntry(
+                        i,
+                        consumedCachedEntryIndices,
+                        allowPacketCacheNameFallback: true,
+                        out PacketFieldUtilityFootholdEntry cachedEntry))
                 {
                     entries.Add(cachedEntry);
                     continue;
                 }
 
-                if (TryBuildPacketOwnedDefaultFootholdSnapshotEntry(i, out PacketFieldUtilityFootholdEntry defaultEntry))
+                if (TryBuildPacketOwnedDefaultFootholdSnapshotEntry(
+                    i,
+                    allowPacketCacheNameFallback: !hasLiveRuntimePlatforms,
+                    out PacketFieldUtilityFootholdEntry defaultEntry))
                 {
                     entries.Add(defaultEntry);
                 }
@@ -768,7 +778,10 @@ namespace HaCreator.MapSimulator
                 : _packetFieldUtilityFootholdEntries.ToArray();
         }
 
-        private bool TryBuildPacketOwnedLiveFootholdSnapshotEntry(int platformId, out PacketFieldUtilityFootholdEntry entry)
+        private bool TryBuildPacketOwnedLiveFootholdSnapshotEntry(
+            int platformId,
+            bool allowPacketCacheNameFallback,
+            out PacketFieldUtilityFootholdEntry entry)
         {
             entry = null;
             DynamicPlatform platform = _dynamicFootholds?.GetPlatform(platformId);
@@ -778,7 +791,7 @@ namespace HaCreator.MapSimulator
             }
 
             entry = new PacketFieldUtilityFootholdEntry(
-                ResolvePacketOwnedDynamicPlatformSnapshotName(platformId),
+                ResolvePacketOwnedDynamicPlatformSnapshotName(platformId, allowPacketCacheNameFallback),
                 platform.IsActive ? 2 : 0,
                 ResolvePacketOwnedSnapshotSerialNumbers(platformId),
                 new PacketFieldUtilityMovingFootholdState(
@@ -797,6 +810,7 @@ namespace HaCreator.MapSimulator
         private bool TryBuildPacketOwnedCachedFootholdSnapshotEntry(
             int platformId,
             ISet<int> consumedCachedEntryIndices,
+            bool allowPacketCacheNameFallback,
             out PacketFieldUtilityFootholdEntry entry)
         {
             entry = null;
@@ -805,7 +819,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string snapshotName = ResolvePacketOwnedDynamicPlatformSnapshotName(platformId);
+            string snapshotName = ResolvePacketOwnedDynamicPlatformSnapshotName(platformId, allowPacketCacheNameFallback);
             consumedCachedEntryIndices?.Add(cachedEntryIndex);
             entry = new PacketFieldUtilityFootholdEntry(
                 string.IsNullOrWhiteSpace(snapshotName) ? cachedEntry.Name : snapshotName,
@@ -815,10 +829,13 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryBuildPacketOwnedDefaultFootholdSnapshotEntry(int platformId, out PacketFieldUtilityFootholdEntry entry)
+        private bool TryBuildPacketOwnedDefaultFootholdSnapshotEntry(
+            int platformId,
+            bool allowPacketCacheNameFallback,
+            out PacketFieldUtilityFootholdEntry entry)
         {
             entry = null;
-            string snapshotName = ResolvePacketOwnedDynamicPlatformSnapshotName(platformId);
+            string snapshotName = ResolvePacketOwnedDynamicPlatformSnapshotName(platformId, allowPacketCacheNameFallback);
             if (string.IsNullOrWhiteSpace(snapshotName))
             {
                 return false;
@@ -975,26 +992,62 @@ namespace HaCreator.MapSimulator
                 : serialNumbers.ToArray();
         }
 
-        private string ResolvePacketOwnedDynamicPlatformSnapshotName(int platformId)
+        private string ResolvePacketOwnedDynamicPlatformSnapshotName(int platformId, bool allowPacketCacheNameFallback)
         {
+            string authoredPacketOwnedSnapshotName = null;
             if (_dynamicFootholdField != null
-                && _dynamicFootholdField.TryResolvePacketOwnedSnapshotDynamicObjectName(platformId, out string authoredName)
-                && !string.IsNullOrWhiteSpace(authoredName))
+                && _dynamicFootholdField.TryResolvePacketOwnedSnapshotDynamicObjectName(platformId, out authoredPacketOwnedSnapshotName))
             {
-                return authoredName;
+                authoredPacketOwnedSnapshotName = string.IsNullOrWhiteSpace(authoredPacketOwnedSnapshotName)
+                    ? null
+                    : authoredPacketOwnedSnapshotName.Trim();
             }
 
-            if (_packetFieldUtilityFootholdNamesBySerial.TryGetValue(platformId, out string packetName)
-                && !string.IsNullOrWhiteSpace(packetName))
+            string packetCacheName = null;
+            if (_packetFieldUtilityFootholdNamesBySerial.TryGetValue(platformId, out string packetName))
             {
-                return packetName;
+                packetCacheName = string.IsNullOrWhiteSpace(packetName)
+                    ? null
+                    : packetName.Trim();
             }
 
+            string authoredFallbackName = null;
             if (_dynamicFootholdField != null
-                && _dynamicFootholdField.TryResolveAuthoredDynamicObjectName(platformId, out authoredName)
-                && !string.IsNullOrWhiteSpace(authoredName))
+                && _dynamicFootholdField.TryResolveAuthoredDynamicObjectName(platformId, out authoredFallbackName))
             {
-                return authoredName;
+                authoredFallbackName = string.IsNullOrWhiteSpace(authoredFallbackName)
+                    ? null
+                    : authoredFallbackName.Trim();
+            }
+
+            return SelectPacketOwnedDynamicPlatformSnapshotName(
+                authoredPacketOwnedSnapshotName,
+                packetCacheName,
+                authoredFallbackName,
+                platformId,
+                allowPacketCacheNameFallback);
+        }
+
+        internal static string SelectPacketOwnedDynamicPlatformSnapshotName(
+            string authoredPacketOwnedSnapshotName,
+            string packetCacheName,
+            string authoredFallbackName,
+            int platformId,
+            bool allowPacketCacheNameFallback)
+        {
+            if (!string.IsNullOrWhiteSpace(authoredPacketOwnedSnapshotName))
+            {
+                return authoredPacketOwnedSnapshotName.Trim();
+            }
+
+            if (allowPacketCacheNameFallback && !string.IsNullOrWhiteSpace(packetCacheName))
+            {
+                return packetCacheName.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(authoredFallbackName))
+            {
+                return authoredFallbackName.Trim();
             }
 
             return $"platform-{platformId}";

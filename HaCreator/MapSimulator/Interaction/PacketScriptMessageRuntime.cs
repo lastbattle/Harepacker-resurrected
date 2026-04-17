@@ -31,7 +31,7 @@ namespace HaCreator.MapSimulator.Interaction
             byte[] payload,
             Func<int, NpcItem> findNpcById,
             NpcItem activeNpc,
-            Func<long, PacketScriptPetSelectionCandidate> resolveSelectablePet,
+            Func<long, byte, PacketScriptPetSelectionCandidate> resolveSelectablePet,
             Action<PacketScriptClientOwnerRuntimeSync> syncClientOwnerRuntime,
             out PacketScriptMessageOpenRequest request,
             out string message)
@@ -365,7 +365,7 @@ namespace HaCreator.MapSimulator.Interaction
             PacketScriptSpeaker speaker,
             byte param,
             bool isPetAll,
-            Func<long, PacketScriptPetSelectionCandidate> resolveSelectablePet)
+            Func<long, byte, PacketScriptPetSelectionCandidate> resolveSelectablePet)
         {
             long startPosition = reader.BaseStream.Position;
             if (TryDecodeAskPetClientPacket(reader, speaker, param, isPetAll, resolveSelectablePet, out PacketScriptDecodeResult decoded))
@@ -610,7 +610,7 @@ namespace HaCreator.MapSimulator.Interaction
             PacketScriptSpeaker speaker,
             byte param,
             bool isPetAll,
-            Func<long, PacketScriptPetSelectionCandidate> resolveSelectablePet,
+            Func<long, byte, PacketScriptPetSelectionCandidate> resolveSelectablePet,
             out PacketScriptDecodeResult result)
         {
             long startPosition = reader.BaseStream.Position;
@@ -808,7 +808,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static List<PacketScriptPetSelectionCandidate> FilterSelectablePets(
             IReadOnlyList<PacketScriptPetPacketEntry> packetPetEntries,
-            Func<long, PacketScriptPetSelectionCandidate> resolveSelectablePet,
+            Func<long, byte, PacketScriptPetSelectionCandidate> resolveSelectablePet,
             bool allowPacketFallback,
             out int droppedSerialCount,
             out int packetFallbackCount)
@@ -838,7 +838,7 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                PacketScriptPetSelectionCandidate selectablePet = resolveSelectablePet?.Invoke(serialNumber);
+                PacketScriptPetSelectionCandidate selectablePet = resolveSelectablePet?.Invoke(serialNumber, packetEntry.CashSlotHint);
                 if (selectablePet == null)
                 {
                     if (!allowPacketFallback)

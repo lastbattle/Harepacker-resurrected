@@ -136,6 +136,7 @@ namespace HaCreator.MapSimulator.UI
             public bool HasPlateCanvas { get; init; }
             public bool HasPlateBigCanvas { get; init; }
             public int NumberCanvasCount { get; init; }
+            public int NumberCanvasReadyMask { get; init; }
             public int ExpectedNumberCanvasCount { get; init; } = 10;
             public int PlateCount { get; init; } = 3;
             public int PlateButtonCount { get; init; } = 12;
@@ -2246,7 +2247,11 @@ namespace HaCreator.MapSimulator.UI
                 _oneADayRewardSessionRevision++;
             }
 
-            _oneADayNumberCanvasReadyMask = BuildOneADayNumberCanvasReadyMask(state?.NumberCanvasCount ?? 0);
+            _oneADayNumberCanvasReadyMask = state == null
+                ? 0
+                : (state.NumberCanvasReadyMask != 0
+                    ? state.NumberCanvasReadyMask
+                    : BuildOneADayNumberCanvasReadyMask(state.NumberCanvasCount));
         }
 
         private void RefreshOneADayInteractiveRuntime(OneADayOwnerState state)

@@ -200,6 +200,10 @@ namespace HaCreator.MapSimulator
                 _initialQuizOwnerTimeoutCloseArmed = true;
                 _initialQuizOwnerPressedOkButton = false;
                 _initialQuizOwnerHoveringOkButton = false;
+                _initialQuizOwnerFocusTarget = InitialQuizOwnerFocusTarget.OkButton;
+                EnsureInitialQuizOwnerEditControl()?.SetFocus(false);
+                ClearInitialQuizOwnerCompositionText();
+                ClearInitialQuizOwnerImeCandidateList();
                 return;
             }
 
@@ -799,6 +803,13 @@ namespace HaCreator.MapSimulator
         internal static bool ShouldForwardInitialQuizOwnerInputToActiveWindow(bool ownerCapturesWindowInput)
         {
             return !ownerCapturesWindowInput;
+        }
+
+        internal static bool ShouldForwardInitialQuizOwnerImeToNpcOverlay(
+            bool ownerCapturesWindowInput,
+            bool npcOverlayCapturesKeyboardInput)
+        {
+            return !ownerCapturesWindowInput && npcOverlayCapturesKeyboardInput;
         }
 
         internal static bool ShouldInitialQuizOwnerOverrideNpcOverlayInput(bool ownerCapturesWindowInput)

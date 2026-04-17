@@ -59,6 +59,12 @@ namespace HaCreator.MapSimulator.Interaction
             [5370001] = new[] { $"{InfoPropertyName}/{ChalkboardSamplePropertyName}" },
             [5370002] = new[] { $"{InfoPropertyName}/{ChalkboardSamplePropertyName}" }
         };
+        private static readonly IReadOnlySet<int> KnownConsumeCashItemUseRequestItemIds = new HashSet<int>
+        {
+            5370000,
+            5370001,
+            5370002
+        };
 
         private readonly Dictionary<int, FieldMessageBoxEntry> _entries = new();
         private readonly List<LeavingMessageBoxEntry> _leavingEntries = new();
@@ -602,9 +608,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (!IsKnownChalkboardItem(itemId))
+            if (!IsKnownChalkboardConsumeRequestItem(itemId))
             {
-                error = $"Message-box use request item {itemId} is not in the WZ-observed 537xxxx chalkboard family.";
+                error = $"Message-box use request item {itemId} is outside the WZ-observed cash chalkboard consume family (5370000-5370002).";
                 return false;
             }
 
@@ -674,9 +680,9 @@ namespace HaCreator.MapSimulator.Interaction
                 int clientTick = reader.ReadInt();
                 short inventoryPosition = reader.ReadShort();
                 int itemId = reader.ReadInt();
-                if (!IsKnownChalkboardItem(itemId))
+                if (!IsKnownChalkboardConsumeRequestItem(itemId))
                 {
-                    error = $"Consume-cash item request item {itemId} is not a WZ-observed field message-box cash item.";
+                    error = $"Consume-cash item request item {itemId} is outside the WZ-observed cash chalkboard consume family (5370000-5370002).";
                     return false;
                 }
 
@@ -762,6 +768,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static bool IsKnownChalkboardItem(int itemId)
         {
             return ExactChalkboardVisualFallbackPaths.ContainsKey(itemId);
+        }
+
+        internal static bool IsKnownChalkboardConsumeRequestItem(int itemId)
+        {
+            return KnownConsumeCashItemUseRequestItemIds.Contains(itemId);
         }
 
         private bool TryLoadItemProperty(string category, string imagePath, int itemId, out WzSubProperty itemProperty)

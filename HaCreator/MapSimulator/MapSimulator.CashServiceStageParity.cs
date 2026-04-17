@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator
             public bool HasBuyButton { get; init; }
             public bool HasItemBoxButton { get; init; }
             public int NumberCanvasCount { get; init; }
+            public int NumberCanvasReadyMask { get; init; }
             public int PlateCount { get; init; }
             public bool ResolvedFromClientStringPool { get; init; }
         }
@@ -284,6 +285,7 @@ namespace HaCreator.MapSimulator
                         HasPlateCanvas = artSnapshot.HasPlateCanvas,
                         HasPlateBigCanvas = artSnapshot.HasPlateBigCanvas,
                         NumberCanvasCount = artSnapshot.NumberCanvasCount,
+                        NumberCanvasReadyMask = artSnapshot.NumberCanvasReadyMask,
                         ExpectedNumberCanvasCount = 10,
                         PlateCount = Math.Max(1, artSnapshot.PlateCount),
                         PlateButtonCount = 12,
@@ -301,7 +303,7 @@ namespace HaCreator.MapSimulator
                             remainingHour,
                             remainingMinute,
                             remainingSecond,
-                            artSnapshot.NumberCanvasCount),
+                            artSnapshot.NumberCanvasReadyMask),
                         RewardSessionSummary = BuildCashShopOneADayRewardSessionSummary(
                             stageWindow,
                             historyEntries,
@@ -401,7 +403,7 @@ namespace HaCreator.MapSimulator
             int hour,
             int minute,
             int second,
-            int numberCanvasCount)
+            int numberCanvasReadyMask)
         {
             string digits = string.Create(
                 8,
@@ -426,7 +428,7 @@ namespace HaCreator.MapSimulator
                     SlotIndex = i,
                     Digit = character,
                     IsSeparator = !isDigit,
-                    HasDigitCanvas = isDigit && digit >= 0 && digit < numberCanvasCount
+                    HasDigitCanvas = isDigit && digit >= 0 && ((_ = 1 << digit) & numberCanvasReadyMask) != 0
                 });
             }
 
@@ -465,7 +467,7 @@ namespace HaCreator.MapSimulator
                 ? $"history {(historyEntries?.Count ?? 0).ToString(CultureInfo.InvariantCulture)}/{CashShopOneADayHistorySlotCount.ToString(CultureInfo.InvariantCulture)} loaded"
                 : "no previous history";
             string counterState = $"{remainingHour.ToString("00", CultureInfo.InvariantCulture)}:{remainingMinute.ToString("00", CultureInfo.InvariantCulture)}:{remainingSecond.ToString("00", CultureInfo.InvariantCulture)}";
-            return $"Reward session approx 0x{approximatedRewardSessionByte:X2}: {todayState}, {historyState}, counter {counterState}, selector 2 lanes, number canvases {artSnapshot.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/10.";
+            return $"Reward session approx 0x{approximatedRewardSessionByte:X2}: {todayState}, {historyState}, counter {counterState}, selector 2 lanes, number canvases {artSnapshot.NumberCanvasCount.ToString(CultureInfo.InvariantCulture)}/10 (mask 0x{artSnapshot.NumberCanvasReadyMask:X3}).";
         }
 
         internal static int ResolveCashShopOneADayHistorySlotCount()
@@ -1037,11 +1039,13 @@ namespace HaCreator.MapSimulator
             }
 
             int numberCanvasCount = 0;
+            int numberCanvasReadyMask = 0;
             for (int i = 0; i < 10; i++)
             {
                 if (counterProperty?[i.ToString(CultureInfo.InvariantCulture)] != null)
                 {
                     numberCanvasCount++;
+                    numberCanvasReadyMask |= 1 << i;
                 }
             }
 
@@ -1055,6 +1059,7 @@ namespace HaCreator.MapSimulator
                 HasBuyButton = buyButtonProperty != null || picturePlateProperty?["BtJoin"] != null,
                 HasItemBoxButton = itemBoxButtonProperty != null || picturePlateProperty?["BtShortcut"] != null,
                 NumberCanvasCount = numberCanvasCount,
+                NumberCanvasReadyMask = numberCanvasReadyMask,
                 PlateCount = plateCount,
                 ResolvedFromClientStringPool =
                     noItemProperty != null

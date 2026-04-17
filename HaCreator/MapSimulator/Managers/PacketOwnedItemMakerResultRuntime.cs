@@ -60,6 +60,41 @@ namespace HaCreator.MapSimulator.Managers
             result = null;
             error = null;
 
+            if (payload == null || payload.Length == 0)
+            {
+                error = "Maker-result payload must include at least the Int32 result code.";
+                return false;
+            }
+
+            IReadOnlyList<PacketOwnedPayloadEnvelopeRuntime.Candidate> decodeCandidates =
+                PacketOwnedPayloadEnvelopeRuntime.EnumerateDecodeCandidates(payload, (ushort)ClientPacketType);
+            if (decodeCandidates.Count == 0)
+            {
+                error = "Maker-result payload must include at least the Int32 result code.";
+                return false;
+            }
+
+            string firstDecodeError = null;
+            for (int i = 0; i < decodeCandidates.Count; i++)
+            {
+                PacketOwnedPayloadEnvelopeRuntime.Candidate candidate = decodeCandidates[i];
+                if (TryDecodeCore(candidate.Payload, out result, out error))
+                {
+                    return true;
+                }
+
+                firstDecodeError ??= error;
+            }
+
+            error = firstDecodeError ?? error ?? "Maker-result payload could not be decoded.";
+            return false;
+        }
+
+        private static bool TryDecodeCore(byte[] payload, out PacketOwnedItemMakerResult result, out string error)
+        {
+            result = null;
+            error = null;
+
             if (payload == null || payload.Length < sizeof(int))
             {
                 error = "Maker-result payload must include at least the Int32 result code.";

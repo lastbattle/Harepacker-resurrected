@@ -875,7 +875,7 @@ namespace HaCreator.MapSimulator.Fields
                 MemoryGamePromptType.BanParticipant => ConfirmBanParticipant(prompt.PlayerIndex, tickCount, out message),
                 MemoryGamePromptType.BookLeave => ConfirmLeaveBooking(prompt.PlayerIndex, booked: true, tickCount, out message),
                 MemoryGamePromptType.CancelBookedLeave => ConfirmLeaveBooking(prompt.PlayerIndex, booked: false, tickCount, out message),
-                MemoryGamePromptType.CloseRoom => TryResolveLobbyExit(prompt.PlayerIndex, out message),
+                MemoryGamePromptType.CloseRoom => ConfirmCloseRoom(prompt.PlayerIndex, tickCount, out message),
                 _ => AssignPromptMissing(out message)
             };
         }
@@ -2883,6 +2883,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return TryApplyLeaveBookingStatus(playerIndex, booked, out message);
+        }
+
+        private bool ConfirmCloseRoom(int playerIndex, int tickCount, out string message)
+        {
+            if (playerIndex == _localPlayerIndex)
+            {
+                return TryDispatchOfficialClientSubtype(MiniRoomBaseLeavePacketType, tickCount, out message);
+            }
+
+            return TryResolveLobbyExit(playerIndex, out message);
         }
 
         private bool TryDispatchOfficialClientSubtype(byte subtype, int tickCount, out string message, params byte[] extraPayload)

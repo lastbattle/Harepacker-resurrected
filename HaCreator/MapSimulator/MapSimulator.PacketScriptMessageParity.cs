@@ -86,7 +86,7 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate ResolvePacketScriptSelectablePet(long petSerialNumber)
+        private PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate ResolvePacketScriptSelectablePet(long petSerialNumber, byte packetSlotHint)
         {
             IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
             if (petSerialNumber <= 0)
@@ -120,13 +120,25 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager?.InventoryWindow is IInventoryRuntime inventoryRuntime)
             {
+                var liveCashSlots = inventoryRuntime.GetSlots(MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.CASH);
+
                 PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate inventoryCandidate =
                     PacketScriptPetSelectionSnapshotResolver.ResolveLiveInventoryCandidate(
-                        inventoryRuntime.GetSlots(MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType.CASH),
+                        liveCashSlots,
                         petSerialNumber);
                 if (inventoryCandidate != null)
                 {
                     return inventoryCandidate;
+                }
+
+                PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate slotHintCandidate =
+                    PacketScriptPetSelectionSnapshotResolver.ResolveLiveInventoryCandidateBySlotHint(
+                        liveCashSlots,
+                        petSerialNumber,
+                        packetSlotHint);
+                if (slotHintCandidate != null)
+                {
+                    return slotHintCandidate;
                 }
             }
 

@@ -3552,6 +3552,8 @@ namespace HaCreator.MapSimulator.Interaction
                 sayProperty,
                 npcId,
                 build?.Job ?? 0,
+                build?.Level ?? 0,
+                build?.Gender,
                 GetQuestState);
             if (ReferenceEquals(selectedProperty, sayProperty))
             {
@@ -3576,6 +3578,8 @@ namespace HaCreator.MapSimulator.Interaction
             WzImageProperty property,
             int npcId,
             int currentJob,
+            int currentLevel,
+            CharacterGender? currentGender,
             Func<int, QuestStateType> questStateResolver)
         {
             if (property?.WzProperties == null)
@@ -3592,7 +3596,7 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < variantChildren.Count; i++)
             {
                 WzImageProperty variantChild = variantChildren[i];
-                if (!MatchesConversationVariantMetadata(variantChild, npcId, currentJob, questStateResolver))
+                if (!MatchesConversationVariantMetadata(variantChild, npcId, currentJob, currentLevel, currentGender, questStateResolver))
                 {
                     continue;
                 }
@@ -3601,6 +3605,8 @@ namespace HaCreator.MapSimulator.Interaction
                     variantChild,
                     npcId,
                     currentJob,
+                    currentLevel,
+                    currentGender,
                     questStateResolver);
                 return nestedSelection ?? variantChild;
             }
@@ -3635,13 +3641,21 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static bool HasConversationVariantMetadata(WzImageProperty property)
         {
-            return property?["npc"] != null || property?["job"] != null || property?["quest"] != null;
+            return property?["npc"] != null ||
+                   property?["job"] != null ||
+                   property?["quest"] != null ||
+                   property?["lvmin"] != null ||
+                   property?["lvmax"] != null ||
+                   property?["gender"] != null ||
+                   property?["sex"] != null;
         }
 
         private static bool MatchesConversationVariantMetadata(
             WzImageProperty property,
             int npcId,
             int currentJob,
+            int currentLevel,
+            CharacterGender? currentGender,
             Func<int, QuestStateType> questStateResolver)
         {
             if (property == null)
@@ -3659,6 +3673,37 @@ namespace HaCreator.MapSimulator.Interaction
             if (allowedJobs.Count > 0 && !MatchesAllowedJobs(currentJob, allowedJobs))
             {
                 return false;
+            }
+
+            int minimumLevel = ParsePositiveInt(property["lvmin"]).GetValueOrDefault();
+            if (minimumLevel > 0 && currentLevel < minimumLevel)
+            {
+                return false;
+            }
+
+            int maximumLevel = ParsePositiveInt(property["lvmax"]).GetValueOrDefault();
+            if (maximumLevel > 0 && currentLevel > maximumLevel)
+            {
+                return false;
+            }
+
+            CharacterGenderType? requiredGender = ParseConversationVariantGender(property["gender"] ?? property["sex"]);
+            if (requiredGender.HasValue)
+            {
+                if (!currentGender.HasValue)
+                {
+                    return false;
+                }
+
+                if (requiredGender.Value == CharacterGenderType.Male && currentGender.Value != CharacterGender.Male)
+                {
+                    return false;
+                }
+
+                if (requiredGender.Value == CharacterGenderType.Female && currentGender.Value != CharacterGender.Female)
+                {
+                    return false;
+                }
             }
 
             IReadOnlyList<QuestStateRequirement> questRequirements = ParseQuestRequirements(property["quest"]);
@@ -3680,6 +3725,20 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return HasConversationVariantMetadata(property);
+        }
+
+        private static CharacterGenderType? ParseConversationVariantGender(WzImageProperty property)
+        {
+            int? value = ParseInt(property);
+            if (!value.HasValue ||
+                value.Value == (int)CharacterGenderType.Both ||
+                value.Value < (int)CharacterGenderType.Male ||
+                value.Value > (int)CharacterGenderType.Female)
+            {
+                return null;
+            }
+
+            return (CharacterGenderType)value.Value;
         }
 
         private static void AppendConversationPages(

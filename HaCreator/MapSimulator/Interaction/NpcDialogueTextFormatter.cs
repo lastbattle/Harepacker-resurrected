@@ -60,9 +60,13 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestDetailStyleRegex = new(@"#(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MalformedQuestDetailStyleRegex = new(@"#\d+(?<tag>[bkrgdenmc])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestDetailFontNameRegex = new(@"#fn(?<name>[^#]+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestDetailFontSizeRegex = new(@"#fs(?<size>-?\d+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex StyleTagRegex = new(@"#(?:[bkrgdenmc])#?", RegexOptions.Compiled);
+        private static readonly Regex FontNameTagRegex = new(@"#fn[^#]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex FontSizeTagRegex = new(@"#fs-?\d+#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MalformedPunctuationTagRegex = new(@"#(?<punct>[!?,.;:)])#?", RegexOptions.Compiled);
         private static readonly Regex LiteralWordHashRegex = new(@"#(?=[A-Z][A-Za-z]+\b)", RegexOptions.Compiled);
@@ -111,6 +115,8 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = CurrentQuestValueRegex.Replace(formatted, match => ResolveActiveQuestValueText(context));
             formatted = QuestRecordRegex.Replace(formatted, match => ResolveQuestRecordText(match.Groups[1].Value, context));
             formatted = CurrentQuestRecordRegex.Replace(formatted, match => ResolveActiveQuestRecordText(context));
+            formatted = FontNameTagRegex.Replace(formatted, string.Empty);
+            formatted = FontSizeTagRegex.Replace(formatted, string.Empty);
             formatted = StyleTagRegex.Replace(formatted, string.Empty);
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = MalformedPunctuationTagRegex.Replace(formatted, "${punct}");
@@ -177,6 +183,12 @@ namespace HaCreator.MapSimulator.Interaction
             preservedMarkers = MalformedQuestDetailStyleRegex.Replace(
                 preservedMarkers,
                 match => BuildQuestStyleMarker(match.Groups["tag"].Value));
+            preservedMarkers = QuestDetailFontNameRegex.Replace(
+                preservedMarkers,
+                match => BuildQuestFontMarker(match.Groups["name"].Value));
+            preservedMarkers = QuestDetailFontSizeRegex.Replace(
+                preservedMarkers,
+                match => BuildQuestFontSizeMarker(match.Groups["size"].Value));
             preservedMarkers = Regex.Replace(
                 preservedMarkers,
                 "#c#",
@@ -278,6 +290,21 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(normalizedTag)
                 ? string.Empty
                 : $"{{{{QUESTSTYLE:{normalizedTag}}}}}";
+        }
+
+        public static string BuildQuestFontMarker(string fontName)
+        {
+            string normalizedName = fontName?.Trim();
+            return string.IsNullOrWhiteSpace(normalizedName)
+                ? string.Empty
+                : $"{{{{QUESTFONT:{normalizedName}}}}}";
+        }
+
+        public static string BuildQuestFontSizeMarker(string fontSize)
+        {
+            return int.TryParse(fontSize?.Trim(), out int parsedSize)
+                ? $"{{{{QUESTFONTSIZE:{parsedSize}}}}}"
+                : string.Empty;
         }
 
         public static string BuildQuestInlineReferenceMarker(string kind, int targetId, string label)

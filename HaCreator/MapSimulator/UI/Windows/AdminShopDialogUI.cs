@@ -723,17 +723,13 @@ namespace HaCreator.MapSimulator.UI
             _packetOwnedAdminShopRows.AddRange(snapshot.Rows);
             ClearPendingPacketOwnedUserSellSnapshot();
             ClearPendingPacketOwnedWishlistRegister();
-            ResetMode(AdminShopServiceMode.CashShop);
-            RestorePacketOwnedOpenViewState(AdminShopPacketOwnedOpenViewParity.ResolveDefaultForSetAdminShopDlg());
-            if (preservePacketOwnedUserSelection)
-            {
-                TryApplyPacketOwnedSetUserItemsOpenParity(
-                    preservedUserSelectionInventoryType,
-                    preservedUserSelectionItemId,
-                    preservedUserSelectionSlotPosition,
-                    preservedUserSelectionPacketSerialNumber,
-                    preservedUserSelectionScrollOffset);
-            }
+            RefreshPacketOwnedSessionRowsAtOwner(
+                preservePacketOwnedUserSelection,
+                preservedUserSelectionInventoryType,
+                preservedUserSelectionItemId,
+                preservedUserSelectionSlotPosition,
+                preservedUserSelectionPacketSerialNumber,
+                preservedUserSelectionScrollOffset);
             _footerMessage = _packetOwnedAdminShopSession.NpcTemplateId > 0
                 ? $"CAdminShopDlg::SetAdminShopDlg opened the packet-owned admin-shop owner for NPC {_packetOwnedAdminShopSession.NpcTemplateId} with {_packetOwnedAdminShopSession.DecodedItemCount} decoded row(s); wishlist prompt={(_packetOwnedAdminShopSession.AskItemWishlist ? "on" : "off")}."
                 : $"CAdminShopDlg::SetAdminShopDlg opened the packet-owned admin-shop owner with {_packetOwnedAdminShopSession.DecodedItemCount} decoded row(s); wishlist prompt={(_packetOwnedAdminShopSession.AskItemWishlist ? "on" : "off")}.";
@@ -1633,6 +1629,26 @@ namespace HaCreator.MapSimulator.UI
 
             if (_packetOwnedAdminShopSession.IsActive)
             {
+                if (_packetOwnedAdminShopSession.OwnerVisibilityState == AdminShopPacketOwnedOwnerVisibilityState.StagedButHidden
+                    && _packetOwnedAdminShopRows.Count > 0)
+                {
+                    bool preservePacketOwnedUserSelection = TryCapturePacketOwnedSetUserItemsSelection(
+                        out InventoryType preservedUserSelectionInventoryType,
+                        out int preservedUserSelectionItemId,
+                        out int preservedUserSelectionSlotPosition,
+                        out int preservedUserSelectionPacketSerialNumber,
+                        out int preservedUserSelectionScrollOffset);
+                    RefreshPacketOwnedSessionRowsAtOwner(
+                        preservePacketOwnedUserSelection,
+                        preservedUserSelectionInventoryType,
+                        preservedUserSelectionItemId,
+                        preservedUserSelectionSlotPosition,
+                        preservedUserSelectionPacketSerialNumber,
+                        preservedUserSelectionScrollOffset);
+                    _packetOwnedAdminShopSession.SetLastOwnerState(
+                        "CAdminShopDlg surfaced the staged packet 367 payload after the unique-modeless blocker cleared.");
+                }
+
                 RecordPacketOwnedAdminShopOwnerSurfaceShown();
                 _footerMessage = BuildPacketOwnedAdminShopStateSummary();
                 UpdateRowButtons();
@@ -3633,10 +3649,18 @@ namespace HaCreator.MapSimulator.UI
 
         private void ApplyPendingPacketOwnedSetUserItemsParity(AdminShopEntry entry)
         {
-            if (!_packetOwnedAdminShopSession.IsActive
-                || entry == null
-                || !RequiresInventorySource(entry)
-                || entry.SourceInventoryType == InventoryType.NONE)
+            if (!_packetOwnedAdminShopSession.IsActive || entry == null)
+            {
+                return;
+            }
+
+            bool requiresInventorySource = RequiresInventorySource(entry);
+            InventoryType targetInventoryType = AdminShopPacketOwnedSetUserItemsParity.ResolveSetUserItemsInventoryType(
+                requiresInventorySource,
+                entry.SourceInventoryType,
+                entry.RewardItemId,
+                entry.DisplayItemId);
+            if (targetInventoryType == InventoryType.NONE)
             {
                 return;
             }
@@ -3649,22 +3673,33 @@ namespace HaCreator.MapSimulator.UI
                 Math.Max(0, entry.PacketSerialNumber));
             _activePane = AdminShopPane.User;
             _activeBrowseMode = AdminShopBrowseMode.All;
-            _activeCategory = ResolveCategoryForInventoryType(entry.SourceInventoryType);
+            _activeCategory = ResolveCategoryForInventoryType(targetInventoryType);
             RefreshDynamicUserEntries();
 
             AdminShopPaneState paneState = _paneStates[AdminShopPane.User];
-            int selectedIndex = AdminShopUserSellMutationParity.FindMatchingEntryIndex(
-                BuildUserSellMutationRows(entry.SourceInventoryType),
-                requestedRow);
-            paneState.SelectedIndex = selectedIndex >= 0
-                ? selectedIndex
-                : paneState.Entries.Count == 0 ? -1 : Math.Clamp(paneState.SelectedIndex, 0, paneState.Entries.Count - 1);
-            paneState.ScrollOffset = selectedIndex < 0
-                ? Math.Max(0, paneState.ScrollOffset)
-                : AdminShopUserSellMutationParity.ComputeScrollOffset(
-                    paneState.ScrollOffset,
-                    selectedIndex,
-                    MaxVisibleRows);
+            if (requiresInventorySource && entry.SourceInventoryType != InventoryType.NONE)
+            {
+                int selectedIndex = AdminShopUserSellMutationParity.FindMatchingEntryIndex(
+                    BuildUserSellMutationRows(entry.SourceInventoryType),
+                    requestedRow);
+                paneState.SelectedIndex = selectedIndex >= 0
+                    ? selectedIndex
+                    : paneState.Entries.Count == 0 ? -1 : Math.Clamp(paneState.SelectedIndex, 0, paneState.Entries.Count - 1);
+                paneState.ScrollOffset = selectedIndex < 0
+                    ? Math.Max(0, paneState.ScrollOffset)
+                    : AdminShopUserSellMutationParity.ComputeScrollOffset(
+                        paneState.ScrollOffset,
+                        selectedIndex,
+                        MaxVisibleRows);
+            }
+            else
+            {
+                paneState.SelectedIndex = paneState.Entries.Count == 0
+                    ? -1
+                    : Math.Clamp(paneState.SelectedIndex, 0, paneState.Entries.Count - 1);
+                paneState.ScrollOffset = Math.Max(0, paneState.ScrollOffset);
+            }
+
             ClampPaneState(paneState);
             PersistBrowseSurfaceState(AdminShopPane.User);
             UpdateRowButtons();
@@ -3747,6 +3782,27 @@ namespace HaCreator.MapSimulator.UI
             PersistBrowseSurfaceState(AdminShopPane.User);
             UpdateRowButtons();
             return true;
+        }
+
+        private void RefreshPacketOwnedSessionRowsAtOwner(
+            bool preservePacketOwnedUserSelection,
+            InventoryType preservedUserSelectionInventoryType,
+            int preservedUserSelectionItemId,
+            int preservedUserSelectionSlotPosition,
+            int preservedUserSelectionPacketSerialNumber,
+            int preservedUserSelectionScrollOffset)
+        {
+            ResetMode(AdminShopServiceMode.CashShop);
+            RestorePacketOwnedOpenViewState(AdminShopPacketOwnedOpenViewParity.ResolveDefaultForSetAdminShopDlg());
+            if (preservePacketOwnedUserSelection)
+            {
+                TryApplyPacketOwnedSetUserItemsOpenParity(
+                    preservedUserSelectionInventoryType,
+                    preservedUserSelectionItemId,
+                    preservedUserSelectionSlotPosition,
+                    preservedUserSelectionPacketSerialNumber,
+                    preservedUserSelectionScrollOffset);
+            }
         }
 
         private void AdjustModalQuantity(int delta)

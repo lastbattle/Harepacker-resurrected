@@ -939,6 +939,7 @@ namespace HaCreator.MapSimulator.Pools
                         teslaState.Summon,
                         oneTimeAction,
                         oneTimeActionOwnedBySkillPacket,
+                        oneTimeActionEndTime,
                         oneTimeActionClip,
                         TeslaCoilSkillId))
                 {
@@ -969,6 +970,7 @@ namespace HaCreator.MapSimulator.Pools
             ActiveSummon summon,
             int oneTimeAction,
             bool oneTimeActionOwnedBySkillPacket,
+            int oneTimeActionEndTime,
             PacketOwnedOneTimeActionClip? oneTimeActionClip,
             int teslaCoilSkillId)
         {
@@ -983,6 +985,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return oneTimeAction > 0
+                   || oneTimeActionEndTime != int.MinValue
                    || oneTimeActionClip.HasValue
                    || summon.OneTimeActionFallbackAnimation?.Frames.Count > 0
                    || summon.OneTimeActionFallbackActionCode > 0;
@@ -2328,8 +2331,11 @@ namespace HaCreator.MapSimulator.Pools
 
             if (HasPacketOwnedOneTimeActionOwner(state))
             {
-                if (state.OneTimeActionEndTime != int.MinValue
-                    && currentTime < state.OneTimeActionEndTime)
+                if (HasActivePacketOwnedOneTimeActionPlaybackForParity(
+                        state.OneTimeActionEndTime,
+                        state.OneTimeActionClip,
+                        state.Summon,
+                        currentTime))
                 {
                     return;
                 }
@@ -2427,6 +2433,26 @@ namespace HaCreator.MapSimulator.Pools
                 hasActiveOneTimeActionPlayback: false);
             state.TeslaCoilState = teslaCoilState;
             state.TeslaTrianglePoints = teslaTrianglePoints;
+        }
+
+        internal static bool HasActivePacketOwnedOneTimeActionPlaybackForParity(
+            int oneTimeActionEndTime,
+            PacketOwnedOneTimeActionClip? oneTimeActionClip,
+            ActiveSummon summon,
+            int currentTime)
+        {
+            if (oneTimeActionClip is PacketOwnedOneTimeActionClip clip)
+            {
+                return TryResolvePacketOwnedOneTimeActionPlayback(clip, currentTime, out _);
+            }
+
+            if (summon?.OneTimeActionFallbackAnimation?.Frames.Count > 0)
+            {
+                return TryResolveOneTimeActionFallbackPlayback(summon, currentTime, out _);
+            }
+
+            return oneTimeActionEndTime != int.MinValue
+                   && currentTime < oneTimeActionEndTime;
         }
 
         private static bool IsSummonAnimationActive(SkillAnimation animation, int animationStartTime, int currentTime, int initialDelay = 0)
@@ -6090,12 +6116,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 string[] segments = normalizedSourcePaths[i]
                     .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-                if (segments.Length >= 5
-                    && IsPacketMobAttackSourcePropertySegment(segments[^1])
-                    && int.TryParse(segments[^2], out _))
-                {
-                    segments = segments.Take(segments.Length - 1).ToArray();
-                }
+                segments = TrimPacketMobAttackGeneralEffectSourceLeafSuffixSegments(segments);
 
                 if (segments.Length < 4)
                 {
@@ -6122,6 +6143,30 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return normalizedSequenceRootPath;
+        }
+
+        private static string[] TrimPacketMobAttackGeneralEffectSourceLeafSuffixSegments(string[] segments)
+        {
+            if (segments == null || segments.Length == 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            int trimmedLength = segments.Length;
+            while (trimmedLength >= 2
+                   && IsPacketMobAttackSourcePropertySegment(segments[trimmedLength - 1]))
+            {
+                trimmedLength--;
+            }
+
+            if (trimmedLength < segments.Length
+                && trimmedLength >= 1
+                && int.TryParse(segments[trimmedLength - 1], out _))
+            {
+                return segments.Take(trimmedLength).ToArray();
+            }
+
+            return segments;
         }
 
         private static string TryResolvePacketMobAttackGeneralEffectSourceSequenceRootPath(
@@ -6255,17 +6300,126 @@ namespace HaCreator.MapSimulator.Pools
             string normalized = NormalizePacketMobAttackGeneralEffectPathTokenShell(token);
             for (int i = 0; i < 8; i++)
             {
-                int assignmentIndex = FindPacketMobAttackGeneralEffectPathAssignmentIndex(normalized);
-                if (assignmentIndex < 0 || assignmentIndex + 1 >= normalized.Length)
+                int assignmentIndex = FindPacketMobAttackGeneralEffectPathAssignmentIndex(
+                    normalized,
+                    out int assignmentDelimiterLength);
+                if (assignmentIndex < 0 || assignmentIndex + assignmentDelimiterLength >= normalized.Length)
                 {
                     break;
                 }
 
                 normalized = NormalizePacketMobAttackGeneralEffectPathTokenShell(
-                    normalized.Substring(assignmentIndex + 1));
+                    normalized.Substring(assignmentIndex + assignmentDelimiterLength));
+            }
+
+            string embeddedPathToken = TryExtractPacketMobAttackGeneralEffectEmbeddedPathToken(normalized);
+            if (!string.IsNullOrWhiteSpace(embeddedPathToken))
+            {
+                normalized = embeddedPathToken;
             }
 
             return normalized.Trim('/');
+        }
+
+        private static string TryExtractPacketMobAttackGeneralEffectEmbeddedPathToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
+
+            int startIndex = FindPacketMobAttackGeneralEffectEmbeddedCategoryPathStartIndex(token);
+            if (startIndex < 0)
+            {
+                startIndex = FindPacketMobAttackGeneralEffectEmbeddedImagePathStartIndex(token);
+            }
+
+            if (startIndex < 0 || startIndex >= token.Length)
+            {
+                return null;
+            }
+
+            string candidate = NormalizePacketMobAttackGeneralEffectPathTokenShell(token.Substring(startIndex));
+            return string.IsNullOrWhiteSpace(candidate)
+                ? null
+                : candidate;
+        }
+
+        private static int FindPacketMobAttackGeneralEffectEmbeddedCategoryPathStartIndex(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return -1;
+            }
+
+            int bestIndex = -1;
+            string[] categorySegments = { "Mob", "Skill", "Effect", "Character", "Item", "Map", "UI", "Npc", "Reactor" };
+            for (int i = 0; i < categorySegments.Length; i++)
+            {
+                string slashMarker = $"{categorySegments[i]}/";
+                int slashIndex = token.IndexOf(slashMarker, StringComparison.OrdinalIgnoreCase);
+                if (slashIndex >= 0 && (bestIndex < 0 || slashIndex < bestIndex))
+                {
+                    bestIndex = slashIndex;
+                }
+
+                string colonMarker = $"{categorySegments[i]}:";
+                int colonIndex = token.IndexOf(colonMarker, StringComparison.OrdinalIgnoreCase);
+                if (colonIndex >= 0 && (bestIndex < 0 || colonIndex < bestIndex))
+                {
+                    bestIndex = colonIndex;
+                }
+            }
+
+            return bestIndex;
+        }
+
+        private static int FindPacketMobAttackGeneralEffectEmbeddedImagePathStartIndex(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < token.Length; i++)
+            {
+                if (!char.IsDigit(token[i]))
+                {
+                    continue;
+                }
+
+                int index = i;
+                while (index < token.Length && char.IsDigit(token[index]))
+                {
+                    index++;
+                }
+
+                if (index >= token.Length)
+                {
+                    continue;
+                }
+
+                if (token[index] == '/')
+                {
+                    return i;
+                }
+
+                if (index + 5 >= token.Length)
+                {
+                    continue;
+                }
+
+                if (token[index] == '.'
+                    && char.ToLowerInvariant(token[index + 1]) == 'i'
+                    && char.ToLowerInvariant(token[index + 2]) == 'm'
+                    && char.ToLowerInvariant(token[index + 3]) == 'g'
+                    && token[index + 4] == '/')
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private static string NormalizePacketMobAttackGeneralEffectPathTokenShell(string token)
@@ -6305,11 +6459,28 @@ namespace HaCreator.MapSimulator.Pools
             return normalized.Trim('/');
         }
 
-        private static int FindPacketMobAttackGeneralEffectPathAssignmentIndex(string token)
+        private static int FindPacketMobAttackGeneralEffectPathAssignmentIndex(
+            string token,
+            out int delimiterLength)
         {
+            delimiterLength = 1;
             if (string.IsNullOrWhiteSpace(token))
             {
                 return -1;
+            }
+
+            int arrowEqualsIndex = token.IndexOf("=>", StringComparison.Ordinal);
+            if (IsPacketMobAttackGeneralEffectPathPrefixToken(token, arrowEqualsIndex))
+            {
+                delimiterLength = 2;
+                return arrowEqualsIndex;
+            }
+
+            int arrowDashIndex = token.IndexOf("->", StringComparison.Ordinal);
+            if (IsPacketMobAttackGeneralEffectPathPrefixToken(token, arrowDashIndex))
+            {
+                delimiterLength = 2;
+                return arrowDashIndex;
             }
 
             int equalsIndex = token.IndexOf('=');
@@ -6337,7 +6508,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            string[] aliasSegments = prefix.Split(new[] { '/', '\\', '.' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] aliasSegments = prefix.Split(new[] { '/', '\\', '.', '[', ']', '(', ')', '{', '}', '"', '\'' }, StringSplitOptions.RemoveEmptyEntries);
             if (aliasSegments.Length == 0)
             {
                 return false;

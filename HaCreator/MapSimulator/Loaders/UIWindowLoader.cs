@@ -2646,12 +2646,42 @@ namespace HaCreator.MapSimulator.Loaders
             manager.RegisterLazyWindow(MapSimulatorWindowNames.OptionMenu, m => RegisterOptionMenuWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 5), y + cascade)));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.Ranking, m => RegisterRankingWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 2))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.Event, m => RegisterEventWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 7), y + cascade)));
-            manager.RegisterLazyWindow(MapSimulatorWindowNames.MedalQuestInfo, m => RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulatorWindowNames.MedalQuestInfo, "Medal", "Packet-owned medal key owner routed from the raw KeyConfig palette id 26.", null, new Point(x + (cascade * 8), y + (cascade * 2))));
-            manager.RegisterLazyWindow(MapSimulatorWindowNames.ItemPot, m => RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulatorWindowNames.ItemPot, "Item Pot", "Packet-owned item-pot key owner routed from the raw KeyConfig palette id 30.", "itemPot", new Point(x + (cascade * 8), y + (cascade * 3))));
-            manager.RegisterLazyWindow(MapSimulatorWindowNames.MagicWheel, m => RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulatorWindowNames.MagicWheel, "Magic Wheel", "Packet-owned magic-wheel key owner routed from the raw KeyConfig palette id 32.", "RollingGachaphone", new Point(x + (cascade * 8), y + (cascade * 4))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.MedalQuestInfo, m => RegisterPacketOwnedRawFunctionOwnerWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulator.PacketOwnedRawFunctionOwner.Medal, "Medal", "Packet-owned medal key owner routed from the raw KeyConfig palette id 26.", new Point(x + (cascade * 8), y + (cascade * 2))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.ItemPot, m => RegisterPacketOwnedRawFunctionOwnerWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulator.PacketOwnedRawFunctionOwner.ItemPot, "Item Pot", "Packet-owned item-pot key owner routed from the raw KeyConfig palette id 30.", new Point(x + (cascade * 8), y + (cascade * 3))));
+            manager.RegisterLazyWindow(MapSimulatorWindowNames.MagicWheel, m => RegisterPacketOwnedRawFunctionOwnerWindow(m, uiWindow2Image, basicImage, soundUIImage, device, MapSimulator.PacketOwnedRawFunctionOwner.MagicWheel, "Magic Wheel", "Packet-owned magic-wheel key owner routed from the raw KeyConfig palette id 32.", new Point(x + (cascade * 8), y + (cascade * 4))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.Radio, m => RegisterRadioWindow(m, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 6), y + (cascade * 4))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.DragonBox, m => RegisterDragonBoxWindow(m, basicImage, soundUIImage, device, new Point(x + (cascade * 8), y + (cascade * 3))));
             manager.RegisterLazyWindow(MapSimulatorWindowNames.AccountMoreInfo, m => RegisterAccountMoreInfoWindow(m, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(x + (cascade * 7), y + (cascade * 4))));
+        }
+
+        private static void RegisterPacketOwnedRawFunctionOwnerWindow(
+            UIWindowManager manager,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            MapSimulator.PacketOwnedRawFunctionOwner owner,
+            string title,
+            string body,
+            Point position)
+        {
+            if (!MapSimulator.TryResolvePacketOwnedRawFunctionOwnerWindowRoute(owner, out MapSimulator.PacketOwnedRawFunctionOwnerWindowRoute route)
+                || string.IsNullOrWhiteSpace(route.WindowName))
+            {
+                return;
+            }
+
+            RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(
+                manager,
+                uiWindow2Image,
+                basicImage,
+                soundUIImage,
+                device,
+                route.WindowName,
+                title,
+                body,
+                route.HasUIWindow2Source ? route.UIWindow2SourcePropertyName : null,
+                position);
         }
 
         private static void RegisterPacketOwnedRawFunctionOwnerPlaceholderWindow(
@@ -3653,6 +3683,13 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D frameTexture = ResolveCashServiceModalFrameTexture(uiWindow1Image, uiWindow2Image, device, windowName)
                 ?? CreateFilledTexture(device, 266, 158, new Color(34, 34, 34, 240), new Color(118, 118, 118, 255));
             CashServiceModalOwnerWindow window = new(windowName, frameTexture, device, screenWidth, screenHeight, null);
+            WzImage basicImage = global::HaCreator.Program.FindImage("ui", "Basic.img");
+            window.SetOwnerChrome(
+                LoadTextureFromClientUiPath("UI/Basic.img/ComboBox/normal/0", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/ComboBox/normal/1", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/ComboBox/normal/2", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/0", basicImage, uiWindow1Image, device),
+                LoadTextureFromClientUiPath("UI/Basic.img/CheckBox/1", basicImage, uiWindow1Image, device));
             manager.RegisterCustomWindow(window);
         }
 

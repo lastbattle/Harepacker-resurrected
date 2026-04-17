@@ -193,11 +193,22 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error("Usage: /messenger session start <listenPort> <serverHost> <serverPort> [inboundOpcode]");
                 }
 
-                ushort inboundOpcode = MessengerOfficialSessionBridgeManager.DefaultInboundResultOpcode;
-                if (args.Length >= 5
-                    && (!ushort.TryParse(args[4], out inboundOpcode) || inboundOpcode == 0))
+                ushort inboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", 0);
+                if (args.Length >= 5)
                 {
-                    return ChatCommandHandler.CommandResult.Error("Usage: /messenger session start <listenPort> <serverHost> <serverPort> [inboundOpcode]");
+                    if (!ushort.TryParse(args[4], out ushort requestedInboundOpcode) || requestedInboundOpcode == 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /messenger session start <listenPort> <serverHost> <serverPort> [inboundOpcode]");
+                    }
+
+                    ushort resolvedInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", requestedInboundOpcode);
+                    if (resolvedInboundOpcode != requestedInboundOpcode)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(
+                            $"Messenger inbound opcode {requestedInboundOpcode} is outside the recovered table ({string.Join("/", PacketOwnedSocialUtilityPacketTable.GetRecoveredInboundOpcodes("Messenger"))}).");
+                    }
+
+                    inboundOpcode = resolvedInboundOpcode;
                 }
 
                 _messengerOfficialSessionBridgeEnabled = true;
@@ -224,10 +235,17 @@ namespace HaCreator.MapSimulator
                 }
 
                 int argumentIndex = 3;
-                ushort autoInboundOpcode = MessengerOfficialSessionBridgeManager.DefaultInboundResultOpcode;
+                ushort autoInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", 0);
                 if (args.Length >= 4 && ushort.TryParse(args[3], out ushort parsedInboundOpcode) && parsedInboundOpcode != 0)
                 {
-                    autoInboundOpcode = parsedInboundOpcode;
+                    ushort resolvedInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", parsedInboundOpcode);
+                    if (resolvedInboundOpcode != parsedInboundOpcode)
+                    {
+                        return ChatCommandHandler.CommandResult.Error(
+                            $"Messenger inbound opcode {parsedInboundOpcode} is outside the recovered table ({string.Join("/", PacketOwnedSocialUtilityPacketTable.GetRecoveredInboundOpcodes("Messenger"))}).");
+                    }
+
+                    autoInboundOpcode = resolvedInboundOpcode;
                     argumentIndex = 4;
                 }
 
@@ -270,7 +288,7 @@ namespace HaCreator.MapSimulator
                 _messengerOfficialSessionBridgeUseDiscovery = false;
                 _messengerOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
                 _messengerOfficialSessionBridgeConfiguredRemotePort = 0;
-                _messengerOfficialSessionBridgeConfiguredInboundOpcode = MessengerOfficialSessionBridgeManager.DefaultInboundResultOpcode;
+                _messengerOfficialSessionBridgeConfiguredInboundOpcode = PacketOwnedSocialUtilityPacketTable.ResolveRecoveredInboundOpcode("Messenger", 0);
                 _messengerOfficialSessionBridgeConfiguredProcessSelector = null;
                 _messengerOfficialSessionBridgeConfiguredLocalPort = null;
                 _messengerOfficialSessionBridge.Stop();

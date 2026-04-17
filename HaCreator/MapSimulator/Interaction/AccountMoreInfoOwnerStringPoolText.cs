@@ -63,6 +63,25 @@ namespace HaCreator.MapSimulator.Interaction
         private const string SaveFailedNoticeFallback = "Fail. Please try again later.";
         private const string DefaultRegionItemFallback = "Select";
         private const string FirstEntryPromptFallback = "Filling in your information will help us recommend friends who share your interests! \r\nDo you want to fill in your information now?";
+        private static readonly object PreferredDataSourceSync = new();
+        private static string _preferredAccountMoreInfoDataSourceDirectory;
+
+        internal static void RememberPreferredAccountMoreInfoDataSourceDirectory(string directoryPath)
+        {
+            string normalized = NormalizeExistingDirectoryPathOrNull(directoryPath);
+            lock (PreferredDataSourceSync)
+            {
+                _preferredAccountMoreInfoDataSourceDirectory = normalized;
+            }
+        }
+
+        internal static string GetPreferredAccountMoreInfoDataSourceDirectory()
+        {
+            lock (PreferredDataSourceSync)
+            {
+                return _preferredAccountMoreInfoDataSourceDirectory;
+            }
+        }
 
         internal static string ResolveOkButtonResourcePath()
         {
@@ -323,6 +342,28 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return directoryName.StartsWith(preferredPrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeExistingDirectoryPathOrNull(string directoryPath)
+        {
+            if (string.IsNullOrWhiteSpace(directoryPath))
+            {
+                return null;
+            }
+
+            string normalizedPath;
+            try
+            {
+                normalizedPath = Path.GetFullPath(directoryPath);
+            }
+            catch
+            {
+                return null;
+            }
+
+            return Directory.Exists(normalizedPath)
+                ? normalizedPath
+                : null;
         }
     }
 }

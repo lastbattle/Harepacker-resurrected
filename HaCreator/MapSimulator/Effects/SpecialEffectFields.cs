@@ -314,9 +314,11 @@ namespace HaCreator.MapSimulator.Effects
         {
             payload ??= Array.Empty<byte>();
 
-            if (_wedding.HasWeddingPacketOwner)
+            if (_wedding.HasPresentationOwner)
             {
-                ownerName = "CField_Wedding::OnPacket";
+                ownerName = _wedding.HasWeddingPacketOwner
+                    ? "CField_Wedding::OnPacket"
+                    : "CField_WeddingPhoto::OnPacket";
                 bool applied = _wedding.TryApplyPacket(packetType, payload, currentTimeMs, out string errorMessage);
                 message = applied ? _wedding.DescribeStatus() : errorMessage;
                 return applied;

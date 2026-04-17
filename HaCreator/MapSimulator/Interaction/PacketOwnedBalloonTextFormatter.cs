@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class PacketOwnedBalloonTextFormattingContext
     {
         public string PlayerName { get; init; }
+        public int ActiveQuestId { get; init; }
         public int? CurrentMapId { get; init; }
         public Func<int, string> ResolveItemCountText { get; init; }
         public Func<int, string> ResolveQuestStateText { get; init; }
@@ -40,18 +41,28 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex NpcRegex = new(@"#p(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemNameRegex = new(@"#(?:t|z)(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MobNameRegex = new(@"#o(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex QuestRecordOrNameRegex = new(@"#Q(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex QuestNameRegex = new(@"#(?:q|y)(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentQuestNameRegex = new(@"#q#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestReferenceNameRegex = new(@"#y(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentQuestReferenceNameRegex = new(@"#y#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestStateRegex = new(@"#u(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentQuestStateRegex = new(@"#u#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestRecordRegex = new(@"#R(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex CurrentQuestRecordRegex = new(@"#R#", RegexOptions.Compiled);
+        private static readonly Regex QuestTimerRecordRegex = new(@"#Q(?<token>[A-Za-z0-9_]+)#", RegexOptions.Compiled);
+        private static readonly Regex DailyTimerRecordRegex = new(@"#D(?<token>[A-Za-z0-9_]+)#", RegexOptions.Compiled);
         private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex CurrentMapNameRegex = new(@"#m#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestDetailRecordRegex = new(@"#j(?<token>[A-Za-z0-9_]+)#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex JobNameRegex = new(@"#j(?![A-Za-z0-9_])#?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex SelectedMobRegex = new(@"#M(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex CurrentSelectedMobRegex = new(@"#M#", RegexOptions.Compiled);
         private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentQuestAmountRegex = new(@"#a#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex CurrentQuestValueRegex = new(@"#x#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex UiCanvasRegex = new(@"#(?:f|F)([^#]+)#", RegexOptions.Compiled);
         private static readonly Regex StandaloneColorBlockRegex = new(@"#c(?!\d)(?<text>[^#]*)#", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
@@ -82,18 +93,28 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = NpcRegex.Replace(formatted, static match => ResolveNpcName(match.Groups[1].Value));
             formatted = ItemNameRegex.Replace(formatted, static match => ResolveItemName(match.Groups[1].Value));
             formatted = MobNameRegex.Replace(formatted, static match => ResolveMobName(match.Groups[1].Value));
+            formatted = QuestRecordOrNameRegex.Replace(formatted, match => ResolveQuestRecordOrNameText(match.Groups[1].Value, context));
             formatted = QuestNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
+            formatted = CurrentQuestNameRegex.Replace(formatted, _ => ResolveActiveQuestNameText(context));
             formatted = QuestReferenceNameRegex.Replace(formatted, static match => ResolveQuestName(match.Groups[1].Value));
+            formatted = CurrentQuestReferenceNameRegex.Replace(formatted, _ => ResolveActiveQuestNameText(context));
             formatted = QuestStateRegex.Replace(formatted, match => ResolveQuestStateText(match.Groups[1].Value, context));
+            formatted = CurrentQuestStateRegex.Replace(formatted, _ => ResolveActiveQuestStateText(context));
             formatted = QuestRecordRegex.Replace(formatted, match => ResolveQuestRecordText(match.Groups[1].Value, context));
+            formatted = CurrentQuestRecordRegex.Replace(formatted, _ => ResolveActiveQuestRecordText(context));
+            formatted = QuestTimerRecordRegex.Replace(formatted, match => ResolveQuestTimerRecordText(match.Groups["token"].Value, context, match.Value));
+            formatted = DailyTimerRecordRegex.Replace(formatted, match => ResolveQuestTimerRecordText(match.Groups["token"].Value, context, match.Value));
             formatted = SkillNameRegex.Replace(formatted, static match => ResolveSkillName(match.Groups[1].Value));
             formatted = MapNameRegex.Replace(formatted, static match => ResolveMapName(match.Groups[1].Value));
             formatted = CurrentMapNameRegex.Replace(formatted, _ => ResolveCurrentMapName(context));
             formatted = QuestDetailRecordRegex.Replace(formatted, match => ResolveQuestDetailRecordText(match.Groups["token"].Value, context, match.Value));
             formatted = JobNameRegex.Replace(formatted, _ => ResolveJobNameText(context));
             formatted = SelectedMobRegex.Replace(formatted, static match => ResolveSelectedMobText(match.Groups[1].Value));
+            formatted = CurrentSelectedMobRegex.Replace(formatted, _ => ResolveActiveSelectedMobText(context));
             formatted = QuestAmountRegex.Replace(formatted, static match => ResolveQuestAmountText(match.Groups[1].Value));
+            formatted = CurrentQuestAmountRegex.Replace(formatted, _ => ResolveActiveQuestAmountText(context));
             formatted = QuestValueRegex.Replace(formatted, static match => ResolveQuestValueText(match.Groups[1].Value));
+            formatted = CurrentQuestValueRegex.Replace(formatted, _ => ResolveActiveQuestValueText(context));
             formatted = ItemIconRegex.Replace(formatted, static match => BuildItemIconMarker(match.Groups[1].Value));
             formatted = UiCanvasRegex.Replace(formatted, static match => BuildUiCanvasMarker(match.Groups[1].Value));
             formatted = StandaloneColorBlockRegex.Replace(formatted, static match => match.Groups["text"].Value);
@@ -444,6 +465,14 @@ namespace HaCreator.MapSimulator.Interaction
             return "Not started";
         }
 
+        private static string ResolveActiveQuestStateText(PacketOwnedBalloonTextFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveQuestStateText(activeQuestId.ToString(CultureInfo.InvariantCulture), context)
+                : "Not started";
+        }
+
         private static string ResolveQuestRecordText(string questIdText, PacketOwnedBalloonTextFormattingContext context)
         {
             if (context?.ResolveQuestRecordText != null &&
@@ -458,6 +487,65 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return "0";
+        }
+
+        private static string ResolveQuestRecordOrNameText(string questIdText, PacketOwnedBalloonTextFormattingContext context)
+        {
+            string recordText = ResolveQuestRecordText(questIdText, context);
+            return string.IsNullOrWhiteSpace(recordText) || string.Equals(recordText, "0", StringComparison.Ordinal)
+                ? ResolveQuestName(questIdText)
+                : recordText;
+        }
+
+        private static string ResolveActiveQuestNameText(PacketOwnedBalloonTextFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveQuestName(activeQuestId.ToString(CultureInfo.InvariantCulture))
+                : "current quest";
+        }
+
+        private static string ResolveActiveQuestRecordText(PacketOwnedBalloonTextFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveQuestRecordText(activeQuestId.ToString(CultureInfo.InvariantCulture), context)
+                : "0";
+        }
+
+        private static string ResolveQuestTimerRecordText(
+            string token,
+            PacketOwnedBalloonTextFormattingContext context,
+            string fallbackText)
+        {
+            string normalizedToken = token?.Trim();
+            if (string.IsNullOrWhiteSpace(normalizedToken))
+            {
+                return fallbackText ?? string.Empty;
+            }
+
+            if (context?.ResolveQuestDetailRecordText != null)
+            {
+                string resolvedText = context.ResolveQuestDetailRecordText(normalizedToken);
+                if (resolvedText != null)
+                {
+                    return resolvedText;
+                }
+            }
+
+            return normalizedToken.ToLowerInvariant() switch
+            {
+                "cmp" => "0",
+                "min" => "0",
+                "sec" => "0",
+                "date" => "-",
+                "rank" => "-",
+                _ when normalizedToken.EndsWith("limit", StringComparison.OrdinalIgnoreCase) => "0",
+                _ when normalizedToken.StartsWith("gauge", StringComparison.OrdinalIgnoreCase) => "0",
+                _ when normalizedToken.StartsWith("per", StringComparison.OrdinalIgnoreCase) => "0",
+                _ when normalizedToken.StartsWith("have", StringComparison.OrdinalIgnoreCase) => "0",
+                _ => fallbackText ?? string.Empty
+            };
         }
 
         private static string ResolveSelectedMobText(string questIdText)
@@ -492,6 +580,30 @@ namespace HaCreator.MapSimulator.Interaction
             return HasSelectedMobFlag(questIdText)
                 ? "the selected bonus amount"
                 : ResolveQuestAmountText(questIdText);
+        }
+
+        private static string ResolveActiveSelectedMobText(PacketOwnedBalloonTextFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveSelectedMobText(activeQuestId.ToString(CultureInfo.InvariantCulture))
+                : "the selected monster";
+        }
+
+        private static string ResolveActiveQuestAmountText(PacketOwnedBalloonTextFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveQuestAmountText(activeQuestId.ToString(CultureInfo.InvariantCulture))
+                : "the listed amount";
+        }
+
+        private static string ResolveActiveQuestValueText(PacketOwnedBalloonTextFormattingContext context)
+        {
+            int activeQuestId = context?.ActiveQuestId ?? 0;
+            return activeQuestId > 0
+                ? ResolveQuestValueText(activeQuestId.ToString(CultureInfo.InvariantCulture))
+                : "the listed amount";
         }
 
         private static bool HasSelectedMobFlag(string questIdText)

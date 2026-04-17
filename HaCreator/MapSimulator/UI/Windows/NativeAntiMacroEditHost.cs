@@ -689,7 +689,13 @@ namespace HaCreator.MapSimulator.UI
             IntPtr result = CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
             if (msg == WmKeyDown && allowImeOwnedDownHandling)
             {
-                ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                // Let IME consume the Down key first; only fall through to the parent
+                // path when IME is no longer holding an active composition/candidate state.
+                bool imeStillOwnsInputAfterKeyDown = HasImeOwnedInputState();
+                if (ShouldForwardDeferredDownKeyToParentAfterIme(imeStillOwnsInputAfterKeyDown))
+                {
+                    ForwardKeyToParent(WmKeyDown, wParam, lParam);
+                }
             }
             else if (msg == WmKeyDown)
             {
@@ -940,8 +946,14 @@ namespace HaCreator.MapSimulator.UI
 
         internal static bool ShouldCancelImeCompositionOnFocusChange(bool hasFocus)
         {
-            // `CCtrlEdit::OnSetFocus(true)` calls `CWndMan::ClearComposition`.
-            return hasFocus;
+            // `CCtrlEdit::OnSetFocus` clears composition on focus transitions, so keep
+            // the hosted seam aligned for both focus gain and focus loss.
+            return true;
+        }
+
+        internal static bool ShouldForwardDeferredDownKeyToParentAfterIme(bool imeOwnedInputStateAfterKeyDown)
+        {
+            return !imeOwnedInputStateAfterKeyDown;
         }
 
         internal static bool ShouldDisableImeOpenStatusOnFocusChange(bool hasFocus)

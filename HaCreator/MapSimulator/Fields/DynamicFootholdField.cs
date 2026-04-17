@@ -413,7 +413,7 @@ namespace HaCreator.MapSimulator.Fields
             AddCoordinateAliases(aliases, objectKeyName, x, y);
             AddCoordinateAliases(aliases, layerObjectAlias, x, y);
 
-            if (piece is int pieceValue && pieceValue >= 0)
+            if (piece is int pieceValue)
             {
                 string pieceSuffix = pieceValue.ToString(CultureInfo.InvariantCulture);
                 if (!string.IsNullOrWhiteSpace(resolvedName))
@@ -498,7 +498,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 AddDynamicObjectAlias(aliases, tagAlias);
                 AddCoordinateAliases(aliases, tagAlias, x, y);
-                if (piece is int pieceValue && pieceValue >= 0)
+                if (piece is int pieceValue)
                 {
                     string pieceSuffix = pieceValue.ToString(CultureInfo.InvariantCulture);
                     AddDynamicObjectAlias(aliases, $"{tagAlias}/{pieceSuffix}");

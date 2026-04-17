@@ -238,6 +238,7 @@ namespace HaCreator.MapSimulator.Character
         {
             BehindCharacter,
             UnderFace,
+            OverFace,
             OverCharacter
         }
 
@@ -386,7 +387,8 @@ namespace HaCreator.MapSimulator.Character
                 bool facingRight,
                 Point targetOffset,
                 int transitionStartTime,
-                Color layerColor)
+                Color layerColor,
+                IReadOnlyList<AssembledPart> liveSourceParts = null)
             {
                 PreparedSnapshotTexture = preparedSnapshotTexture;
                 PreparedSnapshotSourceBounds = preparedSnapshotSourceBounds;
@@ -396,6 +398,7 @@ namespace HaCreator.MapSimulator.Character
                 TargetOffset = targetOffset;
                 TransitionStartTime = transitionStartTime;
                 LayerColor = layerColor;
+                LiveSourceParts = liveSourceParts;
             }
 
             public Texture2D PreparedSnapshotTexture { get; }
@@ -406,6 +409,8 @@ namespace HaCreator.MapSimulator.Character
             public Point TargetOffset { get; }
             public int TransitionStartTime { get; }
             public Color LayerColor { get; }
+            public IReadOnlyList<AssembledPart> LiveSourceParts { get; }
+            public bool UsesLiveSourceParts => LiveSourceParts != null;
         }
 
         private readonly struct AvatarEffectRenderable
@@ -656,6 +661,8 @@ namespace HaCreator.MapSimulator.Character
         private const string AuxiliaryAvatarEffectBehindCharacterOneTimeActionOwnerName = "aux.avatarEffect.behindCharacter.oneTime";
         private const string AuxiliaryAvatarEffectUnderFacePersistentActionOwnerName = "aux.avatarEffect.underFace.persistent";
         private const string AuxiliaryAvatarEffectUnderFaceOneTimeActionOwnerName = "aux.avatarEffect.underFace.oneTime";
+        private const string AuxiliaryAvatarEffectOverFacePersistentActionOwnerName = "aux.avatarEffect.overFace.persistent";
+        private const string AuxiliaryAvatarEffectOverFaceOneTimeActionOwnerName = "aux.avatarEffect.overFace.oneTime";
         private const string AuxiliaryAvatarEffectOverCharacterPersistentActionOwnerName = "aux.avatarEffect.overCharacter.persistent";
         private const string AuxiliaryAvatarEffectOverCharacterOneTimeActionOwnerName = "aux.avatarEffect.overCharacter.oneTime";
         private readonly Dictionary<string, ActionLayerOwnerCounterState> _actionLayerOwnerCounters =
@@ -2669,6 +2676,9 @@ namespace HaCreator.MapSimulator.Character
                 SkillAvatarEffectPlane.UnderFace => oneTime
                     ? AuxiliaryAvatarEffectUnderFaceOneTimeActionOwnerName
                     : AuxiliaryAvatarEffectUnderFacePersistentActionOwnerName,
+                SkillAvatarEffectPlane.OverFace => oneTime
+                    ? AuxiliaryAvatarEffectOverFaceOneTimeActionOwnerName
+                    : AuxiliaryAvatarEffectOverFacePersistentActionOwnerName,
                 _ => oneTime
                     ? AuxiliaryAvatarEffectOverCharacterOneTimeActionOwnerName
                     : AuxiliaryAvatarEffectOverCharacterPersistentActionOwnerName
@@ -2888,21 +2898,22 @@ namespace HaCreator.MapSimulator.Character
                 effectState.LadderOverlayFinishAnimation,
                 effectState.GroundOverlayFinishAnimation,
                 effectState.GroundUnderFaceFinishAnimation);
-            SkillAvatarEffectPlane overlayPlane = selection.OverlayUsesBehindCharacterPlane
-                ? SkillAvatarEffectPlane.BehindCharacter
-                : SkillAvatarEffectPlane.OverCharacter;
 
             if (selection.OverlayAnimation?.Frames != null && selection.OverlayAnimation.Frames.Count > 0)
             {
                 animation = selection.OverlayAnimation;
-                plane = overlayPlane;
+                plane = ResolvePersistentAuxiliaryAvatarEffectOverlayPlane(
+                    selection.OverlayAnimation,
+                    selection.OverlayUsesBehindCharacterPlane);
                 return true;
             }
 
             if (selection.OverlaySecondaryAnimation?.Frames != null && selection.OverlaySecondaryAnimation.Frames.Count > 0)
             {
                 animation = selection.OverlaySecondaryAnimation;
-                plane = overlayPlane;
+                plane = ResolvePersistentAuxiliaryAvatarEffectOverlayPlane(
+                    selection.OverlaySecondaryAnimation,
+                    selection.OverlayUsesBehindCharacterPlane);
                 return true;
             }
 
@@ -2921,6 +2932,23 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return false;
+        }
+
+        private static SkillAvatarEffectPlane ResolvePersistentAuxiliaryAvatarEffectOverlayPlane(
+            SkillAnimation animation,
+            bool overlayUsesBehindCharacterPlane)
+        {
+            if (overlayUsesBehindCharacterPlane)
+            {
+                return SkillAvatarEffectPlane.BehindCharacter;
+            }
+
+            if (ClientOwnedAvatarEffectParity.PrefersOverFaceAvatarEffectPlane(animation))
+            {
+                return SkillAvatarEffectPlane.OverFace;
+            }
+
+            return SkillAvatarEffectPlane.OverCharacter;
         }
 
         private bool TryRestorePersistentAuxiliaryAvatarEffectOwnerCounter(
@@ -5541,6 +5569,7 @@ namespace HaCreator.MapSimulator.Character
                 tint,
                 drawUnderFaceOverlay);
 
+            DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.OverFace, frame, screenX, screenY, tint);
             DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.OverCharacter, frame, screenX, screenY, tint);
         }
 
@@ -5985,6 +6014,19 @@ namespace HaCreator.MapSimulator.Character
                 int adjustedY = screenY + layerOffset.Y - _activeMirrorImage.PreparedFeetOffset;
                 int adjustedX = screenX + layerOffset.X;
                 Color tint = ResolveMirrorImageLayerTint(renderableLayer.Value.LayerColor, alpha);
+                if (renderableLayer.Value.UsesLiveSourceParts)
+                {
+                    DrawMirrorImageLiveSourceParts(
+                        spriteBatch,
+                        skeletonRenderer,
+                        renderableLayer.Value.LiveSourceParts,
+                        adjustedX,
+                        adjustedY,
+                        renderableLayer.Value.FacingRight,
+                        tint);
+                    continue;
+                }
+
                 if (renderableLayer.Value.PreparedSnapshotTexture == null)
                 {
                     continue;
@@ -6033,6 +6075,37 @@ namespace HaCreator.MapSimulator.Character
                 1f,
                 flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
                 0f);
+        }
+
+        private static void DrawMirrorImageLiveSourceParts(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            IReadOnlyList<AssembledPart> sourceParts,
+            int screenX,
+            int adjustedY,
+            bool flip,
+            Color mirrorTint)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return;
+            }
+
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                AssembledPart part = sourceParts[partIndex];
+                if (part?.Texture == null || !part.IsVisible)
+                {
+                    continue;
+                }
+
+                int partX = flip
+                    ? screenX - part.OffsetX - part.Texture.Width
+                    : screenX + part.OffsetX;
+                int partY = adjustedY + part.OffsetY;
+                Color partTint = part.Tint != Color.White ? part.Tint * mirrorTint : mirrorTint;
+                part.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, partX, partY, partTint, flip, null);
+            }
         }
 
         private void PrepareMirrorImageSourceLayers(AssembledFrame frame, int currentFrameIndex, int currentTime)
@@ -6216,7 +6289,8 @@ namespace HaCreator.MapSimulator.Character
                     FacingRight,
                     preparedLayer.PreparedTargetOffsetPx,
                     ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, preparedLayer.PreparedTransitionStartTime),
-                    preparedLayer.PreparedLayerColor);
+                    preparedLayer.PreparedLayerColor,
+                    liveSourceParts);
             }
 
             if (!CanRenderPreparedMirrorImageSourceLayer(
@@ -6947,6 +7021,7 @@ namespace HaCreator.MapSimulator.Character
             int preparedSourceSignature,
             IReadOnlyList<AssembledPart> liveSourceParts)
         {
+            _ = preparedSourceSignature;
             if (string.IsNullOrWhiteSpace(currentActionName)
                 || currentFrameIndex < 0
                 || liveSourceParts == null
@@ -6969,7 +7044,7 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            return preparedSourceSignature == ComputeMirrorImageSourceLayerSignature(liveSourceParts);
+            return HasMirrorImageLiveSourceCanvas(liveSourceParts);
         }
 
         private static AssembledPart CloneMirrorImageSourcePart(AssembledPart part)
@@ -7541,12 +7616,20 @@ namespace HaCreator.MapSimulator.Character
                         effectState.LadderOverlayFinishAnimation,
                         effectState.GroundOverlayFinishAnimation,
                         effectState.GroundUnderFaceFinishAnimation);
-                SkillAvatarEffectPlane overlayPlane = selection.OverlayUsesBehindCharacterPlane
-                    ? SkillAvatarEffectPlane.BehindCharacter
-                    : SkillAvatarEffectPlane.OverCharacter;
-
-                AddAvatarEffectRenderable(renderables, selection.OverlayAnimation, overlayPlane, elapsedTime);
-                AddAvatarEffectRenderable(renderables, selection.OverlaySecondaryAnimation, overlayPlane, elapsedTime);
+                AddAvatarEffectRenderable(
+                    renderables,
+                    selection.OverlayAnimation,
+                    ResolvePersistentAuxiliaryAvatarEffectOverlayPlane(
+                        selection.OverlayAnimation,
+                        selection.OverlayUsesBehindCharacterPlane),
+                    elapsedTime);
+                AddAvatarEffectRenderable(
+                    renderables,
+                    selection.OverlaySecondaryAnimation,
+                    ResolvePersistentAuxiliaryAvatarEffectOverlayPlane(
+                        selection.OverlaySecondaryAnimation,
+                        selection.OverlayUsesBehindCharacterPlane),
+                    elapsedTime);
                 AddAvatarEffectRenderable(renderables, selection.UnderFaceAnimation, SkillAvatarEffectPlane.UnderFace, elapsedTime);
                 AddAvatarEffectRenderable(renderables, selection.UnderFaceSecondaryAnimation, SkillAvatarEffectPlane.UnderFace, elapsedTime);
             }
@@ -9212,9 +9295,17 @@ namespace HaCreator.MapSimulator.Character
 
         private static SkillAvatarEffectPlane ResolveTransientSkillAvatarEffectPlane(SkillAnimation animation, bool isClientMovementOwner = false)
         {
-            return ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation, isClientMovementOwner)
-                ? SkillAvatarEffectPlane.UnderFace
-                : SkillAvatarEffectPlane.OverCharacter;
+            if (ClientOwnedAvatarEffectParity.PrefersUnderFaceAvatarEffectPlane(animation, isClientMovementOwner))
+            {
+                return SkillAvatarEffectPlane.UnderFace;
+            }
+
+            if (ClientOwnedAvatarEffectParity.PrefersOverFaceAvatarEffectPlane(animation))
+            {
+                return SkillAvatarEffectPlane.OverFace;
+            }
+
+            return SkillAvatarEffectPlane.OverCharacter;
         }
 
         internal static bool PrefersUnderFaceTransientSkillAvatarEffectPlaneForTesting(
@@ -9222,6 +9313,13 @@ namespace HaCreator.MapSimulator.Character
             bool isClientMovementOwner = false)
         {
             return ResolveTransientSkillAvatarEffectPlane(animation, isClientMovementOwner) == SkillAvatarEffectPlane.UnderFace;
+        }
+
+        internal static bool PrefersOverFaceTransientSkillAvatarEffectPlaneForTesting(
+            SkillAnimation animation,
+            bool isClientMovementOwner = false)
+        {
+            return ResolveTransientSkillAvatarEffectPlane(animation, isClientMovementOwner) == SkillAvatarEffectPlane.OverFace;
         }
 
         internal static string ResolveShadowPartnerActionOwnerNameForTesting(string actionName)
@@ -9235,6 +9333,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 0 => SkillAvatarEffectPlane.BehindCharacter,
                 1 => SkillAvatarEffectPlane.UnderFace,
+                2 => SkillAvatarEffectPlane.OverFace,
                 _ => SkillAvatarEffectPlane.OverCharacter
             };
 

@@ -2475,7 +2475,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (key == Keys.Left || key == Keys.Right)
+            if ((key == Keys.Left || key == Keys.Right) && !_isWhisperTargetPickerComboDropdownOpen)
             {
                 ToggleWhisperTargetPickerModalComboDropdown();
                 return true;

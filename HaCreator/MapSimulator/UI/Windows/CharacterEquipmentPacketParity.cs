@@ -3,6 +3,7 @@ using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -14,6 +15,9 @@ namespace HaCreator.MapSimulator.UI
         private const int MaxAuthorityInventorySlotStateCount = 192;
         private const byte ClientEquipInventoryType = (byte)InventoryType.EQUIP;
         private const byte ClientCashInventoryType = (byte)InventoryType.CASH;
+        private const byte ItemSlotTypeEquip = 1;
+        private const byte ItemSlotTypeBundle = 2;
+        private const byte ItemSlotTypePet = 3;
         internal const int ClientInventoryOperationPacketType = 28;
 
         internal static bool TryRecognizeClientInventoryOperationCompletion(
@@ -888,10 +892,15 @@ namespace HaCreator.MapSimulator.UI
         {
             itemId = 0;
             rejectReason = null;
+            if (!TryEnsureRemaining(reader?.BaseStream, sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long), out rejectReason))
+            {
+                return false;
+            }
+
             try
             {
                 byte slotType = reader.ReadByte();
-                if (slotType is not 1 and not 2 and not 3)
+                if (slotType is not ItemSlotTypeEquip and not ItemSlotTypeBundle and not ItemSlotTypePet)
                 {
                     rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
                     return false;
@@ -907,58 +916,12 @@ namespace HaCreator.MapSimulator.UI
                 _ = reader.ReadInt64(); // dateExpire
                 switch (slotType)
                 {
-                    case 1:
-                        _ = reader.ReadByte();
-                        _ = reader.ReadByte();
-                        for (int i = 0; i < 14; i++)
-                        {
-                            _ = reader.ReadInt16();
-                        }
-
-                        _ = ReadMapleString(reader);
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadByte();
-                        _ = reader.ReadByte();
-                        _ = reader.ReadInt32();
-                        _ = reader.ReadInt32();
-                        _ = reader.ReadInt32();
-                        _ = reader.ReadByte();
-                        _ = reader.ReadByte();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadInt64();
-                        _ = reader.ReadInt64();
-                        _ = reader.ReadInt32();
-                        return true;
-                    case 2:
-                        _ = reader.ReadUInt16();
-                        _ = ReadMapleString(reader);
-                        _ = reader.ReadInt16();
-                        if ((itemId / 10000) is 207 or 233)
-                        {
-                            _ = reader.ReadInt64();
-                        }
-
-                        return true;
-                    case 3:
-                        if (reader.ReadBytes(13).Length != 13)
-                        {
-                            rejectReason = "Inventory-operation add entry is truncated.";
-                            return false;
-                        }
-
-                        _ = reader.ReadByte();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadByte();
-                        _ = reader.ReadInt64();
-                        _ = reader.ReadInt16();
-                        _ = reader.ReadUInt16();
-                        _ = reader.ReadInt32();
-                        _ = reader.ReadInt16();
-                        return true;
+                    case ItemSlotTypeEquip:
+                        return TryReadClientEquipAddEntryBody(reader, hasCashSerial, out rejectReason);
+                    case ItemSlotTypeBundle:
+                        return TryReadClientBundleAddEntryBody(reader, itemId, out rejectReason);
+                    case ItemSlotTypePet:
+                        return TryReadClientPetAddEntryBody(reader, out rejectReason);
                     default:
                         rejectReason = $"Inventory-operation add entry used unsupported GW_ItemSlotBase type {slotType}.";
                         return false;
@@ -976,18 +939,166 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static string ReadMapleString(BinaryReader reader)
+        private static bool TryReadClientEquipAddEntryBody(
+            BinaryReader reader,
+            bool hasCashSerial,
+            out string rejectReason)
         {
-            ushort length = reader.ReadUInt16();
-            if (length == 0)
+            rejectReason = null;
+            const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 14);
+            if (!TryEnsureRemaining(reader.BaseStream, equipStatsByteLength, out rejectReason))
             {
-                return string.Empty;
+                return false;
             }
 
-            byte[] bytes = reader.ReadBytes(length);
-            return bytes.Length == length
-                ? System.Text.Encoding.ASCII.GetString(bytes)
-                : string.Empty;
+            _ = reader.ReadByte();
+            _ = reader.ReadByte();
+            for (int i = 0; i < 14; i++)
+            {
+                _ = reader.ReadInt16();
+            }
+
+            if (!TryReadClientMapleString(reader, out _, out rejectReason))
+            {
+                return false;
+            }
+
+            const int equipTailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
+            if (!TryEnsureRemaining(
+                    reader.BaseStream,
+                    equipTailLength + (hasCashSerial ? 0 : sizeof(long)) + sizeof(long) + sizeof(int),
+                    out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadInt16();
+            _ = reader.ReadByte();
+            _ = reader.ReadByte();
+            _ = reader.ReadInt32();
+            _ = reader.ReadInt32();
+            _ = reader.ReadInt32();
+            _ = reader.ReadByte();
+            _ = reader.ReadByte();
+            _ = reader.ReadInt16();
+            _ = reader.ReadInt16();
+            _ = reader.ReadInt16();
+            _ = reader.ReadInt16();
+            _ = reader.ReadInt16();
+            if (!hasCashSerial)
+            {
+                _ = reader.ReadInt64();
+            }
+
+            _ = reader.ReadInt64();
+            _ = reader.ReadInt32();
+            return true;
+        }
+
+        private static bool TryReadClientBundleAddEntryBody(
+            BinaryReader reader,
+            int itemId,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (!TryEnsureRemaining(reader.BaseStream, sizeof(ushort), out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadUInt16();
+            if (!TryReadClientMapleString(reader, out _, out rejectReason))
+            {
+                return false;
+            }
+
+            if (!TryEnsureRemaining(reader.BaseStream, sizeof(short), out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadInt16();
+            if ((itemId / 10000) is 207 or 233)
+            {
+                if (!TryEnsureRemaining(reader.BaseStream, sizeof(long), out rejectReason))
+                {
+                    return false;
+                }
+
+                _ = reader.ReadInt64();
+            }
+
+            return true;
+        }
+
+        private static bool TryReadClientPetAddEntryBody(
+            BinaryReader reader,
+            out string rejectReason)
+        {
+            const int petBodyLength = 13 + sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
+            if (!TryEnsureRemaining(reader.BaseStream, petBodyLength, out rejectReason))
+            {
+                return false;
+            }
+
+            _ = reader.ReadBytes(13);
+            _ = reader.ReadByte();
+            _ = reader.ReadInt16();
+            _ = reader.ReadByte();
+            _ = reader.ReadInt64();
+            _ = reader.ReadInt16();
+            _ = reader.ReadUInt16();
+            _ = reader.ReadInt32();
+            _ = reader.ReadInt16();
+            return true;
+        }
+
+        private static bool TryReadClientMapleString(
+            BinaryReader reader,
+            out string value,
+            out string rejectReason)
+        {
+            value = string.Empty;
+            rejectReason = null;
+            if (!TryEnsureRemaining(reader.BaseStream, sizeof(short), out rejectReason))
+            {
+                return false;
+            }
+
+            short length = reader.ReadInt16();
+            if (length < 0)
+            {
+                rejectReason = "Inventory-operation add entry maple string length is invalid.";
+                return false;
+            }
+
+            if (!TryEnsureRemaining(reader.BaseStream, length, out rejectReason))
+            {
+                return false;
+            }
+
+            value = length == 0
+                ? string.Empty
+                : Encoding.ASCII.GetString(reader.ReadBytes(length));
+            return true;
+        }
+
+        private static bool TryEnsureRemaining(Stream stream, int byteCount, out string rejectReason)
+        {
+            rejectReason = null;
+            if (stream == null)
+            {
+                rejectReason = "Inventory-operation stream is unavailable.";
+                return false;
+            }
+
+            if (byteCount < 0 || stream.Length - stream.Position < byteCount)
+            {
+                rejectReason = "Inventory-operation add entry is truncated.";
+                return false;
+            }
+
+            return true;
         }
 
         private static bool IsSupportedClientCharacterInventoryType(byte inventoryType)

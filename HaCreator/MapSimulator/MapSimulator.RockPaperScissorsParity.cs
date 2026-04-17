@@ -641,8 +641,8 @@ namespace HaCreator.MapSimulator
             bool hasAttachedClient,
             bool hasPassiveEstablishedSocketPair)
         {
-            return hasPassiveEstablishedSocketPair
-                || (bridgeEnabled && (isRunning || hasConnectedSession || hasAttachedClient));
+            return bridgeEnabled
+                && (isRunning || hasConnectedSession || hasAttachedClient || hasPassiveEstablishedSocketPair);
         }
     }
 }

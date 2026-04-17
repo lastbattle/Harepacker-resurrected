@@ -7,6 +7,7 @@ namespace HaCreator.MapSimulator.Character
     public static class ClientOwnedAvatarEffectParity
     {
         private const int FaceOwnedPlanePositionCode = 1;
+        private const int OverFaceOwnedPlanePositionCode = 2;
         private static readonly HashSet<int> RotateSensitiveRawActionCodes = new()
         {
             101,
@@ -77,6 +78,18 @@ namespace HaCreator.MapSimulator.Character
             return positionCode == FaceOwnedPlanePositionCode
                    || zOrder < 0
                    || (isClientMovementOwner && !positionCode.HasValue && zOrder == 0);
+        }
+
+        internal static bool PrefersOverFaceAvatarEffectPlane(Skills.SkillAnimation animation)
+        {
+            return animation != null
+                   && PrefersOverFaceAvatarEffectPlane(animation.PositionCode, animation.ZOrder);
+        }
+
+        internal static bool PrefersOverFaceAvatarEffectPlane(int? positionCode, int zOrder)
+        {
+            return positionCode == OverFaceOwnedPlanePositionCode
+                   && zOrder >= 0;
         }
 
         internal static bool TryResolveFaceOwnedAvatarEffectAnchor(

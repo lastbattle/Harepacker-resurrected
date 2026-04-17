@@ -686,17 +686,44 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             var composedFrames = new List<IDXObject>(baseFrames.Count);
-            foreach (PetActionFrame baseFrame in baseFrames)
+            List<IDXObject> overlayFrameOrder = overlayFrames.Select(static frame => frame.Frame).ToList();
+            for (int baseFrameIndex = 0; baseFrameIndex < baseFrames.Count; baseFrameIndex++)
             {
-                IDXObject overlayFrame = !string.IsNullOrWhiteSpace(baseFrame.Name) &&
-                                         overlayFramesByName.TryGetValue(baseFrame.Name, out IDXObject resolvedOverlayFrame)
-                    ? resolvedOverlayFrame
-                    : null;
+                PetActionFrame baseFrame = baseFrames[baseFrameIndex];
+                IDXObject overlayFrame = ResolvePetWearOverlayFrame(
+                    overlayFramesByName,
+                    overlayFrameOrder,
+                    baseFrame.Name,
+                    baseFrameIndex);
                 composedFrames.Add(overlayFrame == null ? baseFrame.Frame : ComposePetWearFrame(baseFrame.Frame, overlayFrame));
             }
 
             _actionCache[cacheKey] = composedFrames;
             return composedFrames;
+        }
+
+        internal static IDXObject ResolvePetWearOverlayFrame(
+            IReadOnlyDictionary<string, IDXObject> overlayFramesByName,
+            IReadOnlyList<IDXObject> overlayFramesByIndex,
+            string baseFrameName,
+            int baseFrameIndex)
+        {
+            if (!string.IsNullOrWhiteSpace(baseFrameName) &&
+                overlayFramesByName != null &&
+                overlayFramesByName.TryGetValue(baseFrameName, out IDXObject namedFrame) &&
+                namedFrame != null)
+            {
+                return namedFrame;
+            }
+
+            if (overlayFramesByIndex != null &&
+                baseFrameIndex >= 0 &&
+                baseFrameIndex < overlayFramesByIndex.Count)
+            {
+                return overlayFramesByIndex[baseFrameIndex];
+            }
+
+            return null;
         }
 
         private WzImageProperty ResolvePetActionNode(PetImageEntry petImgEntry, string requestedAction)

@@ -1647,13 +1647,21 @@ namespace HaCreator.MapSimulator.Fields
             out RemoteTownPortalResolvedDestination destination)
         {
             destination = default;
-            if (preferredSourceMapId.HasValue
-                && TryResolveRemoteTownPortalPreferredWzFallbackDestination(
-                    townMapId,
-                    preferredSourceMapId.Value,
-                    out destination))
+            if (preferredSourceMapId.HasValue)
             {
-                return true;
+                if (TryResolveRemoteTownPortalPreferredWzFallbackDestination(
+                        townMapId,
+                        preferredSourceMapId.Value,
+                        out destination,
+                        out bool preferredSourceValidated))
+                {
+                    return true;
+                }
+
+                if (preferredSourceValidated)
+                {
+                    return false;
+                }
             }
 
             if (!TryResolveUniqueRemoteTownPortalWzFallbackSourceMap(townMapId, out int sourceMapId)
@@ -1669,14 +1677,21 @@ namespace HaCreator.MapSimulator.Fields
         private static bool TryResolveRemoteTownPortalPreferredWzFallbackDestination(
             int townMapId,
             int preferredSourceMapId,
-            out RemoteTownPortalResolvedDestination destination)
+            out RemoteTownPortalResolvedDestination destination,
+            out bool preferredSourceValidated)
         {
             destination = default;
+            preferredSourceValidated = false;
             if (preferredSourceMapId <= 0
                 || preferredSourceMapId == townMapId
                 || !TryResolveRemoteTownPortalTownMapForSourceMap(preferredSourceMapId, out int configuredTownMapId)
-                || configuredTownMapId != townMapId
-                || !TryResolveRemoteTownPortalSourceFallbackPosition(preferredSourceMapId, out float sourceX, out float sourceY))
+                || configuredTownMapId != townMapId)
+            {
+                return false;
+            }
+
+            preferredSourceValidated = true;
+            if (!TryResolveRemoteTownPortalSourceFallbackPosition(preferredSourceMapId, out float sourceX, out float sourceY))
             {
                 return false;
             }
@@ -3484,13 +3499,14 @@ namespace HaCreator.MapSimulator.Fields
             if (hasPreferredSourceMap
                 && preferredSourceMapId > 0
                 && preferredSourceMapId != townMapId
-                && preferredSourceResolvesToTownMap
-                && preferredSourceHasPosition)
+                && preferredSourceResolvesToTownMap)
             {
-                return new RemoteTownPortalResolvedDestination(
-                    preferredSourceMapId,
-                    preferredSourceX,
-                    preferredSourceY);
+                return preferredSourceHasPosition
+                    ? new RemoteTownPortalResolvedDestination(
+                        preferredSourceMapId,
+                        preferredSourceX,
+                        preferredSourceY)
+                    : null;
             }
 
             return ResolveUniqueRemoteTownPortalWzFallbackDestinationForTesting(townMapId, candidates);

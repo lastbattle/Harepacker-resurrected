@@ -5,6 +5,21 @@ namespace HaCreator.MapSimulator.UI
 {
     internal static class AdminShopPacketOwnedSetUserItemsParity
     {
+        internal static InventoryType ResolveSetUserItemsInventoryType(
+            bool requiresInventorySource,
+            InventoryType sourceInventoryType,
+            int rewardItemId,
+            int displayItemId)
+        {
+            if (requiresInventorySource && sourceInventoryType != InventoryType.NONE)
+            {
+                return sourceInventoryType;
+            }
+
+            int itemId = rewardItemId > 0 ? rewardItemId : displayItemId;
+            return ResolveClientInventoryTypeFromItemId(itemId);
+        }
+
         internal static int FindMatchingEntryIndex(
             IReadOnlyList<AdminShopUserSellMutationRow> currentRows,
             InventoryType inventoryType,
@@ -47,6 +62,25 @@ namespace HaCreator.MapSimulator.UI
                 selectedIndex,
                 maxVisibleRows);
             return new AdminShopUserSellMutationResolution(selectedIndex, scrollOffset);
+        }
+
+        private static InventoryType ResolveClientInventoryTypeFromItemId(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return InventoryType.NONE;
+            }
+
+            // CAdminShopDlg::SendTradeRequest forwards nItemID / 1000000 into SetUserItems.
+            return (itemId / 1000000) switch
+            {
+                1 => InventoryType.EQUIP,
+                2 => InventoryType.USE,
+                3 => InventoryType.SETUP,
+                4 => InventoryType.ETC,
+                5 => InventoryType.CASH,
+                _ => InventoryType.NONE
+            };
         }
     }
 }

@@ -2,6 +2,7 @@ using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -76,7 +77,27 @@ namespace HaCreator.MapSimulator.Interaction
                 labels.Add(label);
             }
 
-            return string.Join(separator, labels);
+            if (labels.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var summary = new StringBuilder(labels[0]);
+            bool separatorEndsWithWhitespace = separator.Length > 0 && char.IsWhiteSpace(separator[^1]);
+            for (int i = 1; i < labels.Count; i++)
+            {
+                summary.Append(separator);
+                // CUserLocal::OnQuestResult appends StringPool 3293 (" or") and then
+                // appends a standalone space token before each additional category label.
+                if (!separatorEndsWithWhitespace)
+                {
+                    summary.Append(' ');
+                }
+
+                summary.Append(labels[i]);
+            }
+
+            return summary.ToString();
         }
 
         internal static string FormatRewardInventoryNotice(IEnumerable<int> itemIds)

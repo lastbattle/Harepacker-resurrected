@@ -56,6 +56,12 @@ namespace HaCreator.MapSimulator.Companions
         internal const byte ClientEquipInventoryType = 1;
         internal const ushort ClientChangeSlotPositionCountAll = 0xFFFF;
 
+        private readonly record struct MechanicInventoryOperationContext(
+            bool SawPositiveEquipRemove,
+            bool SawExpectedPositiveEquipRemove,
+            bool SawNegativeEquipRemove,
+            bool SawExpectedNegativeEquipRemove);
+
         internal static bool TryEncodeClientChangeSlotPositionRequest(
             EquipmentChangeRequest request,
             out byte[] payload,
@@ -164,6 +170,7 @@ namespace HaCreator.MapSimulator.Companions
                     return false;
                 }
 
+                MechanicInventoryOperationContext operationContext = default;
                 for (int i = 0; i < operationCount; i++)
                 {
                     if (stream.Length - stream.Position < sizeof(byte) * 2 + sizeof(short))
@@ -203,6 +210,7 @@ namespace HaCreator.MapSimulator.Companions
                             _ = reader.ReadInt16();
                             break;
                         case 3:
+                            operationContext = ObserveMechanicRemoveEntry(request, operationContext, inventoryType, fromPosition);
                             break;
                         case 4:
                             if (stream.Length - stream.Position < sizeof(int))
@@ -220,7 +228,13 @@ namespace HaCreator.MapSimulator.Companions
                                 return false;
                             }
 
-                            if (TryMatchesMechanicInventoryOperationAdd(request, inventoryType, fromPosition, addedItemId, out rejectReason))
+                            if (TryMatchesMechanicInventoryOperationAdd(
+                                    request,
+                                    operationContext,
+                                    inventoryType,
+                                    fromPosition,
+                                    addedItemId,
+                                    out rejectReason))
                             {
                                 return true;
                             }
@@ -917,6 +931,12 @@ namespace HaCreator.MapSimulator.Companions
                     return false;
                 }
 
+                if (inventoryType != ClientEquipInventoryType)
+                {
+                    rejectReason = "Mechanic drag-back-out inventory-operation swap did not target the equip inventory.";
+                    return false;
+                }
+
                 short expectedSourcePosition =
                     unchecked((short)-MechanicEquipmentSlotMap.GetBodyPart(request.SourceMechanicSlot.Value));
                 if (sourcePosition != expectedSourcePosition)
@@ -940,6 +960,7 @@ namespace HaCreator.MapSimulator.Companions
 
         private static bool TryMatchesMechanicInventoryOperationAdd(
             EquipmentChangeRequest request,
+            MechanicInventoryOperationContext operationContext,
             byte inventoryType,
             short targetPosition,
             int addedItemId,
@@ -974,6 +995,11 @@ namespace HaCreator.MapSimulator.Companions
                     return false;
                 }
 
+                if (!TryValidateMechanicAddEntrySourceEvidence(request, operationContext, out rejectReason))
+                {
+                    return false;
+                }
+
                 return true;
             }
 
@@ -1003,10 +1029,91 @@ namespace HaCreator.MapSimulator.Companions
                     return false;
                 }
 
+                if (!TryValidateMechanicAddEntrySourceEvidence(request, operationContext, out rejectReason))
+                {
+                    return false;
+                }
+
                 return true;
             }
 
             rejectReason = "Unsupported mechanic request kind for inventory-operation add matching.";
+            return false;
+        }
+
+        private static MechanicInventoryOperationContext ObserveMechanicRemoveEntry(
+            EquipmentChangeRequest request,
+            MechanicInventoryOperationContext context,
+            byte inventoryType,
+            short sourcePosition)
+        {
+            if (inventoryType != ClientEquipInventoryType)
+            {
+                return context;
+            }
+
+            bool sawPositiveEquipRemove = context.SawPositiveEquipRemove || sourcePosition > 0;
+            bool sawExpectedPositiveEquipRemove = context.SawExpectedPositiveEquipRemove;
+            bool sawNegativeEquipRemove = context.SawNegativeEquipRemove || sourcePosition < 0;
+            bool sawExpectedNegativeEquipRemove = context.SawExpectedNegativeEquipRemove;
+            if (request?.Kind == EquipmentChangeRequestKind.InventoryToCompanion
+                && request.TargetCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                && request.SourceInventoryIndex >= 0)
+            {
+                short expectedSourcePosition = (short)(request.SourceInventoryIndex + 1);
+                sawExpectedPositiveEquipRemove = sawExpectedPositiveEquipRemove || sourcePosition == expectedSourcePosition;
+            }
+            else if (request?.Kind == EquipmentChangeRequestKind.CompanionToInventory
+                     && request.SourceCompanionKind == EquipmentChangeCompanionKind.Mechanic
+                     && request.SourceMechanicSlot.HasValue)
+            {
+                short expectedSourcePosition =
+                    unchecked((short)-MechanicEquipmentSlotMap.GetBodyPart(request.SourceMechanicSlot.Value));
+                sawExpectedNegativeEquipRemove = sawExpectedNegativeEquipRemove || sourcePosition == expectedSourcePosition;
+            }
+
+            return new MechanicInventoryOperationContext(
+                sawPositiveEquipRemove,
+                sawExpectedPositiveEquipRemove,
+                sawNegativeEquipRemove,
+                sawExpectedNegativeEquipRemove);
+        }
+
+        private static bool TryValidateMechanicAddEntrySourceEvidence(
+            EquipmentChangeRequest request,
+            MechanicInventoryOperationContext operationContext,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null)
+            {
+                rejectReason = "Mechanic request metadata is unavailable for add-entry source validation.";
+                return false;
+            }
+
+            if (request.Kind == EquipmentChangeRequestKind.InventoryToCompanion)
+            {
+                if (operationContext.SawPositiveEquipRemove && !operationContext.SawExpectedPositiveEquipRemove)
+                {
+                    rejectReason = "Inventory-operation add entry did not include removal from the requested source equip slot.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (request.Kind == EquipmentChangeRequestKind.CompanionToInventory)
+            {
+                if (operationContext.SawNegativeEquipRemove && !operationContext.SawExpectedNegativeEquipRemove)
+                {
+                    rejectReason = "Inventory-operation add entry did not include removal from the requested mechanic source slot.";
+                    return false;
+                }
+
+                return true;
+            }
+
+            rejectReason = "Unsupported mechanic request kind for add-entry source validation.";
             return false;
         }
 
